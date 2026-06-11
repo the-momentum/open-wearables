@@ -13,6 +13,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus
 from app.services.providers.factory import ProviderFactory
+from app.services.sync_coordination import release_primary, try_become_primary
 from app.services.sync_status_service import completed, failed, new_run_id, progress, started
 from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
@@ -163,6 +164,34 @@ def sync_vendor_data(
 
                 run_id = new_run_id(prefix="pull")
                 sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
+
+                # If this provider account is shared across OW profiles, only one
+                # should make the API call.  The first to acquire the lock is primary;
+                # others emit a LINKED_ACCOUNT event and skip the pull.
+                shared_token: str = ""
+                if connection.provider_user_id:
+                    is_pull_primary, shared_token, existing_primary = try_become_primary(
+                        provider_name, connection.provider_user_id, user_uuid, scope="pull"
+                    )
+                    if not is_pull_primary:
+                        _emit_sync_status(
+                            completed,
+                            user_uuid,
+                            provider_name,
+                            SyncSource.LINKED_ACCOUNT,
+                            run_id=run_id,
+                            status=SyncStatus.SUCCESS,
+                            message=f"Sync handled by linked {provider_name} profile",
+                            primary_user_id=existing_primary,
+                            metadata={"trace_id": trace_id, "is_historical": is_historical},
+                        )
+                        if not is_historical:
+                            user_connection_repo.update_last_synced_at(db, connection)
+                        result.providers_synced[provider_name] = ProviderSyncResult(
+                            success=True, params={"linked_account": True}
+                        )
+                        continue
+
                 _emit_sync_status(
                     started,
                     user_uuid,
@@ -312,6 +341,11 @@ def sync_vendor_data(
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
 
+                    if shared_token and connection.provider_user_id:
+                        release_primary(
+                            provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
+                        )
+
                     result.providers_synced[provider_name] = provider_result
                     log_structured(
                         logger,
@@ -362,6 +396,10 @@ def sync_vendor_data(
                         )
 
                 except Exception as e:
+                    if shared_token and connection.provider_user_id:
+                        release_primary(
+                            provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
+                        )
                     _emit_sync_status(
                         failed,
                         user_uuid,

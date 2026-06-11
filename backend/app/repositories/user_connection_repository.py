@@ -4,6 +4,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import CursorResult, and_, func, select, tuple_, update
+from sqlalchemy.orm import Query
 from sqlalchemy.orm.exc import MultipleResultsFound
 
 from app.database import DbSession
@@ -115,6 +116,31 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .one_or_none()
         )
 
+    def _active_by_provider_external_id(
+        self, db_session: DbSession, provider: str, provider_user_id: str
+    ) -> Query[UserConnection]:
+        """Base query: active connections for a given (provider, provider_user_id) pair."""
+        return db_session.query(self.model).filter(
+            and_(
+                self.model.provider == provider,
+                self.model.provider_user_id == provider_user_id,
+                self.model.status == ConnectionStatus.ACTIVE,
+            )
+        )
+
+    def get_all_by_provider_user_id(
+        self,
+        db_session: DbSession,
+        provider: str,
+        provider_user_id: str,
+    ) -> list[UserConnection]:
+        """Get all active connections sharing the same external provider account.
+
+        Used for multi-account sync fan-out: one provider account connected to
+        several OpenWearables profiles.
+        """
+        return self._active_by_provider_external_id(db_session, provider, provider_user_id).all()
+
     def get_by_provider_user_id(
         self,
         db_session: DbSession,
@@ -127,33 +153,13 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         and need to find our internal user.
         """
         try:
-            return (
-                db_session.query(self.model)
-                .filter(
-                    and_(
-                        self.model.provider == provider,
-                        self.model.provider_user_id == provider_user_id,
-                        self.model.status == ConnectionStatus.ACTIVE,
-                    ),
-                )
-                .one_or_none()
-            )
+            return self._active_by_provider_external_id(db_session, provider, provider_user_id).one_or_none()
         except MultipleResultsFound:
             logger.warning(
                 "Multiple active connections found for provider_user_id — returning first",
                 extra={"provider": provider, "provider_user_id": provider_user_id},
             )
-            return (
-                db_session.query(self.model)
-                .filter(
-                    and_(
-                        self.model.provider == provider,
-                        self.model.provider_user_id == provider_user_id,
-                        self.model.status == ConnectionStatus.ACTIVE,
-                    ),
-                )
-                .first()
-            )
+            return self._active_by_provider_external_id(db_session, provider, provider_user_id).first()
 
     def get_by_provider_username(
         self,

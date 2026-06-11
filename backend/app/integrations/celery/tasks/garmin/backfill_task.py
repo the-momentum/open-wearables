@@ -45,15 +45,34 @@ from app.services.providers.garmin.backfill_state import (
     is_retry_phase,
     mark_type_failed,
     persist_window_results,
+    release_backfill_lock,
     reset_type_status,
     set_trace_id,
     setup_retry_window,
     update_window_cell,
 )
+from app.services.sync_coordination import (
+    clear_secondaries,
+    register_secondary,
+    release_primary_for_user,
+    store_primary_token,
+    try_become_primary,
+)
 from app.services.sync_status_service import cancelled, completed, progress, started
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
+
+
+def _release_shared_backfill_primary(user_id: str) -> None:
+    """Release the shared primary lock and clear secondaries when backfill ends."""
+    raw = get_redis_client().get(_get_key(user_id, "shared_provider_user_id"))
+    if not raw:
+        return
+    provider_user_id = raw if isinstance(raw, str) else raw.decode()
+    release_primary_for_user("garmin", provider_user_id, UUID(user_id), scope="backfill")
+    clear_secondaries("garmin", provider_user_id, scope="backfill")
+    get_redis_client().delete(_get_key(user_id, "shared_provider_user_id"))
 
 
 @shared_task
@@ -130,6 +149,43 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         return {"error": "Backfill already in progress", "status": "rejected"}
 
     trace_id = set_trace_id(user_id)
+
+    # If this Garmin account is shared across multiple OW profiles, only one
+    # profile should make the API calls.  Others register as secondaries and
+    # receive data via webhook fan-out (activities.py / wellness.py).
+    if connection.provider_user_id:
+        is_backfill_primary, shared_token, existing_primary = try_become_primary(
+            "garmin", connection.provider_user_id, UUID(user_id), scope="backfill"
+        )
+        if not is_backfill_primary:
+            release_backfill_lock(user_id)
+            register_secondary("garmin", connection.provider_user_id, UUID(user_id), scope="backfill")
+            log_structured(
+                logger,
+                "info",
+                "Backfill secondary: another profile already running backfill for this Garmin account",
+                provider="garmin",
+                trace_id=trace_id,
+                user_id=user_id,
+                primary_user_id=str(existing_primary) if existing_primary else None,
+            )
+            started(
+                UUID(user_id),
+                "garmin",
+                SyncSource.LINKED_ACCOUNT,
+                run_id=f"garmin_backfill_{user_id}_{trace_id}",
+                message="Garmin backfill running via linked OW profile",
+                primary_user_id=existing_primary,
+                metadata={
+                    "trace_id": trace_id,
+                    "primary_user_id": str(existing_primary) if existing_primary else None,
+                },
+            )
+            return {"status": "secondary", "primary_user_id": str(existing_primary) if existing_primary else None}
+
+        # Won the shared lock — store token and provider_user_id for cross-task release
+        store_primary_token("garmin", connection.provider_user_id, UUID(user_id), shared_token, scope="backfill")
+        get_redis_client().setex(_get_key(user_id, "shared_provider_user_id"), REDIS_TTL, connection.provider_user_id)
 
     # Check for existing state (resume detection)
     current_window = get_current_window(user_id)
@@ -291,6 +347,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
 
             clear_retry_state(user_id)
             complete_backfill(user_id)
+            _release_shared_backfill_primary(user_id)
             log_structured(
                 logger,
                 "info",
@@ -369,6 +426,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
 
         clear_retry_state(user_id)
         complete_backfill(user_id)
+        _release_shared_backfill_primary(user_id)
         completed_windows = get_current_window(user_id)
         log_structured(
             logger,
