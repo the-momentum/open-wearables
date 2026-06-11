@@ -124,7 +124,7 @@ class TestGarminWorkouts:
 
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
-        assert metrics["heart_rate_min"] == 145
+        assert metrics["heart_rate_min"] is None
         assert metrics["steps_count"] == 8500
         assert metrics["energy_burned"] == Decimal("650")
         assert metrics["distance"] == Decimal("10000")

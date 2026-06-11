@@ -232,6 +232,8 @@ class OuraWebhookHandler(BaseWebhookHandler):
             object_id=notification.object_id,
         )
 
+        self.connection_repo.update_last_synced_at(db, connection)
+
         count = self._dispatch_data_type(db, notification, user_id)
 
         if count is None:

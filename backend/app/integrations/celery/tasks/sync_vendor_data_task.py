@@ -13,6 +13,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus
 from app.services.providers.factory import ProviderFactory
+from app.services.sync_coordination import release_primary, release_stale_primary, try_become_primary
 from app.services.sync_status_service import completed, failed, new_run_id, progress, started
 from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
@@ -54,6 +55,8 @@ def sync_vendor_data(
     end_date: str | None = None,
     providers: list[str] | None = None,
     is_historical: bool = False,
+    _skip_linked_fan_out: bool = False,
+    _linked_primary_user_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Synchronize workout/exercise/activity data from all providers the user is connected to.
@@ -67,6 +70,8 @@ def sync_vendor_data(
         providers: Optional list of provider names to sync (None = all active providers)
         is_historical: When True, skips updating last_synced_at so the live-sync
             cursor is not clobbered by a user-initiated historical pull.
+        _skip_linked_fan_out: Internal flag set to True when this task was triggered
+            by another profile's fan-out.  Prevents infinite fan-out loops.
 
     Returns:
         dict with sync results per provider
@@ -162,7 +167,66 @@ def sync_vendor_data(
                 )
 
                 run_id = new_run_id(prefix="pull")
-                sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
+                primary_uuid: UUID | None = None
+                if _linked_primary_user_id:
+                    with suppress(ValueError):
+                        primary_uuid = UUID(_linked_primary_user_id)
+                sync_source = (
+                    SyncSource.LINKED_ACCOUNT
+                    if _linked_primary_user_id
+                    else (SyncSource.BACKFILL if is_historical else SyncSource.PULL)
+                )
+
+                # If this provider account is shared across OW profiles, only one
+                # should make the API call at a time.  The first to acquire the lock
+                # is primary; concurrent duplicates skip and wait for the fan-out.
+                # Fan-out tasks (_skip_linked_fan_out=True) bypass this check entirely.
+                shared_token: str = ""
+                if connection.provider_user_id and not _skip_linked_fan_out:
+                    is_pull_primary, shared_token, existing_primary = try_become_primary(
+                        provider_name, connection.provider_user_id, user_uuid, scope="pull"
+                    )
+                    if not is_pull_primary and existing_primary:
+                        # If the lock holder no longer has an active connection (e.g. user
+                        # deleted), the lock is stale and will never be released naturally.
+                        # Steal it so this profile can become primary.
+                        active = user_connection_repo.get_active_connection(db, existing_primary, provider_name)
+                        if not active:
+                            log_structured(
+                                logger,
+                                "info",
+                                f"Stealing stale {provider_name} primary lock — holder has no active connection",
+                                provider=provider_name,
+                                task="sync_vendor_data",
+                                user_id=user_id,
+                                stale_primary_user_id=str(existing_primary),
+                            )
+                            release_stale_primary(provider_name, connection.provider_user_id, scope="pull")
+                            is_pull_primary, shared_token, existing_primary = try_become_primary(
+                                provider_name, connection.provider_user_id, user_uuid, scope="pull"
+                            )
+
+                    if not is_pull_primary:
+                        log_structured(
+                            logger,
+                            "info",
+                            f"Skipping {provider_name} pull — another linked profile is syncing",
+                            provider=provider_name,
+                            task="sync_vendor_data",
+                            user_id=user_id,
+                            primary_user_id=str(existing_primary) if existing_primary else None,
+                        )
+                        # No sync status event here — the primary will trigger a fan-out
+                        # task for this profile that emits a LINKED_ACCOUNT completed event
+                        # once the actual data delivery is done.  A pre-emptive event here
+                        # would show up as a duplicate in the sync log.
+                        if not is_historical:
+                            user_connection_repo.update_last_synced_at(db, connection)
+                        result.providers_synced[provider_name] = ProviderSyncResult(
+                            success=True, params={"linked_account": True}
+                        )
+                        continue
+
                 _emit_sync_status(
                     started,
                     user_uuid,
@@ -174,6 +238,7 @@ def sync_vendor_data(
                         if is_historical
                         else f"Live sync from {provider_name} started"
                     ),
+                    primary_user_id=primary_uuid,
                     metadata={
                         "trace_id": trace_id,
                         "is_historical": is_historical,
@@ -312,6 +377,39 @@ def sync_vendor_data(
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
 
+                    if shared_token and connection.provider_user_id:
+                        release_primary(
+                            provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
+                        )
+                        # Fan-out: trigger sync for every other OW profile sharing this
+                        # provider account so they receive the same data.
+                        linked_connections = user_connection_repo.get_all_by_provider_user_id(
+                            db, provider_name, connection.provider_user_id
+                        )
+                        for linked_conn in linked_connections:
+                            if linked_conn.user_id == user_uuid:
+                                continue
+                            log_structured(
+                                logger,
+                                "info",
+                                f"Fanning out {provider_name} sync to linked profile",
+                                provider=provider_name,
+                                task="sync_vendor_data",
+                                user_id=user_id,
+                                linked_user_id=str(linked_conn.user_id),
+                            )
+                            sync_vendor_data.apply_async(
+                                kwargs={
+                                    "user_id": str(linked_conn.user_id),
+                                    "start_date": start_date,
+                                    "end_date": end_date,
+                                    "providers": [provider_name],
+                                    "is_historical": is_historical,
+                                    "_skip_linked_fan_out": True,
+                                    "_linked_primary_user_id": user_id,
+                                }
+                            )
+
                     result.providers_synced[provider_name] = provider_result
                     log_structured(
                         logger,
@@ -343,6 +441,7 @@ def sync_vendor_data(
                             run_id=run_id,
                             error="All sync sub-tasks failed",
                             message=f"Sync from {provider_name} failed",
+                            primary_user_id=primary_uuid,
                             metadata={"is_historical": is_historical, "params": provider_result.params},
                         )
                     else:
@@ -358,10 +457,15 @@ def sync_vendor_data(
                                 if not any_failed
                                 else f"Sync from {provider_name} completed with errors"
                             ),
+                            primary_user_id=primary_uuid,
                             metadata={"is_historical": is_historical, "params": provider_result.params},
                         )
 
                 except Exception as e:
+                    if shared_token and connection.provider_user_id:
+                        release_primary(
+                            provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
+                        )
                     _emit_sync_status(
                         failed,
                         user_uuid,

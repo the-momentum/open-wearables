@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 import fitdecode
@@ -21,8 +22,6 @@ logger = logging.getLogger(__name__)
 # fit_fields is ordered: first field present in the record message wins.
 # This lets us prefer enhanced_* variants (FIT 2.0 float) over their uint16
 # base equivalents without duplicating logic in the parser.
-#
-# GPS and environmental fields are commented out pending series type seeds (#1074).
 # ---------------------------------------------------------------------------
 
 _SEMICIRCLES_TO_DEGREES: float = 180.0 / (2**31)
@@ -69,7 +68,7 @@ _RECORD_FIELD_MAP: tuple[_FieldMapping, ...] = (
 @dataclass
 class FitParseResult:
     samples: list[TimeSeriesSampleCreate] = field(default_factory=list)
-    workout_steps: list[dict] = field(default_factory=list)  # pending #1076
+    segments: list[dict] = field(default_factory=list)
     developer_fields_found: list[str] = field(default_factory=list)
 
 
@@ -81,38 +80,156 @@ def parse_fit_file(
 ) -> FitParseResult:
     result = FitParseResult()
     dev_fields_seen: set[str] = set()
+    _seg_counters: dict[str, int] = {k: 0 for k in _SEGMENT_KINDS}
 
     with fitdecode.FitReader(io.BytesIO(data)) as fit:
         for frame in fit:
-            if not isinstance(frame, fitdecode.FitDataMessage) or frame.name != "record":
+            if not isinstance(frame, fitdecode.FitDataMessage):
                 continue
 
-            ts = _timestamp(frame)
-            if ts is None:
-                continue
-
-            for f in frame.fields:
-                if f.field is None and f.name not in (None, "unknown"):
-                    dev_fields_seen.add(str(f.name))
-
-            for mapping in _RECORD_FIELD_MAP:
-                if (value := _extract(frame, mapping)) is not None:
-                    result.samples.append(
-                        TimeSeriesSampleCreate(
-                            id=uuid4(),
-                            user_id=user_id,
-                            data_source_id=data_source_id,
-                            source=source,
-                            recorded_at=ts,
-                            zone_offset=None,
-                            value=value,
-                            series_type=mapping.series_type,
+            if frame.name == "record":
+                ts = _timestamp(frame)
+                if ts is None:
+                    continue
+                for f in frame.fields:
+                    if f.field is None and f.name not in (None, "unknown"):
+                        dev_fields_seen.add(str(f.name))
+                for mapping in _RECORD_FIELD_MAP:
+                    if (value := _extract(frame, mapping)) is not None:
+                        result.samples.append(
+                            TimeSeriesSampleCreate(
+                                id=uuid4(),
+                                user_id=user_id,
+                                data_source_id=data_source_id,
+                                source=source,
+                                recorded_at=ts,
+                                zone_offset=None,
+                                value=value,
+                                series_type=mapping.series_type,
+                            )
                         )
-                    )
+
+            elif frame.name in _SEGMENT_KINDS:
+                numeric, enums = _SEGMENT_KINDS[frame.name]
+                idx = _seg_counters[frame.name]
+                seg = _extract_segment(frame, frame.name, idx, numeric, enums)
+                if seg.get("elapsed_seconds") is not None:
+                    result.segments.append(seg)
+                _seg_counters[frame.name] = idx + 1
 
     result.developer_fields_found = sorted(dev_fields_seen)
-    logger.debug("FIT parsed: %d samples, dev_fields=%s", len(result.samples), result.developer_fields_found or "none")
+    logger.debug(
+        "FIT parsed: %d samples, %d segments, dev_fields=%s",
+        len(result.samples),
+        len(result.segments),
+        result.developer_fields_found or "none",
+    )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Segment extraction helpers
+# ---------------------------------------------------------------------------
+
+# Field specs for each segment kind:
+#   numeric: (fit_field_name, output_key, scale) — scale applied before rounding
+#   enums:   (fit_field_name, output_key)        — stored as str()
+
+_LAP_NUMERIC: tuple[tuple[str, str, float], ...] = (
+    ("total_distance", "distance_meters", 1.0),
+    ("avg_heart_rate", "avg_heart_rate", 1.0),
+    ("max_heart_rate", "max_heart_rate", 1.0),
+    ("avg_speed", "avg_speed", 1.0),
+    ("max_speed", "max_speed", 1.0),
+    ("avg_power", "avg_power", 1.0),
+    ("max_power", "max_power", 1.0),
+    ("normalized_power", "normalized_power", 1.0),
+    ("avg_cadence", "avg_cadence", 1.0),
+    ("total_strides", "total_strides", 1.0),
+    ("total_ascent", "total_ascent", 1.0),
+    ("total_descent", "total_descent", 1.0),
+    # FIT stores in mm; output in cm
+    ("avg_vertical_oscillation", "avg_vertical_oscillation", 0.1),
+    ("avg_step_length", "avg_step_length", 0.1),
+    # fitdecode auto-applies scale=100; value already in %
+    ("avg_vertical_ratio", "avg_vertical_ratio", 1.0),
+    ("avg_stance_time", "avg_stance_time", 1.0),
+    ("avg_stance_time_balance", "avg_stance_time_balance", 1.0),
+)
+
+_SPLIT_NUMERIC: tuple[tuple[str, str, float], ...] = (
+    ("total_distance", "distance_meters", 1.0),
+    ("avg_speed", "avg_speed", 1.0),
+)
+_SPLIT_ENUMS: tuple[tuple[str, str], ...] = (("split_type", "split_type"),)
+
+_LENGTH_NUMERIC: tuple[tuple[str, str, float], ...] = (
+    ("total_strokes", "total_strokes", 1.0),
+    ("avg_speed", "avg_speed", 1.0),
+)
+_LENGTH_ENUMS: tuple[tuple[str, str], ...] = (
+    ("swim_stroke", "swim_stroke"),
+    ("length_type", "length_type"),
+)
+
+# Dispatch map: frame.name → (numeric_fields, enum_fields)
+_SEGMENT_KINDS: dict[str, tuple] = {
+    "lap": (_LAP_NUMERIC, ()),
+    "split": (_SPLIT_NUMERIC, _SPLIT_ENUMS),
+    "length": (_LENGTH_NUMERIC, _LENGTH_ENUMS),
+}
+
+
+def _field_val(frame: fitdecode.FitDataMessage, name: str) -> Any:
+    try:
+        return frame.get_value(name)
+    except KeyError:
+        return None
+
+
+def _r2(v: Any) -> float | None:
+    if v is None:
+        return None
+    try:
+        return round(float(v), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iso(v: Any) -> str | None:
+    if not isinstance(v, datetime):
+        return None
+    ts = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    return ts.isoformat()
+
+
+def _extract_segment(
+    frame: fitdecode.FitDataMessage,
+    kind: str,
+    index: int,
+    numeric: tuple[tuple[str, str, float], ...],
+    enums: tuple[tuple[str, str], ...] = (),
+) -> dict:
+    seg: dict = {
+        "kind": kind,
+        "index": index,
+        "start_time": _iso(_field_val(frame, "start_time")),
+        "elapsed_seconds": _r2(_field_val(frame, "total_elapsed_time")),
+    }
+    for fit_name, out_name, scale in numeric:
+        v = _field_val(frame, fit_name)
+        if v is not None:
+            seg[out_name] = _r2(v * scale)
+    for fit_name, out_name in enums:
+        v = _field_val(frame, fit_name)
+        if v is not None:
+            seg[out_name] = str(v)
+    return {k: v for k, v in seg.items() if v is not None}
+
+
+# ---------------------------------------------------------------------------
+# Record message helpers
+# ---------------------------------------------------------------------------
 
 
 def _timestamp(frame: fitdecode.FitDataMessage) -> datetime | None:

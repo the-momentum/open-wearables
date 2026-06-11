@@ -202,6 +202,8 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             resource_id=resource_id,
         )
 
+        self.connection_repo.update_last_synced_at(db, connection)
+
         if notification.type.is_delete_type:
             return self._handle_deleted(db, notification.type, user_id, resource_id)
         if notification.type.is_update_type:

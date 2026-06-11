@@ -42,6 +42,8 @@ class EventRecordDetailBase(BaseModel):
 
     sleep_stages: list[SleepStage] | None = None
 
+    segments: list[dict] | None = None
+
 
 class EventRecordDetailCreate(EventRecordDetailBase):
     """Schema for creating an event record detail entry."""

@@ -12,6 +12,7 @@ from app.models import (
     EventRecord,
     EventRecordDetail,
     HealthScore,
+    MenstrualCycleDetails,
     SleepDetails,
     WorkoutDetails,
 )
@@ -30,10 +31,17 @@ from app.schemas.model_crud.activities import (
     EventRecordResponse,
     EventRecordUpdate,
     HealthScoreCreate,
+    MenstrualCycleDetailCreate,
     ScoreComponent,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
-from app.schemas.responses.activity import SleepSession, SleepStagesSummary, Workout, WorkoutDetailed
+from app.schemas.responses.activity import (
+    MenstrualCycleRecord,
+    SleepSession,
+    SleepStagesSummary,
+    Workout,
+    WorkoutDetailed,
+)
 from app.schemas.utils import (
     PaginatedResponse,
     Pagination,
@@ -43,7 +51,7 @@ from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
 from app.services.outgoing_webhooks import svix as svix_service
-from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_created
+from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on_sleep_created, on_workout_created
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -488,59 +496,76 @@ class EventRecordService(
         provider = str(data_source.provider)
         device = data_source.device_model
         zone_offset = record.zone_offset
-        if category == "sleep":
-            eff = detail.sleep_efficiency_score
-            has_stages = any(
-                [
-                    detail.sleep_awake_minutes,
-                    detail.sleep_light_minutes,
-                    detail.sleep_deep_minutes,
-                    detail.sleep_rem_minutes,
-                ]
-            )
-            on_sleep_created(
-                record_id=record.id,
-                user_id=data_source.user_id,
-                provider=provider,
-                device=device,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=zone_offset,
-                duration_seconds=record.duration_seconds,
-                efficiency_percent=float(eff) if eff is not None else None,
-                stages={
-                    "awake_minutes": detail.sleep_awake_minutes,
-                    "light_minutes": detail.sleep_light_minutes,
-                    "deep_minutes": detail.sleep_deep_minutes,
-                    "rem_minutes": detail.sleep_rem_minutes,
-                }
-                if has_stages
-                else None,
-                is_nap=detail.is_nap,
-            )
-        elif category == "workout":
-            avg_pace: int | None = None
-            if detail.average_speed and float(detail.average_speed) > 0:
-                avg_pace = int(1000 / float(detail.average_speed))
-            on_workout_created(
-                record_id=record.id,
-                user_id=data_source.user_id,
-                provider=provider,
-                device=device,
-                workout_type=record.type,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=zone_offset,
-                duration_seconds=record.duration_seconds,
-                calories_kcal=float(detail.energy_burned) if detail.energy_burned is not None else None,
-                distance_meters=float(detail.distance) if detail.distance is not None else None,
-                avg_heart_rate_bpm=int(detail.heart_rate_avg) if detail.heart_rate_avg is not None else None,
-                max_heart_rate_bpm=int(detail.heart_rate_max) if detail.heart_rate_max is not None else None,
-                elevation_gain_meters=float(detail.total_elevation_gain)
-                if detail.total_elevation_gain is not None
-                else None,
-                avg_pace_sec_per_km=avg_pace,
-            )
+        match category:
+            case "sleep":
+                eff = detail.sleep_efficiency_score
+                has_stages = any(
+                    [
+                        detail.sleep_awake_minutes,
+                        detail.sleep_light_minutes,
+                        detail.sleep_deep_minutes,
+                        detail.sleep_rem_minutes,
+                    ]
+                )
+                on_sleep_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    duration_seconds=record.duration_seconds,
+                    efficiency_percent=float(eff) if eff is not None else None,
+                    stages={
+                        "awake_minutes": detail.sleep_awake_minutes,
+                        "light_minutes": detail.sleep_light_minutes,
+                        "deep_minutes": detail.sleep_deep_minutes,
+                        "rem_minutes": detail.sleep_rem_minutes,
+                    }
+                    if has_stages
+                    else None,
+                    is_nap=detail.is_nap,
+                )
+            case "menstrual_cycle":
+                mcd = detail if isinstance(detail, MenstrualCycleDetailCreate) else None
+                on_menstrual_cycle_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    current_phase_type=mcd.current_phase_type if mcd else None,
+                    day_in_cycle=mcd.day_in_cycle if mcd else None,
+                    cycle_length=mcd.cycle_length if mcd else None,
+                    is_predicted_cycle=mcd.is_predicted_cycle if mcd else None,
+                    pregnancy_snapshot=mcd.pregnancy_snapshot if mcd else None,
+                )
+            case "workout":
+                avg_pace: int | None = None
+                if detail.average_speed and float(detail.average_speed) > 0:
+                    avg_pace = int(1000 / float(detail.average_speed))
+                on_workout_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    workout_type=record.type,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    duration_seconds=record.duration_seconds,
+                    calories_kcal=float(detail.energy_burned) if detail.energy_burned is not None else None,
+                    distance_meters=float(detail.distance) if detail.distance is not None else None,
+                    avg_heart_rate_bpm=int(detail.heart_rate_avg) if detail.heart_rate_avg is not None else None,
+                    max_heart_rate_bpm=int(detail.heart_rate_max) if detail.heart_rate_max is not None else None,
+                    elevation_gain_meters=float(detail.total_elevation_gain)
+                    if detail.total_elevation_gain is not None
+                    else None,
+                    avg_pace_sec_per_km=avg_pace,
+                )
 
     def bulk_create(
         self,
@@ -845,6 +870,88 @@ class EventRecordService(
                 else None,
             )
             data.append(session)
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+                total_count=total_count,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
+
+    @handle_exceptions
+    def get_menstrual_cycles(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+    ) -> PaginatedResponse[MenstrualCycleRecord]:
+        params.category = "menstrual_cycle"
+        # Cycles can end in the future (predicted end of cycle), so filtering by
+        # end_datetime would exclude current/upcoming cycles. Filter by start_datetime only.
+        params.end_datetime = None
+        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
+        total_count = total_count if total_count is not None else 0
+
+        limit = params.limit or 20
+        has_more = len(records) > limit
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        if has_more:
+            records = records[-limit:] if is_backward else records[:limit]
+
+        next_cursor = None
+        previous_cursor = None
+
+        if records:
+            if has_more:
+                last_record, _ = records[-1]
+                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+            if params.cursor:
+                if is_backward:
+                    if has_more:
+                        first_record, _ = records[0]
+                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+                else:
+                    first_record, _ = records[0]
+                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+
+        data = []
+        for record, data_source in records:
+            details: MenstrualCycleDetails | None = (
+                record.detail if isinstance(record.detail, MenstrualCycleDetails) else None
+            )
+            data.append(
+                MenstrualCycleRecord(
+                    id=record.id,
+                    start_time=record.start_datetime,
+                    end_time=record.end_datetime,
+                    zone_offset=record.zone_offset,
+                    source=self._map_source(data_source),
+                    current_phase=details.current_phase if details else None,
+                    current_phase_type=details.current_phase_type if details else None,
+                    day_in_cycle=details.day_in_cycle if details else None,
+                    cycle_length=details.cycle_length if details else None,
+                    predicted_cycle_length=details.predicted_cycle_length if details else None,
+                    is_predicted_cycle=details.is_predicted_cycle if details else None,
+                    period_length=details.period_length if details else None,
+                    length_of_current_phase=details.length_of_current_phase if details else None,
+                    days_until_next_phase=details.days_until_next_phase if details else None,
+                    fertile_window_start=details.fertile_window_start if details else None,
+                    length_of_fertile_window=details.length_of_fertile_window if details else None,
+                    last_updated_at=details.last_updated_at if details else None,
+                    has_specified_cycle_length=details.has_specified_cycle_length if details else None,
+                    has_specified_period_length=details.has_specified_period_length if details else None,
+                    pregnancy_snapshot=details.pregnancy_snapshot if details else None,
+                )
+            )
 
         return PaginatedResponse(
             data=data,

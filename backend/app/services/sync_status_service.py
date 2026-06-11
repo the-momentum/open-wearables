@@ -168,6 +168,7 @@ def emit_event(
     items_processed: int | None = None,
     items_total: int | None = None,
     error: str | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
     started_at: datetime | None = None,
     ended_at: datetime | None = None,
@@ -185,6 +186,7 @@ def emit_event(
         items_processed=items_processed,
         items_total=items_total,
         error=error,
+        primary_user_id=primary_user_id,
         metadata=metadata or {},
         started_at=started_at,
         ended_at=ended_at,
@@ -256,6 +258,7 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
                     error=event.error,
                     started_at=event.started_at or started_at_by_run.get(event.run_id),
                     ended_at=event.ended_at,
+                    primary_user_id=event.primary_user_id,
                     last_update=event.timestamp,
                 )
             )
@@ -376,6 +379,7 @@ def started(
     *,
     run_id: str | None = None,
     message: str | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
     """Emit a STARTED / IN_PROGRESS event."""
@@ -387,6 +391,7 @@ def started(
         status=SyncStatus.IN_PROGRESS,
         run_id=run_id,
         message=message,
+        primary_user_id=primary_user_id,
         metadata=metadata,
         started_at=datetime.now(timezone.utc),
     )
@@ -430,6 +435,7 @@ def completed(
     status: SyncStatus | str = SyncStatus.SUCCESS,
     message: str | None = None,
     items_processed: int | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
     """Emit a COMPLETED terminal event."""
@@ -442,6 +448,7 @@ def completed(
         run_id=run_id,
         message=message,
         items_processed=items_processed,
+        primary_user_id=primary_user_id,
         progress=1.0,
         metadata=metadata,
         ended_at=datetime.now(timezone.utc),

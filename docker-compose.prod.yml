@@ -95,7 +95,7 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis_data:/var/lib/redis/data
+      - redis_data:/data
     restart: unless-stopped
 
   svix-server:

@@ -109,6 +109,39 @@ class TestSwimming:
         assert {s.series_type for s in swimming.samples} == {SeriesType.heart_rate}
 
 
+class TestSegments:
+    def test_running_has_two_laps(self, running: FitParseResult) -> None:
+        laps = [s for s in running.segments if s["kind"] == "lap"]
+        assert len(laps) == 2
+
+    def test_lap_required_fields(self, running: FitParseResult) -> None:
+        for lap in running.segments:
+            assert lap["kind"] == "lap"
+            assert isinstance(lap["index"], int)
+            assert lap["elapsed_seconds"] > 0
+            assert lap["start_time"] is not None
+
+    def test_lap_has_distance_and_hr(self, running: FitParseResult) -> None:
+        lap = running.segments[0]
+        assert "distance_meters" in lap
+        assert lap["distance_meters"] > 0
+        assert "avg_heart_rate" in lap
+        assert 40 <= lap["avg_heart_rate"] <= 220
+        assert "max_heart_rate" in lap
+        assert lap["max_heart_rate"] >= lap["avg_heart_rate"]
+
+    def test_lap_indices_sequential(self, running: FitParseResult) -> None:
+        laps = [s for s in running.segments if s["kind"] == "lap"]
+        indices = [lap["index"] for lap in laps]
+        assert indices == list(range(len(laps)))
+
+    def test_cycling_no_segments(self, cycling: FitParseResult) -> None:
+        assert cycling.segments == []
+
+    def test_swimming_no_segments(self, swimming: FitParseResult) -> None:
+        assert swimming.segments == []
+
+
 class TestInvalidInput:
     def test_empty_bytes_returns_no_samples(self) -> None:
         assert parse_fit_file(b"", uuid4(), uuid4()).samples == []

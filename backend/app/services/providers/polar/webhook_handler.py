@@ -208,6 +208,8 @@ class PolarWebhookHandler(BaseWebhookHandler):
         path = urlparse(event.url).path
         user_id = connection.user_id
 
+        self.connection_repo.update_last_synced_at(db, connection)
+
         log_structured(
             logger,
             "info",
