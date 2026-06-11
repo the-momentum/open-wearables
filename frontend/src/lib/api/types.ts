@@ -284,6 +284,7 @@ export interface UserConnection {
   webhook_ping?: boolean;
   webhook_callback?: boolean;
   live_sync_mode?: 'pull' | 'webhook' | null;
+  linked_user_ids?: string[];
 }
 
 // ============================================================================
