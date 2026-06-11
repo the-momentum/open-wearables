@@ -3,7 +3,21 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import (
+    Date,
+    Integer,
+    Interval,
+    String,
+    and_,
+    asc,
+    case,
+    cast,
+    desc,
+    func,
+    literal_column,
+    text,
+    tuple_,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
@@ -437,7 +451,9 @@ class EventRecordRepository(
         # SQLAlchemy expr: SleepDetails.sleep_stages.contains([{'stage': stage_name}])
         return (
             db_session.query(EventRecord)
-            .join(EventRecord.detail.of_type(SleepDetails))
+            # Explicit onclause: of_type() against a concrete polymorphic union
+            # renders broken SQL (pjoin alias leaks into the ON clause).
+            .join(SleepDetails, SleepDetails.record_id == EventRecord.id)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
@@ -549,8 +565,10 @@ class EventRecordRepository(
                 local_sleep_date >= cast(start_date, Date),
                 local_sleep_date < cast(end_date, Date),
             )
+            # Group by the select label; see get_workout_aggregates for why the
+            # expression cannot be repeated here.
             .group_by(
-                local_sleep_date,
+                literal_column("sleep_date"),
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -671,12 +689,17 @@ class EventRecordRepository(
                 local_workout_date >= cast(start_date, Date),
                 local_workout_date < cast(end_date, Date),
             )
+            # Group and order by the select label: queries that involve the
+            # concrete-inheritance detail mappers get their expressions cloned
+            # during compilation, so repeating local_workout_date here would
+            # render it with fresh bind parameters and Postgres would no longer
+            # match it against the SELECT expression.
             .group_by(
-                local_workout_date,
+                literal_column("workout_date"),
                 DataSource.source,
                 DataSource.device_model,
             )
-            .order_by(asc(local_workout_date))
+            .order_by(asc(literal_column("workout_date")))
             .all()
         )
 
