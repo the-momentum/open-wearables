@@ -55,6 +55,7 @@ def sync_vendor_data(
     end_date: str | None = None,
     providers: list[str] | None = None,
     is_historical: bool = False,
+    _skip_linked_fan_out: bool = False,
 ) -> dict[str, Any]:
     """
     Synchronize workout/exercise/activity data from all providers the user is connected to.
@@ -68,6 +69,8 @@ def sync_vendor_data(
         providers: Optional list of provider names to sync (None = all active providers)
         is_historical: When True, skips updating last_synced_at so the live-sync
             cursor is not clobbered by a user-initiated historical pull.
+        _skip_linked_fan_out: Internal flag set to True when this task was triggered
+            by another profile's fan-out.  Prevents infinite fan-out loops.
 
     Returns:
         dict with sync results per provider
@@ -166,10 +169,11 @@ def sync_vendor_data(
                 sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
 
                 # If this provider account is shared across OW profiles, only one
-                # should make the API call.  The first to acquire the lock is primary;
-                # others emit a LINKED_ACCOUNT event and skip the pull.
+                # should make the API call at a time.  The first to acquire the lock
+                # is primary; concurrent duplicates skip and wait for the fan-out.
+                # Fan-out tasks (_skip_linked_fan_out=True) bypass this check entirely.
                 shared_token: str = ""
-                if connection.provider_user_id:
+                if connection.provider_user_id and not _skip_linked_fan_out:
                     is_pull_primary, shared_token, existing_primary = try_become_primary(
                         provider_name, connection.provider_user_id, user_uuid, scope="pull"
                     )
@@ -354,6 +358,33 @@ def sync_vendor_data(
                         release_primary(
                             provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
                         )
+                        # Fan-out: trigger sync for every other OW profile sharing this
+                        # provider account so they receive the same data.
+                        linked_connections = user_connection_repo.get_all_by_provider_user_id(
+                            db, provider_name, connection.provider_user_id
+                        )
+                        for linked_conn in linked_connections:
+                            if linked_conn.user_id == user_uuid:
+                                continue
+                            log_structured(
+                                logger,
+                                "info",
+                                f"Fanning out {provider_name} sync to linked profile",
+                                provider=provider_name,
+                                task="sync_vendor_data",
+                                user_id=user_id,
+                                linked_user_id=str(linked_conn.user_id),
+                            )
+                            sync_vendor_data.apply_async(
+                                kwargs={
+                                    "user_id": str(linked_conn.user_id),
+                                    "start_date": start_date,
+                                    "end_date": end_date,
+                                    "providers": [provider_name],
+                                    "is_historical": is_historical,
+                                    "_skip_linked_fan_out": True,
+                                }
+                            )
 
                     result.providers_synced[provider_name] = provider_result
                     log_structured(

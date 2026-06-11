@@ -99,7 +99,7 @@ def process_wellness_items(
             succeeded_users.append(str(uid))
             log_structured(
                 logger,
-                "info",
+                "debug" if is_secondary else "info",
                 "Saved wellness data",
                 provider="garmin",
                 trace_id=trace_id,

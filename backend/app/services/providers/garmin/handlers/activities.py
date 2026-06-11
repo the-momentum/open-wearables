@@ -94,7 +94,7 @@ def process_activity_notification(
 
         log_structured(
             logger,
-            "info",
+            "info" if is_primary else "debug",
             "New Garmin activity received",
             provider="garmin",
             trace_id=trace_id,
@@ -127,7 +127,7 @@ def process_activity_notification(
 
         log_structured(
             logger,
-            "info",
+            "info" if is_primary else "debug",
             "Saved activity",
             provider="garmin",
             trace_id=trace_id,
