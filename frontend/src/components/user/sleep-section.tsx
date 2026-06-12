@@ -273,11 +273,19 @@ function SleepSessionRow({
             </div>
 
             {/* Bedtime */}
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-sky-400" />
+            <div className="flex items-center gap-2 w-32">
+              <Clock className="h-4 w-4 text-sky-400 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  {format(new Date(session.start_time), 'h:mm a')}
+                  {(() => {
+                    const start = new Date(session.start_time);
+                    const end = new Date(session.end_time);
+                    const overnight =
+                      start.getFullYear() !== end.getFullYear() ||
+                      start.getMonth() !== end.getMonth() ||
+                      start.getDate() !== end.getDate();
+                    return format(start, overnight ? 'EEE h:mm a' : 'h:mm a');
+                  })()}
                 </p>
                 <p className="text-xs text-muted-foreground">Bedtime</p>
               </div>
