@@ -109,6 +109,8 @@ class SeriesType(str, Enum):
     running_vertical_oscillation = "running_vertical_oscillation"
     running_ground_contact_time = "running_ground_contact_time"
     running_stride_length = "running_stride_length"
+    running_vertical_ratio = "running_vertical_ratio"
+    running_stance_time_balance = "running_stance_time_balance"
 
     # =========================================================================
     # ACTIVITY - Swimming Metrics (IDs 160-179)
@@ -139,6 +141,10 @@ class SeriesType(str, Enum):
     inhaler_usage = "inhaler_usage"
     weather_temperature = "weather_temperature"
     weather_humidity = "weather_humidity"
+    elevation = "elevation"
+    latitude = "latitude"
+    longitude = "longitude"
+    air_temperature = "air_temperature"
 
     # =========================================================================
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
@@ -251,6 +257,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (142, SeriesType.running_vertical_oscillation, "cm"),
     (143, SeriesType.running_ground_contact_time, "ms"),
     (144, SeriesType.running_stride_length, "cm"),
+    (145, SeriesType.running_vertical_ratio, "percent"),
+    (146, SeriesType.running_stance_time_balance, "percent"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Swimming Metrics (IDs 160-179)
     # -------------------------------------------------------------------------
@@ -276,6 +284,10 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (206, SeriesType.inhaler_usage, "count"),
     (207, SeriesType.weather_temperature, "celsius"),
     (208, SeriesType.weather_humidity, "percent"),
+    (209, SeriesType.elevation, "meters"),
+    (210, SeriesType.latitude, "degrees"),
+    (211, SeriesType.longitude, "degrees"),
+    (212, SeriesType.air_temperature, "celsius"),
     # -------------------------------------------------------------------------
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
     # -------------------------------------------------------------------------

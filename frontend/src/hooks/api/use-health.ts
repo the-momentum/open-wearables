@@ -9,6 +9,7 @@ import type {
   SleepSessionsParams,
   BodySummaryParams,
   HealthScoreParams,
+  MenstrualCyclesParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -160,6 +161,44 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
     queryKey: queryKeys.health.activitySummaries(userId, params),
     queryFn: () => healthService.getActivitySummaries(userId, params),
     enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Get menstrual cycle records for a user
+ * Uses GET /api/v1/users/{user_id}/events/menstrual-cycles
+ */
+export function useMenstrualCycles(
+  userId: string,
+  params: MenstrualCyclesParams
+) {
+  return useQuery({
+    queryKey: queryKeys.health.menstrualCycles(userId, params),
+    queryFn: () => healthService.getMenstrualCycles(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Delete a menstrual cycle record
+ */
+export function useDeleteMenstrualCycle(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cycleId: string) =>
+      healthService.deleteMenstrualCycle(userId, cycleId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'menstrualCycles', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Record deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete record';
+      toast.error(message);
+    },
   });
 }
 
