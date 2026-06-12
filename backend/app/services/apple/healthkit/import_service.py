@@ -37,6 +37,10 @@ from app.utils.structured_logging import log_structured
 from .device_resolution import extract_device_info
 from .sleep_service import handle_sleep_data
 
+# Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
+# in mg/dL round-trip with a ~0.1% offset under this factor.
+MMOL_L_TO_MG_DL = Decimal("18.0182")
+
 
 class ImportService:
     def __init__(
@@ -136,6 +140,10 @@ class ImportService:
                 series_type == SeriesType.body_fat_percentage and provider == "apple"
             ):
                 value = value * 100
+
+            # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
+            if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
+                value = value * MMOL_L_TO_MG_DL
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
