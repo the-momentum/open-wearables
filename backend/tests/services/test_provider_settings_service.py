@@ -15,6 +15,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
+from app.utils.exceptions import UnsupportedProviderError
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -338,13 +339,13 @@ class TestProviderSettingsServiceLiveSyncMode:
         assert suunto.live_sync_mode == LiveSyncMode.WEBHOOK
 
     def test_update_live_sync_mode_non_configurable_provider_raises(self, db: Session) -> None:
-        """Should raise ValueError when trying to set live_sync_mode on a non-configurable provider."""
+        """Should raise UnsupportedProviderError when setting live_sync_mode on a non-configurable provider."""
         # Garmin: webhook_stream=True, webhook_callback=True, rest_pull=False → live_sync_configurable=False
         service = ProviderSettingsService()
 
         update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
 
-        with pytest.raises(ValueError, match="does not support live sync mode configuration"):
+        with pytest.raises(UnsupportedProviderError, match="does not support live sync mode configuration"):
             service.update_provider_setting(db, "garmin", update)
 
     def test_update_live_sync_mode_explicit_null_raises(self, db: Session) -> None:

@@ -1,12 +1,13 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Path, Query, status
 
 from app.database import DbSession
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import ApiError
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -58,8 +59,9 @@ def get_user_workouts(
     strategy = factory.get_provider(provider.value)
 
     if not strategy.workouts:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            code="UNSUPPORTED_PROVIDER_OPERATION",
             detail=f"Provider '{provider.value}' does not support workouts",
         )
 
@@ -103,8 +105,9 @@ def get_user_workout_detail(
     strategy = factory.get_provider(provider.value)
 
     if not strategy.workouts:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            code="UNSUPPORTED_PROVIDER_OPERATION",
             detail=f"Provider '{provider.value}' does not support workouts",
         )
 

@@ -1,12 +1,13 @@
 import uuid
 from logging import getLogger
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from app.schemas.providers.mobile_sdk import SDKLogRequest
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import SDKAuthDep
+from app.utils.exceptions import ApiError
 from app.utils.structured_logging import log_structured
 
 router = APIRouter()
@@ -25,8 +26,9 @@ def submit_sdk_logs(
     lifecycle, device state, sync success/failure).
     """
     if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            code="PERMISSION_DENIED",
             detail="Token does not match user_id",
         )
 

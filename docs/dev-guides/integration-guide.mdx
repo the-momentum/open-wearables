@@ -415,24 +415,54 @@ curl -X PUT "http://localhost:8000/api/v1/oauth/providers/suunto" \
 }
 ```
 
-**400 — Provider does not support live sync mode configuration:**
+**400 - Provider does not support live sync mode configuration:**
 
 Returned when `live_sync_mode` is included in the request body for a provider where `live_sync_configurable` is `false` (e.g. Garmin, which is webhook-only).
 
 ```json
-{"detail": "Provider 'garmin' does not support live sync mode configuration"}
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Provider 'garmin' does not support live sync mode configuration.",
+  "code": "UNSUPPORTED_PROVIDER_OPERATION"
+}
 ```
 
-**400 — Invalid `live_sync_mode` value:**
+**400 - Unknown provider:**
+
+Returned when the `{provider}` path segment is not a known provider name. This is a different error from the unsupported-operation case above.
+
+```json
+{
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Unknown provider: garmni",
+  "code": "INVALID_PROVIDER"
+}
+```
+
+**422 - Invalid `live_sync_mode` value:**
 
 Returned when an invalid mode string or an explicit `null` is sent for `live_sync_mode`.
 
 ```json
-{"detail": [{"loc": ["body", "live_sync_mode"], "msg": "Input should be 'pull' or 'webhook'"}]}
+{
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "Request validation failed.",
+  "code": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "field": "body.live_sync_mode",
+      "message": "Input should be 'pull' or 'webhook'",
+      "type": "literal_error"
+    }
+  ]
+}
 ```
 
 <Note>
-  Passing `"live_sync_mode": null` in the JSON body is invalid and returns 400. To leave the current mode unchanged, omit the field entirely from the request body.
+  Passing `"live_sync_mode": null` in the JSON body is invalid and returns 422. To leave the current mode unchanged, omit the field entirely from the request body.
 </Note>
 
 ### Get Authorization URL

@@ -9,7 +9,6 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from fastapi import HTTPException
 from redis import Redis
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -26,6 +25,7 @@ from app.schemas.model_crud.credentials import (
 )
 from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.services.outgoing_webhooks.events import on_connection_created
+from app.utils.exceptions import ApiError
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,11 @@ class BaseOAuthTemplate(ABC):
                 user_id=str(oauth_state.user_id),
                 state_provider=oauth_state.provider,
             )
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Provider mismatch in state")
+            raise ApiError(
+                status_code=HTTP_400_BAD_REQUEST,
+                code="INVALID_OAUTH_STATE",
+                detail="Provider mismatch in state",
+            )
 
         token_response = self._exchange_token(code, code_verifier)
 
@@ -178,7 +182,11 @@ class BaseOAuthTemplate(ABC):
                 user_id=str(user_id),
                 status_code=e.response.status_code,
             )
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to refresh token: {e.response.text}")
+            raise ApiError(
+                status_code=HTTP_400_BAD_REQUEST,
+                code="PROVIDER_TOKEN_REFRESH_FAILED",
+                detail=f"Failed to refresh token: {e.response.text}",
+            )
         except Exception as e:
             log_structured(
                 logger,
@@ -188,7 +196,11 @@ class BaseOAuthTemplate(ABC):
                 task="refresh_access_token",
                 user_id=str(user_id),
             )
-            raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token refresh failed: {str(e)}")
+            raise ApiError(
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                code="PROVIDER_TOKEN_REFRESH_FAILED",
+                detail=f"Token refresh failed: {str(e)}",
+            )
 
     def _build_auth_url(self, state: str) -> tuple[str, dict[str, Any] | None]:
         """Builds the authorization URL.
@@ -236,7 +248,11 @@ class BaseOAuthTemplate(ABC):
         state_data = self.redis_client.get(redis_key)
 
         if not state_data:
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Invalid or expired state parameter")
+            raise ApiError(
+                status_code=HTTP_400_BAD_REQUEST,
+                code="INVALID_OAUTH_STATE",
+                detail="Invalid or expired state parameter",
+            )
 
         # Delete state immediately (one-time use)
         self.redis_client.delete(redis_key)
@@ -272,8 +288,9 @@ class BaseOAuthTemplate(ABC):
                 task="exchange_token",
                 status_code=e.response.status_code,
             )
-            raise HTTPException(
+            raise ApiError(
                 status_code=HTTP_400_BAD_REQUEST,
+                code="PROVIDER_TOKEN_EXCHANGE_FAILED",
                 detail=f"Failed to exchange authorization code: {e.response.text}",
             )
         except Exception as e:
@@ -284,7 +301,11 @@ class BaseOAuthTemplate(ABC):
                 provider=self.provider_name,
                 task="exchange_token",
             )
-            raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token exchange failed: {str(e)}")
+            raise ApiError(
+                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+                code="PROVIDER_TOKEN_EXCHANGE_FAILED",
+                detail=f"Token exchange failed: {str(e)}",
+            )
 
     def _prepare_token_request(self, code: str, code_verifier: str | None) -> tuple[dict, dict]:
         """Prepares the token exchange request. Default implementation uses Basic Auth."""

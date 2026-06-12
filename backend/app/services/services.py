@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas.utils import FilterParams
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions, not_found_code
 
 type OptRequest = Request | None
 
@@ -29,6 +29,9 @@ class AppService[
     ):
         self.crud = crud_model(model)
         self.name = self.crud.model.__name__.lower()
+        # Derive from the CamelCase model name so word boundaries survive,
+        # e.g. API_KEY_NOT_FOUND rather than APIKEY_NOT_FOUND
+        self.not_found_code = not_found_code(self.crud.model.__name__)
         self.logger = log
         super().__init__(**kwargs)
 
@@ -55,7 +58,7 @@ class AppService[
             id_to_fetch = object_id
 
         if not (fetched := self.crud.get(db_session, id_to_fetch)) and raise_404:  # ty:ignore[invalid-argument-type]
-            raise ResourceNotFoundError(self.name, id_to_fetch)  # ty:ignore[invalid-argument-type]
+            raise ResourceNotFoundError(self.name, id_to_fetch, code=self.not_found_code)  # ty:ignore[invalid-argument-type]
 
         if fetched and print_log:
             self.logger.debug(f"Fetched {self.name} with ID: {fetched.id}.")
@@ -84,7 +87,7 @@ class AppService[
         )
 
         if not fetched and raise_404:
-            raise ResourceNotFoundError(self.name)
+            raise ResourceNotFoundError(self.name, code=self.not_found_code)
 
         self.logger.debug(f"Fetched {len(fetched)} {self.name}s. Filters: {filter_params.filters}.")
 

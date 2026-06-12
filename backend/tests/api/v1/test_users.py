@@ -154,7 +154,7 @@ class TestGetUser:
         response = client.get(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_get_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user fails without API key."""
@@ -251,7 +251,7 @@ class TestCreateUser:
         response = client.post(f"{api_v1_prefix}/users", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_create_user_name_too_long(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with name exceeding max length."""
@@ -268,7 +268,7 @@ class TestCreateUser:
         response = client.post(f"{api_v1_prefix}/users", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_create_user_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test creating user fails without API key."""
@@ -392,7 +392,7 @@ class TestUpdateUser:
         response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_update_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user fails without authentication."""
@@ -472,7 +472,7 @@ class TestDeleteUser:
         response = client.delete(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_delete_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user fails without authentication."""

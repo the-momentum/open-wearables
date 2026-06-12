@@ -1,13 +1,14 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, Body, status
 
 from app.config import settings
 from app.database import DbSession
 from app.schemas.auth import SDKTokenRequest, TokenResponse
 from app.services import application_service, create_sdk_user_token, refresh_token_service
 from app.utils.auth import DeveloperOptionalDep
+from app.utils.exceptions import ApiError
 
 router = APIRouter()
 
@@ -57,8 +58,9 @@ def create_user_token(
         app_id = f"admin:{developer.id}"
     else:
         # Neither method provided
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            code="MISSING_APP_CREDENTIALS",
             detail="Either app credentials (app_id, app_secret) or admin authentication (Bearer token) is required",
         )
 

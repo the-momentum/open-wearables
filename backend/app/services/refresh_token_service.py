@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import status
 
 from app.config import settings
 from app.database import DbSession
@@ -11,6 +11,7 @@ from app.models import RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.auth import TokenResponse, TokenType
 from app.services.sdk_token_service import create_sdk_user_token
+from app.utils.exceptions import ApiError
 from app.utils.security import create_access_token
 
 
@@ -95,8 +96,9 @@ class RefreshTokenService:
         """
         token = self.repo.get_valid_token(db_session, refresh_token_str)
         if not token:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
+                code="INVALID_REFRESH_TOKEN",
                 detail="Invalid or revoked refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
@@ -124,8 +126,9 @@ class RefreshTokenService:
             )
             self.logger.debug(f"Refreshed developer token for developer {token.developer_id} (rotated)")
         else:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVALID_TOKEN_TYPE",
                 detail=f"Unknown token type: {token.token_type}",
             )
 
@@ -151,8 +154,9 @@ class RefreshTokenService:
         """
         token = self.repo.get_valid_token(db_session, refresh_token_str)
         if not token:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_404_NOT_FOUND,
+                code="REFRESH_TOKEN_NOT_FOUND",
                 detail="Refresh token not found",
             )
 
