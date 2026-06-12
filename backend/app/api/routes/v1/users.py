@@ -60,10 +60,10 @@ def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
 
 
 @router.delete("/users/{user_id}", response_model=UserRead)
-def delete_user(user_id: UUID, db: DbSession, _developer: DeveloperDep):
+def delete_user(user_id: UUID, db: DbSession, _api_key: ApiKeyDep):
     return user_service.delete(db, user_id, raise_404=True)
 
 
 @router.patch("/users/{user_id}", response_model=UserRead)
-def update_user(user_id: UUID, payload: UserUpdate, db: DbSession, _developer: DeveloperDep):
+def update_user(user_id: UUID, payload: UserUpdate, db: DbSession, _api_key: ApiKeyDep):
     return user_service.update(db, user_id, payload, raise_404=True)
