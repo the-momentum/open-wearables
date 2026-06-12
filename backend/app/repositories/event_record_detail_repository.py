@@ -92,31 +92,9 @@ class EventRecordDetailRepository(
         creators: list[EventRecordDetailCreate],
         detail_type: DetailType = "workout",
     ) -> None:
-        """Bulk create detail records using batch insert.
-
-        For joined table inheritance, we need to insert into both the base table
-        (event_record_detail) and the child table (workout_details/sleep_details).
-        """
+        """Bulk create detail records using batch insert."""
         if not creators:
             return
-
-        # Build values for base table (event_record_detail)
-        base_values = []
-        for creator in creators:
-            base_values.append(
-                {
-                    "record_id": creator.record_id,
-                    "detail_type": detail_type,
-                }
-            )
-
-        if not base_values:
-            return
-
-        # Use __table__ for raw INSERT to avoid polymorphic mapper issues
-        base_table = cast(Table, EventRecordDetail.__table__)
-        base_stmt = insert(base_table).values(base_values).on_conflict_do_nothing(index_elements=["record_id"])
-        db_session.execute(base_stmt)
 
         # Use appropriate model based on detail_type
         match detail_type:
@@ -129,9 +107,10 @@ class EventRecordDetailRepository(
             case _:
                 raise ValueError(f"Unknown detail type: {detail_type}")
 
-        # Get columns from the actual child TABLE (not mapper which includes inherited columns)
+        # created_at is excluded so the server default applies on insert and the
+        # original timestamp survives the conflict-update path.
         child_table = cast(Table, model.__table__)
-        valid_columns = set(child_table.columns.keys())
+        valid_columns = set(child_table.columns.keys()) - {"created_at"}
 
         # Build values for child table (workout_details or sleep_details)
         child_values = []

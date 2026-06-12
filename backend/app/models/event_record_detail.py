@@ -1,18 +1,26 @@
+from sqlalchemy.ext.declarative import AbstractConcreteBase
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKEventRecord, str_32
+from app.mappings import FKEventRecord
 
 
-class EventRecordDetail(BaseDbModel):
-    """Base polymorphic detail model used by specific aggregates (workout, sleep, etc.)."""
+class EventRecordDetail(AbstractConcreteBase, BaseDbModel):
+    """Abstract polymorphic base for detail aggregates (workout, sleep, etc.).
 
-    __tablename__ = "event_record_detail"
+    There is no event_record_detail table: each concrete subclass maps to its
+    own table with record_id referencing event_record directly. Queries against
+    this class select a UNION ALL over the concrete detail tables.
+    """
+
+    strict_attrs = True
+
+    # BaseDbModel autogenerates __tablename__ from the class name, which would
+    # turn this abstract base back into a mapped table; suppress it.
+    __tablename__ = None  # type: ignore[assignment]
 
     record_id: Mapped[FKEventRecord]
-    detail_type: Mapped[str_32]
 
-    __mapper_args__ = {
-        "polymorphic_on": "detail_type",
-        "polymorphic_identity": "base",
-    }
+    @property
+    def detail_type(self) -> str:
+        return self.__mapper__.polymorphic_identity

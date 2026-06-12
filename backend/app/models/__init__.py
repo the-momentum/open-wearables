@@ -1,3 +1,5 @@
+from sqlalchemy.orm import configure_mappers
+
 from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
@@ -47,3 +49,8 @@ __all__ = [
     "SeriesTypeDefinition",
     "HealthScore",
 ]
+
+# AbstractConcreteBase mappers (EventRecordDetail) are only completed once the
+# registry is configured; do it eagerly so the polymorphic union and the
+# EventRecord.detail relationship exist before any session usage.
+configure_mappers()
