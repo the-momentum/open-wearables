@@ -32,6 +32,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.services.unit_conversion import unit_conversion_service
 from app.utils.structured_logging import log_structured
 
 from .device_resolution import extract_device_info
@@ -46,6 +47,7 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
+        self.unit_conversion_service = unit_conversion_service
         self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
@@ -127,15 +129,29 @@ class ImportService:
 
             if not series_type:
                 continue
-            # Convert meters -> centimeters for height (both HealthKit and Health Connect report meters)
-            # and ratio (0..1) -> percent for Apple body_fat_percentage (HealthKit HKUnit.percent()).
-            # Android Health Connect's BodyFatRecord.percentage is already in percent, so only scale
-            # body_fat_percentage for provider == "apple" — otherwise Google/Samsung values are stored
-            # ~100x too large.
-            if series_type == SeriesType.height or (
-                series_type == SeriesType.body_fat_percentage and provider == "apple"
-            ):
-                value = value * 100
+
+            # Convert the incoming value to the canonical unit for this series type. The unit
+            # string is usually absent, so UnitConversionService falls back to the per-provider
+            # default source unit (e.g. height in meters, Apple body_fat as a 0..1 ratio).
+            converted = self.unit_conversion_service.convert(
+                series_type=series_type,
+                value=value,
+                provider=provider,
+                unit=rjson.unit,
+            )
+            if converted is None:
+                log_structured(
+                    self.log,
+                    "warning",
+                    "Skipping sample with unrecognized unit for metric",
+                    provider=provider,
+                    action="unit_conversion_skipped",
+                    series_type=series_type.value,
+                    record_type=record_type,
+                    unit=rjson.unit,
+                )
+                continue
+            value = converted
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
