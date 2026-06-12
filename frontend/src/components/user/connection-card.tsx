@@ -6,6 +6,7 @@ import {
   EllipsisVertical,
   History,
   Loader2,
+  Link2,
   PlayCircle,
   RefreshCw,
   RotateCcw,
@@ -16,6 +17,7 @@ import {
   XCircle,
   Zap,
 } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -149,6 +151,18 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
         <div className="flex flex-col min-w-0 gap-0.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{sourceLabel}</span>
+            {run.source === 'linked_account' && run.primary_user_id && (
+              <>
+                <span>·</span>
+                <Link
+                  to="/users/$userId"
+                  params={{ userId: run.primary_user_id }}
+                  className="font-mono text-blue-500 hover:text-blue-400 hover:underline transition-colors"
+                >
+                  {run.primary_user_id.slice(0, 8)}…
+                </Link>
+              </>
+            )}
             <span>·</span>
             <span>{formatRelative(run.last_update)}</span>
             {run.started_at && run.ended_at && (
@@ -383,6 +397,42 @@ export function ConnectionCard({
                       </TooltipContent>
                     </Tooltip>
                   )}
+                  {connection.status === 'active' &&
+                    connection.provider_user_id &&
+                    connection.linked_user_ids &&
+                    connection.linked_user_ids.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-default">
+                            <Link2 className="h-3 w-3" />
+                            {connection.linked_user_ids.length} linked
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          align="start"
+                          sideOffset={6}
+                          hideArrow
+                          className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                        >
+                          <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                            Other linked OW accounts
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {connection.linked_user_ids.map((uid) => (
+                              <Link
+                                key={uid}
+                                to="/users/$userId"
+                                params={{ userId: uid }}
+                                className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-colors"
+                              >
+                                {uid.slice(0, 8)}
+                              </Link>
+                            ))}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                 </div>
               )}
             </div>

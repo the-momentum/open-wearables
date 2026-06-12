@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { History, RefreshCw } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { useRecentSyncs, useSyncRuns } from '@/hooks/api/use-sync-status';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +17,7 @@ const SOURCE_LABELS: Record<string, string> = {
   sdk: 'SDK Upload',
   backfill: 'Historical Backfill',
   xml_import: 'XML Import',
+  linked_account: 'Linked Account',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -63,6 +65,15 @@ function RunRow({ run }: { run: SyncRunSummary }) {
         <div className="flex items-center gap-2">
           <span className="font-medium capitalize text-sm">{run.provider}</span>
           <span className="text-xs text-muted-foreground">· {sourceLabel}</span>
+          {run.source === 'linked_account' && run.primary_user_id && (
+            <Link
+              to="/users/$userId"
+              params={{ userId: run.primary_user_id }}
+              className="text-xs font-mono text-blue-500 hover:text-blue-400 hover:underline transition-colors"
+            >
+              {run.primary_user_id.slice(0, 8)}…
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{formatRelative(run.last_update)}</span>
