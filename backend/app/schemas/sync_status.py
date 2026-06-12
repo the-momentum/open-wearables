@@ -24,6 +24,9 @@ class SyncSource(StrEnum):
     SDK = "sdk"  # Mobile SDK upload (Apple HealthKit, Samsung Health, ...)
     BACKFILL = "backfill"  # Garmin webhook-based historical backfill
     XML_IMPORT = "xml_import"  # Apple Health XML upload
+    LINKED_ACCOUNT = (
+        "linked_account"  # Data received via fan-out from another OW profile sharing the same provider account
+    )
 
 
 class SyncStage(StrEnum):
@@ -66,6 +69,10 @@ class SyncStatusEvent(BaseModel):
     items_processed: int | None = Field(default=None, ge=0)
     items_total: int | None = Field(default=None, ge=0)
     error: str | None = None
+    primary_user_id: UUID | None = Field(
+        default=None,
+        description="For LINKED_ACCOUNT events: the OW user whose sync run produced this data.",
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
     started_at: datetime | None = None
     ended_at: datetime | None = None
@@ -86,6 +93,7 @@ class SyncRunSummary(BaseModel):
     items_processed: int | None = None
     items_total: int | None = None
     error: str | None = None
+    primary_user_id: UUID | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None
     last_update: datetime

@@ -213,7 +213,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         metrics = self._build_metrics(raw_workout)
 
-        # Use device name if available, otherwise fallback to "Garmin"
         device_name = raw_workout.deviceName or "Garmin"
 
         zone_offset = offset_to_iso(raw_workout.startTimeOffsetInSeconds)
@@ -222,7 +221,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             category="workout",
             type=workout_type.value,
             source_name=device_name,
-            device_model=device_name,
+            device_model=raw_workout.deviceName,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,

@@ -954,7 +954,7 @@ class Garmin247Data(Base247DataTemplate):
             category="workout",
             type=activity_type.lower(),
             source_name="Garmin",
-            device_model=raw_activity.get("deviceId"),
+            device_model=raw_activity.get("deviceName"),
             duration_seconds=duration,
             start_datetime=start_dt,
             end_datetime=end_dt,
@@ -1861,7 +1861,7 @@ class Garmin247Data(Base247DataTemplate):
                             all_records.append(record)
                             all_workout_details.append(detail)
                     case "activityDetails":
-                        # activityDetails items nest summary data one level deeper
+                        # activityDetails items nest summary data one level deeper.
                         result = self._build_activity_record(user_id, item.get("summary", {}))
                         if result:
                             record, detail = result
