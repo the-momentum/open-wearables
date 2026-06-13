@@ -118,6 +118,9 @@ def oauth_callback(
                 is_historical=True,
             )
 
+    # Provider-specific post-connect hook (default no-op).
+    strategy.on_connect(oauth_state.user_id)
+
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:
         return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)

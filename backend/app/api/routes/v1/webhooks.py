@@ -108,16 +108,19 @@ def handle_provider_webhook(
     return handler.handle(request, body, db)
 
 
-@router.get("")
+@router.api_route("", methods=["GET", "HEAD"])
 def verify_provider_webhook(provider: str, request: Request) -> dict:
-    """Handle GET-based subscription verification challenges.
+    """Handle GET/HEAD-based subscription verification challenges.
 
     Some providers (Strava ``hub.challenge``, Oura ``verification_token``)
     verify webhook subscriptions by sending a GET request that must be
     echoed back.  This endpoint delegates to the provider's
     ``handle_challenge()`` method.
 
-    Providers that do not support GET challenges will receive a ``501``
+    HEAD is registered explicitly: Withings probes the callback URL with HEAD
+    during ``notify subscribe`` and FastAPI does not add HEAD to a GET-only route.
+
+    Providers that do not support GET/HEAD challenges will receive a ``501``
     response from the default ``BaseWebhookHandler.handle_challenge()``
     implementation.
     """

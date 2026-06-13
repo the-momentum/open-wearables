@@ -1,0 +1,384 @@
+"""Withings 24/7 data: body measures (``getmeas``), daily activity (``getactivity``),
+and sleep (``getsummary``). Continuous metrics become ``DataPointSeries`` samples;
+sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
+"""
+
+import logging
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from uuid import UUID, uuid4
+
+from pydantic import ValidationError
+
+from app.config import settings
+from app.database import DbSession
+from app.models import EventRecord
+from app.repositories import EventRecordRepository, UserConnectionRepository
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    TimeSeriesSampleCreate,
+)
+from app.schemas.providers.withings import (
+    WithingsActivity,
+    WithingsMeasureGroup,
+    WithingsSleepSummary,
+)
+from app.services.event_record_service import event_record_service
+from app.services.providers.templates.base_247_data import Base247DataTemplate
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.withings._client import paginate, scale_measure
+from app.services.timeseries_service import timeseries_service
+from app.utils.structured_logging import log_structured
+
+logger = logging.getLogger(__name__)
+
+# Withings ``getmeas`` type code → unified SeriesType (single-value metrics only).
+# Bone mass (88) and pulse wave velocity (91) are intentionally absent: they have
+# no unified series type, and adding one is an append-only change to the canonical
+# model to be agreed before it lands. They parse but are dropped at mapping.
+MEASURE_TYPE_MAP: dict[int, SeriesType] = {
+    1: SeriesType.weight,
+    4: SeriesType.height,
+    5: SeriesType.lean_body_mass,  # fat-free mass
+    6: SeriesType.body_fat_percentage,  # fat ratio
+    8: SeriesType.body_fat_mass,
+    9: SeriesType.blood_pressure_diastolic,
+    10: SeriesType.blood_pressure_systolic,
+    11: SeriesType.heart_rate,
+    12: SeriesType.body_temperature,
+    54: SeriesType.oxygen_saturation,
+    71: SeriesType.body_temperature,
+    73: SeriesType.skin_temperature,
+    76: SeriesType.skeletal_muscle_mass,
+    77: SeriesType.hydration,
+    123: SeriesType.vo2_max,
+    140: SeriesType.cardiovascular_age,
+}
+
+# All meastypes requested in one getmeas call.
+_REQUESTED_MEASTYPES = ",".join(str(code) for code in MEASURE_TYPE_MAP)
+
+# A few measures arrive in a different unit than the unified SeriesType. After
+# decoding (value × 10^unit), multiply by this factor to match OW units.
+#   meastype 4 (height): Withings reports metres; OW `height` is centimetres.
+_MEASURE_UNIT_FACTOR: dict[int, Decimal] = {
+    4: Decimal(100),
+}
+
+# Fields requested from getactivity.
+_ACTIVITY_FIELDS = "steps,distance,elevation,calories,totalcalories,soft,moderate,intense,hr_average,hr_min,hr_max"
+
+# Fields requested from getsummary (sleep).
+_SLEEP_SUMMARY_FIELDS = (
+    "deepsleepduration,lightsleepduration,remsleepduration,wakeupduration,"
+    "sleep_efficiency,sleep_score,hr_average,rr_average"
+)
+
+# getactivity field → unified SeriesType.
+_ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
+    "steps": SeriesType.steps,
+    "distance": SeriesType.distance_walking_running,
+    "calories": SeriesType.energy,
+    "totalcalories": SeriesType.basal_energy,
+}
+
+
+class Withings247Data(Base247DataTemplate):
+    """Withings continuous-data handler."""
+
+    def __init__(self, provider_name: str, api_base_url: str, oauth: BaseOAuthTemplate) -> None:
+        super().__init__(provider_name, api_base_url, oauth)
+        self.event_record_repo = EventRecordRepository(EventRecord)
+        self.connection_repo = UserConnectionRepository()
+
+    # ---------------------- Body measures (getmeas) ----------------------
+
+    def normalize_measures(self, groups: list[dict], user_id: UUID) -> list[TimeSeriesSampleCreate]:
+        samples: list[TimeSeriesSampleCreate] = []
+        for group in groups:
+            # Tolerate a malformed group without dropping the rest of the batch.
+            try:
+                parsed = WithingsMeasureGroup.model_validate(group)
+            except ValidationError as e:
+                logger.warning("Skipping unparseable Withings measure group: %s", e)
+                continue
+            samples.extend(self._normalize_measure_group(parsed, user_id))
+        return samples
+
+    def _normalize_measure_group(self, group: WithingsMeasureGroup, user_id: UUID) -> list[TimeSeriesSampleCreate]:
+        ts = datetime.fromtimestamp(group.date, tz=timezone.utc)
+        samples: list[TimeSeriesSampleCreate] = []
+        for measure in group.measures:
+            series_type = MEASURE_TYPE_MAP.get(measure.type)
+            if series_type is None:
+                continue  # unmapped type (see MEASURE_TYPE_MAP)
+            value = scale_measure(measure)
+            factor = _MEASURE_UNIT_FACTOR.get(measure.type)
+            if factor is not None:
+                value = value * factor
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=ts,
+                    value=value,
+                    series_type=series_type,
+                )
+            )
+        return samples
+
+    def save_measures(self, db: DbSession, user_id: UUID, start: datetime, end: datetime) -> int:
+        groups = paginate(
+            db=db,
+            user_id=user_id,
+            connection_repo=self.connection_repo,
+            oauth=self.oauth,
+            service_path="/measure",
+            action="getmeas",
+            params={
+                "meastypes": _REQUESTED_MEASTYPES,
+                "category": 1,
+                "startdate": int(start.timestamp()),
+                "enddate": int(end.timestamp()),
+            },
+            list_key="measuregrps",
+        )
+        samples = self.normalize_measures(groups, user_id)
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
+        return len(samples)
+
+    # ---------------------- Daily activity (getactivity) ----------------------
+
+    def normalize_activity(self, rows: list[dict], user_id: UUID) -> list[TimeSeriesSampleCreate]:
+        samples: list[TimeSeriesSampleCreate] = []
+        for row in rows:
+            # Tolerate a malformed row without dropping the rest of the batch.
+            try:
+                activity = WithingsActivity.model_validate(row)
+            except ValidationError as e:
+                logger.warning("Skipping unparseable Withings activity row: %s", e)
+                continue
+            # A null deviceid marks a foreign-aggregated day (e.g. via Health Connect);
+            # skip it so the origin connector's activity isn't double-counted.
+            if activity.deviceid is None:
+                logger.debug("Skipping imported Withings activity for %s (no deviceid)", activity.date)
+                continue
+            try:
+                ts = datetime.strptime(activity.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+            for field, series_type in _ACTIVITY_FIELD_MAP.items():
+                value = getattr(activity, field)
+                if value is None:
+                    continue
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=ts,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                )
+        return samples
+
+    def save_activity(self, db: DbSession, user_id: UUID, start: datetime, end: datetime) -> int:
+        rows = paginate(
+            db=db,
+            user_id=user_id,
+            connection_repo=self.connection_repo,
+            oauth=self.oauth,
+            service_path="/v2/measure",
+            action="getactivity",
+            params={
+                "startdateymd": start.strftime("%Y-%m-%d"),
+                "enddateymd": end.strftime("%Y-%m-%d"),
+                "data_fields": _ACTIVITY_FIELDS,
+            },
+            list_key="activities",
+        )
+        samples = self.normalize_activity(rows, user_id)
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
+        return len(samples)
+
+    # ---------------------- Sleep (getsummary) ----------------------
+
+    def save_sleep(self, db: DbSession, user_id: UUID, start: datetime, end: datetime) -> int:
+        rows = paginate(
+            db=db,
+            user_id=user_id,
+            connection_repo=self.connection_repo,
+            oauth=self.oauth,
+            service_path="/v2/sleep",
+            action="getsummary",
+            params={
+                "startdateymd": start.strftime("%Y-%m-%d"),
+                "enddateymd": end.strftime("%Y-%m-%d"),
+                "data_fields": _SLEEP_SUMMARY_FIELDS,
+            },
+            list_key="series",
+        )
+        count = 0
+        for row in rows:
+            # Tolerate a malformed night without dropping the rest of the batch.
+            try:
+                if self._save_sleep_row(db, user_id, row):
+                    count += 1
+            except Exception as e:
+                db.rollback()
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping unparseable Withings sleep row",
+                    provider="withings",
+                    error=str(e),
+                    user_id=str(user_id),
+                )
+        return count
+
+    def _save_sleep_row(self, db: DbSession, user_id: UUID, row: dict) -> bool:
+        summary = WithingsSleepSummary.model_validate(row)
+        start_dt = datetime.fromtimestamp(summary.startdate, tz=timezone.utc)
+        end_dt = datetime.fromtimestamp(summary.enddate, tz=timezone.utc)
+        data = summary.data
+
+        # Stage durations are null for nights imported from an external source.
+        deep = data.deepsleepduration or 0
+        light = data.lightsleepduration or 0
+        rem = data.remsleepduration or 0
+        awake = data.wakeupduration or 0
+        time_in_bed_seconds = deep + light + rem + awake
+        efficiency = data.sleep_efficiency
+
+        record_id = uuid4()
+        record = EventRecordCreate(
+            id=record_id,
+            category="sleep",
+            type="sleep_session",
+            source_name="Withings",
+            duration_seconds=time_in_bed_seconds,
+            start_datetime=start_dt,
+            end_datetime=end_dt,
+            external_id=str(summary.id) if summary.id is not None else None,
+            source=self.provider_name,
+            user_id=user_id,
+        )
+        detail = EventRecordDetailCreate(
+            record_id=record_id,
+            sleep_total_duration_minutes=(deep + light + rem) // 60,
+            sleep_time_in_bed_minutes=time_in_bed_seconds // 60,
+            # sleep_efficiency is a 0–1 ratio; stored on the 0–100 scale.
+            sleep_efficiency_score=Decimal(str(efficiency * 100)) if efficiency is not None else None,
+            sleep_deep_minutes=deep // 60,
+            sleep_light_minutes=light // 60,
+            sleep_rem_minutes=rem // 60,
+            sleep_awake_minutes=awake // 60,
+            is_nap=False,
+        )
+        try:
+            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            return True
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                logger,
+                "error",
+                "Withings sleep save error",
+                provider="withings",
+                error=str(e),
+                user_id=str(user_id),
+            )
+            return False
+
+    # ---------------------- Combined load ----------------------
+
+    def load_and_save_all(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime | str | None = None,
+        end_time: datetime | str | None = None,
+        is_first_sync: bool = False,
+    ) -> dict[str, int]:
+        """Sync-task entry point. Each domain runs independently so one failure
+        doesn't abort the others."""
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        if isinstance(end_time, str):
+            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        if not start_time:
+            start_time = datetime.now(timezone.utc) - timedelta(days=30)
+        if not end_time:
+            end_time = datetime.now(timezone.utc)
+
+        results: dict[str, int] = {}
+        for name, fn in (
+            ("measures", self.save_measures),
+            ("activity", self.save_activity),
+            ("sleep", self.save_sleep),
+        ):
+            try:
+                results[name] = fn(db, user_id, start_time, end_time)
+            except Exception as e:
+                results[name] = 0
+                # Reset the session for the next domain; a failing rollback must
+                # not itself abort the remaining domains.
+                try:
+                    db.rollback()
+                except Exception as rollback_error:
+                    log_structured(
+                        logger,
+                        "error",
+                        f"Withings {name} rollback failed",
+                        provider="withings",
+                        data_type=name,
+                        user_id=str(user_id),
+                        error=str(rollback_error),
+                    )
+                log_structured(
+                    logger,
+                    "error",
+                    f"Withings {name} sync failed",
+                    provider="withings",
+                    data_type=name,
+                    user_id=str(user_id),
+                    error=str(e),
+                )
+        return results
+
+    # ---------------------------------------------------------------------
+    # Base class stubs — Withings ingests via load_and_save_all, not the
+    # generic fetch/normalize hooks. No-ops to satisfy ABC instantiation.
+    # ---------------------------------------------------------------------
+
+    def get_sleep_data(self, db, user_id, start_time, end_time):  # noqa: ANN001, ANN201
+        return []
+
+    def normalize_sleep(self, raw_sleep, user_id):  # noqa: ANN001, ANN201
+        return {}
+
+    def get_recovery_data(self, db, user_id, start_time, end_time):  # noqa: ANN001, ANN201
+        return []
+
+    def normalize_recovery(self, raw_recovery, user_id):  # noqa: ANN001, ANN201
+        return {}
+
+    def get_activity_samples(self, db, user_id, start_time, end_time):  # noqa: ANN001, ANN201
+        return []
+
+    def normalize_activity_samples(self, raw_samples, user_id):  # noqa: ANN001, ANN201
+        return {}
+
+    def get_daily_activity_statistics(self, db, user_id, start_date, end_date):  # noqa: ANN001, ANN201
+        return []
+
+    def normalize_daily_activity(self, raw_stats, user_id):  # noqa: ANN001, ANN201
+        return {}

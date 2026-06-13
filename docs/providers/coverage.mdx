@@ -428,6 +428,22 @@ Key differences and limitations to be aware of when working with each provider:
   - No health scores; GPS routes and in-workout sample streams are accepted by the SDK payload but not yet processed
 </Accordion>
 
+<Accordion title="Withings">
+  **Integration Method:** OAuth 2.0 + Webhooks (rest_pull + webhook_ping)
+
+  - Scale- and device-focused provider; primary data source is body composition from Withings smart scales and health monitors
+  - Notify-only webhooks: Withings sends a lightweight push notification per user; Open Wearables fetches the actual data via REST API on receipt
+  - Webhook subscriptions are **per-user**: a `WithingsNotifyService` Celery task subscribes each user on OAuth connect (unlike app-level subscriptions used by most other providers)
+  - Body measures from `getmeas`: weight, height, lean body mass, body fat %, body fat mass, blood pressure (systolic/diastolic), heart rate, body temperature, skin temperature, oxygen saturation, skeletal muscle mass, hydration, VO2 max, cardiovascular age
+  - Bone mass and pulse wave velocity are parsed but intentionally not yet mapped — they have no unified series type, pending agreement on adding new ones
+  - Daily activity from `getactivity`: steps, distance, active calories, total calories (additional requested fields such as HR and intensity durations are not yet persisted)
+  - Sleep from `getsummary`: full stage breakdown (deep, light, REM, awake) and sleep efficiency; sleep records are merged when sessions are within the configured gap window
+  - Workouts from `getworkouts`: 100+ category mappings to the unified taxonomy; falls back to `WorkoutType.OTHER` for unmapped categories
+  - Activity and workout records imported into Withings from a foreign source (no `deviceid`) are skipped to avoid double-counting their origin connector
+  - Withings API uses an RPC-over-POST convention with an `action` parameter and a `{status, body}` envelope — all deviation logic is isolated in `withings/_client.py` and `withings/oauth.py`; shared infrastructure is not modified
+  - Measure values are decoded as `value × 10^unit`; scaling is handled by `scale_measure()` in `_client.py`
+</Accordion>
+
 ---
 
 ## Data Normalization
