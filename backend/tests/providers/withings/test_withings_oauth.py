@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -12,6 +13,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.withings.oauth import WithingsOAuth
+from tests.factories import UserConnectionFactory, UserFactory
 
 
 @pytest.fixture
@@ -75,8 +77,6 @@ def test_exchange_token_unwraps_envelope(mock_post: MagicMock, withings_oauth: W
 
 @patch("httpx.post")
 def test_exchange_token_raises_on_nonzero_status(mock_post: MagicMock, withings_oauth: WithingsOAuth) -> None:
-    from fastapi import HTTPException
-
     # Auth-error status (342 is in _AUTH_ERROR_STATUSES) → HTTP 400
     mock_post.return_value = MagicMock(
         status_code=200,
@@ -112,8 +112,6 @@ def test_user_info_reads_userid_from_token_body(withings_oauth: WithingsOAuth) -
 
 @patch("httpx.post")
 def test_refresh_persists_rotated_token(mock_post: MagicMock, withings_oauth: WithingsOAuth, db: Session) -> None:
-    from tests.factories import UserConnectionFactory, UserFactory
-
     user = UserFactory()
     conn = UserConnectionFactory(user=user, provider="withings", refresh_token="old_rt")
     mock_post.return_value = MagicMock(

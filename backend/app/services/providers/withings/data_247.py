@@ -6,6 +6,7 @@ sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -30,7 +31,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings._client import paginate, scale_measure
 from app.services.timeseries_service import timeseries_service
-from app.utils.structured_logging import log_structured
+from app.utils.sentry_helpers import log_and_capture_error
 
 logger = logging.getLogger(__name__)
 
@@ -234,13 +235,12 @@ class Withings247Data(Base247DataTemplate):
                     count += 1
             except Exception as e:
                 db.rollback()
-                log_structured(
+                log_and_capture_error(
+                    e,
                     logger,
-                    "warning",
                     "Skipping unparseable Withings sleep row",
-                    provider="withings",
-                    error=str(e),
-                    user_id=str(user_id),
+                    level="warning",
+                    extra={"provider": "withings", "user_id": str(user_id)},
                 )
         return count
 
@@ -288,13 +288,11 @@ class Withings247Data(Base247DataTemplate):
             return True
         except Exception as e:
             db.rollback()
-            log_structured(
+            log_and_capture_error(
+                e,
                 logger,
-                "error",
                 "Withings sleep save error",
-                provider="withings",
-                error=str(e),
-                user_id=str(user_id),
+                extra={"provider": "withings", "user_id": str(user_id)},
             )
             return False
 
@@ -334,23 +332,17 @@ class Withings247Data(Base247DataTemplate):
                 try:
                     db.rollback()
                 except Exception as rollback_error:
-                    log_structured(
+                    log_and_capture_error(
+                        rollback_error,
                         logger,
-                        "error",
                         f"Withings {name} rollback failed",
-                        provider="withings",
-                        data_type=name,
-                        user_id=str(user_id),
-                        error=str(rollback_error),
+                        extra={"provider": "withings", "data_type": name, "user_id": str(user_id)},
                     )
-                log_structured(
+                log_and_capture_error(
+                    e,
                     logger,
-                    "error",
                     f"Withings {name} sync failed",
-                    provider="withings",
-                    data_type=name,
-                    user_id=str(user_id),
-                    error=str(e),
+                    extra={"provider": "withings", "data_type": name, "user_id": str(user_id)},
                 )
         return results
 
@@ -359,26 +351,36 @@ class Withings247Data(Base247DataTemplate):
     # generic fetch/normalize hooks. No-ops to satisfy ABC instantiation.
     # ---------------------------------------------------------------------
 
-    def get_sleep_data(self, db, user_id, start_time, end_time):  # noqa: ANN001, ANN201
+    def get_sleep_data(
+        self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
+    ) -> list[dict[str, Any]]:
         return []
 
-    def normalize_sleep(self, raw_sleep, user_id):  # noqa: ANN001, ANN201
+    def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any]:
         return {}
 
-    def get_recovery_data(self, db, user_id, start_time, end_time):  # noqa: ANN001, ANN201
+    def get_recovery_data(
+        self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
+    ) -> list[dict[str, Any]]:
         return []
 
-    def normalize_recovery(self, raw_recovery, user_id):  # noqa: ANN001, ANN201
+    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any]:
         return {}
 
-    def get_activity_samples(self, db, user_id, start_time, end_time):  # noqa: ANN001, ANN201
+    def get_activity_samples(
+        self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
+    ) -> list[dict[str, Any]]:
         return []
 
-    def normalize_activity_samples(self, raw_samples, user_id):  # noqa: ANN001, ANN201
+    def normalize_activity_samples(
+        self, raw_samples: list[dict[str, Any]], user_id: UUID
+    ) -> dict[str, list[dict[str, Any]]]:
         return {}
 
-    def get_daily_activity_statistics(self, db, user_id, start_date, end_date):  # noqa: ANN001, ANN201
+    def get_daily_activity_statistics(
+        self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
         return []
 
-    def normalize_daily_activity(self, raw_stats, user_id):  # noqa: ANN001, ANN201
+    def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any]:
         return {}

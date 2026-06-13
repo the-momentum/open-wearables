@@ -11,7 +11,9 @@ from app.schemas.providers.withings import (
 
 
 def test_notification_parses_form_fields() -> None:
-    n = WithingsNotification(userid="123", appli=1, startdate=1728000000, enddate=1728001000)
+    """Mirror real input: parse_qs delivers every field as a string, so the
+    schema must coerce ``appli``/``startdate``/``enddate`` from str to int."""
+    n = WithingsNotification(userid="123", appli="1", startdate="1728000000", enddate="1728001000")
     assert n.userid == "123"
     assert n.appli == 1
     assert n.startdate == 1728000000

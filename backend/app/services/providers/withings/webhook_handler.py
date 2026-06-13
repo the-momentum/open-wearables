@@ -17,7 +17,7 @@ from celery import current_app as celery_app
 from fastapi import Request
 from pydantic import ValidationError
 
-from app.database import DbSession
+from app.database import DbSession, SessionLocal
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.withings import WithingsNotification
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
@@ -67,8 +67,6 @@ class WithingsWebhookHandler(BaseWebhookHandler):
 
         Opens its own session because the interface returns only a bool here.
         """
-        from app.database import SessionLocal
-
         payload = self.parse_payload(body)
         userid = payload.get("userid")
         if not userid:

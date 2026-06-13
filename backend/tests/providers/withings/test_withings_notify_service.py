@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.integrations.celery.tasks.withings.subscribe_task import subscribe_withings_user
 from app.services.providers.withings.notify_service import WITHINGS_APPLI_SET, WithingsNotifyService
 
 
@@ -39,8 +40,6 @@ def test_subscribe_task_retries_when_all_fail(
     mock_session_local: MagicMock,
 ) -> None:
     """When every appli returns an error, the task should call self.retry."""
-    from app.integrations.celery.tasks.withings.subscribe_task import subscribe_withings_user
-
     # All appli fail
     all_error = [{"appli": a, "status": "error", "error": "boom"} for a in WITHINGS_APPLI_SET]
     mock_svc_instance = MagicMock()
@@ -75,8 +74,6 @@ def test_subscribe_task_retries_on_partial_failure(
 ) -> None:
     """One failed appli (e.g. sleep) must retry — subscribe is idempotent, and a
     user otherwise silently loses that notification category until reconnect."""
-    from app.integrations.celery.tasks.withings.subscribe_task import subscribe_withings_user
-
     partial = [
         {"appli": 1, "status": "subscribed"},
         {"appli": 4, "status": "subscribed"},

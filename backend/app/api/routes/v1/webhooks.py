@@ -23,7 +23,7 @@ into its strategy, traffic can be cut over to this router.
 """
 
 from logging import getLogger
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -108,8 +108,8 @@ def handle_provider_webhook(
     return handler.handle(request, body, db)
 
 
-@router.api_route("", methods=["GET", "HEAD"])
-def verify_provider_webhook(provider: str, request: Request) -> dict:
+@router.api_route("", methods=["GET", "HEAD"], response_model=dict[str, Any], status_code=status.HTTP_200_OK)
+async def verify_provider_webhook(provider: str, request: Request) -> dict[str, Any]:
     """Handle GET/HEAD-based subscription verification challenges.
 
     Some providers (Strava ``hub.challenge``, Oura ``verification_token``)

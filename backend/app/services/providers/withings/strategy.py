@@ -9,11 +9,15 @@ the app-level webhook-registration API.
 
 from uuid import UUID
 
+from celery import current_app as celery_app
+
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.oauth import WithingsOAuth
 from app.services.providers.withings.webhook_handler import WithingsWebhookHandler
 from app.services.providers.withings.workouts import WithingsWorkouts
+
+_SUBSCRIBE_WITHINGS_USER_TASK = "app.integrations.celery.tasks.withings.subscribe_task.subscribe_withings_user"
 
 
 class WithingsStrategy(BaseProviderStrategy):
@@ -60,7 +64,4 @@ class WithingsStrategy(BaseProviderStrategy):
 
     def on_connect(self, user_id: UUID) -> None:
         """Register the user's notify subscriptions."""
-        # Local import: the task module imports ProviderFactory, which imports this.
-        from app.integrations.celery.tasks.withings import subscribe_withings_user
-
-        subscribe_withings_user.delay(str(user_id))
+        celery_app.send_task(_SUBSCRIBE_WITHINGS_USER_TASK, args=[str(user_id)])

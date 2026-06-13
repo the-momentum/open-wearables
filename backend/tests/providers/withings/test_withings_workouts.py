@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
+
 from app.constants.workout_types.withings import get_unified_workout_type
 from app.schemas.enums.workout_types import WorkoutType
 from app.schemas.providers.withings import WithingsWorkout
@@ -113,6 +115,62 @@ def test_load_data_skips_imported_workout_without_deviceid(mock_api: MagicMock, 
     assert w.load_data(db, uuid4()) == 1
     mock_event.create.assert_called_once()
     mock_event.create_detail.assert_called_once()
+
+
+def test_normalize_workout_rejects_inverted_window() -> None:
+    """A payload whose ``enddate`` precedes ``startdate`` yields a negative
+    duration; it must be rejected, not persisted with an invalid duration."""
+    w = _make_workouts()
+    start = int(datetime(2024, 1, 15, 8, 0, tzinfo=timezone.utc).timestamp())
+    end = int(datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc).timestamp())  # 1h *before* start
+    raw = WithingsWorkout.model_validate(
+        {"id": 5, "category": 2, "startdate": start, "enddate": end, "data": {}}
+    )
+    with pytest.raises(ValueError, match="enddate must be after startdate"):
+        w._normalize_workout(raw, uuid4())
+
+
+@patch("app.services.providers.withings.workouts.event_record_service")
+@patch.object(WithingsWorkouts, "get_workouts_from_api")
+def test_load_data_skips_inverted_window_workout(mock_api: MagicMock, mock_event: MagicMock) -> None:
+    """The negative-duration guard is honoured end-to-end: an inverted-window
+    row is dropped while a valid neighbour still persists."""
+    w = _make_workouts()
+    db = MagicMock()
+    start = int(datetime(2024, 1, 15, 8, 0, tzinfo=timezone.utc).timestamp())
+    end = int(datetime(2024, 1, 15, 7, 45, tzinfo=timezone.utc).timestamp())
+    inverted = {"id": 9, "category": 2, "startdate": start, "enddate": end, "deviceid": "abc123", "data": {}}
+    good = {
+        "id": 10,
+        "category": 2,
+        "startdate": int(datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc).timestamp()),
+        "enddate": int(datetime(2024, 1, 15, 7, 45, tzinfo=timezone.utc).timestamp()),
+        "deviceid": "abc123",
+        "data": {},
+    }
+    mock_api.return_value = [inverted, good]
+    assert w.load_data(db, uuid4()) == 1
+    mock_event.create.assert_called_once()
+
+
+@patch("app.services.providers.withings.workouts.event_record_service")
+@patch.object(WithingsWorkouts, "get_workouts_from_api")
+def test_load_data_rolls_back_on_save_failure(mock_api: MagicMock, mock_event: MagicMock) -> None:
+    """A persistence error on one workout rolls back the session and continues
+    with the next, so a single bad write can't poison the whole batch."""
+    w = _make_workouts()
+    db = MagicMock()
+    start = int(datetime(2024, 1, 15, 7, 0, tzinfo=timezone.utc).timestamp())
+    end = int(datetime(2024, 1, 15, 7, 45, tzinfo=timezone.utc).timestamp())
+    failing = {"id": 1, "category": 2, "startdate": start, "enddate": end, "deviceid": "abc123", "data": {}}
+    good = {"id": 2, "category": 2, "startdate": start, "enddate": end, "deviceid": "abc123", "data": {}}
+    mock_api.return_value = [failing, good]
+    # First create() blows up mid-batch; the second succeeds.
+    mock_event.create.side_effect = [Exception("db down"), MagicMock(id=uuid4())]
+
+    assert w.load_data(db, uuid4()) == 1
+    db.rollback.assert_called_once()
+    assert mock_event.create.call_count == 2
 
 
 @patch("app.services.providers.withings.workouts.event_record_service")

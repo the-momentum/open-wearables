@@ -75,13 +75,16 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
         workout_type = get_unified_workout_type(raw_workout.category)
         data = raw_workout.data
         record_id = uuid4()
+        duration_seconds = int(end_dt.timestamp() - start_dt.timestamp())
+        if duration_seconds < 0:
+            raise ValueError("enddate must be after startdate")
 
         record = EventRecordCreate(
             id=record_id,
             category="workout",
             type=workout_type.value,
             source_name="Withings",
-            duration_seconds=int(end_dt.timestamp() - start_dt.timestamp()),
+            duration_seconds=duration_seconds,
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=str(raw_workout.id) if raw_workout.id is not None else None,
@@ -117,6 +120,10 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
                 continue
             try:
                 record, detail = self._normalize_workout(workout, user_id)
+            except ValueError as e:
+                logger.warning("Skipping invalid Withings workout %s: %s", workout.id, e)
+                continue
+            try:
                 # create() dedups on the (source, start, end) window and returns the
                 # canonical record; the detail FK must point at its id, not ours.
                 created = event_record_service.create(db, record)

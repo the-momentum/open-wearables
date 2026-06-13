@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -106,7 +107,7 @@ def test_paginate_stops_when_offset_does_not_advance(mock_req: MagicMock) -> Non
 def test_paginate_stops_at_page_cap(mock_req: MagicMock) -> None:
     """A pathological always-more response chain is cut off at the page cap."""
 
-    def _page(**kwargs):  # noqa: ANN003, ANN202
+    def _page(**kwargs: Any) -> dict[str, Any]:
         offset = kwargs["params"].get("offset", 0)
         return {"status": 0, "body": {"rows": [offset], "more": 1, "offset": offset + 1}}
 

@@ -1,7 +1,12 @@
 """Tests for WithingsStrategy identity and capabilities."""
 
+from unittest.mock import patch
+from uuid import uuid4
+
 from app.schemas.enums import ProviderName
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.suunto.strategy import SuuntoStrategy
+from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.strategy import WithingsStrategy
 
 
@@ -28,28 +33,22 @@ def test_withings_has_oauth_component() -> None:
 
 
 def test_withings_has_data_247_component() -> None:
-    from app.services.providers.withings.data_247 import Withings247Data
-
     strategy = WithingsStrategy()
     assert isinstance(strategy.data_247, Withings247Data)
 
 
 def test_on_connect_enqueues_subscription_task() -> None:
     """Withings registers its per-user notify subscriptions on connect."""
-    from unittest.mock import patch
-    from uuid import uuid4
-
     strategy = WithingsStrategy()
     user_id = uuid4()
-    with patch("app.integrations.celery.tasks.withings.subscribe_withings_user") as task:
+    with patch("app.services.providers.withings.strategy.celery_app") as celery_app:
         strategy.on_connect(user_id)
-    task.delay.assert_called_once_with(str(user_id))
+    celery_app.send_task.assert_called_once_with(
+        "app.integrations.celery.tasks.withings.subscribe_task.subscribe_withings_user",
+        args=[str(user_id)],
+    )
 
 
 def test_on_connect_default_is_noop() -> None:
     """Providers without post-connect side effects inherit a no-op."""
-    from uuid import uuid4
-
-    from app.services.providers.suunto.strategy import SuuntoStrategy
-
     SuuntoStrategy().on_connect(uuid4())  # must not raise
