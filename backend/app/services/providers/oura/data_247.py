@@ -783,6 +783,35 @@ class Oura247Data(Base247DataTemplate):
                         user_id=str(user_id),
                     )
 
+            lowest_hr = normalized_sleep.get("lowest_heart_rate")
+            if lowest_hr is not None and start_dt is not None:
+                try:
+                    timeseries_service.bulk_create_samples(
+                        db,
+                        [
+                            TimeSeriesSampleCreate(
+                                id=uuid4(),
+                                user_id=user_id,
+                                source=self.provider_name,
+                                recorded_at=start_dt,
+                                zone_offset=zone_offset,
+                                value=Decimal(str(lowest_hr)),
+                                series_type=SeriesType.resting_heart_rate,
+                            )
+                        ],
+                    )
+                    db.commit()
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save resting heart rate",
+                        action="oura_resting_heart_rate_save_error",
+                        sleep_id=str(sleep_id),
+                        error=str(e),
+                        user_id=str(user_id),
+                    )
+
         return count
 
     # -------------------------------------------------------------------------
