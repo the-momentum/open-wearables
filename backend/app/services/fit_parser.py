@@ -13,6 +13,7 @@ import fitdecode
 
 from app.schemas.enums.series_types import SeriesType
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
+from app.schemas.model_crud.activities.zones import HRZone, HRZones, PowerZone, PowerZones
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ class FitParseResult:
     samples: list[TimeSeriesSampleCreate] = field(default_factory=list)
     segments: list[dict] = field(default_factory=list)
     developer_fields_found: list[str] = field(default_factory=list)
+    hr_zones: HRZones | None = None
+    power_zones: PowerZones | None = None
 
 
 def parse_fit_file(
@@ -108,6 +111,15 @@ def parse_fit_file(
                                 series_type=mapping.series_type,
                             )
                         )
+
+            elif frame.name == "time_in_zone":
+                try:
+                    ref = frame.get_value("reference_mesg")
+                except KeyError:
+                    ref = None
+                if ref == "session":
+                    result.hr_zones = _parse_hr_zones(frame)
+                    result.power_zones = _parse_power_zones(frame)
 
             elif frame.name in _SEGMENT_KINDS:
                 numeric, enums = _SEGMENT_KINDS[frame.name]
@@ -240,6 +252,52 @@ def _timestamp(frame: fitdecode.FitDataMessage) -> datetime | None:
     if not isinstance(ts, datetime):
         return None
     return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def _build_zone_entries(seconds_tuple: tuple, boundaries: tuple | None) -> list[tuple[float, int | None]]:
+    """Pair time-in-zone seconds with upper boundaries.
+
+    Boundaries define how many zones exist: N boundaries → N+1 zones (zone 0 through N),
+    where zone N has no upper boundary. Trailing (0 s, no boundary) entries are stripped.
+    """
+    bl: list[int] = [b for b in (boundaries or []) if b is not None]
+    entries = []
+    for i in range(len(bl) + 1):
+        secs = round(float(seconds_tuple[i]), 1) if i < len(seconds_tuple) else 0.0
+        entries.append((secs, bl[i] if i < len(bl) else None))
+    while entries and entries[-1] == (0.0, None):
+        entries.pop()
+    return entries
+
+
+def _parse_hr_zones(frame: fitdecode.FitDataMessage) -> HRZones | None:
+    entries = _build_zone_entries(
+        _field_val(frame, "time_in_hr_zone") or (),
+        _field_val(frame, "hr_zone_high_boundary"),
+    )
+    if not entries:
+        return None
+    raw_max_hr = _field_val(frame, "max_heart_rate")
+    raw_threshold = _field_val(frame, "threshold_heart_rate")
+    return HRZones(
+        zones=[HRZone(zone=i, seconds=s, max_bpm=b) for i, (s, b) in enumerate(entries)],
+        max_hr=int(raw_max_hr) if raw_max_hr else None,
+        threshold_hr=int(raw_threshold) if raw_threshold else None,
+    )
+
+
+def _parse_power_zones(frame: fitdecode.FitDataMessage) -> PowerZones | None:
+    entries = _build_zone_entries(
+        _field_val(frame, "time_in_power_zone") or (),
+        _field_val(frame, "power_zone_high_boundary"),
+    )
+    if not entries:
+        return None
+    raw_ftp = _field_val(frame, "functional_threshold_power")
+    return PowerZones(
+        zones=[PowerZone(zone=i, seconds=s, max_watts=b) for i, (s, b) in enumerate(entries)],
+        ftp_watts=int(raw_ftp) if raw_ftp else None,
+    )
 
 
 def _extract(frame: fitdecode.FitDataMessage, mapping: _FieldMapping) -> Decimal | None:

@@ -1753,14 +1753,16 @@ class Garmin247Data(Base247DataTemplate):
 
         return record, detail
 
-    def _save_segments(
+    def _save_fit_workout_fields(
         self,
         db: DbSession,
         user_id: UUID,
         activity_id: str,
         segments: list[dict],
+        hr_zones: dict | None = None,
+        power_zones: dict | None = None,
     ) -> None:
-        """Update workout_details.segments for the event_record matching activity_id.
+        """Update workout_details fields derived from the FIT file.
 
         No-op if the event_record doesn't exist yet (activityFiles arrived before
         activityDetails). activityDetails is always processed first within the same
@@ -1771,14 +1773,19 @@ class Garmin247Data(Base247DataTemplate):
             log_structured(
                 self.logger,
                 "warning",
-                "No event_record found for activityFiles — segments not saved",
+                "No event_record found for activityFiles — FIT workout fields not saved",
                 provider="garmin",
-                task="_save_segments",
+                task="_save_fit_workout_fields",
                 user_id=str(user_id),
                 activity_id=activity_id,
             )
             return
-        self.event_record_detail_repo.update_workout_fields(db, record.id, {"segments": segments})
+        fields: dict = {"segments": segments}
+        if hr_zones is not None:
+            fields["hr_zones"] = hr_zones
+        if power_zones is not None:
+            fields["power_zones"] = power_zones
+        self.event_record_detail_repo.update_workout_fields(db, record.id, fields)
 
     # -------------------------------------------------------------------------
     # Batch Processing (for webhook handlers)
@@ -1933,14 +1940,21 @@ class Garmin247Data(Base247DataTemplate):
                                 error=str(e),
                             )
                             continue
-                        if fit_result.segments:
+                        if fit_result.segments or fit_result.hr_zones or fit_result.power_zones:
                             try:
-                                self._save_segments(db, user_id, activity_id, fit_result.segments)
+                                self._save_fit_workout_fields(
+                                    db,
+                                    user_id,
+                                    activity_id,
+                                    fit_result.segments,
+                                    hr_zones=fit_result.hr_zones.model_dump() if fit_result.hr_zones else None,
+                                    power_zones=fit_result.power_zones.model_dump() if fit_result.power_zones else None,
+                                )
                             except Exception as e:
                                 log_structured(
                                     self.logger,
                                     "warning",
-                                    "Failed to save segments",
+                                    "Failed to save FIT workout fields",
                                     provider="garmin",
                                     task="process_items_batch",
                                     user_id=str(user_id),

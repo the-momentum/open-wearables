@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from .sleep import SleepStage
+from .zones import HRZones, PowerZones
 
 
 class EventRecordDetailBase(BaseModel):
@@ -43,6 +44,8 @@ class EventRecordDetailBase(BaseModel):
     sleep_stages: list[SleepStage] | None = None
 
     segments: list[dict] | None = None
+    hr_zones: HRZones | None = None
+    power_zones: PowerZones | None = None
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):
