@@ -75,12 +75,21 @@ _SERIES_UPDATE = text("""
 """)
 
 # Any SDNN Oura rows still present collided with an existing RMSSD row above.
+# The EXISTS guard ensures we only delete confirmed duplicates — rows without an RMSSD
+# counterpart (e.g. written by an old pod during a rolling deploy) are left for the
+# next startup run to pick up via _SERIES_UPDATE.
 _SERIES_DELETE_DUPLICATES = text("""
     DELETE FROM data_point_series dps
     USING data_source ds
     WHERE ds.id = dps.data_source_id
       AND ds.provider = :provider
       AND dps.series_type_definition_id = :sdnn
+      AND EXISTS (
+          SELECT 1 FROM data_point_series e
+          WHERE e.data_source_id = dps.data_source_id
+            AND e.series_type_definition_id = :rmssd
+            AND e.recorded_at = dps.recorded_at
+      )
 """)
 
 # data_point_series_archive: unique on (data_source_id, series_type_definition_id,
@@ -130,6 +139,13 @@ _ARCHIVE_DELETE_DUPLICATES = text("""
     WHERE ds.id = a.data_source_id
       AND ds.provider = :provider
       AND a.series_type_definition_id = :sdnn
+      AND EXISTS (
+          SELECT 1 FROM data_point_series_archive e
+          WHERE e.data_source_id = a.data_source_id
+            AND e.series_type_definition_id = :rmssd
+            AND e.bucket_start_at = a.bucket_start_at
+            AND e.aggregation_type = a.aggregation_type
+      )
 """)
 
 
@@ -140,36 +156,40 @@ def _scalar_count(db: Session, query: TextClause) -> int:
 def relabel_oura_hrv(db: Session, *, dry_run: bool) -> dict[str, int]:
     """Relabel Oura HRV SDNN rows to RMSSD. Does not commit — caller owns the transaction.
 
-    Counts are derived from SELECTs up front, so they are identical whether or not
-    the writes run (dry run reports exactly what a real run would do). Rows that
-    collide with an already-correct RMSSD row are deleted rather than relabeled.
+    In dry-run mode counts come from up-front SELECTs. In live mode counts come from
+    the actual rowcount returned by each DML statement, so reported numbers reflect
+    what was truly written. Rows that collide with an already-correct RMSSD row are
+    deleted rather than relabeled.
     """
-    series_deleted = _scalar_count(db, _SERIES_CONFLICT_COUNT)
-    series_updated = _scalar_count(db, _SERIES_COUNT) - series_deleted
-    archive_deleted = _scalar_count(db, _ARCHIVE_CONFLICT_COUNT)
-    archive_updated = _scalar_count(db, _ARCHIVE_COUNT) - archive_deleted
+    if dry_run:
+        series_deleted = _scalar_count(db, _SERIES_CONFLICT_COUNT)
+        series_updated = _scalar_count(db, _SERIES_COUNT) - series_deleted
+        archive_deleted = _scalar_count(db, _ARCHIVE_CONFLICT_COUNT)
+        archive_updated = _scalar_count(db, _ARCHIVE_COUNT) - archive_deleted
+        print(f"data_point_series:         Would relabel {series_updated}, remove {series_deleted} duplicate(s)")
+        print(f"data_point_series_archive: Would relabel {archive_updated}, remove {archive_deleted} duplicate(s)")
+        print("\nDry run — no changes made.")
+        return {
+            "series_updated": series_updated,
+            "series_deleted": series_deleted,
+            "archive_updated": archive_updated,
+            "archive_deleted": archive_deleted,
+        }
 
-    result = {
+    series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+    series_deleted = db.execute(_SERIES_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+    archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+    archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+
+    print(f"data_point_series:         Relabeled {series_updated}, removed {series_deleted} duplicate(s)")
+    print(f"data_point_series_archive: Relabeled {archive_updated}, removed {archive_deleted} duplicate(s)")
+
+    return {
         "series_updated": series_updated,
         "series_deleted": series_deleted,
         "archive_updated": archive_updated,
         "archive_deleted": archive_deleted,
     }
-
-    verb = "Would relabel" if dry_run else "Relabeled"
-    print(f"data_point_series:         {verb} {series_updated}, remove {series_deleted} duplicate(s)")
-    print(f"data_point_series_archive: {verb} {archive_updated}, remove {archive_deleted} duplicate(s)")
-
-    if dry_run:
-        print("\nDry run — no changes made.")
-        return result
-
-    db.execute(_SERIES_UPDATE, _PARAMS)
-    db.execute(_SERIES_DELETE_DUPLICATES, _PARAMS)
-    db.execute(_ARCHIVE_UPDATE, _PARAMS)
-    db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS)
-
-    return result
 
 
 def main(dry_run: bool) -> None:
