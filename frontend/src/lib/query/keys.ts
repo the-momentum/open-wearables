@@ -89,6 +89,8 @@ export const queryKeys = {
       [...queryKeys.health.all, 'timeseries', userId, params] as const,
     dataSummary: (userId: string) =>
       [...queryKeys.health.all, 'dataSummary', userId] as const,
+    menstrualCycles: (userId: string, params?: unknown) =>
+      [...queryKeys.health.all, 'menstrualCycles', userId, params] as const,
   },
 
   connections: {

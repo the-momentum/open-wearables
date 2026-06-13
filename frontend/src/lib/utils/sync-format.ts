@@ -20,6 +20,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   sdk: 'SDK Upload',
   backfill: 'Historical Sync',
   xml_import: 'XML Import',
+  linked_account: 'Linked Account',
 };
 
 export const RUN_STATUS_CLASSES: Record<string, string> = {

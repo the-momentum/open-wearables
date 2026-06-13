@@ -30,6 +30,7 @@ import {
   formatNumber,
   formatDistance,
   formatMinutes,
+  parseApiDate,
 } from '@/lib/utils/format';
 import {
   calculateActivityStats,
@@ -199,10 +200,10 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
         {/* Date */}
         <div className="w-28 flex-shrink-0">
           <p className="text-sm font-medium text-foreground">
-            {format(new Date(summary.date), 'EEE, MMM d')}
+            {format(parseApiDate(summary.date), 'EEE, MMM d')}
           </p>
           <p className="text-xs text-muted-foreground">
-            {format(new Date(summary.date), 'yyyy')}
+            {format(parseApiDate(summary.date), 'yyyy')}
           </p>
           {summary.source?.provider && (
             <SourceBadge provider={summary.source.provider} className="mt-1" />
@@ -386,9 +387,12 @@ export function ActivitySection({
     if (summaries.length === 0) return [];
 
     return [...summaries]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(
+        (a, b) =>
+          parseApiDate(a.date).getTime() - parseApiDate(b.date).getTime()
+      )
       .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
+        date: format(parseApiDate(s.date), 'MMM d'),
         value: currentMetric.getChartValue(s),
       }));
   }, [summaryData, currentMetric]);

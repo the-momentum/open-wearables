@@ -32,7 +32,8 @@
             "pages": [
               "architecture/system-overview",
               "architecture/unified-data-model",
-              "architecture/data-types"
+              "architecture/data-types",
+              "architecture/multi-account-sync"
             ]
           },
           {

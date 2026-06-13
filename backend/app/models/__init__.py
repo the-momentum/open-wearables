@@ -15,6 +15,7 @@ from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
+from .menstrual_cycle_details import MenstrualCycleDetails
 from .sleep_details import SleepDetails
 from .user import User
 from .user_connection import UserConnection
@@ -38,6 +39,7 @@ __all__ = [
     "UserInvitationCode",
     "EventRecord",
     "EventRecordDetail",
+    "MenstrualCycleDetails",
     "SleepDetails",
     "WorkoutDetails",
     "PersonalRecord",

@@ -1,5 +1,5 @@
 ---
-title: "Outgoing Webhooks | Open Wearables"
+title: "Outgoing Webhooks"
 sidebarTitle: "Outgoing Webhooks"
 description: "Receive real-time notifications when health data arrives for your users. Register HTTPS endpoints, filter by event type or user, verify signatures, and debug delivery."
 keywords: ["open wearables webhooks", "health data webhooks", "wearable data real-time", "webhook event types", "webhook signature verification"]
@@ -200,6 +200,7 @@ Fired once when a complete session is saved or merged.
 | `connection.created` | A user successfully connected a wearable provider. |
 | `workout.created` | A new workout session was saved. |
 | `sleep.created` | A new (or merged) sleep session was saved. |
+| `menstrual_cycle.created` | A new menstrual cycle record was saved. |
 | `activity.created` | A new generic activity session was saved. |
 
 ### Timeseries Events
@@ -304,6 +305,34 @@ Every payload envelope has `type` (the event name as a string) and `data`.
   }
 }
 ```
+
+### `menstrual_cycle.created`
+
+```json
+{
+  "type": "menstrual_cycle.created",
+  "data": {
+    "id": "d4e5f6a7-b8c9-0123-defa-123456789012",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_time": "2025-12-01T00:00:00+00:00",
+    "end_time": "2025-12-29T00:00:00+00:00",
+    "zone_offset": null,
+    "source": {
+      "provider": "garmin",
+      "device": null
+    },
+    "current_phase_type": "fertile",
+    "day_in_cycle": 12,
+    "cycle_length": 28,
+    "is_predicted_cycle": false,
+    "pregnancy_snapshot": null
+  }
+}
+```
+
+<Note>
+  `pregnancy_snapshot` is populated (as a list with one entry) when the user is tracking a pregnancy. Garmin reuses the same summary ID for daily cycle updates — Open Wearables deduplicates by `external_id`, so the event fires only when a new record is first inserted.
+</Note>
 
 ### `activity.created`
 

@@ -79,18 +79,38 @@ class _Field(NamedTuple):
     size: int
 
 
-# Definition message: one record per layout (local_mesg_type=0, global=20)
-def _definition_msg(fields: list[_Field]) -> bytes:
-    header = 0x40  # definition, local_mesg_type=0
-    # reserved(1) | architecture=LE(1) | global_mesg_num(2) | num_fields(1)
-    body = struct.pack("<BBHB", 0x00, 0x00, 20, len(fields))
+# Lap message (global_mesg_num=19) fields used here:
+#   253  timestamp          uint32  (FIT epoch seconds — end of lap)
+#     2  start_time         uint32  (FIT epoch seconds)
+#     7  total_elapsed_time uint32  (raw = seconds * 1000; fitdecode applies scale=1000)
+#     9  total_distance     uint32  (raw = meters * 100; fitdecode applies scale=100)
+#    15  avg_heart_rate     uint8   (bpm)
+#    16  max_heart_rate     uint8   (bpm)
+
+_LAP_FIELDS: list[_Field] = [
+    _Field(253, _UINT32, 4),
+    _Field(2, _UINT32, 4),
+    _Field(7, _UINT32, 4),
+    _Field(9, _UINT32, 4),
+    _Field(15, _UINT8, 1),
+    _Field(16, _UINT8, 1),
+]
+
+
+def _definition_msg(fields: list[_Field], local_type: int = 0, global_num: int = 20) -> bytes:
+    """Build a FIT definition message.
+
+    local_type 0 = record (global 20), local_type 1 = lap (global 19).
+    """
+    header = 0x40 | local_type
+    body = struct.pack("<BBHB", 0x00, 0x00, global_num, len(fields))
     for f in fields:
         body += struct.pack("BBB", f.def_num, f.size, f.base_type)
     return bytes([header]) + body
 
 
-def _data_msg(fields: list[_Field], values: list[int]) -> bytes:
-    header = 0x00  # data, local_mesg_type=0
+def _data_msg(fields: list[_Field], values: list[int], local_type: int = 0) -> bytes:
+    header = local_type
     body = b""
     for f, v in zip(fields, values):
         signed = f.base_type in (_SINT8, _SINT32)
@@ -101,6 +121,21 @@ def _data_msg(fields: list[_Field], values: list[int]) -> bytes:
         elif f.size == 4:
             body += struct.pack("<i" if signed else "<I", v)
     return bytes([header]) + body
+
+
+def _lap_messages(laps: list[tuple[int, int, int, int, int, int]]) -> bytes:
+    """Build definition + data messages for a list of laps (local_type=1, global=19).
+
+    Each lap: (start_ts, end_ts, elapsed_seconds, distance_meters, avg_hr, max_hr)
+    """
+    out = _definition_msg(_LAP_FIELDS, local_type=1, global_num=19)
+    for start_ts, end_ts, elapsed_s, distance_m, avg_hr, max_hr in laps:
+        out += _data_msg(
+            _LAP_FIELDS,
+            [end_ts, start_ts, elapsed_s * 1000, distance_m * 100, avg_hr, max_hr],
+            local_type=1,
+        )
+    return out
 
 
 def _fit_file(messages: bytes) -> bytes:
@@ -118,12 +153,12 @@ def _fit_file(messages: bytes) -> bytes:
 
 
 def make_running_fit(n_records: int = 20) -> bytes:
-    """Synthetic running activity: full sensor set including GPS and running dynamics."""
+    """Synthetic running activity: full sensor set including GPS, running dynamics, and 2 laps."""
     lat = int(50.0 * _DEG_TO_SEMICIRCLES)  # 50°N
     lon = int(20.0 * _DEG_TO_SEMICIRCLES)  # 20°E
     alt_raw = int((200.0 + 500) * 5)  # 200 m → raw enhanced_altitude
 
-    fields = [
+    record_fields = [
         _Field(253, _UINT32, 4),  # timestamp
         _Field(0, _SINT32, 4),  # position_lat (semicircles)
         _Field(1, _SINT32, 4),  # position_long (semicircles)
@@ -139,10 +174,10 @@ def make_running_fit(n_records: int = 20) -> bytes:
         _Field(84, _UINT16, 2),  # stance_time_balance (raw = % * 100)
     ]
     start_ts = _fit_ts(datetime(2025, 6, 1, 8, 0, 0, tzinfo=timezone.utc))
-    messages = _definition_msg(fields)
+    messages = _definition_msg(record_fields)
     for i in range(n_records):
         messages += _data_msg(
-            fields,
+            record_fields,
             [
                 start_ts + i,
                 lat,
@@ -159,6 +194,14 @@ def make_running_fit(n_records: int = 20) -> bytes:
                 4950,  # stance_time_balance: 49.5%
             ],
         )
+    # Two laps splitting the activity evenly
+    half = n_records // 2
+    messages += _lap_messages(
+        [
+            (start_ts, start_ts + half, half, half * 3, 152, 160),  # lap 0: ~3 m/s
+            (start_ts + half, start_ts + n_records, half, half * 3, 156, 164),  # lap 1
+        ]
+    )
     return _fit_file(messages)
 
 

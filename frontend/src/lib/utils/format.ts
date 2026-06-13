@@ -3,6 +3,19 @@
  */
 
 /**
+ * Parse a date-only API string (e.g. "2026-06-09") as a local calendar date.
+ *
+ * `new Date("2026-06-09")` parses date-only strings as UTC midnight, which then
+ * renders as the previous day when formatted in a negative-UTC timezone (e.g. a
+ * US user sees Jun 9 data labelled Jun 8). Building the Date from local
+ * components keeps the calendar day intact in every timezone.
+ */
+export function parseApiDate(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
  * Format a date string to a localized string representation.
  * Returns 'Never' if the date is null or undefined.
  */

@@ -16,6 +16,7 @@ import {
   Smartphone,
   Copy,
   Ellipsis,
+  Heart,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -24,6 +25,7 @@ import {
   useAppleXmlUpload,
   useGenerateInvitationCode,
 } from '@/hooks/api/use-users';
+import { useUserDataSummary } from '@/hooks/api/use-health';
 import { ROUTES } from '@/lib/constants/routes';
 import { API_CONFIG } from '@/lib/api/config';
 import { copyToClipboard } from '@/lib/utils/clipboard';
@@ -34,6 +36,7 @@ import { ActivitySection } from '@/components/user/activity-section';
 import { BodySection } from '@/components/user/body-section';
 import { WorkoutSection } from '@/components/user/workout-section';
 import { ScoresSection } from '@/components/user/scores-section';
+import { WomensHealthSection } from '@/components/user/womens-health-section';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import {
   AlertDialog,
@@ -83,6 +86,7 @@ function UserDetailPage() {
   const { userId } = Route.useParams();
   const navigate = useNavigate();
   const { data: user, isLoading: userLoading } = useUser(userId);
+  const { data: dataSummary } = useUserDataSummary(userId);
 
   // Tab state
   const [activeTab, setActiveTab] = useState('profile');
@@ -93,6 +97,8 @@ function UserDetailPage() {
     useState<DateRangeValue>(30);
   const [sleepDateRange, setSleepDateRange] = useState<DateRangeValue>(30);
   const [scoresDateRange, setScoresDateRange] = useState<DateRangeValue>(30);
+  const [womensHealthDateRange, setWomensHealthDateRange] =
+    useState<DateRangeValue>(90);
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
@@ -173,6 +179,22 @@ function UserDetailPage() {
           />
         ),
       },
+      ...(dataSummary?.has_womens_health_data
+        ? [
+            {
+              id: 'womens-health',
+              label: "Women's Health",
+              icon: Heart,
+              content: (
+                <WomensHealthSection
+                  userId={userId}
+                  dateRange={womensHealthDateRange}
+                  onDateRangeChange={setWomensHealthDateRange}
+                />
+              ),
+            },
+          ]
+        : []),
     ],
     [
       userId,
@@ -180,6 +202,8 @@ function UserDetailPage() {
       activityDateRange,
       sleepDateRange,
       scoresDateRange,
+      womensHealthDateRange,
+      dataSummary?.has_womens_health_data,
     ]
   );
 

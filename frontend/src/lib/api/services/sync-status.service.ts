@@ -49,6 +49,7 @@ export interface SyncRunSummary {
   items_processed: number | null;
   items_total: number | null;
   error: string | null;
+  primary_user_id: string | null;
   started_at: string | null;
   ended_at: string | null;
   last_update: string;
