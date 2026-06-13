@@ -453,9 +453,9 @@ class Whoop247Data(Base247DataTemplate):
             end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
 
         if not start_time:
-            start_time = datetime.now() - timedelta(days=30)
+            start_time = datetime.now(timezone.utc) - timedelta(days=30)
         if not end_time:
-            end_time = datetime.now()
+            end_time = datetime.now(timezone.utc)
 
         results = {
             "sleep_sessions_synced": 0,
