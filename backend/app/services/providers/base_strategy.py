@@ -183,6 +183,14 @@ class BaseProviderStrategy(ABC):
             end_date=end_date.isoformat(),
         )
 
+    def on_connect(self, user_id: UUID) -> None:
+        """Provider-specific side effects after a user connects.
+
+        Called by the OAuth callback once the connection is persisted and any
+        historical sync dispatched. Override for per-user setup (e.g. Withings
+        registers its per-user notify subscriptions). Default: no-op.
+        """
+
     @property
     def display_name(self) -> str:
         """Returns the display name of the provider (e.g., 'Garmin', 'Apple Health')."""

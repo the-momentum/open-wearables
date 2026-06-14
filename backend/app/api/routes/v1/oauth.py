@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
@@ -18,8 +19,10 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import ProviderSettingsService
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.utils.sentry_helpers import log_and_capture_error
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 factory = ProviderFactory()
 settings_service = ProviderSettingsService()
 
@@ -117,6 +120,17 @@ def oauth_callback(
                 providers=[provider.value],
                 is_historical=True,
             )
+
+    # Provider-specific post-connect hook (default no-op).
+    try:
+        strategy.on_connect(oauth_state.user_id)
+    except Exception as e:
+        log_and_capture_error(
+            e,
+            logger,
+            "Provider post-connect hook failed",
+            extra={"provider": provider.value, "user_id": str(oauth_state.user_id)},
+        )
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

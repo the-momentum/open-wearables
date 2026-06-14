@@ -45,6 +45,7 @@ from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
 from .sync_vendor_data_task import sync_vendor_data
 from .webhook_push_task import process_webhook_push
+from .withings import subscribe_withings_user
 
 __all__ = [
     # Garmin backfill (30-day webhook-based sync)
@@ -79,4 +80,6 @@ __all__ = [
     "renew_oura_webhooks",
     # Outgoing webhooks
     "emit_webhook_event",
+    # Withings per-user notify subscription
+    "subscribe_withings_user",
 ]
