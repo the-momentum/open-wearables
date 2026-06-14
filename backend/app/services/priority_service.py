@@ -148,7 +148,9 @@ class PriorityService:
     def _build_display_name(self, ds: DataSource) -> str:
         parts = []
         if ds.provider:
-            parts.append(ds.provider.value.capitalize())
+            # Rows loaded from the database carry provider as a plain str (the
+            # column is a String, not a native enum), so there is no .value.
+            parts.append(ds.provider.capitalize())
         if ds.device_model:
             parts.append(ds.device_model)
         elif ds.original_source_name:
