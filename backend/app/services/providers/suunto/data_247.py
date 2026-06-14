@@ -229,8 +229,13 @@ class Suunto247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_sleep: dict[str, Any],
-    ) -> None:
-        """Save normalized sleep data as EventRecord + SleepDetails."""
+    ) -> bool:
+        """Save normalized sleep data as EventRecord + SleepDetails.
+
+        Returns ``True`` if the session was persisted and ``False`` if it was
+        skipped (no usable start/end window) or the underlying service raised, so
+        the sync loop can report accurate saved/skipped counts.
+        """
         sleep_id: UUID = normalized_sleep["id"]
 
         start_dt = parse_iso_datetime(normalized_sleep.get("start_time"))
@@ -245,7 +250,7 @@ class Suunto247Data(Base247DataTemplate):
                 task="save_sleep_data",
                 user_id=str(user_id),
             )
-            return
+            return False
 
         # EventRecord
         record = EventRecordCreate(
@@ -294,9 +299,10 @@ class Suunto247Data(Base247DataTemplate):
                 task="save_sleep_data",
                 user_id=str(user_id),
             )
-            return
+            return False
 
         self._persist_resting_heart_rate(db, user_id, normalized_sleep, end_dt)
+        return True
 
     def _persist_resting_heart_rate(
         self,
@@ -691,16 +697,24 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
-    ) -> int:
-        """Load sleep data from API and save to database."""
+    ) -> tuple[int, int]:
+        """Load sleep data from API and save to database.
+
+        Returns ``(saved, skipped)`` so callers can distinguish a real sync from
+        one where every fetched session was dropped (e.g. unusable windows).
+        """
         raw_data = self.get_sleep_data(db, user_id, start_time, end_time)
-        count = 0
+        saved = 0
+        skipped = 0
         for item in raw_data:
             try:
                 normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
-                count += 1
+                if self.save_sleep_data(db, user_id, normalized):
+                    saved += 1
+                else:
+                    skipped += 1
             except Exception as e:
+                skipped += 1
                 log_structured(
                     self.logger,
                     "warning",
@@ -709,7 +723,7 @@ class Suunto247Data(Base247DataTemplate):
                     task="load_and_save_sleep",
                     user_id=str(user_id),
                 )
-        return count
+        return saved, skipped
 
     def load_and_save_all(
         self,
@@ -733,6 +747,7 @@ class Suunto247Data(Base247DataTemplate):
 
         results: dict[str, int] = {
             "sleep_sessions_synced": 0,
+            "sleep_sessions_skipped": 0,
             "recovery_samples_synced": 0,
             "activity_samples_synced": 0,
             "daily_activity_synced": 0,
@@ -740,7 +755,9 @@ class Suunto247Data(Base247DataTemplate):
 
         # 1. Sleep sessions → EventRecord + SleepDetails
         try:
-            results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_dt, end_dt)
+            saved, skipped = self.load_and_save_sleep(db, user_id, start_dt, end_dt)
+            results["sleep_sessions_synced"] = saved
+            results["sleep_sessions_skipped"] = skipped
         except Exception as e:
             log_structured(
                 self.logger,
