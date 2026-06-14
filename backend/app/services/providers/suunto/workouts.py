@@ -216,8 +216,9 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         **kwargs: Any,
     ) -> int:
         """Load data from Suunto API."""
-        # Handle generic start_date/end_date
-        start_date = kwargs.get("start_date")
+        # Handle generic start_date/end_date.
+        # Sync route passes "summary_start_time", Celery task passes "start_date".
+        start_date = kwargs.get("start_date") or kwargs.get("summary_start_time")
 
         api_kwargs = kwargs.copy()
 
