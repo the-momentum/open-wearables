@@ -52,7 +52,7 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
