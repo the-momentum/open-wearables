@@ -58,6 +58,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # No API URL is baked in: the frontend reads it at runtime from the
-          # container's API_URL env var. See frontend/src/lib/api/runtime-config.ts.
+          # container's VITE_API_URL env var. See frontend/src/lib/api/runtime-config.ts.
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

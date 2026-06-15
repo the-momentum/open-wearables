@@ -7,15 +7,16 @@ declare global {
 }
 
 /**
- * Resolve the backend API base URL.
+ * Resolve the backend API base URL from a single env var: VITE_API_URL.
  *
- * The URL is configured at *runtime*, not baked at build time, so a single
- * prebuilt image can point at any backend (e.g. https://api.client1.com)
- * without rebuilding. Order of precedence:
+ * The same name works both at build time (Vite inlines import.meta.env) and at
+ * runtime (the container's VITE_API_URL env var), so a prebuilt image can point
+ * at any backend (e.g. https://api.client1.com) without rebuilding. Order of
+ * precedence:
  *
  *   1. Browser: window.__APP_CONFIG__.apiUrl, injected into the SSR HTML from
- *      the container's API_URL env var (see routes/__root.tsx).
- *   2. SSR server (Nitro runtime): the API_URL / VITE_API_URL env var.
+ *      the container's VITE_API_URL env var (see routes/__root.tsx).
+ *   2. SSR server (Nitro runtime): process.env.VITE_API_URL.
  *   3. VITE_API_URL baked at build time (dev / opt-in build-time config).
  *   4. http://localhost:8000.
  */
@@ -29,12 +30,7 @@ export function resolveApiUrl(): string {
   }
 
   const env = typeof process !== 'undefined' ? process.env : undefined;
-  return (
-    env?.API_URL ||
-    env?.VITE_API_URL ||
-    import.meta.env.VITE_API_URL ||
-    FALLBACK_API_URL
-  );
+  return env?.VITE_API_URL || import.meta.env.VITE_API_URL || FALLBACK_API_URL;
 }
 
 /**
