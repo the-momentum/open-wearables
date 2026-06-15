@@ -10,9 +10,9 @@ on:
         required: false
         default: ""
       vite_api_url:
-        description: "Frontend only: API URL baked into the build at compile time."
+        description: "Frontend only: API URL baked into the build. Leave empty to use the repo variable VITE_API_URL, falling back to http://localhost:8000."
         required: false
-        default: "https://api.openwearables.mntm.dev"
+        default: ""
 
 jobs:
   publish:
@@ -27,13 +27,10 @@ jobs:
             context: ./backend
             dockerfile: ./backend/Dockerfile
             image: themomentum/open-wearables-backend
-            build-args: ""
           - name: frontend
             context: ./frontend
             dockerfile: ./frontend/Dockerfile
             image: themomentum/open-wearables-frontend
-            build-args: |
-              VITE_API_URL=${{ inputs.vite_api_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,6 +61,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ matrix.build-args }}
+          # Frontend only: pick per-run input, else repo variable VITE_API_URL, else localhost.
+          build-args: ${{ matrix.name == 'frontend' && format('VITE_API_URL={0}', inputs.vite_api_url || vars.VITE_API_URL || 'http://localhost:8000') || '' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
