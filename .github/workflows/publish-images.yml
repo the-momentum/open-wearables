@@ -9,10 +9,6 @@ on:
         description: "Extra image tag to push (in addition to `latest` and the commit SHA). Leave empty to skip."
         required: false
         default: ""
-      vite_api_url:
-        description: "Frontend only: API URL baked into the build. Leave empty to use the repo variable VITE_API_URL, falling back to http://localhost:8000."
-        required: false
-        default: ""
 
 jobs:
   publish:
@@ -61,7 +57,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Frontend only: pick per-run input, else repo variable VITE_API_URL, else localhost.
-          build-args: ${{ matrix.name == 'frontend' && format('VITE_API_URL={0}', inputs.vite_api_url || vars.VITE_API_URL || 'http://localhost:8000') || '' }}
+          # No API URL is baked in: the frontend reads it at runtime from the
+          # container's API_URL env var. See frontend/src/lib/api/runtime-config.ts.
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

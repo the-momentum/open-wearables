@@ -1,5 +1,7 @@
+import { resolveApiUrl } from './runtime-config';
+
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseUrl: resolveApiUrl(),
   timeout: 30000, // 30 seconds
   retryAttempts: 3,
   retryDelay: 1000, // 1 second
