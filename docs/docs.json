@@ -95,6 +95,7 @@
           {
             "group": "Deployment",
             "pages": [
+              "deployment/docker-images",
               "deployment/railway"
             ]
           },
