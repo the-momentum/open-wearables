@@ -198,7 +198,7 @@ def process_webhook_push(
             "Webhook push task aborted — configuration error",
             provider=provider_name,
             trace_id=request_trace_id,
-            payload_user_id=extract_payload_user_id(provider_name, payload),
+            provider_user_id=extract_payload_user_id(provider_name, payload),
             error=str(exc),
         )
         raise
@@ -239,7 +239,7 @@ def process_webhook_push(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
-            payload_user_id=extract_payload_user_id(provider_name, payload),
+            provider_user_id=extract_payload_user_id(provider_name, payload),
             error=str(exc),
             attempt=self.request.retries,
             max_retries=self.max_retries,

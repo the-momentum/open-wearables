@@ -45,7 +45,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import offset_to_iso
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import LogContext, log_structured
 
 
 class Oura247Data(Base247DataTemplate):
@@ -252,8 +252,10 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized: tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]],
+        log_ctx: LogContext | None = None,
     ) -> int:
         """Save daily activity data as DataPointSeries and health scores."""
+        provider_user_id, trace_id = log_ctx or LogContext()
         activity_samples, health_scores = normalized
         samples: list[TimeSeriesSampleCreate] = []
         for key, series_type in ACTIVITY_SERIES.items():
@@ -279,6 +281,8 @@ class Oura247Data(Base247DataTemplate):
                         metric=key,
                         error=str(e),
                         user_id=str(user_id),
+                        provider_user_id=provider_user_id,
+                        trace_id=trace_id,
                     )
 
         counts = WriteCounts(0, 0)
@@ -336,8 +340,10 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized: list[tuple[datetime, float]],
+        log_ctx: LogContext | None = None,
     ) -> int:
         """Save daily cardiovascular age data as DataPointSeries."""
+        provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
 
         for recorded_at, value in normalized:
@@ -360,6 +366,8 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_cardiovascular_age_save_error",
                     error=str(e),
                     user_id=str(user_id),
+                    provider_user_id=provider_user_id,
+                    trace_id=trace_id,
                 )
 
         counts = WriteCounts(0, 0)
@@ -470,8 +478,10 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized: tuple[list[dict[str, Any]], list[HealthScoreCreate]],
+        log_ctx: LogContext | None = None,
     ) -> int:
         """Save normalized readiness data as DataPointSeries and health scores."""
+        provider_user_id, trace_id = log_ctx or LogContext()
         recovery_metrics, health_scores = normalized
 
         metrics = list(READINESS_SERIES.items())
@@ -504,6 +514,8 @@ class Oura247Data(Base247DataTemplate):
                             field=field_name,
                             error=str(e),
                             user_id=str(user_id),
+                            provider_user_id=provider_user_id,
+                            trace_id=trace_id,
                         )
 
         counts = WriteCounts(0, 0)
@@ -621,8 +633,10 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_items: list[dict[str, Any]],
+        log_ctx: LogContext | None = None,
     ) -> int:
         """Save normalized sleep data to database as EventRecord with SleepDetails."""
+        provider_user_id, trace_id = log_ctx or LogContext()
         count = 0
         for normalized_sleep in normalized_items:
             sleep_id = normalized_sleep["id"]
@@ -652,6 +666,8 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_sleep_skip",
                     sleep_id=str(sleep_id),
                     user_id=str(user_id),
+                    provider_user_id=provider_user_id,
+                    trace_id=trace_id,
                 )
                 continue
 
@@ -711,6 +727,8 @@ class Oura247Data(Base247DataTemplate):
                     sleep_id=str(sleep_id),
                     error=str(e),
                     user_id=str(user_id),
+                    provider_user_id=provider_user_id,
+                    trace_id=trace_id,
                 )
 
             hr: OuraIntervalData | None = normalized_sleep.get("heart_rate")
@@ -753,6 +771,8 @@ class Oura247Data(Base247DataTemplate):
                         sleep_id=str(sleep_id),
                         error=str(e),
                         user_id=str(user_id),
+                        provider_user_id=provider_user_id,
+                        trace_id=trace_id,
                     )
 
             avg_breath = normalized_sleep.get("average_breath")
@@ -782,6 +802,8 @@ class Oura247Data(Base247DataTemplate):
                         sleep_id=str(sleep_id),
                         error=str(e),
                         user_id=str(user_id),
+                        provider_user_id=provider_user_id,
+                        trace_id=trace_id,
                     )
 
         return count
@@ -880,8 +902,10 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_data: list[dict[str, Any]],
+        log_ctx: LogContext | None = None,
     ) -> int:
         """Save SpO2 data as DataPointSeries."""
+        provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
             day = item.get("day")
@@ -915,6 +939,8 @@ class Oura247Data(Base247DataTemplate):
                         action="oura_spo2_save_error",
                         error=str(e),
                         user_id=str(user_id),
+                        provider_user_id=provider_user_id,
+                        trace_id=trace_id,
                     )
 
             bdi = item.get("breathing_disturbance_index")
@@ -938,6 +964,8 @@ class Oura247Data(Base247DataTemplate):
                         action="oura_bdi_save_error",
                         error=str(e),
                         user_id=str(user_id),
+                        provider_user_id=provider_user_id,
+                        trace_id=trace_id,
                     )
 
         counts = WriteCounts(0, 0)
@@ -1132,8 +1160,10 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_data: list[dict[str, Any]],
+        log_ctx: LogContext | None = None,
     ) -> int:
         """Save Vo2 data as DataPointSeries."""
+        provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
             vo2_max = item.get("vo2_max")
@@ -1161,6 +1191,8 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_vo2_save_error",
                     error=str(e),
                     user_id=str(user_id),
+                    provider_user_id=provider_user_id,
+                    trace_id=trace_id,
                 )
 
         counts = WriteCounts(0, 0)
