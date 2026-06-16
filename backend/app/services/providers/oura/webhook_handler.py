@@ -151,6 +151,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             "Enqueued Oura webhook processing task",
             provider="oura",
             trace_id=request_trace_id,
+            oura_user_id=oura_user_id,
             task_id=getattr(task, "id", None),
         )
 
@@ -187,6 +188,16 @@ class OuraWebhookHandler(BaseWebhookHandler):
         try:
             notification = OuraWebhookNotification(**payload)
         except (ValidationError, TypeError) as exc:
+            log_structured(
+                logger,
+                "warning",
+                "Invalid Oura webhook payload",
+                provider="oura",
+                trace_id=trace_id,
+                oura_user_id=payload.get("user_id", "unknown"),
+                data_type=payload.get("data_type", "unknown"),
+                error=str(exc),
+            )
             return {"status": "error", "error": f"Invalid payload: {exc}"}
 
         if notification.event_type == "delete":
@@ -196,6 +207,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 "Ignoring Oura delete event",
                 provider="oura",
                 trace_id=trace_id,
+                oura_user_id=notification.user_id,
                 data_type=notification.data_type,
             )
             return {"status": "ignored", "reason": "delete_event"}
@@ -234,7 +246,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
 
         self.connection_repo.update_last_synced_at(db, connection)
 
-        count = self._dispatch_data_type(db, notification, user_id)
+        count = self._dispatch_data_type(db, notification, user_id, trace_id)
 
         if count is None:
             log_structured(
@@ -245,6 +257,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 trace_id=trace_id,
                 data_type=notification.data_type,
                 user_id=str(user_id),
+                oura_user_id=notification.user_id,
             )
             return {
                 "status": "ignored",
@@ -284,11 +297,23 @@ class OuraWebhookHandler(BaseWebhookHandler):
         db: DbSession,
         notification: OuraWebhookNotification,
         user_id: UUID,
+        trace_id: str,
     ) -> int | None:
         data_type = notification.data_type
         object_id = notification.object_id
 
         if not object_id:
+            log_structured(
+                logger,
+                "warning",
+                "Oura webhook missing object_id; skipping fetch",
+                provider="oura",
+                trace_id=trace_id,
+                user_id=str(user_id),
+                oura_user_id=notification.user_id,
+                data_type=data_type,
+                event_type=notification.event_type,
+            )
             return None
 
         if data_type == "workout":
@@ -297,6 +322,17 @@ class OuraWebhookHandler(BaseWebhookHandler):
         collection = _COLLECTION_NAME.get(data_type, data_type)
         raw = self.data_247._make_api_request(db, user_id, f"/v2/usercollection/{collection}/{object_id}")
         if not raw or not isinstance(raw, dict):
+            log_structured(
+                logger,
+                "warning",
+                "Oura object fetch returned no data",
+                provider="oura",
+                trace_id=trace_id,
+                user_id=str(user_id),
+                oura_user_id=notification.user_id,
+                data_type=data_type,
+                object_id=object_id,
+            )
             return 0
 
         docs = [raw]
