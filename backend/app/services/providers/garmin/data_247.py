@@ -1320,12 +1320,15 @@ class Garmin247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         """Build time series samples from blood pressure data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
-        measurement_ts = raw_bp.get("measurementTimestampGMT", 0)
+        # Garmin's bloodPressures webhook carries the timestamp as
+        # measurementTimeInSeconds (same as bodyComps). Fall back to the
+        # legacy field names for safety.
+        measurement_ts = (
+            raw_bp.get("measurementTimeInSeconds")
+            or raw_bp.get("measurementTimestampGMT")
+            or raw_bp.get("startTimeInSeconds", 0)
+        )
         summary_id = raw_bp.get("summaryId")
-
-        # Try alternative timestamp field
-        if not measurement_ts:
-            measurement_ts = raw_bp.get("startTimeInSeconds", 0)
 
         if not measurement_ts:
             return samples

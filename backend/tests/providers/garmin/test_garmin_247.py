@@ -103,6 +103,19 @@ class TestGarmin247Data:
             "muscleMassInGrams": 35000,
         }
 
+    @pytest.fixture
+    def sample_blood_pressure(self) -> dict[str, Any]:
+        """Sample Garmin blood pressure webhook item."""
+        return {
+            "summaryId": "sd60a3665-6a31b950",
+            "systolic": 112,
+            "diastolic": 73,
+            "pulse": 69,
+            "sourceType": "MANUAL",
+            "measurementTimeInSeconds": 1781643600,
+            "measurementTimeOffsetInSeconds": -18000,  # -05:00
+        }
+
     # -------------------------------------------------------------------------
     # Helper Method Tests
     # -------------------------------------------------------------------------
@@ -541,6 +554,31 @@ class TestGarmin247Data:
         """Test _build_body_comp_samples returns empty for missing timestamp."""
         user_id = uuid4()
         samples = garmin_247._build_body_comp_samples(user_id, {"weightInGrams": 75000})
+        assert samples == []
+
+    def test_build_blood_pressure_samples(
+        self, garmin_247: Garmin247Data, sample_blood_pressure: dict[str, Any]
+    ) -> None:
+        """Test _build_blood_pressure_samples reads the webhook timestamp field."""
+        from app.schemas.enums.series_types import SeriesType
+
+        user_id = uuid4()
+        samples = garmin_247._build_blood_pressure_samples(user_id, sample_blood_pressure)
+
+        assert len(samples) == 2  # systolic + diastolic
+        by_type = {s.series_type: s for s in samples}
+        assert by_type[SeriesType.blood_pressure_systolic].value == Decimal("112")
+        assert by_type[SeriesType.blood_pressure_diastolic].value == Decimal("73")
+
+        systolic = by_type[SeriesType.blood_pressure_systolic]
+        assert systolic.recorded_at == datetime(2026, 6, 16, 21, 0, tzinfo=timezone.utc)
+        assert systolic.zone_offset == "-05:00"
+        assert systolic.external_id == "sd60a3665-6a31b950"
+
+    def test_build_blood_pressure_samples_missing_timestamp(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_blood_pressure_samples returns empty when timestamp is absent."""
+        user_id = uuid4()
+        samples = garmin_247._build_blood_pressure_samples(user_id, {"systolic": 112, "diastolic": 73})
         assert samples == []
 
     def test_build_hrv_samples(self, garmin_247: Garmin247Data) -> None:
