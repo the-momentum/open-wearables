@@ -152,8 +152,8 @@ class TestProcessWorkoutPayloadShapes:
 
         result = handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
 
-        handler.suunto_workouts._process_single_workout.assert_called_once()
-        passed = handler.suunto_workouts._process_single_workout.call_args.args[2]
+        handler.suunto_workouts.process_push_activity.assert_called_once()
+        passed = handler.suunto_workouts.process_push_activity.call_args.args[2]
         assert passed == live_workout_payload
         assert result == {"status": "saved", "workout_key": WORKOUT_KEY, "saved_count": 1}
 
@@ -173,8 +173,8 @@ class TestProcessWorkoutPayloadShapes:
 
         result = handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
 
-        assert handler.suunto_workouts._process_single_workout.call_count == 2
-        processed = [c.args[2] for c in handler.suunto_workouts._process_single_workout.call_args_list]
+        assert handler.suunto_workouts.process_push_activity.call_count == 2
+        processed = [c.args[2] for c in handler.suunto_workouts.process_push_activity.call_args_list]
         assert processed == [live_workout_payload, second_workout]
         assert result == {"status": "saved", "workout_key": WORKOUT_KEY, "saved_count": 2}
 
@@ -184,7 +184,7 @@ class TestProcessWorkoutPayloadShapes:
 
         assert result == {"status": "error", "error": "Missing workoutKey in WORKOUT_CREATED payload"}
         handler.suunto_workouts.get_workout_detail.assert_not_called()
-        handler.suunto_workouts._process_single_workout.assert_not_called()
+        handler.suunto_workouts.process_push_activity.assert_not_called()
 
     def test_duplicate_workout_returns_ignored_status(
         self,
@@ -195,7 +195,7 @@ class TestProcessWorkoutPayloadShapes:
         """IntegrityError on save is caught, rolled back, and returned as an `ignored` status."""
         db = MagicMock()
         handler.suunto_workouts.get_workout_detail.return_value = live_response
-        handler.suunto_workouts._process_single_workout.side_effect = IntegrityError(
+        handler.suunto_workouts.process_push_activity.side_effect = IntegrityError(
             statement="INSERT INTO event_record ...",
             params={},
             orig=Exception("duplicate key value violates unique constraint ix_event_record_source_time"),
