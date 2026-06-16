@@ -130,6 +130,7 @@ services:
   redis:
     container_name: redis__open-wearables
     image: redis:8
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
