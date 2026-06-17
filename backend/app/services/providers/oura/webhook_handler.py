@@ -314,7 +314,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 data_type=data_type,
                 event_type=notification.event_type,
             )
-            return None
+            return 0
 
         if data_type == "workout":
             return self.workouts.save_by_id(db, user_id, object_id)
