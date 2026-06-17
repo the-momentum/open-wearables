@@ -9,6 +9,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.models import EventRecord, SleepDetails
+from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -577,6 +579,120 @@ class TestGarmin247Data:
         assert record.category == "sleep"
         assert record.type == "sleep_session"
         assert detail.sleep_deep_minutes == 120  # 7200 / 60
+
+    def test_build_sleep_detail_orm_object(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
+        """Sleep detail with heart rate present must build a SleepDetails ORM object (issue #1135)."""
+        user_id = uuid4()
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
+        assert normalized.get("min_heart_rate_bpm") is not None  # fixture carries HR
+
+        result = garmin_247._build_sleep_record(user_id, normalized)
+        assert result is not None
+        _, detail = result
+
+        repo = EventRecordDetailRepository.__new__(EventRecordDetailRepository)
+        orm_detail = repo._build_detail(detail, "sleep")
+        assert isinstance(orm_detail, SleepDetails)
+        assert orm_detail.heart_rate_min == 48
+        assert orm_detail.heart_rate_avg == Decimal("58")
+
+    def test_save_sleep_data_persists_heart_rate(
+        self,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """Sleep session with heart rate saves and persists the HR aggregates (issue #1135)."""
+        user = UserFactory()
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user.id)
+
+        garmin_247.save_sleep_data(db, user.id, normalized)
+
+        saved = (
+            db.query(SleepDetails)
+            .join(EventRecord, EventRecord.id == SleepDetails.record_id)
+            .filter(EventRecord.category == "sleep")
+            .all()
+        )
+        assert len(saved) == 1
+        assert saved[0].heart_rate_min == 48
+        assert saved[0].heart_rate_avg == Decimal("58.00")
+
+    def test_save_sleep_data_zero_heart_rate_not_stored(
+        self,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """0 bpm is not a valid reading; both HR fields stay NULL."""
+        user = UserFactory()
+        sample_sleep["averageHeartRate"] = 0
+        sample_sleep["lowestHeartRate"] = 0
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user.id)
+
+        garmin_247.save_sleep_data(db, user.id, normalized)
+
+        saved = db.query(SleepDetails).all()
+        assert len(saved) == 1
+        assert saved[0].heart_rate_min is None
+        assert saved[0].heart_rate_avg is None
+
+    def test_merge_adjacent_sleep_preserves_heart_rate(
+        self,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """Merging adjacent sessions keeps min-of-mins and a time-weighted average."""
+        user = UserFactory()
+
+        first = {**sample_sleep, "averageHeartRate": 70, "lowestHeartRate": 60}
+        normalized_first, _ = garmin_247.normalize_sleep(first, user.id)
+        garmin_247.save_sleep_data(db, user.id, normalized_first)
+
+        # second session starts 30 minutes after the first ends, same duration
+        second = {
+            **sample_sleep,
+            "summaryId": "sleep_456",
+            "startTimeInSeconds": sample_sleep["startTimeInSeconds"] + sample_sleep["durationInSeconds"] + 1800,
+            "averageHeartRate": 50,
+            "lowestHeartRate": 44,
+        }
+        normalized_second, _ = garmin_247.normalize_sleep(second, user.id)
+        garmin_247.save_sleep_data(db, user.id, normalized_second)
+
+        saved = db.query(SleepDetails).all()
+        assert len(saved) == 1
+        assert saved[0].heart_rate_min == 44
+        # equal in-bed durations: weighted average of 70 and 50
+        assert saved[0].heart_rate_avg == Decimal("60.00")
+
+    def test_merge_adjacent_sleep_keeps_heart_rate_from_first_session(
+        self,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """A later HR-less fragment must not erase the persisted heart rate."""
+        user = UserFactory()
+
+        normalized_first, _ = garmin_247.normalize_sleep(sample_sleep, user.id)
+        garmin_247.save_sleep_data(db, user.id, normalized_first)
+
+        second = {
+            **sample_sleep,
+            "summaryId": "sleep_456",
+            "startTimeInSeconds": sample_sleep["startTimeInSeconds"] + sample_sleep["durationInSeconds"] + 1800,
+        }
+        del second["averageHeartRate"]
+        del second["lowestHeartRate"]
+        normalized_second, _ = garmin_247.normalize_sleep(second, user.id)
+        garmin_247.save_sleep_data(db, user.id, normalized_second)
+
+        saved = db.query(SleepDetails).all()
+        assert len(saved) == 1
+        assert saved[0].heart_rate_min == 48
+        assert saved[0].heart_rate_avg == Decimal("58.00")
 
     def test_build_activity_record(self, garmin_247: Garmin247Data) -> None:
         """Test _build_activity_record returns record + detail without DB call."""

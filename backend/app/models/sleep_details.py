@@ -32,5 +32,8 @@ class SleepDetails(EventRecordDetail):
     sleep_light_minutes: Mapped[int | None]
     sleep_awake_minutes: Mapped[int | None]
 
+    heart_rate_min: Mapped[int | None]
+    heart_rate_avg: Mapped[numeric_5_2 | None]
+
     is_nap: Mapped[bool | None]
     sleep_stages: Mapped[json_binary | None]
