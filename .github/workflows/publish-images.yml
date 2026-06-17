@@ -57,6 +57,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Baked into the backend image as the Sentry release. The frontend
+          # Dockerfile doesn't declare this ARG and simply ignores it.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           # No API URL is baked in: the frontend reads it at runtime from the
           # container's VITE_API_URL env var. See frontend/src/lib/api/runtime-config.ts.
           cache-from: type=gha,scope=${{ matrix.name }}
