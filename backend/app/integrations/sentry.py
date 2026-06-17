@@ -22,7 +22,7 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
         return None
 
     logentry = event.get("logentry") or {}
-    message = logentry.get("formatted") or logentry.get("message") or event.get("message") or ""
+    message = str(logentry.get("formatted") or logentry.get("message") or event.get("message") or "")
     if _is_connection_noise(message):
         return None
 
