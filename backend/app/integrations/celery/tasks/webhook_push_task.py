@@ -212,6 +212,7 @@ def process_webhook_push(
                 "Webhook push task skipped — upstream non-retriable response",
                 provider=provider_name,
                 trace_id=request_trace_id,
+                provider_user_id=extract_payload_user_id(provider_name, payload),
                 upstream_status=exc.status_code,
                 error=str(exc.detail),
             )
@@ -226,6 +227,7 @@ def process_webhook_push(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
+            provider_user_id=extract_payload_user_id(provider_name, payload),
             upstream_status=exc.status_code,
             error=str(exc.detail),
             attempt=self.request.retries,

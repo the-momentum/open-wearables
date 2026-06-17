@@ -361,4 +361,15 @@ class OuraWebhookHandler(BaseWebhookHandler):
             case "vo2_max":
                 return self.data_247.save_vo2_data(db, user_id, docs, log_ctx)
             case _:
+                log_structured(
+                    logger,
+                    "warning",
+                    "Unhandled Oura data type",
+                    provider="oura",
+                    trace_id=trace_id,
+                    user_id=str(user_id),
+                    provider_user_id=notification.user_id,
+                    data_type=data_type,
+                    event_type=notification.event_type,
+                )
                 return None
