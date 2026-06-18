@@ -1,0 +1,44 @@
+# Fly.io config for the Svix webhook server (internal-only).
+#
+# Uses the public svix/svix-server image — no build. Reachable from the backend
+# at  http://open-wearables-svix.flycast:8071  (Fly private network).
+#
+# First time:
+#   fly apps create open-wearables-svix
+#   fly deploy --config deploy/fly/svix.toml --image svix/svix-server:v1
+#
+# Required secrets (see DEPLOY-FLY.md):
+#   SVIX_JWT_SECRET, SVIX_DB_DSN, SVIX_REDIS_DSN
+app = "open-wearables-svix"
+primary_region = "iad"
+
+[build]
+  image = "svix/svix-server:v1"
+
+[env]
+  SVIX_QUEUE_TYPE = "redis"
+  SVIX_CACHE_TYPE = "redis"
+  # Must bind all interfaces or fly-proxy can't reach it (default is localhost).
+  SVIX_LISTEN_ADDRESS = "0.0.0.0:8071"
+  # Fly's experimental.cmd replaces the image command outright (the entrypoint
+  # is not prepended), so the binary name must be included explicitly.
+
+[experimental]
+  cmd = ["svix-server", "--run-migrations"]
+
+# Internal-only: expose over the private network (.flycast), no public IP.
+[[services]]
+  internal_port = 8071
+  protocol = "tcp"
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Without an explicit port, fly-proxy exposes nothing on the flycast IP.
+  [[services.ports]]
+    port = 8071
+    handlers = []
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

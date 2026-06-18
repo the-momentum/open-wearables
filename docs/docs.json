@@ -137,6 +137,7 @@
             "group": "Deployment",
             "pages": [
               "deployment/docker-images",
+              "deployment/fly",
               "deployment/railway"
             ]
           },

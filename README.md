@@ -16,6 +16,14 @@
 
 **Documentation**: https://openwearables.io/docs
 
+## Production Deployment
+
+Open Wearables can be self-hosted with Docker images, Railway, or Fly.io:
+
+- **Docker images**: [docs/deployment/docker-images.mdx](docs/deployment/docker-images.mdx)
+- **Railway**: [docs/deployment/railway.mdx](docs/deployment/railway.mdx)
+- **Fly.io**: [DEPLOY-FLY.md](DEPLOY-FLY.md)
+
 ---
 
 Open-source platform that unifies wearable device data from multiple providers and enables AI-powered health insights through natural language automations. Build health applications faster with a single API, embeddable widgets, and intelligent webhook notifications.

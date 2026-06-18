@@ -1,0 +1,23 @@
+# Minimal internal Redis for Open Wearables (OAuth state + Celery broker).
+#
+# Private-network only: NO public services / IPs. The backend reaches it over
+# Fly 6PN private DNS at  open-wearables-redis.internal:6379  (plain redis://,
+# no TLS, no auth — matches the app's redis_url builder which emits redis://).
+#
+# First time:
+#   fly apps create open-wearables-redis
+#   fly deploy --config deploy/fly/redis.toml --image redis:8-alpine
+app = "open-wearables-redis"
+primary_region = "iad"
+
+[build]
+  image = "redis:8-alpine"
+
+# Bind all interfaces (incl. Fly's private IPv6) and disable protected mode so
+# the backend machine can connect without a password.
+[experimental]
+  cmd = ["redis-server", "--protected-mode", "no", "--bind", "0.0.0.0", "::"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

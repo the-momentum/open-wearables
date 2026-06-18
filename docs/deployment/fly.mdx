@@ -1,0 +1,162 @@
+---
+title: "Deploy to Fly.io"
+description: "Deploy Open Wearables to Fly.io with FastAPI, Celery, Redis, Svix, Flower, and the React frontend."
+---
+
+## Overview
+
+Fly.io runs each Open Wearables service as a Fly app or process group. The repo
+includes Fly configs and a Bun deploy helper:
+
+| Service           | Fly resource              | Config                   |
+| ----------------- | ------------------------- | ------------------------ |
+| API, worker, beat | `open-wearables-api`      | `backend/fly.toml`       |
+| Frontend          | `open-wearables-frontend` | `frontend/fly.toml`      |
+| Redis             | `open-wearables-redis`    | `deploy/fly/redis.toml`  |
+| Svix              | `open-wearables-svix`     | `deploy/fly/svix.toml`   |
+| Flower            | `open-wearables-flower`   | `deploy/fly/flower.toml` |
+
+## Prerequisites
+
+```bash
+fly auth login
+bun --version
+```
+
+Optional deployment overrides:
+
+```bash
+export FLY_APP_PREFIX=my-wearables
+export FLY_REGION=iad
+export FLY_ORG=my-fly-org
+export FLY_API_URL=https://api.example.com
+export FLY_FRONTEND_URL=https://app.example.com
+```
+
+## Deployment steps
+
+<Steps>
+  <Step title="Create Postgres">
+    Create a Fly Managed Postgres cluster and save the generated connection
+    values:
+
+    ```bash
+    fly mpg create --name open-wearables-db --region iad
+    ```
+
+    The backend expects `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and
+    `DB_PASSWORD`.
+
+  </Step>
+
+  <Step title="Deploy internal Redis">
+    ```bash
+    bun run deploy redis
+    ```
+
+    The default backend Redis host is `open-wearables-redis.internal`.
+
+  </Step>
+
+  <Step title="Set backend secrets">
+    ```bash
+    fly secrets set -a open-wearables-api \
+      DB_HOST=<postgres-host> DB_PORT=5432 DB_NAME=open-wearables \
+      DB_USER=<postgres-user> DB_PASSWORD=<postgres-password> \
+      SECRET_KEY="$(openssl rand -hex 32)" \
+      ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD="$(openssl rand -hex 16)" \
+      SVIX_JWT_SECRET="$(openssl rand -hex 32)"
+    ```
+
+    Add provider credentials from `backend/config/.env.example` for each
+    provider you enable.
+
+  </Step>
+
+  <Step title="Deploy Svix">
+    ```bash
+    fly apps create open-wearables-svix
+    fly secrets set -a open-wearables-svix \
+      SVIX_JWT_SECRET=<same-as-backend> \
+      SVIX_DB_DSN="postgresql://<postgres-user>:<postgres-password>@<postgres-host>:5432/svix" \
+      SVIX_REDIS_DSN="redis://open-wearables-redis.internal:6379/1"
+    bun run deploy svix
+    ```
+  </Step>
+
+  <Step title="Deploy the API">
+    ```bash
+    bun run deploy api
+    ```
+
+    The helper passes `API_BASE_URL`, `REDIS_HOST`, `SVIX_SERVER_URL`, and
+    `CORS_ORIGINS` as non-secret runtime environment values.
+
+  </Step>
+
+  <Step title="Deploy Flower">
+    ```bash
+    fly secrets set -a open-wearables-flower \
+      DB_HOST=<postgres-host> DB_PORT=5432 DB_NAME=open-wearables \
+      DB_USER=<postgres-user> DB_PASSWORD=<postgres-password> \
+      SECRET_KEY=<same-as-backend>
+    bun run deploy flower
+    ```
+
+    If `FLOWER_BASIC_AUTH` is missing, the deploy helper generates an
+    `admin:<password>` value and prints it once.
+
+  </Step>
+
+  <Step title="Deploy the frontend">
+    ```bash
+    bun run deploy frontend
+    ```
+
+    The frontend reads `VITE_API_URL` at runtime from the Nitro server
+    environment. Set `FLY_API_URL` before deploying to point it at a custom API
+    domain.
+
+  </Step>
+</Steps>
+
+## Deploy everything
+
+After Postgres and secrets are ready:
+
+```bash
+bun run deploy all
+```
+
+To deploy Svix before the API, run:
+
+```bash
+bun run deploy redis svix api flower frontend
+```
+
+## Environment variable reference
+
+| Variable           | Purpose                                                        | Default                                   |
+| ------------------ | -------------------------------------------------------------- | ----------------------------------------- |
+| `FLY_APP_PREFIX`   | Prefix for generated app names                                 | `open-wearables`                          |
+| `FLY_REGION`       | Fly primary region                                             | `iad`                                     |
+| `FLY_ORG`          | Fly organization for app creation                              | flyctl default                            |
+| `FLY_API_URL`      | Public API URL used for OAuth redirects and frontend API calls | `https://open-wearables-api.fly.dev`      |
+| `FLY_FRONTEND_URL` | Public frontend URL used for CORS                              | `https://open-wearables-frontend.fly.dev` |
+| `FLY_CORS_ORIGINS` | Override CORS origins passed to the API                        | `FLY_FRONTEND_URL`                        |
+
+<Note>
+  Do not commit `.env` files. `backend/config/.env` is excluded from Docker
+  builds so private secrets are supplied by `fly secrets set` at runtime.
+</Note>
+
+## Related guides
+
+<CardGroup cols={2}>
+  <Card title="Docker Images" icon="docker" href="/deployment/docker-images">
+    Run Open Wearables from prebuilt backend and frontend images.
+  </Card>
+  <Card title="Railway" icon="train" href="/deployment/railway">
+    Deploy Open Wearables on Railway with a managed template.
+  </Card>
+</CardGroup>
