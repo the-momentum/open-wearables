@@ -3,6 +3,7 @@
 from logging import Logger
 
 import sentry_sdk
+from fastapi import HTTPException
 
 
 def log_and_capture_error(
@@ -38,6 +39,12 @@ def log_and_capture_error(
             )
             # Continue processing other items
     """
+    # HTTPExceptions are explicit handled error responses returned by endpoints,
+    # they shouldnt be logged to sentry, just logger
+    if isinstance(exception, HTTPException):
+        logger.warning(message, exc_info=True)
+        return
+
     # Log with standard logger
     log_func = getattr(logger, level, logger.error)
     log_func(message, exc_info=True)
