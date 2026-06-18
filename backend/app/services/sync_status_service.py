@@ -501,3 +501,41 @@ def cancelled(
         metadata=metadata,
         ended_at=datetime.now(timezone.utc),
     )
+
+
+def webhook_delivered(
+    user_id: str | UUID,
+    provider: str,
+    *,
+    status: SyncStatus,
+    items_processed: int | None = None,
+    message: str | None = None,
+    error: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> SyncStatusEvent:
+    """Record a single webhook delivery as a self-contained sync run.
+
+    Webhook processing is a one-shot operation (no separate started/progress
+    events), so this emits a single terminal event carrying both
+    ``started_at`` and ``ended_at`` set to now. ``source`` is always
+    :data:`SyncSource.WEBHOOK`.
+
+    ``status`` should be SUCCESS/PARTIAL when data was saved, FAILED on error,
+    or SKIPPED for delivered-but-no-op events (ignored / duplicate).
+    """
+    now = datetime.now(timezone.utc)
+    stage = SyncStage.FAILED if status == SyncStatus.FAILED else SyncStage.COMPLETED
+    return emit_event(
+        user_id=user_id,
+        provider=provider,
+        source=SyncSource.WEBHOOK,
+        stage=stage,
+        status=status,
+        run_id=new_run_id("wh"),
+        message=message,
+        items_processed=items_processed,
+        error=error,
+        metadata=metadata,
+        started_at=now,
+        ended_at=now,
+    )

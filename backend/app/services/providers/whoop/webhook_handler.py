@@ -205,20 +205,23 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         self.connection_repo.update_last_synced_at(db, connection)
 
         if notification.type.is_delete_type:
-            return self._handle_deleted(db, notification.type, user_id, resource_id)
-        if notification.type.is_update_type:
-            return self._handle_updated(db, notification.type, user_id, resource_id)
+            result = self._handle_deleted(db, notification.type, user_id, resource_id)
+        elif notification.type.is_update_type:
+            result = self._handle_updated(db, notification.type, user_id, resource_id)
+        else:
+            log_structured(
+                logger,
+                "info",
+                "Unhandled Whoop webhook event type",
+                provider="whoop",
+                trace_id=trace_id,
+                event_type=notification.type,
+                user_id=str(user_id),
+            )
+            result = {"status": "ignored", "reason": f"unhandled_event_type: {notification.type}"}
 
-        log_structured(
-            logger,
-            "info",
-            "Unhandled Whoop webhook event type",
-            provider="whoop",
-            trace_id=trace_id,
-            event_type=notification.type,
-            user_id=str(user_id),
-        )
-        return {"status": "ignored", "reason": f"unhandled_event_type: {notification.type}"}
+        result.setdefault("user_id", str(user_id))
+        return result
 
     # ------------------------------------------------------------------
     # Per-event-type handlers
