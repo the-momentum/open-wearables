@@ -246,4 +246,4 @@ class PolarWebhookHandler(BaseWebhookHandler):
                     "user_id": str(user_id),
                 },
             )
-            return {"status": "error", "error": str(exc)}
+            return {"status": "error", "error": str(exc), "user_id": str(user_id)}

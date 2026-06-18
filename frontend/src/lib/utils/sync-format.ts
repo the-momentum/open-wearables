@@ -30,6 +30,7 @@ export const RUN_STATUS_CLASSES: Record<string, string> = {
     'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   failed: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   cancelled: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300',
+  skipped: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800/40 dark:text-zinc-400',
   in_progress:
     'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
 };

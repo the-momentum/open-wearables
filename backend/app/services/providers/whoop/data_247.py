@@ -634,11 +634,12 @@ class Whoop247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
+        counts: int = 0
         if samples_to_create:
-            timeseries_service.bulk_create_samples(db, samples_to_create)
+            counts = timeseries_service.bulk_create_samples(db, samples_to_create)
             db.commit()
 
-        return len(samples_to_create)
+        return counts
 
     # -------------------------------------------------------------------------
     # Recovery Data
@@ -850,11 +851,12 @@ class Whoop247Data(Base247DataTemplate):
                         user_id=str(user_id),
                     )
 
+        counts: int = 0
         if samples_to_create:
-            timeseries_service.bulk_create_samples(db, samples_to_create)
+            counts = timeseries_service.bulk_create_samples(db, samples_to_create)
             db.commit()
 
-        return len(samples_to_create)
+        return counts
 
     def get_recovery_record(
         self,

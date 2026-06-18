@@ -557,12 +557,13 @@ class Garmin247Data(Base247DataTemplate):
         """
         daily_data, health_scores = normalized_daily
         samples = self._build_dailies_samples(user_id, daily_data)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
             db.commit()
-        return len(samples)
+        return counts
 
     def _collect_heart_rate_samples(
         self,
@@ -740,9 +741,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_epochs_samples(user_id, normalized_epochs)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Body Composition - /wellness-api/rest/bodyComps
@@ -822,6 +824,22 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
+        # Skeletal muscle mass (convert grams to kg)
+        muscle_mass_grams = raw_body_comp.get("muscleMassInGrams")
+        if muscle_mass_grams:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(muscle_mass_grams)) / 1000,  # Convert to kg
+                    series_type=SeriesType.skeletal_muscle_mass,
+                    external_id=summary_id,
+                )
+            )
+
         return samples
 
     def save_body_composition(
@@ -835,9 +853,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_body_comp_samples(user_id, raw_body_comp)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # HRV (Heart Rate Variability) - /wellness-api/rest/hrv
@@ -918,9 +937,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_hrv_samples(user_id, raw_hrv)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Activity Data - /wellness-api/rest/activities
@@ -1150,12 +1170,13 @@ class Garmin247Data(Base247DataTemplate):
         """Save individual stress/body battery timeseries
         and peak body battery health score from a stressDetails record."""
         samples = self._build_stress_samples(user_id, raw_stress)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
         if score := self._normalize_body_battery_health_score(user_id, raw_stress):
             health_score_service.bulk_create(db, [score])
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Respiration Data - /wellness-api/rest/respiration
@@ -1229,9 +1250,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_respiration_samples(user_id, raw_respiration)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Pulse Ox Data - /wellness-api/rest/pulseOx
@@ -1305,9 +1327,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_pulse_ox_samples(user_id, raw_pulse_ox)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Blood Pressure - /wellness-api/rest/bloodPressures
@@ -1320,12 +1343,15 @@ class Garmin247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         """Build time series samples from blood pressure data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
-        measurement_ts = raw_bp.get("measurementTimestampGMT", 0)
+        # Garmin's bloodPressures webhook carries the timestamp as
+        # measurementTimeInSeconds (same as bodyComps). Fall back to the
+        # legacy field names for safety.
+        measurement_ts = (
+            raw_bp.get("measurementTimeInSeconds")
+            or raw_bp.get("measurementTimestampGMT")
+            or raw_bp.get("startTimeInSeconds", 0)
+        )
         summary_id = raw_bp.get("summaryId")
-
-        # Try alternative timestamp field
-        if not measurement_ts:
-            measurement_ts = raw_bp.get("startTimeInSeconds", 0)
 
         if not measurement_ts:
             return samples
@@ -1381,9 +1407,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_blood_pressure_samples(user_id, raw_bp)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # User Metrics - /wellness-api/rest/userMetrics
@@ -1450,9 +1477,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_user_metrics_samples(user_id, raw_metrics)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Skin Temperature - /wellness-api/rest/skinTemp
@@ -1502,9 +1530,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_skin_temp_samples(user_id, raw_skin_temp)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Health Snapshot - /wellness-api/rest/healthSnapshot
@@ -1633,9 +1662,10 @@ class Garmin247Data(Base247DataTemplate):
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_health_snapshot_samples(user_id, raw_snapshot)
+        counts: int = 0
         if samples:
-            self.data_point_repo.bulk_create(db, samples)
-        return len(samples)
+            counts = self.data_point_repo.bulk_create(db, samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Move IQ - /wellness-api/rest/moveiq
@@ -2004,8 +2034,7 @@ class Garmin247Data(Base247DataTemplate):
 
         # Single bulk insert for DataPointSeries
         if all_samples:
-            self.data_point_repo.bulk_create(db, all_samples)
-            count += len(all_samples)
+            count += self.data_point_repo.bulk_create(db, all_samples)
 
         # Single bulk insert for EventRecords
         if all_records:

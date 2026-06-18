@@ -14,6 +14,7 @@ from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -280,13 +281,14 @@ class Oura247Data(Base247DataTemplate):
                         user_id=str(user_id),
                     )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
         if samples or health_scores:
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Cardiovascular age - /v2/usercollection/daily_cardiovascular_age
@@ -360,10 +362,11 @@ class Oura247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Readiness Data
@@ -506,13 +509,14 @@ class Oura247Data(Base247DataTemplate):
                             user_id=str(user_id),
                         )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
         if samples or health_scores:
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Sleep Data
@@ -939,10 +943,11 @@ class Oura247Data(Base247DataTemplate):
                         user_id=str(user_id),
                     )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Heart Rate Data
@@ -1009,10 +1014,11 @@ class Oura247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Personal Info Data (age, height, weight, etc.) - /v2/usercollection/personal_info
@@ -1100,10 +1106,11 @@ class Oura247Data(Base247DataTemplate):
                     )
                 )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Daily Vo2 Data
@@ -1159,10 +1166,11 @@ class Oura247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
+        counts = WriteCounts(0, 0)
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
             db.commit()
-        return len(samples)
+        return counts
 
     # -------------------------------------------------------------------------
     # Combined Load
