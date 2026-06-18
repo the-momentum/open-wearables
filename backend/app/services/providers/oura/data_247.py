@@ -34,6 +34,12 @@ from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInf
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.oura.coverage import (
+    ACTIVITY_SERIES,
+    PERSONAL_INFO_SERIES,
+    READINESS_SERIES,
+    SLEEP_INTERVAL_SERIES,
+)
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
@@ -249,14 +255,8 @@ class Oura247Data(Base247DataTemplate):
     ) -> int:
         """Save daily activity data as DataPointSeries and health scores."""
         activity_samples, health_scores = normalized
-        type_map = {
-            "steps": SeriesType.steps,
-            "energy": SeriesType.energy,
-            "distance": SeriesType.distance_walking_running,
-        }
-
         samples: list[TimeSeriesSampleCreate] = []
-        for key, series_type in type_map.items():
+        for key, series_type in ACTIVITY_SERIES.items():
             for item in activity_samples.get(key, []):
                 try:
                     samples.append(
@@ -474,10 +474,7 @@ class Oura247Data(Base247DataTemplate):
         """Save normalized readiness data as DataPointSeries and health scores."""
         recovery_metrics, health_scores = normalized
 
-        metrics = [
-            ("temperature_deviation", SeriesType.skin_temperature_deviation),
-            ("temperature_trend_deviation", SeriesType.skin_temperature_trend_deviation),
-        ]
+        metrics = list(READINESS_SERIES.items())
 
         samples: list[TimeSeriesSampleCreate] = []
         for normalized_readiness in recovery_metrics:
@@ -720,8 +717,8 @@ class Oura247Data(Base247DataTemplate):
             hrv: OuraIntervalData | None = normalized_sleep.get("hrv")
 
             for interval_data, series_type, action in (
-                (hr, SeriesType.heart_rate, "oura_sleep_hr_save_error"),
-                (hrv, SeriesType.heart_rate_variability_rmssd, "oura_hrv_save_error"),
+                (hr, SLEEP_INTERVAL_SERIES["heart_rate"], "oura_sleep_hr_save_error"),
+                (hrv, SLEEP_INTERVAL_SERIES["hrv"], "oura_hrv_save_error"),
             ):
                 if not (interval_data and interval_data.timestamp and interval_data.interval and interval_data.items):
                     continue
@@ -1071,14 +1068,14 @@ class Oura247Data(Base247DataTemplate):
 
         now = datetime.now(timezone.utc)
         latest = timeseries_service.crud.get_latest_values_for_types(
-            db, user_id, before_date=now, series_types=[SeriesType.weight, SeriesType.height]
+            db, user_id, before_date=now, series_types=list(PERSONAL_INFO_SERIES.values())
         )
 
         samples: list[TimeSeriesSampleCreate] = []
 
         if (weight := normalized.get("weight")) is not None:
             new_weight = Decimal(str(weight))
-            latest_weight = latest.get(SeriesType.weight)
+            latest_weight = latest.get(PERSONAL_INFO_SERIES["weight"])
             if latest_weight is None or abs(Decimal(str(latest_weight[0])) - new_weight) > Decimal("0.01"):
                 samples.append(
                     TimeSeriesSampleCreate(
@@ -1087,13 +1084,13 @@ class Oura247Data(Base247DataTemplate):
                         source=self.provider_name,
                         recorded_at=now,
                         value=new_weight,
-                        series_type=SeriesType.weight,
+                        series_type=PERSONAL_INFO_SERIES["weight"],
                     )
                 )
 
         if (height := normalized.get("height")) is not None:
             new_height = Decimal(str(round(height * 100, 2)))  # meters → cm
-            latest_height = latest.get(SeriesType.height)
+            latest_height = latest.get(PERSONAL_INFO_SERIES["height"])
             if latest_height is None or abs(Decimal(str(latest_height[0])) - new_height) > Decimal("0.01"):
                 samples.append(
                     TimeSeriesSampleCreate(
@@ -1102,7 +1099,7 @@ class Oura247Data(Base247DataTemplate):
                         source=self.provider_name,
                         recorded_at=now,
                         value=new_height,
-                        series_type=SeriesType.height,
+                        series_type=PERSONAL_INFO_SERIES["height"],
                     )
                 )
 

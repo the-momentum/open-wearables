@@ -1,5 +1,5 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
-from app.services.providers.fitbit.coverage import WORKOUT_FIELDS
+from app.services.providers.fitbit.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.fitbit.oauth import FitbitOAuth
 from app.services.providers.fitbit.workouts import FitbitWorkouts
 
@@ -36,7 +36,12 @@ class FitbitStrategy(BaseProviderStrategy):
 
     @property
     def coverage(self) -> ProviderCoverage:
-        return ProviderCoverage(workout_fields=WORKOUT_FIELDS)
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
 
     @property
     def capabilities(self) -> ProviderCapabilities:

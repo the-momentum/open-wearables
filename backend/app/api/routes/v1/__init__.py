@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
-from .meta import router as meta_router
 from .applications import router as applications_router
 from .archival import router as archival_router
 from .auth import router as auth_router
@@ -14,6 +13,7 @@ from .events import router as events_router
 from .health_scores import router as health_scores_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
+from .meta import router as meta_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
 from .outgoing_webhooks import router as outgoing_webhooks_router

@@ -1,5 +1,5 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
-from app.services.providers.strava.coverage import WORKOUT_FIELDS
+from app.services.providers.strava.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.webhook_handler import StravaWebhookHandler
 from app.services.providers.strava.webhook_service import strava_webhook_service
@@ -58,7 +58,12 @@ class StravaStrategy(BaseProviderStrategy):
 
     @property
     def coverage(self) -> ProviderCoverage:
-        return ProviderCoverage(workout_fields=WORKOUT_FIELDS)
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
 
     @property
     def capabilities(self) -> ProviderCapabilities:

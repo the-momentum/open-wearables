@@ -56,15 +56,9 @@ def _build_coverage() -> CoverageResponse:
     for st, prov_list in sorted(series_to_providers.items(), key=lambda x: x[0].value):
         cat = SERIES_TYPE_CATEGORY_BY_ENUM.get(st, "Other")
         unit = SERIES_TYPE_UNIT_BY_ENUM.get(st, "")
-        categories.setdefault(cat, []).append(
-            TimeseriesMetric(code=st.value, unit=unit, providers=sorted(prov_list))
-        )
+        categories.setdefault(cat, []).append(TimeseriesMetric(code=st.value, unit=unit, providers=sorted(prov_list)))
 
-    timeseries = [
-        TimeseriesCategory(name=cat, metrics=categories[cat])
-        for cat in _CATEGORY_ORDER
-        if cat in categories
-    ]
+    timeseries = [TimeseriesCategory(name=cat, metrics=categories[cat]) for cat in _CATEGORY_ORDER if cat in categories]
 
     # --- Workout fields ---
     workout_to_providers: dict[str, list[str]] = {}
@@ -73,8 +67,7 @@ def _build_coverage() -> CoverageResponse:
             workout_to_providers.setdefault(f, []).append(provider)
 
     workout_fields = [
-        WorkoutField(code=f, providers=sorted(prov_list))
-        for f, prov_list in sorted(workout_to_providers.items())
+        WorkoutField(code=f, providers=sorted(prov_list)) for f, prov_list in sorted(workout_to_providers.items())
     ]
 
     # --- Sleep fields ---
@@ -84,8 +77,7 @@ def _build_coverage() -> CoverageResponse:
             sleep_to_providers.setdefault(f, []).append(provider)
 
     sleep_fields = [
-        SleepField(code=f, providers=sorted(prov_list))
-        for f, prov_list in sorted(sleep_to_providers.items())
+        SleepField(code=f, providers=sorted(prov_list)) for f, prov_list in sorted(sleep_to_providers.items())
     ]
 
     # --- Health scores ---
@@ -95,8 +87,7 @@ def _build_coverage() -> CoverageResponse:
             score_to_providers.setdefault(score.value, []).append(provider)
 
     health_scores = [
-        HealthScore(code=score, providers=sorted(prov_list))
-        for score, prov_list in sorted(score_to_providers.items())
+        HealthScore(code=score, providers=sorted(prov_list)) for score, prov_list in sorted(score_to_providers.items())
     ]
 
     return CoverageResponse(

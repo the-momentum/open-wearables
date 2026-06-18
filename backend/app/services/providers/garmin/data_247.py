@@ -31,31 +31,19 @@ from app.services.event_record_service import event_record_service
 from app.services.fit_parser import parse_fit_file
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import download_binary_content, make_authenticated_request
+from app.services.providers.garmin.coverage import ACTIVITY_SAMPLE_SERIES, DAILIES_SERIES, EPOCHS_SERIES
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_fit_file
 from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
-# activityDetails.samples[] field → SeriesType mapping.
-_ACTIVITY_SAMPLE_FIELD_MAP: list[tuple[str, SeriesType]] = [
-    ("heartRate", SeriesType.heart_rate),
-    ("speedMetersPerSecond", SeriesType.speed),
-    ("stepsPerMinute", SeriesType.cadence),
-    ("powerInWatts", SeriesType.power),
-    ("elevationInMeters", SeriesType.elevation),
-    ("latitudeInDegree", SeriesType.latitude),
-    ("longitudeInDegree", SeriesType.longitude),
-    # Note: Garmin API uses "Celcius" (sic) — matches the actual JSON field name
-    ("airTemperatureCelcius", SeriesType.air_temperature),
-]
-
 # Series types to skip when parsing FIT files — already present from activityDetails.
-# Derived from _ACTIVITY_SAMPLE_FIELD_MAP so additions to the map are automatically
+# Derived from ACTIVITY_SAMPLE_SERIES so additions to the map are automatically
 # excluded. air_temperature is excepted: Garmin omits airTemperatureCelcius from
 # activityDetails JSON even on devices with a temperature sensor, so FIT is the
 # only source for it.
-_ACTIVITY_DETAILS_SERIES_TYPES: frozenset[SeriesType] = frozenset(st for _, st in _ACTIVITY_SAMPLE_FIELD_MAP) - {
+_ACTIVITY_DETAILS_SERIES_TYPES: frozenset[SeriesType] = frozenset(st for _, st in ACTIVITY_SAMPLE_SERIES) - {
     SeriesType.air_temperature
 }
 
@@ -515,15 +503,7 @@ class Garmin247Data(Base247DataTemplate):
 
         zone_offset = normalized_daily.get("zone_offset")
 
-        series_mappings: list[tuple[str, SeriesType]] = [
-            ("steps", SeriesType.steps),
-            ("active_calories", SeriesType.energy),
-            ("resting_heart_rate", SeriesType.resting_heart_rate),
-            ("floors_climbed", SeriesType.flights_climbed),
-            ("distance_meters", SeriesType.distance_walking_running),
-        ]
-
-        for field, series_type in series_mappings:
+        for field, series_type in DAILIES_SERIES:
             value = normalized_daily.get(field)
             if value is not None:
                 samples.append(
@@ -695,14 +675,9 @@ class Garmin247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         """Build time series samples from normalized epoch data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
-        type_mapping: dict[str, SeriesType] = {
-            "heart_rate": SeriesType.heart_rate,
-            "steps": SeriesType.steps,
-            "energy": SeriesType.energy,
-        }
 
         for key, epoch_samples in normalized_epochs.items():
-            series_type = type_mapping.get(key)
+            series_type = EPOCHS_SERIES.get(key)
             if not series_type:
                 continue
 
@@ -1032,7 +1007,7 @@ class Garmin247Data(Base247DataTemplate):
             if ts is None:
                 continue
             recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc)
-            for field, series_type in _ACTIVITY_SAMPLE_FIELD_MAP:
+            for field, series_type in ACTIVITY_SAMPLE_SERIES:
                 value = sample.get(field)
                 if value is None:
                     continue

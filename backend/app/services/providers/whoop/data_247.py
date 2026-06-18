@@ -24,6 +24,7 @@ from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.whoop.coverage import RECOVERY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
@@ -818,16 +819,8 @@ class Whoop247Data(Base247DataTemplate):
         if not timestamp:
             return 0
 
-        # Map WHOOP fields to SeriesType
-        metrics = [
-            ("resting_heart_rate", SeriesType.resting_heart_rate),
-            ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
-            ("spo2_percentage", SeriesType.oxygen_saturation),
-            ("skin_temp_celsius", SeriesType.skin_temperature),
-        ]
-
         samples_to_create: list[TimeSeriesSampleCreate] = []
-        for field_name, series_type in metrics:
+        for field_name, series_type in RECOVERY_SERIES.items():
             value = normalized_recovery.get(field_name)
             if value is not None:
                 try:

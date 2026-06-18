@@ -54,6 +54,7 @@ from app.schemas.providers.polar.sleepwise import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.polar.coverage import ACTIVITY_SERIES
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
@@ -344,7 +345,10 @@ class Polar247Data(Base247DataTemplate):
             if not parsed.start_time:
                 continue
             recorded_at = datetime.fromisoformat(parsed.start_time)
-            if parsed.steps is not None:
+            for attr, series_type in ACTIVITY_SERIES.items():
+                value = getattr(parsed, attr)
+                if value is None:
+                    continue
                 samples.append(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
@@ -352,32 +356,8 @@ class Polar247Data(Base247DataTemplate):
                         provider=ProviderName.POLAR,
                         source=ProviderName.POLAR,
                         recorded_at=recorded_at,
-                        value=parsed.steps,
-                        series_type=SeriesType.steps,
-                    )
-                )
-            if parsed.active_calories is not None:
-                samples.append(
-                    TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        provider=ProviderName.POLAR,
-                        source=ProviderName.POLAR,
-                        recorded_at=recorded_at,
-                        value=parsed.active_calories,
-                        series_type=SeriesType.energy,
-                    )
-                )
-            if parsed.distance_from_steps is not None:
-                samples.append(
-                    TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        provider=ProviderName.POLAR,
-                        source=ProviderName.POLAR,
-                        recorded_at=recorded_at,
-                        value=Decimal(str(parsed.distance_from_steps)),
-                        series_type=SeriesType.distance_walking_running,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
                     )
                 )
         return samples

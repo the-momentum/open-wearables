@@ -59,4 +59,6 @@ class OuraStrategy(BaseProviderStrategy):
 
     @property
     def coverage(self) -> ProviderCoverage:
-        return ProviderCoverage(timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS, health_scores=HEALTH_SCORES)
+        return ProviderCoverage(
+            timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS, health_scores=HEALTH_SCORES
+        )

@@ -29,23 +29,12 @@ from app.schemas.model_crud.activities import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.suunto.coverage import ACTIVITY_SERIES, DAILY_STAT_SERIES
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import parse_datetime_or_default, parse_iso_datetime
 from app.utils.structured_logging import log_structured
-
-# ---------------------------------------------------------------------------
-# Series type mappings for activity samples
-# ---------------------------------------------------------------------------
-_ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
-    "heart_rate": SeriesType.heart_rate,
-    "steps": SeriesType.steps,
-    "spo2": SeriesType.oxygen_saturation,
-    "energy": SeriesType.energy,
-    # Suunto provides RMSSD-based HRV, map to the correct series type
-    "hrv": SeriesType.heart_rate_variability_rmssd,
-}
 
 # StressState integer → text qualifier (0=Invalid is treated as missing)
 _STRESS_STATE_QUALIFIER: dict[int, str] = {
@@ -62,12 +51,6 @@ _VALUE_EXTRACTORS: dict[str, str] = {
     "spo2": "percent",
     "energy": "kcal",
     "hrv": "rmssd_ms",
-}
-
-# Daily stats type → SeriesType
-_DAILY_STAT_MAP: dict[str, SeriesType] = {
-    "stepcount": SeriesType.steps,
-    "energyconsumption": SeriesType.energy,
 }
 
 
@@ -538,7 +521,7 @@ class Suunto247Data(Base247DataTemplate):
         all_samples: list[TimeSeriesSampleCreate] = []
 
         for key, samples in normalized_samples.items():
-            series_type = _ACTIVITY_SERIES_MAP.get(key)
+            series_type = ACTIVITY_SERIES.get(key)
             if not series_type:
                 continue
 
@@ -653,7 +636,7 @@ class Suunto247Data(Base247DataTemplate):
         all_samples: list[TimeSeriesSampleCreate] = []
 
         for stat in normalized_stats:
-            series_type = _DAILY_STAT_MAP.get(stat.get("type", ""))
+            series_type = DAILY_STAT_SERIES.get(stat.get("type", ""))
             if not series_type:
                 continue
 

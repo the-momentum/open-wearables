@@ -1,4 +1,4 @@
-from app.services.providers.apple.coverage import SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
+from app.services.providers.apple.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.apple.workouts import AppleWorkouts
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
 
@@ -30,4 +30,9 @@ class AppleStrategy(BaseProviderStrategy):
 
     @property
     def coverage(self) -> ProviderCoverage:
-        return ProviderCoverage(timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS)
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
