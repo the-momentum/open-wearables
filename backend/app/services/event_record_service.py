@@ -124,15 +124,15 @@ class EventRecordService(
         detail_type: str = "workout",
     ) -> EventRecordDetail:
         result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)
+        # event_record_detail_repo.create commits internally, so data is already persisted.
+        # Fire the webhook directly with fresh fetches rather than via after_commit — using
+        # after_commit defers the call to the *next* session commit, at which point SQLAlchemy
+        # has expired the captured ORM objects, causing lazy-load failures inside after_commit.
         record = db_session.get(EventRecord, detail.record_id)
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                _record, _data_source, _detail = record, data_source, detail
-
-                @sa_event.listens_for(db_session, "after_commit", once=True)
-                def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
-                    self._emit_event_record_webhook(_record, _data_source, _detail)
+                self._emit_event_record_webhook(record, data_source, detail)
 
         return result  # ty:ignore[invalid-return-type]
 
