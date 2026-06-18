@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
+from .meta import router as meta_router
 from .applications import router as applications_router
 from .archival import router as archival_router
 from .auth import router as auth_router
@@ -35,6 +36,7 @@ from .webhooks import router as providers_webhooks_router
 v1_router = APIRouter()
 
 # --- External: 3rd party integration endpoints ---
+v1_router.include_router(meta_router, tags=["External: Meta"])
 v1_router.include_router(users_router, tags=["External: Users"])
 v1_router.include_router(connections_router, tags=["External: Connections"])
 v1_router.include_router(summaries_router, tags=["External: Summaries"])

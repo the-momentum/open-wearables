@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.suunto.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.webhook_handler import SuuntoWebhookHandler
@@ -40,6 +41,15 @@ class SuuntoStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return "https://cloudapi.suunto.com"
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
 
     @property
     def capabilities(self) -> ProviderCapabilities:

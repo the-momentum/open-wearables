@@ -179,6 +179,11 @@ export const queryKeys = {
       [...queryKeys.webhooks.detail(id), 'attempts'] as const,
   },
 
+  meta: {
+    all: ['meta'] as const,
+    coverage: () => [...queryKeys.meta.all, 'coverage'] as const,
+  },
+
   syncStatus: {
     all: ['syncStatus'] as const,
     recent: (userId: string, limit?: number) =>

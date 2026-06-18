@@ -119,6 +119,9 @@ export const API_ENDPOINTS = {
     `/api/v1/webhooks/endpoints/${id}/attempts`,
   webhookMessages: '/api/v1/webhooks/messages',
 
+  // Meta endpoints
+  coverage: '/api/v1/meta/coverage',
+
   // Sync status / SSE endpoints
   // ApiKeyDep accepts both API keys and developer JWT tokens, so a single
   // set of endpoints works for both external integrations and the dashboard.
