@@ -5,6 +5,7 @@ import {
   XCircle,
   AlertTriangle,
   Activity,
+  MinusCircle,
   PlayCircle,
 } from 'lucide-react';
 import { useSyncStatusStream } from '@/hooks/api/use-sync-status';
@@ -94,27 +95,31 @@ function TerminalSyncRow({ event }: { event: SyncStatusEvent }) {
   const isSuccess = event.status === 'success';
   const isPartial = event.status === 'partial';
   const isFailed = event.status === 'failed';
-  const isCancelled = event.status === 'cancelled';
+  const isSkipped = event.status === 'skipped';
 
   const Icon = isSuccess
     ? CheckCircle2
     : isPartial
       ? AlertTriangle
-      : isCancelled
-        ? XCircle
+      : isSkipped
+        ? MinusCircle
         : XCircle;
 
   const colorClasses = isSuccess
     ? 'text-emerald-600 dark:text-emerald-400'
     : isPartial
       ? 'text-amber-600 dark:text-amber-400'
-      : 'text-rose-600 dark:text-rose-400';
+      : isSkipped
+        ? 'text-zinc-500 dark:text-zinc-400'
+        : 'text-rose-600 dark:text-rose-400';
 
   const bgClasses = isSuccess
     ? 'border-emerald-200/60 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/30'
     : isPartial
       ? 'border-amber-200/60 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/30'
-      : 'border-rose-200/60 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-950/30';
+      : isSkipped
+        ? 'border-zinc-200/60 bg-zinc-50/60 dark:border-zinc-800/40 dark:bg-zinc-900/30'
+        : 'border-rose-200/60 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-950/30';
 
   const sourceLabel = SOURCE_LABELS[event.source] ?? event.source;
   const statusLabel = isSuccess
@@ -123,7 +128,9 @@ function TerminalSyncRow({ event }: { event: SyncStatusEvent }) {
       ? 'Completed with warnings'
       : isFailed
         ? 'Failed'
-        : 'Cancelled';
+        : isSkipped
+          ? 'Skipped'
+          : 'Cancelled';
 
   return (
     <div
@@ -171,7 +178,8 @@ export function SyncStatusBanner({ userId, className }: SyncStatusBannerProps) {
         evt.status === 'success' ||
         evt.status === 'partial' ||
         evt.status === 'failed' ||
-        evt.status === 'cancelled'
+        evt.status === 'cancelled' ||
+        evt.status === 'skipped'
       ) {
         if (seen.has(evt.run_id)) continue;
         seen.add(evt.run_id);

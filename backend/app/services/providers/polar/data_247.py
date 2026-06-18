@@ -866,9 +866,10 @@ class Polar247Data(Base247DataTemplate):
     # -------------------------------------------------------------------------
 
     def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> int:
+        counts: int = 0
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return len(samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
+        return counts
 
     def _save_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> int:
         if scores:

@@ -10,6 +10,7 @@ from sqlalchemy import event as sa_event
 from app.database import DbSession
 from app.models import DataPointSeries
 from app.repositories import DataPointSeriesRepository
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import (
     SeriesType,
     get_series_type_from_id,
@@ -53,8 +54,8 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
-    ) -> None:
-        self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
+    ) -> WriteCounts:
+        counts = self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
         samples_copy = list(samples)
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
@@ -66,6 +67,8 @@ class TimeSeriesService(
                 args=(samples_copy,),
                 daemon=True,
             ).start()
+
+        return counts
 
     @staticmethod
     def _emit_timeseries_webhooks(

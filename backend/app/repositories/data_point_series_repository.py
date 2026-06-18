@@ -35,6 +35,27 @@ from app.utils.pagination import decode_cursor
 DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
+class WriteCounts(int):
+    """Result of a bulk upsert: total rows written, split into new vs updated.
+
+    Behaves as ``inserted + updated`` so existing int-based callers (sums,
+    ``records_saved`` logging, ``dict[str, int]`` results) keep working
+    unchanged, while callers that care about the difference can read
+    ``.inserted`` (rows that did not exist) and ``.updated`` (rows refreshed
+    in place via ON CONFLICT). Distinguishing the two is what stops a pure
+    upsert-in-place from looking like newly arrived data.
+    """
+
+    inserted: int
+    updated: int
+
+    def __new__(cls, inserted: int, updated: int) -> "WriteCounts":
+        obj = super().__new__(cls, inserted + updated)
+        obj.inserted = inserted
+        obj.updated = updated
+        return obj
+
+
 class DataPointSeriesRepository(
     CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
 ):
@@ -81,24 +102,24 @@ class DataPointSeriesRepository(
         return self.try_commit(db_session, creation)
 
     @handle_exceptions
-    def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> list[DataPointSeries]:
+    def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
         """Bulk create data point samples.
 
         Optimized for performance:
         - Resolves data sources efficiently (batch fetch + batch insert missing)
         - Inserts data points in a single batch
+
+        Returns the number of rows actually written, split into inserted (new)
+        vs updated (refreshed in place via ON CONFLICT).
         """
         if not creators:
-            return []
+            return WriteCounts(0, 0)
 
         # 1. Resolve all data sources in batch
         identity_to_source_id = self._resolve_data_sources(db_session, creators)
 
         # 2. Build and execute data point batch insert
-        self._insert_data_points(db_session, creators, identity_to_source_id)
-
-        # Return empty list (upsert path does not track individual inserts vs updates)
-        return []
+        return self._insert_data_points(db_session, creators, identity_to_source_id)
 
     def _resolve_data_sources(
         self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]
@@ -131,11 +152,16 @@ class DataPointSeriesRepository(
         db_session: DbSession,
         creators: list[TimeSeriesSampleCreate],
         source_map: dict[DataSourceIdentity, UUID],
-    ) -> None:
+    ) -> WriteCounts:
         """Batch insert data points.
 
         Inserts data points in batches to stay within PostgreSQL's parameter limit
         of 65,535 parameters per query. With 6 fields per record, we batch at ~10k records.
+
+        Returns the split of rows actually written (inserted vs updated). The split
+        is derived from ``RETURNING (xmax = 0)`` on the same upsert statement — a
+        freshly inserted row has ``xmax = 0``, an updated (conflicting) row does
+        not — so it costs no extra query or round-trip.
         """
         values_list = []
         for creator in creators:
@@ -167,6 +193,8 @@ class DataPointSeriesRepository(
                 deduped[key] = v
             values_list = list(deduped.values())
 
+            inserted = 0
+            updated = 0
             for i in range(0, len(values_list), self.BATCH_INSERT_CHUNK_SIZE):
                 chunk = values_list[i : i + self.BATCH_INSERT_CHUNK_SIZE]
                 stmt = insert(self.model).values(chunk)
@@ -177,9 +205,18 @@ class DataPointSeriesRepository(
                         "external_id": stmt.excluded.external_id,
                         "zone_offset": stmt.excluded.zone_offset,
                     },
-                )
-                db_session.execute(stmt)
+                    # RETURNING (xmax = 0): true = row freshly inserted, false = hit a
+                    # conflict and was updated in place. Same statement, no extra round-trip.
+                ).returning(literal_column("(xmax = 0)"))
+                for is_insert in db_session.execute(stmt).scalars():
+                    if is_insert:
+                        inserted += 1
+                    else:
+                        updated += 1
             # NOTE: Caller should commit - allows batching multiple operations
+            return WriteCounts(inserted, updated)
+
+        return WriteCounts(0, 0)
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
         try:

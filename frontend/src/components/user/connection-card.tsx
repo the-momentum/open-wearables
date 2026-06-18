@@ -7,6 +7,7 @@ import {
   History,
   Loader2,
   Link2,
+  MinusCircle,
   PlayCircle,
   RefreshCw,
   RotateCcw,
@@ -123,6 +124,7 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
   const isPartial = run.status === 'partial';
   const isFailed = run.status === 'failed';
   const isCancelled = run.status === 'cancelled';
+  const isSkipped = run.status === 'skipped';
 
   const Icon = isSuccess
     ? CheckCircle2
@@ -130,7 +132,9 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
       ? AlertTriangle
       : isFailed || isCancelled
         ? XCircle
-        : PlayCircle;
+        : isSkipped
+          ? MinusCircle
+          : PlayCircle;
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border bg-card/40 p-2.5">
@@ -182,10 +186,16 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
               </>
             )}
           </div>
-          {run.error && (
+          {run.error ? (
             <p className="text-xs text-rose-600 dark:text-rose-400 line-clamp-1">
               {run.error}
             </p>
+          ) : (
+            run.message && (
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                {run.message}
+              </p>
+            )
           )}
         </div>
       </div>

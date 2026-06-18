@@ -49,6 +49,25 @@ def _extract_item_count(result: dict[str, Any]) -> int | None:
     return None
 
 
+def _extract_breakdown(result: dict[str, Any], count: Any) -> dict[str, int] | None:
+    """New-vs-updated split, derived from WriteCounts carried on the count or the saved dict."""
+    inserted = getattr(count, "inserted", None)
+    updated = getattr(count, "updated", None)
+    if inserted is None and updated is None:
+        saved = result.get("saved")
+        if isinstance(saved, dict):
+            members = [v for v in saved.values() if hasattr(v, "inserted")]
+            if members:
+                inserted = sum(v.inserted for v in members)
+                updated = sum(v.updated for v in members)
+    if inserted is None and updated is None:
+        inserted = result.get("records_inserted")
+        updated = result.get("records_updated")
+    if inserted is None and updated is None:
+        return None
+    return {"inserted": inserted or 0, "updated": updated or 0}
+
+
 def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
     """Record a webhook delivery in the sync log (best-effort, never raises).
 
@@ -73,6 +92,8 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
         count = _extract_item_count(result)
         descriptor = result.get("data_type") or result.get("event_type") or ""
 
+        breakdown = _extract_breakdown(result, count)
+
         if status_str == "error":
             sync_status_service.webhook_delivered(
                 user_id,
@@ -82,12 +103,16 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
                 message=f"webhook {descriptor}".strip(),
             )
         elif status_str in _SAVED_STATUSES and (count or 0) > 0:
+            # Prefer the new/updated split so an upsert-in-place reads as
+            # "0 new, 3 updated" rather than looking like freshly arrived data.
+            detail = f"{breakdown['inserted']} new, {breakdown['updated']} updated" if breakdown else descriptor
             sync_status_service.webhook_delivered(
                 user_id,
                 provider_name,
                 status=SyncStatus.SUCCESS,
                 items_processed=count,
-                message=f"webhook {descriptor}".strip(),
+                message=f"webhook {detail}".strip(),
+                metadata=breakdown,
             )
         else:
             # processed-but-no-data, ignored, duplicate, unknown_event_type, …
@@ -98,6 +123,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
                 status=SyncStatus.SKIPPED,
                 items_processed=count,
                 message=f"skipped: {reason}".strip(),
+                metadata=breakdown,
             )
     except Exception as exc:  # pragma: no cover - sync log must never break processing
         logger.debug("Failed to emit webhook sync status: %s", exc, exc_info=True)

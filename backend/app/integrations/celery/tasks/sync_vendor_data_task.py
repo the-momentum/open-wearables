@@ -251,6 +251,12 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
+                    # Running totals for the sync-log: total rows written plus the
+                    # new-vs-updated split (timeseries upserts report it via WriteCounts).
+                    items_written = 0
+                    pull_inserted = 0
+                    pull_updated = 0
+
                     # Resolve effective start: explicit arg > last_synced_at > now
                     # This ensures live syncs never re-pull history.
                     effective_start = start_date
@@ -279,6 +285,8 @@ def sync_vendor_data(
                         try:
                             success = strategy.workouts.load_data(db, user_uuid, **params)
                             provider_result.params["workouts"] = {"success": success, **params}
+                            if isinstance(success, int) and not isinstance(success, bool):
+                                items_written += success
                         except Exception as e:
                             log_structured(
                                 logger,
@@ -336,6 +344,11 @@ def sync_vendor_data(
                                     is_first_sync=is_first_sync,
                                 )
                                 provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
+                                for _count in results_247.values():
+                                    if isinstance(_count, int) and not isinstance(_count, bool):
+                                        items_written += int(_count)
+                                    pull_inserted += getattr(_count, "inserted", 0)
+                                    pull_updated += getattr(_count, "updated", 0)
                             else:
                                 results_247 = strategy.data_247.load_all_247_data(
                                     db,
@@ -445,6 +458,22 @@ def sync_vendor_data(
                             metadata={"is_historical": is_historical, "params": provider_result.params},
                         )
                     else:
+                        # inserted/updated are run-level totals across all timeseries
+                        # types: a single sync (historical included) can have both —
+                        # e.g. new days inserted while overlapping days are refreshed.
+                        completed_metadata: dict[str, Any] = {
+                            "is_historical": is_historical,
+                            "params": provider_result.params,
+                        }
+                        completed_message = (
+                            f"Sync from {provider_name} completed"
+                            if not any_failed
+                            else f"Sync from {provider_name} completed with errors"
+                        )
+                        if pull_inserted or pull_updated:
+                            completed_metadata["inserted"] = pull_inserted
+                            completed_metadata["updated"] = pull_updated
+                            completed_message += f" · {pull_inserted} new, {pull_updated} updated"
                         _emit_sync_status(
                             completed,
                             user_uuid,
@@ -452,13 +481,10 @@ def sync_vendor_data(
                             sync_source,
                             run_id=run_id,
                             status=final_status,
-                            message=(
-                                f"Sync from {provider_name} completed"
-                                if not any_failed
-                                else f"Sync from {provider_name} completed with errors"
-                            ),
+                            message=completed_message,
+                            items_processed=items_written,
                             primary_user_id=primary_uuid,
-                            metadata={"is_historical": is_historical, "params": provider_result.params},
+                            metadata=completed_metadata,
                         )
 
                 except Exception as e:

@@ -570,10 +570,11 @@ class Suunto247Data(Base247DataTemplate):
                     ),
                 )
 
+        counts: int = 0
         if all_samples:
-            timeseries_service.bulk_create_samples(db, all_samples)
+            counts = timeseries_service.bulk_create_samples(db, all_samples)
 
-        return len(all_samples)
+        return counts
 
     # ------------------------------------------------------------------
     # Daily Activity Statistics — Suunto /247/daily-activity-statistics
@@ -682,10 +683,11 @@ class Suunto247Data(Base247DataTemplate):
                     ),
                 )
 
+        counts: int = 0
         if all_samples:
-            timeseries_service.bulk_create_samples(db, all_samples)
+            counts = timeseries_service.bulk_create_samples(db, all_samples)
 
-        return len(all_samples)
+        return counts
 
     # ------------------------------------------------------------------
     # Orchestration — load + save all data types

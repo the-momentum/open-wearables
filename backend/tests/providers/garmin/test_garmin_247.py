@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -374,6 +375,7 @@ class TestGarmin247Data:
     ) -> None:
         """Test saving body composition data."""
         user = UserFactory()
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
 
@@ -681,6 +683,7 @@ class TestGarmin247Data:
         """Test batch processing multiple daily items in a single bulk_create."""
         user = UserFactory()
         daily2 = {**sample_daily, "summaryId": "daily_456", "calendarDate": "2024-01-16"}
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "dailies", [sample_daily, daily2])
 
@@ -701,6 +704,7 @@ class TestGarmin247Data:
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 25, "300": 30}},
             {"startTimeInSeconds": 1705363200, "timeOffsetStressLevelValues": {"0": 40}},
         ]
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
 
@@ -750,6 +754,7 @@ class TestGarmin247Data:
             {"startTimeInSeconds": 0},  # Missing timestamp -> skipped
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 50}},  # Valid
         ]
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
 
