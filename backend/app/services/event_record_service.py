@@ -615,6 +615,14 @@ class EventRecordService(
         if not dispatches:
             return
 
+        # Detach so expire_on_commit doesn't expire these; reading expired attributes
+        # inside after_commit (committed session) would raise. Only loaded scalars are
+        # read, and these objects are local (callers get only IDs), so detaching is safe.
+        for record in records:
+            db_session.expunge(record)
+        for data_source in data_sources:
+            db_session.expunge(data_source)
+
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
             for record, data_source, detail in dispatches:
