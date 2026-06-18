@@ -198,6 +198,7 @@ Fired once when a complete session is saved or merged.
 | Event | Description |
 |-------|-------------|
 | `connection.created` | A user successfully connected a wearable provider. |
+| `connection.revoked` | A connection became invalid (refresh token expired/revoked, or the user deregistered on the provider side). The user must re-authorize to resume syncing. |
 | `workout.created` | A new workout session was saved. |
 | `sleep.created` | A new (or merged) sleep session was saved. |
 | `menstrual_cycle.created` | A new menstrual cycle record was saved. |
@@ -243,6 +244,23 @@ Every payload envelope has `type` (the event name as a string) and `data`.
     "provider": "garmin",
     "connection_id": "7f3d9c2a-1b4e-4f8a-9d6c-8e5f2a0b3c7e",
     "connected_at": "2025-12-19T10:30:00+00:00"
+  }
+}
+```
+
+### `connection.revoked`
+
+`reason` is a short cause, e.g. `refresh_failed` or `deregistration`.
+
+```json
+{
+  "type": "connection.revoked",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "provider": "garmin",
+    "connection_id": "7f3d9c2a-1b4e-4f8a-9d6c-8e5f2a0b3c7e",
+    "reason": "refresh_failed",
+    "revoked_at": "2025-12-19T10:30:00+00:00"
   }
 }
 ```
