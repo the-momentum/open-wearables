@@ -282,6 +282,36 @@ def on_connection_created(
     )
 
 
+def on_connection_revoked(
+    *,
+    user_id: UUID,
+    provider: str,
+    connection_id: UUID,
+    reason: str,
+    revoked_at: str,
+) -> None:
+    """Emit when a connection becomes invalid and the user must re-authorize.
+
+    ``reason`` is a short cause, e.g. ``"refresh_failed"`` or
+    ``"deregistration"``.
+    """
+    _dispatch(
+        WebhookEventType.CONNECTION_REVOKED,
+        {
+            "type": WebhookEventType.CONNECTION_REVOKED,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "connection_id": str(connection_id),
+                "reason": reason,
+                "revoked_at": revoked_at,
+            },
+        },
+        idempotency_key=f"connection.revoked.{user_id}.{provider}.{revoked_at}",
+        channels=[f"user.{user_id}"],
+    )
+
+
 def on_sync_started(
     *,
     user_id: UUID,

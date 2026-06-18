@@ -57,6 +57,16 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "connected_at": "2024-01-01T08:00:00+00:00",
         },
     },
+    WebhookEventType.CONNECTION_REVOKED: {
+        "type": WebhookEventType.CONNECTION_REVOKED,
+        "data": {
+            "user_id": _USER_ID,
+            "provider": "garmin",
+            "connection_id": _CONNECTION_ID,
+            "reason": "refresh_failed",
+            "revoked_at": "2024-01-01T08:00:00+00:00",
+        },
+    },
     # ------------------------------------------------------------------
     # Session events
     # ------------------------------------------------------------------
