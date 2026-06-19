@@ -258,6 +258,7 @@ def sync_vendor_data(
                     # count always equals "X new, Y updated".
                     pull_inserted = 0
                     pull_updated = 0
+                    applied_lookback: timedelta | None = None  # set when the lookback actually widened the window
 
                     # Resolve effective start: explicit arg > last_synced_at > now
                     # This ensures live syncs never re-pull history.
@@ -275,6 +276,7 @@ def sync_vendor_data(
                                 max_days = strategy.capabilities.max_historical_days
                                 if max_days is not None:
                                     last = max(last, datetime.now(timezone.utc) - timedelta(days=max_days))
+                                applied_lookback = lookback
                             effective_start = last.isoformat()
                         else:
                             # First ever sync — start from now, historical must be explicit
@@ -482,6 +484,10 @@ def sync_vendor_data(
                             completed_metadata["inserted"] = pull_inserted
                             completed_metadata["updated"] = pull_updated
                             completed_message += f" · {pull_inserted} new, {pull_updated} updated"
+                        if applied_lookback is not None:
+                            lookback_label = format_duration(applied_lookback)
+                            completed_metadata["lookback"] = lookback_label
+                            completed_message += f" · lookback {lookback_label}"
                         _emit_sync_status(
                             completed,
                             user_uuid,
