@@ -1,8 +1,11 @@
 """Public metadata endpoint — provider coverage matrix."""
 
+from contextlib import suppress
+from functools import lru_cache
+
 from fastapi import APIRouter
 
-from app.schemas.enums import ProviderName
+from app.schemas.enums import ProviderName, SeriesType
 from app.schemas.enums.series_types import SERIES_TYPE_CATEGORY_BY_ENUM, SERIES_TYPE_UNIT_BY_ENUM
 from app.schemas.model_crud.coverage import (
     CoverageResponse,
@@ -38,15 +41,12 @@ def _build_coverage() -> CoverageResponse:
     factory = ProviderFactory()
     coverage_by_provider: dict[str, ProviderCoverage] = {}
     for name in ProviderName:
-        try:
+        # Skip sentinel providers (UNKNOWN/INTERNAL) that have no strategy.
+        with suppress(ValueError):
             coverage_by_provider[name.value] = factory.get_provider(name.value).coverage
-        except ValueError:
-            pass
     providers = sorted(coverage_by_provider)
 
     # --- Timeseries grouped by category ---
-    from app.schemas.enums import SeriesType
-
     series_to_providers: dict[SeriesType, list[str]] = {}
     for provider, cov in coverage_by_provider.items():
         for st in cov.timeseries:
@@ -99,7 +99,10 @@ def _build_coverage() -> CoverageResponse:
     )
 
 
-_COVERAGE_CACHE = _build_coverage()
+@lru_cache(maxsize=1)
+def _coverage() -> CoverageResponse:
+    """Coverage is static; build it once on first request (not at import time)."""
+    return _build_coverage()
 
 
 @router.get(
@@ -108,4 +111,4 @@ _COVERAGE_CACHE = _build_coverage()
     tags=["External: Meta"],
 )
 def get_coverage() -> CoverageResponse:
-    return _COVERAGE_CACHE
+    return _coverage()

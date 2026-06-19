@@ -58,11 +58,17 @@ function Matrix({ providers, rows }: MatrixProps) {
                 const supported = row.supportedBy.includes(p);
                 return (
                   <td key={p} className="px-2 py-2 text-center border-b border-zinc-800/40">
-                    {supported ? (
-                      <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                    ) : (
-                      <span className="inline-flex h-2 w-2 rounded-full bg-zinc-800" />
-                    )}
+                    <span className="sr-only">
+                      {supported ? 'Supported' : 'Not supported'}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={
+                        supported
+                          ? 'inline-flex h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20'
+                          : 'inline-flex h-2 w-2 rounded-full bg-zinc-800'
+                      }
+                    />
                   </td>
                 );
               })}
@@ -83,8 +89,17 @@ function TimeseriesTab({
 }) {
   const [activeCategory, setActiveCategory] = useState(categories[0]?.name ?? '');
 
+  if (categories.length === 0) {
+    return <p className="text-sm text-zinc-500 py-4">No timeseries data.</p>;
+  }
+
+  // Guard against a stale selection if the category list changes.
+  const active = categories.some((c) => c.name === activeCategory)
+    ? activeCategory
+    : categories[0].name;
+
   return (
-    <Tabs value={activeCategory} onValueChange={setActiveCategory} className="space-y-4">
+    <Tabs value={active} onValueChange={setActiveCategory} className="space-y-4">
       <TabsList className="flex-wrap h-auto gap-1 bg-zinc-900/60 p-1">
         {categories.map((cat) => (
           <TabsTrigger key={cat.name} value={cat.name} className="text-xs">

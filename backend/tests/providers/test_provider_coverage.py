@@ -14,12 +14,16 @@ A drift (new metric in the code, stale coverage) fails the test.
 import importlib
 import re
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
+from app.constants.series_types.sdk.metric_types import METRIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.schemas.model_crud.activities import EventRecordDetailCreate
+from app.services.providers.factory import ProviderFactory
 
 PROVIDERS_DIR = Path("app/services/providers")
 
@@ -57,28 +61,28 @@ def _impl_source(provider: str) -> str:
     return "\n".join(p.read_text() for p in paths if p.exists())
 
 
-def _load_coverage(provider: str):
+def _load_coverage(provider: str) -> ModuleType:
     return importlib.import_module(f"app.services.providers.{provider}.coverage")
 
 
-def _timeseries(cov) -> frozenset:
+def _timeseries(cov: ModuleType) -> frozenset:
     return getattr(cov, "TIMESERIES", frozenset())
 
 
-def _workout_fields(cov) -> frozenset:
+def _workout_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "WORKOUT_FIELDS", frozenset())
 
 
-def _sleep_fields(cov) -> frozenset:
+def _sleep_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "SLEEP_FIELDS", frozenset())
 
 
-def _health_scores(cov) -> frozenset:
+def _health_scores(cov: ModuleType) -> frozenset:
     return getattr(cov, "HEALTH_SCORES", frozenset())
 
 
 @pytest.mark.parametrize("provider", _providers_with_coverage())
-def test_emitted_timeseries_are_declared(provider: str):
+def test_emitted_timeseries_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
 
@@ -91,7 +95,7 @@ def test_emitted_timeseries_are_declared(provider: str):
 
 
 @pytest.mark.parametrize("provider", _providers_with_coverage())
-def test_set_detail_fields_are_declared(provider: str):
+def test_set_detail_fields_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
     declared = _workout_fields(cov) | _sleep_fields(cov)
@@ -103,10 +107,7 @@ def test_set_detail_fields_are_declared(provider: str):
 
 
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
-def test_sdk_timeseries_match_maps(provider: str):
-    from app.constants.series_types.sdk.metric_types import METRIC_TYPE_TO_SERIES_TYPE
-    from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
-
+def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
     expected = frozenset(METRIC_TYPE_TO_SERIES_TYPE.values()) | frozenset(
         WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values()
@@ -117,9 +118,7 @@ def test_sdk_timeseries_match_maps(provider: str):
 
 
 @pytest.mark.parametrize("provider", _providers_with_coverage())
-def test_strategy_exposes_full_coverage(provider: str):
-    from app.services.providers.factory import ProviderFactory
-
+def test_strategy_exposes_full_coverage(provider: str) -> None:
     cov = _load_coverage(provider)
     exposed = ProviderFactory().get_provider(provider).coverage
 
@@ -130,7 +129,7 @@ def test_strategy_exposes_full_coverage(provider: str):
 
 
 @pytest.mark.parametrize("provider", _providers_with_coverage())
-def test_declared_names_are_valid(provider: str):
+def test_declared_names_are_valid(provider: str) -> None:
     cov = _load_coverage(provider)
 
     bad_fields = (_workout_fields(cov) | _sleep_fields(cov)) - ALL_DETAIL_FIELDS
