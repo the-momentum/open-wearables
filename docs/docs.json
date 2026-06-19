@@ -250,6 +250,12 @@
             ]
           },
           {
+            "group": "Meta",
+            "pages": [
+              "GET /api/v1/meta/coverage"
+            ]
+          },
+          {
             "group": "Apple Health Import",
             "pages": [
               "POST /api/v1/users/{user_id}/import/apple/xml/s3",
