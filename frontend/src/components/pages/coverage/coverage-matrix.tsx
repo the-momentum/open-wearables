@@ -1,20 +1,7 @@
 import { useState } from 'react';
+import { SourceBadge } from '@/components/common/source-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { CoverageResponse, TimeseriesCategory } from '@/lib/api';
-
-const PROVIDER_SHORT: Record<string, string> = {
-  apple: 'Apple',
-  samsung: 'Sam.',
-  google: 'Google',
-  garmin: 'Garmin',
-  oura: 'Oura',
-  polar: 'Polar',
-  suunto: 'Suunto',
-  whoop: 'Whoop',
-  ultrahuman: 'Ultra.',
-  strava: 'Strava',
-  fitbit: 'Fitbit',
-};
 
 interface MatrixProps {
   providers: string[];
@@ -34,9 +21,9 @@ function Matrix({ providers, rows }: MatrixProps) {
             {providers.map((p) => (
               <th
                 key={p}
-                className="px-2 py-2.5 text-center text-xs font-medium text-zinc-400 min-w-[60px] border-b border-zinc-800"
+                className="px-2 py-2.5 text-center min-w-[72px] border-b border-zinc-800"
               >
-                {PROVIDER_SHORT[p] ?? p}
+                <SourceBadge provider={p} />
               </th>
             ))}
           </tr>
