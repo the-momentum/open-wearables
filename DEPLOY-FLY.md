@@ -3,16 +3,16 @@
 Fly.io does not run `docker-compose.yml` directly. This setup maps the compose
 stack to Fly apps:
 
-| Compose service | Fly resource | Notes |
-|---|---|---|
-| `db` | Fly Managed Postgres | Managed cluster |
-| `redis` | `open-wearables-redis` | Internal Redis app, private 6PN only |
-| `app` | `open-wearables-api` process `web` | Public FastAPI app on `:8000` |
-| `celery-worker` | `open-wearables-api` process `worker` | Same backend image |
-| `celery-beat` | `open-wearables-api` process `beat` | Same backend image |
-| `flower` | `open-wearables-flower` | Public Celery dashboard with basic auth |
-| `svix-server` | `open-wearables-svix` | Internal webhook server on `.flycast` |
-| `frontend` | `open-wearables-frontend` | Nitro server on `:3000` |
+| Compose service | Fly resource                          | Notes                                   |
+| --------------- | ------------------------------------- | --------------------------------------- |
+| `db`            | Fly Managed Postgres                  | Managed cluster                         |
+| `redis`         | `open-wearables-redis`                | Internal Redis app, private 6PN only    |
+| `app`           | `open-wearables-api` process `web`    | Public FastAPI app on `:8000`           |
+| `celery-worker` | `open-wearables-api` process `worker` | Same backend image                      |
+| `celery-beat`   | `open-wearables-api` process `beat`   | Same backend image                      |
+| `flower`        | `open-wearables-flower`               | Public Celery dashboard with basic auth |
+| `svix-server`   | `open-wearables-svix`                 | Internal webhook server on `.flycast`   |
+| `frontend`      | `open-wearables-frontend`             | Nitro server on `:3000`                 |
 
 Config files in this repo:
 
@@ -22,8 +22,9 @@ Config files in this repo:
 - `deploy/fly/flower.toml` - Flower
 - `deploy/fly/svix.toml` - Svix
 - `deploy.ts` - optional Bun helper for deploying components in order
+- `.env.fly.*.example` - safe templates for ignored local deployment env files
 
-## 0. Prerequisites
+## 0. Prerequisites and Env Files
 
 ```bash
 fly auth login
@@ -41,6 +42,27 @@ export FLY_API_URL=https://api.example.com
 export FLY_FRONTEND_URL=https://app.example.com
 ```
 
+`deploy.ts` automatically loads `.env.fly.local` when present. That file is
+ignored by git, so app names, organization, domains, and other
+deployment-specific public values can stay local:
+
+```bash
+cp .env.fly.local.example .env.fly.local
+```
+
+Example `.env.fly.local`:
+
+```env
+FLY_ORG=my-fly-org
+FLY_REGION=iad
+FLY_API_URL=https://api.example.com
+FLY_FRONTEND_URL=https://app.example.com
+FLY_CORS_ORIGINS=https://app.example.com
+```
+
+Set `FLY_ENV_FILE=/path/to/env-file` to load a different file. Shell environment
+variables always take precedence over file values.
+
 You can also override individual app names:
 
 ```bash
@@ -51,8 +73,33 @@ export FLY_REDIS_APP=my-wearables-redis
 export FLY_SVIX_APP=my-wearables-svix
 ```
 
-Local files such as `.env.fly.local` are ignored by git, so private deployment
-values can live outside the open-source branch.
+Local files such as `.env.fly.local` are ignored by git, so
+deployment-specific values can live outside the open-source branch.
+
+Use separate ignored files for secrets:
+
+| File                      | Fly app  | Contents                                                                   |
+| ------------------------- | -------- | -------------------------------------------------------------------------- |
+| `.env.fly.backend.local`  | API      | Database, `SECRET_KEY`, admin credentials, provider credentials, Sentry/S3 |
+| `.env.fly.flower.local`   | Flower   | Database, `SECRET_KEY`, `FLOWER_BASIC_AUTH`                                |
+| `.env.fly.svix.local`     | Svix     | `SVIX_JWT_SECRET`, `SVIX_DB_DSN`, `SVIX_REDIS_DSN`                         |
+| `.env.fly.frontend.local` | Frontend | Optional public `VITE_*` values only                                       |
+
+Copy the examples, fill the local files, then sync secrets without printing their
+values:
+
+```bash
+cp .env.fly.backend.local.example .env.fly.backend.local
+cp .env.fly.flower.local.example .env.fly.flower.local
+cp .env.fly.svix.local.example .env.fly.svix.local
+
+bun run deploy secrets --dry-run
+bun run deploy secrets
+```
+
+Blank values are skipped, so these files can be used for partial rotations. For
+example, a backend file containing only `STRAVA_CLIENT_SECRET=...` will update
+only that Fly secret.
 
 ## 1. Managed Postgres
 
@@ -92,15 +139,11 @@ on the API and Flower apps with `fly secrets set`.
 
 ## 3. Backend Secrets
 
-Set the required backend secrets:
+Set the required backend secrets in `.env.fly.backend.local`, then sync them:
 
 ```bash
-fly secrets set -a open-wearables-api \
-  DB_HOST=<postgres-host> DB_PORT=5432 DB_NAME=open-wearables \
-  DB_USER=<postgres-user> DB_PASSWORD=<postgres-password> \
-  SECRET_KEY="$(openssl rand -hex 32)" \
-  ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD="$(openssl rand -hex 16)" \
-  SVIX_JWT_SECRET="$(openssl rand -hex 32)"
+cp .env.fly.backend.local.example .env.fly.backend.local
+bun run deploy secrets
 ```
 
 Also set any provider credentials you need from `backend/config/.env.example`,
@@ -115,11 +158,8 @@ Svix needs its own app and secrets. Use the same `SVIX_JWT_SECRET` value as the
 backend.
 
 ```bash
-fly apps create open-wearables-svix
-fly secrets set -a open-wearables-svix \
-  SVIX_JWT_SECRET=<same-as-backend> \
-  SVIX_DB_DSN="postgresql://<postgres-user>:<postgres-password>@<postgres-host>:5432/svix" \
-  SVIX_REDIS_DSN="redis://open-wearables-redis.internal:6379/1"
+cp .env.fly.svix.local.example .env.fly.svix.local
+bun run deploy secrets
 bun run deploy svix
 ```
 
@@ -168,10 +208,8 @@ Flower reuses the latest backend image. It needs the same database and auth
 secrets as the backend because it imports the app settings:
 
 ```bash
-fly secrets set -a open-wearables-flower \
-  DB_HOST=<postgres-host> DB_PORT=5432 DB_NAME=open-wearables \
-  DB_USER=<postgres-user> DB_PASSWORD=<postgres-password> \
-  SECRET_KEY=<same-as-backend>
+cp .env.fly.flower.local.example .env.fly.flower.local
+bun run deploy secrets
 bun run deploy flower
 ```
 
@@ -191,13 +229,18 @@ Deploy the frontend:
 bun run deploy frontend
 ```
 
-The frontend reads `VITE_API_URL` at runtime in the Nitro server, so you do not
-need to rebuild the image to point it at a different API. For a custom API:
+The helper passes `VITE_API_URL` from `FLY_API_URL` during deploy. The frontend
+also reads `VITE_API_URL` at runtime in the Nitro server, so you do not need to
+rebuild the image to point it at a different API. For a custom API:
 
 ```bash
 export FLY_API_URL=https://api.example.com
 bun run deploy frontend
 ```
+
+For additional public frontend configuration, copy `.env.fly.frontend.local.example`
+to `.env.fly.frontend.local`. Only `VITE_*` keys are passed through; do not put
+secrets in frontend env files.
 
 If you use a custom frontend domain, add it to CORS:
 
@@ -216,16 +259,17 @@ bun run deploy all
 
 The helper deploys components in dependency order:
 
-1. Redis
-2. API
-3. Flower
-4. Frontend
-5. Svix
+1. Secrets from ignored local env files, if present
+2. Redis
+3. API
+4. Flower
+5. Frontend
+6. Svix
 
 If you prefer Svix before API, deploy it separately after setting its secrets:
 
 ```bash
-bun run deploy redis svix api flower frontend
+bun run deploy secrets redis svix api flower frontend
 ```
 
 ## Notes
