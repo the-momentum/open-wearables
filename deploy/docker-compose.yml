@@ -235,7 +235,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment:
-      - VITE_API_URL=http://${OW_PUBLIC_HOST}:8000
+      - VITE_API_URL=https://${OW_DOMAIN}
     networks:
       - ow-network
     labels:
