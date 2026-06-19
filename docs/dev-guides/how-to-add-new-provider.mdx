@@ -229,7 +229,11 @@ Rules:
 A guard test scans your implementation and **fails** if it emits a `SeriesType` or sets an `EventRecordDetail` field not declared here — and asserts the strategy's `coverage` property exposes all four constants:
 
 ```bash
-uv run pytest tests/providers/test_provider_coverage.py -k suunto
+cd backend && uv run pytest tests/providers/test_provider_coverage.py -k suunto -q
+```
+
+```
+4 passed in 0.42s
 ```
 
 ---
