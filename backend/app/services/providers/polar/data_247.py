@@ -54,10 +54,12 @@ from app.schemas.providers.polar.sleepwise import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.polar.coverage import ACTIVITY_SERIES
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import iso_zone_offset
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -258,6 +260,7 @@ class Polar247Data(Base247DataTemplate):
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
+                zone_offset=iso_zone_offset(end_dt, start_dt),
                 provider=ProviderName.POLAR,
                 user_id=user_id,
             )
@@ -344,7 +347,10 @@ class Polar247Data(Base247DataTemplate):
             if not parsed.start_time:
                 continue
             recorded_at = datetime.fromisoformat(parsed.start_time)
-            if parsed.steps is not None:
+            for attr, series_type in ACTIVITY_SERIES.items():
+                value = getattr(parsed, attr)
+                if value is None:
+                    continue
                 samples.append(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
@@ -352,32 +358,8 @@ class Polar247Data(Base247DataTemplate):
                         provider=ProviderName.POLAR,
                         source=ProviderName.POLAR,
                         recorded_at=recorded_at,
-                        value=parsed.steps,
-                        series_type=SeriesType.steps,
-                    )
-                )
-            if parsed.active_calories is not None:
-                samples.append(
-                    TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        provider=ProviderName.POLAR,
-                        source=ProviderName.POLAR,
-                        recorded_at=recorded_at,
-                        value=parsed.active_calories,
-                        series_type=SeriesType.energy,
-                    )
-                )
-            if parsed.distance_from_steps is not None:
-                samples.append(
-                    TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        provider=ProviderName.POLAR,
-                        source=ProviderName.POLAR,
-                        recorded_at=recorded_at,
-                        value=Decimal(str(parsed.distance_from_steps)),
-                        series_type=SeriesType.distance_walking_running,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
                     )
                 )
         return samples
@@ -866,9 +848,10 @@ class Polar247Data(Base247DataTemplate):
     # -------------------------------------------------------------------------
 
     def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> int:
+        counts: int = 0
         if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return len(samples)
+            counts = timeseries_service.bulk_create_samples(db, samples)
+        return counts
 
     def _save_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> int:
         if scores:

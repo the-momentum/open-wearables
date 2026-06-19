@@ -70,7 +70,7 @@ class OuraSleepJSON(BaseModel):
     total_sleep_duration: int | None = None  # seconds
     type: str | None = None  # deleted / sleep / long_sleep / rest
     heart_rate: OuraIntervalData | None = None  # heart rate values at 5-min intervals
-    hrv: OuraIntervalData | None = None  # SDNN values at 5-min intervals
+    hrv: OuraIntervalData | None = None  # RMSSD values at 5-min intervals
 
 
 class OuraSleepCollectionJSON(BaseModel):

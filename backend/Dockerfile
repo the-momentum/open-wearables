@@ -40,4 +40,10 @@ FROM python:3.13-slim
     ENV UV_PROJECT_ENVIRONMENT=/opt/venv
     ENV UV_NO_SYNC=true
 
+    # Commit SHA for Sentry release tracking. Optional: defaults to empty when
+    # not passed (e.g. local builds), in which case the app falls back to the
+    # plain package version.
+    ARG GIT_SHA=""
+    ENV GIT_SHA=$GIT_SHA
+
     EXPOSE 8000

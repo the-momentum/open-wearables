@@ -58,6 +58,7 @@ class TestPolar247SleepNormalization:
         assert record.start_datetime.isoformat() == "2024-01-14T23:00:00+02:00"
         assert record.end_datetime.isoformat() == "2024-01-15T07:00:00+02:00"
         assert record.duration_seconds == 8 * 3600
+        assert record.zone_offset == "+02:00"
 
     def test_sleep_stage_minutes(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()

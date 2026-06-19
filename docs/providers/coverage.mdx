@@ -50,7 +50,7 @@ This guide gives an overview of data type support across the integrated wearable
 | `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | 🔜 | ✅ |
 | `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ | 🔜 | ✅ |
 | `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ | 🔜 | ✅ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ✅ | ✅ | ❌ | ❌ | 🔜 | ✅ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -69,7 +69,8 @@ This guide gives an overview of data type support across the integrated wearable
 | `blood_glucose` | mg/dL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ◐ |
 | `blood_pressure_systolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `blood_pressure_diastolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `respiratory_rate` | brpm | ✅ | ✅ | ❌ | ❌ | ❌ | 🔜 | ❌ | ❌ | 🔜 | ✅ |
+| `respiratory_rate` | brpm | ✅ | ✅ | ❌ | ❌ | ✅ | 🔜 | ❌ | ❌ | 🔜 | ✅ |
+| `breathing_disturbance_index` | score | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `sleeping_breathing_disturbances` | count | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Body Composition
@@ -353,7 +354,7 @@ Key differences and limitations to be aware of when working with each provider:
   - Webhooks push real-time notifications for: daily activity, daily readiness, daily sleep, daily SpO2, and workouts
   - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, efficiency score, stage timestamps, and nap detection
   - Sleep biometrics (average HR, lowest HR, average HRV) are available from the API but not yet persisted per sleep record
-  - Continuous 24/7 timeseries: heart rate (5-min intervals), daily SpO2, steps, active calories, walking distance
+  - Continuous 24/7 timeseries: heart rate (5-min intervals), HRV (RMSSD, 5-min intervals), daily SpO2, steps, active calories, walking distance
   - Recovery data from daily readiness: recovery score, skin temperature deviation, and skin temperature trend deviation
   - Fitness metrics: VO2 max (daily estimate) and cardiovascular age — both require the `heart_health` OAuth scope
   - Personal info sync: height and weight from user profile

@@ -339,5 +339,33 @@ def get_series_type_unit(series_type: SeriesType) -> str:
 
 
 # =============================================================================
+# CATEGORY DEFINITIONS
+# =============================================================================
+
+_CATEGORY_RANGES: list[tuple[range, str]] = [
+    (range(1, 20), "Heart & Cardiovascular"),
+    (range(20, 40), "Blood & Respiratory"),
+    (range(40, 60), "Body Composition"),
+    (range(60, 80), "Fitness Metrics"),
+    (range(80, 100), "Activity - Basic"),
+    (range(100, 120), "Activity - Distance"),
+    (range(120, 140), "Activity - Walking"),
+    (range(140, 160), "Activity - Running"),
+    (range(160, 180), "Activity - Swimming"),
+    (range(180, 200), "Activity - Generic"),
+    (range(200, 220), "Environmental"),
+    (range(220, 240), "Provider-Specific"),
+    (range(500, 600), "Other"),
+]
+
+SERIES_TYPE_CATEGORY_BY_ENUM: dict[SeriesType, str] = {}
+for _type_id, _enum, _ in SERIES_TYPE_DEFINITIONS:
+    for _range, _cat in _CATEGORY_RANGES:
+        if _type_id in _range:
+            SERIES_TYPE_CATEGORY_BY_ENUM[_enum] = _cat
+            break
+
+
+# =============================================================================
 # AGGREGATION METHOD DEFINITIONS
 # =============================================================================

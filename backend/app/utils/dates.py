@@ -124,3 +124,22 @@ def offset_to_iso(offset_seconds: int | None) -> str | None:
     hours, remainder = divmod(total, 3600)
     minutes = remainder // 60
     return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def iso_zone_offset(*candidates: str | datetime | None) -> str | None:
+    """Return ISO offset (e.g. ``'+03:00'``) from the first tz-aware candidate.
+
+    Accepts ISO strings (including trailing ``Z``) or aware ``datetime`` objects.
+    Naive strings / datetimes return ``None`` when no later candidate matches.
+    """
+    for raw in candidates:
+        if raw is None:
+            continue
+        dt = parse_iso_datetime(raw) if isinstance(raw, str) else raw
+        if dt is None or dt.tzinfo is None:
+            continue
+        offset = dt.utcoffset()
+        if offset is None:
+            continue
+        return offset_to_iso(int(offset.total_seconds()))
+    return None

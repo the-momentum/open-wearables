@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.oura.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.oauth import OuraOAuth
 from app.services.providers.oura.webhook_handler import OuraWebhookHandler
@@ -55,3 +56,9 @@ class OuraStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS, health_scores=HEALTH_SCORES
+        )

@@ -16,7 +16,8 @@ export type SyncStatus =
   | 'success'
   | 'partial'
   | 'failed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'skipped';
 
 export interface SyncStatusEvent {
   event_id: string;
