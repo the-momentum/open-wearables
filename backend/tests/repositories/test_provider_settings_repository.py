@@ -8,12 +8,32 @@ Tests cover:
 - bulk_update operations (multiple providers, mixed updates)
 """
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy.orm import Session
 
-from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.repositories.provider_settings_repository import (
+    ProviderSettingsRepository,
+    resolve_effective_live_sync_mode,
+)
 from app.schemas.auth import LiveSyncMode
 from tests.factories import ProviderSettingFactory
+
+
+class TestResolveEffectiveLiveSyncMode:
+    """The single resolver for the stored-override-else-default idiom."""
+
+    def test_stored_override_wins(self) -> None:
+        setting = SimpleNamespace(live_sync_mode=LiveSyncMode.WEBHOOK)
+        assert resolve_effective_live_sync_mode(setting, LiveSyncMode.PULL) == LiveSyncMode.WEBHOOK
+
+    def test_falls_back_to_default_when_setting_missing(self) -> None:
+        assert resolve_effective_live_sync_mode(None, LiveSyncMode.PULL) == LiveSyncMode.PULL
+
+    def test_falls_back_to_default_when_mode_is_null(self) -> None:
+        setting = SimpleNamespace(live_sync_mode=None)
+        assert resolve_effective_live_sync_mode(setting, LiveSyncMode.WEBHOOK) == LiveSyncMode.WEBHOOK
 
 
 class TestProviderSettingsRepository:

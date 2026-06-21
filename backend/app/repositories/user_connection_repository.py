@@ -381,6 +381,19 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .all()
         )
 
+    def get_all_active_by_provider(self, db_session: DbSession, provider: str) -> list[UserConnection]:
+        """Get all active connections for a specific provider."""
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.status == ConnectionStatus.ACTIVE,
+                ),
+            )
+            .all()
+        )
+
     def get_all_active_users(self, db_session: DbSession) -> list[UUID]:
         """Get all unique user IDs that have active connections."""
         return [
