@@ -8,6 +8,8 @@ Tests cover:
 - Validation of provider names
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -356,3 +358,24 @@ class TestProviderSettingsServiceLiveSyncMode:
 
         with pytest.raises(ValidationError, match="live_sync_mode cannot be set to null"):
             ProviderSettingUpdate(live_sync_mode=None)
+
+    @pytest.mark.parametrize("mode", [LiveSyncMode.WEBHOOK, LiveSyncMode.PULL])
+    def test_update_per_user_subscription_mode_queues_generic_fanout_task(
+        self, db: Session, mode: LiveSyncMode
+    ) -> None:
+        """A webhook_per_user_subscriptions provider (Withings) dispatches the
+        generic sync_provider_subscriptions task with (provider, mode) — no
+        provider name hardcoded in the service."""
+        service = ProviderSettingsService()
+
+        with pytest.MonkeyPatch.context() as mp:
+            mock_celery = MagicMock()
+            mp.setattr("app.services.provider_settings_service.celery_app", mock_celery)
+            result = service.update_provider_setting(db, "withings", ProviderSettingUpdate(live_sync_mode=mode))
+
+        assert result.live_sync_mode == mode
+        mock_celery.send_task.assert_called_once_with(
+            "app.integrations.celery.tasks.sync_provider_subscriptions_task.sync_provider_subscriptions",
+            args=["withings", mode.value],
+            queue="webhook_sync",
+        )
