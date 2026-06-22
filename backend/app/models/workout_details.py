@@ -1,7 +1,7 @@
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecordDetail, json_binary, numeric_5_2, numeric_10_3
+from app.mappings import json_binary, numeric_5_2, numeric_10_3
 
 from .event_record_detail import EventRecordDetail
 
@@ -10,7 +10,7 @@ class WorkoutDetails(EventRecordDetail):
     """Per-workout aggregates and metrics."""
 
     __tablename__ = "workout_details"
-    __mapper_args__ = {"polymorphic_identity": "workout"}
+    __mapper_args__ = {"polymorphic_identity": "workout", "concrete": True}
     __table_args__ = (
         Index(
             "ix_workout_details_segments_gin",
@@ -31,8 +31,6 @@ class WorkoutDetails(EventRecordDetail):
             postgresql_ops={"power_zones": "jsonb_path_ops"},
         ),
     )
-
-    record_id: Mapped[FKEventRecordDetail]
 
     heart_rate_min: Mapped[int | None]
     heart_rate_max: Mapped[int | None]

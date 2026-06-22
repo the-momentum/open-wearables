@@ -36,8 +36,12 @@ class EventRecord(BaseDbModel):
     end_datetime: Mapped[datetime]
     zone_offset: Mapped[str_10 | None]
 
+    # EventRecordDetail is an abstract concrete base (no table of its own), so
+    # the join condition cannot be derived from foreign keys and must be spelled
+    # out against the polymorphic union.
     detail: Mapped["EventRecordDetail | None"] = relationship(
         "EventRecordDetail",
         uselist=False,
         cascade="all, delete-orphan",
+        primaryjoin="EventRecord.id == EventRecordDetail.record_id",
     )
