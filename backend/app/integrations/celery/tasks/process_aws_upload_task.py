@@ -40,67 +40,82 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict[
         )
         raise err
 
-    with SessionLocal() as db:
-        temp_xml_file = None
+    db = SessionLocal()
+    temp_xml_file = None
 
+    try:
+        temp_dir = tempfile.gettempdir()
+        temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
+
+        # Validate that the user exists before processing
         try:
-            temp_dir = tempfile.gettempdir()
-            temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
-
-            # Validate that the user exists before processing
-            try:
-                _ = user_service.get(db, user_id, raise_404=True)
-            except ResourceNotFoundError as e:
-                log_and_capture_error(
-                    e,
-                    logger,
-                    "Skipping import for non-existent user",
-                    extra={"user_id": user_id},
-                )
-                return {
-                    "status": "skipped",
-                    "reason": str(e),
-                }
-
-            s3_client.download_file(bucket_name, object_key, temp_xml_file)
-
-            try:
-                _import_xml_data(db, temp_xml_file, user_id)
-            except Exception as e:
-                db.rollback()
-                raise e
-
+            _ = user_service.get(db, user_id, raise_404=True)
+        except ResourceNotFoundError as e:
+            log_and_capture_error(
+                e,
+                logger,
+                "Skipping import for non-existent user",
+                extra={"user_id": user_id},
+            )
             return {
-                "bucket": bucket_name,
-                "input_key": object_key,
-                "user_id": user_id,
-                "status": "success",
-                "message": "Import completed successfully",
+                "status": "skipped",
+                "reason": str(e),
             }
 
-        finally:
-            if temp_xml_file and os.path.exists(temp_xml_file):
-                os.remove(temp_xml_file)
+        s3_client.download_file(bucket_name, object_key, temp_xml_file)
+
+        try:
+            _import_xml_data(temp_xml_file, user_id)
+        except Exception as e:
+            raise e
+
+        return {
+            "bucket": bucket_name,
+            "input_key": object_key,
+            "user_id": user_id,
+            "status": "success",
+            "message": "Import completed successfully",
+        }
+
+    finally:
+        if temp_xml_file and os.path.exists(temp_xml_file):
+            os.remove(temp_xml_file)
+        db.close()
 
 
-def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
+def _import_xml_data(xml_path: str, user_id: str) -> None:
     """
-    Parse XML file and import data to database using XMLExporter.
+    Parse XML file and import data to database.
 
-    Args:
-        db: Database session
-        xml_path: Path to the XML file
-        user_id: User ID to associate with the data
+    Uses a fresh session for each operation type (time series, workouts, sleep)
+    to avoid session state conflicts from after_commit webhook listeners.
     """
     xml_service = XMLService(Path(xml_path), getLogger(__name__))
 
     for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
-        for record, detail in workouts:
-            created_record = event_record_service.create(db, record)
-            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
-            event_record_service.create_detail(db, detail_for_record)
+        if workouts:
+            for record, detail in workouts:
+                workout_db = SessionLocal()
+                try:
+                    created_record = event_record_service.create(workout_db, record)
+                    detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+                    event_record_service.create_detail(workout_db, detail_for_record)
+                except Exception as e:
+                    logger.warning("Failed to save workout record: %s - skipping", e)
+                finally:
+                    workout_db.close()
+
         if time_series_records:
-            timeseries_service.bulk_create_samples(db, time_series_records)
-            db.commit()
+            ts_db = SessionLocal()
+            try:
+                timeseries_service.bulk_create_samples(ts_db, time_series_records)
+                ts_db.commit()
+            finally:
+                ts_db.close()
+
         if sync_request and sync_request.data.sleep:
-            handle_sleep_data(db, sync_request, user_id)
+            sleep_db = SessionLocal()
+            try:
+                handle_sleep_data(sleep_db, sync_request, user_id)
+            finally:
+                sleep_db.close()
