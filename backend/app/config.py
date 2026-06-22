@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,6 +17,7 @@ from app.utils.config_utils import (
     EncryptedField,
     EnvironmentType,
     FernetDecryptorField,
+    parse_duration,
 )
 
 
@@ -86,6 +88,11 @@ class Settings(BaseSettings):
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+    # Re-fetch a trailing window on each *live* pull sync so late provider revisions
+    # (e.g. Oura finalising a day's step count after we already moved past it) are
+    # picked up. Disabled by default. Set via a compact duration string: "2d", "20h",
+    # "90m", "1d12h". Capped per provider by max_historical_days.
+    pull_sync_lookback: timedelta | None = None
     # Grace-period flag: auto-dispatch historical sync after OAuth connect (default: true).
     # Pre-0.4.2 behaviour. Set to false once your integration calls /sync/historical explicitly.
     # Will default to false in a future release.
@@ -238,6 +245,15 @@ class Settings(BaseSettings):
 
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
+
+    @field_validator("pull_sync_lookback", mode="before")
+    @classmethod
+    def _parse_pull_sync_lookback(cls, v: Any) -> timedelta | None:
+        if v is None or isinstance(v, timedelta):
+            return v
+        if isinstance(v, str) and not v.strip():
+            return None
+        return parse_duration(str(v))  # "2d" / "20h" / "1d12h" → timedelta (fail fast at startup)
 
     def oauth_redirect_uri(self, provider: ProviderName) -> str:
         """Build OAuth redirect URI for a provider.

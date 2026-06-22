@@ -1,31 +1,31 @@
 [project]
 name = "open-wearables"
-version = "0.6.0"
+version = "0.6.1"
 description = ""
 requires-python = ">=3.13"
 dependencies = [
-    "cryptography>=48.0.1",
+    "cryptography>=49.0.0",
     "pydantic-settings>=2.14.1",
     "email-validator>=2.2.0",
     "psycopg>=3.3.4",
-    "sqlalchemy>=2.0.50",
-    "fastapi>=0.136.3",
-    "fastapi-cli>=0.0.24",
+    "sqlalchemy>=2.0.51",
+    "fastapi>=0.137.2",
+    "fastapi-cli>=0.0.27",
     "celery>=5.6.3",
     "flower>=2.0.1",
     "redis>=8.0.0",
-    "sentry-sdk[fastapi]>=2.62.0",
+    "sentry-sdk[fastapi]>=2.63.0",
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx>=0.28.1",
     "alembic>=1.18.4",
-    "boto3>=1.43.28",
+    "boto3>=1.43.33",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.30.1",
+    "resend>=2.32.2",
     "pyyaml>=6.0.3",
-    "svix>=1.95.2",
+    "svix>=1.96.0",
     "numpy>=2.4.6",
     "faker>=40.23.0",
     "fitdecode>=0.11.0",
@@ -34,11 +34,11 @@ dependencies = [
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.6.0",
-    "ruff>=0.15.17",
-    "ty>=0.0.48",
+    "ruff>=0.15.18",
+    "ty>=0.0.51",
 ]
 dev = [
-    "pytest>=9.0.3",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "freezegun>=1.5.0",
