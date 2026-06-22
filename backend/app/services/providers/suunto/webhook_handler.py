@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from celery import current_app as celery_app
 from fastapi import HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.database import DbSession
@@ -223,13 +224,27 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
 
         try:
             raw_detail = self.suunto_workouts.get_workout_detail(db, user_id, str(workout_key))
-            # REST response wraps workout in 'payload' list
-            workouts_list = raw_detail.get("payload", [raw_detail]) if isinstance(raw_detail, dict) else [raw_detail]
+            # `/v3/workouts/{workoutKey}` returns a single dict under 'payload'; `/v3/workouts` (sync) returns a list.
+            payload_detail = raw_detail.get("payload", raw_detail) if isinstance(raw_detail, dict) else raw_detail
+            workouts_list = payload_detail if isinstance(payload_detail, list) else [payload_detail]
             saved = 0
             for raw in workouts_list:
                 if self.suunto_workouts.process_push_activity(db, user_id, raw) is not None:
                     saved += 1
             return {"status": "saved", "workout_key": str(workout_key), "saved_count": saved}
+        except IntegrityError:
+            db.rollback()
+            log_structured(
+                logger,
+                "info",
+                "Suunto workout already exists, skipping",
+                provider="suunto",
+                trace_id=trace_id,
+                action="webhook_duplicate_workout",
+                workout_key=str(workout_key),
+                user_id=str(user_id),
+            )
+            return {"status": "ignored", "reason": "duplicate_workout", "workout_key": str(workout_key)}
         except Exception as exc:
             log_structured(
                 logger,
@@ -250,8 +265,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         for sample in samples:
             try:
                 normalized = self.suunto_247.normalize_sleep(sample, user_id)
-                self.suunto_247.save_sleep_data(db, user_id, normalized)
-                saved += 1
+                if self.suunto_247.save_sleep_data(db, user_id, normalized):
+                    saved += 1
             except Exception as exc:
                 log_structured(
                     logger,

@@ -32,7 +32,8 @@
             "pages": [
               "architecture/system-overview",
               "architecture/unified-data-model",
-              "architecture/data-types"
+              "architecture/data-types",
+              "architecture/multi-account-sync"
             ]
           },
           {
@@ -121,7 +122,8 @@
               "data-migrations/index",
               "data-migrations/backfill-garmin-sleep-end-datetime",
               "data-migrations/backfill-sleep-scores",
-              "data-migrations/normalize-body-fat-percentage"
+              "data-migrations/normalize-body-fat-percentage",
+              "data-migrations/relabel-oura-hrv-sdnn-to-rmssd"
             ]
           },
           {
@@ -134,6 +136,7 @@
           {
             "group": "Deployment",
             "pages": [
+              "deployment/docker-images",
               "deployment/railway"
             ]
           },
@@ -245,6 +248,12 @@
             "group": "Data Sources",
             "pages": [
               "GET /api/v1/users/{user_id}/data-sources"
+            ]
+          },
+          {
+            "group": "Meta",
+            "pages": [
+              "GET /api/v1/meta/coverage"
             ]
           },
           {

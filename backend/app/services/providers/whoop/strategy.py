@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.whoop.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.oauth import WhoopOAuth
 from app.services.providers.whoop.webhook_handler import WhoopWebhookHandler
@@ -49,6 +50,15 @@ class WhoopStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
         return "https://api.prod.whoop.com/developer"
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
 
     @property
     def capabilities(self) -> ProviderCapabilities:

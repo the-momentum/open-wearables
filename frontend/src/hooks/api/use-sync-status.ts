@@ -113,6 +113,7 @@ export function useSyncStatusStream(
       'failed',
       'partial',
       'cancelled',
+      'skipped',
     ]);
 
     const handleEvent = (evt: SyncStatusEvent) => {

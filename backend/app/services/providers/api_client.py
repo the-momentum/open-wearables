@@ -241,3 +241,41 @@ def make_authenticated_request(
         status_code=500,
         detail=f"Failed to complete request to {provider_name.capitalize()} after retries",
     )
+
+
+def download_binary_content(
+    db: DbSession,
+    user_id: UUID,
+    connection_repo: UserConnectionRepository,
+    oauth: BaseOAuthTemplate,
+    provider_name: str,
+    url: str,
+) -> bytes:
+    """Download binary content from a full URL using OAuth Bearer authentication.
+
+    Used for endpoints that return binary data (e.g. Garmin activityFiles FIT download).
+    The URL may contain additional auth params (e.g. token=...) alongside the Bearer header.
+    Retries up to MAX_RETRIES times on 429 with exponential backoff.
+    """
+    access_token = _get_valid_token(db, user_id, provider_name, connection_repo, oauth)
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    for attempt in range(MAX_RETRIES + 1):
+        response = httpx.get(url, headers=headers, timeout=30.0, follow_redirects=True)
+        if response.status_code == 429 and attempt < MAX_RETRIES:
+            backoff_delay = RETRY_BASE_DELAY * (2**attempt)
+            log_structured(
+                logger,
+                "warning",
+                "Rate limited (429) on binary download, retrying",
+                provider_name=provider_name,
+                attempt=attempt + 1,
+                max_retries=MAX_RETRIES,
+                backoff_delay=backoff_delay,
+            )
+            time.sleep(backoff_delay)
+            continue
+        response.raise_for_status()
+        return response.content
+
+    raise HTTPException(status_code=500, detail=f"Failed to download binary content from {provider_name}")

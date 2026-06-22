@@ -688,3 +688,36 @@ class TestDataPointSeriesRepository:
         assert total_count == 2
         for _, data_source in results:
             assert data_source.user_id == user1.id
+
+    def test_bulk_create_reports_inserted_then_updated(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """bulk_create returns WriteCounts splitting new rows from in-place updates."""
+        user = UserFactory()
+        ts = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+        def sample(value: int) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="oura",
+                recorded_at=ts,
+                value=value,
+                series_type=SeriesType.steps,
+            )
+
+        # First write of this (data_source, series_type, recorded_at) → insert.
+        first = series_repo.bulk_create(db, [sample(1000)])
+        assert (first.inserted, first.updated) == (1, 0)
+        assert int(first) == 1
+
+        # Same key again → ON CONFLICT DO UPDATE → counted as an update, not a new row.
+        second = series_repo.bulk_create(db, [sample(2000)])
+        assert (second.inserted, second.updated) == (0, 1)
+        assert int(second) == 1
+
+    def test_bulk_create_empty_returns_zero_counts(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """An empty batch writes nothing and reports zero inserted/updated."""
+        counts = series_repo.bulk_create(db, [])
+        assert (counts.inserted, counts.updated) == (0, 0)
+        assert int(counts) == 0

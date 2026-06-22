@@ -97,7 +97,7 @@ services:
     image: redis:8
     # ports retirés (patch Bazard) — Redis accessible uniquement via le réseau Docker interne
     volumes:
-      - redis_data:/var/lib/redis/data
+      - redis_data:/data
     restart: unless-stopped
 
   svix-server:
