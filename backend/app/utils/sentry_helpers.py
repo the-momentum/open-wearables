@@ -39,9 +39,10 @@ def log_and_capture_error(
             )
             # Continue processing other items
     """
-    # HTTPExceptions are explicit handled error responses returned by endpoints,
-    # they shouldnt be logged to sentry, just logger
-    if isinstance(exception, HTTPException):
+    # 4xx HTTPExceptions are explicit, handled client errors (e.g. a provider
+    # rejecting a token refresh) — log them but keep them out of Sentry. 5xx and
+    # everything else stay alertable.
+    if isinstance(exception, HTTPException) and 400 <= exception.status_code < 500:
         logger.warning(message, exc_info=True)
         return
 
