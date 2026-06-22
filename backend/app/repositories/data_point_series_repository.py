@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Date, Interval, String, asc, case, cast, func, literal_column, text, tuple_
+from sqlalchemy import Date, Interval, asc, case, cast, func, literal_column, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
@@ -897,7 +897,7 @@ class DataPointSeriesRepository(
             .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
             .outerjoin(
                 DeviceTypePriority,
-                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
+                DataSource.device_type == DeviceTypePriority.device_type,
             )
             .join(
                 latest_subq,
@@ -1019,7 +1019,7 @@ class DataPointSeriesRepository(
             .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
             .outerjoin(
                 DeviceTypePriority,
-                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
+                DataSource.device_type == DeviceTypePriority.device_type,
             )
             .filter(
                 DataSource.user_id == user_id,

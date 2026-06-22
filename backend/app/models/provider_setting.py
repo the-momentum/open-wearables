@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, str_64
+from app.mappings import PrimaryKey
 from app.schemas.auth import LiveSyncMode
+from app.schemas.enums import ProviderName
 
 
 class ProviderSetting(BaseDbModel):
@@ -10,7 +11,7 @@ class ProviderSetting(BaseDbModel):
 
     __tablename__ = "provider_settings"
 
-    provider: Mapped[PrimaryKey[str_64]]
+    provider: Mapped[PrimaryKey[ProviderName]]
     is_enabled: Mapped[bool]
     live_sync_mode: Mapped[LiveSyncMode | None]
     webhook_secret: Mapped[str | None]

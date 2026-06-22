@@ -5,12 +5,13 @@ from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, PrimaryKey, str_64
+from app.mappings import FKUser, PrimaryKey
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import ProviderName
 
 
 class UserConnection(BaseDbModel):
-    """OAuth connections to external cloud providers (Suunto, Garmin, Polar, Coros)"""
+    """OAuth connections to external cloud providers."""
 
     __table_args__ = (
         Index(
@@ -31,7 +32,7 @@ class UserConnection(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
-    provider: Mapped[str_64]  # 'suunto', 'garmin', 'polar', 'coros'
+    provider: Mapped[ProviderName]
 
     # Provider user data
     provider_user_id: Mapped[str | None]
