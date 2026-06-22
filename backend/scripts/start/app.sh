@@ -37,6 +37,18 @@ echo 'Running body_fat_percentage normalization...'
 uv run python scripts/data_migrations/normalize_body_fat_percentage.py \
     || echo "Warning: body_fat_percentage normalization failed — will retry on next startup."
 
+# TODO: Remove this after ~2026-09-01 once all deployments have migrated.
+# Relabels Oura HRV stored as SDNN (id=3) to RMSSD (id=7); scoped to provider='oura', no-op once corrected.
+echo 'Running Oura HRV SDNN->RMSSD relabel...'
+uv run python scripts/data_migrations/relabel_oura_hrv_sdnn_to_rmssd.py \
+    || echo "Warning: Oura HRV relabel failed — will retry on next startup."
+
+# TODO: Remove this after ~2026-08-01 once all deployments have migrated.
+# Nulls workout heart_rate_min values copied from average HR (Garmin pre-#1121, Polar pre-#1041); no-op once cleaned.
+echo 'Running workout heart_rate_min cleanup...'
+uv run python scripts/data_migrations/null_bogus_workout_heart_rate_min.py \
+    || echo "Warning: workout heart_rate_min cleanup failed - will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

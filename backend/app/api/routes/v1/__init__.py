@@ -13,6 +13,7 @@ from .events import router as events_router
 from .health_scores import router as health_scores_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
+from .meta import router as meta_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
 from .outgoing_webhooks import router as outgoing_webhooks_router
@@ -35,6 +36,7 @@ from .webhooks import router as providers_webhooks_router
 v1_router = APIRouter()
 
 # --- External: 3rd party integration endpoints ---
+v1_router.include_router(meta_router, tags=["External: Meta"])
 v1_router.include_router(users_router, tags=["External: Users"])
 v1_router.include_router(connections_router, tags=["External: Connections"])
 v1_router.include_router(summaries_router, tags=["External: Summaries"])

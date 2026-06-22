@@ -41,6 +41,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from app.database import DbSession
+from app.utils.structured_logging import log_structured
 
 
 class BaseWebhookHandler(ABC):
@@ -195,9 +196,13 @@ class BaseWebhookHandler(ABC):
             ``HTTPException(400)`` if ``parse_payload`` raises a validation error.
         """
         if not self.verify_signature(request, body):
-            self.logger.warning(
+            log_structured(
+                self.logger,
+                "warning",
                 "Webhook signature verification failed",
-                extra={"provider": self.provider_name},
+                provider=self.provider_name,
+                path=request.url.path,
+                client_host=request.client.host if request.client else None,
             )
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 

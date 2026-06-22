@@ -1,6 +1,7 @@
 """Ultrahuman Ring Air provider strategy."""
 
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.ultrahuman.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
 
@@ -20,6 +21,15 @@ class UltrahumanStrategy(BaseProviderStrategy):
             provider_name=self.name,
             api_base_url=self.api_base_url,
             oauth=self.oauth,
+        )
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
         )
 
     @property

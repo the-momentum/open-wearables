@@ -1,7 +1,7 @@
 ---
 title: "Data Migrations"
 sidebarTitle: "Overview"
-description: "One-off scripts for backfilling or correcting data in the database. Run manually against a live instance."
+description: "One-off scripts for backfilling or correcting data in the database. Some run automatically on startup for a limited time; all can be run manually."
 keywords: ["data migration", "backfill", "database", "open wearables"]
 "og:title": "Data Migrations | Open Wearables"
 "og:description": "One-off scripts for backfilling or correcting data in the database."
@@ -9,7 +9,15 @@ keywords: ["data migration", "backfill", "database", "open wearables"]
 "og:type": "article"
 ---
 
-Data migration scripts live in `backend/scripts/data_migrations/`. They are run manually — not applied automatically on deploy — and are intended for one-off corrections, backfills, or clean-ups that cannot be expressed as a zero-downtime Alembic migration.
+Data migration scripts live in `backend/scripts/data_migrations/`. They handle one-off corrections, backfills, or clean-ups that cannot be expressed as a zero-downtime Alembic migration.
+
+## How they run
+
+Recent migrations are wired into the container startup script (`backend/scripts/start/app.sh`) and run automatically on every deploy, after Alembic migrations are applied. They are idempotent (no-op once the data is corrected) and non-fatal - a failure logs a warning and retries on the next startup.
+
+This automatic execution is **temporary**. Each entry in `app.sh` is gated by a `TODO: Remove this after ~<date>` comment and is deleted once existing deployments have had time to upgrade. After that point the script is no longer invoked on startup.
+
+The practical consequence: if you upgrade Open Wearables long after a migration shipped, the corresponding script may already have been removed from `app.sh` and **will not run automatically**. In that case, run it manually (see below). Scripts that were never added to `app.sh` must always be run manually.
 
 ## Prerequisites
 

@@ -20,6 +20,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 
 
@@ -381,16 +382,8 @@ class Ultrahuman247Data(Base247DataTemplate):
         """Save normalized activity samples (HR, HRV, etc.) to DataPointSeries."""
         count = 0
 
-        # Map internal keys to SeriesType
-        type_mapping = {
-            "heart_rate": SeriesType.heart_rate,
-            "hrv": SeriesType.heart_rate_variability_sdnn,
-            "temperature": SeriesType.body_temperature,
-            "steps": SeriesType.steps,
-        }
-
         for key, samples in normalized_samples.items():
-            series_type = type_mapping.get(key)
+            series_type = ACTIVITY_SAMPLE_SERIES.get(key)
             if not series_type:
                 continue
 

@@ -129,7 +129,14 @@ function SyncsPage() {
         <FilterSelect
           value={filters.source}
           placeholder="Source"
-          options={['pull', 'webhook', 'sdk', 'backfill', 'xml_import']}
+          options={[
+            'pull',
+            'webhook',
+            'sdk',
+            'backfill',
+            'xml_import',
+            'linked_account',
+          ]}
           onChange={(v) => {
             setFilters((f) => ({ ...f, source: v || undefined }));
             setPage(0);
@@ -261,7 +268,20 @@ function SyncRow({ run }: { run: SyncRunSummary }) {
         </Link>
       </td>
       <td className="px-4 py-2.5 capitalize">{run.provider}</td>
-      <td className="px-4 py-2.5 text-zinc-400">{sourceLabel}</td>
+      <td className="px-4 py-2.5 text-zinc-400">
+        <span className="inline-flex items-center gap-1.5">
+          {sourceLabel}
+          {run.source === 'linked_account' && run.primary_user_id && (
+            <Link
+              to={ROUTES.user}
+              params={{ userId: run.primary_user_id }}
+              className="font-mono text-xs text-blue-400 hover:text-blue-300 hover:underline"
+            >
+              {run.primary_user_id.slice(0, 8)}…
+            </Link>
+          )}
+        </span>
+      </td>
       <td className="px-4 py-2.5">
         <span
           className={cn(
@@ -276,12 +296,17 @@ function SyncRow({ run }: { run: SyncRunSummary }) {
         {formatRunDuration(run.started_at, run.ended_at)}
       </td>
       <td className="px-4 py-2.5 text-zinc-400 max-w-xs">
-        {run.items_processed !== null ? (
-          `${run.items_processed}${run.items_total !== null ? ` / ${run.items_total} items` : ' items'}`
-        ) : run.message ? (
-          <span className="truncate block text-xs">{run.message}</span>
+        {run.items_processed !== null && (
+          <div className="tabular-nums">
+            {`${run.items_processed}${run.items_total !== null ? ` / ${run.items_total} items` : ' items'}`}
+          </div>
+        )}
+        {run.message ? (
+          <span className="truncate block text-xs text-zinc-500">
+            {run.message}
+          </span>
         ) : (
-          '—'
+          run.items_processed === null && '—'
         )}
       </td>
       <td className="px-4 py-2.5 text-zinc-400">

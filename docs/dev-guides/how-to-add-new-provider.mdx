@@ -90,7 +90,8 @@ For a provider named **Suunto**, create:
 ```bash
 backend/app/services/providers/suunto/
 ├── __init__.py
-├── strategy.py        # Provider strategy + capabilities declaration
+├── strategy.py        # Provider strategy + capabilities + coverage declaration
+├── coverage.py        # Declares what data the provider emits (single source of truth)
 ├── oauth.py           # OAuth handler (skip if PUSH-only with no REST API)
 ├── workouts.py        # Workout/activity data handler
 ├── data_247.py        # 24/7 continuous health data (optional)
@@ -110,7 +111,8 @@ The strategy class is the entry point for your provider. It defines the provider
 Create `backend/app/services/providers/suunto/strategy.py`:
 
 ```python
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.suunto.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 
@@ -158,6 +160,16 @@ class SuuntoStrategy(BaseProviderStrategy):
             rest_pull=True,
             webhook_stream=True,  # Suunto delivers full payload in every webhook
         )
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        """Declare what data this provider emits (powers /api/v1/meta/coverage)."""
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
 ```
 
 ### Key Points:
@@ -166,6 +178,7 @@ class SuuntoStrategy(BaseProviderStrategy):
 - `api_base_url`: Used by the API client to construct requests
 - `display_name`: Optional, shown in UI (defaults to `name.capitalize()`)
 - `capabilities`: **Required** — tells the unified router and sync scheduler how this provider delivers data
+- `coverage`: declares what data the provider emits; pass through all four constants from `coverage.py` (see below)
 - Set `self.webhooks = None` (default) if your provider has no incoming webhooks
 - Set `self.oauth = None` for SDK/file-upload-only providers like Apple Health
 
@@ -174,6 +187,55 @@ class SuuntoStrategy(BaseProviderStrategy):
 <Check>
 Inherited `BaseProviderStrategy` will init all required repositories so you don't need to take care about database manipulations. You can read more about repositories role in our [System Overview](/architecture/system-overview).
 </Check>
+
+---
+
+### Declare data coverage (`coverage.py`)
+
+`coverage.py` is the single source of truth for what your provider emits. It powers the public [`GET /api/v1/meta/coverage`](/api-reference) endpoint and the Data Coverage matrix, and the `coverage` property above reads from it.
+
+Create `backend/app/services/providers/suunto/coverage.py`:
+
+```python
+from app.schemas.enums import SeriesType
+from app.schemas.enums.health_score_category import HealthScoreCategory
+
+# Mapping tables (handler key → SeriesType) are imported and used directly by
+# data_247.py / workouts.py, so TIMESERIES is derived from them and never drifts.
+ACTIVITY_SERIES: dict[str, SeriesType] = {
+    "steps": SeriesType.steps,
+    "energy": SeriesType.energy,
+}
+
+TIMESERIES: frozenset[SeriesType] = frozenset(
+    {
+        *ACTIVITY_SERIES.values(),        # /v1/activity
+        SeriesType.resting_heart_rate,    # single inline emission
+    }
+)
+
+# EventRecordDetail fields your handlers populate
+WORKOUT_FIELDS: frozenset[str] = frozenset({"energy_burned", "distance", "moving_time_seconds"})
+SLEEP_FIELDS: frozenset[str] = frozenset({"sleep_total_duration_minutes", "sleep_deep_minutes"})
+HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset({HealthScoreCategory.RECOVERY})
+```
+
+Rules:
+
+- Move any `key → SeriesType` mapping that lives in `data_247.py`/`workouts.py` into `coverage.py` and import it back, so the mapping is defined once and `TIMESERIES` is derived from it.
+- Single inline `series_type=SeriesType.X` emissions may stay in the handler, but `X` must appear in `TIMESERIES`.
+- Declare all four constants; use `frozenset()` for layers your provider doesn't emit (e.g. a workouts-only provider has an empty `TIMESERIES`).
+
+A guard test scans your implementation and **fails** if it emits a `SeriesType` or sets an `EventRecordDetail` field not declared here — and asserts the strategy's `coverage` property exposes all four constants:
+
+```bash
+cd backend && uv run pytest tests/providers/test_provider_coverage.py -k suunto -q
+```
+
+```
+4 passed in 0.42s
+```
+
 ---
 
 ## Step 3: Implement OAuth Handler (PULL providers)

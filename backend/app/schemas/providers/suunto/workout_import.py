@@ -35,7 +35,9 @@ class WorkoutJSON(BaseModel):
 
     # Unix timestamp (ms)
     startTime: int
-    stopTime: int
+    # Sometimes missing in fresh webhook payloads (Suunto computes it asynchronously);
+    # callers fall back to startTime + totalTime when None.
+    stopTime: int | None = None
     # Seconds
     totalTime: float
     timeOffsetInMinutes: int | None = None

@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -101,6 +102,19 @@ class TestGarmin247Data:
             "bodyFatInPercent": 18.5,
             "bodyMassIndex": 23.5,
             "muscleMassInGrams": 35000,
+        }
+
+    @pytest.fixture
+    def sample_blood_pressure(self) -> dict[str, Any]:
+        """Sample Garmin blood pressure webhook item."""
+        return {
+            "summaryId": "sd60a3665-6a31b950",
+            "systolic": 112,
+            "diastolic": 73,
+            "pulse": 69,
+            "sourceType": "MANUAL",
+            "measurementTimeInSeconds": 1781643600,
+            "measurementTimeOffsetInSeconds": -18000,  # -05:00
         }
 
     # -------------------------------------------------------------------------
@@ -361,13 +375,14 @@ class TestGarmin247Data:
     ) -> None:
         """Test saving body composition data."""
         user = UserFactory()
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
 
-        # Should create 3 data points: weight, body_fat, BMI
+        # Should create 4 data points: weight, body_fat, BMI, skeletal muscle mass
         mock_bulk_create.assert_called_once()
-        assert len(mock_bulk_create.call_args[0][1]) == 3
-        assert count == 3
+        assert len(mock_bulk_create.call_args[0][1]) == 4
+        assert count == 4
 
     def test_save_body_composition_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving body composition with missing timestamp."""
@@ -533,14 +548,44 @@ class TestGarmin247Data:
 
     def test_build_body_comp_samples(self, garmin_247: Garmin247Data, sample_body_comp: dict[str, Any]) -> None:
         """Test _build_body_comp_samples returns samples without DB call."""
+        from app.schemas.enums.series_types import SeriesType
+
         user_id = uuid4()
         samples = garmin_247._build_body_comp_samples(user_id, sample_body_comp)
-        assert len(samples) == 3  # weight, body_fat, BMI
+        assert len(samples) == 4  # weight, body_fat, BMI, skeletal muscle mass
+
+        muscle = next(s for s in samples if s.series_type == SeriesType.skeletal_muscle_mass)
+        assert muscle.value == Decimal("35")  # 35000 g -> 35 kg
 
     def test_build_body_comp_samples_missing_timestamp(self, garmin_247: Garmin247Data) -> None:
         """Test _build_body_comp_samples returns empty for missing timestamp."""
         user_id = uuid4()
         samples = garmin_247._build_body_comp_samples(user_id, {"weightInGrams": 75000})
+        assert samples == []
+
+    def test_build_blood_pressure_samples(
+        self, garmin_247: Garmin247Data, sample_blood_pressure: dict[str, Any]
+    ) -> None:
+        """Test _build_blood_pressure_samples reads the webhook timestamp field."""
+        from app.schemas.enums.series_types import SeriesType
+
+        user_id = uuid4()
+        samples = garmin_247._build_blood_pressure_samples(user_id, sample_blood_pressure)
+
+        assert len(samples) == 2  # systolic + diastolic
+        by_type = {s.series_type: s for s in samples}
+        assert by_type[SeriesType.blood_pressure_systolic].value == Decimal("112")
+        assert by_type[SeriesType.blood_pressure_diastolic].value == Decimal("73")
+
+        systolic = by_type[SeriesType.blood_pressure_systolic]
+        assert systolic.recorded_at == datetime(2026, 6, 16, 21, 0, tzinfo=timezone.utc)
+        assert systolic.zone_offset == "-05:00"
+        assert systolic.external_id == "sd60a3665-6a31b950"
+
+    def test_build_blood_pressure_samples_missing_timestamp(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_blood_pressure_samples returns empty when timestamp is absent."""
+        user_id = uuid4()
+        samples = garmin_247._build_blood_pressure_samples(user_id, {"systolic": 112, "diastolic": 73})
         assert samples == []
 
     def test_build_hrv_samples(self, garmin_247: Garmin247Data) -> None:
@@ -638,6 +683,7 @@ class TestGarmin247Data:
         """Test batch processing multiple daily items in a single bulk_create."""
         user = UserFactory()
         daily2 = {**sample_daily, "summaryId": "daily_456", "calendarDate": "2024-01-16"}
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "dailies", [sample_daily, daily2])
 
@@ -658,6 +704,7 @@ class TestGarmin247Data:
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 25, "300": 30}},
             {"startTimeInSeconds": 1705363200, "timeOffsetStressLevelValues": {"0": 40}},
         ]
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
 
@@ -707,6 +754,7 @@ class TestGarmin247Data:
             {"startTimeInSeconds": 0},  # Missing timestamp -> skipped
             {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 50}},  # Valid
         ]
+        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
 

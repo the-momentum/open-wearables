@@ -269,11 +269,13 @@ class StravaWebhookHandler(BaseWebhookHandler):
 
         user_id: UUID = connection.user_id
 
+        self.connection_repo.update_last_synced_at(db, connection)
+
         if aspect_type == "delete":
             return self._handle_activity_delete(db, user_id, object_id, trace_id)
 
         if aspect_type not in ("create", "update"):
-            return {"status": "ignored", "reason": f"aspect_type:{aspect_type}"}
+            return {"status": "ignored", "reason": f"aspect_type:{aspect_type}", "user_id": str(user_id)}
 
         log_structured(
             logger,
@@ -300,7 +302,12 @@ class StravaWebhookHandler(BaseWebhookHandler):
                     activity_id=object_id,
                     user_id=str(user_id),
                 )
-                return {"status": "warning", "reason": "no_activity_data", "activity_id": object_id}
+                return {
+                    "status": "warning",
+                    "reason": "no_activity_data",
+                    "activity_id": object_id,
+                    "user_id": str(user_id),
+                }
 
             activity = StravaActivityJSON(**activity_data)
             created_ids = self.workouts.process_push_activity(db=db, activity=activity, user_id=user_id)
@@ -320,6 +327,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
                 "status": "processed",
                 "activity_id": object_id,
                 "records_saved": len(created_ids),
+                "user_id": str(user_id),
             }
 
         except IntegrityError:
@@ -334,7 +342,12 @@ class StravaWebhookHandler(BaseWebhookHandler):
                 activity_id=object_id,
                 user_id=str(user_id),
             )
-            return {"status": "ignored", "reason": "duplicate_activity", "activity_id": object_id}
+            return {
+                "status": "ignored",
+                "reason": "duplicate_activity",
+                "activity_id": object_id,
+                "user_id": str(user_id),
+            }
 
         except ValidationError as exc:
             log_and_capture_error(
@@ -350,7 +363,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
                     "error": str(exc),
                 },
             )
-            return {"status": "error", "error": f"validation_error: {exc}"}
+            return {"status": "error", "error": f"validation_error: {exc}", "user_id": str(user_id)}
 
         except Exception as exc:
             log_and_capture_error(

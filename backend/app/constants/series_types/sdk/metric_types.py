@@ -317,4 +317,4 @@ def get_series_type_from_metric_type(metric_type: SDKMetricType | str) -> Series
     Map a metric type identifier (Apple HealthKit or Samsung/Health Connect SDK)
     to the unified SeriesType enum. Returns None when the metric type is not supported.
     """
-    return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)  # ty: ignore[invalid-argument-type]
+    return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)

@@ -3,6 +3,7 @@
 from collections.abc import Generator
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -142,3 +143,72 @@ class TestSuuntoRestingHeartRatePersistence:
         timeseries_service_mock.bulk_create_samples.assert_called_once()
         db.rollback.assert_called_once()
         db.commit.assert_not_called()
+
+
+def _normalized_sleep(**overrides: Any) -> dict[str, Any]:
+    """A normalized sleep dict shaped exactly as ``normalize_sleep`` emits one."""
+    base: dict[str, Any] = {
+        "id": uuid4(),
+        "suunto_sleep_id": 1780782000,
+        "start_time": "2026-06-06T23:40:00+02:00",
+        "end_time": "2026-06-07T06:12:00+02:00",
+        "duration_seconds": 23520,
+        "efficiency_percent": 77,
+        "is_nap": False,
+        "min_heart_rate_bpm": None,
+        "stages": {"deep_seconds": 7320, "light_seconds": 10950, "rem_seconds": 5220, "awake_seconds": 30},
+    }
+    base.update(overrides)
+    return base
+
+
+class TestSuuntoSleepSyncStats:
+    """The sleep sync loop must skip unsaveable sessions and report accurate
+    (saved, skipped) counts, so a fully-dropped backfill is never reported as a
+    successful sync."""
+
+    @patch("app.services.providers.suunto.data_247.event_record_service")
+    def test_save_sleep_data_reports_success(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+        assert data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep()) is True
+        mock_event.create_or_merge_sleep.assert_called_once()
+
+    @patch("app.services.providers.suunto.data_247.event_record_service")
+    def test_save_sleep_data_reports_skip_for_missing_window(
+        self, mock_event: MagicMock, data_247: Suunto247Data
+    ) -> None:
+        skipped = data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(start_time=None, end_time=None))
+
+        assert skipped is False
+        mock_event.create_or_merge_sleep.assert_not_called()
+
+    @patch("app.services.providers.suunto.data_247.event_record_service")
+    def test_load_and_save_sleep_counts_saved_and_skipped(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+        saveable = {
+            "timestamp": "2026-06-06T23:40:00+02:00",
+            "entryData": {
+                "BedtimeStart": "2026-06-06T23:40:00+02:00",
+                "BedtimeEnd": "2026-06-07T06:12:00+02:00",
+                "Duration": 23520.0,
+                "SleepId": 1,
+            },
+        }
+        unsaveable = {"timestamp": "2026-06-07T13:00:00+02:00", "entryData": {"Duration": 0.0, "SleepId": 2}}
+
+        with patch.object(data_247, "get_sleep_data", return_value=[saveable, unsaveable]):
+            saved, skipped = data_247.load_and_save_sleep(
+                MagicMock(), uuid4(), datetime.now(timezone.utc), datetime.now(timezone.utc)
+            )
+
+        assert (saved, skipped) == (1, 1)
+
+    def test_load_and_save_all_surfaces_skipped_count(self, data_247: Suunto247Data) -> None:
+        with (
+            patch.object(data_247, "load_and_save_sleep", return_value=(2, 3)),
+            patch.object(data_247, "load_and_save_recovery", return_value=0),
+            patch.object(data_247, "get_activity_samples", return_value=[]),
+            patch.object(data_247, "get_daily_activity_statistics", return_value=[]),
+        ):
+            results = data_247.load_and_save_all(MagicMock(), uuid4())
+
+        assert results["sleep_sessions_synced"] == 2
+        assert results["sleep_sessions_skipped"] == 3
