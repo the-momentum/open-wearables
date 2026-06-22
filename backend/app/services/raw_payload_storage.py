@@ -228,11 +228,7 @@ def purge_user_payloads(user_id: str) -> int:
             list_kwargs["ContinuationToken"] = continuation_token
         page = _s3_client.list_objects_v2(**list_kwargs)
 
-        keys = [
-            {"Key": obj["Key"]}
-            for obj in page.get("Contents", [])
-            if marker in obj["Key"]
-        ]
+        keys = [{"Key": obj["Key"]} for obj in page.get("Contents", []) if marker in obj["Key"]]
         # delete_objects accepts at most 1000 keys — a page is at most 1000,
         # so one call per page is always within bounds. Quiet mode returns
         # only the failures: count them out and log so a partial purge is
