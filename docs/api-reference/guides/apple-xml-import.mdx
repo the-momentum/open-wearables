@@ -157,7 +157,10 @@ const presignedData = await response.json();
 
 ```json 401 Unauthorized
 {
-  "detail": "Could not validate credentials"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Invalid or missing API key",
+  "code": "INVALID_API_KEY"
 }
 ```
 </ResponseExample>

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
@@ -10,6 +10,7 @@ from app.database import DbSession
 from app.models import Developer
 from app.repositories.developer_repository import DeveloperRepository
 from app.schemas.auth import SDKAuthContext
+from app.utils.exceptions import ApiError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 developer_repository = DeveloperRepository(Developer)
@@ -23,22 +24,29 @@ async def get_current_developer(
 
     SDK-scoped tokens are rejected - they can only access /sdk/ endpoints.
     """
-    credentials_exception = HTTPException(
+    credentials_exception = ApiError(
         status_code=status.HTTP_401_UNAUTHORIZED,
+        code="INVALID_TOKEN",
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
     if not token:
-        raise credentials_exception
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="NOT_AUTHENTICATED",
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 
         # Reject SDK-scoped tokens - they can ONLY access /sdk/ endpoints
         if payload.get("scope") == "sdk":
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
+                code="INVALID_TOKEN",
                 detail="SDK tokens cannot access this endpoint",
                 headers={"WWW-Authenticate": "Bearer"},
             )
@@ -133,8 +141,9 @@ async def get_sdk_auth(
         api_key = api_key_service.validate_api_key(db, x_open_wearables_api_key)
         return SDKAuthContext(auth_type="api_key", api_key_id=api_key.id)
 
-    raise HTTPException(
+    raise ApiError(
         status_code=status.HTTP_401_UNAUTHORIZED,
+        code="NOT_AUTHENTICATED",
         detail="Authentication required: provide SDK token or API key",
     )
 

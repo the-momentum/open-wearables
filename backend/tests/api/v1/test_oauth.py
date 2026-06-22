@@ -86,7 +86,7 @@ class TestOAuthAuthorizeEndpoint:
         response = client.get("/api/v1/oauth/garmin/authorize")
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_authorize_invalid_user_id(self, client: TestClient, db: Session) -> None:
         """Test authorization with invalid user_id format."""
@@ -97,7 +97,7 @@ class TestOAuthAuthorizeEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_authorize_invalid_provider(self, client: TestClient, db: Session) -> None:
         """Test authorization with non-existent provider."""
@@ -111,7 +111,7 @@ class TestOAuthAuthorizeEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_authorize_non_oauth_provider(self, client: TestClient, db: Session) -> None:
         """Test authorization with provider that doesn't support OAuth."""
@@ -365,6 +365,9 @@ class TestOAuthUpdateProviderEndpoint:
 
         # Assert
         assert response.status_code == 400
+        body = response.json()
+        assert body["code"] == "UNSUPPORTED_PROVIDER_OPERATION"
+        assert body["detail"] == "Provider 'garmin' does not support live sync mode configuration."
 
     def test_update_provider_response_structure(
         self,

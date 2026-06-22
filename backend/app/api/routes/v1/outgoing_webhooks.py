@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from svix.api import EndpointOut, MessageAttemptListByEndpointOptions, MessageListOptions, MessageStatus
 
 from app.schemas.webhooks.endpoints import (
@@ -30,6 +30,7 @@ from app.schemas.webhooks.endpoints import (
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, EVENT_TYPE_GROUPS, WebhookEventType
 from app.services import DeveloperDep
 from app.services.outgoing_webhooks import svix as svix_service
+from app.utils.exceptions import ApiError
 
 router = APIRouter()
 
@@ -47,8 +48,9 @@ def _ep_to_response(ep: EndpointOut) -> EndpointResponse:
 def _svix_app_id(developer: DeveloperDep) -> str:
     """Authenticate the developer, assert Svix is configured, and return the app UID."""
     if not svix_service.is_enabled():
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="WEBHOOKS_NOT_CONFIGURED",
             detail="Outgoing webhooks are not configured (set SVIX_JWT_SECRET or SVIX_AUTH_TOKEN).",
         )
     return svix_service.ensure_application(str(developer.id), developer.email)
@@ -226,5 +228,9 @@ def send_test_event(endpoint_id: str, app_id: SvixAppId, body: TestEventRequest 
     event_type = body.event_type if body else WebhookEventType.WORKOUT_CREATED
     result = svix_service.send_test_message(app_id, endpoint_id, event_type)
     if result is None:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send test event.")
+        raise ApiError(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="WEBHOOK_TEST_FAILED",
+            detail="Failed to send test event.",
+        )
     return {"message": "Test event sent successfully.", "message_id": result.id}

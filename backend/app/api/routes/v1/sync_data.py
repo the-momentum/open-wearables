@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, Path, Query, status
 
 from app.database import DbSession
 from app.integrations.celery.tasks import (
@@ -18,7 +18,7 @@ from app.integrations.celery.tasks import (
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import UnsupportedProviderError
+from app.utils.exceptions import ApiError, UnsupportedProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +136,9 @@ def sync_user_data(
         }
         unsupported = [k for k, v in non_default_params.items() if v]
         if unsupported:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="UNSUPPORTED_SYNC_PARAMETERS",
                 detail=(
                     f"Parameters {unsupported} are not supported in async mode. "
                     "Use async=false or omit provider-specific parameters."
@@ -181,8 +182,9 @@ def sync_user_data(
         if strategy.workouts:
             results["workouts"] = strategy.workouts.load_data(db, user_id, **params)
         elif data_type == SyncDataType.WORKOUTS:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                code="UNSUPPORTED_PROVIDER_OPERATION",
                 detail=f"Provider '{provider.value}' does not support workouts",
             )
 
@@ -198,14 +200,16 @@ def sync_user_data(
                 end_dt = datetime.now()
                 results["data_247"] = load_fn(db, user_id, start_time=start_dt, end_time=end_dt)
         elif data_type == SyncDataType.DATA_247:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                code="UNSUPPORTED_PROVIDER_OPERATION",
                 detail=f"Provider '{provider.value}' does not support 247 data (sleep/recovery/activity)",
             )
 
     if not results:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            code="UNSUPPORTED_PROVIDER_OPERATION",
             detail=f"Provider '{provider.value}' does not support any requested data types",
         )
 
@@ -271,8 +275,9 @@ def cancel_garmin_backfill(
     """
     backfill_status = get_garmin_backfill_status(str(user_id))
     if backfill_status["overall_status"] not in ("in_progress", "retry_in_progress"):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
+            code="BACKFILL_NOT_IN_PROGRESS",
             detail="No backfill in progress for this user",
         )
 
@@ -305,8 +310,9 @@ def retry_garmin_backfill_type(
         Dict with retry status
     """
     if type_name not in GARMIN_BACKFILL_DATA_TYPES:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            code="INVALID_BACKFILL_TYPE",
             detail=f"Invalid type: {type_name}. Valid types: {', '.join(GARMIN_BACKFILL_DATA_TYPES)}",
         )
 
@@ -371,10 +377,11 @@ def sync_historical_data(
     try:
         result = strategy.start_historical_sync(user_id, days)
     except UnsupportedProviderError as exc:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            code=exc.code,
             detail=exc.detail,
-        )
+        ) from exc
 
     return {
         "success": True,

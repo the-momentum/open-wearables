@@ -1,7 +1,7 @@
 import json
 from json import JSONDecodeError
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Request, UploadFile, status
 from pydantic import ValidationError
 
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
@@ -14,6 +14,7 @@ from app.schemas.responses.upload import UploadDataResponse
 from app.services import ApiKeyDep
 from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
 from app.services.apple.apple_xml.sns_service import sns_service
+from app.utils.exceptions import ApiError
 
 router = APIRouter()
 
@@ -56,10 +57,10 @@ async def receive_sns_notification(
     try:
         notification = SNSNotification.model_validate(json.loads(body))
     except (ValidationError, JSONDecodeError) as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise ApiError(status_code=status.HTTP_400_BAD_REQUEST, code="INVALID_SNS_NOTIFICATION", detail=str(e))
 
     result = await sns_service.handle_sns_notification(notification)
 
     if result.status_code not in (status.HTTP_200_OK, status.HTTP_202_ACCEPTED):
-        raise HTTPException(status_code=result.status_code, detail=result.response)
+        raise ApiError(status_code=result.status_code, code="SNS_NOTIFICATION_FAILED", detail=result.response)
     return result

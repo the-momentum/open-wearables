@@ -144,9 +144,14 @@ The API uses different response formats depending on the endpoint type:
 
 ### Error Response
 
+Errors are returned as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details objects with the `application/problem+json` media type. The `code` field is a stable machine-readable identifier; validation errors (`422`) add an `errors` array. See the [error handling guide](/api-reference/guides/error-handling) for the full reference.
+
 ```json
 {
-  "detail": "Error message describing what went wrong"
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID: 123 not found.",
+  "code": "USER_NOT_FOUND"
 }
 ```
 
@@ -158,6 +163,7 @@ The API uses different response formats depending on the endpoint type:
 - `400 Bad Request` - Invalid request parameters
 - `401 Unauthorized` - Authentication required or invalid
 - `404 Not Found` - Resource not found
+- `422 Unprocessable Content` - Request validation failed
 - `500 Internal Server Error` - Server error
 
 ## Pagination

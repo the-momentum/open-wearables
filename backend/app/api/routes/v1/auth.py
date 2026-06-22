@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config import settings
@@ -8,6 +8,7 @@ from app.database import DbSession
 from app.schemas.auth import TokenResponse
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
+from app.utils.exceptions import ApiError
 from app.utils.security import create_access_token, verify_password
 
 router = APIRouter()
@@ -28,16 +29,18 @@ def login(
         sort_by=None,
     )
     if not developers:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            code="INVALID_CREDENTIALS",
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     developer = developers[0]
     if not verify_password(form_data.password, developer.hashed_password):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            code="INVALID_CREDENTIALS",
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
@@ -68,8 +71,9 @@ def change_password(
     """Change password for the current authenticated developer."""
     # Verify the current password
     if not verify_password(payload.current_password, developer.hashed_password):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            code="INCORRECT_CURRENT_PASSWORD",
             detail="Incorrect current password",
         )
 

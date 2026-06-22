@@ -3,6 +3,12 @@ import { ApiError } from '../errors/api-error';
 import { getToken, clearSession } from '../auth/session';
 import { ROUTES } from '../constants/routes';
 
+// Error responses use application/problem+json, success responses
+// application/json.
+function isJsonContentType(contentType: string | null): boolean {
+  return Boolean(contentType?.includes('json'));
+}
+
 interface RequestOptions extends RequestInit {
   timeout?: number;
   retries?: number;
@@ -106,7 +112,7 @@ export const apiClient = {
         response.headers.get('content-length') === '0'
       ) {
         data = undefined;
-      } else if (contentType?.includes('application/json')) {
+      } else if (isJsonContentType(contentType)) {
         data = await response.json();
       } else {
         data = await response.text();
@@ -168,7 +174,7 @@ export const apiClient = {
     let data: unknown;
     const contentType = response.headers.get('content-type');
 
-    if (contentType?.includes('application/json')) {
+    if (isJsonContentType(contentType)) {
       data = await response.json();
     } else {
       data = await response.text();
@@ -292,7 +298,7 @@ export const apiClient = {
     let data: unknown;
     const contentType = response.headers.get('content-type');
 
-    if (contentType?.includes('application/json')) {
+    if (isJsonContentType(contentType)) {
       data = await response.json();
     } else {
       data = await response.text();

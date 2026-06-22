@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import ApiError
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -34,23 +35,26 @@ def _get_valid_token(
     """
     connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
     if not connection:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            code="PROVIDER_NOT_CONNECTED",
             detail=f"User not connected to {provider_name}",
         )
 
     # SDK-based providers don't have access tokens
     if not connection.access_token:
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,
+            code="PROVIDER_TOKEN_MISSING",
             detail=f"No access token available for {provider_name} (SDK-based provider?)",
         )
 
     # Check if token is expired (with 5 minute buffer)
     if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
         if not connection.refresh_token:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
+                code="PROVIDER_AUTHORIZATION_EXPIRED",
                 detail=f"Token expired and no refresh token available for {provider_name}",
             )
         token_response = oauth.refresh_access_token(db, user_id, connection.refresh_token)
@@ -147,8 +151,9 @@ def make_authenticated_request(
                     attempt=attempt + 1,
                     max_retries=MAX_RETRIES,
                 )
-                raise HTTPException(
+                raise ApiError(
                     status_code=429,
+                    code="PROVIDER_RATE_LIMITED",
                     detail=f"{provider_name.capitalize()} API error: {response.text}",
                 )
 
@@ -179,8 +184,9 @@ def make_authenticated_request(
                         provider_name=provider_name,
                         error_msg=error_msg,
                     )
-                    raise HTTPException(
+                    raise ApiError(
                         status_code=result.get("code", 400),
+                        code="PROVIDER_API_ERROR",
                         detail=f"{provider_name.capitalize()} API error: {error_msg}",
                     )
 
@@ -211,12 +217,14 @@ def make_authenticated_request(
                 error=e.response.text,
             )
             if e.response.status_code == 401:
-                raise HTTPException(
+                raise ApiError(
                     status_code=401,
+                    code="PROVIDER_AUTHORIZATION_EXPIRED",
                     detail=f"{provider_name.capitalize()} authorization expired. Please re-authorize.",
                 )
-            raise HTTPException(
+            raise ApiError(
                 status_code=e.response.status_code,
+                code="PROVIDER_API_ERROR",
                 detail=f"{provider_name.capitalize()} API error: {e.response.text}",
             )
         except HTTPException:
@@ -231,14 +239,16 @@ def make_authenticated_request(
                 user_id=str(user_id),
                 error=str(e),
             )
-            raise HTTPException(
+            raise ApiError(
                 status_code=500,
+                code="PROVIDER_REQUEST_FAILED",
                 detail=f"Failed to fetch data from {provider_name.capitalize()}: {str(e)}",
             )
 
     # Should not reach here, but just in case
-    raise HTTPException(
+    raise ApiError(
         status_code=500,
+        code="PROVIDER_REQUEST_FAILED",
         detail=f"Failed to complete request to {provider_name.capitalize()} after retries",
     )
 
@@ -278,4 +288,8 @@ def download_binary_content(
         response.raise_for_status()
         return response.content
 
-    raise HTTPException(status_code=500, detail=f"Failed to download binary content from {provider_name}")
+    raise ApiError(
+        status_code=500,
+        code="PROVIDER_REQUEST_FAILED",
+        detail=f"Failed to download binary content from {provider_name}",
+    )

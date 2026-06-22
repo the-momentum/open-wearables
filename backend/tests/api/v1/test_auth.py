@@ -179,7 +179,9 @@ class TestChangePassword:
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
         assert response.status_code == 400
-        assert response.json()["detail"] == "Incorrect current password"
+        body = response.json()
+        assert body["code"] == "INCORRECT_CURRENT_PASSWORD"
+        assert body["detail"] == "Incorrect current password"
 
     def test_change_password_mismatch(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test failure when new_password and confirm_password do not match."""
@@ -193,8 +195,10 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 400
-        assert "The confirmation password does not match" in str(response.json())
+        assert response.status_code == 422
+        body = response.json()
+        assert body["code"] == "VALIDATION_ERROR"
+        assert any("The confirmation password does not match" in error["message"] for error in body["errors"])
 
     def test_change_password_too_short(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test failure when new_password is too short."""
@@ -208,7 +212,10 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 400
+        assert response.status_code == 422
+        body = response.json()
+        assert body["code"] == "VALIDATION_ERROR"
+        assert any("at least" in error["message"] for error in body["errors"])
 
 
 class TestGetCurrentDeveloper:

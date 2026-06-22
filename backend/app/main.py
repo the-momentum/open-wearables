@@ -5,9 +5,7 @@ from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api import head_router
@@ -17,7 +15,7 @@ from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
 from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
-from app.utils.exceptions import DatetimeParseError, handle_exception
+from app.utils.problem import apply_problem_openapi, register_exception_handlers
 
 # Configure logging to use stdout instead of stderr
 # Some platforms convert stderr logs to level.error automatically, so we must use stdout
@@ -67,21 +65,7 @@ async def root() -> dict[str, str]:
     return {"message": "Server is running!"}
 
 
-@api.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
-    if request.url.path.endswith("/auth/login"):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Incorrect email or password"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    raise handle_exception(exc, "")
-
-
-@api.exception_handler(DatetimeParseError)
-async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
-    raise handle_exception(exc, "")
-
+register_exception_handlers(api)
 
 api.include_router(head_router)
+apply_problem_openapi(api)

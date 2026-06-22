@@ -1,10 +1,11 @@
 import inspect
+import re
 from collections.abc import Awaitable, Callable
 from functools import singledispatch, wraps
 from typing import TYPE_CHECKING, overload
 from uuid import UUID
 
-from fastapi.exceptions import HTTPException, RequestValidationError
+from fastapi.exceptions import HTTPException
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
@@ -12,15 +13,39 @@ if TYPE_CHECKING:
     from app.services import AppService
 
 
+class ApiError(HTTPException):
+    """HTTPException with a stable machine-readable error code.
+
+    Rendered as an RFC 9457 problem details response by the handler in
+    app.utils.problem.
+    """
+
+    def __init__(self, status_code: int, code: str, detail: str, headers: dict[str, str] | None = None):
+        super().__init__(status_code=status_code, detail=detail, headers=headers)
+        self.code = code
+
+
+def not_found_code(entity_name: str) -> str:
+    """Derive an error code from an entity name, e.g. ApiKey -> API_KEY_NOT_FOUND."""
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", entity_name)
+    normalized = re.sub(r"[^A-Z0-9]+", "_", words.upper()).strip("_")
+    # Dynamic entity descriptions (IDs, dates) would produce unbounded codes
+    if not normalized or len(normalized) > 30:
+        return "RESOURCE_NOT_FOUND"
+    return f"{normalized}_NOT_FOUND"
+
+
 class UnsupportedProviderError(Exception):
     def __init__(self, provider: str, operation: str = "this operation"):
         self.detail = f"Provider '{provider}' does not support {operation}."
+        self.code = "UNSUPPORTED_PROVIDER_OPERATION"
         super().__init__(self.detail)
 
 
 class ResourceNotFoundError(Exception):
-    def __init__(self, entity_name: str, entity_id: int | UUID | None = None):
+    def __init__(self, entity_name: str, entity_id: int | UUID | None = None, code: str | None = None):
         self.entity_name = entity_name
+        self.code = code or not_found_code(entity_name)
         if entity_id:
             self.detail = f"{entity_name.capitalize()} with ID: {entity_id} not found."
         else:
@@ -45,43 +70,40 @@ def handle_exception(exc: Exception, _: str) -> HTTPException:
 
 @handle_exception.register
 def _(exc: SQLAIntegrityError | PsycopgIntegrityError, entity: str) -> HTTPException:
-    return HTTPException(
+    return ApiError(
         status_code=400,
+        code="ALREADY_EXISTS",
         detail=f"{entity.capitalize()} entity already exists. Details: {exc.args[0]}",
     )
 
 
 @handle_exception.register
 def _(exc: ResourceNotFoundError, _: str) -> HTTPException:
-    return HTTPException(status_code=404, detail=exc.detail)
+    return ApiError(status_code=404, code=exc.code, detail=exc.detail)
+
+
+@handle_exception.register
+def _(exc: UnsupportedProviderError, _: str) -> HTTPException:
+    return ApiError(status_code=400, code=exc.code, detail=exc.detail)
 
 
 @handle_exception.register
 def _(exc: InvalidCursorError, _: str) -> HTTPException:
-    return HTTPException(status_code=400, detail=exc.detail)
+    return ApiError(status_code=400, code="INVALID_CURSOR", detail=exc.detail)
 
 
 @handle_exception.register
 def _(exc: DatetimeParseError, _: str) -> HTTPException:
-    return HTTPException(status_code=400, detail=exc.detail)
+    return ApiError(status_code=400, code="INVALID_DATETIME", detail=exc.detail)
 
 
 @handle_exception.register
 def _(exc: AttributeError, entity: str) -> HTTPException:
-    return HTTPException(
+    return ApiError(
         status_code=400,
+        code="UNSUPPORTED_ATTRIBUTE",
         detail=f"{entity.capitalize()} doesn't support attribute or method. Details: {exc.args[0]} ",
     )
-
-
-@handle_exception.register
-def _(exc: RequestValidationError, _: str) -> HTTPException:
-    err_args = exc.args[0][0]
-    msg = err_args.get("msg", "Validation error")
-    ctx = err_args.get("ctx", {})
-    error = ctx.get("error", "") if ctx else ""
-    detail = f"{msg} - {error}" if error else msg
-    return HTTPException(status_code=400, detail=detail)
 
 
 @overload

@@ -3,8 +3,6 @@ from datetime import datetime, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
-from fastapi import HTTPException
-
 from app.database import DbSession
 from app.models import Application
 from app.repositories.application_repository import ApplicationRepository
@@ -13,6 +11,7 @@ from app.schemas.model_crud.credentials import (
     ApplicationUpdate,
 )
 from app.services.services import AppService
+from app.utils.exceptions import ApiError
 from app.utils.security import get_password_hash, verify_password
 from app.utils.structured_logging import log_structured
 
@@ -72,7 +71,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
                 f"Application not found: {app_id}",
                 extra={"app_id": app_id},
             )
-            raise HTTPException(status_code=401, detail="Invalid app credentials")
+            raise ApiError(status_code=401, code="INVALID_APP_CREDENTIALS", detail="Invalid app credentials")
 
         if not verify_password(app_secret, application.app_secret_hash):
             log_structured(
@@ -82,7 +81,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
                 action="validate_credentials",
                 app_id=app_id,
             )
-            raise HTTPException(status_code=401, detail="Invalid app credentials")
+            raise ApiError(status_code=401, code="INVALID_APP_CREDENTIALS", detail="Invalid app credentials")
 
         return application
 
@@ -100,7 +99,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application or application.developer_id != developer_id:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise ApiError(status_code=404, code="APPLICATION_NOT_FOUND", detail="Application not found")
 
         self.delete(db, application.id, raise_404=True)
         self.logger.debug(f"Deleted application {app_id}")
@@ -116,7 +115,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application or application.developer_id != developer_id:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise ApiError(status_code=404, code="APPLICATION_NOT_FOUND", detail="Application not found")
 
         new_secret = self._generate_app_secret()
         new_hash = get_password_hash(new_secret)

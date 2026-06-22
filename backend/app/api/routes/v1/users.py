@@ -33,20 +33,30 @@ async def list_users(
         401: {
             "description": "Authentication required",
             "content": {
-                "application/json": {"example": {"detail": "Authentication required: provide JWT token or API key"}}
+                "application/problem+json": {
+                    "schema": {"$ref": "#/components/schemas/Problem"},
+                    "example": {
+                        "title": "Unauthorized",
+                        "status": 401,
+                        "detail": "Authentication required: provide JWT token or API key",
+                        "code": "NOT_AUTHENTICATED",
+                    },
+                }
             },
         },
         404: {
             "description": "User not found",
             "content": {
-                "application/json": {
-                    "example": {"detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."}
+                "application/problem+json": {
+                    "schema": {"$ref": "#/components/schemas/Problem"},
+                    "example": {
+                        "title": "Not Found",
+                        "status": 404,
+                        "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                        "code": "USER_NOT_FOUND",
+                    },
                 }
             },
-        },
-        400: {
-            "description": "Validation error",
-            "content": {"application/json": {"example": {"detail": "Input should be a valid UUID"}}},
         },
     },
 )

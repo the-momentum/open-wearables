@@ -3,7 +3,7 @@ from logging import Logger, getLogger
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header
 
 from app.database import DbSession
 from app.models import ApiKey, Developer
@@ -11,6 +11,7 @@ from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 from app.services.services import AppService
 from app.utils.auth import get_current_developer_optional
+from app.utils.exceptions import ApiError
 
 
 class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpdate]):
@@ -49,7 +50,7 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
     def validate_api_key(self, db: DbSession, key: str) -> ApiKey:
         """Validate API key exists in database. Raises 401 if invalid."""
         if not (api_key := self.get(db, key)):
-            raise HTTPException(status_code=401, detail="Invalid or missing API key")
+            raise ApiError(status_code=401, code="INVALID_API_KEY", detail="Invalid or missing API key")
         return api_key
 
 
@@ -65,7 +66,11 @@ async def _require_api_key(
         return str(developer.id)
     if x_open_wearables_api_key:
         return api_key_service.validate_api_key(db, x_open_wearables_api_key).id
-    raise HTTPException(status_code=401, detail="Authentication required: provide JWT token or API key")
+    raise ApiError(
+        status_code=401,
+        code="NOT_AUTHENTICATED",
+        detail="Authentication required: provide JWT token or API key",
+    )
 
 
 ApiKeyDep = Annotated[str, Depends(_require_api_key)]

@@ -23,7 +23,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.database import DbSession
@@ -35,6 +35,7 @@ from app.services.sync_status_service import (
     get_run_summaries,
     stream_user_events,
 )
+from app.utils.exceptions import ApiError
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ _SSE_HEADERS = {
 def _ensure_user_exists(db: DbSession, user_id: UUID) -> None:
     user = user_service.get(db, user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise ApiError(status_code=status.HTTP_404_NOT_FOUND, code="USER_NOT_FOUND", detail="User not found")
 
 
 @router.get(

@@ -43,8 +43,15 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 
 **Error response shape**
 
+Errors follow the [RFC 9457 problem details format](/api-reference/guides/error-handling) (`application/problem+json`):
+
 ```json
-{ "detail": "User not found" }
+{
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User not found",
+  "code": "USER_NOT_FOUND"
+}
 ```
 
 <Note>
@@ -143,12 +150,22 @@ data: {"event_id":"evt_01HZ...","run_id":"pull_garmin_user42_1730000000","provid
 
 ```json
 HTTP/1.1 401 Unauthorized
-{ "detail": "Invalid authentication credentials" }
+{
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Invalid or missing API key",
+  "code": "INVALID_API_KEY"
+}
 ```
 
 ```json
 HTTP/1.1 404 Not Found
-{ "detail": "User not found" }
+{
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User not found",
+  "code": "USER_NOT_FOUND"
+}
 ```
 
 ### Example: Node.js
