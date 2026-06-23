@@ -62,6 +62,8 @@ _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_we
 class PolarWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Polar AccessLink notify-only events."""
 
+    user_id_field = "user_id"
+
     def __init__(self, workouts: "PolarWorkouts | None" = None, data_247: "Polar247Data | None" = None) -> None:
         super().__init__("polar")
         self.connection_repo = UserConnectionRepository()

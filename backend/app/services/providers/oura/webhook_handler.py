@@ -71,6 +71,8 @@ _COLLECTION_NAME: dict[str, str] = {
 class OuraWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Oura notify-only events."""
 
+    user_id_field = "user_id"
+
     def __init__(self, data_247: Oura247Data, workouts: OuraWorkouts) -> None:
         super().__init__("oura")
         self.data_247 = data_247

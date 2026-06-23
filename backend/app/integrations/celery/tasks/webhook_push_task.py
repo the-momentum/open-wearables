@@ -17,7 +17,6 @@ from fastapi import HTTPException
 from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
-from app.schemas.enums.provider import ProviderName
 from app.services.providers.factory import ProviderFactory
 from app.utils.structured_logging import log_structured
 
@@ -130,41 +129,6 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
         logger.debug("Failed to emit webhook sync status: %s", exc, exc_info=True)
 
 
-def extract_payload_user_id(provider_name: str, payload: dict[str, Any]) -> str | None:
-    """Best-effort extraction of the provider's user identifier from a webhook payload.
-
-    The key differs per provider (Oura/Whoop/Polar use ``user_id``, Strava uses
-    ``owner_id``, Suunto uses ``username``, Garmin nests ``userId`` per item).
-    Returns ``None`` when no identifier is present.
-    """
-    try:
-        provider = ProviderName(provider_name)
-    except ValueError:
-        return None
-
-    match provider:
-        case ProviderName.OURA | ProviderName.WHOOP | ProviderName.POLAR:
-            uid = payload.get("user_id")
-            return str(uid) if uid is not None else None
-        case ProviderName.STRAVA:
-            uid = payload.get("owner_id")
-            return str(uid) if uid is not None else None
-        case ProviderName.SUUNTO:
-            return payload.get("username")
-        case ProviderName.GARMIN:
-            # Garmin batches items under data-type keys; userId lives per item.
-            user_ids = {
-                str(item["userId"])
-                for items in payload.values()
-                if isinstance(items, list)
-                for item in items
-                if isinstance(item, dict) and item.get("userId")
-            }
-            return ",".join(sorted(user_ids)) or None
-        case _:
-            return None
-
-
 @shared_task(
     bind=True,
     acks_late=True,
@@ -181,13 +145,16 @@ def process_webhook_push(
     process_payload() with a fresh DB session. Retries up to 3 times on
     unexpected infrastructure errors.
     """
+    handler = None
+    provider_user_id: str | None = None
     try:
-        factory = ProviderFactory()
-        strategy = factory.get_provider(provider_name)
-        if strategy.webhooks is None:
+        strategy = ProviderFactory().get_provider(provider_name)
+        handler = strategy.webhooks
+        if handler is None:
             raise ValueError(f"Provider '{provider_name}' has no webhook handler")
+        provider_user_id = handler.extract_user_id(payload)
         with SessionLocal() as db:
-            result = strategy.webhooks.process_payload(db, payload, request_trace_id)
+            result = handler.process_payload(db, payload, request_trace_id)
         _emit_webhook_sync_status(provider_name, result)
         return result
     except ValueError as exc:
@@ -198,7 +165,7 @@ def process_webhook_push(
             "Webhook push task aborted — configuration error",
             provider=provider_name,
             trace_id=request_trace_id,
-            provider_user_id=extract_payload_user_id(provider_name, payload),
+            provider_user_id=provider_user_id,
             error=str(exc),
         )
         raise
@@ -212,7 +179,7 @@ def process_webhook_push(
                 "Webhook push task skipped — upstream non-retriable response",
                 provider=provider_name,
                 trace_id=request_trace_id,
-                provider_user_id=extract_payload_user_id(provider_name, payload),
+                provider_user_id=provider_user_id,
                 upstream_status=exc.status_code,
                 error=str(exc.detail),
             )
@@ -227,7 +194,7 @@ def process_webhook_push(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
-            provider_user_id=extract_payload_user_id(provider_name, payload),
+            provider_user_id=provider_user_id,
             upstream_status=exc.status_code,
             error=str(exc.detail),
             attempt=self.request.retries,
@@ -241,7 +208,7 @@ def process_webhook_push(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
-            provider_user_id=extract_payload_user_id(provider_name, payload),
+            provider_user_id=provider_user_id,
             error=str(exc),
             attempt=self.request.retries,
             max_retries=self.max_retries,
