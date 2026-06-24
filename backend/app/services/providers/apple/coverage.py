@@ -1,13 +1,12 @@
-from app.constants.series_types.sdk.metric_types import METRIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.metric_types import APPLE_METRIC_TYPE_TO_SERIES_TYPE
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
-# Apple/Samsung/Google share the SDK import pipeline; emitted series are exactly
-# the values of the SDK metric + workout-statistic maps, so TIMESERIES is derived.
+# Apple HealthKit emits only HKQuantityTypeIdentifier... metrics (SDNN, not RMSSD).
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
-        *METRIC_TYPE_TO_SERIES_TYPE.values(),
+        *APPLE_METRIC_TYPE_TO_SERIES_TYPE.values(),
         *WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values(),
     }
 )

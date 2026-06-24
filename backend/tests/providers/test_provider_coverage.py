@@ -18,7 +18,10 @@ from types import ModuleType
 
 import pytest
 
-from app.constants.series_types.sdk.metric_types import METRIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.metric_types import (
+    ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+    APPLE_METRIC_TYPE_TO_SERIES_TYPE,
+)
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
@@ -106,14 +109,19 @@ def test_set_detail_fields_are_declared(provider: str) -> None:
     assert not undeclared, f"{provider}: sets EventRecordDetail fields not declared in coverage: {sorted(undeclared)}"
 
 
+_SDK_METRIC_MAP = {
+    "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
+    "samsung": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+    "google": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+}
+
+
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = frozenset(METRIC_TYPE_TO_SERIES_TYPE.values()) | frozenset(
-        WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values()
-    )
+    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
     assert _timeseries(cov) == expected, (
-        f"{provider}: TIMESERIES must equal the union of the SDK metric + workout-statistic maps"
+        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
     )
 
 
