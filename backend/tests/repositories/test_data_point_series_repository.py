@@ -722,6 +722,30 @@ class TestDataPointSeriesRepository:
         assert (counts.inserted, counts.updated) == (0, 0)
         assert int(counts) == 0
 
+    def test_bulk_create_batch_exceeding_one_chunk(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """A batch larger than one chunk must stay under Postgres' 65535-param cap.
+
+        Regression: a full chunk * columns-per-row once overflowed 65535 bind
+        params (e.g. 9000 rows * 8 cols), failing the whole insert.
+        """
+        user = UserFactory()
+        base = datetime(2099, 1, 1, tzinfo=timezone.utc)
+        n = series_repo.BATCH_INSERT_CHUNK_SIZE + 500
+        samples = [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                recorded_at=base + timedelta(seconds=15 * i),
+                value=60 + (i % 40),
+                series_type=SeriesType.heart_rate,
+            )
+            for i in range(n)
+        ]
+
+        counts = series_repo.bulk_create(db, samples)
+        assert counts.inserted == n
+
     # ------------------------------------------------------------------
     # get_daily_activity_aggregates — prefer-daily-total-else-sum logic
     # ------------------------------------------------------------------
