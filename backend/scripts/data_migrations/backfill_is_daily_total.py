@@ -42,6 +42,7 @@ import sys
 from typing import LiteralString
 
 import psycopg
+from psycopg.conninfo import make_conninfo
 
 # provider -> (series codes, require external_id NOT NULL)
 # Only summable (SUM) series carry is_daily_total — they are the ones the prefer-daily
@@ -121,10 +122,12 @@ def get_conninfo() -> str:
     if missing:
         print(f"ERROR: missing environment variables: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
-    return (
-        f"host={os.environ['DB_HOST']} port={os.environ['DB_PORT']} "
-        f"dbname={os.environ['DB_NAME']} user={os.environ['DB_USER']} "
-        f"password={os.environ['DB_PASSWORD']}"
+    return make_conninfo(
+        host=os.environ["DB_HOST"],
+        port=int(os.environ["DB_PORT"]),
+        dbname=os.environ["DB_NAME"],
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
     )
 
 
@@ -146,6 +149,8 @@ def resolve_source_ids(cur: psycopg.Cursor, provider: str) -> list:
 def run_batched(
     cur: psycopg.Cursor, conn: psycopg.Connection, update_sql: LiteralString, params: dict, batch: int
 ) -> int:
+    if batch <= 0:
+        raise ValueError(f"batch must be a positive integer, got {batch}")
     total = 0
     while True:
         cur.execute(update_sql, {**params, "batch": batch})
@@ -163,6 +168,8 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Count rows that would change; make no changes.")
     parser.add_argument("--batch", type=int, default=50000, help="Rows per UPDATE batch (default 50000).")
     args = parser.parse_args()
+    if args.batch <= 0:
+        parser.error("--batch must be a positive integer")
 
     verb = "would set" if args.dry_run else "set"
     with psycopg.connect(get_conninfo()) as conn, conn.cursor() as cur:
