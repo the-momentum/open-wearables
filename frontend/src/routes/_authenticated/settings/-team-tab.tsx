@@ -118,7 +118,7 @@ export function TeamTab() {
   };
 
   const handleCopyInviteLink = async (invitation: Invitation) => {
-    const inviteUrl = `${window.location.origin}${ROUTES.acceptInvite}?token=${invitation.token}`;
+    const inviteUrl = `${window.location.origin}${ROUTES.acceptInvite}?token=${encodeURIComponent(invitation.token)}`;
     const success = await copyToClipboard(
       inviteUrl,
       'Invite link copied to clipboard'
