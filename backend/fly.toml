@@ -1,0 +1,68 @@
+# Fly.io config for the Open Wearables backend.
+#
+# This single app runs three process groups off the SAME image:
+#   web    – FastAPI (public, :8000)
+#   worker – Celery worker (no ports)
+#   beat   – Celery beat scheduler (no ports)
+#
+# Flower runs as a separate app (deploy/fly/flower.toml) because it needs its
+# own public 443. Svix runs as its own app too (deploy/fly/svix.toml).
+#
+# First time:   fly launch --no-deploy --copy-config --name open-wearables-api
+# Deploy:       fly deploy --env API_BASE_URL=https://open-wearables-api.fly.dev
+app = "open-wearables-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  API_PORT = "8000"
+  API_BASE_URL = "https://open-wearables-api.fly.dev"
+  # Point at the internal Redis app (deploy/fly/redis.toml) over Fly 6PN private
+  # DNS. Overrides REDIS_HOST=redis from .env (which is docker-compose-local only).
+  REDIS_HOST = "open-wearables-redis.internal"
+  # The image installs the app into the venv via `uv sync --no-editable`, so the
+  # running module lives in site-packages. Putting the source tree on PYTHONPATH
+  # makes `import app` resolve to /root_project/app.
+  PYTHONPATH = "/root_project"
+  # Set DB_*, SECRET_KEY, MASTER_KEY, provider OAuth credentials, Sentry, and
+  # other sensitive values with `fly secrets set`; backend/config/.env is
+  # intentionally excluded from Docker builds.
+
+# NOTE: app.sh runs `alembic upgrade head` + seeds on every web boot, so
+# migrations happen automatically on the web process. That's fine for a single
+# web machine. If you scale web > 1, split the migration/seed steps out of
+# app.sh into a standalone script and run it here as a release_command to avoid
+# concurrent migrations, e.g.:
+#   [deploy]
+#     release_command = "scripts/start/release.sh"
+
+# Redis is provided by the internal open-wearables-redis app (REDIS_HOST above),
+# so worker/beat can run against the broker.
+[processes]
+  web    = "scripts/start/app.sh"
+  worker = "scripts/start/worker.sh"
+  beat   = "scripts/start/beat.sh"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["web"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/docs"
+
+# worker and beat have no inbound traffic; give them their own machine sizing.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  processes = ["web", "worker", "beat"]
