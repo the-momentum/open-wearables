@@ -14,7 +14,7 @@ from app.constants.series_types.sdk import (
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import SeriesType
+from app.schemas.enums import SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -163,6 +163,7 @@ class ImportService:
                 zone_offset=rjson.zoneOffset,
                 value=value,
                 series_type=series_type,
+                is_daily_total=daily_total_flag(series_type, is_daily=False),
             )
 
             match series_type:
@@ -225,6 +226,7 @@ class ImportService:
                         zone_offset=zone_offset,
                         value=value,
                         series_type=series_type,
+                        is_daily_total=daily_total_flag(series_type, is_daily=False),
                     )
                 )
                 continue

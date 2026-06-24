@@ -18,7 +18,7 @@ from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -550,6 +550,7 @@ class Suunto247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=series_type,
+                        is_daily_total=daily_total_flag(series_type, is_daily=False),
                     ),
                 )
 
@@ -663,6 +664,7 @@ class Suunto247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=final_value,
                         series_type=series_type,
+                        is_daily_total=True,
                     ),
                 )
 

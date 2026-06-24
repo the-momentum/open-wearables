@@ -121,3 +121,19 @@ def get_aggregation_method(series_type: SeriesType) -> AggregationMethod:
     Falls back to AVG for unknown types (safe default for rate-like metrics).
     """
     return AGGREGATION_METHOD_BY_TYPE.get(series_type, AggregationMethod.AVG)
+
+
+def daily_total_flag(series_type: SeriesType, is_daily: bool) -> bool | None:
+    """Value for DataPointSeries.is_daily_total at ingestion.
+
+    Only summable (SUM) series have a meaningful daily-total vs intraday-sample
+    distinction — they are the ones the prefer-daily aggregation sums, so a daily
+    total must not be added to its own intraday samples. For AVG/MAX series the
+    flag is left None (unset): the column does not apply to them.
+
+    Returns True for a SUM series from a daily endpoint, False for a SUM series
+    from an intraday endpoint, None for any non-summable series.
+    """
+    if get_aggregation_method(series_type) is AggregationMethod.SUM:
+        return is_daily
+    return None

@@ -268,6 +268,7 @@ class Oura247Data(Base247DataTemplate):
                             zone_offset=item.get("zone_offset"),
                             value=Decimal(str(item["value"])),
                             series_type=series_type,
+                            is_daily_total=True,
                         )
                     )
                 except Exception as e:

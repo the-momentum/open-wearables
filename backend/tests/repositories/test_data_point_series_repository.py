@@ -10,7 +10,7 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
@@ -721,3 +721,100 @@ class TestDataPointSeriesRepository:
         counts = series_repo.bulk_create(db, [])
         assert (counts.inserted, counts.updated) == (0, 0)
         assert int(counts) == 0
+
+    # ------------------------------------------------------------------
+    # get_daily_activity_aggregates — prefer-daily-total-else-sum logic
+    # ------------------------------------------------------------------
+
+    def _steps(
+        self,
+        user_id: UUID,
+        source: str,
+        device_model: str | None,
+        recorded_at: datetime,
+        value: int,
+        is_daily_total: bool | None,
+    ) -> TimeSeriesSampleCreate:
+        return TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            source=source,
+            device_model=device_model,
+            recorded_at=recorded_at,
+            zone_offset="+00:00",
+            value=value,
+            series_type=SeriesType.steps,
+            is_daily_total=is_daily_total,
+        )
+
+    def test_aggregate_prefers_daily_total_over_intraday(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """When a daily total exists it wins; its own intraday samples are not added."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [self._steps(user.id, "garmin", "fenix", day, 10000, True)]
+        samples += [
+            self._steps(user.id, "garmin", "fenix", day + timedelta(hours=h), v, False)
+            for h, v in [(1, 4000), (2, 3000), (3, 2500)]
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 10000  # daily total, NOT 10000 + 9500
+
+    def test_aggregate_sums_samples_when_no_daily_total(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """With no daily total, fall back to summing the intraday samples."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=h), v, False)
+            for h, v in [(1, 4000), (2, 3000), (3, 2500)]
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 9500
+
+    def test_aggregate_treats_null_is_daily_total_as_sample(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Legacy rows (is_daily_total=None) are summed like samples."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=h), v, None) for h, v in [(1, 100), (2, 200)]
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        assert result[0]["steps_sum"] == 300
+
+    def test_aggregate_prefers_daily_per_source(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """Prefer-daily is per source: a Garmin daily total and Apple intraday combine across sources."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [
+            self._steps(user.id, "garmin", "fenix", day, 10000, True),
+            self._steps(user.id, "garmin", "fenix", day + timedelta(hours=1), 9000, False),  # ignored (daily wins)
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=2), 3000, False),
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=3), 5000, False),
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        by_source = {r["source"]: r["steps_sum"] for r in result}
+        assert by_source["garmin"] == 10000
+        assert by_source["apple"] == 8000
