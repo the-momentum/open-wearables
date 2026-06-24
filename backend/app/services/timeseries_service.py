@@ -94,6 +94,7 @@ class TimeSeriesService(
                         "value": float(s.value),
                         "unit": unit,
                         "source": {"provider": provider, "device": s.device_model},
+                        "is_daily_total": s.is_daily_total,
                     }
                     for s in sorted_samples
                 ]

@@ -394,7 +394,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "type": "heart_rate",
         "value": 62,
         "unit": "bpm",
-        "source": { "provider": "garmin", "device": "Forerunner 255" }
+        "source": { "provider": "garmin", "device": "Forerunner 255" },
+        "is_daily_total": null
       },
       {
         "timestamp": "2025-12-19T07:35:00+01:00",
@@ -402,7 +403,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "type": "heart_rate",
         "value": 65,
         "unit": "bpm",
-        "source": { "provider": "garmin", "device": "Forerunner 255" }
+        "source": { "provider": "garmin", "device": "Forerunner 255" },
+        "is_daily_total": null
       },
       {
         "timestamp": "2025-12-19T07:40:00+01:00",
@@ -410,7 +412,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "type": "heart_rate",
         "value": 70,
         "unit": "bpm",
-        "source": { "provider": "garmin", "device": "Forerunner 255" }
+        "source": { "provider": "garmin", "device": "Forerunner 255" },
+        "is_daily_total": null
       }
     ]
   }
@@ -418,6 +421,18 @@ Each timeseries event carries the full sample array so your backend can act on t
 ```
 
 Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_id}/timeseries`, so consumers work with a single schema regardless of whether data comes from a webhook or the pull API.
+
+<Note>
+  **`is_daily_total`** distinguishes pre-aggregated daily totals from intraday samples for additive series (steps, energy, distance, flights):
+
+  | Value | Meaning |
+  |-------|---------|
+  | `true` | Pre-aggregated daily total reported by the device. Use this value directly — do **not** add intraday samples from the same day and source on top of it. |
+  | `false` | Intraday sample (e.g. a 15-minute epoch). Sum these when no daily total is present. |
+  | `null` | Legacy row ingested before this field was introduced, or a series type where daily vs. intraday does not apply (e.g. heart rate). Treat the same as `false`. |
+
+  For non-additive series (heart rate, SpO2, temperature, …) `is_daily_total` is always `null` and can be ignored.
+</Note>
 
 <Note>
   **Large batches** (exceeding 2 500 samples) are automatically split into consecutive chunk events to stay within Svix's 1 MB payload limit.  Each chunk event includes `chunk_index` (0-based) and `total_chunks` so you can detect and reassemble split deliveries.  The `sample_count` field always reflects the total number of samples across all chunks.
