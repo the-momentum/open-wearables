@@ -199,6 +199,7 @@ class TimeSeriesService(
                 value=float(sample.value),
                 unit=unit,
                 source=source,
+                is_daily_total=sample.is_daily_total,
             )
             data.append(item)
 
