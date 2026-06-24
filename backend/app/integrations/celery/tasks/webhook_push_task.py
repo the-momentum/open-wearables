@@ -145,13 +145,16 @@ def process_webhook_push(
     process_payload() with a fresh DB session. Retries up to 3 times on
     unexpected infrastructure errors.
     """
+    handler = None
+    provider_user_id: str | None = None
     try:
-        factory = ProviderFactory()
-        strategy = factory.get_provider(provider_name)
-        if strategy.webhooks is None:
+        strategy = ProviderFactory().get_provider(provider_name)
+        handler = strategy.webhooks
+        if handler is None:
             raise ValueError(f"Provider '{provider_name}' has no webhook handler")
+        provider_user_id = handler.extract_user_id(payload)
         with SessionLocal() as db:
-            result = strategy.webhooks.process_payload(db, payload, request_trace_id)
+            result = handler.process_payload(db, payload, request_trace_id)
         _emit_webhook_sync_status(provider_name, result)
         return result
     except ValueError as exc:
@@ -162,6 +165,7 @@ def process_webhook_push(
             "Webhook push task aborted — configuration error",
             provider=provider_name,
             trace_id=request_trace_id,
+            provider_user_id=provider_user_id,
             error=str(exc),
         )
         raise
@@ -175,6 +179,7 @@ def process_webhook_push(
                 "Webhook push task skipped — upstream non-retriable response",
                 provider=provider_name,
                 trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
                 upstream_status=exc.status_code,
                 error=str(exc.detail),
             )
@@ -189,6 +194,7 @@ def process_webhook_push(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
+            provider_user_id=provider_user_id,
             upstream_status=exc.status_code,
             error=str(exc.detail),
             attempt=self.request.retries,
@@ -202,6 +208,7 @@ def process_webhook_push(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,
             trace_id=request_trace_id,
+            provider_user_id=provider_user_id,
             error=str(exc),
             attempt=self.request.retries,
             max_retries=self.max_retries,
