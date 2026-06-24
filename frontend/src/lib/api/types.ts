@@ -649,6 +649,7 @@ export interface Developer {
 export interface Invitation {
   id: string;
   email: string;
+  token: string;
   invited_by: string;
   created_at: string;
   expires_at: string;
