@@ -2,11 +2,14 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.models import DataPointSeriesArchive
+from app.models.archival_setting import ArchivalSetting
+from app.schemas.enums import AggregationMethod, HealthScoreCategory, ProviderName
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
@@ -583,6 +586,41 @@ class TestActivitySummaryEndpoint:
         assert response.status_code == 200
         activity = response.json()["data"][0]
         assert activity["active_minutes"] == 2
+
+    def test_active_minutes_from_archive_backed_day(self, client: TestClient, db: Session) -> None:
+        """An archive-only day populates active_minutes from the provider active_time archive row."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
+
+        # Enable archival (singleton id=1) so the summaries service queries the archive.
+        if not db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).first():
+            db.add(ArchivalSetting(id=1, archive_after_days=30, delete_after_days=None))
+        # Archived daily active_time (archive holds one SUM row per day) for a day with no live data.
+        db.add(
+            DataPointSeriesArchive(
+                id=uuid4(),
+                data_source_id=mapping.id,
+                series_type_definition_id=active_time_type.id,
+                bucket_start_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+                aggregation_type=AggregationMethod.SUM,
+                value=Decimal("275"),
+                sample_count=1,
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        days = {d["date"]: d for d in response.json()["data"]}
+        assert "2025-12-26" in days
+        # Comes from the archived active_time row, not the step-threshold fallback.
+        assert days["2025-12-26"]["active_minutes"] == 275
 
     def test_get_activity_summary_multiple_days(self, client: TestClient, db: Session) -> None:
         """Test activity summary returns data grouped by day."""

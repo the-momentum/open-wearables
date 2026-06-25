@@ -227,6 +227,7 @@ class SummariesService:
                 SeriesType.heart_rate,
                 SeriesType.distance_walking_running,
                 SeriesType.flights_climbed,
+                SeriesType.active_time,
             ]
         ]
 

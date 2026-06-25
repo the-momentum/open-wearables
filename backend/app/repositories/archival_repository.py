@@ -351,6 +351,7 @@ class DataPointSeriesArchiveRepository:
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
+        active_time_id = get_series_type_id(SeriesType.active_time)
 
         # Ensure we filter using UTC datetime range
         start_ts = start_date
@@ -413,6 +414,14 @@ class DataPointSeriesArchiveRepository:
                         ),
                     )
                 ).label("flights_climbed_sum"),
+                func.sum(
+                    case(
+                        (
+                            DataPointSeriesArchive.series_type_definition_id == active_time_id,
+                            DataPointSeriesArchive.value,
+                        ),
+                    )
+                ).label("active_time_sum"),
             )
             .join(DataSource, DataPointSeriesArchive.data_source_id == DataSource.id)
             .filter(
@@ -446,6 +455,7 @@ class DataPointSeriesArchiveRepository:
                     "flights_climbed_sum": int(row.flights_climbed_sum)
                     if row.flights_climbed_sum is not None
                     else None,
+                    "active_time_minutes": int(row.active_time_sum) if row.active_time_sum is not None else None,
                 }
             )
         return aggregates
