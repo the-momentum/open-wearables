@@ -529,6 +529,61 @@ class TestActivitySummaryEndpoint:
         assert activity["intensity_minutes"] is not None
         assert activity["intensity_minutes"]["moderate"] == 1
 
+    def test_active_minutes_prefers_provider_active_time(self, client: TestClient, db: Session) -> None:
+        """Provider-reported active_time wins over the step-threshold heuristic."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
+
+        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        # Single daily-total step row -> step-threshold heuristic would yield active_minutes == 1.
+        DataPointSeriesFactory(
+            mapping=mapping, series_type=steps_type, value=Decimal("8500"), recorded_at=base_time, is_daily_total=True
+        )
+        # Provider-reported active time for the day.
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=active_time_type,
+            value=Decimal("312"),
+            recorded_at=base_time,
+            is_daily_total=True,
+        )
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        activity = response.json()["data"][0]
+        # Uses the provider active time (312), not the step-threshold fallback (1).
+        assert activity["active_minutes"] == 312
+
+    def test_active_minutes_falls_back_to_step_threshold(self, client: TestClient, db: Session) -> None:
+        """Without provider active_time, active_minutes uses the step-threshold heuristic."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+
+        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        # Two distinct minute buckets, each >= 30 steps -> 2 active minutes via fallback.
+        DataPointSeriesFactory(mapping=mapping, series_type=steps_type, value=Decimal("100"), recorded_at=base_time)
+        DataPointSeriesFactory(
+            mapping=mapping, series_type=steps_type, value=Decimal("200"), recorded_at=base_time + timedelta(minutes=5)
+        )
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        activity = response.json()["data"][0]
+        assert activity["active_minutes"] == 2
+
     def test_get_activity_summary_multiple_days(self, client: TestClient, db: Session) -> None:
         """Test activity summary returns data grouped by day."""
         user = UserFactory()

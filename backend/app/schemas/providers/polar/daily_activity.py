@@ -1,3 +1,4 @@
+import isodate
 from pydantic import BaseModel
 
 
@@ -40,3 +41,13 @@ class DailyActivityJSON(BaseModel):
     inactivity_alert_count: int | None = None
     distance_from_steps: float | None = None  # meters
     samples: DailyActivitySamplesJSON | None = None
+
+    @property
+    def active_time_minutes(self) -> int | None:
+        """Parse the ISO-8601 ``active_duration`` (e.g. "PT1H30M") into whole minutes."""
+        if not self.active_duration:
+            return None
+        try:
+            return int(isodate.parse_duration(self.active_duration).total_seconds() // 60)
+        except (ValueError, isodate.ISO8601Error, AttributeError):
+            return None

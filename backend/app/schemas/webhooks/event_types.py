@@ -141,6 +141,7 @@ class WebhookEventType(StrEnum):
     SERIES_PHYSICAL_EFFORT = "series.physical_effort.created"
     SERIES_FLIGHTS_CLIMBED = "series.flights_climbed.created"
     SERIES_AVERAGE_MET = "series.average_met.created"
+    SERIES_ACTIVE_TIME = "series.active_time.created"
     SERIES_PUSH_COUNT = "series.push_count.created"
     SERIES_NUMBER_OF_TIMES_FALLEN = "series.number_of_times_fallen.created"
     SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES = "series.number_of_alcoholic_beverages.created"
@@ -275,6 +276,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_PHYSICAL_EFFORT: "Physical effort samples were ingested.",
     WebhookEventType.SERIES_FLIGHTS_CLIMBED: "Flights climbed samples were ingested.",
     WebhookEventType.SERIES_AVERAGE_MET: "Average MET samples were ingested.",
+    WebhookEventType.SERIES_ACTIVE_TIME: "Active time samples were ingested.",
     WebhookEventType.SERIES_PUSH_COUNT: "Wheelchair push count samples were ingested.",
     WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN: "Fall count samples were ingested.",
     WebhookEventType.SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES: "Alcoholic beverage count samples were ingested.",
@@ -395,6 +397,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_PHYSICAL_EFFORT,
         WebhookEventType.SERIES_FLIGHTS_CLIMBED,
         WebhookEventType.SERIES_AVERAGE_MET,
+        WebhookEventType.SERIES_ACTIVE_TIME,
         WebhookEventType.SERIES_PUSH_COUNT,
         WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN,
         WebhookEventType.SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES,

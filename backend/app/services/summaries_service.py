@@ -636,8 +636,13 @@ class SummariesService:
             if active_cal is not None or basal_cal is not None:
                 total_cal = (active_cal or 0.0) + (basal_cal or 0.0)
 
-            # Get active/sedentary minutes
-            active_mins = activity_data.get("active_minutes")
+            # Active minutes: prefer the provider-reported daily active time (Garmin
+            # activeTimeInSeconds, Oura high+medium+low activity time, Polar active_duration).
+            # Fall back to the step-threshold heuristic only when the provider doesn't report it.
+            # Sedentary stays on the step-threshold path (no cross-provider source yet).
+            active_mins = result.get("active_time_minutes")
+            if active_mins is None:
+                active_mins = activity_data.get("active_minutes")
             sedentary_mins = activity_data.get("sedentary_minutes")
 
             # Get intensity minutes from HR data

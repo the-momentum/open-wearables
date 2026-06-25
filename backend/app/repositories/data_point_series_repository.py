@@ -539,6 +539,7 @@ class DataPointSeriesRepository(
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
+        active_time_id = get_series_type_id(SeriesType.active_time)
 
         local_date = cast(
             self.model.recorded_at + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval),
@@ -596,6 +597,8 @@ class DataPointSeriesRepository(
                 prefer_daily_sum(distance_id).label("distance_sum"),
                 # Flights climbed - prefer daily total, else sum samples (NULL when no data)
                 prefer_daily_sum(flights_id).label("flights_climbed_sum"),
+                # Provider-reported active time (minutes) - daily total (NULL when no data)
+                prefer_daily_sum(active_time_id).label("active_time_sum"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
@@ -604,7 +607,7 @@ class DataPointSeriesRepository(
                 local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id.in_(
-                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id]
+                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id, active_time_id]
                 ),
             )
             .group_by(
@@ -634,6 +637,7 @@ class DataPointSeriesRepository(
                     "flights_climbed_sum": int(row.flights_climbed_sum)
                     if row.flights_climbed_sum is not None
                     else None,
+                    "active_time_minutes": int(row.active_time_sum) if row.active_time_sum is not None else None,
                 }
             )
         return aggregates
@@ -686,6 +690,7 @@ class DataPointSeriesRepository(
                 local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id == steps_id,
+                self.model.is_daily_total.isnot(True),
             )
             .group_by(
                 local_date,

@@ -454,6 +454,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
     ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:
         """Normalize Garmin daily summary to internal schema."""
+        active_seconds = raw_daily.get("activeTimeInSeconds")
         normalized = {
             "user_id": user_id,
             "calendar_date": raw_daily.get("calendarDate"),
@@ -473,6 +474,7 @@ class Garmin247Data(Base247DataTemplate):
             "stress_qualifier": raw_daily.get("stressQualifier"),
             "moderate_intensity_minutes": (raw_daily.get("moderateIntensityDurationInSeconds") or 0) // 60,
             "vigorous_intensity_minutes": (raw_daily.get("vigorousIntensityDurationInSeconds") or 0) // 60,
+            "active_time": active_seconds // 60 if active_seconds is not None else None,
             "heart_rate_samples": raw_daily.get("timeOffsetHeartRateSamples"),
             "garmin_summary_id": raw_daily.get("summaryId"),
         }
