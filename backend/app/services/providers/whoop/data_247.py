@@ -857,14 +857,18 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         cycle_id: str,
     ) -> dict[str, Any]:
-        """Fetch a single recovery record by cycle_id from /v2/recovery/{cycle_id}."""
-        response = self._make_api_request(db, user_id, f"/v2/recovery/{cycle_id}")
+        """Fetch the recovery for a cycle from /v2/cycle/{cycle_id}/recovery.
+
+        WHOOP API v2 has no GET /v2/recovery/{id} endpoint; recovery is fetched
+        per-cycle via the getRecoveryForCycle operation.
+        """
+        response = self._make_api_request(db, user_id, f"/v2/cycle/{cycle_id}/recovery")
         store_raw_payload(
             source="api_response",
             provider="whoop",
             payload=response,
             user_id=str(user_id),
-            trace_id=f"/v2/recovery/{cycle_id}",
+            trace_id=f"/v2/cycle/{cycle_id}/recovery",
         )
         return response if isinstance(response, dict) else {}
 
@@ -872,10 +876,27 @@ class Whoop247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        cycle_id: str,
+        sleep_id: str,
     ) -> int:
-        """Fetch a single recovery record by cycle_id, normalize, and save to database."""
-        raw = self.get_recovery_record(db, user_id, cycle_id)
+        """Fetch the recovery for a recovery.updated webhook, normalize, and save.
+
+        In WHOOP API v2 the recovery.updated webhook carries the associated
+        SLEEP uuid (in v1 it was the cycle id). There is no single-recovery
+        by-id endpoint in v2, so resolve the sleep to its cycle and fetch
+        GET /v2/cycle/{cycle_id}/recovery.
+        """
+        raw_sleep = self.get_sleep_record(db, user_id, sleep_id)
+        cycle_id = raw_sleep.get("cycle_id") if raw_sleep else None
+        if cycle_id is None:
+            log_structured(
+                self.logger,
+                "warning",
+                f"Cannot resolve cycle for recovery webhook sleep {sleep_id}",
+                provider="whoop",
+                task="load_single_recovery",
+            )
+            return 0
+        raw = self.get_recovery_record(db, user_id, str(cycle_id))
         if not raw:
             return 0
         try:
@@ -890,7 +911,7 @@ class Whoop247Data(Base247DataTemplate):
             log_structured(
                 self.logger,
                 "warning",
-                f"Failed to save recovery record {cycle_id}: {e}",
+                f"Failed to save recovery record for sleep {sleep_id}: {e}",
                 provider="whoop",
                 task="load_single_recovery",
             )
