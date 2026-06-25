@@ -61,6 +61,8 @@ _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_we
 class StravaWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Strava notify-only events."""
 
+    user_id_field = "owner_id"
+
     def __init__(self, workouts: StravaWorkouts) -> None:
         super().__init__("strava")
         self.workouts = workouts

@@ -11,13 +11,13 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException
 from redis import Redis
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth import AuthenticationMethod
+from app.schemas.auth import AuthenticationMethod, ConnectionStatus
 from app.schemas.model_crud.credentials import (
     OAuthState,
     OAuthTokenResponse,
@@ -25,7 +25,7 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.schemas.model_crud.user_management import UserConnectionCreate
-from app.services.outgoing_webhooks.events import on_connection_created
+from app.services.outgoing_webhooks.events import on_connection_created, on_connection_revoked
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -178,17 +178,38 @@ class BaseOAuthTemplate(ABC):
                 user_id=str(user_id),
                 status_code=e.response.status_code,
             )
+            # 400/401 = refresh token is dead so revoke + notify
+            if e.response.status_code in (HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED):
+                self._revoke_connection(db, user_id, reason="refresh_failed")
+                raise HTTPException(
+                    status_code=HTTP_401_UNAUTHORIZED,
+                    detail=f"Refresh token rejected for {self.provider_name}; reconnection required",
+                )
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to refresh token: {e.response.text}")
         except Exception as e:
             log_structured(
                 logger,
-                "error",
+                "warning",
                 f"OAuth token refresh failed: {e}",
                 provider=self.provider_name,
                 task="refresh_access_token",
                 user_id=str(user_id),
             )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token refresh failed: {str(e)}")
+
+    def _revoke_connection(self, db: DbSession, user_id: UUID, *, reason: str) -> None:
+        """Mark the connection revoked and emit a connection.revoked webhook."""
+        connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.provider_name)
+        if not connection or connection.status == ConnectionStatus.REVOKED:
+            return
+        self.connection_repo.mark_as_revoked(db, connection)
+        on_connection_revoked(
+            user_id=user_id,
+            provider=self.provider_name,
+            connection_id=connection.id,
+            reason=reason,
+            revoked_at=connection.updated_at.isoformat(),
+        )
 
     def _build_auth_url(self, state: str) -> tuple[str, dict[str, Any] | None]:
         """Builds the authorization URL.

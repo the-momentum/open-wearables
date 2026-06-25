@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Date, Interval, String, asc, case, cast, func, literal_column, text, tuple_
+from sqlalchemy import ColumnElement, Date, Interval, String, and_, asc, case, cast, func, literal_column, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
@@ -61,9 +61,11 @@ class DataPointSeriesRepository(
 ):
     """Repository for unified device data point series."""
 
-    # PostgreSQL/psycopg limit: 65535 params per query. With 7 params per row, max ~9362 rows.
-    # Use 9000 as a safe chunk size.
-    BATCH_INSERT_CHUNK_SIZE = 9_000
+    # PostgreSQL/psycopg cap of 65535 bind params per query. Derive the row chunk
+    # from the column count in _insert_data_points so adding a column can't silently
+    # push a full chunk over the limit (8 cols -> 8191 rows).
+    _INSERT_COLUMNS_PER_ROW = 8
+    BATCH_INSERT_CHUNK_SIZE = 65_535 // _INSERT_COLUMNS_PER_ROW
 
     def __init__(self, model: type[DataPointSeries]):
         super().__init__(model)
@@ -181,6 +183,7 @@ class DataPointSeriesRepository(
                     "zone_offset": creator.zone_offset,
                     "value": creator.value,
                     "series_type_definition_id": get_series_type_id(creator.series_type),
+                    "is_daily_total": creator.is_daily_total,
                 }
             )
 
@@ -204,6 +207,7 @@ class DataPointSeriesRepository(
                         "value": stmt.excluded.value,
                         "external_id": stmt.excluded.external_id,
                         "zone_offset": stmt.excluded.zone_offset,
+                        "is_daily_total": stmt.excluded.is_daily_total,
                     },
                     # RETURNING (xmax = 0): true = row freshly inserted, false = hit a
                     # conflict and was updated in place. Same statement, no extra round-trip.
@@ -543,24 +547,43 @@ class DataPointSeriesRepository(
             Date,
         )
 
+        def prefer_daily_sum(series_id: int) -> ColumnElement:
+            """Per (day, source): use the daily-total rows if any exist, else sum samples.
+
+            Removes the Garmin/Suunto double-count (a daily total + its own intraday
+            epochs). NULL is_daily_total counts as "not daily" (legacy rows are summed).
+            COALESCE falls through to the sample sum only when no daily total exists.
+            """
+            daily = func.sum(
+                case(
+                    (
+                        and_(self.model.series_type_definition_id == series_id, self.model.is_daily_total.is_(True)),
+                        self.model.value,
+                    )
+                )
+            )
+            samples = func.sum(
+                case(
+                    (
+                        and_(self.model.series_type_definition_id == series_id, self.model.is_daily_total.isnot(True)),
+                        self.model.value,
+                    )
+                )
+            )
+            return func.coalesce(daily, samples)
+
         # Build aggregation query
         results = (
             db_session.query(
                 local_date.label("activity_date"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
-                # Steps - sum for the day
-                func.sum(case((self.model.series_type_definition_id == steps_id, self.model.value), else_=0)).label(
-                    "steps_sum"
-                ),
-                # Active energy - sum for the day
-                func.sum(case((self.model.series_type_definition_id == energy_id, self.model.value), else_=0)).label(
-                    "active_energy_sum"
-                ),
-                # Basal energy - sum for the day
-                func.sum(
-                    case((self.model.series_type_definition_id == basal_energy_id, self.model.value), else_=0)
-                ).label("basal_energy_sum"),
+                # Steps - prefer daily total, else sum samples
+                prefer_daily_sum(steps_id).label("steps_sum"),
+                # Active energy - prefer daily total, else sum samples
+                prefer_daily_sum(energy_id).label("active_energy_sum"),
+                # Basal energy - prefer daily total, else sum samples
+                prefer_daily_sum(basal_energy_id).label("basal_energy_sum"),
                 # Heart rate stats
                 func.avg(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
                     "hr_avg"
@@ -571,14 +594,10 @@ class DataPointSeriesRepository(
                 func.min(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
                     "hr_min"
                 ),
-                # Distance - sum for the day (no else_=0 to return NULL when no data)
-                func.sum(case((self.model.series_type_definition_id == distance_id, self.model.value))).label(
-                    "distance_sum"
-                ),
-                # Flights climbed - sum for the day (no else_=0 to return NULL when no data)
-                func.sum(case((self.model.series_type_definition_id == flights_id, self.model.value))).label(
-                    "flights_climbed_sum"
-                ),
+                # Distance - prefer daily total, else sum samples (NULL when no data)
+                prefer_daily_sum(distance_id).label("distance_sum"),
+                # Flights climbed - prefer daily total, else sum samples (NULL when no data)
+                prefer_daily_sum(flights_id).label("flights_climbed_sum"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(

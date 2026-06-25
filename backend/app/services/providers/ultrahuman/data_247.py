@@ -12,6 +12,7 @@ from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
+from app.schemas.enums import daily_total_flag
 from app.schemas.enums.series_types import SeriesType
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
@@ -404,6 +405,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(sample.get("value"))),
                         series_type=series_type,
+                        is_daily_total=daily_total_flag(series_type, is_daily=False),
                     )
 
                     self.data_point_repo.create(db, ts_sample)

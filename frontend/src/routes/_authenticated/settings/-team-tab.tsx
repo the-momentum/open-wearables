@@ -8,6 +8,7 @@ import {
   Clock,
   Copy,
   Check,
+  Link,
 } from 'lucide-react';
 import { useDevelopers, useDeleteDeveloper } from '@/hooks/api/use-developers';
 import {
@@ -16,10 +17,12 @@ import {
   useRevokeInvitation,
   useResendInvitation,
 } from '@/hooks/api/use-invitations';
+import type { Invitation } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/use-auth';
 import { isValidEmail } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import { ROUTES } from '@/lib/constants/routes';
 import { truncateId } from '@/lib/utils/format';
 import {
   Dialog,
@@ -37,6 +40,7 @@ export function TeamTab() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     email: string;
@@ -111,6 +115,18 @@ export function TeamTab() {
 
   const handleResendInvitation = (id: string) => {
     resendInvitationMutation.mutate(id);
+  };
+
+  const handleCopyInviteLink = async (invitation: Invitation) => {
+    const inviteUrl = `${window.location.origin}${ROUTES.acceptInvite}?token=${encodeURIComponent(invitation.token)}`;
+    const success = await copyToClipboard(
+      inviteUrl,
+      'Invite link copied to clipboard'
+    );
+    if (success) {
+      setCopiedInviteId(invitation.id);
+      setTimeout(() => setCopiedInviteId(null), 2000);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -248,6 +264,18 @@ export function TeamTab() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopyInviteLink(invitation)}
+                          title="Copy invite link"
+                        >
+                          {copiedInviteId === invitation.id ? (
+                            <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                          ) : (
+                            <Link className="h-4 w-4" />
+                          )}
+                        </Button>
                         <Button
                           variant="outline"
                           size="icon"
@@ -437,7 +465,8 @@ export function TeamTab() {
               className="bg-muted border-border"
             />
             <p className="text-[10px] text-muted-foreground/70">
-              They will receive an email with instructions to join
+              They will receive an email with instructions to join (or send
+              invite link manually)
             </p>
           </div>
           <DialogFooter className="gap-3">

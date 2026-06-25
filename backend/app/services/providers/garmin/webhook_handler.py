@@ -77,6 +77,17 @@ class GarminWebhookHandler(BaseWebhookHandler):
         self.garmin_247 = garmin_247
         self.connection_repo = UserConnectionRepository()
 
+    def extract_user_id(self, payload: dict[str, Any]) -> str | None:
+        """Garmin batches items under data-type keys; userId lives per item."""
+        user_ids = {
+            str(item["userId"])
+            for items in payload.values()
+            if isinstance(items, list)
+            for item in items
+            if isinstance(item, dict) and item.get("userId")
+        }
+        return ",".join(sorted(user_ids)) or None
+
     # ------------------------------------------------------------------
     # BaseWebhookHandler interface
     # ------------------------------------------------------------------
