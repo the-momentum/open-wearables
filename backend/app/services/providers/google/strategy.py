@@ -1,17 +1,31 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
 from app.services.providers.google.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
-from app.services.providers.google.workouts import GoogleWorkouts
+from app.services.providers.google.health_api.oauth import GoogleOAuth
+from app.services.providers.google.sdk.workouts import GoogleWorkouts
 
 
 class GoogleStrategy(BaseProviderStrategy):
-    """Google Health Connect provider implementation.
+    """Google provider implementation.
 
-    Google Health Connect is an SDK-based provider (similar to Apple Health) without
-    cloud OAuth API. Data is pushed from mobile devices via the SDK.
+    Google data arrives through two distinct paths:
+
+    - ``sdk/``        — Health Connect data pushed from mobile devices via the SDK
+                        (client_sdk, same payload format as Apple HealthKit).
+    - ``health_api/`` — the Google cloud OAuth flow (Health/Fitness REST API) wired
+                        via the OAuth handler so users can connect their Google account.
+
+    Both share the single ``google`` provider identity (one connection per user)
+    so source-string inference stays unambiguous.
     """
 
     def __init__(self):
         super().__init__()
+        self.oauth = GoogleOAuth(
+            user_repo=self.user_repo,
+            connection_repo=self.connection_repo,
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+        )
         self.workouts = GoogleWorkouts(self.workout_repo, self.connection_repo)
 
     @property

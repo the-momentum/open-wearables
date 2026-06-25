@@ -173,6 +173,17 @@ class Settings(BaseSettings):
     ultrahuman_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     ultrahuman_default_scope: str = "ring_data cgm_data profile"
 
+    # GOOGLE OAUTH SETTINGS
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    google_default_scope: str = (
+        "openid email "
+        "https://www.googleapis.com/auth/fitness.activity.read "
+        "https://www.googleapis.com/auth/fitness.heart_rate.read "
+        "https://www.googleapis.com/auth/fitness.sleep.read "
+        "https://www.googleapis.com/auth/fitness.body.read"
+    )
+
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
     email_from_address: str | None = None
