@@ -217,6 +217,13 @@ export interface UserDataSummary {
   has_womens_health_data: boolean;
 }
 
+/** Optional date scope for the data summary. Omitting both fields = all-time. */
+export interface DataSummaryParams {
+  start_date?: string; // ISO datetime
+  end_date?: string; // ISO datetime (exclusive)
+  [key: string]: string | undefined;
+}
+
 export interface MenstrualCycleRecord {
   id: string;
   start_time: string;

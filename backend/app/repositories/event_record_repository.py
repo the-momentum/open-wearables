@@ -356,13 +356,21 @@ class EventRecordRepository(
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
     def get_user_event_counts_by_provider(
-        self, db_session: DbSession, user_id: UUID
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
     ) -> list[tuple[str, str, str | None, int]]:
         """Get event record counts for a user grouped by provider, category, and type.
 
+        When ``start_datetime`` and/or ``end_datetime`` are provided, only events whose
+        ``start_datetime`` falls in the half-open interval ``[start, end)`` are counted. When both
+        are omitted, all-time counts are returned (unchanged behaviour).
+
         Returns list of (provider, category, type, count) tuples ordered by provider, then count descending.
         """
-        results = (
+        query = (
             db_session.query(
                 DataSource.provider,
                 self.model.category,
@@ -371,7 +379,14 @@ class EventRecordRepository(
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(DataSource.user_id == user_id)
-            .group_by(DataSource.provider, self.model.category, self.model.type)
+        )
+        if start_datetime is not None:
+            query = query.filter(self.model.start_datetime >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.start_datetime < end_datetime)
+
+        results = (
+            query.group_by(DataSource.provider, self.model.category, self.model.type)
             .order_by(DataSource.provider, func.count(self.model.id).desc())
             .all()
         )
