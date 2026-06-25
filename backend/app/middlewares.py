@@ -7,18 +7,26 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("app.access")
 
 
 class RequestTimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = time.perf_counter()
-        response = await call_next(request)
+        safe_path = request.url.path.replace("\r", "\\r").replace("\n", "\\n")
+        client = f"{request.client.host}:{request.client.port}" if request.client else "-"
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration = time.perf_counter() - start
+            logger.exception("%s %s %s ERROR (%.3fs)", client, request.method, safe_path, duration)
+            raise
         duration = time.perf_counter() - start
         logger.info(
-            "%s %s %s (%.3fs)",
+            "%s %s %s %s (%.3fs)",
+            client,
             request.method,
-            request.url.path,
+            safe_path,
             response.status_code,
             duration,
         )

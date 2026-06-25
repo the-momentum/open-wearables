@@ -1,3 +1,25 @@
+# Open Wearables — self-hosted production stack
+#
+# Runs the prebuilt images published to Docker Hub by the "Publish Docker
+# images" GitHub workflow (.github/workflows/publish-images.yml). Unlike the
+# dev docker-compose.yml, nothing is built from source here.
+#
+# Image tags default to :latest. Pin a specific build (e.g. for a repeatable
+# deploy or a rollback) by exporting BACKEND_IMAGE / FRONTEND_IMAGE — any tag
+# the workflow pushes works, including the per-commit sha-<short> tags:
+#   BACKEND_IMAGE=themomentum/open-wearables-backend:sha-1a2b3c4 \
+#   FRONTEND_IMAGE=themomentum/open-wearables-frontend:sha-1a2b3c4 \
+#     docker compose -f docker-compose.prod.yml up -d
+#
+# PostgreSQL and Redis are bundled here so the stack runs out of the box. To
+# point at managed services instead (RDS, ElastiCache, ...), drop the db/redis
+# services via a docker-compose.override.yml and set DB_HOST/REDIS_HOST in
+# ./backend/config/.env.
+
+name: open-wearables
+
+x-backend-image: &backend-image ${BACKEND_IMAGE:-themomentum/open-wearables-backend:latest}
+
 services:
   db:
     image: postgres:18
@@ -18,12 +40,8 @@ services:
     restart: unless-stopped
 
   app:
-    build:
-        context: ./backend
-        dockerfile: Dockerfile
+    image: *backend-image
     container_name: backend__open-wearables
-    image: open-wearables-platform:latest
-    pull_policy: never
     command: scripts/start/app.sh
     env_file:
       - ./backend/config/.env
@@ -40,9 +58,8 @@ services:
     restart: unless-stopped
 
   celery-worker:
+    image: *backend-image
     container_name: celery-worker__open-wearables
-    image: open-wearables-platform:latest
-    pull_policy: never
     command: scripts/start/worker.sh
     env_file:
       - ./backend/config/.env
@@ -56,9 +73,8 @@ services:
     restart: unless-stopped
 
   celery-beat:
+    image: *backend-image
     container_name: celery-beat__open-wearables
-    image: open-wearables-platform:latest
-    pull_policy: never
     command: scripts/start/beat.sh
     env_file:
       - ./backend/config/.env
@@ -72,9 +88,8 @@ services:
     restart: unless-stopped
 
   flower:
+    image: *backend-image
     container_name: flower__open-wearables
-    image: open-wearables-platform:latest
-    pull_policy: never
     command: scripts/start/flower.sh
     env_file:
       - ./backend/config/.env
@@ -135,14 +150,13 @@ services:
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in your environment}
+    image: ${FRONTEND_IMAGE:-themomentum/open-wearables-frontend:latest}
     container_name: frontend__open-wearables
-    image: open-wearables-frontend:latest
-    pull_policy: never
+    # VITE_API_URL is read at runtime by the Nitro SSR server (and injected into
+    # the browser) — nothing is baked into the image at build time. Set it in
+    # ./frontend/.env (see ./frontend/.env.example).
+    env_file:
+      - ./frontend/.env
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

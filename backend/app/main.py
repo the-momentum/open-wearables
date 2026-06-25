@@ -29,11 +29,13 @@ basicConfig(
 )
 
 # Remove uvicorn's default handlers to prevent duplicate logs (uvicorn.error)
-# and ensure access logs (uvicorn.access) also get timestamps via the root logger
-for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+for _name in ("uvicorn", "uvicorn.error"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
     _logger.propagate = True
+
+# Suppress uvicorn.access — RequestTimingMiddleware already logs method/path/status/duration
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
