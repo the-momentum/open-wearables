@@ -129,13 +129,28 @@ class SystemInfoService:
             connections_coverage=self.user_connection_service.get_connections_coverage(db_session),
         )
 
-    def get_user_data_summary(self, db_session: DbSession, user_id: UUID) -> UserDataSummaryResponse:
-        """Get per-user data summary with counts by type and provider."""
+    def get_user_data_summary(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> UserDataSummaryResponse:
+        """Get per-user data summary with counts by type and provider.
+
+        When ``start_datetime`` and/or ``end_datetime`` are provided, counts are scoped to that
+        window (data points by ``recorded_at``, events by ``start_datetime``). Omitting both
+        returns all-time counts. The per-provider breakdown is derived from the scoped rows.
+        """
         # Query time-series counts grouped by provider + series type
-        series_rows = self.timeseries_service.crud.get_user_counts_by_provider_and_type(db_session, user_id)
+        series_rows = self.timeseries_service.crud.get_user_counts_by_provider_and_type(
+            db_session, user_id, start_datetime, end_datetime
+        )
 
         # Query event counts grouped by provider + category + type
-        event_rows = self.event_record_service.crud.get_user_event_counts_by_provider(db_session, user_id)
+        event_rows = self.event_record_service.crud.get_user_event_counts_by_provider(
+            db_session, user_id, start_datetime, end_datetime
+        )
 
         # Aggregate into per-provider and overall totals
         provider_series: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))

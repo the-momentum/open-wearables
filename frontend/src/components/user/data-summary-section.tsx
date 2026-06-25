@@ -2,7 +2,16 @@ import { Database, Dumbbell, Moon, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { useUserDataSummary } from '@/hooks/api/use-health';
 import { formatNumber } from '@/lib/utils/format';
-import type { ProviderDataCount } from '@/lib/api/types';
+import { cn } from '@/lib/utils';
+import { DateFilter } from '@/components/ui/date-filter';
+import type { DataSummaryParams, ProviderDataCount } from '@/lib/api/types';
+
+// Rank accents for the top three entries (matches the dashboard metrics cards).
+const RANK_COLORS = [
+  'text-[hsl(var(--primary))]',
+  'text-[hsl(var(--foreground-muted))]',
+  'text-[hsl(var(--foreground-subtle))]',
+];
 
 interface DataSummarySectionProps {
   userId: string;
@@ -51,42 +60,37 @@ function TypeGrid({
 }) {
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const displayed = limit ? entries.slice(0, limit) : entries;
-  const max = Math.max(0, ...displayed.map(([, c]) => c));
 
   if (displayed.length === 0) {
     return <p className="text-sm text-muted-foreground">No data points</p>;
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {displayed.map(([type, count]) => {
-        const pct = max > 0 ? Math.max(5, (count / max) * 100) : 0;
-        return (
-          <div
-            key={type}
-            className="flex flex-col overflow-hidden rounded-lg border border-border/60 bg-card/30 transition-colors hover:bg-card/50"
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {displayed.map(([type, count], i) => (
+        <div
+          key={type}
+          className="flex flex-col gap-2 rounded-xl border border-border/60 bg-card/40 p-4 transition-colors duration-200 hover:bg-card/60"
+        >
+          <span
+            className={cn(
+              'font-mono text-[10px] font-semibold',
+              RANK_COLORS[i] ?? RANK_COLORS[2]
+            )}
           >
-            <div className="flex-1 p-3">
-              <p className="text-sm font-semibold tabular-nums text-foreground/90">
-                {formatNumber(count)}
-              </p>
-              <p
-                className="mt-0.5 truncate text-[10px] text-muted-foreground"
-                title={formatSeriesType(type)}
-              >
-                {formatSeriesType(type)}
-              </p>
-            </div>
-            {/* Progress bar — relative scale, #1 = 100% */}
-            <div className="h-0.5 w-full bg-muted/40">
-              <div
-                className="h-full bg-[hsl(var(--primary-muted))] transition-[width] duration-700 ease-out"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
+            #{i + 1}
+          </span>
+          <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
+            {formatNumber(count)}
+          </p>
+          <p
+            className="truncate text-xs text-muted-foreground"
+            title={formatSeriesType(type)}
+          >
+            {formatSeriesType(type)}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -136,14 +140,12 @@ function ProviderCard({ provider }: { provider: ProviderDataCount }) {
             ].map(({ label, value }) => (
               <div
                 key={label}
-                className="rounded-lg border border-border/60 bg-card/30 p-3 text-center"
+                className="flex flex-col items-center gap-1 rounded-xl border border-border/60 bg-card/40 p-3 text-center"
               >
-                <p className="text-base font-semibold tabular-nums text-foreground/90">
+                <p className="text-xl font-bold tabular-nums leading-none text-foreground">
                   {formatNumber(value)}
                 </p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  {label}
-                </p>
+                <p className="text-[11px] text-muted-foreground">{label}</p>
               </div>
             ))}
           </div>
@@ -178,7 +180,8 @@ function LoadingSkeleton() {
 }
 
 export function DataSummarySection({ userId }: DataSummarySectionProps) {
-  const { data, isLoading } = useUserDataSummary(userId);
+  const [range, setRange] = useState<DataSummaryParams | undefined>(undefined);
+  const { data, isLoading } = useUserDataSummary(userId, range);
   const [showAllTypes, setShowAllTypes] = useState(false);
 
   const isEmpty =
@@ -189,18 +192,27 @@ export function DataSummarySection({ userId }: DataSummarySectionProps) {
 
   return (
     <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-border/60">
-        <h2 className="text-sm font-medium text-foreground">Data Summary</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Overview of all health data collected for this user
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3 px-6 py-4 border-b border-border/60">
+        <div>
+          <h2 className="text-sm font-medium text-foreground">Data Summary</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            {range
+              ? 'Health data collected in the selected period'
+              : 'Overview of all health data collected for this user'}
+          </p>
+        </div>
+        <DateFilter onChange={setRange} />
       </div>
       <div className="p-6">
         {isLoading ? (
           <LoadingSkeleton />
         ) : isEmpty ? (
           <div className="text-center py-8">
-            <p className="text-muted-foreground">No data collected yet</p>
+            <p className="text-muted-foreground">
+              {range
+                ? 'No data in the selected period'
+                : 'No data collected yet'}
+            </p>
           </div>
         ) : data ? (
           <div className="space-y-6">

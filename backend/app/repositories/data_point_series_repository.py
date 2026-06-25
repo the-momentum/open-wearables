@@ -371,12 +371,22 @@ class DataPointSeriesRepository(
 
         return [count for _, count in daily_counts]
 
-    def get_user_counts_by_provider_and_type(self, db_session: DbSession, user_id: UUID) -> list[tuple[str, str, int]]:
+    def get_user_counts_by_provider_and_type(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, str, int]]:
         """Get data point counts for a user grouped by provider and series type.
+
+        When ``start_datetime`` and/or ``end_datetime`` are provided, only data points whose
+        ``recorded_at`` falls in the half-open interval ``[start, end)`` are counted. When both
+        are omitted, all-time counts are returned (unchanged behaviour).
 
         Returns list of (provider, series_type_code, count) tuples ordered by provider, then count descending.
         """
-        results = (
+        query = (
             db_session.query(
                 DataSource.provider,
                 SeriesTypeDefinition.code,
@@ -385,7 +395,14 @@ class DataPointSeriesRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(DataSource.user_id == user_id)
-            .group_by(DataSource.provider, SeriesTypeDefinition.code)
+        )
+        if start_datetime is not None:
+            query = query.filter(self.model.recorded_at >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.recorded_at < end_datetime)
+
+        results = (
+            query.group_by(DataSource.provider, SeriesTypeDefinition.code)
             .order_by(DataSource.provider, func.count(self.model.id).desc())
             .all()
         )

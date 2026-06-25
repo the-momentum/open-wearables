@@ -10,6 +10,7 @@ import type {
   BodySummaryParams,
   HealthScoreParams,
   MenstrualCyclesParams,
+  DataSummaryParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -206,10 +207,10 @@ export function useDeleteMenstrualCycle(userId: string) {
  * Get per-user data summary with counts by type and provider
  * Uses GET /api/v1/users/{user_id}/summaries/data
  */
-export function useUserDataSummary(userId: string) {
+export function useUserDataSummary(userId: string, params?: DataSummaryParams) {
   return useQuery({
-    queryKey: queryKeys.health.dataSummary(userId),
-    queryFn: () => healthService.getUserDataSummary(userId),
+    queryKey: queryKeys.health.dataSummary(userId, params),
+    queryFn: () => healthService.getUserDataSummary(userId, params),
     enabled: !!userId,
     staleTime: 2 * 60 * 1000,
   });
