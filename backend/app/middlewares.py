@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.config import settings
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger("app.access")
 
@@ -19,17 +20,10 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         except Exception:
             duration = time.perf_counter() - start
-            logger.exception("%s %s %s ERROR (%.3fs)", client, request.method, safe_path, duration)
+            log_structured(logger, "error", "request failed", method=request.method, path=safe_path, client=client, duration_ms=round(duration * 1000, 2))
             raise
         duration = time.perf_counter() - start
-        logger.info(
-            "%s %s %s %s (%.3fs)",
-            client,
-            request.method,
-            safe_path,
-            response.status_code,
-            duration,
-        )
+        log_structured(logger, "info", "request", method=request.method, path=safe_path, status=response.status_code, client=client, duration_ms=round(duration * 1000, 2))
         return response
 
 
