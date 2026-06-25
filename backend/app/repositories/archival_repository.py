@@ -184,6 +184,14 @@ class DataPointSeriesArchiveRepository:
                     func.min(DataPointSeries.value).label("min_value"),
                     func.max(DataPointSeries.value).label("max_value"),
                     func.sum(DataPointSeries.value).label("sum_value"),
+                    # Prefer-daily split for SUM series: a daily total must not be added to
+                    # its own intraday samples. NULL is_daily_total counts as a sample.
+                    func.sum(case((DataPointSeries.is_daily_total.is_(True), DataPointSeries.value))).label(
+                        "daily_sum_value"
+                    ),
+                    func.sum(case((DataPointSeries.is_daily_total.isnot(True), DataPointSeries.value))).label(
+                        "sample_sum_value"
+                    ),
                     func.count(DataPointSeries.id).label("sample_count"),
                 )
                 .filter(
@@ -209,7 +217,9 @@ class DataPointSeriesArchiveRepository:
                     method = AGGREGATION_METHOD_BY_TYPE.get(series_type, AggregationMethod.AVG)
 
                     if method == AggregationMethod.SUM:
-                        value = row.sum_value
+                        # Prefer the daily total when present, else sum the samples
+                        # (mirrors get_daily_activity_aggregates — no daily+intraday double-count).
+                        value = row.daily_sum_value if row.daily_sum_value is not None else row.sample_sum_value
                     elif method == AggregationMethod.MAX:
                         value = row.max_value
                     else:  # AVG

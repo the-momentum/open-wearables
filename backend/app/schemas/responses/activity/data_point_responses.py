@@ -15,6 +15,9 @@ class TimeSeriesSample(BaseModel):
     value: float | int
     unit: str
     source: SourceMetadata | None = None
+    # True = daily total. False/None = not a daily total (summable sample); None is a
+    # legacy row and is treated as False by the aggregation.
+    is_daily_total: bool | None = None
 
 
 class ActivityAggregateResult(TypedDict):

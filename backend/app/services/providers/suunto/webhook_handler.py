@@ -52,6 +52,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
     the ``X-HMAC-SHA256-Signature`` request header.
     """
 
+    user_id_field = "username"
+
     def __init__(self, suunto_workouts: SuuntoWorkouts, suunto_247: Suunto247Data) -> None:
         super().__init__("suunto")
         self.suunto_workouts = suunto_workouts

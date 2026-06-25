@@ -54,6 +54,8 @@ _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_we
 class WhoopWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Whoop notify-only events."""
 
+    user_id_field = "user_id"
+
     def __init__(self, data_247: Whoop247Data, workouts: WhoopWorkouts) -> None:
         super().__init__("whoop")
         self.data_247 = data_247
