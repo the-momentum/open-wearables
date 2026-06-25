@@ -1207,8 +1207,7 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
-        # Individual respiration readings
-        respiration_values = raw_respiration.get("timeOffsetRespirationRateValues", {})
+        respiration_values = raw_respiration.get("timeOffsetEpochToBreaths", {})
         if respiration_values and isinstance(respiration_values, dict):
             for offset_str, resp_value in respiration_values.items():
                 try:
