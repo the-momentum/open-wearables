@@ -369,6 +369,7 @@ class DataPointSeriesArchiveRepository:
         results = (
             db.query(
                 cast(DataPointSeriesArchive.bucket_start_at, Date).label("activity_date"),
+                DataSource.provider.label("provider"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 func.sum(
@@ -432,6 +433,7 @@ class DataPointSeriesArchiveRepository:
             )
             .group_by(
                 cast(DataPointSeriesArchive.bucket_start_at, Date),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -443,6 +445,7 @@ class DataPointSeriesArchiveRepository:
             aggregates.append(
                 {
                     "activity_date": row.activity_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "steps_sum": int(row.steps_sum) if row.steps_sum else 0,

@@ -144,10 +144,9 @@ class SummariesService:
 
             # Sort by priority
             def sort_key(entry: dict) -> tuple[int, int, str]:
-                # Parse provider
-                source = entry.get("source", "unknown")
+                raw_provider = entry.get("provider") or entry.get("source")
                 try:
-                    provider = ProviderName(source)
+                    provider = ProviderName(raw_provider)
                 except ValueError:
                     provider = ProviderName.UNKNOWN
 

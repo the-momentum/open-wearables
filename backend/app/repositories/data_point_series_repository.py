@@ -594,6 +594,7 @@ class DataPointSeriesRepository(
         results = (
             db_session.query(
                 local_date.label("activity_date"),
+                DataSource.provider.label("provider"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 # Steps - prefer daily total, else sum samples
@@ -631,6 +632,7 @@ class DataPointSeriesRepository(
             )
             .group_by(
                 local_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -644,6 +646,7 @@ class DataPointSeriesRepository(
             aggregates.append(
                 {
                     "activity_date": row.activity_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "steps_sum": int(row.steps_sum) if row.steps_sum else 0,

@@ -24,6 +24,7 @@ class ActivityAggregateResult(TypedDict):
     """Result from daily activity aggregation query."""
 
     activity_date: date
+    provider: str | None
     source: str | None
     device_model: str | None
     steps_sum: int

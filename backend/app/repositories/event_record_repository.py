@@ -586,6 +586,7 @@ class EventRecordRepository(
                         else_=0,
                     )
                 ).label("total_duration"),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
@@ -632,6 +633,7 @@ class EventRecordRepository(
             )
             .group_by(
                 local_sleep_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -644,6 +646,7 @@ class EventRecordRepository(
             subquery.c.min_start_time,
             subquery.c.max_end_time,
             subquery.c.total_duration,
+            subquery.c.provider,
             subquery.c.source,
             subquery.c.device_model,
             record_id_col,
@@ -692,6 +695,7 @@ class EventRecordRepository(
                     "min_start_time": row.min_start_time,
                     "max_end_time": row.max_end_time,
                     "total_duration_minutes": int(row.total_duration or 0) // 60,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "record_id": row.record_id,
