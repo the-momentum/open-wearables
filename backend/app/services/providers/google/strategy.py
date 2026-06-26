@@ -1,5 +1,6 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
 from app.services.providers.google.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
+from app.services.providers.google.health_api.data_247 import GoogleHealth247Data
 from app.services.providers.google.health_api.oauth import GoogleOAuth
 from app.services.providers.google.sdk.workouts import GoogleWorkouts
 
@@ -27,6 +28,7 @@ class GoogleStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
         )
         self.workouts = GoogleWorkouts(self.workout_repo, self.connection_repo)
+        self.data_247 = GoogleHealth247Data(self.oauth, self.connection_repo)
 
     @property
     def name(self) -> str:
@@ -42,8 +44,9 @@ class GoogleStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        # Google Health Connect data arrives exclusively via the mobile SDK (no cloud API).
-        return ProviderCapabilities(client_sdk=True)
+        # Hybrid: Health Connect via the mobile SDK + the Google Health API cloud
+        # rollups polled over REST (drives the periodic 24/7 sync).
+        return ProviderCapabilities(client_sdk=True, rest_pull=True)
 
     @property
     def coverage(self) -> ProviderCoverage:

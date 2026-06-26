@@ -27,6 +27,7 @@ from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.schemas.model_crud.activities import EventRecordDetailCreate
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.google.health_api.rollup import ROLLUP_METRICS as GOOGLE_ROLLUP_METRICS
 
 PROVIDERS_DIR = Path("app/services/providers")
 
@@ -116,12 +117,24 @@ _SDK_METRIC_MAP = {
 }
 
 
+# SDK providers that also pull cloud series contribute extra timeseries beyond the
+# SDK maps. google is hybrid: Health Connect SDK + Health API daily rollups.
+_EXTRA_SDK_SERIES: dict[str, frozenset[SeriesType]] = {
+    "google": frozenset(m.series_type for m in GOOGLE_ROLLUP_METRICS),
+}
+
+
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
+    expected = (
+        frozenset(_SDK_METRIC_MAP[provider].values())
+        | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
+        | _EXTRA_SDK_SERIES.get(provider, frozenset())
+    )
     assert _timeseries(cov) == expected, (
-        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
+        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + "
+        f"workout-statistic maps (plus cloud rollup series for hybrid providers)"
     )
 
 
