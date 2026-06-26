@@ -335,7 +335,12 @@ export interface SleepSessionsParams {
   end_date: string;
   cursor?: string;
   limit?: number;
-  [key: string]: string | number | undefined;
+  /**
+   * When true, the backend keeps only the highest-priority source's sessions
+   * per sleep date (provider/device priority), deduplicating across providers.
+   */
+  filter_by_priority?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }
 
 export interface SleepSummary {

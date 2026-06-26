@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, literal, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
@@ -251,6 +251,7 @@ class EventRecordRepository(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
+        restrict_ids: Query | None = None,
     ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         query: Query = (
             db_session.query(EventRecord, DataSource)
@@ -262,6 +263,12 @@ class EventRecordRepository(
         )
 
         filters = [DataSource.user_id == UUID(user_id)]
+
+        # Optional allow-list of record ids as a subquery (e.g. priority-deduplicated
+        # sleep sessions). Inlined as `id IN (<subquery>)` before count/cursor/limit so
+        # pagination operates on the restricted set in a single statement.
+        if restrict_ids is not None:
+            filters.append(EventRecord.id.in_(restrict_ids))
 
         if query_params.category:
             filters.append(EventRecord.category == query_params.category)
@@ -354,6 +361,65 @@ class EventRecordRepository(
             query = query.offset(query_params.offset)
 
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+
+    def winning_sleep_record_ids(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        query_params: EventRecordQueryParams,
+        provider_order: dict,
+        device_type_order: dict,
+    ) -> Query:
+        """Subquery of sleep record ids belonging to the top-priority source per night.
+
+        For each local sleep date, sources are ranked by provider priority, then
+        device-type priority, then device_model (lower value = higher priority;
+        anything absent from the order dicts falls through to 99 — matching the
+        priority service). The winning source's sessions (dense_rank == 1, so all of
+        its rows for that night, naps included) are returned.
+
+        Returned as an unexecuted Query so callers can inline it as `id IN (...)`
+        and keep dedup + pagination in a single SQL statement.
+        """
+        local_sleep_date = cast(
+            EventRecord.start_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+        provider_rank = (
+            case(*[(DataSource.provider == p, r) for p, r in provider_order.items()], else_=99)
+            if provider_order
+            else literal(99)
+        )
+        device_rank = (
+            case(*[(DataSource.device_type == dt.value, r) for dt, r in device_type_order.items()], else_=99)
+            if device_type_order
+            else literal(99)
+        )
+
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == "sleep",
+        ]
+        if query_params.start_datetime:
+            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
+        if query_params.end_datetime:
+            filters.append(EventRecord.end_datetime < query_params.end_datetime)
+
+        ranked = (
+            db_session.query(
+                EventRecord.id.label("record_id"),
+                func.dense_rank()
+                .over(
+                    partition_by=local_sleep_date,
+                    order_by=(provider_rank, device_rank, func.coalesce(DataSource.device_model, "")),
+                )
+                .label("source_rank"),
+            )
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(and_(*filters))
+            .subquery()
+        )
+        return db_session.query(ranked.c.record_id).filter(ranked.c.source_rank == 1)
 
     def get_user_event_counts_by_provider(
         self,
