@@ -637,12 +637,12 @@ class EventRecordService(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
-        restrict_ids: Query | None = None,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         self.logger.debug(f"Fetching event records with filters: {query_params.model_dump()}")
 
         records, total_count = self.crud.get_records_with_filters(
-            db_session, query_params, user_id, restrict_ids=restrict_ids
+            db_session, query_params, user_id, restrict_to_record_ids=restrict_to_record_ids
         )
 
         self.logger.debug(f"Retrieved {len(records)} event records out of {total_count} total")
@@ -816,21 +816,18 @@ class EventRecordService(
     ) -> PaginatedResponse[SleepSession]:
         params.category = "sleep"
 
-        # Optionally restrict to the highest-priority source per night. The dedup is
-        # resolved in SQL (a ranking subquery) and inlined into the records query, so
-        # count/cursor/limit still run on the deduplicated set — no entire nights are
-        # dropped by the page window. Off by default to preserve the historical
-        # behaviour of returning every source's raw sessions.
-        restrict_ids: Query | None = None
+        # inline query that restricts records to ones
+        # with highest priority
+        restrict_to_record_ids: Query | None = None
         if filter_by_priority:
             provider_order = self.priority_service.priority_repo.get_priority_order(db_session)
             device_type_order = self.priority_service.device_type_priority_repo.get_priority_order(db_session)
-            restrict_ids = self.crud.winning_sleep_record_ids(
+            restrict_to_record_ids = self.crud.winning_sleep_record_ids(
                 db_session, str(user_id), params, provider_order, device_type_order
             )
 
         records, total_count = self._get_records_with_filters(
-            db_session, params, str(user_id), restrict_ids=restrict_ids
+            db_session, params, str(user_id), restrict_to_record_ids=restrict_to_record_ids
         )
         # Ensure total_count is always an int (not None)
         total_count = total_count if total_count is not None else 0

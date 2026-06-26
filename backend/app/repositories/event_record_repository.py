@@ -251,7 +251,7 @@ class EventRecordRepository(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
-        restrict_ids: Query | None = None,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         query: Query = (
             db_session.query(EventRecord, DataSource)
@@ -267,8 +267,8 @@ class EventRecordRepository(
         # Optional allow-list of record ids as a subquery (e.g. priority-deduplicated
         # sleep sessions). Inlined as `id IN (<subquery>)` before count/cursor/limit so
         # pagination operates on the restricted set in a single statement.
-        if restrict_ids is not None:
-            filters.append(EventRecord.id.in_(restrict_ids))
+        if restrict_to_record_ids is not None:
+            filters.append(EventRecord.id.in_(restrict_to_record_ids))
 
         if query_params.category:
             filters.append(EventRecord.category == query_params.category)
