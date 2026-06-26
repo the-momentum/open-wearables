@@ -382,7 +382,7 @@ class EventRecordRepository(
         and keep dedup + pagination in a single SQL statement.
         """
         local_sleep_date = cast(
-            EventRecord.start_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
             Date,
         )
         provider_rank = (
