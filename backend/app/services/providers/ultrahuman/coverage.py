@@ -13,6 +13,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *ACTIVITY_SAMPLE_SERIES.values(),  # /user_data/metrics (hr, hrv, temp, steps)
         SeriesType.vo2_max,  # /user_data/metrics (vo2_max)
+        SeriesType.active_time,  # /user_data/metrics (active_minutes)
     }
 )
 

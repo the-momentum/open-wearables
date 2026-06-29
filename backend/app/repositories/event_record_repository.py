@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, literal, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
@@ -251,6 +251,7 @@ class EventRecordRepository(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         query: Query = (
             db_session.query(EventRecord, DataSource)
@@ -262,6 +263,12 @@ class EventRecordRepository(
         )
 
         filters = [DataSource.user_id == UUID(user_id)]
+
+        # Optional allow-list of record ids as a subquery (e.g. priority-deduplicated
+        # sleep sessions). Inlined as `id IN (<subquery>)` before count/cursor/limit so
+        # pagination operates on the restricted set in a single statement.
+        if restrict_to_record_ids is not None:
+            filters.append(EventRecord.id.in_(restrict_to_record_ids))
 
         if query_params.category:
             filters.append(EventRecord.category == query_params.category)
@@ -355,14 +362,81 @@ class EventRecordRepository(
 
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
+    def winning_sleep_record_ids(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        query_params: EventRecordQueryParams,
+        provider_order: dict,
+        device_type_order: dict,
+    ) -> Query:
+        """Subquery of sleep record ids belonging to the top-priority source per night.
+
+        For each local sleep date, sources are ranked by provider priority, then
+        device-type priority, then device_model (lower value = higher priority;
+        anything absent from the order dicts falls through to 99 — matching the
+        priority service). The winning source's sessions (dense_rank == 1, so all of
+        its rows for that night, naps included) are returned.
+
+        Returned as an unexecuted Query so callers can inline it as `id IN (...)`
+        and keep dedup + pagination in a single SQL statement.
+        """
+        local_sleep_date = cast(
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+        provider_rank = (
+            case(*[(DataSource.provider == p, r) for p, r in provider_order.items()], else_=99)
+            if provider_order
+            else literal(99)
+        )
+        device_rank = (
+            case(*[(DataSource.device_type == dt.value, r) for dt, r in device_type_order.items()], else_=99)
+            if device_type_order
+            else literal(99)
+        )
+
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == "sleep",
+        ]
+        if query_params.start_datetime:
+            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
+        if query_params.end_datetime:
+            filters.append(EventRecord.end_datetime < query_params.end_datetime)
+
+        ranked = (
+            db_session.query(
+                EventRecord.id.label("record_id"),
+                func.dense_rank()
+                .over(
+                    partition_by=local_sleep_date,
+                    order_by=(provider_rank, device_rank, func.coalesce(DataSource.device_model, "")),
+                )
+                .label("source_rank"),
+            )
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(and_(*filters))
+            .subquery()
+        )
+        return db_session.query(ranked.c.record_id).filter(ranked.c.source_rank == 1)
+
     def get_user_event_counts_by_provider(
-        self, db_session: DbSession, user_id: UUID
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
     ) -> list[tuple[str, str, str | None, int]]:
         """Get event record counts for a user grouped by provider, category, and type.
 
+        When ``start_datetime`` and/or ``end_datetime`` are provided, only events whose
+        ``start_datetime`` falls in the half-open interval ``[start, end)`` are counted. When both
+        are omitted, all-time counts are returned (unchanged behaviour).
+
         Returns list of (provider, category, type, count) tuples ordered by provider, then count descending.
         """
-        results = (
+        query = (
             db_session.query(
                 DataSource.provider,
                 self.model.category,
@@ -371,7 +445,14 @@ class EventRecordRepository(
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(DataSource.user_id == user_id)
-            .group_by(DataSource.provider, self.model.category, self.model.type)
+        )
+        if start_datetime is not None:
+            query = query.filter(self.model.start_datetime >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.start_datetime < end_datetime)
+
+        results = (
+            query.group_by(DataSource.provider, self.model.category, self.model.type)
             .order_by(DataSource.provider, func.count(self.model.id).desc())
             .all()
         )
@@ -505,6 +586,7 @@ class EventRecordRepository(
                         else_=0,
                     )
                 ).label("total_duration"),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
@@ -551,6 +633,7 @@ class EventRecordRepository(
             )
             .group_by(
                 local_sleep_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -563,6 +646,7 @@ class EventRecordRepository(
             subquery.c.min_start_time,
             subquery.c.max_end_time,
             subquery.c.total_duration,
+            subquery.c.provider,
             subquery.c.source,
             subquery.c.device_model,
             record_id_col,
@@ -611,6 +695,7 @@ class EventRecordRepository(
                     "min_start_time": row.min_start_time,
                     "max_end_time": row.max_end_time,
                     "total_duration_minutes": int(row.total_duration or 0) // 60,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "record_id": row.record_id,

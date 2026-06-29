@@ -24,6 +24,7 @@ class ActivityAggregateResult(TypedDict):
     """Result from daily activity aggregation query."""
 
     activity_date: date
+    provider: str | None
     source: str | None
     device_model: str | None
     steps_sum: int
@@ -34,6 +35,7 @@ class ActivityAggregateResult(TypedDict):
     hr_min: int | None
     distance_sum: float | None
     flights_climbed_sum: int | None
+    active_time_minutes: int | None  # Provider-reported daily active time; None when not reported
 
 
 class ActiveMinutesResult(TypedDict):

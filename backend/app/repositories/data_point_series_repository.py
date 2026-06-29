@@ -371,12 +371,22 @@ class DataPointSeriesRepository(
 
         return [count for _, count in daily_counts]
 
-    def get_user_counts_by_provider_and_type(self, db_session: DbSession, user_id: UUID) -> list[tuple[str, str, int]]:
+    def get_user_counts_by_provider_and_type(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, str, int]]:
         """Get data point counts for a user grouped by provider and series type.
+
+        When ``start_datetime`` and/or ``end_datetime`` are provided, only data points whose
+        ``recorded_at`` falls in the half-open interval ``[start, end)`` are counted. When both
+        are omitted, all-time counts are returned (unchanged behaviour).
 
         Returns list of (provider, series_type_code, count) tuples ordered by provider, then count descending.
         """
-        results = (
+        query = (
             db_session.query(
                 DataSource.provider,
                 SeriesTypeDefinition.code,
@@ -385,7 +395,14 @@ class DataPointSeriesRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(DataSource.user_id == user_id)
-            .group_by(DataSource.provider, SeriesTypeDefinition.code)
+        )
+        if start_datetime is not None:
+            query = query.filter(self.model.recorded_at >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.recorded_at < end_datetime)
+
+        results = (
+            query.group_by(DataSource.provider, SeriesTypeDefinition.code)
             .order_by(DataSource.provider, func.count(self.model.id).desc())
             .all()
         )
@@ -541,6 +558,7 @@ class DataPointSeriesRepository(
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
+        active_time_id = get_series_type_id(SeriesType.active_time)
 
         local_date = cast(
             self.model.recorded_at + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval),
@@ -576,6 +594,7 @@ class DataPointSeriesRepository(
         results = (
             db_session.query(
                 local_date.label("activity_date"),
+                DataSource.provider.label("provider"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 # Steps - prefer daily total, else sum samples
@@ -598,6 +617,8 @@ class DataPointSeriesRepository(
                 prefer_daily_sum(distance_id).label("distance_sum"),
                 # Flights climbed - prefer daily total, else sum samples (NULL when no data)
                 prefer_daily_sum(flights_id).label("flights_climbed_sum"),
+                # Provider-reported active time (minutes) - daily total (NULL when no data)
+                prefer_daily_sum(active_time_id).label("active_time_sum"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
@@ -606,11 +627,12 @@ class DataPointSeriesRepository(
                 local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id.in_(
-                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id]
+                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id, active_time_id]
                 ),
             )
             .group_by(
                 local_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -624,6 +646,7 @@ class DataPointSeriesRepository(
             aggregates.append(
                 {
                     "activity_date": row.activity_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "steps_sum": int(row.steps_sum) if row.steps_sum else 0,
@@ -636,6 +659,7 @@ class DataPointSeriesRepository(
                     "flights_climbed_sum": int(row.flights_climbed_sum)
                     if row.flights_climbed_sum is not None
                     else None,
+                    "active_time_minutes": int(row.active_time_sum) if row.active_time_sum is not None else None,
                 }
             )
         return aggregates
@@ -688,6 +712,7 @@ class DataPointSeriesRepository(
                 local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id == steps_id,
+                self.model.is_daily_total.isnot(True),
             )
             .group_by(
                 local_date,

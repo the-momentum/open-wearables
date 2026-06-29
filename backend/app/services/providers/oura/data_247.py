@@ -211,6 +211,7 @@ class Oura247Data(Base247DataTemplate):
             "steps": [],
             "energy": [],
             "distance": [],
+            "active_time": [],
         }
 
         for activity in activity_items:
@@ -241,6 +242,20 @@ class Oura247Data(Base247DataTemplate):
                     {
                         "recorded_at": recorded_at,
                         "value": activity.equivalent_walking_distance,
+                        "zone_offset": activity_zone_offset,
+                    }
+                )
+            # Active time = high + medium + low activity time (Oura reports them in seconds).
+            active_seconds = [
+                activity.high_activity_time,
+                activity.medium_activity_time,
+                activity.low_activity_time,
+            ]
+            if any(s is not None for s in active_seconds):
+                result["active_time"].append(
+                    {
+                        "recorded_at": recorded_at,
+                        "value": sum(s or 0 for s in active_seconds) // 60,
                         "zone_offset": activity_zone_offset,
                     }
                 )

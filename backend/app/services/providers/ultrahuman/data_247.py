@@ -526,6 +526,27 @@ class Ultrahuman247Data(Base247DataTemplate):
                             )
                             self.data_point_repo.create(db, ts_sample)
                             results["activity_samples"] += 1
+
+                    # Active time (single daily value in minutes, like vo2_max)
+                    if "active_minutes" in items_by_type:
+                        active_obj = items_by_type["active_minutes"]
+                        active_value = active_obj.get("value")
+                        active_ts = active_obj.get("day_start_timestamp")
+                        if active_value is not None and active_ts:
+                            recorded_at = datetime.fromtimestamp(active_ts, tz=timezone.utc)
+                            self.data_point_repo.create(
+                                db,
+                                TimeSeriesSampleCreate(
+                                    id=uuid4(),
+                                    user_id=user_id,
+                                    provider=self.provider_name,
+                                    recorded_at=recorded_at,
+                                    value=Decimal(str(active_value)),
+                                    series_type=SeriesType.active_time,
+                                    is_daily_total=True,
+                                ),
+                            )
+                            results["activity_samples"] += 1
                 except Exception as e:
                     day_error = f"Activity samples processing failed: {e}"
 
