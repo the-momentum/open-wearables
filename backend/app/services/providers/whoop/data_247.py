@@ -1,4 +1,4 @@
-"""Whoop 247 Data implementation for sleep, recovery, and activity samples."""
+"""Whoop 247 Data implementation for sleep, recovery, cycle, and activity samples."""
 
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
@@ -31,14 +31,14 @@ from app.utils.structured_logging import log_structured
 
 
 class Whoop247Data(Base247DataTemplate):
-    """Whoop implementation for 247 data (sleep, recovery, activity)."""
+    """Whoop implementation for 247 data (sleep, recovery, cycles, activity)."""
 
     def __init__(
         self,
         provider_name: str,
         api_base_url: str,
         oauth: BaseOAuthTemplate,
-    ):
+    ) -> None:
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
@@ -74,19 +74,17 @@ class Whoop247Data(Base247DataTemplate):
             headers=headers,
         )
 
-    # -------------------------------------------------------------------------
-    # Sleep Data - Whoop /v2/activity/sleep
-    # -------------------------------------------------------------------------
-
-    def get_sleep_data(
+    def _get_paginated_records(
         self,
         db: DbSession,
         user_id: UUID,
+        endpoint: str,
         start_time: datetime,
         end_time: datetime,
+        task: str,
     ) -> list[dict[str, Any]]:
-        """Fetch sleep data from Whoop API via v2 endpoint with pagination."""
-        all_sleep_data = []
+        """Fetch all records from a paginated Whoop v2 collection endpoint."""
+        all_records: list[dict[str, Any]] = []
         next_token = None
         max_limit = 25  # Whoop API limit
 
@@ -105,18 +103,18 @@ class Whoop247Data(Base247DataTemplate):
                 params["nextToken"] = next_token
 
             try:
-                response = self._make_api_request(db, user_id, "/v2/activity/sleep", params=params)
+                response = self._make_api_request(db, user_id, endpoint, params=params)
                 store_raw_payload(
                     source="api_response",
                     provider="whoop",
                     payload=response,
                     user_id=str(user_id),
-                    trace_id="/v2/activity/sleep",
+                    trace_id=endpoint,
                 )
 
                 # Extract records from response
                 records = response.get("records", []) if isinstance(response, dict) else []
-                all_sleep_data.extend(records)
+                all_records.extend(records)
 
                 # Check for next page
                 next_token = response.get("next_token") if isinstance(response, dict) else None
@@ -129,25 +127,39 @@ class Whoop247Data(Base247DataTemplate):
                 log_structured(
                     self.logger,
                     "error",
-                    f"Error fetching Whoop sleep data: {e}",
+                    f"Error fetching Whoop data from {endpoint}: {e}",
                     provider="whoop",
-                    task="get_sleep_data",
+                    task=task,
                     user_id=str(user_id),
                 )
                 # If we got some data, return what we have; otherwise re-raise
-                if all_sleep_data:
+                if all_records:
                     log_structured(
                         self.logger,
                         "warning",
-                        f"Returning partial sleep data due to error: {e}",
+                        f"Returning partial data from {endpoint} due to error: {e}",
                         provider="whoop",
-                        task="get_sleep_data",
+                        task=task,
                         user_id=str(user_id),
                     )
                     break
                 raise
 
-        return all_sleep_data
+        return all_records
+
+    # -------------------------------------------------------------------------
+    # Sleep Data - Whoop /v2/activity/sleep
+    # -------------------------------------------------------------------------
+
+    def get_sleep_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch sleep data from Whoop API via v2 endpoint with pagination."""
+        return self._get_paginated_records(db, user_id, "/v2/activity/sleep", start_time, end_time, "get_sleep_data")
 
     def _normalize_sleep_health_score(
         self,
@@ -438,7 +450,7 @@ class Whoop247Data(Base247DataTemplate):
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
     ) -> dict[str, int]:
-        """Load and save all 247 data types (sleep, recovery, activity).
+        """Load and save all 247 data types (sleep, recovery, cycles, activity).
 
         Args:
             db: Database session
@@ -461,6 +473,7 @@ class Whoop247Data(Base247DataTemplate):
         results = {
             "sleep_sessions_synced": 0,
             "recovery_samples_synced": 0,
+            "cycle_scores_synced": 0,
             "activity_samples_synced": 0,
             "body_measurement_samples_synced": 0,
         }
@@ -486,6 +499,19 @@ class Whoop247Data(Base247DataTemplate):
                 self.logger,
                 "error",
                 f"Failed to sync recovery data: {e}",
+                provider="whoop",
+                task="load_and_save_all",
+                user_id=str(user_id),
+            )
+
+        try:
+            results["cycle_scores_synced"] = self.load_and_save_cycles(db, user_id, start_time, end_time)
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                self.logger,
+                "error",
+                f"Failed to sync cycle data: {e}",
                 provider="whoop",
                 task="load_and_save_all",
                 user_id=str(user_id),
@@ -658,68 +684,7 @@ class Whoop247Data(Base247DataTemplate):
         Returns list of recovery records containing recovery_score, resting_heart_rate,
         hrv_rmssd_milli, spo2_percentage, and skin_temp_celsius.
         """
-        all_recovery_data = []
-        next_token = None
-        max_limit = 25  # Whoop API limit
-
-        # Convert datetimes to ISO 8601 strings
-        start_iso = start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_iso = end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        while True:
-            params: dict[str, Any] = {
-                "start": start_iso,
-                "end": end_iso,
-                "limit": max_limit,
-            }
-
-            if next_token:
-                params["nextToken"] = next_token
-
-            try:
-                response = self._make_api_request(db, user_id, "/v2/recovery", params=params)
-                store_raw_payload(
-                    source="api_response",
-                    provider="whoop",
-                    payload=response,
-                    user_id=str(user_id),
-                    trace_id="/v2/recovery",
-                )
-
-                # Extract records from response
-                records = response.get("records", []) if isinstance(response, dict) else []
-                all_recovery_data.extend(records)
-
-                # Check for next page
-                next_token = response.get("next_token") if isinstance(response, dict) else None
-
-                # Stop if no more records or no next token
-                if not records or not next_token:
-                    break
-
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Error fetching Whoop recovery data: {e}",
-                    provider="whoop",
-                    task="get_recovery_data",
-                    user_id=str(user_id),
-                )
-                # If we got some data, return what we have; otherwise re-raise
-                if all_recovery_data:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Returning partial recovery data due to error: {e}",
-                        provider="whoop",
-                        task="get_recovery_data",
-                        user_id=str(user_id),
-                    )
-                    break
-                raise
-
-        return all_recovery_data
+        return self._get_paginated_records(db, user_id, "/v2/recovery", start_time, end_time, "get_recovery_data")
 
     def _normalize_recovery_health_score(
         self,
@@ -934,6 +899,111 @@ class Whoop247Data(Base247DataTemplate):
             db.commit()
 
         return total_count
+
+    # -------------------------------------------------------------------------
+    # Cycle Data - Whoop /v2/cycle
+    # -------------------------------------------------------------------------
+
+    def get_cycle_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch cycle (daily strain) data from Whoop API via v2 endpoint with pagination.
+
+        Returns list of cycle records containing strain, kilojoule,
+        average_heart_rate, and max_heart_rate.
+        """
+        return self._get_paginated_records(db, user_id, "/v2/cycle", start_time, end_time, "get_cycle_data")
+
+    def normalize_cycle(
+        self,
+        raw_cycle: dict[str, Any],
+        user_id: UUID,
+    ) -> HealthScoreCreate | None:
+        """Normalize a Whoop cycle record to a daily strain HealthScoreCreate.
+
+        Cycles without an end time are still in progress and their strain is
+        provisional; they are skipped so the unique-constraint dedupe does not
+        lock in a partial value.
+        """
+        if raw_cycle.get("score_state") != "SCORED":
+            return None
+        if not raw_cycle.get("end"):
+            return None
+
+        score = raw_cycle.get("score") or {}
+        strain = score.get("strain")
+        start = raw_cycle.get("start")
+        if strain is None or not start:
+            return None
+
+        try:
+            recorded_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
+
+        components = {
+            k: ScoreComponent(value=v)
+            for k, v in {
+                "kilojoule": score.get("kilojoule"),
+                "average_heart_rate": score.get("average_heart_rate"),
+                "max_heart_rate": score.get("max_heart_rate"),
+            }.items()
+            if v is not None
+        }
+        return HealthScoreCreate(
+            id=uuid4(),
+            user_id=user_id,
+            provider=ProviderName.WHOOP,
+            category=HealthScoreCategory.STRAIN,
+            # Whoop also emits per-workout strain scores (workouts.py); the qualifier
+            # separates the day-level cycle strain from those.
+            qualifier="daily",
+            value=strain,
+            recorded_at=recorded_at,
+            zone_offset=raw_cycle.get("timezone_offset"),
+            components=components or None,
+        )
+
+    def load_and_save_cycles(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """Load cycle data from API and save daily strain health scores.
+
+        Returns the number of cycle records normalized into health scores;
+        rows already present in the database are not re-inserted (dedupe via
+        the unique constraint) and are still counted here.
+        """
+        raw_data = self.get_cycle_data(db, user_id, start_time, end_time)
+        health_scores: list[HealthScoreCreate] = []
+
+        for item in raw_data:
+            try:
+                health_score = self.normalize_cycle(item, user_id)
+                if health_score:
+                    health_scores.append(health_score)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to normalize cycle record: {e}",
+                    provider="whoop",
+                    task="load_and_save_cycles",
+                    user_id=str(user_id),
+                )
+
+        if health_scores:
+            health_score_service.bulk_create(db, health_scores)
+            db.commit()
+
+        return len(health_scores)
 
     # -------------------------------------------------------------------------
     # Activity Samples
