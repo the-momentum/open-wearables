@@ -94,6 +94,7 @@ class TimeSeriesService(
                         "value": float(s.value),
                         "unit": unit,
                         "source": {"provider": provider, "device": s.device_model},
+                        "is_daily_total": s.is_daily_total,
                     }
                     for s in sorted_samples
                 ]
@@ -199,6 +200,7 @@ class TimeSeriesService(
                 value=float(sample.value),
                 unit=unit,
                 source=source,
+                is_daily_total=sample.is_daily_total,
             )
             data.append(item)
 

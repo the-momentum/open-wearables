@@ -17,7 +17,7 @@ from app.repositories import (
     UserConnectionRepository,
 )
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -454,6 +454,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
     ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:
         """Normalize Garmin daily summary to internal schema."""
+        active_seconds = raw_daily.get("activeTimeInSeconds")
         normalized = {
             "user_id": user_id,
             "calendar_date": raw_daily.get("calendarDate"),
@@ -473,6 +474,7 @@ class Garmin247Data(Base247DataTemplate):
             "stress_qualifier": raw_daily.get("stressQualifier"),
             "moderate_intensity_minutes": (raw_daily.get("moderateIntensityDurationInSeconds") or 0) // 60,
             "vigorous_intensity_minutes": (raw_daily.get("vigorousIntensityDurationInSeconds") or 0) // 60,
+            "active_time": active_seconds // 60 if active_seconds is not None else None,
             "heart_rate_samples": raw_daily.get("timeOffsetHeartRateSamples"),
             "garmin_summary_id": raw_daily.get("summaryId"),
         }
@@ -516,6 +518,7 @@ class Garmin247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         external_id=normalized_daily.get("garmin_summary_id"),
+                        is_daily_total=daily_total_flag(series_type, is_daily=True),
                     )
                 )
 
@@ -629,6 +632,16 @@ class Garmin247Data(Base247DataTemplate):
             recorded_at = self._from_epoch_seconds(start_ts)
             zone_offset = offset_to_iso(epoch.get("startTimeOffsetInSeconds"))
 
+            # Garmin epoch summaryId is "{devicePrefix}-{hex(startTimeInSeconds)}-{activityTypeCode}".
+            # Strip only the activityType suffix → "{devicePrefix}-{hex(start)}", a stable
+            # per-slot id shared by every activity in the slot, so intraday rows carry a real,
+            # deterministic external_id. Require >=2 dashes before stripping so a malformed
+            # 2-part id can't collapse to the bare device prefix (which would collide across slots).
+            summary_id = epoch.get("summaryId")
+            slot_external_id = (
+                summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
+            )
+
             # Heart rate
             mean_hr = epoch.get("meanHeartRateInBeatsPerMinute")
             if mean_hr:
@@ -637,6 +650,7 @@ class Garmin247Data(Base247DataTemplate):
                         "timestamp": recorded_at.isoformat(),
                         "value": mean_hr,
                         "zone_offset": zone_offset,
+                        "external_id": slot_external_id,
                     }
                 )
 
@@ -648,6 +662,7 @@ class Garmin247Data(Base247DataTemplate):
                         "timestamp": recorded_at.isoformat(),
                         "value": steps,
                         "zone_offset": zone_offset,
+                        "external_id": slot_external_id,
                     }
                 )
 
@@ -659,6 +674,7 @@ class Garmin247Data(Base247DataTemplate):
                         "timestamp": recorded_at.isoformat(),
                         "value": calories,
                         "zone_offset": zone_offset,
+                        "external_id": slot_external_id,
                     }
                 )
 
@@ -698,6 +714,8 @@ class Garmin247Data(Base247DataTemplate):
                         zone_offset=sample.get("zone_offset"),
                         value=Decimal(str(value)),
                         series_type=series_type,
+                        external_id=sample.get("external_id"),
+                        is_daily_total=daily_total_flag(series_type, is_daily=False),
                     )
                     samples.append(sample_create)
                 except Exception:
@@ -1189,8 +1207,7 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
-        # Individual respiration readings
-        respiration_values = raw_respiration.get("timeOffsetRespirationRateValues", {})
+        respiration_values = raw_respiration.get("timeOffsetEpochToBreaths", {})
         if respiration_values and isinstance(respiration_values, dict):
             for offset_str, resp_value in respiration_values.items():
                 try:

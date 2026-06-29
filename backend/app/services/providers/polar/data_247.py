@@ -358,6 +358,7 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=series_type,
+                        is_daily_total=True,
                     )
                 )
         return samples

@@ -23,6 +23,7 @@ DAILIES_SERIES: list[tuple[str, SeriesType]] = [
     ("resting_heart_rate", SeriesType.resting_heart_rate),
     ("floors_climbed", SeriesType.flights_climbed),
     ("distance_meters", SeriesType.distance_walking_running),
+    ("active_time", SeriesType.active_time),
 ]
 
 # Epoch sample category → SeriesType (/wellness-api/rest/epochs).

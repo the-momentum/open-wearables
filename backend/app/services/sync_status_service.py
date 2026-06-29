@@ -40,6 +40,7 @@ from app.schemas.sync_status import (
     SyncStatusEvent,
 )
 from app.utils.sse import format_comment, format_event
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,42 @@ def emit(event: SyncStatusEvent) -> None:
     Failures are logged but never raised — sync flow must not be blocked
     by Redis problems.
     """
+    # Mirror the SSE event into the structured logs so sync outcome metadata
+    # (status, item counts, inserted/updated split, message) is queryable in the
+    # deployment logs, not only on the frontend stream.
+    match event.status:
+        case SyncStatus.FAILED:
+            level = "error"
+        case SyncStatus.PARTIAL:
+            level = "warning"
+        case _:
+            level = "info"
+    extra = {
+        key: value
+        for key, value in {
+            "items_processed": event.items_processed,
+            "items_total": event.items_total,
+            "inserted": event.metadata.get("inserted"),
+            "updated": event.metadata.get("updated"),
+            "detail": event.message,
+            "error": event.error,
+        }.items()
+        if value is not None
+    }
+    log_structured(
+        logger,
+        level,
+        "Sync status",
+        provider=event.provider,
+        action="sync_status",
+        status=str(event.status),
+        source=str(event.source),
+        stage=str(event.stage),
+        run_id=event.run_id,
+        user_id=str(event.user_id),
+        **extra,
+    )
+
     try:
         client = get_redis_client()
         payload = event.model_dump_json()

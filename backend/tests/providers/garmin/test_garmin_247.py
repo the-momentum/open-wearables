@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas.enums.series_types import SeriesType
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
 from tests.factories import UserConnectionFactory, UserFactory
@@ -548,8 +549,6 @@ class TestGarmin247Data:
 
     def test_build_body_comp_samples(self, garmin_247: Garmin247Data, sample_body_comp: dict[str, Any]) -> None:
         """Test _build_body_comp_samples returns samples without DB call."""
-        from app.schemas.enums.series_types import SeriesType
-
         user_id = uuid4()
         samples = garmin_247._build_body_comp_samples(user_id, sample_body_comp)
         assert len(samples) == 4  # weight, body_fat, BMI, skeletal muscle mass
@@ -567,8 +566,6 @@ class TestGarmin247Data:
         self, garmin_247: Garmin247Data, sample_blood_pressure: dict[str, Any]
     ) -> None:
         """Test _build_blood_pressure_samples reads the webhook timestamp field."""
-        from app.schemas.enums.series_types import SeriesType
-
         user_id = uuid4()
         samples = garmin_247._build_blood_pressure_samples(user_id, sample_blood_pressure)
 
@@ -610,6 +607,24 @@ class TestGarmin247Data:
         }
         samples = garmin_247._build_stress_samples(user_id, stress_data)
         assert len(samples) == 4  # 2 stress + 2 battery
+
+    def test_build_respiration_samples_webhook_field(self, garmin_247: Garmin247Data) -> None:
+        """allDayRespiration webhook payload uses timeOffsetEpochToBreaths."""
+        user_id = uuid4()
+        respiration_data = {
+            "summaryId": "x36bc70e-6a3c0608",
+            "startTimeInSeconds": 1782318600,
+            "startTimeOffsetInSeconds": 7200,
+            "timeOffsetEpochToBreaths": {"0": 11.33, "60": 15.36, "120": 16.0},
+        }
+        samples = garmin_247._build_respiration_samples(user_id, respiration_data)
+
+        assert len(samples) == 3
+        assert all(s.series_type == SeriesType.respiratory_rate for s in samples)
+        first = min(samples, key=lambda s: s.recorded_at)
+        assert first.recorded_at == datetime(2026, 6, 24, 16, 30, tzinfo=timezone.utc)
+        assert first.value == Decimal("11.33")
+        assert first.zone_offset == "+02:00"
 
     def test_build_sleep_record(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
         """Test _build_sleep_record returns record + detail without DB call."""

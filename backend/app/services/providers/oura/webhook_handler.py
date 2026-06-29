@@ -45,7 +45,7 @@ from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.workouts import OuraWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import LogContext, log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,8 @@ _COLLECTION_NAME: dict[str, str] = {
 
 class OuraWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Oura notify-only events."""
+
+    user_id_field = "user_id"
 
     def __init__(self, data_247: Oura247Data, workouts: OuraWorkouts) -> None:
         super().__init__("oura")
@@ -129,7 +131,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
         request_trace_id = str(uuid4())[:8]
         event_type = payload.get("event_type", "unknown")
         data_type = payload.get("data_type", "unknown")
-        oura_user_id = payload.get("user_id", "unknown")
+        provider_user_id = payload.get("user_id", "unknown")
 
         log_structured(
             logger,
@@ -139,7 +141,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             trace_id=request_trace_id,
             event_type=event_type,
             data_type=data_type,
-            oura_user_id=oura_user_id,
+            provider_user_id=provider_user_id,
         )
 
         store_raw_payload(source="webhook", provider="oura", payload=payload, trace_id=request_trace_id)
@@ -151,6 +153,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             "Enqueued Oura webhook processing task",
             provider="oura",
             trace_id=request_trace_id,
+            provider_user_id=provider_user_id,
             task_id=getattr(task, "id", None),
         )
 
@@ -187,6 +190,16 @@ class OuraWebhookHandler(BaseWebhookHandler):
         try:
             notification = OuraWebhookNotification(**payload)
         except (ValidationError, TypeError) as exc:
+            log_structured(
+                logger,
+                "warning",
+                "Invalid Oura webhook payload",
+                provider="oura",
+                trace_id=trace_id,
+                provider_user_id=payload.get("user_id", "unknown"),
+                data_type=payload.get("data_type", "unknown"),
+                error=str(exc),
+            )
             return {"status": "error", "error": f"Invalid payload: {exc}"}
 
         if notification.event_type == "delete":
@@ -196,6 +209,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 "Ignoring Oura delete event",
                 provider="oura",
                 trace_id=trace_id,
+                provider_user_id=notification.user_id,
                 data_type=notification.data_type,
             )
             return {"status": "ignored", "reason": "delete_event"}
@@ -208,7 +222,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 "No connection found for Oura user",
                 provider="oura",
                 trace_id=trace_id,
-                oura_user_id=notification.user_id,
+                provider_user_id=notification.user_id,
                 data_type=notification.data_type,
             )
             return {
@@ -226,7 +240,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             provider="oura",
             trace_id=trace_id,
             user_id=str(user_id),
-            oura_user_id=notification.user_id,
+            provider_user_id=notification.user_id,
             data_type=notification.data_type,
             event_type=notification.event_type,
             object_id=notification.object_id,
@@ -234,7 +248,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
 
         self.connection_repo.update_last_synced_at(db, connection)
 
-        count = self._dispatch_data_type(db, notification, user_id)
+        count = self._dispatch_data_type(db, notification, user_id, trace_id)
 
         if count is None:
             log_structured(
@@ -245,6 +259,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 trace_id=trace_id,
                 data_type=notification.data_type,
                 user_id=str(user_id),
+                provider_user_id=notification.user_id,
             )
             return {
                 "status": "ignored",
@@ -260,7 +275,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             action="oura_webhook_complete",
             trace_id=trace_id,
             user_id=str(user_id),
-            oura_user_id=notification.user_id,
+            provider_user_id=notification.user_id,
             data_type=notification.data_type,
             event_type=notification.event_type,
             records_saved=int(count),
@@ -284,12 +299,24 @@ class OuraWebhookHandler(BaseWebhookHandler):
         db: DbSession,
         notification: OuraWebhookNotification,
         user_id: UUID,
+        trace_id: str,
     ) -> int | None:
         data_type = notification.data_type
         object_id = notification.object_id
 
         if not object_id:
-            return None
+            log_structured(
+                logger,
+                "warning",
+                "Oura webhook missing object_id; skipping fetch",
+                provider="oura",
+                trace_id=trace_id,
+                user_id=str(user_id),
+                provider_user_id=notification.user_id,
+                data_type=data_type,
+                event_type=notification.event_type,
+            )
+            return 0
 
         if data_type == "workout":
             return self.workouts.save_by_id(db, user_id, object_id)
@@ -297,26 +324,54 @@ class OuraWebhookHandler(BaseWebhookHandler):
         collection = _COLLECTION_NAME.get(data_type, data_type)
         raw = self.data_247._make_api_request(db, user_id, f"/v2/usercollection/{collection}/{object_id}")
         if not raw or not isinstance(raw, dict):
+            log_structured(
+                logger,
+                "warning",
+                "Oura object fetch returned no data",
+                provider="oura",
+                trace_id=trace_id,
+                user_id=str(user_id),
+                provider_user_id=notification.user_id,
+                data_type=data_type,
+                object_id=object_id,
+            )
             return 0
 
         docs = [raw]
 
+        log_ctx = LogContext(provider_user_id=notification.user_id, trace_id=trace_id)
+
         match data_type:
             case "sleep" | "daily_sleep":
-                return self.data_247.save_sleep_data(db, user_id, self.data_247.normalize_sleeps(docs, user_id))
+                return self.data_247.save_sleep_data(
+                    db, user_id, self.data_247.normalize_sleeps(docs, user_id), log_ctx
+                )
             case "daily_readiness":
-                return self.data_247.save_readiness_data(db, user_id, self.data_247.normalize_readiness(docs, user_id))
+                return self.data_247.save_readiness_data(
+                    db, user_id, self.data_247.normalize_readiness(docs, user_id), log_ctx
+                )
             case "daily_activity":
                 return self.data_247.save_activity_data(
-                    db, user_id, self.data_247.normalize_activity_samples(docs, user_id)
+                    db, user_id, self.data_247.normalize_activity_samples(docs, user_id), log_ctx
                 )
             case "daily_spo2":
-                return self.data_247.save_spo2_data(db, user_id, docs)
+                return self.data_247.save_spo2_data(db, user_id, docs, log_ctx)
             case "daily_cardiovascular_age":
                 return self.data_247.save_cardiovascular_age_data(
-                    db, user_id, self.data_247.normalize_cardiovascular_age_samples(docs, user_id)
+                    db, user_id, self.data_247.normalize_cardiovascular_age_samples(docs, user_id), log_ctx
                 )
             case "vo2_max":
-                return self.data_247.save_vo2_data(db, user_id, docs)
+                return self.data_247.save_vo2_data(db, user_id, docs, log_ctx)
             case _:
+                log_structured(
+                    logger,
+                    "warning",
+                    "Unhandled Oura data type",
+                    provider="oura",
+                    trace_id=trace_id,
+                    user_id=str(user_id),
+                    provider_user_id=notification.user_id,
+                    data_type=data_type,
+                    event_type=notification.event_type,
+                )
                 return None
