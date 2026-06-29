@@ -36,6 +36,7 @@ from app.schemas.responses.activity import (
     HeartRateStats,
     IntensityMinutes,
     RecoverySummary,
+    SleepSessionSummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -310,12 +311,36 @@ class SummariesService:
             avg_respiratory_rate: float | None = result.get("avg_resp")
             avg_spo2_percent: float | None = result.get("avg_spo2")
 
+            raw_sessions = result.get("sessions") or []
+            sessions = [
+                SleepSessionSummary(
+                    start_time=s["start_time"],
+                    end_time=s["end_time"],
+                    duration_minutes=s.get("duration_minutes"),
+                    is_nap=s["is_nap"],
+                )
+                for s in raw_sessions
+            ]
+
+            main_minutes = result.get("total_duration_minutes")
+            nap_minutes = result.get("nap_duration_minutes")
+            total_duration_minutes = None
+            if main_minutes is not None or nap_minutes is not None:
+                total_duration_minutes = (main_minutes or 0) + (nap_minutes or 0)
+
+            main_sessions = [s for s in sessions if not s.is_nap]
+            longest_main = max(main_sessions, key=lambda s: s.duration_minutes or 0, default=None)
+            start_time = longest_main.start_time if longest_main else result["min_start_time"]
+            end_time = longest_main.end_time if longest_main else result["max_end_time"]
+
             summary = SleepSummary(
                 date=result["sleep_date"],
                 source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
-                start_time=result["min_start_time"],
-                end_time=result["max_end_time"],
+                start_time=start_time,
+                end_time=end_time,
                 duration_minutes=result["total_duration_minutes"],
+                total_duration_minutes=total_duration_minutes,
+                sessions=sessions or None,
                 time_in_bed_minutes=result.get("time_in_bed_minutes"),
                 efficiency_percent=result.get("efficiency_percent"),
                 stages=stages,

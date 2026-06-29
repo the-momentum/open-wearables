@@ -775,7 +775,85 @@ class EventRecordRepository(
                     "avg_spo2": float(row.avg_spo2) if row.avg_spo2 is not None else None,
                 }
             )
+
+        # Attach per-session breakdown (individual sleep/nap records) for each summary,
+        # keyed by the same (date, provider, source, device_model) grouping identity.
+        sessions_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
+        for summary in summaries:
+            key = (
+                summary["sleep_date"],
+                summary["provider"],
+                summary["source"],
+                summary["device_model"],
+            )
+            summary["sessions"] = sessions_by_key.get(key, [])
+
         return summaries
+
+    def _get_sleep_sessions(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> dict[tuple, list[dict]]:
+        """Get individual sleep/nap sessions keyed by (sleep_date, provider, source, device_model).
+
+        Mirrors the date filter and grouping identity of ``get_sleep_summaries`` but returns one
+        entry per underlying EventRecord instead of collapsing them. Per-session duration prefers
+        net sleep time (SleepDetails.sleep_total_duration_minutes) and falls back to wall-clock
+        duration, matching the aggregate duration logic. Sessions are sorted by start time.
+        """
+        local_sleep_date = cast(
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+        is_nap_expr = func.coalesce(SleepDetails.is_nap, False)
+        duration_seconds = case(
+            (is_nap_expr, EventRecord.duration_seconds),
+            else_=func.coalesce(
+                SleepDetails.sleep_total_duration_minutes * 60,
+                EventRecord.duration_seconds,
+                0,
+            ),
+        )
+
+        rows = (
+            db_session.query(
+                local_sleep_date.label("sleep_date"),
+                EventRecord.start_datetime.label("start_time"),
+                EventRecord.end_datetime.label("end_time"),
+                duration_seconds.label("duration_seconds"),
+                func.coalesce(SleepDetails.is_nap, False).label("is_nap"),
+                DataSource.provider,
+                DataSource.source,
+                DataSource.device_model,
+            )
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == "sleep",
+                EventRecord.end_datetime >= start_date - timedelta(days=1),
+                local_sleep_date >= cast(start_date, Date),
+                local_sleep_date < cast(end_date, Date),
+            )
+            .order_by(asc(local_sleep_date), asc(EventRecord.start_datetime))
+            .all()
+        )
+
+        sessions_by_key: dict[tuple, list[dict]] = {}
+        for row in rows:
+            key = (row.sleep_date, row.provider, row.source, row.device_model)
+            sessions_by_key.setdefault(key, []).append(
+                {
+                    "start_time": row.start_time,
+                    "end_time": row.end_time,
+                    "duration_minutes": int(row.duration_seconds) // 60 if row.duration_seconds is not None else None,
+                    "is_nap": bool(row.is_nap),
+                }
+            )
+        return sessions_by_key
 
     def get_daily_workout_aggregates(
         self,
