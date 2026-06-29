@@ -125,6 +125,8 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         application.app_secret_hash = new_hash
         application.updated_at = datetime.now(timezone.utc)
         db.flush()
+        db.commit()
+        db.refresh(application)
 
         self.logger.debug(f"Rotated secret for application {app_id}")
         return application, new_secret
