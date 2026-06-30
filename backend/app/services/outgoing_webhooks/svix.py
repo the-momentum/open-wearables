@@ -122,7 +122,7 @@ def register_event_types() -> None:
             try:
                 _client.event_type.update(evt.value, EventTypeUpdate(description=description))
             except Exception:
-                logger.exception("Failed to register/update event type %s", evt.value)
+                logger.warning("Failed to register/update event type %s", evt.value)
 
 
 def ensure_application(developer_id: str, developer_email: str) -> str:
