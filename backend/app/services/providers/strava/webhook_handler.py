@@ -49,7 +49,6 @@ from app.schemas.providers.strava import StravaWebhookEvent
 from app.services.event_record_service import event_record_service
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.services.raw_payload_storage import store_raw_payload
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -125,8 +124,6 @@ class StravaWebhookHandler(BaseWebhookHandler):
             object_id=payload.object_id,
             owner_id=payload.owner_id,
         )
-
-        store_raw_payload(source="webhook", provider="strava", payload=raw, trace_id=trace_id)
 
         task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["strava", raw, trace_id], queue="webhook_sync")
         log_structured(

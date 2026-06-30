@@ -18,6 +18,7 @@ from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
 from app.services.providers.factory import ProviderFactory
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -148,6 +149,10 @@ def process_webhook_push(
     handler = None
     provider_user_id: str | None = None
     try:
+        # Raw payload is persisted here (worker) rather than in the webhook
+        # endpoint's dispatch(), so the inbound ACK is never blocked on an S3
+        # PUT and stays within the provider's response-time SLA (e.g. Oura 10s).
+        store_raw_payload(source="webhook", provider=provider_name, payload=payload, trace_id=request_trace_id)
         strategy = ProviderFactory().get_provider(provider_name)
         handler = strategy.webhooks
         if handler is None:

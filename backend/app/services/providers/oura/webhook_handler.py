@@ -17,9 +17,9 @@ Challenge verification
   ``verification_token`` and ``challenge`` query params. The handler must
   verify the token and echo the challenge back.
 
-The endpoint must respond quickly; ``dispatch()`` stores the raw payload and
-enqueues a Celery task, returning 200 immediately. ``process_payload()`` does
-the actual API fetch and DB write, called by the task.
+The endpoint must respond quickly; ``dispatch()`` enqueues a Celery task and
+returns 200 immediately. ``process_payload()`` does the raw-payload storage,
+API fetch and DB write, called by the task.
 
 Supported data types
 ---------------------
@@ -44,7 +44,6 @@ from app.schemas.providers.oura import OuraWebhookNotification
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.workouts import OuraWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import LogContext, log_structured
 
 logger = logging.getLogger(__name__)
@@ -127,7 +126,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
-        """Store the raw payload and enqueue async processing. Returns immediately."""
+        """Enqueue async processing and return immediately (raw payload is stored by the task)."""
         request_trace_id = str(uuid4())[:8]
         event_type = payload.get("event_type", "unknown")
         data_type = payload.get("data_type", "unknown")
@@ -143,8 +142,6 @@ class OuraWebhookHandler(BaseWebhookHandler):
             data_type=data_type,
             provider_user_id=provider_user_id,
         )
-
-        store_raw_payload(source="webhook", provider="oura", payload=payload, trace_id=request_trace_id)
 
         task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["oura", payload, request_trace_id], queue="webhook_sync")
         log_structured(

@@ -43,7 +43,6 @@ from app.schemas.providers.whoop import WhoopWebhookNotification, WhoopWebhookNo
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.workouts import WhoopWorkouts
-from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -144,8 +143,6 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             event_type=event_type,
             whoop_user_id=whoop_user_id,
         )
-
-        store_raw_payload(source="webhook", provider="whoop", payload=payload, trace_id=request_trace_id)
 
         task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["whoop", payload, request_trace_id], queue="webhook_sync")
         log_structured(

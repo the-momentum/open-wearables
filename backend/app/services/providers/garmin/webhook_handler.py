@@ -34,7 +34,6 @@ from app.services.providers.garmin.handlers.lifecycle import (
 from app.services.providers.garmin.handlers.wellness import process_wellness_items
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -139,8 +138,6 @@ class GarminWebhookHandler(BaseWebhookHandler):
             item_counts=item_counts,
             garmin_user_ids=garmin_user_ids,
         )
-
-        store_raw_payload(source="webhook", provider="garmin", payload=payload, trace_id=request_trace_id)
 
         # garmin_sync is isolated from the default queue so high-volume live-push
         # events and backfill-chain tasks don't starve each other.

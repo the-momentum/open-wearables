@@ -46,7 +46,6 @@ from app.repositories.provider_settings_repository import ProviderSettingsReposi
 from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.services.raw_payload_storage import store_raw_payload
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -128,8 +127,6 @@ class PolarWebhookHandler(BaseWebhookHandler):
             polar_user_id=payload.user_id,
             entity_id=payload.entity_id,
         )
-
-        store_raw_payload(source="webhook", provider="polar", payload=raw, trace_id=trace_id)
 
         task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["polar", raw, trace_id], queue="webhook_sync")
         log_structured(
