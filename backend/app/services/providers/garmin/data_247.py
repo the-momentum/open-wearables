@@ -302,9 +302,46 @@ class Garmin247Data(Base247DataTemplate):
             "sleep_score_components": sleep_score_components,
             "validation": raw_sleep.get("validation"),
             "garmin_summary_id": raw_sleep.get("summaryId"),
+            "is_nap": False,
+            "naps": raw_sleep.get("naps") or [],
             "raw": raw_sleep,
         }
         return normalized, self._normalize_sleep_health_score(normalized, user_id)
+
+    def _build_nap_record(
+        self,
+        nap: dict[str, Any],
+        user_id: UUID,
+        parent_summary_id: str | None = None,
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate] | None:
+        """Build EventRecord + EventRecordDetail for a nap entry from a Garmin sleep summary."""
+        start_ts = nap.get("napStartTimeInSeconds", 0)
+        duration = nap.get("napDurationInSeconds", 0)
+        if not start_ts or not duration:
+            return None
+
+        nap_id = uuid4()
+        record = EventRecordCreate(
+            id=nap_id,
+            category="sleep",
+            type="sleep_session",
+            source_name="Garmin",
+            device_model=None,
+            duration_seconds=duration,
+            start_datetime=self._from_epoch_seconds(start_ts),
+            end_datetime=self._from_epoch_seconds(start_ts + duration),
+            zone_offset=offset_to_iso(nap.get("napOffsetInSeconds")),
+            external_id=parent_summary_id,
+            source=self.provider_name,
+            user_id=user_id,
+        )
+        detail = EventRecordDetailCreate(
+            record_id=nap_id,
+            sleep_total_duration_minutes=duration // 60,
+            sleep_time_in_bed_minutes=duration // 60,
+            is_nap=True,
+        )
+        return record, detail
 
     def _build_sleep_record(
         self,
@@ -362,7 +399,7 @@ class Garmin247Data(Base247DataTemplate):
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
-            is_nap=False,
+            is_nap=normalized_sleep.get("is_nap", False),
             heart_rate_avg=Decimal(str(normalized_sleep["avg_heart_rate_bpm"]))
             if normalized_sleep.get("avg_heart_rate_bpm")
             else None,
@@ -1883,6 +1920,12 @@ class Garmin247Data(Base247DataTemplate):
                             all_sleep_details.append(detail)
                         if health_score:
                             all_health_scores.append(health_score)
+                        for raw_nap in normalized.get("naps", []):
+                            nap_result = self._build_nap_record(raw_nap, user_id, normalized.get("garmin_summary_id"))
+                            if nap_result:
+                                nap_record, nap_detail = nap_result
+                                all_records.append(nap_record)
+                                all_sleep_details.append(nap_detail)
                     case "activities":
                         result = self._build_activity_record(user_id, item)
                         if result:

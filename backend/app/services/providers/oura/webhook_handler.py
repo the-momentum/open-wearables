@@ -342,9 +342,11 @@ class OuraWebhookHandler(BaseWebhookHandler):
         log_ctx = LogContext(provider_user_id=notification.user_id, trace_id=trace_id)
 
         match data_type:
-            case "sleep" | "daily_sleep":
-                return self.data_247.save_sleep_data(
-                    db, user_id, self.data_247.normalize_sleeps(docs, user_id), log_ctx
+            case "sleep":
+                return self.data_247.save_sleep_data(db, user_id, self.data_247.normalize_sleeps(docs, user_id))
+            case "daily_sleep":
+                return self.data_247.save_daily_sleep_scores(
+                    db, user_id, self.data_247.normalize_daily_sleep_scores(docs, user_id)
                 )
             case "daily_readiness":
                 return self.data_247.save_readiness_data(

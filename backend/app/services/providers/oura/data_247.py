@@ -591,6 +591,10 @@ class Oura247Data(Base247DataTemplate):
         for item in raw_sleep:
             sleep = OuraSleepJSON(**item)
 
+            # Skip false detections and user-deleted records — not genuine sleep events
+            if sleep.type in {"rest", "deleted"}:
+                continue
+
             start_time = sleep.bedtime_start
             end_time = sleep.bedtime_end
 
@@ -624,7 +628,7 @@ class Oura247Data(Base247DataTemplate):
                     "end_time": end_time,
                     "duration_seconds": duration_seconds,
                     "efficiency_percent": float(sleep.efficiency) if sleep.efficiency is not None else None,
-                    "is_nap": sleep.type == "rest",
+                    "is_nap": sleep.type in {"sleep", "late_nap"},
                     "stages": {
                         "deep_seconds": deep_seconds,
                         "light_seconds": light_seconds,
