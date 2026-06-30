@@ -320,6 +320,7 @@ class SummariesService:
                 SleepSessionSummary(
                     start_time=s["start_time"],
                     end_time=s["end_time"],
+                    zone_offset=s.get("zone_offset"),
                     duration_minutes=s.get("duration_minutes"),
                     is_nap=s["is_nap"],
                 )
@@ -336,6 +337,7 @@ class SummariesService:
             longest_main = max(main_sessions, key=lambda s: s.duration_minutes or 0, default=None)
             start_time = longest_main.start_time if longest_main else result["min_start_time"]
             end_time = longest_main.end_time if longest_main else result["max_end_time"]
+            zone_offset = longest_main.zone_offset if longest_main else None
 
             avg_hr: int | None = None
             avg_hrv_sdnn: float | None = None
@@ -372,6 +374,7 @@ class SummariesService:
                 source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
                 start_time=start_time,
                 end_time=end_time,
+                zone_offset=zone_offset,
                 duration_minutes=result["total_duration_minutes"],
                 total_duration_minutes=total_duration_minutes,
                 sessions=sessions or None,
