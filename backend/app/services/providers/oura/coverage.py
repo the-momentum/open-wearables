@@ -28,6 +28,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         *SLEEP_INTERVAL_SERIES.values(),  # /v2/usercollection/sleep (intervals)
         *PERSONAL_INFO_SERIES.values(),  # /v2/usercollection/personal_info
         SeriesType.respiratory_rate,  # /v2/usercollection/sleep (average_breath)
+        SeriesType.resting_heart_rate,  # /v2/usercollection/sleep (lowest_heart_rate, single inline use)
         SeriesType.oxygen_saturation,  # /v2/usercollection/daily_spo2
         SeriesType.breathing_disturbance_index,  # /v2/usercollection/daily_spo2
         SeriesType.vo2_max,  # /v2/usercollection/vO2_max
