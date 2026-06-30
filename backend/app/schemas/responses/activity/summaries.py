@@ -55,6 +55,7 @@ class SleepSessionSummary(BaseModel):
 
     start_time: datetime
     end_time: datetime
+    zone_offset: str | None = Field(None, description="UTC offset of the session, e.g. '+02:00'")
     duration_minutes: int | None = Field(None, description="Session duration", example=420)
     is_nap: bool = Field(False, description="True if this session is a nap rather than main sleep")
 
@@ -64,6 +65,7 @@ class SleepSummary(BaseModel):
     source: SourceMetadata
     start_time: datetime | None = Field(None, description="Start of the longest main-sleep session")
     end_time: datetime | None = Field(None, description="End of the longest main-sleep session")
+    zone_offset: str | None = Field(None, description="UTC offset of the longest main-sleep session, e.g. '+02:00'")
     duration_minutes: int | None = Field(None, description="Total sleep duration excluding naps", example=450)
     total_duration_minutes: int | None = Field(
         None, description="Total of all sleep + nap durations for the day", example=480

@@ -823,6 +823,7 @@ class EventRecordRepository(
                 local_sleep_date.label("sleep_date"),
                 EventRecord.start_datetime.label("start_time"),
                 EventRecord.end_datetime.label("end_time"),
+                EventRecord.zone_offset.label("zone_offset"),
                 duration_seconds.label("duration_seconds"),
                 func.coalesce(SleepDetails.is_nap, False).label("is_nap"),
                 DataSource.provider,
@@ -849,6 +850,7 @@ class EventRecordRepository(
                 {
                     "start_time": row.start_time,
                     "end_time": row.end_time,
+                    "zone_offset": row.zone_offset,
                     "duration_minutes": int(row.duration_seconds) // 60 if row.duration_seconds is not None else None,
                     "is_nap": bool(row.is_nap),
                 }

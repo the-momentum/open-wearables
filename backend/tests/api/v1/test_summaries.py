@@ -310,6 +310,7 @@ class TestSleepSummaryEndpoint:
             start_datetime=datetime(2025, 12, 26, 3, 30, 0, tzinfo=timezone.utc),
             end_datetime=datetime(2025, 12, 26, 9, 30, 0, tzinfo=timezone.utc),
             duration_seconds=21600,
+            zone_offset="+02:00",
         )
         SleepDetailsFactory(event_record=long_record, sleep_total_duration_minutes=360, is_nap=False)
 
@@ -331,6 +332,12 @@ class TestSleepSummaryEndpoint:
         # total still sums both fragments (1h + 6h = 420 min)
         assert sleep_data["total_duration_minutes"] == 420
         assert len(sleep_data["sessions"]) == 2
+
+        # zone_offset is surfaced from the longest session; sessions are self-describing.
+        # The short fragment has no offset (None); the long one carries +02:00.
+        assert sleep_data["zone_offset"] == "+02:00"
+        assert sleep_data["sessions"][0]["zone_offset"] is None
+        assert sleep_data["sessions"][1]["zone_offset"] == "+02:00"
 
     def test_get_sleep_summary_no_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns null for nap fields when no naps exist."""
