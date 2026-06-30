@@ -1,13 +1,19 @@
-"""Shared value/timestamp extraction helpers for the Google Health API handlers.
+"""Shared value/timestamp helpers for the Google Health API handlers."""
 
-Used by both the ``rollup`` (dataPoints:rollUp) and ``listed`` (dataPoints list)
-registries so the coercion logic lives in one place.
-"""
-
-from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+
+def _to_rfc3339(dt: datetime) -> str:
+    """RFC3339 UTC with a 'Z' suffix; naive datetimes are assumed UTC."""
+    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return aware.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
+    """Build a google.type.Interval; ``start`` is inclusive, ``end`` is exclusive."""
+    return {"startTime": _to_rfc3339(start), "endTime": _to_rfc3339(end)}
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -20,27 +26,21 @@ def to_decimal(value: Any) -> Decimal | None:
         return None
 
 
-def first_of(*fields: str) -> Callable[[dict[str, Any]], Decimal | None]:
-    """Return an extractor that yields the first present numeric field among ``fields``.
+def read_number(
+    obj: dict[str, Any],
+    field: str,
+    subfield: str | None = None,
+    scale: Decimal = Decimal(1),
+) -> Decimal | None:
+    """Read ``obj[field]`` (or ``obj[field][subfield]`` when nested), optionally unit-scaled.
 
-    Looks one level deep too: a value nested as ``{field: {"value": n}}`` is unwrapped.
-    NOTE: candidate field names are partly inferred from Google's docs; a wrong guess
-    degrades to "skipped" rather than crashing — confirm against a live response.
+    scale=0.001 converts mm to m / g to kg. Returns None if missing or not numeric.
     """
-
-    def _extract(obj: dict[str, Any]) -> Decimal | None:
-        for field in fields:
-            if field not in obj:
-                continue
-            raw = obj[field]
-            if isinstance(raw, dict):
-                raw = raw.get("value")
-            decimal_value = to_decimal(raw)
-            if decimal_value is not None:
-                return decimal_value
-        return None
-
-    return _extract
+    value = obj.get(field)
+    if subfield is not None:
+        value = value.get(subfield) if isinstance(value, dict) else None
+    number = to_decimal(value)
+    return number * scale if number is not None else None
 
 
 def parse_rfc3339(value: str | None) -> datetime | None:
@@ -50,4 +50,14 @@ def parse_rfc3339(value: str | None) -> datetime | None:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (ValueError, TypeError):
+        return None
+
+
+def parse_date(obj: dict[str, Any] | None) -> datetime | None:
+    """Parse a google.type.Date ``{year, month, day}`` to midnight UTC (Daily data points)."""
+    if not obj:
+        return None
+    try:
+        return datetime(int(obj["year"]), int(obj.get("month") or 1), int(obj.get("day") or 1), tzinfo=timezone.utc)
+    except (KeyError, ValueError, TypeError):
         return None
