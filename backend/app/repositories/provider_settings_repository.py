@@ -7,6 +7,20 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums.provider import ProviderName
 
 
+def resolve_effective_live_sync_mode(
+    setting: ProviderSetting | None, default: LiveSyncMode | None
+) -> LiveSyncMode | None:
+    """Effective live-sync mode: the stored override, else the provider's default.
+
+    The single source of truth for the ``setting.live_sync_mode or default``
+    idiom that the settings service, connections API, strategy and webhook
+    handler all need.
+    """
+    if setting is not None and setting.live_sync_mode is not None:
+        return setting.live_sync_mode
+    return default
+
+
 class ProviderSettingsRepository:
     """Repository for managing provider settings in database."""
 

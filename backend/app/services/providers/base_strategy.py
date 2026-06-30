@@ -6,8 +6,13 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.database import DbSession
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
+from app.repositories.provider_settings_repository import (
+    ProviderSettingsRepository,
+    resolve_effective_live_sync_mode,
+)
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LiveSyncMode
@@ -89,6 +94,13 @@ class ProviderCapabilities:
         env vars) and is stored in ``provider_settings.webhook_secret``.
         Must be used together with ``webhook_registration_api=True``.
         Currently: Polar.
+    webhook_per_user_subscriptions:
+        Subscriptions are created per-user with the user's own bearer token
+        (not an app-level registration API). Switching live-sync mode bulk
+        subscribes/revokes every active connection via the generic
+        ``sync_provider_subscriptions`` task, which fans out to the provider's
+        per-user tasks (see ``live_sync_subscription_task``). Mutually
+        exclusive with ``webhook_registration_api``. Currently: Withings.
     max_historical_days:
         Hard upper limit on how far back the provider allows data to be
         fetched. ``None`` means no known limit. Garmin: 30 days.
@@ -102,6 +114,7 @@ class ProviderCapabilities:
     webhook_ping: bool = False
     webhook_registration_api: bool = False
     webhook_inbound_secret: bool = False
+    webhook_per_user_subscriptions: bool = False
     max_historical_days: int | None = None
 
     def __post_init__(self) -> None:
@@ -111,6 +124,10 @@ class ProviderCapabilities:
             raise ValueError("webhook_ping requires rest_pull=True (data must be fetched via REST after the ping)")
         if self.webhook_inbound_secret and not self.webhook_registration_api:
             raise ValueError("webhook_inbound_secret requires webhook_registration_api=True")
+        if self.webhook_per_user_subscriptions and not self.webhook_ping:
+            raise ValueError("webhook_per_user_subscriptions requires webhook_ping=True")
+        if self.webhook_per_user_subscriptions and self.webhook_registration_api:
+            raise ValueError("webhook_per_user_subscriptions and webhook_registration_api are mutually exclusive")
 
 
 class BaseProviderStrategy(ABC):
@@ -213,6 +230,14 @@ class BaseProviderStrategy(ABC):
             end_date=end_date.isoformat(),
         )
 
+    def on_connect(self, user_id: UUID) -> None:
+        """Provider-specific side effects after a user connects.
+
+        Called by the OAuth callback once the connection is persisted and any
+        historical sync dispatched. Override for per-user setup (e.g. Withings
+        registers its per-user notify subscriptions). Default: no-op.
+        """
+
     @property
     def display_name(self) -> str:
         """Returns the display name of the provider (e.g., 'Garmin', 'Apple Health')."""
@@ -249,6 +274,24 @@ class BaseProviderStrategy(ABC):
             return None
         if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
+        return None
+
+    def effective_live_sync_mode(self, db: DbSession) -> LiveSyncMode | None:
+        """The admin override from provider settings, else this provider's default.
+
+        Single resolver for the live-sync mode; callers that already hold the
+        provider setting should use ``resolve_effective_live_sync_mode`` directly.
+        """
+        setting = ProviderSettingsRepository().get_all(db).get(self.name)
+        return resolve_effective_live_sync_mode(setting, self.default_live_sync_mode)
+
+    def live_sync_subscription_task(self, mode: LiveSyncMode) -> str | None:
+        """Per-user Celery task to run for each active connection on a mode switch.
+
+        Only meaningful for ``webhook_per_user_subscriptions`` providers. Returns
+        the subscribe task name for WEBHOOK, the revoke task name for PULL, or
+        ``None`` when the mode needs no per-user action. Default: ``None``.
+        """
         return None
 
     @property
