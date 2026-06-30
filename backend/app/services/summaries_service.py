@@ -35,6 +35,7 @@ from app.schemas.responses.activity import (
     HeartRateStats,
     IntensityMinutes,
     RecoverySummary,
+    SleepSessionSummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -314,21 +315,43 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
+            raw_sessions = result.get("sessions") or []
+            sessions = [
+                SleepSessionSummary(
+                    start_time=s["start_time"],
+                    end_time=s["end_time"],
+                    zone_offset=s.get("zone_offset"),
+                    duration_minutes=s.get("duration_minutes"),
+                    is_nap=s["is_nap"],
+                )
+                for s in raw_sessions
+            ]
+
+            main_minutes = result.get("total_duration_minutes")
+            nap_minutes = result.get("nap_duration_minutes")
+            total_duration_minutes = None
+            if main_minutes is not None or nap_minutes is not None:
+                total_duration_minutes = (main_minutes or 0) + (nap_minutes or 0)
+
+            main_sessions = [s for s in sessions if not s.is_nap]
+            longest_main = max(main_sessions, key=lambda s: s.duration_minutes or 0, default=None)
+            start_time = longest_main.start_time if longest_main else result["min_start_time"]
+            end_time = longest_main.end_time if longest_main else result["max_end_time"]
+            zone_offset = longest_main.zone_offset if longest_main else None
+
             avg_hr: int | None = None
             avg_hrv_sdnn: float | None = None
             avg_hrv_rmssd: float | None = None
             avg_respiratory_rate: float | None = None
             avg_spo2_percent: float | None = None
 
-            sleep_start = result.get("min_start_time")
-            sleep_end = result.get("max_end_time")
-            if sleep_start and sleep_end:
+            if start_time and end_time:
                 try:
                     physio_averages = self.data_point_repo.get_averages_for_time_range(
                         db_session,
                         user_id,
-                        sleep_start,
-                        sleep_end,
+                        start_time,
+                        end_time,
                         SLEEP_PHYSIO_SERIES_TYPES,
                     )
                     hr_avg = physio_averages.get(SeriesType.heart_rate)
@@ -342,16 +365,19 @@ class SummariesService:
                         self.logger,
                         "warning",
                         f"Failed to fetch physiological metrics for sleep: {e}",
-                        sleep_start=sleep_start,
-                        sleep_end=sleep_end,
+                        sleep_start=start_time,
+                        sleep_end=end_time,
                     )
 
             summary = SleepSummary(
                 date=result["sleep_date"],
                 source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
-                start_time=result["min_start_time"],
-                end_time=result["max_end_time"],
+                start_time=start_time,
+                end_time=end_time,
+                zone_offset=zone_offset,
                 duration_minutes=result["total_duration_minutes"],
+                total_duration_minutes=total_duration_minutes,
+                sessions=sessions or None,
                 time_in_bed_minutes=result.get("time_in_bed_minutes"),
                 efficiency_percent=result.get("efficiency_percent"),
                 stages=stages,

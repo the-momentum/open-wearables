@@ -277,6 +277,68 @@ class TestSleepSummaryEndpoint:
         assert main_sleep_data["nap_count"] == 1
         assert main_sleep_data["nap_duration_minutes"] == 30
 
+        # total_duration spans main sleep (480) + nap (30)
+        assert main_sleep_data["total_duration_minutes"] == 510
+
+        # Per-session breakdown lists both sessions, sorted by start time
+        sessions = main_sleep_data["sessions"]
+        assert len(sessions) == 2
+        assert sessions[0]["is_nap"] is False
+        assert sessions[0]["duration_minutes"] == 480
+        assert sessions[1]["is_nap"] is True
+        assert sessions[1]["duration_minutes"] == 30
+
+    def test_get_sleep_summary_start_end_anchor_longest_session(self, client: TestClient, db: Session) -> None:
+        """Split-sleep night: start/end anchor on the longest main-sleep session."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+
+        # Short fragment: 2am - 3am (1 hour)
+        short_record = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            start_datetime=datetime(2025, 12, 26, 2, 0, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2025, 12, 26, 3, 0, 0, tzinfo=timezone.utc),
+            duration_seconds=3600,
+        )
+        SleepDetailsFactory(event_record=short_record, sleep_total_duration_minutes=60, is_nap=False)
+
+        # Long fragment: 3:30am - 9:30am (6 hours) — the longest session
+        long_record = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            start_datetime=datetime(2025, 12, 26, 3, 30, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2025, 12, 26, 9, 30, 0, tzinfo=timezone.utc),
+            duration_seconds=21600,
+            zone_offset="+02:00",
+        )
+        SleepDetailsFactory(event_record=long_record, sleep_total_duration_minutes=360, is_nap=False)
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/sleep",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        sleep_data = data["data"][0]
+
+        # start/end come from the longest session (3:30 - 9:30), not the min/max span
+        assert sleep_data["start_time"] == "2025-12-26T03:30:00Z"
+        assert sleep_data["end_time"] == "2025-12-26T09:30:00Z"
+        # total still sums both fragments (1h + 6h = 420 min)
+        assert sleep_data["total_duration_minutes"] == 420
+        assert len(sleep_data["sessions"]) == 2
+
+        # zone_offset is surfaced from the longest session; sessions are self-describing.
+        # The short fragment has no offset (None); the long one carries +02:00.
+        assert sleep_data["zone_offset"] == "+02:00"
+        assert sleep_data["sessions"][0]["zone_offset"] is None
+        assert sleep_data["sessions"][1]["zone_offset"] == "+02:00"
+
     def test_get_sleep_summary_no_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns null for nap fields when no naps exist."""
         user = UserFactory()
