@@ -14,23 +14,27 @@ HEART_METRICS: tuple[DataTypeMetric, ...] = (
     DataTypeMetric(
         "heart-rate",
         SeriesType.heart_rate,
-        rollup_spec=RollupSpec("heartRate", "beatsPerMinuteAvg", max_range_days=14),
+        value_key="heartRate",
+        rollup_spec=RollupSpec("beatsPerMinuteAvg", max_range_days=14),
         list_spec=ListSpec("beatsPerMinute", TimeShape.SAMPLE),
     ),
     DataTypeMetric(
         "run-vo2-max",
         SeriesType.vo2_max,
-        rollup_spec=RollupSpec("runVo2Max", "rateAvg"),
+        value_key="runVo2Max",
+        rollup_spec=RollupSpec("rateAvg"),
         list_spec=ListSpec("runVo2Max", TimeShape.SAMPLE),
     ),
     DataTypeMetric(
         "daily-resting-heart-rate",
         SeriesType.resting_heart_rate,
+        value_key="dailyRestingHeartRate",
         list_spec=ListSpec("beatsPerMinute", TimeShape.DATE, is_daily_total=True),
     ),
     DataTypeMetric(
         "daily-heart-rate-variability",
         SeriesType.heart_rate_variability_rmssd,
+        value_key="dailyHeartRateVariability",
         list_spec=ListSpec("averageHeartRateVariabilityMilliseconds", TimeShape.DATE, is_daily_total=True),
     ),
 )

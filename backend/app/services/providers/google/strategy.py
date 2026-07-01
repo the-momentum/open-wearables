@@ -2,7 +2,7 @@ from app.services.providers.base_strategy import BaseProviderStrategy, ProviderC
 from app.services.providers.google.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.google.health_api.data_247 import GoogleHealth247Data
 from app.services.providers.google.health_api.oauth import GoogleOAuth
-from app.services.providers.google.sdk.workouts import GoogleWorkouts
+from app.services.providers.google.health_api.workouts import GoogleHealthApiWorkouts
 
 
 class GoogleStrategy(BaseProviderStrategy):
@@ -27,7 +27,7 @@ class GoogleStrategy(BaseProviderStrategy):
             provider_name=self.name,
             api_base_url=self.api_base_url,
         )
-        self.workouts = GoogleWorkouts(self.workout_repo, self.connection_repo)
+        self.workouts = GoogleHealthApiWorkouts(self.workout_repo, self.connection_repo, self.oauth)
         self.data_247 = GoogleHealth247Data(self.oauth, self.connection_repo)
 
     @property

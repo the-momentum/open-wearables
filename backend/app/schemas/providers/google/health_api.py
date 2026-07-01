@@ -29,7 +29,6 @@ class TimeShape(Enum):
 class RollupSpec:
     """How to read one data type's value from a dataPoints:rollUp response.
 
-    value_key:      union field key in a RollupDataPoint (e.g. ``steps``, ``heartRate``).
     field:          key of the scalar within the ``*RollupValue`` object (e.g. ``countSum``).
     subfield:       second-level key when nested (e.g. hydration's ``amountConsumed`` →
                     ``millilitersSum``); None for the flat common case.
@@ -37,7 +36,6 @@ class RollupSpec:
     max_range_days: rollUp's per-request range cap (14 for heart-rate/total-calories, else 90).
     """
 
-    value_key: str
     field: str
     subfield: str | None = None
     scale: Decimal = Decimal(1)
@@ -63,10 +61,16 @@ class ListSpec:
 
 @dataclass(frozen=True)
 class DataTypeMetric:
-    """One Google data type mapped to a unified series, with its supported operations."""
+    """One Google data type mapped to a unified series, with its supported operations.
+
+    value_key: the DataPoint/RollupDataPoint union field this type's payload lives under
+               (camelCase, e.g. ``steps``, ``heartRate``, ``dailyRestingHeartRate``). Shared
+               by both operations — rollUp and list both nest the value under it.
+    """
 
     data_type: str
     series_type: SeriesType
+    value_key: str
     rollup_spec: RollupSpec | None = None
     list_spec: ListSpec | None = None
 
