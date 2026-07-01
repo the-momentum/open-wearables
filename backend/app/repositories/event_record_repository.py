@@ -3,17 +3,33 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import (
+    Date,
+    Integer,
+    Interval,
+    String,
+    and_,
+    asc,
+    case,
+    cast,
+    desc,
+    func,
+    lateral,
+    select,
+    text,
+    true,
+    tuple_,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
-from app.models import DataSource, EventRecord, SleepDetails
+from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails
 from app.models.workout_details import WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
@@ -556,6 +572,41 @@ class EventRecordRepository(
             )
         ).subquery()
 
+        hr_id = get_series_type_id(SeriesType.heart_rate)
+        sdnn_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
+        rmssd_id = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
+        resp_id = get_series_type_id(SeriesType.respiratory_rate)
+        spo2_id = get_series_type_id(SeriesType.oxygen_saturation)
+
+        # Lateral subquery: for each sleep row, average physio data within
+        # [min_start_time, max_end_time) — exact window, no date-grouping mismatch.
+        physio_lateral = lateral(
+            select(
+                func.avg(case((DataPointSeries.series_type_definition_id == hr_id, DataPointSeries.value))).label(
+                    "avg_hr"
+                ),
+                func.avg(case((DataPointSeries.series_type_definition_id == sdnn_id, DataPointSeries.value))).label(
+                    "avg_hrv_sdnn"
+                ),
+                func.avg(case((DataPointSeries.series_type_definition_id == rmssd_id, DataPointSeries.value))).label(
+                    "avg_hrv_rmssd"
+                ),
+                func.avg(case((DataPointSeries.series_type_definition_id == resp_id, DataPointSeries.value))).label(
+                    "avg_resp"
+                ),
+                func.avg(case((DataPointSeries.series_type_definition_id == spo2_id, DataPointSeries.value))).label(
+                    "avg_spo2"
+                ),
+            )
+            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
+            .where(
+                DataSource.user_id == user_id,
+                DataPointSeries.series_type_definition_id.in_([hr_id, sdnn_id, rmssd_id, resp_id, spo2_id]),
+                DataPointSeries.recorded_at >= subquery.c.min_start_time,
+                DataPointSeries.recorded_at < subquery.c.max_end_time,
+            )
+        )
+
         # Build main query from subquery, casting record_id back to UUID
         record_id_col = cast(subquery.c.record_id_text, SQL_UUID).label("record_id")
         query = db_session.query(
@@ -575,7 +626,12 @@ class EventRecordRepository(
             subquery.c.efficiency_duration_sum,
             subquery.c.nap_count,
             subquery.c.nap_duration,
-        )
+            physio_lateral.c.avg_hr,
+            physio_lateral.c.avg_hrv_sdnn,
+            physio_lateral.c.avg_hrv_rmssd,
+            physio_lateral.c.avg_resp,
+            physio_lateral.c.avg_spo2,
+        ).outerjoin(physio_lateral, true())
 
         # Handle cursor pagination
         if cursor:
@@ -625,6 +681,12 @@ class EventRecordRepository(
                     # Nap tracking
                     "nap_count": int(row.nap_count) if row.nap_count is not None else None,
                     "nap_duration_minutes": int(row.nap_duration) // 60 if row.nap_duration is not None else None,
+                    # Physio averages from data_point_series
+                    "avg_hr": float(row.avg_hr) if row.avg_hr is not None else None,
+                    "avg_hrv_sdnn": float(row.avg_hrv_sdnn) if row.avg_hrv_sdnn is not None else None,
+                    "avg_hrv_rmssd": float(row.avg_hrv_rmssd) if row.avg_hrv_rmssd is not None else None,
+                    "avg_resp": float(row.avg_resp) if row.avg_resp is not None else None,
+                    "avg_spo2": float(row.avg_spo2) if row.avg_spo2 is not None else None,
                 }
             )
         return summaries

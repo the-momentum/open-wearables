@@ -1,5 +1,6 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
@@ -50,16 +51,6 @@ from app.utils.pagination import (
     encode_activity_cursor,
     encode_cursor,
 )
-from app.utils.structured_logging import log_structured
-
-# Series types needed for sleep physiological metrics
-SLEEP_PHYSIO_SERIES_TYPES = [
-    SeriesType.heart_rate,
-    SeriesType.heart_rate_variability_sdnn,
-    SeriesType.heart_rate_variability_rmssd,
-    SeriesType.respiratory_rate,
-    SeriesType.oxygen_saturation,
-]
 
 # Activity summary constants
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
@@ -128,11 +119,9 @@ class SummariesService:
         device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
 
         # Group results by date
-        by_date: dict[date, list[dict]] = {}
+        by_date: dict[date, list[dict]] = defaultdict(list)
         for result in results:
             dt = result[date_key]
-            if dt not in by_date:
-                by_date[dt] = []
             by_date[dt].append(result)
 
         # For each date, pick highest priority
@@ -314,37 +303,12 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
-            avg_hr: int | None = None
-            avg_hrv_sdnn: float | None = None
-            avg_hrv_rmssd: float | None = None
-            avg_respiratory_rate: float | None = None
-            avg_spo2_percent: float | None = None
-
-            sleep_start = result.get("min_start_time")
-            sleep_end = result.get("max_end_time")
-            if sleep_start and sleep_end:
-                try:
-                    physio_averages = self.data_point_repo.get_averages_for_time_range(
-                        db_session,
-                        user_id,
-                        sleep_start,
-                        sleep_end,
-                        SLEEP_PHYSIO_SERIES_TYPES,
-                    )
-                    hr_avg = physio_averages.get(SeriesType.heart_rate)
-                    avg_hr = int(round(hr_avg)) if hr_avg is not None else None
-                    avg_hrv_sdnn = physio_averages.get(SeriesType.heart_rate_variability_sdnn)
-                    avg_hrv_rmssd = physio_averages.get(SeriesType.heart_rate_variability_rmssd)
-                    avg_respiratory_rate = physio_averages.get(SeriesType.respiratory_rate)
-                    avg_spo2_percent = physio_averages.get(SeriesType.oxygen_saturation)
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Failed to fetch physiological metrics for sleep: {e}",
-                        sleep_start=sleep_start,
-                        sleep_end=sleep_end,
-                    )
+            hr_avg = result.get("avg_hr")
+            avg_hr: int | None = int(round(hr_avg)) if hr_avg is not None else None
+            avg_hrv_sdnn: float | None = result.get("avg_hrv_sdnn")
+            avg_hrv_rmssd: float | None = result.get("avg_hrv_rmssd")
+            avg_respiratory_rate: float | None = result.get("avg_resp")
+            avg_spo2_percent: float | None = result.get("avg_spo2")
 
             summary = SleepSummary(
                 date=result["sleep_date"],
