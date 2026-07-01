@@ -43,6 +43,13 @@ def read_number(
     return number * scale if number is not None else None
 
 
+def parse_duration_seconds(value: str | None) -> Decimal | None:
+    """Parse a Google Duration string (seconds ending in 's', e.g. ``1830s``) to seconds."""
+    if not value:
+        return None
+    return to_decimal(value[:-1] if value.endswith("s") else value)
+
+
 def parse_rfc3339(value: str | None) -> datetime | None:
     """Parse an RFC3339 timestamp (e.g. a data point's ``startTime``)."""
     if not value:

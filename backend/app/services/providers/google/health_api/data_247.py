@@ -126,7 +126,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             for point in self._fetch_rollup_window(
                 db, user_id, endpoint, chunk_start, chunk_end, window_seconds, page_size
             ):
-                value_obj = point.get(spec.value_key)
+                value_obj = point.get(metric.value_key)
                 recorded_at = parse_rfc3339(point.get("startTime"))
                 if not isinstance(value_obj, dict) or recorded_at is None:
                     continue
@@ -204,10 +204,14 @@ class GoogleHealth247Data(Base247DataTemplate):
             return []
         samples: list[TimeSeriesSampleCreate] = []
         for point in self._fetch_list(db, user_id, metric.data_type):
-            recorded_at = self._point_time(point, spec.time)
+            # A list DataPoint nests its payload under the type's union key.
+            value_obj = point.get(metric.value_key)
+            if not isinstance(value_obj, dict):
+                continue
+            recorded_at = self._point_time(value_obj, spec.time)
             if recorded_at is None or not (start_time <= recorded_at < end_time):
                 continue
-            value = read_number(point, spec.field, spec.subfield, spec.scale)
+            value = read_number(value_obj, spec.field, spec.subfield, spec.scale)
             if value is not None:
                 samples.append(self._sample(user_id, recorded_at, value, metric.series_type, spec.is_daily_total))
         return samples
