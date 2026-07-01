@@ -1,5 +1,5 @@
-from sqlalchemy import Index
-from sqlalchemy.orm import Mapped
+from sqlalchemy import Index, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.mappings import FKEventRecordDetail, json_binary, numeric_5_2, numeric_10_3
 
@@ -54,3 +54,7 @@ class WorkoutDetails(EventRecordDetail):
     segments: Mapped[json_binary | None]
     hr_zones: Mapped[json_binary | None]
     power_zones: Mapped[json_binary | None]
+
+    # GPS route encoded with the Google Encoded Polyline Algorithm (precision 5),
+    # e.g. Strava's map.summary_polyline. Null for indoor/manual workouts.
+    route_polyline: Mapped[str | None] = mapped_column(Text, nullable=True)

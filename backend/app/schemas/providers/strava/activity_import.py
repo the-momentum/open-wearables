@@ -13,6 +13,17 @@ class StravaGearJSON(BaseModel):
     distance: int
 
 
+class StravaMapJSON(BaseModel):
+    """Strava activity map data (encoded polylines)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str | None = None
+    summary_polyline: str | None = None  # Google Encoded Polyline (precision 5)
+    polyline: str | None = None  # Full-resolution polyline (DetailedActivity only)
+    resource_state: int | None = None
+
+
 class ActivityJSON(BaseModel):
     """Strava activity data from API responses or webhook fetches.
 
@@ -57,6 +68,9 @@ class ActivityJSON(BaseModel):
 
     # Athlete info
     athlete: dict | None = None  # {"id": 12345}
+
+    # Route
+    map: StravaMapJSON | None = None
 
     # Metadata
     gear: StravaGearJSON | None = None
