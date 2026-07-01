@@ -174,11 +174,21 @@ class Suunto247Data(Base247DataTemplate):
         entry_data: dict[str, Any] = raw_sleep.get("entryData", {})
         timestamp = raw_sleep.get("timestamp")
 
-        bedtime_start = entry_data.get("BedtimeStart")
-        bedtime_end = entry_data.get("BedtimeEnd")
-
         # Suunto provides durations in seconds
         duration_seconds = int(entry_data.get("Duration", 0))
+
+        # Suunto documents an explicit in-bed window (BedtimeStart/BedtimeEnd),
+        # so prefer it. Some payloads omit those fields despite that contract, so
+        # tolerate the gap by reconstructing from the sleep entry date plus
+        # Duration. Do not use the wrapper timestamp as a fallback: Suunto defines
+        # it as the sample measurement timestamp, while DateTime belongs to the
+        # sleep entry data.
+        bedtime_start = entry_data.get("BedtimeStart") or entry_data.get("DateTime")
+        bedtime_end = entry_data.get("BedtimeEnd")
+        if not bedtime_end and bedtime_start:
+            start_dt = parse_iso_datetime(bedtime_start)
+            if start_dt:
+                bedtime_end = (start_dt + timedelta(seconds=duration_seconds)).isoformat()
         deep_sleep = int(entry_data.get("DeepSleepDuration", 0))
         light_sleep = int(entry_data.get("LightSleepDuration", 0))
         rem_sleep = int(entry_data.get("REMSleepDuration", 0))
@@ -224,11 +234,11 @@ class Suunto247Data(Base247DataTemplate):
         start_dt = parse_iso_datetime(normalized_sleep.get("start_time"))
         end_dt = parse_iso_datetime(normalized_sleep.get("end_time"))
 
-        if not start_dt or not end_dt:
+        if not start_dt or not end_dt or end_dt <= start_dt:
             log_structured(
                 self.logger,
                 "warning",
-                f"Skipping sleep record {sleep_id}: missing start/end time",
+                f"Skipping sleep record {sleep_id}: missing or degenerate start/end window",
                 provider="suunto",
                 task="save_sleep_data",
                 user_id=str(user_id),
