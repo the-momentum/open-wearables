@@ -7,6 +7,7 @@ happens in the worker process.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from typing import Any
@@ -140,7 +141,8 @@ def on_menstrual_cycle_created(
     )
 
 
-def on_sleep_created(
+def _emit_sleep(
+    event_type: str,
     *,
     record_id: UUID,
     user_id: UUID,
@@ -154,10 +156,19 @@ def on_sleep_created(
     stages: dict[str, int | None] | None = None,
     is_nap: bool | None = None,
 ) -> None:
+    # Content-aware idempotency: a provider re-sends the same session as it is
+    # finalized (Oura sends the stub early, then updates duration/stages/score).
+    # Keying on record_id alone would dedup those updates away, so consumers
+    # would keep the first partial reading forever. Include a revision derived
+    # from the mutable fields so each distinct sleep state delivers exactly once
+    # while true retries (identical content) still dedup.
+    revision = hashlib.sha1(
+        f"{start_time}|{end_time}|{duration_seconds}|{efficiency_percent}|{stages}".encode()
+    ).hexdigest()[:12]
     _dispatch(
-        WebhookEventType.SLEEP_CREATED,
+        event_type,
         {
-            "type": WebhookEventType.SLEEP_CREATED,
+            "type": event_type,
             "data": {
                 "id": str(record_id),
                 "user_id": str(user_id),
@@ -171,9 +182,19 @@ def on_sleep_created(
                 "is_nap": is_nap,
             },
         },
-        idempotency_key=f"sleep.created.{record_id}",
+        idempotency_key=f"{event_type}.{record_id}.{revision}",
         channels=[f"user.{user_id}"],
     )
+
+
+def on_sleep_created(**kwargs: Any) -> None:
+    """A new sleep session was saved (first ingestion or a fresh merged session)."""
+    _emit_sleep(WebhookEventType.SLEEP_CREATED, **kwargs)
+
+
+def on_sleep_updated(**kwargs: Any) -> None:
+    """An existing sleep session was updated in place (finalized duration/stages/score)."""
+    _emit_sleep(WebhookEventType.SLEEP_UPDATED, **kwargs)
 
 
 def on_timeseries_batch_saved(

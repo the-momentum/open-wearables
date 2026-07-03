@@ -54,7 +54,12 @@ from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
 from app.services.outgoing_webhooks import svix as svix_service
-from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on_sleep_created, on_workout_created
+from app.services.outgoing_webhooks.events import (
+    on_menstrual_cycle_created,
+    on_sleep_created,
+    on_sleep_updated,
+    on_workout_created,
+)
 from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
@@ -278,10 +283,15 @@ class EventRecordService(
         first, and the old record is deleted only after a successful insert — so a failure
         never loses the original data.
         """
-        result, inserted, final_detail = self._create_or_merge_sleep_inner(
+        result, action, final_detail = self._create_or_merge_sleep_inner(
             db_session, user_id, record, detail, threshold_minutes
         )
-        if inserted:
+        # ``action`` is "created" (insert / fresh merged session) or "updated" (a
+        # provider re-sending a session as it finalizes). Emitting on updates —
+        # via the distinct sleep.updated event — is what lets consumers move off
+        # an early partial reading; the content-aware idempotency key dedups
+        # identical retries.
+        if action is not None:
             eff = final_detail.sleep_efficiency_score
             has_stages = any(
                 [
@@ -291,7 +301,8 @@ class EventRecordService(
                     final_detail.sleep_rem_minutes,
                 ]
             )
-            on_sleep_created(
+            emit = on_sleep_updated if action == "updated" else on_sleep_created
+            emit(
                 record_id=result.id,
                 user_id=user_id,
                 provider=record.provider or record.source_name,
@@ -320,7 +331,10 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
-    ) -> tuple[EventRecord, bool, EventRecordDetailCreate]:
+    ) -> tuple[EventRecord, str, EventRecordDetailCreate]:
+        # Returns (record, action, final_detail). ``action`` is "created" (new insert
+        # or a fresh merged session) or "updated" (an existing session replaced in
+        # place), so the caller emits sleep.created vs sleep.updated accordingly.
         adjacent = self.find_adjacent_sleep_record(
             db_session,
             user_id,
@@ -358,7 +372,8 @@ class EventRecordService(
                     },
                 )
                 db_session.commit()
-                return adjacent, False, detail
+                # In-place update of an existing session → sleep.updated.
+                return adjacent, "updated", detail
 
             adj_detail: SleepDetails | None = adjacent.detail if isinstance(adjacent.detail, SleepDetails) else None
 
@@ -486,7 +501,9 @@ class EventRecordService(
                     {self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset)},
                 )
                 db_session.commit()
-                return adjacent, False, detail
+                # Same-window re-ingestion replaced the detail with merged values
+                # → sleep.updated so consumers get the refreshed session.
+                return adjacent, "updated", detail.model_copy(update={**merged_detail_fields})
 
             record = record.model_copy(
                 update={
@@ -513,7 +530,9 @@ class EventRecordService(
                     {self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset)},
                 )
                 db_session.commit()
-                return adjacent, False, detail
+                # Same-window re-ingestion replaced the detail with merged values
+                # → sleep.updated so consumers get the refreshed session.
+                return adjacent, "updated", detail.model_copy(update={**merged_detail_fields})
 
             merged_final_detail = detail.model_copy(update={"record_id": created_record.id, **merged_detail_fields})
             self.event_record_detail_repo.create_and_flush(
@@ -532,7 +551,7 @@ class EventRecordService(
                 },
             )
             db_session.commit()
-            return created_record, True, merged_final_detail
+            return created_record, "created", merged_final_detail
 
         created_record = self.crud.create_and_flush(db_session, record)
         new_detail = detail.model_copy(update={"record_id": created_record.id})
@@ -542,7 +561,7 @@ class EventRecordService(
             detail_type="sleep",
         )
         db_session.commit()
-        return created_record, True, new_detail
+        return created_record, "created", new_detail
 
     @staticmethod
     def _emit_event_record_webhook(

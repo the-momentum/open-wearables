@@ -39,6 +39,7 @@ class WebhookEventType(StrEnum):
     # -------------------------------------------------------------------------
     WORKOUT_CREATED = "workout.created"
     SLEEP_CREATED = "sleep.created"
+    SLEEP_UPDATED = "sleep.updated"
     MENSTRUAL_CYCLE_CREATED = "menstrual_cycle.created"
 
     # -------------------------------------------------------------------------
@@ -200,7 +201,12 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SYNC_COMPLETED: "A sync run completed successfully (terminal state).",
     WebhookEventType.SYNC_FAILED: "A sync run failed (terminal state, includes error message).",
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
-    WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
+    WebhookEventType.SLEEP_CREATED: "A new (or freshly merged) sleep session was saved.",
+    WebhookEventType.SLEEP_UPDATED: (
+        "An existing sleep session was updated in place. Providers (e.g. Oura) send a "
+        "session early and then finalize duration/stages/score against the same id; this "
+        "event carries the refreshed payload so consumers move off the initial partial reading."
+    ),
     WebhookEventType.MENSTRUAL_CYCLE_CREATED: "A new menstrual cycle record was saved.",
     # Group events
     WebhookEventType.HEART_RATE_CREATED: "Any heart-rate samples (all HR variants) were ingested.",

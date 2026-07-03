@@ -436,6 +436,45 @@ class TestCreateOrMergeSleep:
         assert result.start_datetime == start
         assert result.end_datetime == end
 
+    def test_same_external_id_update_emits_sleep_updated(self, db: Session) -> None:
+        """A provider re-sending the same session (finalized) must emit sleep.updated.
+
+        Regression: Oura sends a stub session first, then finalizes duration/stages/score
+        via the same external_id. Previously the in-place update emitted nothing, so
+        consumers kept the first partial reading forever. Now: create → sleep.created,
+        in-place update → sleep.updated with the refreshed payload.
+        """
+        data_source = DataSourceFactory()
+        ext = "oura-sleep-abc123"
+        start, end = self._dt(22, 0), self._dt(0, 30, day=22)
+
+        stub = self._record(data_source, start, end).model_copy(update={"external_id": ext})
+        stub_detail = self._detail(stub.id, in_bed=30, efficiency="50.00")
+        with (
+            patch("app.services.event_record_service.on_sleep_created") as emit_create,
+            patch("app.services.event_record_service.on_sleep_updated") as emit_update_on_create,
+        ):
+            event_record_service.create_or_merge_sleep(db, data_source.user_id, stub, stub_detail, self.THRESHOLD)
+        assert emit_create.called, "initial create should emit sleep.created"
+        assert not emit_update_on_create.called, "create must not emit sleep.updated"
+
+        # Same session, finalized: full night, higher efficiency.
+        final = self._record(data_source, self._dt(22, 0), self._dt(7, 0, day=22)).model_copy(
+            update={"external_id": ext}
+        )
+        final_detail = self._detail(final.id, in_bed=540, efficiency="88.00")
+        with (
+            patch("app.services.event_record_service.on_sleep_created") as emit_create_on_update,
+            patch("app.services.event_record_service.on_sleep_updated") as emit_update,
+        ):
+            event_record_service.create_or_merge_sleep(db, data_source.user_id, final, final_detail, self.THRESHOLD)
+
+        assert emit_update.called, "in-place update must emit sleep.updated"
+        assert not emit_create_on_update.called, "update must not emit sleep.created"
+        kw = emit_update.call_args.kwargs
+        assert kw["efficiency_percent"] == 88.0
+        assert kw["duration_seconds"] == int((self._dt(7, 0, day=22) - self._dt(22, 0)).total_seconds())
+
     def test_adjacent_within_threshold_is_merged(self, db: Session) -> None:
         """Sessions within threshold_minutes of each other are merged into one record."""
         user = UserFactory()

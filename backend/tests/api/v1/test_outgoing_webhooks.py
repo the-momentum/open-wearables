@@ -104,6 +104,39 @@ class TestWebhookEmit:
         assert args[0][1]["data"]["stages"]["deep_minutes"] == 90
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_on_sleep_created_idempotency_key_is_content_aware(self, mock_task: MagicMock) -> None:
+        """Same session finalized (different content) must get a distinct idempotency key.
+
+        Keying on record_id alone would let Svix dedup the finalized update, leaving
+        consumers on the first partial reading. Identical content still dedups.
+        """
+        uid, rid = uuid4(), uuid4()
+
+        def _emit(*, duration_seconds: float, efficiency_percent: float) -> str:
+            on_sleep_created(
+                record_id=rid,
+                user_id=uid,
+                provider="oura",
+                device=None,
+                start_time="2026-01-01T22:00:00",
+                end_time="2026-01-02T06:00:00",
+                zone_offset=None,
+                duration_seconds=duration_seconds,
+                efficiency_percent=efficiency_percent,
+                stages={"deep_minutes": 90, "rem_minutes": 60, "light_minutes": 120, "awake_minutes": 10},
+                is_nap=False,
+            )
+            return mock_task.delay.call_args.kwargs["idempotency_key"]
+
+        stub_key = _emit(duration_seconds=1800, efficiency_percent=40.0)
+        final_key = _emit(duration_seconds=28800, efficiency_percent=85.0)
+        retry_key = _emit(duration_seconds=28800, efficiency_percent=85.0)
+
+        assert stub_key.startswith(f"sleep.created.{rid}.")
+        assert stub_key != final_key  # finalized content → new key → delivered
+        assert final_key == retry_key  # identical retry → same key → deduped
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_batch_saved_dispatches(self, mock_task: MagicMock) -> None:
         uid = uuid4()
         samples = [
