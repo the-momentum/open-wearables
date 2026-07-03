@@ -277,7 +277,7 @@ def on_connection_created(
                 "connected_at": connected_at,
             },
         },
-        idempotency_key=f"connection.created.{user_id}.{provider}",
+        idempotency_key=_safe_key(f"connection.created.{user_id}.{provider}.{connected_at}"),
         channels=[f"user.{user_id}"],
     )
 

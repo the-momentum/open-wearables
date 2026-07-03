@@ -391,6 +391,7 @@ class BaseOAuthTemplate(ABC):
         )
 
         if existing_connection:
+            was_inactive = existing_connection.status != ConnectionStatus.ACTIVE
             # Update tokens, user info, and scope
             self.connection_repo.update_connection_info(
                 db,
@@ -402,6 +403,13 @@ class BaseOAuthTemplate(ABC):
                 provider_username=provider_username,
                 scope=scope,
             )
+            if was_inactive:
+                on_connection_created(
+                    user_id=user_id,
+                    provider=self.provider_name,
+                    connection_id=existing_connection.id,
+                    connected_at=datetime.now(timezone.utc).isoformat(),
+                )
         else:
             connection_create = UserConnectionCreate(
                 user_id=user_id,
