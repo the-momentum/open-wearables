@@ -335,35 +335,12 @@ class SummariesService:
             end_time = longest_main.end_time if longest_main else result["max_end_time"]
             zone_offset = longest_main.zone_offset if longest_main else None
 
-            avg_hr: int | None = None
-            avg_hrv_sdnn: float | None = None
-            avg_hrv_rmssd: float | None = None
-            avg_respiratory_rate: float | None = None
-            avg_spo2_percent: float | None = None
-
-            if start_time and end_time:
-                try:
-                    physio_averages = self.data_point_repo.get_averages_for_time_range(
-                        db_session,
-                        user_id,
-                        start_time,
-                        end_time,
-                        SLEEP_PHYSIO_SERIES_TYPES,
-                    )
-                    hr_avg = physio_averages.get(SeriesType.heart_rate)
-                    avg_hr = int(round(hr_avg)) if hr_avg is not None else None
-                    avg_hrv_sdnn = physio_averages.get(SeriesType.heart_rate_variability_sdnn)
-                    avg_hrv_rmssd = physio_averages.get(SeriesType.heart_rate_variability_rmssd)
-                    avg_respiratory_rate = physio_averages.get(SeriesType.respiratory_rate)
-                    avg_spo2_percent = physio_averages.get(SeriesType.oxygen_saturation)
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Failed to fetch physiological metrics for sleep: {e}",
-                        sleep_start=start_time,
-                        sleep_end=end_time,
-                    )
+            hr_avg = result.get("avg_hr")
+            avg_hr: int | None = int(round(hr_avg)) if hr_avg is not None else None
+            avg_hrv_sdnn: float | None = result.get("avg_hrv_sdnn")
+            avg_hrv_rmssd: float | None = result.get("avg_hrv_rmssd")
+            avg_respiratory_rate: float | None = result.get("avg_resp")
+            avg_spo2_percent: float | None = result.get("avg_spo2")
 
             summary = SleepSummary(
                 date=result["sleep_date"],
