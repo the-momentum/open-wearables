@@ -335,13 +335,6 @@ class SummariesService:
             end_time = longest_main.end_time if longest_main else result["max_end_time"]
             zone_offset = longest_main.zone_offset if longest_main else None
 
-            hr_avg = result.get("avg_hr")
-            avg_hr: int | None = int(round(hr_avg)) if hr_avg is not None else None
-            avg_hrv_sdnn: float | None = result.get("avg_hrv_sdnn")
-            avg_hrv_rmssd: float | None = result.get("avg_hrv_rmssd")
-            avg_respiratory_rate: float | None = result.get("avg_resp")
-            avg_spo2_percent: float | None = result.get("avg_spo2")
-
             summary = SleepSummary(
                 date=result["sleep_date"],
                 source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
