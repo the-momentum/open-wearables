@@ -392,7 +392,7 @@ class BaseOAuthTemplate(ABC):
 
         if existing_connection:
             # Update tokens, user info, and scope
-            self.connection_repo.update_connection_info(
+            updated_connection = self.connection_repo.update_connection_info(
                 db,
                 existing_connection,
                 access_token=token_response.access_token,
@@ -401,6 +401,18 @@ class BaseOAuthTemplate(ABC):
                 provider_user_id=provider_user_id,
                 provider_username=provider_username,
                 scope=scope,
+            )
+            # A reconnect (typically after a revoked/expired connection) must
+            # notify consumers exactly like a first connect: without this
+            # event, downstream apps that reacted to connection.revoked never
+            # learn the connection is usable again. The timestamp-scoped
+            # idempotency key in on_connection_created keeps Svix from
+            # deduplicating the re-emit against the original connect.
+            on_connection_created(
+                user_id=user_id,
+                provider=self.provider_name,
+                connection_id=updated_connection.id,
+                connected_at=updated_connection.updated_at.isoformat(),
             )
         else:
             connection_create = UserConnectionCreate(

@@ -266,6 +266,14 @@ def on_connection_created(
     connection_id: UUID,
     connected_at: str,
 ) -> None:
+    """Emit when a connection becomes usable: first connect AND reconnect.
+
+    A re-authorization after a revoked/expired connection re-emits this
+    event so consumers can flip the connection back to active. The
+    ``connected_at`` timestamp is part of the idempotency key: Svix
+    deduplicates on ``event_id`` forever, so a key without it would
+    silently swallow every reconnect of the same (user, provider) pair.
+    """
     _dispatch(
         WebhookEventType.CONNECTION_CREATED,
         {
@@ -277,7 +285,7 @@ def on_connection_created(
                 "connected_at": connected_at,
             },
         },
-        idempotency_key=f"connection.created.{user_id}.{provider}",
+        idempotency_key=f"connection.created.{user_id}.{provider}.{connected_at}",
         channels=[f"user.{user_id}"],
     )
 
