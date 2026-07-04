@@ -12,6 +12,7 @@ import re
 from typing import Any
 from uuid import UUID
 
+from app.config import settings
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
@@ -53,7 +54,19 @@ def _dispatch(
     try:
         from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 
-        emit_webhook_event.delay(event_type, payload, channels=channels, idempotency_key=idempotency_key)
+        if event_type in settings.webhook_priority_event_set:
+            # Fast lane: high-value events (workouts, sleeps, physiology series)
+            # go to the dedicated "webhook_sync" queue so they can never queue
+            # behind bulk / lifecycle emits on "default". .delay() cannot target
+            # a queue, hence apply_async here; the default lane below stays
+            # byte-identical to the pre-fast-lane behavior.
+            emit_webhook_event.apply_async(
+                args=(event_type, payload),
+                kwargs={"channels": channels, "idempotency_key": idempotency_key},
+                queue="webhook_sync",
+            )
+        else:
+            emit_webhook_event.delay(event_type, payload, channels=channels, idempotency_key=idempotency_key)
     except Exception:
         logger.warning("Could not enqueue webhook event %s", event_type, exc_info=True)
 

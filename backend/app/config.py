@@ -208,6 +208,27 @@ class Settings(BaseSettings):
     # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
     svix_auth_token: SecretStr | None = None
 
+    # Outgoing-webhook fast lane: event types listed here are enqueued on the
+    # dedicated "webhook_sync" queue so they can never queue behind bulk /
+    # lifecycle events (sync.started/completed etc.) on "default".
+    # Comma-separated; env override: WEBHOOK_PRIORITY_EVENTS="workout.created,sleep.created"
+    # Empty/garbage value ⇒ empty set ⇒ everything routes to "default" (today's behavior).
+    webhook_priority_events: str = (
+        "workout.created,"
+        "sleep.created,"
+        "series.heart_rate_variability_rmssd.created,"
+        "series.heart_rate_variability_sdnn.created,"
+        "series.respiratory_rate.created,"
+        "series.resting_heart_rate.created,"
+        "series.oxygen_saturation.created,"
+        "series.skin_temperature.created,"
+        "series.weight.created"
+    )
+
+    @property
+    def webhook_priority_event_set(self) -> frozenset[str]:
+        return frozenset(e.strip() for e in self.webhook_priority_events.split(",") if e.strip())
+
     @model_validator(mode="after")
     def derive_svix_jwt_secret(self) -> "Settings":
         if self.svix_jwt_secret is None or self.svix_jwt_secret.get_secret_value() == "":
