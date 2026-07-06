@@ -307,7 +307,7 @@ def on_connection_revoked(
                 "revoked_at": revoked_at,
             },
         },
-        idempotency_key=f"connection.revoked.{user_id}.{provider}.{revoked_at}",
+        idempotency_key=_safe_key(f"connection.revoked.{user_id}.{provider}.{revoked_at}"),
         channels=[f"user.{user_id}"],
     )
 
