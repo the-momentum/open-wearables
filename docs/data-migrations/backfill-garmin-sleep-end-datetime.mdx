@@ -1,0 +1,52 @@
+---
+title: "Backfill Garmin Sleep End Datetime"
+sidebarTitle: "Garmin Sleep End Datetime"
+description: "Recomputes end_datetime and duration_seconds for Garmin sleep sessions using the actual last stage from the sleep stage timeline."
+keywords: ["garmin", "sleep", "backfill", "end_datetime", "data migration"]
+"og:title": "Backfill Garmin Sleep End Datetime | Open Wearables"
+"og:description": "Recomputes end_datetime and duration_seconds for Garmin sleep sessions from the sleep stage timeline."
+"og:url": "https://docs.openwearables.io/data-migrations/backfill-garmin-sleep-end-datetime"
+"og:type": "article"
+---
+
+**Script:** `scripts/data_migrations/backfill_garmin_sleep_end_datetime.py`
+
+## Problem
+
+Garmin's `durationInSeconds` field covers only asleep time (deep + light + REM) and excludes the final wake period at the end of the session. This caused `end_datetime` and `duration_seconds` on `event_record` to be earlier than the actual session end, resulting in sleep scores anchored to the wrong date for users in non-UTC time zones.
+
+## What it does
+
+For every Garmin sleep session that has a `sleep_stages` array in `sleep_details`, the script finds the latest `end_time` across all stages and uses it as the corrected `end_datetime`. `duration_seconds` is recomputed as the difference between `start_datetime` and the new `end_datetime`.
+
+Only records where the stage-derived end is **later** than the current `end_datetime` are updated — already-correct records are left untouched.
+
+## Usage
+
+```bash
+# Preview affected records
+docker compose exec app uv run python scripts/data_migrations/backfill_garmin_sleep_end_datetime.py --dry-run
+
+# Apply changes
+docker compose exec app uv run python scripts/data_migrations/backfill_garmin_sleep_end_datetime.py
+```
+
+## Options
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Print affected records with current and corrected values. No changes made. |
+
+## Dry run output
+
+```
+ID                                     Start                  Current End            New End                Diff (min)
+------------------------------------------------------------------------------------------------------------------
+3f2a1b...                              2024-11-10 22:14:00    2024-11-11 06:02:00    2024-11-11 06:31:00        +29
+
+Total: 1 record(s) to update.
+
+Dry run - no changes made.
+```
+
+`Diff (min)` is the difference in minutes between the old and new `duration_seconds`.

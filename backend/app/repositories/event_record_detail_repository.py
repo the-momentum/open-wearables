@@ -1,12 +1,14 @@
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
-from sqlalchemy import Table
+from sqlalchemy import Table, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.models import (
     EventRecordDetail,
+    MenstrualCycleDetails,
     SleepDetails,
     WorkoutDetails,
 )
@@ -18,7 +20,7 @@ from app.schemas.model_crud.activities import (
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
-DetailType = Literal["workout", "sleep"]
+DetailType = Literal["workout", "sleep", "menstrual_cycle"]
 
 
 class EventRecordDetailRepository(
@@ -30,15 +32,19 @@ class EventRecordDetailRepository(
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
         """Construct the polymorphic ORM object without touching the session."""
         creation_data = creator.model_dump(exclude_none=True)
-        if detail_type == "workout":
-            return cast(EventRecordDetail, WorkoutDetails(**creation_data))
-        if detail_type == "sleep":
-            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
-            # use Pydantic's JSON mode to convert datetimes to ISO strings.
-            if creator.sleep_stages:
-                creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
-            return cast(EventRecordDetail, SleepDetails(**creation_data))
-        raise ValueError(f"Unknown detail type: {detail_type}")
+        match detail_type:
+            case "workout":
+                return cast(EventRecordDetail, WorkoutDetails(**creation_data))
+            case "sleep":
+                # sleep_stages contains datetime fields that JSONB cannot serialize directly;
+                # use Pydantic's JSON mode to convert datetimes to ISO strings.
+                if creator.sleep_stages:
+                    creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
+                return cast(EventRecordDetail, SleepDetails(**creation_data))
+            case "menstrual_cycle":
+                return cast(EventRecordDetail, MenstrualCycleDetails(**creation_data))
+            case _:
+                raise ValueError(f"Unknown detail type: {detail_type}")
 
     @handle_exceptions
     @handle_duplicates
@@ -61,11 +67,23 @@ class EventRecordDetailRepository(
         creator: EventRecordDetailCreate,
         detail_type: DetailType = "workout",
     ) -> EventRecordDetail:
-        """Like create() but flushes instead of committing; caller is responsible for the commit."""
+        """Like create() but flushes instead of committing; caller is responsible for the commit.
+
+        Uses a savepoint for IntegrityError handling so a conflict rolls back only
+        the INSERT and leaves the outer transaction intact.
+        """
         detail = self._build_detail(creator, detail_type)
-        db_session.add(detail)
-        db_session.flush()
-        return detail
+        nested = db_session.begin_nested()
+        try:
+            db_session.add(detail)
+            db_session.flush()
+            nested.commit()
+            return detail
+        except IntegrityError:
+            nested.rollback()
+            if existing := self.get_by_record_id(db_session, creator.record_id):
+                return existing
+            raise
 
     @handle_exceptions
     def bulk_create(
@@ -101,7 +119,15 @@ class EventRecordDetailRepository(
         db_session.execute(base_stmt)
 
         # Use appropriate model based on detail_type
-        model = WorkoutDetails if detail_type == "workout" else SleepDetails
+        match detail_type:
+            case "workout":
+                model = WorkoutDetails
+            case "sleep":
+                model = SleepDetails
+            case "menstrual_cycle":
+                model = MenstrualCycleDetails
+            case _:
+                raise ValueError(f"Unknown detail type: {detail_type}")
 
         # Get columns from the actual child TABLE (not mapper which includes inherited columns)
         child_table = cast(Table, model.__table__)
@@ -113,7 +139,7 @@ class EventRecordDetailRepository(
             data = creator.model_dump()
             # Serialize sleep_stages datetimes to ISO strings for JSONB storage
             if detail_type == "sleep" and data.get("sleep_stages"):
-                data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # type: ignore[union-attr]
+                data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
             # Filter to keep only columns present in the target model
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)
@@ -142,3 +168,17 @@ class EventRecordDetailRepository(
         if detail is not None:
             db_session.delete(detail)
             db_session.flush()
+
+    def update_workout_fields(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        fields: dict[str, Any],
+    ) -> None:
+        """Patch one or more columns on the workout_details row for the given record.
+
+        Intended for JSONB fields (segments, hr_zones, power_zones) that are
+        written separately from the initial bulk insert.
+        NOTE: Caller is responsible for committing or flushing the transaction.
+        """
+        db_session.execute(update(WorkoutDetails).where(WorkoutDetails.record_id == record_id).values(**fields))

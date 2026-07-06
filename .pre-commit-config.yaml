@@ -20,6 +20,13 @@ repos:
         files: ^backend/.*\.py$
         pass_filenames: false
 
+      - id: prettier-check
+        name: prettier check
+        entry: sh -c 'cd frontend && pnpm run format:check'
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx|js|jsx|json|css|md)$
+        pass_filenames: false
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

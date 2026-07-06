@@ -153,7 +153,7 @@ export function UsersTable({
 
     if (!isSortable) {
       return (
-        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {children}
         </span>
       );
@@ -161,7 +161,7 @@ export function UsersTable({
 
     return (
       <button
-        className="flex items-center gap-1 text-xs font-medium text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors"
+        className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground/90 transition-colors"
         onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
       >
         {children}
@@ -180,7 +180,7 @@ export function UsersTable({
     {
       accessorKey: 'id',
       header: () => (
-        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           User ID
         </span>
       ),
@@ -189,7 +189,7 @@ export function UsersTable({
           className="flex items-center gap-2"
           onClick={(e) => e.stopPropagation()}
         >
-          <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
+          <code className="font-mono text-xs bg-muted text-foreground/90 px-2 py-1 rounded">
             {truncateId(row.original.id)}
           </code>
           <Button
@@ -198,7 +198,7 @@ export function UsersTable({
             onClick={() => handleCopyId(row.original.id)}
           >
             {copiedId === row.original.id ? (
-              <Check className="h-3 w-3 text-emerald-500" />
+              <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
             ) : (
               <Copy className="h-3 w-3" />
             )}
@@ -219,7 +219,11 @@ export function UsersTable({
           `${row.original.first_name || ''} ${row.original.last_name || ''}`.trim();
         return (
           <span
-            className={fullName ? 'text-sm text-zinc-300' : 'text-zinc-600'}
+            className={
+              fullName
+                ? 'text-sm text-foreground/90'
+                : 'text-muted-foreground/70'
+            }
           >
             {fullName || '—'}
           </span>
@@ -232,7 +236,7 @@ export function UsersTable({
         <SortableHeader column={column}>Created</SortableHeader>
       ),
       cell: ({ row }) => (
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-muted-foreground">
           {formatDistanceToNow(new Date(row.original.created_at), {
             addSuffix: true,
           })}
@@ -246,7 +250,7 @@ export function UsersTable({
       ),
       cell: ({ row }) => (
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-muted-foreground">
             {row.original.last_synced_at
               ? formatDistanceToNow(new Date(row.original.last_synced_at), {
                   addSuffix: true,
@@ -267,7 +271,7 @@ export function UsersTable({
     {
       id: 'actions',
       header: () => (
-        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider text-right block">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right block">
           Actions
         </span>
       ),
@@ -283,7 +287,7 @@ export function UsersTable({
             title="Copy pairing link"
           >
             {copiedPairLink === row.original.id ? (
-              <Check className="h-4 w-4 text-emerald-500" />
+              <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
             ) : (
               <LinkIcon className="h-4 w-4" />
             )}
@@ -358,19 +362,19 @@ export function UsersTable({
   };
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-      <div className="p-4 border-b border-zinc-800">
+    <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+      <div className="p-4 border-b border-border/60">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Search by name or email..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="bg-zinc-900 border-zinc-800 px-9"
+            className="bg-card border-border/60 px-9"
           />
           {isLoading && (
-            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 animate-spin" />
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
           )}
         </div>
       </div>
@@ -381,7 +385,7 @@ export function UsersTable({
             {table.getHeaderGroups().map((headerGroup) => (
               <tr
                 key={headerGroup.id}
-                className="border-b border-zinc-800 text-left"
+                className="border-b border-border/60 text-left"
               >
                 {headerGroup.headers.map((header) => (
                   <th key={header.id} className="px-4 py-3">
@@ -396,11 +400,11 @@ export function UsersTable({
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-zinc-800/50">
+          <tbody className="divide-y divide-border/40">
             {table.getRowModel().rows.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-12 text-center">
-                  <p className="text-zinc-400">
+                  <p className="text-muted-foreground">
                     {globalFilter
                       ? 'No users match your search criteria.'
                       : 'No users found'}
@@ -413,7 +417,7 @@ export function UsersTable({
                   key={row.id}
                   role="link"
                   tabIndex={0}
-                  className="hover:bg-zinc-800/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-500"
+                  className="hover:bg-muted/40 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-500"
                   onClick={() =>
                     navigate({
                       to: `${ROUTES.users}/$userId`,
@@ -446,20 +450,21 @@ export function UsersTable({
       </div>
 
       {pageCount > 0 && (
-        <div className="p-4 border-t border-zinc-800 flex items-center justify-between">
-          <div className="text-sm text-zinc-500">
+        <div className="p-4 border-t border-border/60 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
             Showing{' '}
-            <span className="font-medium text-zinc-300">
+            <span className="font-medium text-foreground/90">
               {total === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1}
             </span>{' '}
             to{' '}
-            <span className="font-medium text-zinc-300">
+            <span className="font-medium text-foreground/90">
               {Math.min(
                 (pagination.pageIndex + 1) * pagination.pageSize,
                 total
               )}
             </span>{' '}
-            of <span className="font-medium text-zinc-300">{total}</span> users
+            of <span className="font-medium text-foreground/90">{total}</span>{' '}
+            users
           </div>
 
           {pageCount > 1 && (

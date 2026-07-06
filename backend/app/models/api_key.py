@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
@@ -14,4 +12,3 @@ class ApiKey(BaseDbModel):
     id: Mapped[PrimaryKey[str_64]]  # The actual key value (sk-...)
     name: Mapped[str]
     created_by: Mapped[FKDeveloper | None]
-    created_at: Mapped[datetime]

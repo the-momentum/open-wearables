@@ -51,4 +51,17 @@ export const oauthService = {
       data
     );
   },
+
+  /**
+   * Updates a single provider setting (is_enabled and/or live_sync_mode).
+   */
+  async updateProviderSetting(
+    provider: string,
+    update: { is_enabled?: boolean; live_sync_mode?: 'pull' | 'webhook' }
+  ): Promise<Provider> {
+    return apiClient.put<Provider>(
+      API_ENDPOINTS.providerSetting(provider),
+      update
+    );
+  },
 };

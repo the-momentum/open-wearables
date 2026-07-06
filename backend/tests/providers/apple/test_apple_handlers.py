@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 
-from app.services.providers.apple.handlers.auto_export import AutoExportHandler
 from app.services.providers.apple.handlers.base import AppleSourceHandler
 from app.services.providers.apple.handlers.healthkit import HealthKitHandler
 
@@ -41,35 +40,6 @@ class TestAppleSourceHandler:
         # Assert
         assert hasattr(AppleSourceHandler, "normalize")
         assert callable(getattr(AppleSourceHandler, "normalize"))
-
-
-class TestAutoExportHandler:
-    """Test suite for AutoExportHandler."""
-
-    def test_is_subclass_of_base_handler(self) -> None:
-        """Should be a subclass of AppleSourceHandler."""
-        # Assert
-        assert issubclass(AutoExportHandler, AppleSourceHandler)
-
-    def test_initializes_successfully(self) -> None:
-        """Should initialize without errors."""
-        # Act
-        handler = AutoExportHandler()
-
-        # Assert
-        assert handler is not None
-
-    def test_normalize_returns_list(self) -> None:
-        """Should return a list from normalize method."""
-        # Arrange
-        handler = AutoExportHandler()
-        data: dict[str, Any] = {}
-
-        # Act
-        result = handler.normalize(data)
-
-        # Assert
-        assert isinstance(result, list)
 
 
 class TestHealthKitHandler:

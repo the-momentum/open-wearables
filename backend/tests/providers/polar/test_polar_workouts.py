@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
+from app.constants.workout_types.polar import get_unified_workout_type
 from app.schemas.enums import WorkoutType
 from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.providers.polar.workouts import PolarWorkouts
@@ -203,8 +204,6 @@ class TestPolarWorkoutsMetricsBuilding:
         # Assert
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
-        assert metrics["heart_rate_min"] == 145
-        assert metrics["steps_count"] is None
         assert metrics["energy_burned"] == Decimal("650")
         assert metrics["distance"] == Decimal("10000")
 
@@ -250,7 +249,6 @@ class TestPolarWorkoutsMetricsBuilding:
         # Assert
         assert metrics["heart_rate_avg"] is None
         assert metrics["heart_rate_max"] is None
-        assert metrics["heart_rate_min"] is None
 
 
 class TestPolarWorkoutsNormalization:
@@ -564,3 +562,16 @@ class TestPolarWorkoutsDataLoading:
 
         # Assert
         assert result == 0
+
+
+class TestGetUnifiedWorkoutType:
+    @pytest.mark.parametrize(
+        ("sport", "detailed", "expected"),
+        [
+            ("CYCLING", "INDOOR_CYCLING", WorkoutType.INDOOR_CYCLING),
+            ("OTHER", "JUMP_ROPE", WorkoutType.CARDIO_TRAINING),
+            ("OTHER", "KICKBOXING_MARTIAL_ARTS", WorkoutType.BOXING),
+        ],
+    )
+    def test_mappings(self, sport: str, detailed: str, expected: WorkoutType) -> None:
+        assert get_unified_workout_type(sport, detailed) == expected

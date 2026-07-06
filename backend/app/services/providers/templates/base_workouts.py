@@ -115,7 +115,7 @@ class BaseWorkoutsTemplate(ABC):
             db: Database session.
             user_id: The ID of the user.
             payload: The raw data payload (e.g. from webhook or file upload).
-            source_type: Identifier for the source (e.g. 'auto_export', 'healthkit', 'garmin_push').
+            source_type: Identifier for the source (e.g. 'healthkit', 'garmin_push').
         """
         # This method can be overridden or extended by subclasses to handle specific payload structures
         # For example, a payload might contain a list of workouts or a single workout

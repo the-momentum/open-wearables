@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, inspect
+from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, func, inspect
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,14 +14,16 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
+    Mapped,
     Session,
     declared_attr,
+    mapped_column,
     sessionmaker,
 )
 
 from app.config import settings
-from app.schemas.auth import ConnectionStatus, TokenType
-from app.schemas.enums import AggregationMethod, ProviderName
+from app.schemas.auth import ConnectionStatus, LiveSyncMode, TokenType
+from app.schemas.enums import AggregationMethod, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.user_management import InvitationStatus
 from app.utils.mappings_meta import AutoRelMeta
 
@@ -45,6 +47,8 @@ def _prepare_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker:
 
 
 class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
     @declared_attr.directive
     def __tablename__(self) -> str:
         return self.__name__.lower()
@@ -64,8 +68,10 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         date: Date,
         datetime: DateTime(timezone=True),
         ConnectionStatus: String(64),
+        LiveSyncMode: String(32),
         InvitationStatus: String(50),
         ProviderName: String(50),
+        HealthScoreCategory: String(32),
         TokenType: String(64),
         AggregationMethod: String(32),
     }

@@ -1,20 +1,34 @@
 import { useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   EllipsisVertical,
+  History,
   Loader2,
+  Link2,
+  MinusCircle,
+  PlayCircle,
   RefreshCw,
   RotateCcw,
+  Timer,
   TriangleAlert,
   Unlink,
   Watch,
   XCircle,
+  Zap,
 } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,16 +47,179 @@ import {
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import {
+  STAGE_LABELS,
+  SOURCE_LABELS,
+  RUN_STATUS_CLASSES,
+  formatRunDuration,
+  formatRelative,
+} from '@/lib/utils/sync-format';
+import {
   useDisconnectProvider,
   useSynchronizeDataFromProvider,
+  useSyncHistoricalData,
   useGarminBackfillStatus,
   useGarminCancelBackfill,
   useRetryGarminBackfill,
 } from '@/hooks/api/use-health';
+import type { SyncStatusEvent, SyncRunSummary } from '@/lib/api';
+
+function SyncProgressBar({ value }: { value: number }) {
+  const pct = Math.max(0, Math.min(100, value * 100));
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <div
+        className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+function ActiveSyncPanel({ event }: { event: SyncStatusEvent }) {
+  const stageLabel = STAGE_LABELS[event.stage] ?? event.stage;
+  const sourceLabel = SOURCE_LABELS[event.source] ?? event.source;
+  const itemsLabel =
+    event.items_total !== null && event.items_processed !== null
+      ? `${event.items_processed} / ${event.items_total} items`
+      : event.items_processed !== null
+        ? `${event.items_processed} items`
+        : null;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/40 p-3 dark:border-blue-900/40 dark:from-blue-950/40 dark:to-indigo-950/20">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+            {sourceLabel}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/60 dark:text-blue-200">
+            {stageLabel}
+          </span>
+          {itemsLabel && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {itemsLabel}
+            </span>
+          )}
+        </div>
+      </div>
+      {event.progress !== null && <SyncProgressBar value={event.progress} />}
+      {event.message && (
+        <p className="text-xs text-blue-700/70 dark:text-blue-300/70 line-clamp-1">
+          {event.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SyncRunRow({ run }: { run: SyncRunSummary }) {
+  const sourceLabel = SOURCE_LABELS[run.source] ?? run.source;
+  const badgeClass =
+    RUN_STATUS_CLASSES[run.status] ?? RUN_STATUS_CLASSES.in_progress;
+
+  const isSuccess = run.status === 'success';
+  const isPartial = run.status === 'partial';
+  const isFailed = run.status === 'failed';
+  const isCancelled = run.status === 'cancelled';
+  const isSkipped = run.status === 'skipped';
+
+  const Icon = isSuccess
+    ? CheckCircle2
+    : isPartial
+      ? AlertTriangle
+      : isFailed || isCancelled
+        ? XCircle
+        : isSkipped
+          ? MinusCircle
+          : PlayCircle;
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card/40 p-2.5">
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon
+          className={cn(
+            'h-3.5 w-3.5 shrink-0',
+            isSuccess && 'text-emerald-500',
+            isPartial && 'text-amber-500',
+            (isFailed || isCancelled) && 'text-rose-500',
+            !isSuccess &&
+              !isPartial &&
+              !isFailed &&
+              !isCancelled &&
+              'text-muted-foreground'
+          )}
+        />
+        <div className="flex flex-col min-w-0 gap-0.5">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{sourceLabel}</span>
+            {run.source === 'linked_account' && run.primary_user_id && (
+              <>
+                <span>·</span>
+                <Link
+                  to="/users/$userId"
+                  params={{ userId: run.primary_user_id }}
+                  className="font-mono text-blue-500 hover:text-blue-400 hover:underline transition-colors"
+                >
+                  {run.primary_user_id.slice(0, 8)}…
+                </Link>
+              </>
+            )}
+            <span>·</span>
+            <span>{formatRelative(run.last_update)}</span>
+            {run.started_at && run.ended_at && (
+              <>
+                <span>·</span>
+                <span>{formatRunDuration(run.started_at, run.ended_at)}</span>
+              </>
+            )}
+            {run.items_processed !== null && (
+              <>
+                <span>·</span>
+                <span className="tabular-nums">
+                  {run.items_processed}
+                  {run.items_total !== null ? ` / ${run.items_total}` : ''}{' '}
+                  items
+                </span>
+              </>
+            )}
+          </div>
+          {run.error ? (
+            <p className="text-xs text-rose-600 dark:text-rose-400 line-clamp-1">
+              {run.error}
+            </p>
+          ) : (
+            run.message && (
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                {run.message}
+              </p>
+            )
+          )}
+        </div>
+      </div>
+      <span
+        className={cn(
+          'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize',
+          badgeClass
+        )}
+      >
+        {run.status.replace('_', ' ')}
+      </span>
+    </div>
+  );
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 interface ConnectionCardProps {
   connection: UserConnection;
   className?: string;
+  /** Currently active sync event for this provider (from SSE stream). */
+  activeSync?: SyncStatusEvent | null;
+  /** Recent completed sync runs for this provider. */
+  recentRuns?: SyncRunSummary[];
 }
 
 // Format data type name for display (e.g., "bodyComps" -> "Body Comps")
@@ -59,8 +236,23 @@ function parseScopeString(scope: string): string[] {
   return scope.split(/[,\s]+/).filter(Boolean);
 }
 
-export function ConnectionCard({ connection, className }: ConnectionCardProps) {
+// Shorten scope labels for inline display (e.g. ACTIVITY_EXPORT → Activity)
+function formatScopeChip(scope: string): string {
+  return scope
+    .replace(/_(EXPORT|IMPORT|READ|WRITE)$/i, '')
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+export function ConnectionCard({
+  connection,
+  className,
+  activeSync,
+  recentRuns,
+}: ConnectionCardProps) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [showLastSyncs, setShowLastSyncs] = useState(false);
 
   const { mutate: disconnectProvider, isPending: isDisconnecting } =
     useDisconnectProvider(connection.provider, connection.user_id);
@@ -79,6 +271,9 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
 
   const { mutate: retryBackfill, isPending: isRetrying } =
     useRetryGarminBackfill(connection.user_id);
+
+  const { mutate: syncHistorical, isPending: isSyncingHistorical } =
+    useSyncHistoricalData(connection.provider, connection.user_id);
 
   // Check if backfill is in progress (includes retry phase)
   const isBackfillInProgress =
@@ -130,7 +325,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       case 'revoked':
         return (
           <Badge variant="destructive" className="flex items-center gap-1">
-            <XCircle className="h-3 w-3 text-red-400" />
+            <XCircle className="h-3 w-3 text-[hsl(var(--destructive-muted))]" />
             Revoked
           </Badge>
         );
@@ -153,20 +348,103 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
           <div className="flex items-center gap-3">
             {/* Provider Icon - placeholder for now TODO: Implement provider icon */}
             <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center">
-              <Watch className="h-6 w-6 text-zinc-400" />
+              <Watch className="h-6 w-6 text-muted-foreground" />
             </div>
             <div>
               <h3 className="font-semibold text-card-foreground text-lg">
                 {connection.provider}
               </h3>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Last sync:{' '}
+                Last live sync:{' '}
                 {connection.last_synced_at
                   ? formatDistanceToNow(new Date(connection.last_synced_at), {
                       addSuffix: true,
                     })
                   : 'Never'}
               </p>
+              {(connection.live_sync_mode || scopeItems.length > 0) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {connection.live_sync_mode &&
+                    (connection.live_sync_mode === 'webhook' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        <Zap className="h-3 w-3" />
+                        Webhook
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
+                        <Timer className="h-3 w-3" />
+                        Periodic pull
+                      </span>
+                    ))}
+                  {scopeItems.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground border border-border/60 cursor-default hover:bg-muted hover:text-foreground hover:border-border transition-colors">
+                          {scopeItems.length} scope
+                          {scopeItems.length !== 1 ? 's' : ''}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        align="start"
+                        sideOffset={6}
+                        hideArrow
+                        className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                      >
+                        <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                          Granted permissions
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {scopeItems.map((s) => (
+                            <span
+                              key={s}
+                              className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-medium bg-zinc-800 text-zinc-200 border border-zinc-700"
+                            >
+                              {formatScopeChip(s)}
+                            </span>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {connection.status === 'active' &&
+                    connection.provider_user_id &&
+                    connection.linked_user_ids &&
+                    connection.linked_user_ids.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-default">
+                            <Link2 className="h-3 w-3" />
+                            {connection.linked_user_ids.length} linked
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          align="start"
+                          sideOffset={6}
+                          hideArrow
+                          className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                        >
+                          <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                            Other linked OW accounts
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {connection.linked_user_ids.map((uid) => (
+                              <Link
+                                key={uid}
+                                to="/users/$userId"
+                                params={{ userId: uid }}
+                                className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-colors"
+                              >
+                                {uid.slice(0, 8)}
+                              </Link>
+                            ))}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -217,26 +495,6 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Show data scope */}
-        {scopeItems.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Data scope
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {scopeItems.map((scopeItem) => (
-                <Badge
-                  key={scopeItem}
-                  variant="secondary"
-                  className="text-xs font-normal"
-                >
-                  {scopeItem}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Show backfill progress for Garmin */}
         {isBackfillInProgress && backfillStatus && (
           <div className="space-y-2">
@@ -315,8 +573,8 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
         {timedOutTypes.length > 0 &&
           !isBackfillInProgress &&
           !isPermanentlyFailed && (
-            <div className="space-y-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
-              <p className="text-sm font-medium text-amber-600 dark:text-amber-500">
+            <div className="space-y-2 p-3 bg-[hsl(var(--warning-muted)/0.1)] rounded-lg border border-[hsl(var(--warning-muted)/0.2)]">
+              <p className="text-sm font-medium text-[hsl(var(--warning-muted))] dark:text-[hsl(var(--warning-muted))]">
                 Some data types timed out:
               </p>
               <div className="space-y-1.5">
@@ -373,28 +631,139 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             </div>
           )}
 
-        {/* Sync button - only for non-Garmin providers */}
-        {connection.provider !== 'garmin' && (
+        {/* Action buttons */}
+        {connection.status === 'active' && (
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => synchronizeDataFromProvider()}
-              disabled={isSynchronizing}
-            >
-              {isSynchronizing ? (
+            {/* Provider with a hard history cap: single constrained button */}
+            {connection.max_historical_days !== null &&
+              connection.max_historical_days !== undefined &&
+              !isBackfillInProgress &&
+              !isPermanentlyFailed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() =>
+                    syncHistorical(connection.max_historical_days as number)
+                  }
+                  disabled={isSyncingHistorical}
+                >
+                  {isSyncingHistorical ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <History className="h-4 w-4" />
+                      Sync {connection.max_historical_days}-day History
+                    </>
+                  )}
+                </Button>
+              )}
+
+            {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
+            {(connection.max_historical_days === null ||
+              connection.max_historical_days === undefined) &&
+              connection.rest_pull &&
+              !isPermanentlyFailed && (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Sync Now
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        disabled={isSyncingHistorical}
+                      >
+                        {isSyncingHistorical ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <History className="h-4 w-4" />
+                            Sync History
+                            <ChevronDown className="h-3 w-3 ml-auto opacity-60" />
+                          </>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => syncHistorical(7)}>
+                        Last 7 days
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(30)}>
+                        Last 30 days
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(90)}>
+                        Last 3 months
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(180)}>
+                        Last 6 months
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(365)}>
+                        Last year
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {connection.live_sync_mode !== 'webhook' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => synchronizeDataFromProvider()}
+                      disabled={isSynchronizing}
+                    >
+                      {isSynchronizing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Force Live Sync
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </>
               )}
-            </Button>
+          </div>
+        )}
+
+        {/* ── Active sync (live status from SSE) ─────────────────────── */}
+        {activeSync && <ActiveSyncPanel event={activeSync} />}
+
+        {/* ── Last syncs (collapsible) ────────────────────────────────── */}
+        {recentRuns && recentRuns.length > 0 && (
+          <div className="border-t pt-3 space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowLastSyncs((v) => !v)}
+              className="flex w-full items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5" />
+                Last syncs ({recentRuns.length})
+              </span>
+              <ChevronDown
+                className={cn(
+                  'h-3.5 w-3.5 transition-transform',
+                  showLastSyncs && 'rotate-180'
+                )}
+              />
+            </button>
+            {showLastSyncs && (
+              <div className="flex flex-col gap-1.5">
+                {recentRuns.map((run) => (
+                  <SyncRunRow key={run.run_id} run={run} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

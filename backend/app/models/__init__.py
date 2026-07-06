@@ -2,6 +2,7 @@ from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
 from .data_point_series import DataPointSeries
+from .health_score import HealthScore
 from .data_point_series_archive import DataPointSeriesArchive
 from .data_source import DataSource
 from .developer import Developer
@@ -14,6 +15,7 @@ from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
+from .menstrual_cycle_details import MenstrualCycleDetails
 from .sleep_details import SleepDetails
 from .user import User
 from .user_connection import UserConnection
@@ -37,9 +39,11 @@ __all__ = [
     "UserInvitationCode",
     "EventRecord",
     "EventRecordDetail",
+    "MenstrualCycleDetails",
     "SleepDetails",
     "WorkoutDetails",
     "PersonalRecord",
     "DataPointSeries",
     "SeriesTypeDefinition",
+    "HealthScore",
 ]

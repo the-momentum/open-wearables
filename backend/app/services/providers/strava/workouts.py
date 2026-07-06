@@ -58,7 +58,8 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 response = self._make_api_request(
                     db,
                     user_id,
-                    "/athlete/activities",
+                    # hard-coded value - update with base template changes
+                    "/api/v3/athlete/activities",
                     params=params,
                 )
 
@@ -117,11 +118,13 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         if before:
             params["before"] = int(before)
 
-        return self._make_api_request(db, user_id, "/athlete/activities", params=params)
+        # hard-coded value - update with base template changes
+        return self._make_api_request(db, user_id, "/api/v3/athlete/activities", params=params)
 
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         """Get detailed activity data from Strava API."""
-        return self._make_api_request(db, user_id, f"/activities/{workout_id}")
+        # hard-coded value - update with base template changes
+        return self._make_api_request(db, user_id, f"/api/v3/activities/{workout_id}")
 
     def _extract_dates_from_iso(self, start_iso: str, elapsed_time: int) -> tuple[datetime, datetime]:
         """Extract start and end dates from ISO string and elapsed time."""

@@ -27,6 +27,7 @@ from .user_connection import (
     UserConnectionCreate,
     UserConnectionRead,
     UserConnectionUpdate,
+    UserConnectionWithCapabilities,
 )
 
 __all__ = [
@@ -56,4 +57,5 @@ __all__ = [
     "UserConnectionCreate",
     "UserConnectionUpdate",
     "UserConnectionRead",
+    "UserConnectionWithCapabilities",
 ]

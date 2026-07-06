@@ -3,6 +3,7 @@
 This file extends the root AGENTS.md with frontend-specific patterns.
 
 ## Tech Stack
+
 - React 19 + TypeScript
 - TanStack Router for file-based routing
 - TanStack Query for server state
@@ -13,6 +14,7 @@ This file extends the root AGENTS.md with frontend-specific patterns.
 - Vitest for testing
 
 ### Resources
+
 - [TanStack Start Documentation](https://tanstack.com/start)
 - [TanStack Router Documentation](https://tanstack.com/router)
 - [TanStack Query Documentation](https://tanstack.com/query)
@@ -20,6 +22,7 @@ This file extends the root AGENTS.md with frontend-specific patterns.
 - [Tailwind CSS Documentation](https://tailwindcss.com)
 
 ## Project Structure
+
 ```
 src/
 ├── routes/              # TanStack Router pages (file-based)
@@ -52,60 +55,60 @@ src/
 
 ### common/
 
-| Component | Description |
-|-----------|-------------|
-| `LoadingSpinner` | Animated spinner with size variants (`sm`, `md`, `lg`) |
-| `LoadingState` | Full-page loading with spinner and optional message |
-| `ErrorState` | Error display with message and optional retry button |
-| `MetricCard` | Statistics card with icon, value, label, and selection state |
-| `SectionHeader` | Section title with optional date range selector |
-| `CursorPagination` | Previous/next navigation for cursor-based pagination |
+| Component          | Description                                                  |
+| ------------------ | ------------------------------------------------------------ |
+| `LoadingSpinner`   | Animated spinner with size variants (`sm`, `md`, `lg`)       |
+| `LoadingState`     | Full-page loading with spinner and optional message          |
+| `ErrorState`       | Error display with message and optional retry button         |
+| `MetricCard`       | Statistics card with icon, value, label, and selection state |
+| `SectionHeader`    | Section title with optional date range selector              |
+| `CursorPagination` | Previous/next navigation for cursor-based pagination         |
 
 ### layout/
 
-| Component | Description |
-|-----------|-------------|
+| Component       | Description                                          |
+| --------------- | ---------------------------------------------------- |
 | `SimpleSidebar` | Navigation sidebar with menu items and logout button |
 
 ### login/
 
-| Component | Description |
-|-----------|-------------|
+| Component         | Description                                             |
+| ----------------- | ------------------------------------------------------- |
 | `CodePreviewCard` | Decorative code editor preview for login/register pages |
 
 ### pages/dashboard/
 
-| Component | Description |
-|-----------|-------------|
-| `StatsCard` | Dashboard stat with value, icon, and growth percentage indicator |
-| `StatsGrid` | Responsive grid layout for StatsCard instances |
-| `DashboardLoadingState` | Skeleton loading state for dashboard |
-| `DashboardErrorState` | Error state with retry button for dashboard |
-| `DataSummaryCard` | Summary card showing count and label |
-| `DataMetricsSection` | Displays top series and workout types |
-| `RecentUsersSection` | Recent users list with status badges |
+| Component               | Description                                                      |
+| ----------------------- | ---------------------------------------------------------------- |
+| `StatsCard`             | Dashboard stat with value, icon, and growth percentage indicator |
+| `StatsGrid`             | Responsive grid layout for StatsCard instances                   |
+| `DashboardLoadingState` | Skeleton loading state for dashboard                             |
+| `DashboardErrorState`   | Error state with retry button for dashboard                      |
+| `DataSummaryCard`       | Summary card showing count and label                             |
+| `DataMetricsSection`    | Displays top series and workout types                            |
+| `RecentUsersSection`    | Recent users list with status badges                             |
 
 ### settings/providers/
 
-| Component | Description |
-|-----------|-------------|
+| Component      | Description                                         |
+| -------------- | --------------------------------------------------- |
 | `ProviderItem` | Wearable provider row with connection toggle switch |
 
 ### user/
 
-| Component | Description |
-|-----------|-------------|
-| `ProfileSection` | User profile header with edit dialog and connected providers list |
-| `BodySection` | Body metrics display with period toggle (7d/30d/90d) |
-| `SleepSection` | Sleep data with charts and session details |
-| `ActivitySection` | Activity metrics with dynamic chart selection |
-| `WorkoutSection` | Workout list with heart rate time series chart |
-| `ConnectionCard` | Provider connection status with sync button |
+| Component         | Description                                                       |
+| ----------------- | ----------------------------------------------------------------- |
+| `ProfileSection`  | User profile header with edit dialog and connected providers list |
+| `BodySection`     | Body metrics display with period toggle (7d/30d/90d)              |
+| `SleepSection`    | Sleep data with charts and session details                        |
+| `ActivitySection` | Activity metrics with dynamic chart selection                     |
+| `WorkoutSection`  | Workout list with heart rate time series chart                    |
+| `ConnectionCard`  | Provider connection status with sync button                       |
 
 ### users/
 
-| Component | Description |
-|-----------|-------------|
+| Component    | Description                                                  |
+| ------------ | ------------------------------------------------------------ |
 | `UsersTable` | Data table with sorting, search, pagination, and row actions |
 
 ## Common Patterns
@@ -165,7 +168,10 @@ export function useUpdateUser() {
     onError: (error, { id }, context) => {
       // Rollback on error
       if (context?.previousUser) {
-        queryClient.setQueryData(queryKeys.users.detail(id), context.previousUser);
+        queryClient.setQueryData(
+          queryKeys.users.detail(id),
+          context.previousUser
+        );
       }
       toast.error(error instanceof Error ? error.message : 'Failed to update');
     },
@@ -256,7 +262,7 @@ export const passwordSchema = z
   .string()
   .min(8, 'Password must be at least 8 characters')
   .refine(
-    (val) => /[A-Z]/.test(val) && /[a-z]/.test(val) || /[0-9]/.test(val),
+    (val) => (/[A-Z]/.test(val) && /[a-z]/.test(val)) || /[0-9]/.test(val),
     { message: 'Password must contain mixed case or a number' }
   );
 
@@ -367,14 +373,24 @@ export const apiClient = {
     return response.json();
   },
 
-  get<T>(endpoint: string) { return this.request<T>(endpoint, { method: 'GET' }); },
+  get<T>(endpoint: string) {
+    return this.request<T>(endpoint, { method: 'GET' });
+  },
   post<T>(endpoint: string, body: unknown) {
-    return this.request<T>(endpoint, { method: 'POST', body: JSON.stringify(body) });
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
   patch<T>(endpoint: string, body: unknown) {
-    return this.request<T>(endpoint, { method: 'PATCH', body: JSON.stringify(body) });
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
   },
-  delete<T>(endpoint: string) { return this.request<T>(endpoint, { method: 'DELETE' }); },
+  delete<T>(endpoint: string) {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  },
 };
 ```
 
@@ -413,6 +429,7 @@ pnpm dlx shadcn@latest add input
 Components are installed to `src/components/ui/`.
 
 ## Code Style
+
 - Line width: 80 characters
 - Single quotes, semicolons always
 - 2-space indentation
@@ -437,6 +454,7 @@ export const API_CONFIG = {
 ```
 
 ## Testing
+
 - Framework: Vitest + React Testing Library
 - Run: `pnpm run test`
 - Test files: `*.test.ts`, `*.test.tsx`

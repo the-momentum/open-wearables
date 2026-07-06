@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+.coverage
+.pytest_cache/
+.ruff_cache/
+.claude/
+
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+*.log
+*.tmp
+*.bak

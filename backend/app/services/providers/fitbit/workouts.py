@@ -55,7 +55,9 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
             "heart_rate_avg": Decimal(str(hr_avg)) if hr_avg is not None else None,
             "steps_count": int(steps) if steps is not None else None,
             "energy_burned": Decimal(str(calories)) if calories is not None else None,
-            "distance": Decimal(str(distance)) if distance is not None else None,
+            # Fitbit reports distance in kilometers (no Accept-Language header is sent,
+            # so responses are always metric); the platform stores meters.
+            "distance": Decimal(str(distance)) * 1000 if distance is not None else None,
         }
 
     def _normalize_workout(
@@ -137,14 +139,19 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
 
         return all_activities
 
+    @staticmethod
+    def _coerce_to_datetime(value: datetime | str | None, fallback: datetime) -> datetime:
+        """Coerce a datetime or ISO 8601 string to datetime (sync_vendor_data passes ISO strings)."""
+        if value is None:
+            return fallback
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
         """Fetch workouts from Fitbit API with optional date range."""
-        start_date = kwargs.get("start_date") or kwargs.get("summary_start_time") or (datetime.now(timezone.utc) - timedelta(days=30))
-        end_date = kwargs.get("end_date") or kwargs.get("summary_end_time") or datetime.now(timezone.utc)
-        if isinstance(start_date, str):
-            start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-        if isinstance(end_date, str):
-            end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        start_date = self._coerce_to_datetime(kwargs.get("start_date"), datetime.now(timezone.utc) - timedelta(days=30))
+        end_date = self._coerce_to_datetime(kwargs.get("end_date"), datetime.now(timezone.utc))
         return self.get_workouts(db, user_id, start_date, end_date)
 
     def load_data(
@@ -154,14 +161,8 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         **kwargs: Any,
     ) -> bool:
         """Fetch activities since start_date and save to database."""
-        start_date = kwargs.get("start_date") or kwargs.get("summary_start_time") or (datetime.now(timezone.utc) - timedelta(days=30))
-        end_date = kwargs.get("end_date") or kwargs.get("summary_end_time") or datetime.now(timezone.utc)
-
-        # Ensure dates are datetime objects (sync route may pass ISO strings)
-        if isinstance(start_date, str):
-            start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-        if isinstance(end_date, str):
-            end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        start_date = self._coerce_to_datetime(kwargs.get("start_date"), datetime.now(timezone.utc) - timedelta(days=30))
+        end_date = self._coerce_to_datetime(kwargs.get("end_date"), datetime.now(timezone.utc))
 
         activities = self.get_workouts(db, user_id, start_date, end_date)
 

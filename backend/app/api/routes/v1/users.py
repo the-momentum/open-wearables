@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Query, status
 
 from app.database import DbSession
 from app.schemas.model_crud.user_management import (
@@ -20,7 +20,7 @@ router = APIRouter()
 async def list_users(
     db: DbSession,
     _api_key: ApiKeyDep,
-    query_params: Annotated[UserQueryParams, Depends()],
+    query_params: Annotated[UserQueryParams, Query()],
 ):
     """List users with pagination, sorting, and search."""
     return user_service.get_users_paginated(db, query_params)

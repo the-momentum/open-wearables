@@ -10,13 +10,17 @@ FROM python:3.13-slim AS builder
 
     WORKDIR /root_project
 
+    # Install dependencies first (cached unless lock/pyproject change)
     COPY uv.lock pyproject.toml ./
-    COPY . .
-
     ENV VIRTUAL_ENV=/opt/venv
+    ENV UV_PROJECT_ENVIRONMENT=/opt/venv
     RUN uv venv $VIRTUAL_ENV
     ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-    RUN uv sync --locked --no-dev
+    RUN uv sync --locked --no-dev --no-install-project
+
+    # Copy source and install the project itself (fast, deps already cached)
+    COPY . .
+    RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.13-slim
 
@@ -34,5 +38,12 @@ FROM python:3.13-slim
     ENV VIRTUAL_ENV=/opt/venv
     ENV PATH="/opt/venv/bin:$PATH"
     ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+    ENV UV_NO_SYNC=true
+
+    # Commit SHA for Sentry release tracking. Optional: defaults to empty when
+    # not passed (e.g. local builds), in which case the app falls back to the
+    # plain package version.
+    ARG GIT_SHA=""
+    ENV GIT_SHA=$GIT_SHA
 
     EXPOSE 8000

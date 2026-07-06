@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useActivitySummaries } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
+import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
@@ -30,6 +30,7 @@ import {
   formatNumber,
   formatDistance,
   formatMinutes,
+  parseApiDate,
 } from '@/lib/utils/format';
 import {
   calculateActivityStats,
@@ -68,8 +69,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Total Steps',
     shortLabel: 'Steps',
     icon: Footprints,
-    color: 'text-emerald-400',
-    bgColor: 'bg-emerald-500/10',
+    color: 'text-[hsl(var(--success-muted))]',
+    bgColor: 'bg-[hsl(var(--success-muted)/0.1)]',
     glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
     getValue: (stats) => stats.totalSteps,
     formatValue: formatNumber,
@@ -133,8 +134,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Floors Climbed',
     shortLabel: 'Floors',
     icon: TrendingUp,
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-500/10',
+    color: 'text-[hsl(var(--warning-muted))]',
+    bgColor: 'bg-[hsl(var(--warning-muted)/0.1)]',
     glowColor: 'shadow-[0_0_15px_rgba(245,158,11,0.5)]',
     getValue: (stats) => stats.totalFloorsClimbed,
     formatValue: formatNumber,
@@ -146,8 +147,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Sedentary Time',
     shortLabel: 'Sedentary',
     icon: Armchair,
-    color: 'text-zinc-400',
-    bgColor: 'bg-zinc-500/10',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted/30',
     glowColor: 'shadow-[0_0_15px_rgba(113,113,122,0.5)]',
     getValue: (stats) => stats.totalSedentaryMinutes,
     formatValue: formatMinutes,
@@ -164,11 +165,11 @@ function ActivitySectionSkeleton() {
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30"
+            className="p-4 border border-border/60 rounded-lg bg-card/30"
           >
-            <div className="h-5 w-5 bg-zinc-800 rounded animate-pulse mb-3" />
-            <div className="h-7 w-20 bg-zinc-800 rounded animate-pulse mb-1" />
-            <div className="h-4 w-24 bg-zinc-800/50 rounded animate-pulse" />
+            <div className="h-5 w-5 bg-muted rounded animate-pulse mb-3" />
+            <div className="h-7 w-20 bg-muted rounded animate-pulse mb-1" />
+            <div className="h-4 w-24 bg-muted/50 rounded animate-pulse" />
           </div>
         ))}
       </div>
@@ -189,7 +190,7 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
   const hasDetails = detailFields.length > 0;
 
   return (
-    <div className="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors">
+    <div className="border border-border/60 rounded-lg overflow-hidden bg-card/30 hover:bg-card/40 transition-colors">
       {/* Main row - always visible */}
       <button
         onClick={() => hasDetails && setIsExpanded(!isExpanded)}
@@ -198,11 +199,11 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
       >
         {/* Date */}
         <div className="w-28 flex-shrink-0">
-          <p className="text-sm font-medium text-white">
-            {format(new Date(summary.date), 'EEE, MMM d')}
+          <p className="text-sm font-medium text-foreground">
+            {format(parseApiDate(summary.date), 'EEE, MMM d')}
           </p>
-          <p className="text-xs text-zinc-500">
-            {format(new Date(summary.date), 'yyyy')}
+          <p className="text-xs text-muted-foreground">
+            {format(parseApiDate(summary.date), 'yyyy')}
           </p>
           {summary.source?.provider && (
             <SourceBadge provider={summary.source.provider} className="mt-1" />
@@ -213,12 +214,12 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
         <div className="flex-1 flex items-center justify-around">
           {/* Steps */}
           <div className="flex items-center gap-2">
-            <Footprints className="h-4 w-4 text-emerald-400" />
+            <Footprints className="h-4 w-4 text-[hsl(var(--success-muted))]" />
             <div>
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-foreground">
                 {formatNumber(summary.steps)}
               </p>
-              <p className="text-xs text-zinc-500">Steps</p>
+              <p className="text-xs text-muted-foreground">Steps</p>
             </div>
           </div>
 
@@ -226,10 +227,10 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
           <div className="flex items-center gap-2">
             <Flame className="h-4 w-4 text-orange-400" />
             <div>
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-foreground">
                 {formatNumber(summary.active_calories_kcal)}
               </p>
-              <p className="text-xs text-zinc-500">Calories</p>
+              <p className="text-xs text-muted-foreground">Calories</p>
             </div>
           </div>
 
@@ -237,12 +238,12 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
           <div className="flex items-center gap-2">
             <Heart className="h-4 w-4 text-rose-400" />
             <div>
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-foreground">
                 {summary.heart_rate?.avg_bpm
                   ? `${Math.round(summary.heart_rate.avg_bpm)} bpm`
                   : '-'}
               </p>
-              <p className="text-xs text-zinc-500">Avg HR</p>
+              <p className="text-xs text-muted-foreground">Avg HR</p>
             </div>
           </div>
 
@@ -250,10 +251,10 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
           <div className="flex items-center gap-2">
             <Timer className="h-4 w-4 text-sky-400" />
             <div>
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-foreground">
                 {formatMinutes(summary.active_minutes)}
               </p>
-              <p className="text-xs text-zinc-500">Active</p>
+              <p className="text-xs text-muted-foreground">Active</p>
             </div>
           </div>
         </div>
@@ -262,9 +263,9 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
         {hasDetails && (
           <div className="w-8 flex-shrink-0 flex justify-end">
             {isExpanded ? (
-              <ChevronUp className="h-5 w-5 text-zinc-400" />
+              <ChevronUp className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <ChevronDown className="h-5 w-5 text-zinc-400" />
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
             )}
           </div>
         )}
@@ -272,7 +273,7 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
 
       {/* Expanded details */}
       {isExpanded && detailFields.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-zinc-800">
+        <div className="px-4 pb-4 pt-2 border-t border-border/60">
           <div className="flex gap-6">
             {/* Left column */}
             <div className="flex-1 space-y-2">
@@ -283,8 +284,10 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
                     key={field.label}
                     className="flex items-center justify-between py-1"
                   >
-                    <span className="text-sm text-zinc-500">{field.label}</span>
-                    <span className="text-sm font-medium text-white">
+                    <span className="text-sm text-muted-foreground">
+                      {field.label}
+                    </span>
+                    <span className="text-sm font-medium text-foreground">
                       {field.value}
                     </span>
                   </div>
@@ -292,7 +295,7 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
             </div>
 
             {/* Divider */}
-            <div className="w-px bg-zinc-800" />
+            <div className="w-px bg-muted" />
 
             {/* Right column */}
             <div className="flex-1 space-y-2">
@@ -303,8 +306,10 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
                     key={field.label}
                     className="flex items-center justify-between py-1"
                   >
-                    <span className="text-sm text-zinc-500">{field.label}</span>
-                    <span className="text-sm font-medium text-white">
+                    <span className="text-sm text-muted-foreground">
+                      {field.label}
+                    </span>
+                    <span className="text-sm font-medium text-foreground">
                       {field.value}
                     </span>
                   </div>
@@ -327,7 +332,13 @@ export function ActivitySection({
 
   // Date range hooks
   const { startDate, endDate } = useDateRange(dateRange);
-  const allTimeRange = useAllTimeRange();
+
+  // Reset pagination when the date range changes so a stale cursor from a
+  // previous window doesn't carry over to the new one.
+  const { reset: resetPagination } = pagination;
+  useEffect(() => {
+    resetPagination();
+  }, [dateRange, resetPagination]);
 
   // Fetch activity summaries for summary stats (date range filtered)
   const { data: summaryData, isLoading: summaryLoading } = useActivitySummaries(
@@ -339,13 +350,15 @@ export function ActivitySection({
     }
   );
 
-  // Fetch activity days with cursor-based pagination (newest first)
+  // Fetch activity days with cursor-based pagination (newest first),
+  // scoped to the selected date range so we don't aggregate all history.
   const {
     data: daysData,
     isLoading: daysLoading,
     isFetching,
   } = useActivitySummaries(userId, {
-    ...allTimeRange,
+    start_date: startDate,
+    end_date: endDate,
     limit: DAYS_PER_PAGE,
     cursor: pagination.currentCursor ?? undefined,
     sort_order: 'desc',
@@ -382,9 +395,12 @@ export function ActivitySection({
     if (summaries.length === 0) return [];
 
     return [...summaries]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(
+        (a, b) =>
+          parseApiDate(a.date).getTime() - parseApiDate(b.date).getTime()
+      )
       .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
+        date: format(parseApiDate(s.date), 'MMM d'),
         value: currentMetric.getChartValue(s),
       }));
   }, [summaryData, currentMetric]);
@@ -392,7 +408,7 @@ export function ActivitySection({
   return (
     <div className="space-y-6">
       {/* Summary Section */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
         <SectionHeader
           title="Activity Summary"
           dateRange={dateRange}
@@ -403,7 +419,7 @@ export function ActivitySection({
           {summaryLoading ? (
             <ActivitySectionSkeleton />
           ) : !stats ? (
-            <p className="text-sm text-zinc-500 text-center py-4">
+            <p className="text-sm text-muted-foreground text-center py-4">
               No activity data in this period
             </p>
           ) : (
@@ -436,8 +452,8 @@ export function ActivitySection({
 
               {/* Dynamic Chart for Selected Metric */}
               {chartData.length > 1 && (
-                <div className="pt-4 border-t border-zinc-800">
-                  <h4 className="text-sm font-medium text-white mb-4">
+                <div className="pt-4 border-t border-border/60">
+                  <h4 className="text-sm font-medium text-foreground mb-4">
                     Daily {currentMetric.shortLabel}
                   </h4>
                   <ChartContainer
@@ -489,12 +505,12 @@ export function ActivitySection({
       </div>
 
       {/* Activity Days Section */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
         <SectionHeader
           title="Activity Days"
           rightContent={
             !daysLoading && hasData ? (
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-muted-foreground">
                 Page {pagination.currentPage}
               </span>
             ) : undefined
@@ -507,20 +523,20 @@ export function ActivitySection({
               {[1, 2, 3, 4, 5].map((i) => (
                 <div
                   key={i}
-                  className="px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/30"
+                  className="px-4 py-3 border border-border/60 rounded-lg bg-card/30"
                 >
                   <div className="flex items-center">
                     <div className="w-28 flex-shrink-0">
-                      <div className="h-5 w-20 bg-zinc-800 rounded animate-pulse" />
-                      <div className="h-3 w-12 bg-zinc-800/50 rounded animate-pulse mt-1" />
+                      <div className="h-5 w-20 bg-muted rounded animate-pulse" />
+                      <div className="h-3 w-12 bg-muted/50 rounded animate-pulse mt-1" />
                     </div>
                     <div className="flex-1 flex items-center justify-around">
                       {[1, 2, 3, 4].map((j) => (
                         <div key={j} className="flex items-center gap-2">
-                          <div className="h-4 w-4 bg-zinc-800 rounded animate-pulse" />
+                          <div className="h-4 w-4 bg-muted rounded animate-pulse" />
                           <div>
-                            <div className="h-4 w-12 bg-zinc-800 rounded animate-pulse" />
-                            <div className="h-3 w-10 bg-zinc-800/50 rounded animate-pulse mt-1" />
+                            <div className="h-4 w-12 bg-muted rounded animate-pulse" />
+                            <div className="h-3 w-10 bg-muted/50 rounded animate-pulse mt-1" />
                           </div>
                         </div>
                       ))}
@@ -530,7 +546,7 @@ export function ActivitySection({
               ))}
             </div>
           ) : displayedDays.length === 0 ? (
-            <p className="text-sm text-zinc-500 text-center py-8">
+            <p className="text-sm text-muted-foreground text-center py-8">
               No activity data available
             </p>
           ) : (

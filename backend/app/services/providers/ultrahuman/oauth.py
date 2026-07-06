@@ -8,6 +8,7 @@ from app.config import settings
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import AuthenticationMethod
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
@@ -49,7 +50,7 @@ class UltrahumanOAuth(BaseOAuthTemplate):
             client_secret=(
                 settings.ultrahuman_client_secret.get_secret_value() if settings.ultrahuman_client_secret else ""
             ),
-            redirect_uri=settings.ultrahuman_redirect_uri,
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.ULTRAHUMAN),
             default_scope=settings.ultrahuman_default_scope,
         )
 

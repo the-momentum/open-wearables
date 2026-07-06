@@ -7,9 +7,9 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
-from app.constants.series_types.apple import SleepPhase, get_series_type_from_metric_type
+from app.constants.series_types.sdk import SleepPhase, get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
-from app.schemas.enums import SeriesType
+from app.schemas.enums import SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -139,11 +139,11 @@ class XMLService:
 
         return SourceInfo(
             name=raw_fields.get("name"),
-            device_id=raw_fields.get("device"),
-            device_model=raw_fields.get("model"),
-            device_manufacturer=raw_fields.get("manufacturer"),
-            device_hardware_version=raw_fields.get("hardware"),
-            device_software_version=raw_fields.get("software"),
+            device_id=raw_fields.get("device"),  # ty:ignore[unknown-argument]
+            device_model=raw_fields.get("model"),  # ty:ignore[unknown-argument]
+            device_manufacturer=raw_fields.get("manufacturer"),  # ty:ignore[unknown-argument]
+            device_hardware_version=raw_fields.get("hardware"),  # ty:ignore[unknown-argument]
+            device_software_version=raw_fields.get("software"),  # ty:ignore[unknown-argument]
         )
 
     def _normalize_sleep_record(self, document: dict[str, Any]) -> SleepRecord | None:
@@ -214,6 +214,7 @@ class XMLService:
             recorded_at=document["startDate"],
             value=value,
             series_type=series_type,
+            is_daily_total=daily_total_flag(series_type, is_daily=False),
         )
 
         match series_type:

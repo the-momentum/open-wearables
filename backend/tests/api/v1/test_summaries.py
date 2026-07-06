@@ -2,16 +2,20 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.enums import ProviderName
+from app.models import DataPointSeriesArchive
+from app.models.archival_setting import ArchivalSetting
+from app.schemas.enums import AggregationMethod, HealthScoreCategory, ProviderName
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
     DataSourceFactory,
     EventRecordFactory,
+    HealthScoreFactory,
     PersonalRecordFactory,
     SeriesTypeDefinitionFactory,
     SleepDetailsFactory,
@@ -46,7 +50,7 @@ class TestSleepSummaryEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert len(data["data"]) == 1
-        assert data["data"][0]["date"] == "2025-12-26"
+        assert data["data"][0]["date"] == "2025-12-26"  # wake-up date (end_datetime)
         assert data["data"][0]["start_time"] == "2025-12-25T22:00:00Z"
         assert data["data"][0]["end_time"] == "2025-12-26T05:00:00Z"
         assert data["data"][0]["duration_minutes"] == 420  # 7 hours
@@ -91,8 +95,8 @@ class TestSleepSummaryEndpoint:
         assert len(data["data"]) == 1
 
         sleep_data = data["data"][0]
-        assert sleep_data["date"] == "2025-12-26"
-        assert sleep_data["duration_minutes"] == 480  # 8 hours
+        assert sleep_data["date"] == "2025-12-26"  # wake-up date (end_datetime)
+        assert sleep_data["duration_minutes"] == 420  # net sleep (sleep_total_duration_minutes), not time_in_bed
 
         # Verify sleep details are populated
         assert sleep_data["time_in_bed_minutes"] == 480
@@ -156,7 +160,7 @@ class TestSleepSummaryEndpoint:
         sleep_data = data["data"][0]
 
         # Verify basic fields
-        assert sleep_data["duration_minutes"] == 480  # 8 hours
+        assert sleep_data["duration_minutes"] == 420  # net sleep (sleep_total_duration_minutes), not time_in_bed
         assert sleep_data["efficiency_percent"] == 85.0
         assert sleep_data["stages"] is not None
 
@@ -197,6 +201,7 @@ class TestSleepSummaryEndpoint:
         # Physiological metrics should be null when no data exists
         assert sleep_data["avg_heart_rate_bpm"] is None
         assert sleep_data["avg_hrv_sdnn_ms"] is None
+        assert sleep_data["avg_hrv_rmssd_ms"] is None
         assert sleep_data["avg_respiratory_rate"] is None
         assert sleep_data["avg_spo2_percent"] is None
 
@@ -256,25 +261,21 @@ class TestSleepSummaryEndpoint:
 
         assert response.status_code == 200
         data = response.json()
+        # Both sessions end on Dec 26 (wake-up date), so they collapse into one summary entry.
+        # Main sleep fields come from the overnight session; nap fields are aggregated alongside.
         assert len(data["data"]) == 1
 
-        sleep_data = data["data"][0]
-        assert sleep_data["date"] == "2025-12-26"
-
-        # Main sleep metrics should EXCLUDE nap
-        assert sleep_data["start_time"] == "2025-12-25T22:00:00Z"  # Main sleep start, not nap
-        assert sleep_data["end_time"] == "2025-12-26T06:00:00Z"  # Main sleep end, not nap
-        assert sleep_data["duration_minutes"] == 480  # Only main sleep (8 hours)
-        assert sleep_data["time_in_bed_minutes"] == 480  # Only main sleep time in bed
-        assert sleep_data["efficiency_percent"] == 85.0  # Only main sleep efficiency
-
-        # Sleep stages should be main sleep only
-        assert sleep_data["stages"]["deep_minutes"] == 90
-        assert sleep_data["stages"]["light_minutes"] == 210
-
-        # Nap tracking
-        assert sleep_data["nap_count"] == 1
-        assert sleep_data["nap_duration_minutes"] == 30
+        main_sleep_data = data["data"][0]
+        assert main_sleep_data["date"] == "2025-12-26"  # wake-up date (end_datetime)
+        assert main_sleep_data["start_time"] == "2025-12-25T22:00:00Z"
+        assert main_sleep_data["end_time"] == "2025-12-26T06:00:00Z"
+        assert main_sleep_data["duration_minutes"] == 480
+        assert main_sleep_data["time_in_bed_minutes"] == 480
+        assert main_sleep_data["efficiency_percent"] == 85.0
+        assert main_sleep_data["stages"]["deep_minutes"] == 90
+        assert main_sleep_data["stages"]["light_minutes"] == 210
+        assert main_sleep_data["nap_count"] == 1
+        assert main_sleep_data["nap_duration_minutes"] == 30
 
     def test_get_sleep_summary_no_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns null for nap fields when no naps exist."""
@@ -530,6 +531,96 @@ class TestActivitySummaryEndpoint:
         # 130 bpm is in moderate zone (64-76% of 190 = 122-144)
         assert activity["intensity_minutes"] is not None
         assert activity["intensity_minutes"]["moderate"] == 1
+
+    def test_active_minutes_prefers_provider_active_time(self, client: TestClient, db: Session) -> None:
+        """Provider-reported active_time wins over the step-threshold heuristic."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
+
+        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        # Single daily-total step row -> step-threshold heuristic would yield active_minutes == 1.
+        DataPointSeriesFactory(
+            mapping=mapping, series_type=steps_type, value=Decimal("8500"), recorded_at=base_time, is_daily_total=True
+        )
+        # Provider-reported active time for the day.
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=active_time_type,
+            value=Decimal("312"),
+            recorded_at=base_time,
+            is_daily_total=True,
+        )
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        activity = response.json()["data"][0]
+        # Uses the provider active time (312), not the step-threshold fallback (1).
+        assert activity["active_minutes"] == 312
+
+    def test_active_minutes_falls_back_to_step_threshold(self, client: TestClient, db: Session) -> None:
+        """Without provider active_time, active_minutes uses the step-threshold heuristic."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+
+        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        # Two distinct minute buckets, each >= 30 steps -> 2 active minutes via fallback.
+        DataPointSeriesFactory(mapping=mapping, series_type=steps_type, value=Decimal("100"), recorded_at=base_time)
+        DataPointSeriesFactory(
+            mapping=mapping, series_type=steps_type, value=Decimal("200"), recorded_at=base_time + timedelta(minutes=5)
+        )
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        activity = response.json()["data"][0]
+        assert activity["active_minutes"] == 2
+
+    def test_active_minutes_from_archive_backed_day(self, client: TestClient, db: Session) -> None:
+        """An archive-only day populates active_minutes from the provider active_time archive row."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
+
+        # Enable archival (singleton id=1) so the summaries service queries the archive.
+        if not db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).first():
+            db.add(ArchivalSetting(id=1, archive_after_days=30, delete_after_days=None))
+        # Archived daily active_time (archive holds one SUM row per day) for a day with no live data.
+        db.add(
+            DataPointSeriesArchive(
+                id=uuid4(),
+                data_source_id=mapping.id,
+                series_type_definition_id=active_time_type.id,
+                bucket_start_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+                aggregation_type=AggregationMethod.SUM,
+                value=Decimal("275"),
+                sample_count=1,
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        days = {d["date"]: d for d in response.json()["data"]}
+        assert "2025-12-26" in days
+        # Comes from the archived active_time row, not the step-threshold fallback.
+        assert days["2025-12-26"]["active_minutes"] == 275
 
     def test_get_activity_summary_multiple_days(self, client: TestClient, db: Session) -> None:
         """Test activity summary returns data grouped by day."""
@@ -1299,3 +1390,191 @@ class TestBodySummaryEndpoint:
 
         # Should use the most recent value
         assert data["slow_changing"]["weight_kg"] == 72.5
+
+
+class TestRecoverySummaryEndpoint:
+    """Test suite for recovery summaries endpoint."""
+
+    BASE_PARAMS = {
+        "start_date": "2025-12-25T00:00:00Z",
+        "end_date": "2025-12-28T00:00:00Z",
+    }
+
+    def _url(self, user_id: object) -> str:
+        return f"/api/v1/users/{user_id}/summaries/recovery"
+
+    def test_returns_200_with_recovery_score(self, client: TestClient, db: Session) -> None:
+        """Basic recovery record is returned with correct score and date."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        recorded_at = datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("78"),
+            provider=ProviderName.WHOOP,
+            recorded_at=recorded_at,
+            components=None,
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        item = data["data"][0]
+        assert item["date"] == "2025-12-26"
+        assert item["recovery_score"] == 78
+        assert item["source"]["provider"] == "whoop"
+
+    def test_returns_component_metrics(self, client: TestClient, db: Session) -> None:
+        """RHR, HRV and SpO2 are populated from HealthScore components."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        recorded_at = datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("65"),
+            provider=ProviderName.WHOOP,
+            recorded_at=recorded_at,
+            components={
+                "resting_heart_rate": {"value": 58.0},
+                "hrv_rmssd_milli": {"value": 45.5},
+                "spo2_percentage": {"value": 97.0},
+            },
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["resting_heart_rate_bpm"] == 58
+        assert item["avg_hrv_sdnn_ms"] == 45.5
+        assert item["avg_spo2_percent"] == 97.0
+
+    def test_empty_range_returns_no_data(self, client: TestClient, db: Session) -> None:
+        """Empty range returns empty list, not an error."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+
+        response = client.get(
+            self._url(user.id),
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-26T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    def test_multiple_days_ordered_ascending(self, client: TestClient, db: Session) -> None:
+        """Multiple recovery records are returned in ascending date order."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        api_key = ApiKeyFactory()
+
+        for day, score in ((26, 70), (27, 85), (25, 60)):
+            HealthScoreFactory(
+                data_source=source,
+                category=HealthScoreCategory.RECOVERY,
+                value=Decimal(str(score)),
+                provider=ProviderName.WHOOP,
+                recorded_at=datetime(2025, 12, day, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        scores = [item["recovery_score"] for item in response.json()["data"]]
+        assert scores == [60, 70, 85]
+
+    def test_records_outside_range_excluded(self, client: TestClient, db: Session) -> None:
+        """Records outside the requested date range are not included."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        api_key = ApiKeyFactory()
+
+        # Inside range
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("72"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+        )
+        # Outside range (too early)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("50"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 24, 0, 0, 0, tzinfo=timezone.utc),
+        )
+        # Outside range (too late — end_date is exclusive)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("90"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 28, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        assert data[0]["recovery_score"] == 72
+
+    def test_null_components_returns_none_metrics(self, client: TestClient, db: Session) -> None:
+        """Recovery record with no components returns None for all metric fields."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("55"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+            components=None,
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["resting_heart_rate_bpm"] is None
+        assert item["avg_hrv_sdnn_ms"] is None
+        assert item["avg_spo2_percent"] is None
+        assert item["sleep_duration_seconds"] is None
+        assert item["sleep_efficiency_percent"] is None
+
+    def test_pagination_limit(self, client: TestClient, db: Session) -> None:
+        """Limit parameter caps results and has_more is set when more data exists."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        api_key = ApiKeyFactory()
+
+        for day in range(1, 10):
+            HealthScoreFactory(
+                data_source=source,
+                category=HealthScoreCategory.RECOVERY,
+                value=Decimal("70"),
+                provider=ProviderName.WHOOP,
+                recorded_at=datetime(2026, 1, day, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+        response = client.get(
+            self._url(user.id),
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2026-01-01T00:00:00Z", "end_date": "2026-01-31T00:00:00Z", "limit": 3},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 3
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["next_cursor"] is not None

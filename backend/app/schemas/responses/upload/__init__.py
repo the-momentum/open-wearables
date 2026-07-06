@@ -4,8 +4,10 @@ from .sync_results import (
     SyncVendorDataResult,
 )
 from .system_info import (
+    ConnectionsCoverage,
     CountWithGrowth,
     DataPointsInfo,
+    ProviderConnectionCount,
     SeriesTypeMetric,
     SystemInfoResponse,
     WorkoutTypeMetric,
@@ -22,8 +24,10 @@ __all__ = [
     # Upload response
     "UploadDataResponse",
     # System info
+    "ConnectionsCoverage",
     "CountWithGrowth",
     "DataPointsInfo",
+    "ProviderConnectionCount",
     "SystemInfoResponse",
     "SeriesTypeMetric",
     "WorkoutTypeMetric",

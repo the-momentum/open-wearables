@@ -1,10 +1,13 @@
 import logging
 import sys
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import head_router
@@ -13,6 +16,7 @@ from app.integrations.celery import create_celery
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
 from app.services import raw_payload_storage
+from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
 # Configure logging to use stdout instead of stderr
@@ -31,7 +35,14 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger.handlers.clear()
     _logger.propagate = True
 
-api = FastAPI(title=settings.api_name)
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    svix_service.register_event_types()
+    yield
+
+
+api = FastAPI(title=settings.api_name, lifespan=_lifespan)
 celery_app = create_celery()
 init_sentry()
 raw_payload_storage.configure(
@@ -40,6 +51,7 @@ raw_payload_storage.configure(
     s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
     s3_prefix=settings.raw_payload_s3_prefix,
     s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
+    fit_files_enabled=settings.store_fit_files,
 )
 
 add_cors_middleware(api)
@@ -56,7 +68,14 @@ async def root() -> dict[str, str]:
 
 
 @api.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(_: Request, exc: RequestValidationError) -> None:
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
+    if request.url.path.endswith("/auth/login"):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Incorrect email or password"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     raise handle_exception(exc, "")
 
 

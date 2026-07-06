@@ -88,11 +88,11 @@ OURA_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     # Multisport
     ("triathlon", WorkoutType.TRIATHLON),
     # Other / Generic
-    ("other", WorkoutType.OTHER),
-    ("activity", WorkoutType.OTHER),
-    ("workout", WorkoutType.OTHER),
-    ("rest", WorkoutType.OTHER),
-    ("recovery", WorkoutType.OTHER),
+    ("other", WorkoutType.GENERIC),
+    ("activity", WorkoutType.GENERIC),
+    ("workout", WorkoutType.GENERIC),
+    ("rest", WorkoutType.RECOVERY),
+    ("recovery", WorkoutType.RECOVERY),
 ]
 
 # Create lookup dictionary (case-insensitive)

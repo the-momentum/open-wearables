@@ -57,7 +57,7 @@ def sync_sdk_data(
     provider = body.provider.lower()
 
     # Validate provider
-    if provider not in ("apple", "samsung", "google", "auto-health-export"):
+    if provider not in ("apple", "samsung", "google"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",

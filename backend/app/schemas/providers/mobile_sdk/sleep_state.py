@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.constants.series_types.apple import SleepPhase
+from app.constants.series_types.sdk import SleepPhase
 from app.constants.sleep import SleepStageType
 
 

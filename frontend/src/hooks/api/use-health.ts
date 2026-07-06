@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   healthService,
   type WorkoutsParams,
@@ -8,6 +8,9 @@ import type {
   TimeSeriesParams,
   SleepSessionsParams,
   BodySummaryParams,
+  HealthScoreParams,
+  MenstrualCyclesParams,
+  DataSummaryParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -43,6 +46,8 @@ export function useUserConnections(userId: string, enabled: boolean = true) {
     queryKey: queryKeys.connections.all(userId),
     queryFn: () => healthService.getUserConnections(userId),
     enabled: !!userId && enabled,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -95,6 +100,60 @@ export function useSleepSummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Delete a workout event
+ */
+export function useDeleteWorkout(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (workoutId: string) =>
+      healthService.deleteWorkout(userId, workoutId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'workouts', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Workout deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete workout';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Delete a sleep session event
+ */
+export function useDeleteSleepSession(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      healthService.deleteSleepSession(userId, sessionId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'sleepSessions', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'sleepSummaries', userId],
+      });
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'healthScores', userId],
+      });
+      toast.success('Sleep session deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to delete sleep session';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get activity summaries for a user
  * Uses GET /api/v1/users/{user_id}/summaries/activity
  */
@@ -107,6 +166,57 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get menstrual cycle records for a user
+ * Uses GET /api/v1/users/{user_id}/events/menstrual-cycles
+ */
+export function useMenstrualCycles(
+  userId: string,
+  params: MenstrualCyclesParams
+) {
+  return useQuery({
+    queryKey: queryKeys.health.menstrualCycles(userId, params),
+    queryFn: () => healthService.getMenstrualCycles(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Delete a menstrual cycle record
+ */
+export function useDeleteMenstrualCycle(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cycleId: string) =>
+      healthService.deleteMenstrualCycle(userId, cycleId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'menstrualCycles', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Record deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete record';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Get per-user data summary with counts by type and provider
+ * Uses GET /api/v1/users/{user_id}/summaries/data
+ */
+export function useUserDataSummary(userId: string, params?: DataSummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.dataSummary(userId, params),
+    queryFn: () => healthService.getUserDataSummary(userId, params),
+    enabled: !!userId,
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+/**
  * Get body summary for a user (static, averaged, latest metrics)
  * Uses GET /api/v1/users/{user_id}/summaries/body
  */
@@ -115,6 +225,18 @@ export function useBodySummary(userId: string, params?: BodySummaryParams) {
     queryKey: queryKeys.health.bodySummary(userId, params),
     queryFn: () => healthService.getBodySummary(userId, params),
     enabled: !!userId,
+  });
+}
+
+/**
+ * Get health scores (sleep, recovery, readiness, etc.) for a user
+ * Uses GET /api/v1/users/{user_id}/health-scores
+ */
+export function useHealthScores(userId: string, params: HealthScoreParams) {
+  return useQuery({
+    queryKey: queryKeys.health.healthScores(userId, params),
+    queryFn: () => healthService.getHealthScores(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
   });
 }
 
@@ -146,12 +268,49 @@ export function useSynchronizeDataFromProvider(
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.bodySummary(userId),
       });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.dataSummary(userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.healthScores(userId),
+      });
 
       toast.success('Data synchronized successfully');
     },
     onError: (error: unknown) => {
       const message =
         error instanceof Error ? error.message : 'Failed to synchronize data';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Trigger historical data sync for a provider
+ * Garmin: 30-day webhook backfill; others: pull API with date range
+ */
+export function useSyncHistoricalData(provider: string, userId: string) {
+  return useMutation({
+    mutationFn: (days?: number) =>
+      healthService.syncHistoricalData(provider, userId, days),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.all(userId),
+      });
+      if (data.method === 'webhook_backfill') {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.garmin.backfillStatus(userId),
+        });
+        toast.success('Historical backfill started');
+      } else {
+        toast.success('Historical sync queued');
+      }
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to start historical sync';
       toast.error(message);
     },
   });

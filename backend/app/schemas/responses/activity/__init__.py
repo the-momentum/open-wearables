@@ -7,9 +7,14 @@ from .data_point_responses import (
 from .events import (
     Meal,
     Measurement,
+    MenstrualCycleRecord,
     SleepSession,
     Workout,
     WorkoutDetailed,
+)
+from .resilience import (
+    DailyHrvScore,
+    HrvCvScoreResult,
 )
 from .summaries import (
     ActivitySummary,
@@ -26,6 +31,9 @@ from .summaries import (
 )
 
 __all__ = [
+    # Resilience scores
+    "DailyHrvScore",
+    "HrvCvScoreResult",
     # Data point responses
     "TimeSeriesSample",
     "ActivityAggregateResult",
@@ -36,6 +44,7 @@ __all__ = [
     "WorkoutDetailed",
     "Meal",
     "Measurement",
+    "MenstrualCycleRecord",
     "SleepSession",
     # Summaries
     "ActivitySummary",

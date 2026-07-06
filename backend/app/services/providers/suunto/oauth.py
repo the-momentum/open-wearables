@@ -1,6 +1,7 @@
 from jose import jwt
 
 from app.config import settings
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
@@ -24,7 +25,7 @@ class SuuntoOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.suunto_client_id or "",
             client_secret=(settings.suunto_client_secret.get_secret_value() if settings.suunto_client_secret else ""),
-            redirect_uri=settings.suunto_redirect_uri,
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.SUUNTO),
             default_scope=settings.suunto_default_scope,
             subscription_key=(
                 settings.suunto_subscription_key.get_secret_value() if settings.suunto_subscription_key else ""

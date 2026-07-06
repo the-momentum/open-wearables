@@ -1,5 +1,9 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.polar.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
+from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.oauth import PolarOAuth
+from app.services.providers.polar.webhook_handler import PolarWebhookHandler
+from app.services.providers.polar.webhook_service import polar_webhook_service
 from app.services.providers.polar.workouts import PolarWorkouts
 
 
@@ -21,6 +25,13 @@ class PolarStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
             oauth=self.oauth,
         )
+        self.data_247 = Polar247Data(
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
+        self.webhooks = PolarWebhookHandler(workouts=self.workouts, data_247=self.data_247)
+        self.webhook_service = polar_webhook_service
 
     @property
     def name(self) -> str:
@@ -32,7 +43,12 @@ class PolarStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        # Polar AccessLink 3.0 uses a transaction-based REST API for data pull
-        # and supports a webhook feature that sends a notification when new data
-        # is available.  Actual data is fetched via the transaction endpoints.
-        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+        return ProviderCapabilities(
+            rest_pull=True, webhook_ping=True, webhook_registration_api=True, webhook_inbound_secret=True
+        )
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS, health_scores=HEALTH_SCORES
+        )

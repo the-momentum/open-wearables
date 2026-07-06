@@ -26,7 +26,6 @@ DELAY_AFTER_RATE_LIMIT = GARMIN_RATE_LIMIT_WINDOW  # Wait for full window reset 
 # Timeout / retry
 # ---------------------------------------------------------------------------
 TRIGGERED_TIMEOUT_SECONDS = 300  # 5 min before skipping a triggered type
-MAX_TYPE_ATTEMPTS = 3  # Total attempts (1 original + 2 retries) -- legacy, unused in task
 
 # ---------------------------------------------------------------------------
 # Concurrency lock
@@ -83,7 +82,7 @@ ALL_DATA_TYPES = [
     "healthSnapshot",
     "stressDetails",
     "respiration",
-    "pulseOx",
+    "pulseox",
     "bloodPressures",
     "userMetrics",
     "skinTemp",
@@ -109,7 +108,7 @@ BACKFILL_ENDPOINTS = {
     "hrv": "/wellness-api/rest/backfill/hrv",
     "stressDetails": "/wellness-api/rest/backfill/stressDetails",
     "respiration": "/wellness-api/rest/backfill/respiration",
-    "pulseOx": "/wellness-api/rest/backfill/pulseOx",
+    "pulseox": "/wellness-api/rest/backfill/pulseOx",
     "activities": "/wellness-api/rest/backfill/activities",
     "activityDetails": "/wellness-api/rest/backfill/activityDetails",
     "userMetrics": "/wellness-api/rest/backfill/userMetrics",

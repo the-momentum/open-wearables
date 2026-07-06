@@ -1,0 +1,134 @@
+---
+title: Sleep Score
+description: A nightly 0-100 score computed by Open Wearables from raw wearable data using a four-pillar model.
+---
+
+## Overview
+
+The Sleep Score is an **Open Wearables native score** - it is computed directly from the raw sensor data synced through the platform, independently of any manufacturer score. The same algorithm runs regardless of the device or provider the user wears, giving you a consistent, comparable score across your entire user base.
+
+| Property   | Value                                                          |
+|------------|----------------------------------------------------------------|
+| Range      | 0-100                                                          |
+| Frequency  | Daily (one score per night)                                    |
+| Components | Sleep Duration, Sleep Stages, Sleep Consistency, Sleep Interruptions |
+| Source     | Computed by Open Wearables - not a provider-sourced score      |
+
+---
+
+## Requirements
+
+For a Sleep Score to be generated, the following conditions must be met:
+
+**Data syncing**
+- The user must have at least one connected provider that syncs sleep data.
+- The provider must report total sleep duration (net sleep time, awake periods excluded).
+
+**Device and provider requirements by component**
+
+| Component     | Required data                                              | Notes                                                         |
+|---------------|------------------------------------------------------------|---------------------------------------------------------------|
+| Duration      | Total net sleep duration                                   | Available from all sleep-tracking providers                   |
+| Stages        | Deep sleep minutes, REM sleep minutes                      | Requires a provider with stage-level sleep breakdown          |
+| Consistency   | Bedtime (session start timestamp) for prior nights         | Requires at least one historical night; best after 14 nights |
+| Interruptions | Wake-after-sleep-onset (WASO) data or sleep stage timeline | Stage timeline preferred; falls back to reported awake minutes |
+
+
+---
+
+## Score Components
+
+The overall Sleep Score is a weighted average of four independently-scored pillars.
+
+### Duration
+
+Scores how long the user actually slept (net sleep time, after subtracting awake periods).
+
+| Sleep duration | Score behaviour                                                      |
+|----------------|----------------------------------------------------------------------|
+| 7-9 hours      | 100 (perfect range)                                                  |
+| Below 7 hours  | Steep sigmoid drop, centred at 5 h midpoint                          |
+| Above 9 hours  | Gentle sigmoid drop, floor at 50 - oversleeping is penalised lightly |
+
+### Stages
+
+Scores the quality of sleep architecture by comparing Deep and REM stage durations against targets. Each stage is scored independently and combined with equal weighting.
+
+| Stage | Target     | Scoring                                      |
+|-------|------------|----------------------------------------------|
+| Deep  | 90 minutes | Linear: 0 pts at 0 min, 100 pts at 90+ min |
+| REM   | 90 minutes | Linear: 0 pts at 0 min, 100 pts at 90+ min |
+
+The two stage scores are combined at 50/50 to produce the Stages component score.
+
+### Consistency
+
+Scores how closely the user's bedtime matched their own historical routine - not against a fixed clock time. This encourages habit stability rather than conforming to an external schedule.
+
+- A **14-night rolling median** bedtime is computed from prior nights.
+- A **15-minute grace period** is applied symmetrically - minor variation is not penalised.
+- **Going to bed late** incurs a linear penalty up to 100 points across a 105-minute window past the grace period.
+- **Going to bed early** incurs a softer penalty, capped at 20 points - early nights are penalised less than late ones.
+
+No historical data means no consistency score can be computed (returns 0). The score becomes meaningful after a few nights and stabilises after ~14.
+
+### Interruptions
+
+Scores sleep continuity based on wake-after-sleep-onset (WASO) - time spent awake between falling asleep and the final wake-up, excluding sleep latency.
+
+The component has two sub-scores that are summed:
+
+**WASO duration (80 points available)**
+
+| WASO          | Score behaviour                               |
+|---------------|-----------------------------------------------|
+| Up to 20 min  | Full 80 points (grace period)                 |
+| 20-90 min     | Linear penalty across a 70-minute window      |
+| > 90 minutes  | 0 points                                      |
+
+**Awakening frequency (20 points available)**
+
+| Significant awakenings (> 5 min each) | Points |
+|---------------------------------------|--------|
+| 0 or 1                                | 20     |
+| 2                                     | 15     |
+| 3                                     | 10     |
+| 4 or more                             | 0      |
+
+---
+
+## Weights
+
+The four pillars are combined into the overall score using a weighted average. The default weights reflect clinical research on the relative importance of each factor to sleep quality.
+
+| Component     | Default weight |
+|---------------|----------------|
+| Duration      | 40%            |
+| Stages        | 20%            |
+| Consistency   | 20%            |
+| Interruptions | 20%            |
+
+**Weights are adjustable.** If your application has different priorities - the pillar weights can be customised. The only constraint is that they must sum to 100%.
+
+Contact us or refer to the configuration reference to adjust weights for your deployment.
+
+---
+
+## Score Breakdown
+
+Every Sleep Score response includes a full breakdown payload so you can surface the component scores in your UI:
+
+```json
+{
+  "overall_score": 78,
+  "metrics": {
+    "duration_hours": 7.25
+  },
+  "breakdown": {
+    "duration":      { "score": 100 },
+    "stages":        { "score": 61 },
+    "consistency":   { "score": 85 },
+    "interruptions": { "score": 55 }
+  }
+}
+```

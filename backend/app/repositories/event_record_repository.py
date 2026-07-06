@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, literal, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
@@ -76,6 +76,55 @@ class EventRecordRepository(
             )
             .one_or_none()
         )
+
+    def get_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> EventRecord | None:
+        """Find a single EventRecord by its provider-assigned external_id."""
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.external_id == external_id)
+        )
+        if source is not None:
+            query = query.filter(DataSource.source == source)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        return query.one_or_none()
+
+    def delete_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> int:
+        """Delete EventRecord(s) matching external_id for a user in a single query.
+
+        Returns the number of rows deleted.
+        """
+        source_ids_query = db_session.query(DataSource.id).filter(DataSource.user_id == user_id)
+        if source is not None:
+            source_ids_query = source_ids_query.filter(DataSource.source == source)
+        if provider is not None:
+            source_ids_query = source_ids_query.filter(DataSource.provider == provider)
+
+        deleted = (
+            db_session.query(self.model)
+            .filter(
+                self.model.external_id == external_id,
+                self.model.data_source_id.in_(source_ids_query.scalar_subquery()),
+            )
+            .delete(synchronize_session=False)
+        )
+        db_session.commit()
+        return deleted
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
@@ -202,6 +251,7 @@ class EventRecordRepository(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         query: Query = (
             db_session.query(EventRecord, DataSource)
@@ -213,6 +263,12 @@ class EventRecordRepository(
         )
 
         filters = [DataSource.user_id == UUID(user_id)]
+
+        # Optional allow-list of record ids as a subquery (e.g. priority-deduplicated
+        # sleep sessions). Inlined as `id IN (<subquery>)` before count/cursor/limit so
+        # pagination operates on the restricted set in a single statement.
+        if restrict_to_record_ids is not None:
+            filters.append(EventRecord.id.in_(restrict_to_record_ids))
 
         if query_params.category:
             filters.append(EventRecord.category == query_params.category)
@@ -280,7 +336,7 @@ class EventRecordRepository(
                 limit = query_params.limit or 20
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), total_count
+                return list(reversed(results)), total_count  # ty:ignore[invalid-return-type]
 
             # Forward pagination: get items AFTER cursor
             if sort_by == "start_datetime":
@@ -304,7 +360,103 @@ class EventRecordRepository(
         if not query_params.cursor and query_params.offset:
             query = query.offset(query_params.offset)
 
-        return query.limit(limit + 1).all(), total_count
+        return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+
+    def winning_sleep_record_ids(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        query_params: EventRecordQueryParams,
+        provider_order: dict,
+        device_type_order: dict,
+    ) -> Query:
+        """Subquery of sleep record ids belonging to the top-priority source per night.
+
+        For each local sleep date, sources are ranked by provider priority, then
+        device-type priority, then device_model (lower value = higher priority;
+        anything absent from the order dicts falls through to 99 — matching the
+        priority service). The winning source's sessions (dense_rank == 1, so all of
+        its rows for that night, naps included) are returned.
+
+        Returned as an unexecuted Query so callers can inline it as `id IN (...)`
+        and keep dedup + pagination in a single SQL statement.
+        """
+        local_sleep_date = cast(
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+        provider_rank = (
+            case(*[(DataSource.provider == p, r) for p, r in provider_order.items()], else_=99)
+            if provider_order
+            else literal(99)
+        )
+        device_rank = (
+            case(*[(DataSource.device_type == dt.value, r) for dt, r in device_type_order.items()], else_=99)
+            if device_type_order
+            else literal(99)
+        )
+
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == "sleep",
+        ]
+        if query_params.start_datetime:
+            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
+        if query_params.end_datetime:
+            filters.append(EventRecord.end_datetime < query_params.end_datetime)
+
+        ranked = (
+            db_session.query(
+                EventRecord.id.label("record_id"),
+                func.dense_rank()
+                .over(
+                    partition_by=local_sleep_date,
+                    order_by=(provider_rank, device_rank, func.coalesce(DataSource.device_model, "")),
+                )
+                .label("source_rank"),
+            )
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(and_(*filters))
+            .subquery()
+        )
+        return db_session.query(ranked.c.record_id).filter(ranked.c.source_rank == 1)
+
+    def get_user_event_counts_by_provider(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, str, str | None, int]]:
+        """Get event record counts for a user grouped by provider, category, and type.
+
+        When ``start_datetime`` and/or ``end_datetime`` are provided, only events whose
+        ``start_datetime`` falls in the half-open interval ``[start, end)`` are counted. When both
+        are omitted, all-time counts are returned (unchanged behaviour).
+
+        Returns list of (provider, category, type, count) tuples ordered by provider, then count descending.
+        """
+        query = (
+            db_session.query(
+                DataSource.provider,
+                self.model.category,
+                self.model.type,
+                func.count(self.model.id).label("count"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+        )
+        if start_datetime is not None:
+            query = query.filter(self.model.start_datetime >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.start_datetime < end_datetime)
+
+        results = (
+            query.group_by(DataSource.provider, self.model.category, self.model.type)
+            .order_by(DataSource.provider, func.count(self.model.id).desc())
+            .all()
+        )
+        return [(provider, category, event_type, count) for provider, category, event_type, count in results]
 
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of workouts grouped by workout type.
@@ -400,17 +552,41 @@ class EventRecordRepository(
         # is_nap can be True, False, or NULL - we treat NULL as "not a nap"
         is_main_sleep = func.coalesce(SleepDetails.is_nap, False) == False  # noqa: E712
 
+        # Local calendar date the session ended (wake-up date) — mirrors score
+        # date logic in fill_missing_sleep_scores_task so chart, score, and
+        # session list all key on the same date.
+        local_sleep_date = cast(
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+
         # Build base aggregated query as subquery
         # Join with SleepDetails to get sleep stage data
         # Cast UUID to text for min() since PostgreSQL doesn't support min() on UUID directly
         subquery = (
             db_session.query(
-                cast(EventRecord.end_datetime, Date).label("sleep_date"),
+                local_sleep_date.label("sleep_date"),
                 # Main sleep times (exclude naps)
                 func.min(case((is_main_sleep, EventRecord.start_datetime), else_=None)).label("min_start_time"),
                 func.max(case((is_main_sleep, EventRecord.end_datetime), else_=None)).label("max_end_time"),
-                # Main sleep duration (exclude naps)
-                func.sum(case((is_main_sleep, EventRecord.duration_seconds), else_=0)).label("total_duration"),
+                # Main sleep duration (exclude naps) — prefer net sleep time over
+                # wall-clock duration.  Oura (and some other providers) store
+                # time_in_bed in duration_seconds; sleep_total_duration_minutes
+                # holds the actual sleep time and should be used when available.
+                func.sum(
+                    case(
+                        (
+                            is_main_sleep,
+                            func.coalesce(
+                                SleepDetails.sleep_total_duration_minutes * 60,
+                                EventRecord.duration_seconds,
+                                0,
+                            ),
+                        ),
+                        else_=0,
+                    )
+                ).label("total_duration"),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
@@ -451,11 +627,13 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
-                EventRecord.end_datetime >= start_date,
-                cast(EventRecord.end_datetime, Date) < cast(end_date, Date),
+                EventRecord.end_datetime >= start_date - timedelta(days=1),
+                local_sleep_date >= cast(start_date, Date),
+                local_sleep_date < cast(end_date, Date),
             )
             .group_by(
-                cast(EventRecord.end_datetime, Date),
+                local_sleep_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -468,6 +646,7 @@ class EventRecordRepository(
             subquery.c.min_start_time,
             subquery.c.max_end_time,
             subquery.c.total_duration,
+            subquery.c.provider,
             subquery.c.source,
             subquery.c.device_model,
             record_id_col,
@@ -516,6 +695,7 @@ class EventRecordRepository(
                     "min_start_time": row.min_start_time,
                     "max_end_time": row.max_end_time,
                     "total_duration_minutes": int(row.total_duration or 0) // 60,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "record_id": row.record_id,
@@ -549,9 +729,14 @@ class EventRecordRepository(
         - workout_date, source, device_model
         - elevation_meters, distance_meters, energy_burned_kcal
         """
+        local_workout_date = cast(
+            self.model.end_datetime + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+
         results = (
             db_session.query(
-                cast(self.model.end_datetime, Date).label("workout_date"),
+                local_workout_date.label("workout_date"),
                 DataSource.source,
                 DataSource.device_model,
                 # Sum elevation gain for all workouts on that day
@@ -567,15 +752,16 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 self.model.category == "workout",
-                self.model.end_datetime >= start_date,
-                cast(self.model.end_datetime, Date) < cast(end_date, Date),
+                self.model.end_datetime >= start_date - timedelta(days=1),
+                local_workout_date >= cast(start_date, Date),
+                local_workout_date < cast(end_date, Date),
             )
             .group_by(
-                cast(self.model.end_datetime, Date),
+                local_workout_date,
                 DataSource.source,
                 DataSource.device_model,
             )
-            .order_by(asc(cast(self.model.end_datetime, Date)))
+            .order_by(asc(local_workout_date))
             .all()
         )
 
@@ -602,6 +788,7 @@ class EventRecordRepository(
         end_time: datetime,
         threshold_minutes: int,
         source: str | None = None,
+        provider: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -610,9 +797,10 @@ class EventRecordRepository(
         is eagerly loaded so callers can read ``sleep_stages`` without an extra
         query.
 
-        When *source* is provided the query is restricted to records whose
-        DataSource has the same source string, preventing cross-provider merges
+        When *provider* is provided the query is restricted to records whose
+        DataSource has the same provider, preventing cross-provider merges
         (e.g. Oura sessions being merged with Garmin sessions).
+        When *source* is provided an additional filter on DataSource.source is applied.
         """
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
@@ -622,6 +810,8 @@ class EventRecordRepository(
             self.model.start_datetime <= end_time + threshold,
             self.model.end_datetime >= start_time - threshold,
         ]
+        if provider is not None:
+            filters.append(DataSource.provider == provider)
         if source is not None:
             filters.append(DataSource.source == source)
         return (
@@ -633,3 +823,28 @@ class EventRecordRepository(
             .with_for_update()
             .first()
         )
+
+    def get_sleep_records_with_details(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[tuple[EventRecord, SleepDetails | None]]:
+        """Return sleep EventRecords with their SleepDetails that overlap [start_dt, end_dt).
+
+        Uses an outerjoin so sessions with no stage data are still included.
+        """
+        rows = (
+            db_session.query(EventRecord, SleepDetails)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == "sleep",
+                EventRecord.end_datetime >= start_dt,
+                EventRecord.start_datetime < end_dt,
+            )
+            .all()
+        )
+        return [(event_record, sleep_details) for event_record, sleep_details in rows]

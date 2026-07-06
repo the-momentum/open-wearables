@@ -11,7 +11,6 @@ class Developer(BaseDbModel):
     """Admin of the portal model"""
 
     id: Mapped[PrimaryKey[UUID]]
-    created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
 
     first_name: Mapped[str_100 | None]

@@ -3,6 +3,7 @@ import tempfile
 from logging import getLogger
 from pathlib import Path
 
+from celery import shared_task
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -14,7 +15,6 @@ from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.exceptions import ResourceNotFoundError
 from app.utils.sentry_helpers import log_and_capture_error
-from celery import shared_task
 
 logger = getLogger(__name__)
 

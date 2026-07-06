@@ -12,6 +12,12 @@ if TYPE_CHECKING:
     from app.services import AppService
 
 
+class UnsupportedProviderError(Exception):
+    def __init__(self, provider: str, operation: str = "this operation"):
+        self.detail = f"Provider '{provider}' does not support {operation}."
+        super().__init__(self.detail)
+
+
 class ResourceNotFoundError(Exception):
     def __init__(self, entity_name: str, entity_id: int | UUID | None = None):
         self.entity_name = entity_name
@@ -98,19 +104,19 @@ def handle_exceptions[**P, T, Service: AppService](
         @wraps(func)
         async def async_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
             try:
-                return await func(instance, *args, **kwargs)  # type: ignore[misc]
+                return await func(instance, *args, **kwargs)  # ty:ignore[invalid-argument-type]
             except Exception as exc:
                 entity_name = getattr(instance, "name", "unknown")
                 raise handle_exception(exc, entity_name) from exc
 
-        return async_wrapper  # type: ignore[return-value]
+        return async_wrapper  # ty:ignore[invalid-return-type]
 
     @wraps(func)
     def sync_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
         try:
-            return func(instance, *args, **kwargs)  # type: ignore[misc]
+            return func(instance, *args, **kwargs)  # ty:ignore[invalid-argument-type, invalid-return-type]
         except Exception as exc:
             entity_name = getattr(instance, "name", "unknown")
             raise handle_exception(exc, entity_name) from exc
 
-    return sync_wrapper  # type: ignore[return-value]
+    return sync_wrapper  # ty:ignore[invalid-return-type]

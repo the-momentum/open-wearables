@@ -17,7 +17,6 @@ class Invitation(BaseDbModel):
     token: Mapped[Unique[str_255]]
     status: Mapped[InvitationStatus]
     expires_at: Mapped[datetime]
-    created_at: Mapped[datetime]
 
     invited_by_id: Mapped[FKDeveloper | None]
     invited_by: Mapped[ManyToOne["Developer"] | None] = relationship(

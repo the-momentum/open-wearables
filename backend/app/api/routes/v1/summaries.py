@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from app.database import DbSession
 from app.schemas.responses.activity import (
@@ -10,10 +10,11 @@ from app.schemas.responses.activity import (
     RecoverySummary,
     SleepSummary,
 )
+from app.schemas.responses.dashboard import UserDataSummaryResponse
 from app.schemas.utils import PaginatedResponse
-from app.services import ApiKeyDep
+from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
-from app.utils.dates import parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime
 
 router = APIRouter()
 
@@ -21,8 +22,8 @@ router = APIRouter()
 @router.get("/users/{user_id}/summaries/activity")
 def get_activity_summary(
     user_id: UUID,
-    start_date: str,
-    end_date: str,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
@@ -43,8 +44,8 @@ def get_activity_summary(
 @router.get("/users/{user_id}/summaries/sleep")
 def get_sleep_summary(
     user_id: UUID,
-    start_date: str,
-    end_date: str,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
@@ -59,15 +60,17 @@ def get_sleep_summary(
 @router.get("/users/{user_id}/summaries/recovery")
 def get_recovery_summary(
     user_id: UUID,
-    start_date: str,
-    end_date: str,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[RecoverySummary]:
-    """Returns daily recovery metrics (Sleep + HRV + RHR)."""
-    raise HTTPException(status_code=501, detail="Not implemented")
+    """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2)."""
+    start_datetime = parse_query_datetime(start_date)
+    end_datetime = parse_query_datetime(end_date)
+    return summaries_service.get_recovery_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
 @router.get("/users/{user_id}/summaries/body")
@@ -93,3 +96,21 @@ def get_body_summary(
     Returns null if no body data exists for the user.
     """
     return summaries_service.get_body_summary(db, user_id, average_period, latest_window_hours)
+
+
+@router.get("/users/{user_id}/summaries/data")
+def get_data_summary(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    start_date: DateTimeQueryParam | None = None,
+    end_date: DateTimeQueryParam | None = None,
+) -> UserDataSummaryResponse:
+    """Returns per-user data counts grouped by series type, event type, and provider.
+
+    Optionally scope the counts to a date window via `start_date` / `end_date` (data points are
+    filtered by `recorded_at`, events by their start time). Omitting both returns all-time counts.
+    """
+    start_datetime = parse_query_datetime(start_date) if start_date is not None else None
+    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
+    return system_info_service.get_user_data_summary(db, user_id, start_datetime, end_datetime)

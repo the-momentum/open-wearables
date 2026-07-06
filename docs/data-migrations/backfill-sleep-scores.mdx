@@ -1,0 +1,62 @@
+---
+title: "Backfill Sleep Scores"
+sidebarTitle: "Sleep Scores"
+description: "Calculates and saves OW internal sleep scores for sessions that have none, over a configurable lookback window."
+keywords: ["sleep score", "backfill", "health score", "data migration"]
+"og:title": "Backfill Sleep Scores | Open Wearables"
+"og:description": "Calculates and saves OW internal sleep scores for sessions that have none."
+"og:url": "https://docs.openwearables.io/data-migrations/backfill-sleep-scores"
+"og:type": "article"
+---
+
+**Script:** `scripts/data_migrations/backfill_sleep_scores.py`
+
+## Problem
+
+The `cc39513098b0` Alembic migration added a `sleep_record_id` foreign key to `health_score` and deleted all internal sleep scores that were not linked to a specific session (`data_source_id IS NULL`). This script regenerates scores for any sleep session that no longer has one.
+
+It mirrors the logic of the `fill_missing_sleep_scores` Celery task but accepts an explicit `--days` argument so you can backfill further back than the task's rolling window.
+
+## What it does
+
+Finds all non-nap sleep sessions within the lookback window that have no corresponding internal sleep score (matched via the `sleep_record_id` FK), then computes and saves a score for each using the four-pillar sleep algorithm (duration, stages, consistency, interruptions).
+
+Sessions are matched by `sleep_record_id` — not by date — so multiple sessions on the same wake date (e.g. from different providers) each get their own score.
+
+## Usage
+
+```bash
+# Preview sessions that would be scored (default 30-day window)
+docker compose exec app uv run python scripts/data_migrations/backfill_sleep_scores.py --dry-run
+
+# Apply with default window
+docker compose exec app uv run python scripts/data_migrations/backfill_sleep_scores.py
+
+# Apply with extended window (e.g. after the migration wiped historical scores)
+docker compose exec app uv run python scripts/data_migrations/backfill_sleep_scores.py --days 180
+```
+
+## Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--days N` | `score_backfill_days` setting (30) | How many days back to scan for unscored sessions. |
+| `--dry-run` | — | Print sessions that would be scored. No changes made. |
+
+## Dry run output
+
+```
+Cutoff: 2025-10-23 (30 days back)
+Found 12 session(s) missing scores.
+
+User ID                                Record ID                              Wake Date    Local End
+--------------------------------------------------------------------------------------------------------------
+a1b2c3...                              d4e5f6...                              2025-11-15   2025-11-15 07:34:00
+...
+
+Dry run — no changes made.
+```
+
+## Related
+
+This script complements the `fill_missing_sleep_scores` Celery task, which runs automatically on a schedule to score newly synced sessions. Use this script when you need to backfill beyond the task's configured window or after a migration that deleted existing scores.

@@ -16,6 +16,7 @@ from app.schemas.providers.oura import OuraWorkoutCollectionJSON, OuraWorkoutJSO
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
 
@@ -34,7 +35,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         next_token: str | None = None
 
         start_str = start_date.strftime("%Y-%m-%d")
-        end_str = end_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%dT23:59:59")
 
         while True:
             params: dict[str, Any] = {
@@ -72,6 +73,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
                     "Error fetching Oura workout data",
                     action="oura_workout_fetch_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
                 if all_workouts:
                     log_structured(
@@ -80,6 +82,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
                         "Returning partial workout data due to error",
                         action="oura_workout_partial_data",
                         error=str(e),
+                        user_id=str(user_id),
                     )
                     break
                 raise
@@ -101,6 +104,19 @@ class OuraWorkouts(BaseWorkoutsTemplate):
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         """Get detailed workout data from Oura API."""
         return self._make_api_request(db, user_id, f"/v2/usercollection/workout/{workout_id}")
+
+    def save_by_id(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
+        """Fetch a single workout by ID and save it."""
+        raw = self.get_workout_detail_from_api(db, user_id, workout_id)
+        if not raw or not isinstance(raw, dict):
+            return 0
+        count = 0
+        for record, details in self._build_bundles([OuraWorkoutJSON(**raw)], user_id):
+            created = event_record_service.create(db, record)
+            detail = details.model_copy(update={"record_id": created.id})
+            event_record_service.create_detail(db, detail)
+            count += 1
+        return count
 
     def _extract_dates(self, start_timestamp: str, end_timestamp: str) -> tuple[datetime, datetime]:
         """Extract start and end dates from ISO 8601 strings."""
@@ -141,8 +157,12 @@ class OuraWorkouts(BaseWorkoutsTemplate):
 
         workout_type = get_unified_workout_type(raw_workout.activity)
 
+        zone_offset = None
         if raw_workout.start_datetime and raw_workout.end_datetime:
             start_date, end_date = self._extract_dates(raw_workout.start_datetime, raw_workout.end_datetime)
+            utcoff = start_date.utcoffset()
+            if utcoff is not None:
+                zone_offset = offset_to_iso(int(utcoff.total_seconds()))
         else:
             start_date = datetime.now(timezone.utc)
             end_date = start_date
@@ -158,6 +178,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=zone_offset,
             id=workout_id,
             external_id=raw_workout.id,
             source=self.provider_name,

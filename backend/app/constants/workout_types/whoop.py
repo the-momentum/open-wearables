@@ -30,10 +30,10 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("surfing", WorkoutType.SURFING),
     ("sailing", WorkoutType.SAILING),
     ("diving", WorkoutType.DIVING),
-    ("water skiing", WorkoutType.SURFING),
-    ("wakeboarding", WorkoutType.SURFING),
+    ("water skiing", WorkoutType.WATER_SKIING),
+    ("wakeboarding", WorkoutType.WAKEBOARDING),
     ("kite boarding", WorkoutType.KITESURFING),
-    ("operations - water", WorkoutType.OTHER),
+    ("operations - water", WorkoutType.OPERATIONS),
     # Strength & Gym
     ("weightlifting", WorkoutType.STRENGTH_TRAINING),
     ("powerlifting", WorkoutType.STRENGTH_TRAINING),
@@ -46,7 +46,7 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("hiit", WorkoutType.CARDIO_TRAINING),
     ("jumping rope", WorkoutType.CARDIO_TRAINING),
     ("obstacle course racing", WorkoutType.CARDIO_TRAINING),
-    ("parkour", WorkoutType.CARDIO_TRAINING),
+    ("parkour", WorkoutType.PARKOUR),
     # Flexibility & Mind-Body
     ("yoga", WorkoutType.YOGA),
     ("hot yoga", WorkoutType.YOGA),
@@ -94,12 +94,12 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("martial arts", WorkoutType.MARTIAL_ARTS),
     ("jiu jitsu", WorkoutType.MARTIAL_ARTS),
     ("wrestling", WorkoutType.WRESTLING),
-    ("fencing", WorkoutType.MARTIAL_ARTS),
+    ("fencing", WorkoutType.FENCING),
     # Climbing
     ("rock climbing", WorkoutType.ROCK_CLIMBING),
     # Golf
     ("golf", WorkoutType.GOLF),
-    ("disc golf", WorkoutType.GOLF),
+    ("disc golf", WorkoutType.DISC_SPORTS),
     # Skating
     ("inline skating", WorkoutType.INLINE_SKATING),
     ("skateboarding", WorkoutType.SKATEBOARDING),
@@ -122,34 +122,35 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("gymnastics", WorkoutType.GYMNASTICS),
     # Handball
     ("handball", WorkoutType.HANDBALL),
-    # Recovery & Wellness (map to OTHER as not traditional workouts)
-    ("ice bath", WorkoutType.OTHER),
-    ("sauna", WorkoutType.OTHER),
-    ("massage therapy", WorkoutType.OTHER),
-    ("air compression", WorkoutType.OTHER),
-    ("percussive massage", WorkoutType.OTHER),
-    # Work & Daily Activities (map to OTHER)
-    ("operations - tactical", WorkoutType.OTHER),
-    ("operations - medical", WorkoutType.OTHER),
-    ("operations - flying", WorkoutType.OTHER),
-    ("manual labor", WorkoutType.OTHER),
-    ("high stress work", WorkoutType.OTHER),
-    ("coaching", WorkoutType.OTHER),
-    ("watching sports", WorkoutType.OTHER),
-    ("commuting", WorkoutType.OTHER),
-    ("gaming", WorkoutType.OTHER),
-    ("yard work", WorkoutType.OTHER),
-    ("cooking", WorkoutType.OTHER),
-    ("cleaning", WorkoutType.OTHER),
-    ("public speaking", WorkoutType.OTHER),
-    ("musical performance", WorkoutType.OTHER),
-    ("dedicated parenting", WorkoutType.OTHER),
+    # Recovery & Wellness
+    ("ice bath", WorkoutType.RECOVERY),
+    ("sauna", WorkoutType.RECOVERY),
+    ("massage therapy", WorkoutType.RECOVERY),
+    ("air compression", WorkoutType.RECOVERY),
+    ("percussive massage", WorkoutType.RECOVERY),
+    # Military / Operations
+    ("operations - tactical", WorkoutType.OPERATIONS),
+    ("operations - medical", WorkoutType.OPERATIONS),
+    ("operations - flying", WorkoutType.OPERATIONS),
+    # Work & Daily Activities
+    ("manual labor", WorkoutType.WORK),
+    ("high stress work", WorkoutType.WORK),
+    ("coaching", WorkoutType.WORK),
+    ("watching sports", WorkoutType.LIFESTYLE),
+    ("commuting", WorkoutType.LIFESTYLE),
+    ("gaming", WorkoutType.GAMING),
+    ("yard work", WorkoutType.CHORES),
+    ("cooking", WorkoutType.CHORES),
+    ("cleaning", WorkoutType.CHORES),
+    ("public speaking", WorkoutType.LIFESTYLE),
+    ("musical performance", WorkoutType.LIFESTYLE),
+    ("dedicated parenting", WorkoutType.LIFESTYLE),
     ("wheelchair pushing", WorkoutType.WALKING),
     # Outdoor Activities
     ("paintball", WorkoutType.SPORT),
     # Generic/Other
-    ("activity", WorkoutType.OTHER),
-    ("other", WorkoutType.OTHER),
+    ("activity", WorkoutType.GENERIC),
+    ("other", WorkoutType.GENERIC),
 ]
 
 # Create lookup dictionary (case-insensitive)

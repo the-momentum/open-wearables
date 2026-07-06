@@ -1,0 +1,37 @@
+---
+title: Health Scores
+description: OW platform provides two custom health scores backed by science. The scores are designed to help users understand their habits and should not be treated as a clinical tool.
+---
+
+
+<CardGroup cols={2}>
+  <Card title="Sleep Score" icon="moon" href="/scores/sleep-score">
+    A nightly 0-100 score measuring sleep quality across four pillars: duration, stages, consistency, and interruptions.
+  </Card>
+  <Card title="Resilience Score" icon="heart-pulse" href="/scores/resilience-score">
+    A weekly 0-100 score measuring autonomic nervous system stability through Heart Rate Variability Coefficient of Variation.
+  </Card>
+</CardGroup>
+
+The scores have been developed by a team of scientists and ML engineers and interpret physiological data into actionable score metric.
+
+---
+
+## Interpreting the Scores
+
+Both scores use a 0-100 scale. A higher score indicates a better outcome.
+
+| Score            | Scale  | Higher score means        |
+|------------------|--------|---------------------------|
+| Sleep Score      | 0-100  | Better sleep quality      |
+| Resilience Score | 0-100  | Better HRV consistency    |
+
+Neither score is a diagnostic tool. They are intended to surface trends and patterns over time.
+
+---
+
+## Provider Scores vs. OW Native Scores
+
+In addition to the OW native scores described above, users may also see scores fetched directly from their connected device providers - for example, a sleep score from Garmin or a readiness score from Oura. These provider scores are always clearly labelled with their source and are kept separate from the OW computed scores. They do not influence each other.
+
+This means you can surface both in your application - the OW scores for a consistent cross-device baseline, and the provider scores for users who want to compare against what their device reports.

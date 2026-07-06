@@ -1,5 +1,5 @@
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
@@ -19,6 +19,13 @@ class UserConnection(BaseDbModel):
             postgresql_where="status = 'active'",
         ),
         Index("ix_user_connection_user_provider", "user_id", "provider", unique=True),
+        Index("ix_user_connection_status_user_id", "status", "user_id"),
+        Index(
+            "ix_user_connection_provider_external_id",
+            "provider",
+            "provider_user_id",
+            postgresql_where="provider_user_id IS NOT NULL AND status = 'active'",
+        ),
     )
     __tablename__ = "user_connection"
 
@@ -39,5 +46,4 @@ class UserConnection(BaseDbModel):
     # Metadata
     status: Mapped[ConnectionStatus]
     last_synced_at: Mapped[datetime | None]
-    created_at: Mapped[datetime]
     updated_at: Mapped[datetime]

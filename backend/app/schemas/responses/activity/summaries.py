@@ -61,6 +61,7 @@ class SleepSummary(BaseModel):
     nap_duration_minutes: int | None = Field(None, description="Total nap duration", example=30)
     avg_heart_rate_bpm: int | None = None
     avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN) during sleep")
+    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (RMSSD) during sleep")
     avg_respiratory_rate: float | None = None
     avg_spo2_percent: float | None = None
 
@@ -105,6 +106,7 @@ class BodyAveraged(BaseModel):
     period_days: int = Field(..., description="Number of days averaged (1 or 7)", example=7)
     resting_heart_rate_bpm: int | None = Field(None, description="Average resting heart rate", example=62)
     avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN)", example=45.2)
+    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (RMSSD)", example=42.0)
     period_start: datetime = Field(..., description="Start of averaging period")
     period_end: datetime = Field(..., description="End of averaging period")
 

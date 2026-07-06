@@ -6,6 +6,7 @@ from app.config import settings
 from app.schemas.auth import (
     AuthenticationMethod,
 )
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
@@ -31,7 +32,7 @@ class GarminOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.garmin_client_id or "",
             client_secret=(settings.garmin_client_secret.get_secret_value() if settings.garmin_client_secret else ""),
-            redirect_uri=settings.garmin_redirect_uri,
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.GARMIN),
             default_scope=settings.garmin_default_scope,
         )
 
@@ -52,7 +53,7 @@ class GarminOAuth(BaseOAuthTemplate):
         # Fetch user ID (critical - fail returns all None)
         try:
             user_id_response = httpx.get(
-                f"{self.api_base_url}/wellness-api/rest/user/id",
+                f"{self.api_base_url}/partner-gateway/rest/user/id",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )
@@ -65,7 +66,7 @@ class GarminOAuth(BaseOAuthTemplate):
         scope: str | None = None
         try:
             permissions_response = httpx.get(
-                f"{self.api_base_url}/wellness-api/rest/user/permissions",
+                f"{self.api_base_url}/partner-gateway/rest/user/permissions",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )

@@ -1,6 +1,15 @@
 ---
-title: 'Quick Integration'
-description: 'End-to-end guide to integrate Open Wearables with your application'
+title: "Wearable API Integration Guide"
+sidebarTitle: "Quick Integration"
+description: "End-to-end guide: create a user, connect a wearable provider via OAuth, sync data, and fetch timeseries, workouts, or sleep data."
+keywords: ["wearable api integration guide", "open wearables quick start", "health api tutorial", "wearable data integration"]
+"og:title": "Wearable API Integration Guide | Open Wearables"
+"og:description": "Create a user, connect a provider via OAuth, sync data, fetch timeseries and sleep. End-to-end integration walkthrough."
+"og:url": "https://docs.openwearables.io/api-reference/guides/quick-integration"
+"og:type": "article"
+"twitter:title": "Wearable API Integration Guide | Open Wearables"
+"twitter:description": "Create a user, connect a provider via OAuth, sync data, fetch timeseries and sleep. End-to-end integration walkthrough."
+"twitter:card": "summary_large_image"
 ---
 
 ## Overview
@@ -127,6 +136,13 @@ curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-44665544
 
 ```bash
 curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/events/sleep?start_date=2025-01-01T00:00:00Z&end_date=2025-01-31T00:00:00Z" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Menstrual Cycles
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/events/menstrual-cycles?start_date=2025-01-01T00:00:00Z&end_date=2025-01-31T00:00:00Z" \
   -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 

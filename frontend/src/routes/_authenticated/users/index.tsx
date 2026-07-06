@@ -7,6 +7,7 @@ import { UsersTable } from '@/components/users/users-table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -110,19 +111,14 @@ function UsersPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-medium text-white">Users</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Manage your platform users
-          </p>
-        </div>
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="p-6 md:p-8 space-y-6">
+        <PageHeader title="Users" description="Manage your platform users" />
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl">
           <div className="animate-pulse space-y-4">
-            <div className="h-10 bg-zinc-800 rounded-md w-full" />
+            <div className="h-10 bg-muted/60 rounded-md w-full" />
             <div className="space-y-3">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-16 bg-zinc-800/50 rounded-md" />
+                <div key={i} className="h-16 bg-muted/40 rounded-md" />
               ))}
             </div>
           </div>
@@ -133,9 +129,9 @@ function UsersPage() {
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 text-center">
-          <p className="text-zinc-400 mb-4">
+      <div className="p-6 md:p-8">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 p-8 text-center backdrop-blur-xl">
+          <p className="text-muted-foreground mb-4">
             Failed to load users. Please try again.
           </p>
           <Button onClick={() => refetch()}>Retry</Button>
@@ -149,19 +145,17 @@ function UsersPage() {
   const pageCount = data?.pages ?? 0;
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-medium text-white">Users</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Manage your platform users and their wearable connections
-          </p>
-        </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add User
-        </Button>
-      </div>
+    <div className="p-6 md:p-8 space-y-6">
+      <PageHeader
+        title="Users"
+        description="Manage your platform users and their wearable connections"
+        action={
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add User
+          </Button>
+        }
+      />
 
       {total > 0 || queryParams.search ? (
         <UsersTable
@@ -176,9 +170,11 @@ function UsersPage() {
           onQueryChange={handleQueryChange}
         />
       ) : (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-          <UsersIcon className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
-          <p className="text-zinc-400 mb-2">No users found</p>
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 p-12 text-center backdrop-blur-xl">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-muted/40">
+            <UsersIcon className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-muted-foreground mb-2">No users found</p>
           <Button
             variant="outline"
             onClick={() => setIsCreateDialogOpen(true)}
@@ -210,7 +206,7 @@ function UsersPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="external_user_id" className="text-zinc-300">
+              <Label htmlFor="external_user_id" className="text-foreground/90">
                 External User ID
               </Label>
               <Input
@@ -225,20 +221,20 @@ function UsersPage() {
                   })
                 }
                 maxLength={255}
-                className="bg-zinc-800 border-zinc-700"
+                className="bg-muted border-border"
               />
               {formErrors.external_user_id && (
-                <p className="text-xs text-red-500">
+                <p className="text-xs text-[hsl(var(--destructive-muted))]">
                   {formErrors.external_user_id}
                 </p>
               )}
-              <p className="text-[10px] text-zinc-600">
+              <p className="text-[10px] text-muted-foreground/70">
                 Your unique identifier for this user (max 255 characters)
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="first_name" className="text-zinc-300">
+                <Label htmlFor="first_name" className="text-foreground/90">
                   First Name
                 </Label>
                 <Input
@@ -250,16 +246,16 @@ function UsersPage() {
                     setFormData({ ...formData, first_name: e.target.value })
                   }
                   maxLength={100}
-                  className="bg-zinc-800 border-zinc-700"
+                  className="bg-muted border-border"
                 />
                 {formErrors.first_name && (
-                  <p className="text-xs text-red-500">
+                  <p className="text-xs text-[hsl(var(--destructive-muted))]">
                     {formErrors.first_name}
                   </p>
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="last_name" className="text-zinc-300">
+                <Label htmlFor="last_name" className="text-foreground/90">
                   Last Name
                 </Label>
                 <Input
@@ -271,15 +267,17 @@ function UsersPage() {
                     setFormData({ ...formData, last_name: e.target.value })
                   }
                   maxLength={100}
-                  className="bg-zinc-800 border-zinc-700"
+                  className="bg-muted border-border"
                 />
                 {formErrors.last_name && (
-                  <p className="text-xs text-red-500">{formErrors.last_name}</p>
+                  <p className="text-xs text-[hsl(var(--destructive-muted))]">
+                    {formErrors.last_name}
+                  </p>
                 )}
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="email" className="text-zinc-300">
+              <Label htmlFor="email" className="text-foreground/90">
                 Email
               </Label>
               <Input
@@ -290,10 +288,12 @@ function UsersPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, email: e.target.value })
                 }
-                className="bg-zinc-800 border-zinc-700"
+                className="bg-muted border-border"
               />
               {formErrors.email && (
-                <p className="text-xs text-red-500">{formErrors.email}</p>
+                <p className="text-xs text-[hsl(var(--destructive-muted))]">
+                  {formErrors.email}
+                </p>
               )}
             </div>
           </div>
@@ -321,14 +321,14 @@ function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           <div>
-            <ul className="list-disc list-inside text-sm text-zinc-500 space-y-1">
+            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
               <li>All wearable device connections</li>
               <li>All health data (sleep, activity)</li>
               <li>All automation triggers for this user</li>
             </ul>
-            <div className="mt-4 p-3 bg-zinc-800 rounded-md">
-              <p className="text-xs text-zinc-500">User ID:</p>
-              <code className="font-mono text-sm text-zinc-300">
+            <div className="mt-4 p-3 bg-muted rounded-md">
+              <p className="text-xs text-muted-foreground">User ID:</p>
+              <code className="font-mono text-sm text-foreground/90">
                 {deleteUserId}
               </code>
             </div>

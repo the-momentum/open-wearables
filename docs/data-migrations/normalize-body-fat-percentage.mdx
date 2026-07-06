@@ -1,0 +1,60 @@
+---
+title: "Normalize Body Fat Percentage"
+sidebarTitle: "Body Fat Percentage"
+description: "Divides body_fat_percentage values stored 100× too large back to the correct percentage, affecting Samsung and Google Health Connect data ingested before PR #917."
+keywords: ["body fat", "body fat percentage", "samsung", "google", "health connect", "data migration", "unit conversion"]
+"og:title": "Normalize Body Fat Percentage | Open Wearables"
+"og:description": "Corrects body_fat_percentage values stored 100× too large due to a unit conversion bug in the shared SDK import path."
+"og:url": "https://docs.openwearables.io/data-migrations/normalize-body-fat-percentage"
+"og:type": "article"
+---
+
+**Script:** `scripts/data_migrations/normalize_body_fat_percentage.py`
+
+## Problem
+
+`ImportService` (`backend/app/services/apple/healthkit/import_service.py`) is the shared ingestion path for Apple, Samsung, and Google SDK payloads. It unconditionally applied a ratio→percent `×100` conversion to `body_fat_percentage`.
+
+That conversion is correct only for Apple HealthKit, where `HKUnit.percent()` returns a `0..1` ratio. Android Health Connect (Samsung, Google) reports `BodyFatRecord.percentage.value` already in percent, so those values were stored ~100× too large — e.g. an actual `30.4%` was saved as `3040`.
+
+PR [#917](https://github.com/the-momentum/open-wearables/pull/917) fixed the ingestion path by gating the `×100` on `provider == "apple"`. This script corrects rows already in the database.
+
+## What it does
+
+Finds every `data_point_series` row for `body_fat_percentage` where `value > 100` and divides the value by `100`. Valid body fat percentages are always in the 0–100 range, so this threshold cleanly separates affected rows from correct ones without touching Apple or other provider data.
+
+The `data_point_series_archive` table is not touched — archive rows are historical snapshots and do not feed live queries.
+
+## Usage
+
+```bash
+# Preview affected rows (recommended first step)
+docker compose exec app uv run python scripts/data_migrations/normalize_body_fat_percentage.py --dry-run
+
+# Apply corrections
+docker compose exec app uv run python scripts/data_migrations/normalize_body_fat_percentage.py
+```
+
+## Options
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Print affected rows with current and corrected values. No changes made. |
+
+## Dry run output
+
+```
+Rows with body_fat_percentage > 100: 3
+
+ID                                     Provider        Current  Corrected  Recorded at
+-----------------------------------------------------------------------------------------------
+0c6b9ec9-...                           samsung        3040.000     30.400  2025-11-07 10:17:52+00:00
+a052baa2-...                           samsung        2200.000     22.000  2025-11-05 10:17:52+00:00
+632dffc6-...                           google         1850.000     18.500  2025-11-06 10:17:52+00:00
+
+Dry run — no changes made.
+```
+
+## Related
+
+- PR [#917](https://github.com/the-momentum/open-wearables/pull/917) — the ingestion fix that prevents new incorrect rows from being created.

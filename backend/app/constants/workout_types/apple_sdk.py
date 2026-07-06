@@ -114,6 +114,42 @@ class SDKWorkoutType(StrEnum):
     DANCE_INSPIRED_TRAINING = "dance_inspired_training"
     MIXED_METABOLIC_CARDIO_TRAINING = "mixed_metabolic_cardio_training"
 
+    # Health Connect (Android) exercise vocabulary — written by third-party
+    # writers like Peloton, Strava, and Zwift via the Health Connect SDK.
+    # These names mirror the strings emitted by the Open Wearables Android
+    # SDK's ``HealthConnectManager.mapExerciseType`` (see that file in the
+    # ``open_wearables_android_sdk`` repo). The wire format is uppercase,
+    # and ``get_unified_workout_type`` lowercases input before lookup so the
+    # snake_case keys below match. Entries whose wire name already overlaps
+    # an Apple HealthKit enum member (``BADMINTON``, ``CYCLING``, ``HIIT``,
+    # ``RUNNING``, ``OTHER`` …) are reused above and not repeated here.
+    CYCLING_STATIONARY = "cycling_stationary"
+    BOOT_CAMP = "boot_camp"
+    CALISTHENICS = "calisthenics"
+    DANCING = "dancing"
+    EXERCISE_CLASS = "exercise_class"
+    FOOTBALL_AMERICAN = "football_american"
+    FOOTBALL_AUSTRALIAN = "football_australian"
+    FRISBEE_DISC = "frisbee_disc"
+    GUIDED_BREATHING = "guided_breathing"
+    ICE_HOCKEY = "ice_hockey"
+    ICE_SKATING = "ice_skating"
+    PADDLING = "paddling"
+    PARAGLIDING = "paragliding"
+    ROCK_CLIMBING = "rock_climbing"
+    ROLLER_HOCKEY = "roller_hockey"
+    ROWING_MACHINE = "rowing_machine"
+    RUNNING_TREADMILL = "running_treadmill"
+    SCUBA_DIVING = "scuba_diving"
+    SKIING = "skiing"
+    SNOWSHOEING = "snowshoeing"
+    STAIR_CLIMBING_MACHINE = "stair_climbing_machine"
+    STRETCHING = "stretching"
+    SWIMMING_OPEN_WATER = "swimming_open_water"
+    SWIMMING_POOL = "swimming_pool"
+    WEIGHTLIFTING = "weightlifting"
+    WHEELCHAIR = "wheelchair"
+
     # Other
     OTHER = "other"
 
@@ -140,7 +176,7 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     (SDKWorkoutType.MIXED_CARDIO, WorkoutType.CARDIO_TRAINING),
     (SDKWorkoutType.HIIT, WorkoutType.CARDIO_TRAINING),
     (SDKWorkoutType.STEP_TRAINING, WorkoutType.AEROBICS),
-    (SDKWorkoutType.FITNESS_GAMING, WorkoutType.OTHER),
+    (SDKWorkoutType.FITNESS_GAMING, WorkoutType.GAMING),
     (SDKWorkoutType.PREPARATION_AND_RECOVERY, WorkoutType.STRETCHING),
     (SDKWorkoutType.FLEXIBILITY, WorkoutType.STRETCHING),
     (SDKWorkoutType.COOLDOWN, WorkoutType.STRETCHING),
@@ -156,11 +192,11 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     (SDKWorkoutType.AUSTRALIAN_FOOTBALL, WorkoutType.FOOTBALL),
     (SDKWorkoutType.BASEBALL, WorkoutType.BASEBALL),
     (SDKWorkoutType.BASKETBALL, WorkoutType.BASKETBALL),
-    (SDKWorkoutType.CRICKET, WorkoutType.OTHER),
-    (SDKWorkoutType.DISC_SPORTS, WorkoutType.OTHER),
+    (SDKWorkoutType.CRICKET, WorkoutType.CRICKET),
+    (SDKWorkoutType.DISC_SPORTS, WorkoutType.DISC_SPORTS),
     (SDKWorkoutType.HANDBALL, WorkoutType.HANDBALL),
     (SDKWorkoutType.HOCKEY, WorkoutType.HOCKEY),
-    (SDKWorkoutType.LACROSSE, WorkoutType.OTHER),
+    (SDKWorkoutType.LACROSSE, WorkoutType.LACROSSE),
     (SDKWorkoutType.RUGBY, WorkoutType.RUGBY),
     (SDKWorkoutType.SOCCER, WorkoutType.SOCCER),
     (SDKWorkoutType.SOFTBALL, WorkoutType.BASEBALL),
@@ -168,23 +204,23 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     # Racket Sports
     (SDKWorkoutType.BADMINTON, WorkoutType.BADMINTON),
     (SDKWorkoutType.PICKLEBALL, WorkoutType.PICKLEBALL),
-    (SDKWorkoutType.RACQUETBALL, WorkoutType.OTHER),
+    (SDKWorkoutType.RACQUETBALL, WorkoutType.RACQUETBALL),
     (SDKWorkoutType.SQUASH, WorkoutType.SQUASH),
     (SDKWorkoutType.TABLE_TENNIS, WorkoutType.TABLE_TENNIS),
     (SDKWorkoutType.TENNIS, WorkoutType.TENNIS),
     # Outdoor Activities
     (SDKWorkoutType.CLIMBING, WorkoutType.ROCK_CLIMBING),
     (SDKWorkoutType.EQUESTRIAN, WorkoutType.HORSEBACK_RIDING),
-    (SDKWorkoutType.FISHING, WorkoutType.OTHER),
+    (SDKWorkoutType.FISHING, WorkoutType.FISHING),
     (SDKWorkoutType.GOLF, WorkoutType.GOLF),
     (SDKWorkoutType.HIKING, WorkoutType.HIKING),
-    (SDKWorkoutType.HUNTING, WorkoutType.OTHER),
-    (SDKWorkoutType.PLAY, WorkoutType.OTHER),
+    (SDKWorkoutType.HUNTING, WorkoutType.HUNTING),
+    (SDKWorkoutType.PLAY, WorkoutType.PLAY),
     # Snow and Ice Sports
     (SDKWorkoutType.CROSS_COUNTRY_SKIING, WorkoutType.CROSS_COUNTRY_SKIING),
-    (SDKWorkoutType.CURLING, WorkoutType.OTHER),
+    (SDKWorkoutType.CURLING, WorkoutType.CURLING),
     (SDKWorkoutType.DOWNHILL_SKIING, WorkoutType.ALPINE_SKIING),
-    (SDKWorkoutType.SNOW_SPORTS, WorkoutType.OTHER),
+    (SDKWorkoutType.SNOW_SPORTS, WorkoutType.SNOW_SPORTS),
     (SDKWorkoutType.SNOWBOARDING, WorkoutType.SNOWBOARDING),
     (SDKWorkoutType.SKATING, WorkoutType.ICE_SKATING),
     # Water Activities
@@ -195,8 +231,8 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     (SDKWorkoutType.SWIMMING, WorkoutType.SWIMMING),
     (SDKWorkoutType.UNDERWATER_DIVING, WorkoutType.DIVING),
     (SDKWorkoutType.WATER_FITNESS, WorkoutType.SWIMMING),
-    (SDKWorkoutType.WATER_POLO, WorkoutType.OTHER),
-    (SDKWorkoutType.WATER_SPORTS, WorkoutType.OTHER),
+    (SDKWorkoutType.WATER_POLO, WorkoutType.WATER_POLO),
+    (SDKWorkoutType.WATER_SPORTS, WorkoutType.WATER_SPORTS),
     # Martial Arts
     (SDKWorkoutType.BOXING, WorkoutType.BOXING),
     (SDKWorkoutType.KICKBOXING, WorkoutType.BOXING),
@@ -204,9 +240,9 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     (SDKWorkoutType.TAI_CHI, WorkoutType.MARTIAL_ARTS),
     (SDKWorkoutType.WRESTLING, WorkoutType.MARTIAL_ARTS),
     # Individual Sports
-    (SDKWorkoutType.ARCHERY, WorkoutType.OTHER),
-    (SDKWorkoutType.BOWLING, WorkoutType.OTHER),
-    (SDKWorkoutType.FENCING, WorkoutType.OTHER),
+    (SDKWorkoutType.ARCHERY, WorkoutType.ARCHERY),
+    (SDKWorkoutType.BOWLING, WorkoutType.BOWLING),
+    (SDKWorkoutType.FENCING, WorkoutType.FENCING),
     (SDKWorkoutType.GYMNASTICS, WorkoutType.FITNESS_EQUIPMENT),
     (SDKWorkoutType.TRACK_AND_FIELD, WorkoutType.RUNNING),
     # Multisport Activities
@@ -216,8 +252,39 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     (SDKWorkoutType.DANCE, WorkoutType.DANCE),
     (SDKWorkoutType.DANCE_INSPIRED_TRAINING, WorkoutType.DANCE),
     (SDKWorkoutType.MIXED_METABOLIC_CARDIO_TRAINING, WorkoutType.CARDIO_TRAINING),
+    # Health Connect (Android) — third-party HC writers (Peloton, Strava,
+    # Zwift, …) emit these via ``HealthConnectManager.mapExerciseType`` in
+    # the OW Android SDK. Wire format is uppercase (``"CYCLING_STATIONARY"``);
+    # ``get_unified_workout_type`` lowercases input before lookup so the
+    # snake_case keys below match.
+    (SDKWorkoutType.CYCLING_STATIONARY, WorkoutType.INDOOR_CYCLING),
+    (SDKWorkoutType.BOOT_CAMP, WorkoutType.CARDIO_TRAINING),
+    (SDKWorkoutType.CALISTHENICS, WorkoutType.STRENGTH_TRAINING),
+    (SDKWorkoutType.DANCING, WorkoutType.DANCE),
+    (SDKWorkoutType.EXERCISE_CLASS, WorkoutType.CARDIO_TRAINING),
+    (SDKWorkoutType.FOOTBALL_AMERICAN, WorkoutType.AMERICAN_FOOTBALL),
+    (SDKWorkoutType.FOOTBALL_AUSTRALIAN, WorkoutType.FOOTBALL),
+    (SDKWorkoutType.FRISBEE_DISC, WorkoutType.DISC_SPORTS),
+    (SDKWorkoutType.GUIDED_BREATHING, WorkoutType.MEDITATION),
+    (SDKWorkoutType.ICE_HOCKEY, WorkoutType.HOCKEY),
+    (SDKWorkoutType.ICE_SKATING, WorkoutType.ICE_SKATING),
+    (SDKWorkoutType.PADDLING, WorkoutType.PADDLING),
+    (SDKWorkoutType.PARAGLIDING, WorkoutType.PARAGLIDING),
+    (SDKWorkoutType.ROCK_CLIMBING, WorkoutType.ROCK_CLIMBING),
+    (SDKWorkoutType.ROLLER_HOCKEY, WorkoutType.HOCKEY),
+    (SDKWorkoutType.ROWING_MACHINE, WorkoutType.ROWING_MACHINE),
+    (SDKWorkoutType.RUNNING_TREADMILL, WorkoutType.TREADMILL),
+    (SDKWorkoutType.SCUBA_DIVING, WorkoutType.DIVING),
+    (SDKWorkoutType.SKIING, WorkoutType.ALPINE_SKIING),
+    (SDKWorkoutType.SNOWSHOEING, WorkoutType.SNOWSHOEING),
+    (SDKWorkoutType.STAIR_CLIMBING_MACHINE, WorkoutType.STAIR_CLIMBING),
+    (SDKWorkoutType.STRETCHING, WorkoutType.STRETCHING),
+    (SDKWorkoutType.SWIMMING_OPEN_WATER, WorkoutType.OPEN_WATER_SWIMMING),
+    (SDKWorkoutType.SWIMMING_POOL, WorkoutType.POOL_SWIMMING),
+    (SDKWorkoutType.WEIGHTLIFTING, WorkoutType.STRENGTH_TRAINING),
+    (SDKWorkoutType.WHEELCHAIR, WorkoutType.WHEELCHAIR),
     # Other
-    (SDKWorkoutType.OTHER, WorkoutType.OTHER),
+    (SDKWorkoutType.OTHER, WorkoutType.GENERIC),
 ]
 
 
@@ -231,8 +298,10 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
     Convert SDK activity type to unified WorkoutType.
 
     Args:
-        sdk_activity_type: SDK activity type string in snake_case
-                                (e.g., "running", "cycling", "yoga")
+        sdk_activity_type: SDK activity type string. Accepts both Apple
+            HealthKit snake_case (``"running"``) and Health Connect
+            uppercase vocabulary (``"CYCLING_STATIONARY"``) emitted by the
+            OW Android SDK's ``HealthConnectManager.mapExerciseType``.
 
     Returns:
         Unified WorkoutType enum value
@@ -244,15 +313,24 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
         WorkoutType.CYCLING
         >>> get_unified_workout_type("yoga")
         WorkoutType.YOGA
+        >>> get_unified_workout_type("CYCLING_STATIONARY")
+        WorkoutType.INDOOR_CYCLING
         >>> get_unified_workout_type("other")
-        WorkoutType.OTHER
+        WorkoutType.GENERIC
     Note:
         Some deprecated types are still supported for backward compatibility:
         - dance
         - dance_inspired_training
         - mixed_metabolic_cardio_training
     """
-    return SDK_TO_UNIFIED.get(sdk_activity_type, WorkoutType.OTHER)  # type: ignore[arg-type]
+    # Normalise so we accept both Apple HealthKit (snake_case) and Health
+    # Connect (UPPER_CASE) vocabulary on the wire. Strip whitespace because
+    # some upstream writers pad the value.
+    if isinstance(sdk_activity_type, str):
+        normalised: SDKWorkoutType | str = sdk_activity_type.strip().lower()
+    else:
+        normalised = sdk_activity_type
+    return SDK_TO_UNIFIED.get(normalised, WorkoutType.OTHER)
 
 
 def get_activity_name(sdk_activity_type: str) -> str:

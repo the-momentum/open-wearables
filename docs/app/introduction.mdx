@@ -1,0 +1,153 @@
+---
+title: "Open Wearables Mobile App"
+sidebarTitle: "Introduction"
+description: "Sync Apple Health and Android health data to Open Wearables without an API. Install the app, enter an invitation code, and data flows automatically."
+keywords: ["open wearables mobile app", "apple health sync app", "health connect mobile app", "health data sync ios android"]
+"og:title": "Open Wearables Mobile App | Health Sync for iOS and Android"
+"og:description": "Sync Apple Health and Android health data without an API. Install the app, enter an invitation code, and data flows automatically."
+"og:url": "https://docs.openwearables.io/app/introduction"
+"og:type": "article"
+"twitter:title": "Open Wearables Mobile App | Health Sync for iOS and Android"
+"twitter:description": "Sync Apple Health and Android health data without an API. Install the app, enter an invitation code, and data flows automatically."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+Apple Health, Samsung Health, and Google Health Connect keep your health data locked on the device - none of them offer a REST API to access it remotely. The Open Wearables mobile app bridges that gap. Install it, enter an invitation code, and on-device health data starts flowing to your Open Wearables instance automatically.
+
+Whether you're into self-tracking and want to own your health data, or you're a coach or trainer monitoring athletes and clients across Apple, Google, and Samsung devices - the app gives you a simple way to get data into Open Wearables without building anything.
+
+<Info>
+  The app is currently in beta. Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask for a **TestFlight** (iOS) or **APK** (Android) invitation. Public App Store and Play Store releases are coming soon!
+</Info>
+
+<Warning>
+  **Samsung Health on Android requires Developer Mode.** Samsung Health only allows data access to apps registered through Samsung's official partnership program. Since the Open Wearables app is not a registered Samsung partner, you need to [enable Developer Mode](https://developer.samsung.com/health/data/guide/developer-mode.html) in the Samsung Health app for it to work. This does not apply if you use Health Connect as your data source.
+</Warning>
+
+## How it works
+
+<Steps>
+  <Step title="Get an invitation code">
+    In the dashboard, open a user's profile and click **Connect Mobile App**. You'll get both the **API URL** and a single-use **Invitation Code** to enter in the app. For coaches - one code per athlete/client.
+  </Step>
+
+  <Step title="Install and connect">
+    Open the app, paste the API URL and invitation code, and tap **Connect**.
+  </Step>
+
+  <Step title="Grant health permissions">
+    The app requests access to health data (steps, heart rate, sleep, workouts, etc.). On Android, the user also chooses between Health Connect and Samsung Health.
+  </Step>
+
+  <Step title="Automatic sync">
+    Once connected, the app syncs health data in the background. Users can also tap **Sync Now** at any time.
+  </Step>
+</Steps>
+
+## See it in action
+
+### 1. Creating an invitation code in the dashboard
+
+First, the instance admin creates a user and generates an invitation code:
+
+<video
+  controls
+  className="w-full rounded-lg"
+  src="/images/sdk/invitation-code.mp4"
+/>
+
+### 2. Connecting with the mobile app
+
+Enter the invitation code and API URL, then the app connects to the health data source and starts syncing:
+
+<Tabs>
+  <Tab title="Flutter">
+    <video
+      controls
+      className="rounded-lg mx-auto"
+      style={{ maxWidth: '300px' }}
+      src="/images/sdk/app-ow.mp4"
+    />
+  </Tab>
+  <Tab title="React Native">
+    <video
+      controls
+      className="rounded-lg mx-auto"
+      style={{ maxWidth: '300px' }}
+      src="/images/sdk/react-native-ow-app.mp4"
+    />
+  </Tab>
+</Tabs>
+
+<Tip>
+  Make sure to enter the **API URL** (e.g. `https://api.openwearables.ai`), not the dashboard URL (e.g. `https://app.openwearables.ai`).
+</Tip>
+
+### 3. Browsing data in the dashboard
+
+Once synced, health data is available in the Open Wearables dashboard:
+
+<video
+  controls
+  className="w-full rounded-lg"
+  src="/images/sdk/dashboard.mp4"
+/>
+
+### 4. Talking to data with AI (MCP)
+
+Use the Open Wearables MCP server to chat with health data using AI tools like Claude:
+
+<iframe
+  className="w-full rounded-lg"
+  style={{ aspectRatio: '16/9' }}
+  src="https://www.youtube.com/embed/Jb8N2jNbs1Y?si=sy1Ri66JO0TseSbf"
+  title="Talk to health data via MCP"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+/>
+
+### 5. Accessing data via the API
+
+Synced data is also available programmatically via the [REST API](/api-reference/introduction).
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Can't connect / sign-in fails">
+    - Check that the invitation code hasn't been used already
+    - Make sure you're entering the **API URL**, not the dashboard URL
+    - Verify the Open Wearables instance is running and reachable from your phone
+  </Accordion>
+
+  <Accordion title="No data showing up after sync">
+    - Confirm health permissions were granted (iOS: Settings > Privacy > Health; Android: Settings > Health Connect)
+    - Make sure there's actual health data on the device
+    - Try tapping **Sync Now** to force an immediate sync
+    - Check the Logs tab in the app for errors
+  </Accordion>
+
+  <Accordion title="App crashes on launch (iOS)">
+    Make sure you're running on a **physical device** - HealthKit is not available in the iOS Simulator.
+  </Accordion>
+
+  <Accordion title="Health provider not available (Android)">
+    - **Health Connect**: must be installed from Play Store (pre-installed on Android 14+)
+    - **Samsung Health**: only available on Samsung devices
+  </Accordion>
+</AccordionGroup>
+
+## For developers
+
+Want to build your own app with the Open Wearables SDK? Check out the example app guides:
+
+<CardGroup cols={2}>
+  <Card title="Flutter Example App" icon="mobile" href="/sdk/flutter/example-app">
+    Build and run the Flutter example app from source.
+  </Card>
+  <Card title="React Native Example App" icon="mobile" href="/sdk/react-native/example-app">
+    Build and run the React Native example app from source.
+  </Card>
+</CardGroup>

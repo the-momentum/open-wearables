@@ -26,6 +26,5 @@ class RefreshToken(BaseDbModel):
     # For Developer tokens
     developer_id: Mapped[Indexed[FKDeveloper] | None]
 
-    created_at: Mapped[datetime]
     last_used_at: Mapped[datetime | None]
     revoked_at: Mapped[datetime | None]

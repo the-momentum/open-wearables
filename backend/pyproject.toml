@@ -1,47 +1,49 @@
 [project]
 name = "open-wearables"
-version = "0.1.0"
+version = "0.6.2"
 description = ""
 requires-python = ">=3.13"
 dependencies = [
-    "cryptography>=45.0.4",
-    "pydantic-settings>=2.10.1",
+    "cryptography>=49.0.0",
+    "pydantic-settings>=2.14.2",
     "email-validator>=2.2.0",
-    "psycopg>=3.2.9",
-    "sqlalchemy>=2.0.43",
-    "fastapi>=0.120.4",
-    "fastapi-cli>=0.0.8",
-    "celery>=5.5.3",
+    "psycopg>=3.3.4",
+    "sqlalchemy>=2.0.51",
+    "fastapi>=0.139.0",
+    "fastapi-cli>=0.0.28",
+    "celery>=5.6.3",
     "flower>=2.0.1",
-    "redis>=7.0.1",
-    "sentry-sdk[fastapi]>=2.42.1",
-    "python-multipart>=0.0.20",
+    "redis>=8.0.1",
+    "sentry-sdk[fastapi]>=2.64.0",
+    "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx>=0.28.1",
-    "alembic>=1.17.1",
-    "boto3>=1.40.67",
-    "requests>=2.32.5",
+    "alembic>=1.18.5",
+    "boto3>=1.43.40",
+    "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.0.0",
+    "resend>=2.32.2",
     "pyyaml>=6.0.3",
+    "svix>=1.96.1",
+    "numpy>=2.5.1",
+    "faker>=40.28.1",
+    "fitdecode>=0.11.0",
 ]
 
 [dependency-groups]
 code-quality = [
-    "pre-commit>=4.5.1",
-    "ruff>=0.14.14",
-    "ty>=0.0.14",
+    "pre-commit>=4.6.0",
+    "ruff>=0.15.20",
+    "ty>=0.0.54",
 ]
 dev = [
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.0.0",
-    "pytest-cov>=6.2.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
     "freezegun>=1.5.0",
     "factory-boy>=3.3.0",
-    "faker>=33.1.0",
-    "psycopg-binary>=3.3.2",
-    "ruff>=0.14.7",
+    "psycopg-binary>=3.3.4",
     "testcontainers[postgres,redis]>=4.14.2",
 ]
 
@@ -79,6 +81,9 @@ ignore = [
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
 
+[tool.ruff.lint.isort]
+known-third-party = ["celery"]
+
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]
 
@@ -97,10 +102,6 @@ addopts = "-v --tb=short"
 [build-system]
 requires = ["uv_build"]
 build-backend = "uv_build"
-
-[tool.uv]
-required-version = ">=0.9.17"
-exclude-newer= "3 days"
 
 [tool.uv.build-backend]
 module-root = ""

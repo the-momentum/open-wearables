@@ -2,6 +2,15 @@
 
 from pydantic import BaseModel
 
+
+class OuraIntervalData(BaseModel):
+    """5-minute interval data (HRV, HR, SpO2, etc.) returned by Oura sleep endpoint."""
+
+    interval: int  # seconds between samples
+    items: list[float | None] = []
+    timestamp: str  # ISO 8601 start of first sample
+
+
 # ---------------------------------------------------------------------------
 # Workouts
 # ---------------------------------------------------------------------------
@@ -60,6 +69,8 @@ class OuraSleepJSON(BaseModel):
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
     type: str | None = None  # deleted / sleep / long_sleep / rest
+    heart_rate: OuraIntervalData | None = None  # heart rate values at 5-min intervals
+    hrv: OuraIntervalData | None = None  # RMSSD values at 5-min intervals
 
 
 class OuraSleepCollectionJSON(BaseModel):
@@ -123,6 +134,7 @@ class OuraDailyActivityJSON(BaseModel):
     target_meters: int | None = None
     total_calories: int | None = None
     timestamp: str | None = None
+    contributors: dict | None = None
 
 
 class OuraActivityCollectionJSON(BaseModel):
@@ -180,6 +192,21 @@ class OuraSpo2CollectionJSON(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Daily Sleep Score
+# ---------------------------------------------------------------------------
+
+
+class OuraDailySleepJSON(BaseModel):
+    """Daily sleep score from Oura API v2 /usercollection/daily_sleep."""
+
+    id: str
+    day: str | None = None  # YYYY-MM-DD
+    score: int | None = None  # 1-100
+    timestamp: str | None = None  # ISO 8601
+    contributors: dict | None = None
+
+
+# ---------------------------------------------------------------------------
 # Personal Info
 # ---------------------------------------------------------------------------
 
@@ -206,5 +233,5 @@ class OuraWebhookNotification(BaseModel):
     event_type: str  # create / update / delete
     data_type: str  # e.g. tag, workout, sleep, daily_activity, daily_readiness, daily_spo2
     user_id: str  # Oura user ID
-    event_timestamp: str | None = None  # ISO 8601
-    data_timestamp: str | None = None  # ISO 8601 (date of data)
+    object_id: str | None = None  # ID of the affected resource
+    event_time: str | None = None  # ISO 8601 — when the event occurred

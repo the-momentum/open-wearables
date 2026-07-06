@@ -6,6 +6,7 @@ from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
+from app.schemas.responses.upload import ConnectionsCoverage, ProviderConnectionCount
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
@@ -28,10 +29,30 @@ class UserConnectionService(
         """Get count of active connections created within a date range."""
         return self.crud.get_active_count_in_range(db_session, start_date, end_date)
 
+    def get_connections_coverage(self, db_session: DbSession) -> ConnectionsCoverage:
+        """Aggregate coverage stats: users with active conn, multi-conn, top providers."""
+        return ConnectionsCoverage(
+            users_with_active=self.crud.get_users_with_active_conn_count(db_session),
+            users_with_multi_active=self.crud.get_users_with_multi_active_conn_count(db_session),
+            top_providers=[
+                ProviderConnectionCount(provider=p, count=c)
+                for p, c in self.crud.get_top_providers_by_active_conn(db_session)
+            ],
+        )
+
     @handle_exceptions
     def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all connections for a user."""
         return self.crud.get_by_user_id(db_session, user_id)
+
+    def get_linked_user_ids(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        provider_pairs: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], list[UUID]]:
+        """Return other active OW users sharing the same external account, grouped by (provider, provider_user_id)."""
+        return self.crud.get_linked_user_ids(db_session, user_id, provider_pairs)
 
     @handle_exceptions
     def disconnect(
@@ -54,6 +75,18 @@ class UserConnectionService(
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
+
+    @handle_exceptions
+    def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
+        """Stamp last_synced_at=now on the user's connection for the given provider.
+
+        Used after OAuth completion so the first periodic sync uses the connection
+        timestamp as its live-sync cursor and won't attempt to pull all historical data.
+        No-op if the connection does not exist.
+        """
+        connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
+        if connection:
+            self.crud.update_last_synced_at(db_session, connection)
 
     def _deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate

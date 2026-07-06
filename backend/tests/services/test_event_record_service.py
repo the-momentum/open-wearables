@@ -10,11 +10,12 @@ Tests cover:
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import DataSource
+from app.models import DataSource, EventRecord
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate, EventRecordQueryParams
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
@@ -102,6 +103,68 @@ class TestEventRecordServiceCreateDetail:
         # All optional fields should be None
         assert getattr(detail, "heart_rate_min", None) is None
         assert getattr(detail, "steps_count", None) is None
+
+
+class TestEventRecordServiceBulkCreateDetails:
+    """bulk_create_details must dispatch a webhook per detail on commit.
+
+    Before the fix, Apple/Google/Samsung SDK imports saved workouts through
+    bulk_create + bulk_create_details and no webhook was ever emitted.
+    """
+
+    def test_bulk_create_details_emits_workout_webhooks(self, db: Session) -> None:
+        data_source = DataSourceFactory(source="apple")
+        rec1 = EventRecordFactory(mapping=data_source, category="workout", type_="running")
+        rec2 = EventRecordFactory(mapping=data_source, category="workout", type_="cycling")
+
+        details = [
+            EventRecordDetailCreate(
+                record_id=rec1.id,
+                energy_burned=Decimal("300.0"),
+                distance=Decimal("5000.0"),
+            ),
+            EventRecordDetailCreate(
+                record_id=rec2.id,
+                energy_burned=Decimal("500.0"),
+                distance=Decimal("20000.0"),
+            ),
+        ]
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            event_record_service.bulk_create_details(db, details, detail_type="workout")
+            db.commit()
+
+        assert mock_workout.call_count == 2
+        dispatched_ids = {c.kwargs["record_id"] for c in mock_workout.call_args_list}
+        assert dispatched_ids == {rec1.id, rec2.id}
+
+    def test_bulk_create_details_silent_when_svix_disabled(self, db: Session) -> None:
+        data_source = DataSourceFactory(source="apple")
+        rec = EventRecordFactory(mapping=data_source, category="workout", type_="running")
+
+        details = [EventRecordDetailCreate(record_id=rec.id, energy_burned=Decimal("250.0"))]
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=False),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            event_record_service.bulk_create_details(db, details, detail_type="workout")
+            db.commit()
+
+        mock_workout.assert_not_called()
+
+    def test_bulk_create_details_empty_list_is_noop(self, db: Session) -> None:
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            event_record_service.bulk_create_details(db, [], detail_type="workout")
+            db.commit()
+
+        mock_workout.assert_not_called()
 
 
 class TestEventRecordServiceGetRecordsResponse:
@@ -706,3 +769,113 @@ class TestCreateOrMergeSleep:
         # Stages should be sorted by start_time (early first)
         assert stages[0]["stage"] == "light"
         assert stages[1]["stage"] == "deep"
+
+
+class TestGetSleepSessions:
+    """Test get_sleep_sessions response fields."""
+
+    def test_returns_sleep_duration_and_time_in_bed_when_details_present(self, db: Session) -> None:
+        """sleep_duration_seconds should come from sleep_total_duration_minutes; duration_seconds stays time-in-bed."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="oura")
+        start = datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 11, 7, 0, tzinfo=timezone.utc)  # 8h in bed = 28800s
+        record = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=28800,
+        )
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_total_duration_minutes=450,  # 7h30m of actual sleep
+            sleep_awake_minutes=30,
+        )
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        session = next(s for s in response.data if s.id == record.id)
+        assert session.duration_seconds == 28800  # time in bed (unchanged)
+        assert session.sleep_duration_seconds == 450 * 60  # actual sleep
+
+    def test_sleep_duration_none_when_details_missing(self, db: Session) -> None:
+        """sleep_duration_seconds should be None if SleepDetails has no total duration."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="oura")
+        record = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            duration_seconds=28800,
+            start_datetime=datetime(2026, 4, 15, tzinfo=timezone.utc),
+        )
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        session = next(s for s in response.data if s.id == record.id)
+        assert session.duration_seconds == 28800
+        assert session.sleep_duration_seconds is None
+
+    def _sleep_record(self, mapping: DataSource) -> EventRecord:
+        """Create a sleep session ending 2026-04-11 (UTC) for the given source."""
+        return EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 11, 7, 0, tzinfo=timezone.utc),
+            duration_seconds=28800,
+        )
+
+    def test_returns_all_sources_by_default(self, db: Session) -> None:
+        """Without the flag, sessions from every source are returned (backwards compatible)."""
+        user = UserFactory()
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura_record = self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        ids = {s.id for s in response.data}
+        assert oura_record.id in ids
+        assert garmin_record.id in ids
+
+    def test_filter_by_priority_keeps_only_best_source_per_date(self, db: Session) -> None:
+        """With the flag, only the highest-priority source's sessions survive per date."""
+        from app.schemas.enums import ProviderName
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura_record = self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        # Garmin ranks above Oura.
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True)
+
+        ids = {s.id for s in response.data}
+        assert garmin_record.id in ids
+        assert oura_record.id not in ids

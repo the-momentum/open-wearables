@@ -1,12 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { CredentialsTab } from './settings/credentials-tab';
-import { ProvidersTab } from './settings/providers-tab';
-import { PrioritiesTab } from './settings/priorities-tab';
-import { TeamTab } from './settings/team-tab';
-import { DataLifecycleTab } from './settings/data-lifecycle-tab';
-import { SecurityTab } from './settings/security-tab';
+import { PageHeader } from '@/components/ui/page-header';
+import { CredentialsTab } from './settings/-credentials-tab';
+import { ProvidersTab } from './settings/-providers-tab';
+import { PrioritiesTab } from './settings/-priorities-tab';
+import { TeamTab } from './settings/-team-tab';
+import { DataLifecycleTab } from './settings/-data-lifecycle-tab';
+import { SecurityTab } from './settings/-security-tab';
+import { SeedDataTab } from './settings/-seed-data-tab';
 
 export const Route = createFileRoute('/_authenticated/settings')({
   component: SettingsPage,
@@ -49,22 +51,25 @@ const tabs: TabConfig[] = [
     label: 'Security',
     component: SecurityTab,
   },
+  {
+    id: 'seed-data',
+    label: 'Seed Data',
+    component: SeedDataTab,
+  },
 ];
 
 function SettingsPage() {
   const [activeTab, setActiveTab] = useState(tabs[0].id);
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-medium text-white">Settings</h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Manage your settings and preferences
-        </p>
-      </div>
+    <div className="p-6 md:p-8 space-y-6">
+      <PageHeader
+        title="Settings"
+        description="Manage your settings and preferences"
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-zinc-900/50 border border-zinc-800">
+        <TabsList className="border border-border/60 bg-card/40 backdrop-blur-xl">
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}

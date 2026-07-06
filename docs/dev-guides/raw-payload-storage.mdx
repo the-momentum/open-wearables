@@ -1,6 +1,14 @@
 ---
-title: "Raw Payloads Storage"
-description: "Capture raw incoming data from wearable providers for debugging and testing"
+title: "Raw Payload Storage"
+description: "Capture raw JSON payloads from wearable providers before processing. Useful for debugging issues, testing ingestion changes, and reproducing parsing bugs."
+keywords: ["raw payload storage wearables", "wearable data debug", "health api payload capture", "open wearables debug"]
+"og:title": "Raw Payload Storage | Open Wearables Debug Tool"
+"og:description": "Capture raw JSON payloads from providers for debugging, testing ingestion changes, and reproducing parsing bugs locally."
+"og:url": "https://docs.openwearables.io/dev-guides/raw-payload-storage"
+"og:type": "article"
+"twitter:title": "Raw Payload Storage | Open Wearables Debug Tool"
+"twitter:description": "Capture raw JSON payloads from providers for debugging, testing ingestion changes, and reproducing parsing bugs locally."
+"twitter:card": "summary_large_image"
 ---
 
 ## Overview
@@ -115,7 +123,7 @@ Raw payloads storage is currently enabled at two ingestion points:
 | Endpoint | Source | Provider | Trace ID |
 |----------|--------|----------|----------|
 | `POST /api/v1/garmin/push` | `webhook` | `garmin` | 8-char request trace ID |
-| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `google`, `auto-health-export` | UUID4 batch ID |
+| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `google` | UUID4 batch ID |
 
 ## Error Handling
 
@@ -273,4 +281,4 @@ uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
 
 - [AWS Setup](/dev-guides/aws-setup) - Configure AWS credentials and S3 buckets
 - [How to Add a Provider](/dev-guides/how-to-add-new-provider) - Adding raw payload storage to new providers
-- [Backend E2E Integration](/dev-guides/backend-e2e-integration) - Testing your setup
+- [Integration Guide](/dev-guides/integration-guide) - Testing your setup

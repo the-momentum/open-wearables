@@ -9,7 +9,6 @@ from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
 )
-from app.services.providers.apple.handlers.auto_export import AutoExportHandler
 from app.services.providers.apple.handlers.base import AppleSourceHandler
 from app.services.providers.apple.handlers.healthkit import HealthKitHandler
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
@@ -28,10 +27,9 @@ class AppleWorkouts(BaseWorkoutsTemplate):
             connection_repo,
             provider_name="apple_health_sdk",
             api_base_url="",
-            oauth=None,  # type: ignore[arg-type]
+            oauth=None,  # ty:ignore[invalid-argument-type]
         )
         self.handlers: dict[str, AppleSourceHandler] = {
-            "auto_export": AutoExportHandler(),
             "healthkit": HealthKitHandler(),
         }
 
@@ -89,7 +87,7 @@ class AppleWorkouts(BaseWorkoutsTemplate):
             db: Database session.
             user_id: User ID.
             payload: The raw data payload.
-            source_type: The source of the data ('auto_export' or 'healthkit').
+            source_type: The source of the data (e.g. 'healthkit').
         """
         handler = self.handlers.get(source_type)
         if not handler:

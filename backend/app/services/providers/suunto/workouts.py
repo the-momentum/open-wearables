@@ -43,8 +43,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         end_date: datetime,
     ) -> list[Any]:
         """Get workouts from Suunto API."""
-        # Suunto uses 'since' parameter
-        since = int(start_date.timestamp())
+        # Suunto uses 'since' parameter in epoch milliseconds
+        since = int(start_date.timestamp() * 1000)
         params = {
             "since": since,
             "limit": 100,
@@ -151,7 +151,10 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         workout_type = get_unified_workout_type(raw_workout.activityId)
 
-        start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
+        # Fresh webhook payloads sometimes omit stopTime; approximate it from startTime + totalTime.
+        # This ignores pauses, but the periodic /v3/workouts sync overwrites with the canonical value.
+        stop_time_ms = raw_workout.stopTime or raw_workout.startTime + int(raw_workout.totalTime * 1000)
+        start_date, end_date = self._extract_dates(raw_workout.startTime, stop_time_ms)
         duration_seconds = int(raw_workout.totalTime)
 
         zone_offset = None
@@ -222,22 +225,20 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         api_kwargs = kwargs.copy()
 
-        # Convert start_date to 'since' timestamp
+        # Convert start_date to 'since' timestamp (Suunto expects epoch milliseconds)
         if start_date:
             if isinstance(start_date, str):
                 try:
                     start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                    api_kwargs["since"] = int(start_dt.timestamp())
+                    api_kwargs["since"] = int(start_dt.timestamp() * 1000)
                 except (ValueError, AttributeError):
                     pass
             elif isinstance(start_date, datetime):
-                api_kwargs["since"] = int(start_date.timestamp())
+                api_kwargs["since"] = int(start_date.timestamp() * 1000)
 
         # Set Suunto-specific defaults
         if "limit" not in api_kwargs:
             api_kwargs["limit"] = 100
-        if "filter_by_modification_time" not in api_kwargs:
-            api_kwargs["filter_by_modification_time"] = True
 
         response = self.get_workouts_from_api(db, user_id, **api_kwargs)
         workouts_data = response.get("payload", [])
@@ -275,15 +276,19 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         headers = self._get_suunto_headers()
         return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}", headers=headers)
 
-    def _process_single_workout(self, db: DbSession, user_id: UUID, raw_workout: Any) -> None:
-        """Internal method to normalize and save a single workout.
-        Overridden to save device info first and ensure Pydantic model conversion.
+    def process_push_activity(self, db: DbSession, user_id: UUID, raw_workout: Any) -> UUID | None:
+        """Save a single workout received via the live webhook push path.
+
+        Mirrors the load_data backfill path: builds the record + detail bundle
+        and inserts both via event_record_service. create_detail schedules the
+        after_commit listener that fires the outgoing webhook (workout.created),
+        so consumers subscribed via Svix receive the new workout.
+
+        Returns the created event_record id, or None when the bundle was empty.
         """
-        # Convert dict to Pydantic model if needed
         if isinstance(raw_workout, dict):
             raw_workout = SuuntoWorkoutJSON(**raw_workout)
 
-        # Save device/data source info if available
         if raw_workout.gear:
             device_name = raw_workout.gear.displayName or raw_workout.gear.name
             self.data_source_repo.ensure_data_source(
@@ -295,4 +300,10 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
                 source=self.provider_name,
             )
 
-        super()._process_single_workout(db, user_id, raw_workout)
+        for record, detail in self._build_bundles([raw_workout], user_id):
+            created_record = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
+            return created_record.id
+
+        return None

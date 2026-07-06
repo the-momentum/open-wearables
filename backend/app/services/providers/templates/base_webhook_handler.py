@@ -41,6 +41,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from app.database import DbSession
+from app.utils.structured_logging import log_structured
 
 
 class BaseWebhookHandler(ABC):
@@ -65,9 +66,20 @@ class BaseWebhookHandler(ABC):
       standard *verify → parse → dispatch* sequence is insufficient.
     """
 
+    #: Top-level webhook-payload key holding the provider-side user id.
+    #: Override extract_user_id() instead when it isn't a flat field (e.g. Garmin).
+    user_id_field: str | None = None
+
     def __init__(self, provider_name: str) -> None:
         self.provider_name = provider_name
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    def extract_user_id(self, payload: dict[str, Any]) -> str | None:
+        """Best-effort provider-side user id from a raw webhook payload (for log correlation)."""
+        if not self.user_id_field:
+            return None
+        value = payload.get(self.user_id_field)
+        return str(value) if value is not None else None
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -121,7 +133,7 @@ class BaseWebhookHandler(ABC):
 
         This is where the business logic lives.  Implementations should inspect
         the event/data type on ``payload`` and call the relevant service method
-        (e.g. ``oura_webhook_service.process_notification``).
+        (e.g. ``oura_handler._dispatch_data_type``).
 
         **Delivery-mode contract:**
 
@@ -152,6 +164,24 @@ class BaseWebhookHandler(ABC):
         """
 
     # ------------------------------------------------------------------
+    # Async processing (webhook_stream providers only)
+    # ------------------------------------------------------------------
+
+    def process_payload(self, db: DbSession, payload: Any, trace_id: str) -> dict[str, Any]:
+        """Process a previously-enqueued webhook payload.
+
+        Called by the ``process_webhook_push`` Celery task with its own DB
+        session. Override in ``webhook_stream`` providers (Garmin, Suunto) where
+        ``dispatch()`` enqueues work and this method does the actual processing.
+
+        ``webhook_ping`` providers do not need to override this — they complete
+        all processing inside ``dispatch()`` itself.
+        """
+        raise NotImplementedError(
+            f"Provider '{self.provider_name}' must implement process_payload() to use the unified webhook_push_task."
+        )
+
+    # ------------------------------------------------------------------
     # Concrete pipeline orchestration
     # ------------------------------------------------------------------
 
@@ -177,9 +207,13 @@ class BaseWebhookHandler(ABC):
             ``HTTPException(400)`` if ``parse_payload`` raises a validation error.
         """
         if not self.verify_signature(request, body):
-            self.logger.warning(
+            log_structured(
+                self.logger,
+                "warning",
                 "Webhook signature verification failed",
-                extra={"provider": self.provider_name},
+                provider=self.provider_name,
+                path=request.url.path,
+                client_host=request.client.host if request.client else None,
             )
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 

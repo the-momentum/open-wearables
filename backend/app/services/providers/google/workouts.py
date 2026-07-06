@@ -29,7 +29,7 @@ class GoogleWorkouts(BaseWorkoutsTemplate):
             connection_repo,
             provider_name="google_health_connect_sdk",
             api_base_url="",
-            oauth=None,  # type: ignore[arg-type]
+            oauth=None,  # ty:ignore[invalid-argument-type]
         )
 
     def get_workouts(

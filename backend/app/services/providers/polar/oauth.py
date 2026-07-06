@@ -1,4 +1,5 @@
 from app.config import settings
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
@@ -22,7 +23,7 @@ class PolarOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.polar_client_id or "",
             client_secret=(settings.polar_client_secret.get_secret_value() if settings.polar_client_secret else ""),
-            redirect_uri=settings.polar_redirect_uri,
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.POLAR),
             default_scope=settings.polar_default_scope,
         )
 

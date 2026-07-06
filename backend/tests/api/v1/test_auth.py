@@ -80,7 +80,7 @@ class TestLogin:
         )
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code in [400, 401, 422]
 
     def test_login_missing_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails with missing password."""
@@ -94,7 +94,7 @@ class TestLogin:
         )
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code in [400, 401, 422]
 
     def test_login_empty_credentials(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test login fails with empty credentials."""

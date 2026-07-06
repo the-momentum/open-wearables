@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services.exceptions import AuthenticationError, ConfigurationError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class OpenWearablesClient:
             from app.config import Settings
 
             env_file = Settings.model_config.get("env_file")
-            raise ValueError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
+            raise ConfigurationError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
 
     @property
     def headers(self) -> dict[str, str]:
@@ -49,9 +50,9 @@ class OpenWearablesClient:
             )
 
             if response.status_code == 401:
-                raise ValueError("Invalid API key. Check your OPEN_WEARABLES_API_KEY configuration.")
+                raise AuthenticationError("Invalid API key. Check your OPEN_WEARABLES_API_KEY configuration.")
             if response.status_code == 404:
-                raise ValueError(f"Resource not found: {path}")
+                raise NotFoundError(f"Resource not found: {path}")
 
             response.raise_for_status()
             return response.json()
@@ -166,6 +167,42 @@ class OpenWearablesClient:
             "limit": limit,
         }
         return await self._request("GET", f"/api/v1/users/{user_id}/summaries/activity", params=params)
+
+    async def get_timeseries(
+        self,
+        user_id: str,
+        start_time: str,
+        end_time: str,
+        types: list[str],
+        resolution: str = "raw",
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get granular time-series samples for a user within a time range.
+
+        Args:
+            user_id: UUID of the user
+            start_time: Start of the window (ISO-8601, e.g. "2026-04-05T00:00:00Z")
+            end_time: End of the window (ISO-8601, e.g. "2026-04-05T23:59:59Z")
+            types: SeriesType codes to include (e.g. ["heart_rate", "oxygen_saturation"])
+            resolution: One of "raw", "1min", "5min", "15min", "1hour"
+            limit: Page size (1-100)
+            cursor: Opaque pagination cursor returned by a previous call
+
+        Returns:
+            Paginated response with time-series samples
+        """
+        params: dict[str, Any] = {
+            "start_time": start_time,
+            "end_time": end_time,
+            "types": types,
+            "resolution": resolution,
+            "limit": limit,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        return await self._request("GET", f"/api/v1/users/{user_id}/timeseries", params=params)
 
 
 # Singleton instance
