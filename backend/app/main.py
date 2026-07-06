@@ -67,6 +67,12 @@ async def root() -> dict[str, str]:
     return {"message": "Server is running!"}
 
 
+@api.get("/healthz", include_in_schema=False)
+async def healthz() -> dict[str, str]:
+    """Liveness probe for ALB, ECS, and external uptime checks."""
+    return {"status": "ok"}
+
+
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
