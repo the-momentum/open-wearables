@@ -1,3 +1,5 @@
+import httpx
+
 from app.config import settings
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
@@ -27,6 +29,15 @@ class PolarOAuth(BaseOAuthTemplate):
             default_scope=settings.polar_default_scope,
         )
 
+    def deregister_user(self, access_token: str) -> None:
+        """Deregister user from Polar API."""
+        response = httpx.delete(
+            f"{self.api_base_url}/v3/users",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts Polar user ID from token response and registers user."""
         raw = token_response.model_extra.get("x_user_id") if token_response.model_extra else None
@@ -39,8 +50,6 @@ class PolarOAuth(BaseOAuthTemplate):
 
     def _register_user(self, access_token: str, member_id: str) -> None:
         """Registers the user with Polar API."""
-        import httpx
-
         try:
             register_url = f"{self.api_base_url}/v3/users"
             headers = {

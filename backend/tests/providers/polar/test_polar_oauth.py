@@ -7,6 +7,7 @@ Tests the PolarOAuth class for OAuth 2.0 authentication flow with Polar API.
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.model_crud.credentials import OAuthTokenResponse
@@ -322,3 +323,68 @@ class TestPolarUserRegistration:
         # Act & Assert - should not raise exception
         oauth._register_user("test_access_token", str(user.id))
         # User might already be registered, so we handle errors gracefully
+
+
+class TestPolarDeregisterUser:
+    """Tests for Polar user deregistration API call."""
+
+    @patch("httpx.delete")
+    def test_deregister_user_success(self, mock_httpx_delete: MagicMock, db: Session) -> None:
+        """Test deregistering user from Polar API."""
+        # Arrange
+        from app.models import User
+        from app.repositories.user_connection_repository import UserConnectionRepository
+        from app.repositories.user_repository import UserRepository
+
+        user_repo = UserRepository(User)
+        connection_repo = UserConnectionRepository()
+
+        oauth = PolarOAuth(
+            user_repo=user_repo,
+            connection_repo=connection_repo,
+            provider_name="polar",
+            api_base_url="https://www.polaraccesslink.com",
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 204
+        mock_response.raise_for_status.return_value = None
+        mock_httpx_delete.return_value = mock_response
+
+        # Act
+        oauth.deregister_user("test_access_token")
+
+        # Assert
+        mock_httpx_delete.assert_called_once_with(
+            "https://www.polaraccesslink.com/v3/users",
+            headers={"Authorization": "Bearer test_access_token"},
+            timeout=30.0,
+        )
+
+    @patch("httpx.delete")
+    def test_deregister_user_raises_on_http_error(self, mock_httpx_delete: MagicMock, db: Session) -> None:
+        """Test that deregister_user raises on HTTP error."""
+        # Arrange
+        from app.models import User
+        from app.repositories.user_connection_repository import UserConnectionRepository
+        from app.repositories.user_repository import UserRepository
+
+        user_repo = UserRepository(User)
+        connection_repo = UserConnectionRepository()
+
+        oauth = PolarOAuth(
+            user_repo=user_repo,
+            connection_repo=connection_repo,
+            provider_name="polar",
+            api_base_url="https://www.polaraccesslink.com",
+        )
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
+        )
+        mock_httpx_delete.return_value = mock_response
+
+        # Act & Assert
+        with pytest.raises(httpx.HTTPStatusError):
+            oauth.deregister_user("expired_token")
