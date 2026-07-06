@@ -69,7 +69,7 @@ async def root() -> dict[str, str]:
 
 @api.get("/healthz", include_in_schema=False)
 async def healthz() -> dict[str, str]:
-    """Liveness probe for ALB, ECS, and external uptime checks."""
+    """Liveness probe for ALB / Route53 health checks."""
     return {"status": "ok"}
 
 
