@@ -88,6 +88,12 @@ def on_workout_created(
     max_heart_rate_bpm: int | None = None,
     elevation_gain_meters: float | None = None,
     avg_pace_sec_per_km: int | None = None,
+    hr_zone_1_min: int | None = None,
+    hr_zone_2_min: int | None = None,
+    hr_zone_3_min: int | None = None,
+    hr_zone_4_min: int | None = None,
+    hr_zone_5_min: int | None = None,
+    hr_trace_completeness: float | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.WORKOUT_CREATED,
@@ -108,6 +114,14 @@ def on_workout_created(
                 "max_heart_rate_bpm": max_heart_rate_bpm,
                 "avg_pace_sec_per_km": avg_pace_sec_per_km,
                 "elevation_gain_meters": elevation_gain_meters,
+                # Edwards HR-zone minutes (×1..×5) + HR-trace completeness. All six are
+                # null when no HR series exists for the workout window.
+                "hr_zone_1_min": hr_zone_1_min,
+                "hr_zone_2_min": hr_zone_2_min,
+                "hr_zone_3_min": hr_zone_3_min,
+                "hr_zone_4_min": hr_zone_4_min,
+                "hr_zone_5_min": hr_zone_5_min,
+                "hr_trace_completeness": hr_trace_completeness,
             },
         },
         idempotency_key=f"workout.created.{record_id}",

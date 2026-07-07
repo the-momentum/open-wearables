@@ -15,6 +15,7 @@ from app.models import (
     HealthScore,
     MenstrualCycleDetails,
     SleepDetails,
+    User,
     WorkoutDetails,
 )
 from app.repositories import (
@@ -24,6 +25,7 @@ from app.repositories import (
     EventRecordRepository,
     HealthScoreRepository,
 )
+from app.repositories.user_repository import UserRepository
 from app.schemas.enums import WORKOUTS_WITH_PACE, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -57,6 +59,7 @@ from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
+from app.utils.heart_rate import estimate_max_hr
 from app.utils.pagination import encode_cursor
 
 
@@ -71,7 +74,62 @@ class EventRecordService(
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
         self.health_score_repo = HealthScoreRepository(HealthScore)
+        self.user_repo = UserRepository(User)
         self.priority_service = priority_service
+
+    def _user_birth_date(self, db_session: DbSession, user_id: UUID) -> date | None:
+        """Return the user's birth_date (for max-HR estimation), or None."""
+        user = self.user_repo.get(db_session, user_id)
+        if user and user.personal_record:
+            return user.personal_record.birth_date
+        return None
+
+    def _workout_hr_zone_fields(
+        self,
+        db_session: DbSession,
+        record: EventRecord,
+        data_source: DataSource,
+        birth_date_cache: dict[UUID, date | None] | None = None,
+    ) -> tuple[dict[str, int | None], float | None]:
+        """Compute Edwards HR-zone minutes + HR-trace completeness for a workout record.
+
+        Returns ``(zone_minutes, completeness)`` where ``zone_minutes`` maps the five
+        ``hr_zone_N_min`` fields. Both are all-None for non-workout records, when outgoing
+        webhooks are disabled (the query would be wasted), or when the workout window
+        carries no HR series. Runs while the session is live (webhooks are now fired
+        directly, not via after_commit). ``birth_date_cache`` lets the bulk path avoid one
+        user lookup per workout when many share a user.
+        """
+        none_zones: dict[str, int | None] = {f"hr_zone_{i}_min": None for i in range(1, 6)}
+        if (record.category or "").lower() != "workout" or not svix_service.is_enabled():
+            return none_zones, None
+
+        user_id = data_source.user_id
+        if birth_date_cache is not None and user_id in birth_date_cache:
+            birth_date = birth_date_cache[user_id]
+        else:
+            birth_date = self._user_birth_date(db_session, user_id)
+            if birth_date_cache is not None:
+                birth_date_cache[user_id] = birth_date
+
+        max_hr = estimate_max_hr(birth_date, record.start_datetime)
+        zones = self.data_point_series_repo.get_workout_hr_zone_minutes(
+            db_session,
+            data_source.id,
+            record.start_datetime,
+            record.end_datetime,
+            max_hr,
+        )
+        if zones is None:
+            return none_zones, None
+
+        completeness: float | None = None
+        duration_seconds = record.duration_seconds
+        if duration_seconds and duration_seconds > 0:
+            completeness = round(min(1.0, zones["sampled_minutes"] / (duration_seconds / 60)), 4)
+
+        zone_minutes: dict[str, int | None] = {f"hr_zone_{i}_min": zones[f"zone_{i}_min"] for i in range(1, 6)}
+        return zone_minutes, completeness
 
     def _resolve_avg_hr(
         self,
@@ -135,7 +193,15 @@ class EventRecordService(
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                self._emit_event_record_webhook(record, data_source, detail)
+                # Compute Edwards HR zones while the session is live, then fire directly.
+                zone_minutes, completeness = self._workout_hr_zone_fields(db_session, record, data_source)
+                self._emit_event_record_webhook(
+                    record,
+                    data_source,
+                    detail,
+                    zone_minutes=zone_minutes,
+                    hr_trace_completeness=completeness,
+                )
 
         return result  # ty:ignore[invalid-return-type]
 
@@ -491,8 +557,16 @@ class EventRecordService(
         record: EventRecord,
         data_source: DataSource,
         detail: EventRecordDetailCreate,
+        zone_minutes: dict[str, int | None] | None = None,
+        hr_trace_completeness: float | None = None,
     ) -> None:
-        """Fire the appropriate outgoing webhook for a newly created event record."""
+        """Fire the appropriate outgoing webhook for a newly created event record.
+
+        ``zone_minutes`` (the five ``hr_zone_N_min`` values) and ``hr_trace_completeness``
+        are computed by the caller while the session is live and forwarded to the
+        ``workout.created`` payload; both are None for non-workout records or when no HR
+        series exists.
+        """
         if not svix_service.is_enabled():
             return
         category = (record.category or "").lower()
@@ -550,6 +624,7 @@ class EventRecordService(
                 avg_pace: int | None = None
                 if detail.average_speed and float(detail.average_speed) > 0:
                     avg_pace = int(1000 / float(detail.average_speed))
+                zones = zone_minutes or {}
                 on_workout_created(
                     record_id=record.id,
                     user_id=data_source.user_id,
@@ -568,6 +643,12 @@ class EventRecordService(
                     if detail.total_elevation_gain is not None
                     else None,
                     avg_pace_sec_per_km=avg_pace,
+                    hr_zone_1_min=zones.get("hr_zone_1_min"),
+                    hr_zone_2_min=zones.get("hr_zone_2_min"),
+                    hr_zone_3_min=zones.get("hr_zone_3_min"),
+                    hr_zone_4_min=zones.get("hr_zone_4_min"),
+                    hr_zone_5_min=zones.get("hr_zone_5_min"),
+                    hr_trace_completeness=hr_trace_completeness,
                 )
 
     def bulk_create(
@@ -605,7 +686,13 @@ class EventRecordService(
         )
         data_sources_by_id = {ds.id: ds for ds in data_sources}
 
-        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
+        dispatches: list[
+            tuple[EventRecord, DataSource, EventRecordDetailCreate, dict[str, int | None], float | None]
+        ] = []
+        # Edwards zones need the live session (they query data_point_series), so compute
+        # them here — before the expunge below — and carry the plain values into the
+        # after_commit closure. The cache avoids one user lookup per workout of a user.
+        birth_date_cache: dict[UUID, date | None] = {}
         for detail in details:
             record = records_by_id.get(detail.record_id)
             if record is None or record.data_source_id is None:
@@ -613,7 +700,8 @@ class EventRecordService(
             data_source = data_sources_by_id.get(record.data_source_id)
             if data_source is None:
                 continue
-            dispatches.append((record, data_source, detail))
+            zone_minutes, completeness = self._workout_hr_zone_fields(db_session, record, data_source, birth_date_cache)
+            dispatches.append((record, data_source, detail, zone_minutes, completeness))
 
         if not dispatches:
             return
@@ -628,8 +716,14 @@ class EventRecordService(
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
-            for record, data_source, detail in dispatches:
-                self._emit_event_record_webhook(record, data_source, detail)
+            for record, data_source, detail, zone_minutes, completeness in dispatches:
+                self._emit_event_record_webhook(
+                    record,
+                    data_source,
+                    detail,
+                    zone_minutes=zone_minutes,
+                    hr_trace_completeness=completeness,
+                )
 
     @handle_exceptions
     def _get_records_with_filters(

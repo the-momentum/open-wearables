@@ -29,6 +29,7 @@ from app.schemas.responses.activity import (
     IntensityMinutesResult,
 )
 from app.utils.exceptions import handle_exceptions
+from app.utils.heart_rate import edwards_zone_lower_bounds
 from app.utils.pagination import decode_cursor
 
 # Identity tuple: (user_id, device_model, source)
@@ -486,6 +487,81 @@ class DataPointSeriesRepository(
 
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
+
+    def get_workout_hr_zone_minutes(
+        self,
+        db_session: DbSession,
+        data_source_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+        max_hr: int,
+    ) -> dict[str, int] | None:
+        """Edwards 5-zone minutes + HR-sampled minute count for one workout window.
+
+        Buckets heart-rate samples for ``data_source_id`` within the half-open window
+        ``[start_time, end_time)`` into one-minute buckets (average HR per minute), then
+        classifies each minute bucket into one of five Edwards zones by its average HR
+        (zone bounds from ``edwards_zone_lower_bounds(max_hr)``)::
+
+            zone_1 = [b0, b1)   zone_2 = [b1, b2)   zone_3 = [b2, b3)
+            zone_4 = [b3, b4)   zone_5 = [b4, +inf)
+
+        Minutes whose average HR is below ``b0`` (< 50% max HR) fall in no zone but still
+        count toward ``sampled_minutes`` (HR-trace completeness numerator). Filtering by
+        ``data_source_id`` keeps HR from the same device that recorded the workout, mirroring
+        ``get_avg_hr_for_workout_batch``.
+
+        Returns a dict ``{zone_1_min..zone_5_min, sampled_minutes}`` or ``None`` when the
+        window has no HR samples at all (so the caller emits null zone fields).
+        """
+        hr_id = get_series_type_id(SeriesType.heart_rate)
+
+        minute_trunc = func.date_trunc(literal_column("'minute'"), self.model.recorded_at)
+        minute_bucket = (
+            db_session.query(
+                minute_trunc.label("minute_bucket"),
+                func.avg(self.model.value).label("avg_hr"),
+            )
+            .filter(
+                self.model.data_source_id == data_source_id,
+                self.model.series_type_definition_id == hr_id,
+                self.model.recorded_at >= start_time,
+                self.model.recorded_at < end_time,
+            )
+            .group_by(minute_trunc)
+            .subquery()
+        )
+
+        b0, b1, b2, b3, b4 = edwards_zone_lower_bounds(max_hr)
+        avg_hr = minute_bucket.c.avg_hr
+
+        # Half-open Edwards bands; zone 5 is unclamped (>= b4). Below b0 falls in no zone.
+        z1 = func.coalesce(func.sum(case(((avg_hr >= b0) & (avg_hr < b1), 1), else_=0)), 0)
+        z2 = func.coalesce(func.sum(case(((avg_hr >= b1) & (avg_hr < b2), 1), else_=0)), 0)
+        z3 = func.coalesce(func.sum(case(((avg_hr >= b2) & (avg_hr < b3), 1), else_=0)), 0)
+        z4 = func.coalesce(func.sum(case(((avg_hr >= b3) & (avg_hr < b4), 1), else_=0)), 0)
+        z5 = func.coalesce(func.sum(case((avg_hr >= b4, 1), else_=0)), 0)
+
+        row = db_session.query(
+            func.count().label("sampled_minutes"),
+            z1.label("z1"),
+            z2.label("z2"),
+            z3.label("z3"),
+            z4.label("z4"),
+            z5.label("z5"),
+        ).one()
+
+        if not row.sampled_minutes:
+            return None
+
+        return {
+            "zone_1_min": int(row.z1),
+            "zone_2_min": int(row.z2),
+            "zone_3_min": int(row.z3),
+            "zone_4_min": int(row.z4),
+            "zone_5_min": int(row.z5),
+            "sampled_minutes": int(row.sampled_minutes),
+        }
 
     def get_averages_for_time_range(
         self,
