@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.google_health_endpoints import LIST_ENDPOINT as DATAPOINTS_LIST_ENDPOINT
 from app.constants.series_types.google.sleep_stages import GOOGLE_SLEEP_STAGE_MAP
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
@@ -37,7 +38,7 @@ from app.services.raw_payload_storage import store_raw_payload
 class GoogleHealthApiSleep:
     """Fetches Google Health API Sleep sessions and stores them as sleep EventRecords."""
 
-    LIST_ENDPOINT = "/v4/users/me/dataTypes/sleep/dataPoints"
+    LIST_ENDPOINT = DATAPOINTS_LIST_ENDPOINT.format(data_type="sleep")
     PAGE_SIZE = 1000
 
     def __init__(self, oauth: BaseOAuthTemplate, connection_repo: UserConnectionRepository, api_base_url: str):

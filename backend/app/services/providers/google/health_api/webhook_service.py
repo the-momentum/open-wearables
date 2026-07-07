@@ -21,6 +21,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
 
 from app.config import settings
+from app.constants.google_health_endpoints import SUBSCRIBERS_ENDPOINT
 from app.services.providers.google.health_api.metrics import METRICS
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import log_structured
@@ -63,7 +64,7 @@ class GoogleWebhookService(BaseWebhookService):
                 "secret": f"Bearer {settings.google_webhook_secret.get_secret_value()}",
             },
         }
-        url = f"{GOOGLE_HEALTH_API_BASE}/v4/projects/{settings.google_project_id}/subscribers"
+        url = f"{GOOGLE_HEALTH_API_BASE}{SUBSCRIBERS_ENDPOINT.format(project=settings.google_project_id)}"
         headers = {"Authorization": f"Bearer {self._project_token()}", "Content-Type": "application/json"}
 
         async with httpx.AsyncClient() as client:
@@ -75,6 +76,7 @@ class GoogleWebhookService(BaseWebhookService):
                     return [{"status": "skipped", "subscriber_id": SUBSCRIBER_ID}]
                 response.raise_for_status()
             except httpx.HTTPError as e:
+                response_body = e.response.text if isinstance(e, httpx.HTTPStatusError) else None
                 log_structured(
                     logger,
                     "error",
@@ -83,8 +85,9 @@ class GoogleWebhookService(BaseWebhookService):
                     action="google_webhook_subscription_register_error",
                     error=str(e),
                     status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+                    response_body=response_body,
                 )
-                return [{"status": "error", "error": str(e)}]
+                return [{"status": "error", "error": str(e), "response_body": response_body}]
 
         return [{"status": "created", "subscriber_id": SUBSCRIBER_ID, "response": response.json()}]
 

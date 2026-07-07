@@ -8,6 +8,7 @@ See: https://developers.google.com/health/notifications
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,7 +36,7 @@ class GoogleWebhookData(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     health_user_id: str = Field(alias="healthUserId")
-    operation: str  # UPSERT / DELETE
+    operation: Literal["UPSERT", "DELETE"]
     data_type: str = Field(alias="dataType")
     intervals: list[GoogleWebhookInterval] = Field(default_factory=list)
     subscription_name: str | None = Field(default=None, alias="clientProvidedSubscriptionName")

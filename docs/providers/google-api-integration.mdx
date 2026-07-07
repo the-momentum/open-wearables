@@ -204,7 +204,7 @@ Receiving and processing webhooks needs only `GOOGLE_WEBHOOK_SECRET`. The servic
 Subscribers live at the **project** level (`POST /v4/projects/{project}/subscribers`), so registration authenticates as the project via a **service account**, not a user's OAuth token.
 
 <Warning>
-`gcloud` needs the project **ID** (e.g. `open-wearables-prod`), **not** the project **number** (e.g. `123456789012`).
+`gcloud` commands need the project **ID** (e.g. `open-wearables-prod`). The `GOOGLE_PROJECT_ID` env var, however, needs the project **number** (e.g. `123456789012`) — the subscriber API requires the number in its path.
 </Warning>
 
 <Steps>
@@ -234,10 +234,14 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
     Add to `.env`:
 
     ```bash
-    GOOGLE_PROJECT_ID=your-project-id
+    GOOGLE_PROJECT_ID=your-project-number   # the numeric project NUMBER, not the ID
     GOOGLE_SERVICE_ACCOUNT_FILE=config/health-webhooks-key.json   # unset = use ADC
     # GOOGLE_WEBHOOK_SECRET=your-token   # optional; defaults to SECRET_KEY
     ```
+
+    <Warning>
+    Subscriber registration runs in the **Celery worker**, not the backend/API service. The key file (or credentials) and the `GOOGLE_*` env vars must be present on the **worker** service — a key mounted only into the backend container won't be seen.
+    </Warning>
 
     <Warning>
     A JSON key never expires until deleted — prefer ADC / Workload Identity in production, and keep key files out of version control.
@@ -251,7 +255,7 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GOOGLE_PROJECT_ID` | GCP project that owns the subscriber | — |
+| `GOOGLE_PROJECT_ID` | GCP project **number** (not ID) that owns the subscriber. Get it with `gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)'`. | — |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Path to the SA JSON key; unset uses ADC | — |
 | `GOOGLE_WEBHOOK_SECRET` | Bearer secret Google echoes on notifications | `SECRET_KEY` |
 

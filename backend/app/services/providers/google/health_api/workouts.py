@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.constants.google_health_endpoints import LIST_ENDPOINT as DATAPOINTS_LIST_ENDPOINT
 from app.constants.workout_types import get_unified_google_workout_type
 from app.database import DbSession
 from app.repositories.event_record_repository import EventRecordRepository
@@ -36,7 +37,7 @@ _MM_TO_M = Decimal("0.001")
 class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
     """Fetches Google Health API Exercise sessions and stores them as workout EventRecords."""
 
-    LIST_ENDPOINT = "/v4/users/me/dataTypes/exercise/dataPoints"
+    LIST_ENDPOINT = DATAPOINTS_LIST_ENDPOINT.format(data_type="exercise")
     PAGE_SIZE = 1000
 
     def __init__(

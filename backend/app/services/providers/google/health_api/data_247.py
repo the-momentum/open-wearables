@@ -15,6 +15,7 @@ from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.google_health_endpoints import LIST_ENDPOINT, RECONCILE_ENDPOINT, ROLLUP_ENDPOINT
 from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -44,9 +45,6 @@ from app.utils.structured_logging import log_structured
 class GoogleHealth247Data(Base247DataTemplate):
     """Fetches Google 24/7 metrics (rollUp + list) and persists them as DataPointSeries."""
 
-    ROLLUP_ENDPOINT = "/v4/users/me/dataTypes/{data_type}/dataPoints:rollUp"
-    LIST_ENDPOINT = "/v4/users/me/dataTypes/{data_type}/dataPoints"
-    RECONCILE_ENDPOINT = "/v4/users/me/dataTypes/{data_type}/dataPoints:reconcile"
     # rollUp enforces windowSize * pageSize <= the data type's max range; list default page.
     MAX_PAGE_SIZE = 10_000
     LIST_PAGE_SIZE = 1_000
@@ -165,7 +163,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         page_size = min(spec.max_range_days * windows_per_day, self.MAX_PAGE_SIZE)
         is_daily_total = granularity == DataGranularity.DAILY
 
-        endpoint = self.ROLLUP_ENDPOINT.format(data_type=metric.data_type)
+        endpoint = ROLLUP_ENDPOINT.format(data_type=metric.data_type)
         samples: list[TimeSeriesSampleCreate] = []
         for chunk_start, chunk_end in self._chunk_range(start_time, end_time, spec.max_range_days):
             for point in self._fetch_rollup_window(
@@ -260,7 +258,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         if spec is None:
             return []
         reconcile = settings.google_use_reconcile
-        template = self.RECONCILE_ENDPOINT if reconcile else self.LIST_ENDPOINT
+        template = RECONCILE_ENDPOINT if reconcile else LIST_ENDPOINT
         endpoint = template.format(data_type=metric.data_type)
 
         samples: list[TimeSeriesSampleCreate] = []

@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import httpx
 
 from app.config import settings
+from app.constants.google_health_endpoints import IDENTITY_ENDPOINT
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
@@ -31,7 +32,6 @@ class GoogleOAuth(BaseOAuthTemplate):
     auth_method: AuthenticationMethod = AuthenticationMethod.BODY
 
     USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
-    IDENTITY_ENDPOINT = "/v4/users/me/identity"
 
     @property
     def endpoints(self) -> ProviderEndpoints:
@@ -81,7 +81,7 @@ class GoogleOAuth(BaseOAuthTemplate):
         """
         headers = {"Authorization": f"Bearer {token_response.access_token}"}
         return {
-            "user_id": self._fetch(f"{self.api_base_url}{self.IDENTITY_ENDPOINT}", headers, "healthUserId", user_id),
+            "user_id": self._fetch(f"{self.api_base_url}{IDENTITY_ENDPOINT}", headers, "healthUserId", user_id),
             "username": self._fetch(self.USERINFO_URL, headers, "email", user_id),
         }
 

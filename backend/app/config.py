@@ -192,17 +192,13 @@ class Settings(BaseSettings):
     # Bearer secret Google echoes in the Authorization header of every webhook
     # notification. Defaults to secret_key (see derive_google_webhook_secret).
     google_webhook_secret: SecretStr | None = None
-    # GCP project that owns the Health API subscriber registration (subscribers live
-    # at the project level, not per-user). Required for programmatic registration.
+    # GCP project NUMBER (not ID) for Health API subscriber registration.
     google_project_id: str | None = None
     # Path to the service-account JSON key used to authenticate project-level
     # subscriber registration. If unset, Application Default Credentials are used.
     google_service_account_file: str | None = None
-    # How native-resolution 24/7 data is fetched (only applies at RAW granularity;
-    # HOURLY/DAILY always use windowed rollUp). True = reconcile (one merged, deduplicated
-    # stream across all sources — matches the native health app, no per-device attribution).
-    # False = list (raw per-source points, keeps device attribution, overlapping sources
-    # stored separately and deduplicated on read).
+    # with RAW granularity, either list or reconcile is used
+    # true - reconcile, false - list; for details check docs
     google_use_reconcile: bool = True
 
     # EMAIL SETTINGS (Resend)
