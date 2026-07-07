@@ -109,7 +109,6 @@ import uvicorn  # noqa: E402
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 
-from app.config import settings  # noqa: E402
 from app.constants.workout_types.sensorbio import get_unified_workout_type  # noqa: E402
 from app.services.providers.factory import ProviderFactory  # noqa: E402
 from app.services.providers.sensorbio.data_247 import SensorBio247Data  # noqa: E402
@@ -244,10 +243,6 @@ def _build_oauth_for_provider(name: str) -> Any:
     meta = _PROVIDER_META.get(name)
     if meta is None:
         raise ValueError(f"Unsupported provider: {name}")
-
-    id_env, secret_env = meta["cred_env"]
-    client_id = os.environ.get(id_env, "")
-    client_secret = os.environ.get(secret_env, "")
 
     try:
         # Prefer the real OAuth class from the platform
@@ -1756,7 +1751,7 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "", provi
         redirect_uri = (
             os.environ.get(f"{p.upper()}_REDIRECT_URI")
             or os.environ.get("SENSORBIO_REDIRECT_URI")
-            or f"http://localhost:8765/oauth/callback"
+            or "http://localhost:8765/oauth/callback"
         )
         use_http2 = meta.get("http2", False)
 
@@ -2683,8 +2678,8 @@ async def api_dashboard(request: Request) -> JSONResponse:
 
         # Downsample bio_cursor_records to daily means (per-sample biometrics are high-frequency;
         # aggregate so chart is readable and per-sample 0.0 gaps don't flatten the daily average).
-        from collections import defaultdict
         import statistics as _stats
+        from collections import defaultdict
 
         _daily_hr: dict[str, list[float]] = defaultdict(list)
         _daily_hrv: dict[str, list[float]] = defaultdict(list)
@@ -2724,7 +2719,7 @@ async def api_dashboard(request: Request) -> JSONResponse:
                 + list(_daily_spo2.keys())
                 + list(_daily_brpm.keys())
                 + list(_daily_temp.keys())
-                + [_d for _dk in _daily_extra.values() for _d in _dk.keys()]
+                + [_d for _dk in _daily_extra.values() for _d in _dk]
             )
         )
         bio_downsampled: list[dict[str, Any]] = []
