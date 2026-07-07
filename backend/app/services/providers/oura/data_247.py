@@ -39,6 +39,7 @@ from app.services.providers.oura.coverage import (
     PERSONAL_INFO_SERIES,
     READINESS_SERIES,
     SLEEP_INTERVAL_SERIES,
+    SLEEP_SCALAR_SERIES,
 )
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -795,65 +796,39 @@ class Oura247Data(Base247DataTemplate):
                         trace_id=trace_id,
                     )
 
-            avg_breath = normalized_sleep.get("average_breath")
-            if avg_breath is not None and start_dt is not None:
-                try:
-                    timeseries_service.bulk_create_samples(
-                        db,
-                        [
-                            TimeSeriesSampleCreate(
-                                id=uuid4(),
-                                user_id=user_id,
-                                source=self.provider_name,
-                                recorded_at=start_dt,
-                                zone_offset=zone_offset,
-                                value=Decimal(str(avg_breath)),
-                                series_type=SeriesType.respiratory_rate,
-                            )
-                        ],
-                    )
-                    db.commit()
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        "Failed to save respiratory rate",
-                        action="oura_respiratory_rate_save_error",
-                        sleep_id=str(sleep_id),
-                        error=str(e),
-                        user_id=str(user_id),
-                        provider_user_id=provider_user_id,
-                        trace_id=trace_id,
-                    )
-
-            lowest_hr = normalized_sleep.get("lowest_heart_rate")
-            if lowest_hr is not None and start_dt is not None:
-                try:
-                    timeseries_service.bulk_create_samples(
-                        db,
-                        [
-                            TimeSeriesSampleCreate(
-                                id=uuid4(),
-                                user_id=user_id,
-                                source=self.provider_name,
-                                recorded_at=start_dt,
-                                zone_offset=zone_offset,
-                                value=Decimal(str(lowest_hr)),
-                                series_type=SeriesType.resting_heart_rate,
-                            )
-                        ],
-                    )
-                    db.commit()
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        "Failed to save resting heart rate",
-                        action="oura_resting_heart_rate_save_error",
-                        sleep_id=str(sleep_id),
-                        error=str(e),
-                        user_id=str(user_id),
-                    )
+            if start_dt is not None:
+                for raw_key, series_type in SLEEP_SCALAR_SERIES.items():
+                    scalar_value = normalized_sleep.get(raw_key)
+                    if scalar_value is None:
+                        continue
+                    try:
+                        timeseries_service.bulk_create_samples(
+                            db,
+                            [
+                                TimeSeriesSampleCreate(
+                                    id=uuid4(),
+                                    user_id=user_id,
+                                    source=self.provider_name,
+                                    recorded_at=start_dt,
+                                    zone_offset=zone_offset,
+                                    value=Decimal(str(scalar_value)),
+                                    series_type=series_type,
+                                )
+                            ],
+                        )
+                        db.commit()
+                    except Exception as e:
+                        log_structured(
+                            self.logger,
+                            "warning",
+                            f"Failed to save {series_type.value}",
+                            action=f"oura_{series_type.value}_save_error",
+                            sleep_id=str(sleep_id),
+                            error=str(e),
+                            user_id=str(user_id),
+                            provider_user_id=provider_user_id,
+                            trace_id=trace_id,
+                        )
 
         return count
 

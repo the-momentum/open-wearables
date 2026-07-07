@@ -16,6 +16,10 @@ SLEEP_INTERVAL_SERIES: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
     "hrv": SeriesType.heart_rate_variability_rmssd,
 }
+SLEEP_SCALAR_SERIES: dict[str, SeriesType] = {
+    "average_breath": SeriesType.respiratory_rate,
+    "lowest_heart_rate": SeriesType.resting_heart_rate,
+}
 PERSONAL_INFO_SERIES: dict[str, SeriesType] = {
     "weight": SeriesType.weight,
     "height": SeriesType.height,
@@ -26,8 +30,8 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         *ACTIVITY_SERIES.values(),  # /v2/usercollection/daily_activity
         *READINESS_SERIES.values(),  # /v2/usercollection/daily_readiness
         *SLEEP_INTERVAL_SERIES.values(),  # /v2/usercollection/sleep (intervals)
+        *SLEEP_SCALAR_SERIES.values(),  # /v2/usercollection/sleep (per-night scalars)
         *PERSONAL_INFO_SERIES.values(),  # /v2/usercollection/personal_info
-        SeriesType.respiratory_rate,  # /v2/usercollection/sleep (average_breath)
         SeriesType.oxygen_saturation,  # /v2/usercollection/daily_spo2
         SeriesType.breathing_disturbance_index,  # /v2/usercollection/daily_spo2
         SeriesType.vo2_max,  # /v2/usercollection/vO2_max
