@@ -140,6 +140,10 @@ GOOGLE_USE_RECONCILE=true
   <Step title="Connect a user via OAuth">
     With credentials configured and your instance running, initiate the OAuth flow.
 
+    <Tip>
+    **Using the Open Wearables frontend?** You don't need any of the curls below — open the connect view and click **Connect** on Google Health. The frontend runs this whole authorize → consent → callback → verify flow for you. The steps below are for integrating directly against the API.
+    </Tip>
+
     **1. Get the authorization URL:**
 
     ```bash
@@ -199,10 +203,15 @@ Receiving and processing webhooks needs only `GOOGLE_WEBHOOK_SECRET`. The servic
 
 Subscribers live at the **project** level (`POST /v4/projects/{project}/subscribers`), so registration authenticates as the project via a **service account**, not a user's OAuth token.
 
+<Warning>
+`gcloud` needs the project **ID** (e.g. `open-wearables-prod`), **not** the project **number** (e.g. `123456789012`).
+</Warning>
+
 <Steps>
   <Step title="Create a service account">
     ```bash
     gcloud iam service-accounts create health-webhooks \
+      --project=YOUR_PROJECT_ID \
       --display-name="Health API webhook subscriber registration"
 
     # Grant a role that can manage Health API subscribers (narrow this to the
@@ -218,6 +227,7 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
 
     ```bash
     gcloud iam service-accounts keys create ./config/health-webhooks-key.json \
+      --project=YOUR_PROJECT_ID \
       --iam-account=health-webhooks@YOUR_PROJECT_ID.iam.gserviceaccount.com
     ```
 

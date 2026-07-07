@@ -40,7 +40,7 @@ class GoogleStrategy(BaseProviderStrategy):
 
     @property
     def display_name(self) -> str:
-        return "Google Health Connect"
+        return "Google Health"
 
     @property
     def api_base_url(self) -> str:
