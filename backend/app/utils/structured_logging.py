@@ -3,10 +3,22 @@
 import json
 import sys
 from logging import Logger
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from app.utils.context import trace_id_var
+
+
+class LogContext(NamedTuple):
+    """Per-request log fields threaded into downstream fetch/save logs.
+
+    Lets callers pass the provider-side user id and trace id as a single
+    argument instead of threading two separate params through every signature.
+    Unpack at the top of a method:  ``provider_user_id, trace_id = log_ctx or LogContext()``.
+    """
+
+    provider_user_id: str | None = None
+    trace_id: str | None = None
 
 
 def json_serial(obj: Any) -> str:
@@ -61,7 +73,7 @@ def log_structured(
         Vercel: Filter by JSON attributes in dashboard
         GCP: Use Cloud Logging filters with jsonPayload.batch_id="abc-123"
     """
-    if "trace_id" not in attributes:
+    if attributes.get("trace_id") is None:
         tid = trace_id_var.get()
         if tid:
             attributes["trace_id"] = tid

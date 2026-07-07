@@ -35,13 +35,18 @@ class WorkoutJSON(BaseModel):
 
     # Unix timestamp (ms)
     startTime: int
-    stopTime: int
+    # Sometimes missing in fresh webhook payloads (Suunto computes it asynchronously);
+    # callers fall back to startTime + totalTime when None.
+    stopTime: int | None = None
     # Seconds
     totalTime: float
     timeOffsetInMinutes: int | None = None
 
     # Metrics (all optional)
-    totalDistance: int | None = None
+    # Suunto reports distance in meters as a float (e.g. 21381.4); keep it float so
+    # fractional values don't fail Pydantic's int_from_float validation. Downstream
+    # consumers already store it as Decimal(str(...)).
+    totalDistance: float | None = None
     stepCount: int | None = None
     energyConsumption: int | None = None
 

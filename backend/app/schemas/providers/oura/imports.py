@@ -68,7 +68,7 @@ class OuraSleepJSON(BaseModel):
     sleep_score_delta: float | None = None
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
-    type: str | None = None  # deleted / sleep / long_sleep / rest
+    type: str | None = None  # long_sleep / sleep / late_nap / rest / deleted
     heart_rate: OuraIntervalData | None = None  # heart rate values at 5-min intervals
     hrv: OuraIntervalData | None = None  # RMSSD values at 5-min intervals
 

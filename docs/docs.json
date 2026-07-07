@@ -136,6 +136,7 @@
           {
             "group": "Deployment",
             "pages": [
+              "deployment/docker-images",
               "deployment/railway"
             ]
           },
@@ -246,6 +247,12 @@
             "group": "Data Sources",
             "pages": [
               "GET /api/v1/users/{user_id}/data-sources"
+            ]
+          },
+          {
+            "group": "Meta",
+            "pages": [
+              "GET /api/v1/meta/coverage"
             ]
           },
           {

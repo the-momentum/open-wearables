@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Date, Interval, String, asc, case, cast, func, literal_column, text, tuple_
+from sqlalchemy import ColumnElement, Date, Interval, String, and_, asc, case, cast, func, literal_column, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
@@ -35,14 +35,37 @@ from app.utils.pagination import decode_cursor
 DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
+class WriteCounts(int):
+    """Result of a bulk upsert: total rows written, split into new vs updated.
+
+    Behaves as ``inserted + updated`` so existing int-based callers (sums,
+    ``records_saved`` logging, ``dict[str, int]`` results) keep working
+    unchanged, while callers that care about the difference can read
+    ``.inserted`` (rows that did not exist) and ``.updated`` (rows refreshed
+    in place via ON CONFLICT). Distinguishing the two is what stops a pure
+    upsert-in-place from looking like newly arrived data.
+    """
+
+    inserted: int
+    updated: int
+
+    def __new__(cls, inserted: int, updated: int) -> "WriteCounts":
+        obj = super().__new__(cls, inserted + updated)
+        obj.inserted = inserted
+        obj.updated = updated
+        return obj
+
+
 class DataPointSeriesRepository(
     CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
 ):
     """Repository for unified device data point series."""
 
-    # PostgreSQL/psycopg limit: 65535 params per query. With 7 params per row, max ~9362 rows.
-    # Use 9000 as a safe chunk size.
-    BATCH_INSERT_CHUNK_SIZE = 9_000
+    # PostgreSQL/psycopg cap of 65535 bind params per query. Derive the row chunk
+    # from the column count in _insert_data_points so adding a column can't silently
+    # push a full chunk over the limit (8 cols -> 8191 rows).
+    _INSERT_COLUMNS_PER_ROW = 8
+    BATCH_INSERT_CHUNK_SIZE = 65_535 // _INSERT_COLUMNS_PER_ROW
 
     def __init__(self, model: type[DataPointSeries]):
         super().__init__(model)
@@ -81,24 +104,24 @@ class DataPointSeriesRepository(
         return self.try_commit(db_session, creation)
 
     @handle_exceptions
-    def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> list[DataPointSeries]:
+    def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
         """Bulk create data point samples.
 
         Optimized for performance:
         - Resolves data sources efficiently (batch fetch + batch insert missing)
         - Inserts data points in a single batch
+
+        Returns the number of rows actually written, split into inserted (new)
+        vs updated (refreshed in place via ON CONFLICT).
         """
         if not creators:
-            return []
+            return WriteCounts(0, 0)
 
         # 1. Resolve all data sources in batch
         identity_to_source_id = self._resolve_data_sources(db_session, creators)
 
         # 2. Build and execute data point batch insert
-        self._insert_data_points(db_session, creators, identity_to_source_id)
-
-        # Return empty list (upsert path does not track individual inserts vs updates)
-        return []
+        return self._insert_data_points(db_session, creators, identity_to_source_id)
 
     def _resolve_data_sources(
         self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]
@@ -131,11 +154,16 @@ class DataPointSeriesRepository(
         db_session: DbSession,
         creators: list[TimeSeriesSampleCreate],
         source_map: dict[DataSourceIdentity, UUID],
-    ) -> None:
+    ) -> WriteCounts:
         """Batch insert data points.
 
         Inserts data points in batches to stay within PostgreSQL's parameter limit
         of 65,535 parameters per query. With 6 fields per record, we batch at ~10k records.
+
+        Returns the split of rows actually written (inserted vs updated). The split
+        is derived from ``RETURNING (xmax = 0)`` on the same upsert statement — a
+        freshly inserted row has ``xmax = 0``, an updated (conflicting) row does
+        not — so it costs no extra query or round-trip.
         """
         values_list = []
         for creator in creators:
@@ -155,6 +183,7 @@ class DataPointSeriesRepository(
                     "zone_offset": creator.zone_offset,
                     "value": creator.value,
                     "series_type_definition_id": get_series_type_id(creator.series_type),
+                    "is_daily_total": creator.is_daily_total,
                 }
             )
 
@@ -167,6 +196,8 @@ class DataPointSeriesRepository(
                 deduped[key] = v
             values_list = list(deduped.values())
 
+            inserted = 0
+            updated = 0
             for i in range(0, len(values_list), self.BATCH_INSERT_CHUNK_SIZE):
                 chunk = values_list[i : i + self.BATCH_INSERT_CHUNK_SIZE]
                 stmt = insert(self.model).values(chunk)
@@ -176,10 +207,20 @@ class DataPointSeriesRepository(
                         "value": stmt.excluded.value,
                         "external_id": stmt.excluded.external_id,
                         "zone_offset": stmt.excluded.zone_offset,
+                        "is_daily_total": stmt.excluded.is_daily_total,
                     },
-                )
-                db_session.execute(stmt)
+                    # RETURNING (xmax = 0): true = row freshly inserted, false = hit a
+                    # conflict and was updated in place. Same statement, no extra round-trip.
+                ).returning(literal_column("(xmax = 0)"))
+                for is_insert in db_session.execute(stmt).scalars():
+                    if is_insert:
+                        inserted += 1
+                    else:
+                        updated += 1
             # NOTE: Caller should commit - allows batching multiple operations
+            return WriteCounts(inserted, updated)
+
+        return WriteCounts(0, 0)
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
         try:
@@ -330,12 +371,22 @@ class DataPointSeriesRepository(
 
         return [count for _, count in daily_counts]
 
-    def get_user_counts_by_provider_and_type(self, db_session: DbSession, user_id: UUID) -> list[tuple[str, str, int]]:
+    def get_user_counts_by_provider_and_type(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, str, int]]:
         """Get data point counts for a user grouped by provider and series type.
+
+        When ``start_datetime`` and/or ``end_datetime`` are provided, only data points whose
+        ``recorded_at`` falls in the half-open interval ``[start, end)`` are counted. When both
+        are omitted, all-time counts are returned (unchanged behaviour).
 
         Returns list of (provider, series_type_code, count) tuples ordered by provider, then count descending.
         """
-        results = (
+        query = (
             db_session.query(
                 DataSource.provider,
                 SeriesTypeDefinition.code,
@@ -344,7 +395,14 @@ class DataPointSeriesRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(DataSource.user_id == user_id)
-            .group_by(DataSource.provider, SeriesTypeDefinition.code)
+        )
+        if start_datetime is not None:
+            query = query.filter(self.model.recorded_at >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.recorded_at < end_datetime)
+
+        results = (
+            query.group_by(DataSource.provider, SeriesTypeDefinition.code)
             .order_by(DataSource.provider, func.count(self.model.id).desc())
             .all()
         )
@@ -429,53 +487,6 @@ class DataPointSeriesRepository(
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
 
-    def get_averages_for_time_range(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-        series_types: list[SeriesType],
-    ) -> dict[SeriesType, float | None]:
-        """Get average values for specified series types within a time range.
-
-        Uses half-open interval [start_time, end_time).
-
-        Returns a dict mapping SeriesType to average value (or None if no data).
-        """
-        if not series_types:
-            raise ValueError("series_types cannot be empty")
-
-        type_ids = [get_series_type_id(t) for t in series_types]
-
-        results = (
-            db_session.query(
-                self.model.series_type_definition_id,
-                func.avg(self.model.value).label("avg_value"),
-            )
-            .join(DataSource, self.model.data_source_id == DataSource.id)
-            .filter(
-                DataSource.user_id == user_id,
-                self.model.recorded_at >= start_time,
-                self.model.recorded_at < end_time,
-                self.model.series_type_definition_id.in_(type_ids),
-            )
-            .group_by(self.model.series_type_definition_id)
-            .all()
-        )
-
-        # Build result dict
-        averages: dict[SeriesType, float | None] = {t: None for t in series_types}
-        for type_id, avg_value in results:
-            try:
-                series_type = get_series_type_from_id(type_id)
-                if series_type in averages:
-                    averages[series_type] = float(avg_value) if avg_value is not None else None
-            except KeyError:
-                pass
-
-        return averages
-
     def get_daily_activity_aggregates(
         self,
         db_session: DbSession,
@@ -500,30 +511,51 @@ class DataPointSeriesRepository(
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
+        active_time_id = get_series_type_id(SeriesType.active_time)
 
         local_date = cast(
             self.model.recorded_at + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval),
             Date,
         )
 
+        def prefer_daily_sum(series_id: int) -> ColumnElement:
+            """Per (day, source): use the daily-total rows if any exist, else sum samples.
+
+            Removes the Garmin/Suunto double-count (a daily total + its own intraday
+            epochs). NULL is_daily_total counts as "not daily" (legacy rows are summed).
+            COALESCE falls through to the sample sum only when no daily total exists.
+            """
+            daily = func.sum(
+                case(
+                    (
+                        and_(self.model.series_type_definition_id == series_id, self.model.is_daily_total.is_(True)),
+                        self.model.value,
+                    )
+                )
+            )
+            samples = func.sum(
+                case(
+                    (
+                        and_(self.model.series_type_definition_id == series_id, self.model.is_daily_total.isnot(True)),
+                        self.model.value,
+                    )
+                )
+            )
+            return func.coalesce(daily, samples)
+
         # Build aggregation query
         results = (
             db_session.query(
                 local_date.label("activity_date"),
+                DataSource.provider.label("provider"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
-                # Steps - sum for the day
-                func.sum(case((self.model.series_type_definition_id == steps_id, self.model.value), else_=0)).label(
-                    "steps_sum"
-                ),
-                # Active energy - sum for the day
-                func.sum(case((self.model.series_type_definition_id == energy_id, self.model.value), else_=0)).label(
-                    "active_energy_sum"
-                ),
-                # Basal energy - sum for the day
-                func.sum(
-                    case((self.model.series_type_definition_id == basal_energy_id, self.model.value), else_=0)
-                ).label("basal_energy_sum"),
+                # Steps - prefer daily total, else sum samples
+                prefer_daily_sum(steps_id).label("steps_sum"),
+                # Active energy - prefer daily total, else sum samples
+                prefer_daily_sum(energy_id).label("active_energy_sum"),
+                # Basal energy - prefer daily total, else sum samples
+                prefer_daily_sum(basal_energy_id).label("basal_energy_sum"),
                 # Heart rate stats
                 func.avg(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
                     "hr_avg"
@@ -534,14 +566,12 @@ class DataPointSeriesRepository(
                 func.min(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
                     "hr_min"
                 ),
-                # Distance - sum for the day (no else_=0 to return NULL when no data)
-                func.sum(case((self.model.series_type_definition_id == distance_id, self.model.value))).label(
-                    "distance_sum"
-                ),
-                # Flights climbed - sum for the day (no else_=0 to return NULL when no data)
-                func.sum(case((self.model.series_type_definition_id == flights_id, self.model.value))).label(
-                    "flights_climbed_sum"
-                ),
+                # Distance - prefer daily total, else sum samples (NULL when no data)
+                prefer_daily_sum(distance_id).label("distance_sum"),
+                # Flights climbed - prefer daily total, else sum samples (NULL when no data)
+                prefer_daily_sum(flights_id).label("flights_climbed_sum"),
+                # Provider-reported active time (minutes) - daily total (NULL when no data)
+                prefer_daily_sum(active_time_id).label("active_time_sum"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
@@ -550,11 +580,12 @@ class DataPointSeriesRepository(
                 local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id.in_(
-                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id]
+                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id, active_time_id]
                 ),
             )
             .group_by(
                 local_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -568,6 +599,7 @@ class DataPointSeriesRepository(
             aggregates.append(
                 {
                     "activity_date": row.activity_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "steps_sum": int(row.steps_sum) if row.steps_sum else 0,
@@ -580,6 +612,7 @@ class DataPointSeriesRepository(
                     "flights_climbed_sum": int(row.flights_climbed_sum)
                     if row.flights_climbed_sum is not None
                     else None,
+                    "active_time_minutes": int(row.active_time_sum) if row.active_time_sum is not None else None,
                 }
             )
         return aggregates
@@ -632,6 +665,7 @@ class DataPointSeriesRepository(
                 local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id == steps_id,
+                self.model.is_daily_total.isnot(True),
             )
             .group_by(
                 local_date,
