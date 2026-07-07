@@ -36,9 +36,42 @@ _SUBSCRIBER_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 # Stable id for our single project subscriber, so re-registration targets the same one.
 SUBSCRIBER_ID = "open-wearables"
 
-# dataTypes we subscribe to: every registered 24/7 metric plus the session types.
+# not every data type is supported  that we pull from - might
+# not be the best solution, but this is all supported
+GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES = frozenset(
+    {
+        "active-zone-minutes",
+        "activity-level",
+        "altitude",
+        "blood-glucose",
+        "body-fat",
+        "daily-heart-rate-variability",
+        "daily-oxygen-saturation",
+        "daily-respiratory-rate",
+        "daily-resting-heart-rate",
+        "distance",
+        "exercise",
+        "floors",
+        "heart-rate",
+        "heart-rate-variability",
+        "height",
+        "hydration-log",
+        "nutrition-log",
+        "run-vo2-max",
+        "sedentary-period",
+        "sleep",
+        "steps",
+        "weight",
+    }
+)
+
+# Subscribe to the handled types (24/7 metrics + sessions) that Google supports for webhooks.
 # AUTOMATIC lets Google create per-user subscriptions itself as users connect.
-GOOGLE_WEBHOOK_DATA_TYPES = [m.data_type for m in METRICS] + ["sleep", "exercise"]
+GOOGLE_WEBHOOK_DATA_TYPES = [
+    data_type
+    for data_type in ([m.data_type for m in METRICS] + ["sleep", "exercise"])
+    if data_type in GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES
+]
 
 
 class GoogleWebhookService(BaseWebhookService):
