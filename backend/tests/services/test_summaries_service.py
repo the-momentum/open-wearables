@@ -160,6 +160,81 @@ class TestGetSleepSummaries:
         )
         assert result.data == []
 
+    def test_physio_averages_within_sleep_window(self, db: Session, service: SummariesService) -> None:
+        """avg_heart_rate_bpm/avg_hrv_sdnn_ms are computed from data_point_series
+        samples within [min_start_time, max_end_time), independently per series
+        type, and samples outside the window are excluded."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        record = EventRecordFactory(
+            data_source=ds,
+            category="sleep",
+            type="sleep",
+            start_datetime=_dt("2026-01-01T23:00:00+00:00"),
+            end_datetime=_dt("2026-01-02T07:00:00+00:00"),
+            duration_seconds=8 * 3600,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=record)
+
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        hrv_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
+
+        for i, val in enumerate([50, 60, 70]):
+            DataPointSeriesFactory(
+                data_source=ds,
+                series_type=hr_type,
+                value=val,
+                recorded_at=_dt(f"2026-01-02T0{i}:00:00+00:00"),
+            )
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=hrv_type,
+            value=45,
+            recorded_at=_dt("2026-01-02T02:00:00+00:00"),
+        )
+        # Outside the sleep window - must not affect the average
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=hr_type,
+            value=200,
+            recorded_at=_dt("2026-01-02T12:00:00+00:00"),
+        )
+
+        result = service.get_sleep_summaries(
+            db,
+            user.id,
+            _dt("2026-01-01T00:00:00+00:00"),
+            _dt("2026-01-03T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+        assert len(result.data) == 1
+        summary = result.data[0]
+        assert summary.avg_heart_rate_bpm == 60
+        assert summary.avg_hrv_sdnn_ms == 45
+
+    def test_physio_averages_none_without_physio_data(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(event_record=record)
+
+        result = service.get_sleep_summaries(
+            db,
+            user.id,
+            _dt("2026-01-01T00:00:00+00:00"),
+            _dt("2026-01-03T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+        assert len(result.data) == 1
+        summary = result.data[0]
+        assert summary.avg_heart_rate_bpm is None
+        assert summary.avg_hrv_sdnn_ms is None
+        assert summary.avg_hrv_rmssd_ms is None
+        assert summary.avg_respiratory_rate is None
+        assert summary.avg_spo2_percent is None
+
     def test_has_more_flag_and_pagination(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
         ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
