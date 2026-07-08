@@ -62,6 +62,26 @@ Commit hashes below are the **current `release/0.6.2-syn`** shas (update each up
 
 ---
 
+## Personal Record write API (net-new)
+
+`PUT` / `GET /api/v1/users/{user_id}/personal-record` — adapter-driven write
+API for `public.personal_record`. Upsert keyed on the 1:1 `user_id`
+(`ApiKeyDep`, 201 create / 200 update). Body = `birth_date` + `gender`
+(`sex` intentionally omitted — read by nothing in OW).
+
+Purpose: let the .NET adapter set `birth_date` so OW computes HR-zone max HR as
+`220 − age` (`estimate_max_hr`) at workout ingest instead of the
+`DEFAULT_MAX_HR = 190` fallback.
+
+Boundary: OW computes zones ONCE at ingest, so a populated `birth_date` only
+affects workouts ingested afterward. Historical workouts keep their maxHr-190
+zones and continue to be handled by the .NET adapter's
+`WorkoutHrZoneHealService`.
+
+Upstream OW has no write path for `personal_record` (only seed data writes it).
+
+---
+
 ## Superseded by upstream — DROPPED at 0.6.2 (executed 2026-07-07)
 
 Reimplemented independently upstream; not carried forward. See the outcome section above.
