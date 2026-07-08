@@ -8,6 +8,7 @@ from .archival_service import archival_service
 from .developer_service import developer_service
 from .event_record_service import event_record_service
 from .invitation_service import invitation_service
+from .personal_record_service import personal_record_service
 from .priority_service import PriorityService
 from .refresh_token_service import refresh_token_service
 from .sdk_token_service import create_sdk_user_token
@@ -29,6 +30,7 @@ __all__ = [
     "invitation_service",
     "refresh_token_service",
     "user_invitation_code_service",
+    "personal_record_service",
     "DeveloperDep",
     "ApiKeyDep",
     "SDKAuthDep",
