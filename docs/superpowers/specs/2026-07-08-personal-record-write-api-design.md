@@ -115,7 +115,7 @@ Response: existing `PersonalRecordResponse` (`id`, `user_id`, `birth_date`,
 | Missing / invalid API key         | 401    |
 | Unknown `user_id`                 | 404    |
 | GET with no `personal_record` row | 404    |
-| `birth_date` in the future / invalid | 422 |
+| `birth_date` in the future / invalid | 400 (OW remaps `RequestValidationError` → 400) |
 
 ## Testing (pytest)
 
@@ -124,7 +124,7 @@ Response: existing `PersonalRecordResponse` (`id`, `user_id`, `birth_date`,
    (exercises the `Unique(user_id)` path).
 3. GET returns the row; GET with no row → 404.
 4. Unknown `user_id` → 404 (both PUT and GET).
-5. Future `birth_date` → 422.
+5. Future `birth_date` → 400 (OW remaps `RequestValidationError` → 400).
 6. Missing API key → 401.
 7. Behavioral: after setting `birth_date`, a newly ingested workout's
    `hr_zone_*_min` reflect `220 − age` rather than the 190 fallback

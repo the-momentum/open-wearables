@@ -41,10 +41,9 @@ class PersonalRecordService(
         payload: PersonalRecordUpsert,
     ) -> tuple[PersonalRecord, bool]:
         # 404 if the user does not exist (avoids an opaque FK violation).
-        # NB: user_service.get is wrapped by @handle_exceptions, which converts a
-        # raise_404 ResourceNotFoundError into a FastAPI HTTPException. We instead
-        # probe with a plain get (returns None when absent) and raise
-        # ResourceNotFoundError ourselves so callers get the domain exception.
+        # Probe with a plain get (returns None when absent) and raise
+        # ResourceNotFoundError; this method's own @handle_exceptions then
+        # surfaces it as HTTPException(404) at the boundary.
         if user_service.get(db_session, user_id) is None:
             raise ResourceNotFoundError("user", user_id)
 
