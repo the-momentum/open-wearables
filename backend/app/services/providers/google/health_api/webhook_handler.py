@@ -96,9 +96,12 @@ class GoogleWebhookHandler(BaseWebhookHandler):
 
     def parse_payload(self, body: bytes) -> dict[str, Any]:
         try:
-            return json.loads(body)
+            payload = json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        return payload
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Ack the verification handshake, or enqueue async processing of a notification.

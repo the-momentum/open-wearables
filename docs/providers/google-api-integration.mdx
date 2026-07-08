@@ -259,6 +259,68 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Path to the SA JSON key; unset uses ADC | — |
 | `GOOGLE_WEBHOOK_SECRET` | Bearer secret Google echoes on notifications | `SECRET_KEY` |
 
+### Managing subscribers without app credentials (gcloud / console)
+
+If you'd rather not give the app a service account, create and manage the subscriber
+yourself and leave `GOOGLE_SERVICE_ACCOUNT_FILE`/`GOOGLE_PROJECT_ID` unset. The app then
+needs only `GOOGLE_WEBHOOK_SECRET` to verify inbound notifications — it never calls the
+project-level subscriber API.
+
+<Info>
+In this mode the in-app `.../webhooks/subscriptions` management endpoints (list / register /
+update / delete) won't work — they require project credentials. Use the commands below instead.
+</Info>
+
+<Warning>
+The `endpointAuthorization.secret` you set here **must** equal `"Bearer "` + the app's
+`GOOGLE_WEBHOOK_SECRET` (which defaults to `SECRET_KEY`). If they don't match, every
+notification fails signature verification and Open Wearables returns 401.
+</Warning>
+
+All calls authenticate with your own gcloud identity, which must hold the Health API
+subscriber role on the project. You can also run these from the Cloud Console API Explorer,
+but the CLI steps below are easier to copy end-to-end. Use the same `subscriberId`
+(`open-wearables`) the app uses, so it stays interchangeable.
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+PROJECT=your-project-number   # numeric project number
+
+# Create
+curl -X POST \
+  "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers?subscriberId=open-wearables" \
+  -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+  -d '{
+    "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google/webhooks",
+    "subscriberConfigs": [
+      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
+    ],
+    "endpointAuthorization": {"secret": "Bearer YOUR_GOOGLE_WEBHOOK_SECRET"}
+  }'
+
+# List
+curl "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+# Update the callback URL (endpoint re-verification runs again)
+curl -X PATCH \
+  "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers/open-wearables?updateMask=endpointUri" \
+  -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+  -d '{"endpointUri": "https://NEW_URL/api/v1/providers/google/webhooks"}'
+
+# Delete
+curl -X DELETE \
+  "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers/open-wearables" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+<Note>
+`dataTypes` above is an abbreviated example — use the set the app supports for webhooks
+(steps, distance, hydration-log, heart-rate, run-vo2-max, daily-resting-heart-rate,
+heart-rate-variability, weight, body-fat, blood-glucose, daily-respiratory-rate, sleep,
+exercise). Registering a data type the app doesn't handle just means its notifications are ignored.
+</Note>
+
 ## Next Steps
 
 <CardGroup cols={2}>

@@ -27,6 +27,7 @@ from app.services.providers.google.health_api.helpers import (
     extract_source,
     parse_interval,
     parse_rfc3339,
+    physical_interval,
     read_number,
     to_decimal,
     zone_offset_from,
@@ -51,7 +52,7 @@ class GoogleHealthApiSleep:
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
         """Fetch sleep sessions starting in the window and merge-save each."""
         count = 0
-        for point in self._fetch(db, user_id):
+        for point in self._fetch(db, user_id, start_time, end_time):
             sleep = point.get("sleep")
             if not isinstance(sleep, dict):
                 continue
@@ -64,11 +65,13 @@ class GoogleHealthApiSleep:
             count += 1
         return count
 
-    def _fetch(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:
+    def _fetch(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict[str, Any]]:
+        window_start = physical_interval(start_time, end_time)["startTime"]
+        time_filter = f'sleep.interval.end_time >= "{window_start}"'
         points: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
-            params: dict[str, Any] = {"pageSize": self.PAGE_SIZE}
+            params: dict[str, Any] = {"pageSize": self.PAGE_SIZE, "filter": time_filter}
             if page_token:
                 params["pageToken"] = page_token
             response = make_authenticated_request(
@@ -140,12 +143,15 @@ class GoogleHealthApiSleep:
         in_bed = read_number(summary, "minutesInSleepPeriod")
         asleep = read_number(summary, "minutesAsleep")
         efficiency = (asleep / in_bed * 100).quantize(Decimal("0.1")) if asleep is not None and in_bed else None
+        awake = stage_minutes.get("AWAKE")
+        if awake is None:
+            awake = read_number(summary, "minutesAwake")
 
         return EventRecordDetailCreate(
             record_id=record_id,
             sleep_time_in_bed_minutes=as_int(in_bed),
             sleep_total_duration_minutes=as_int(asleep),
-            sleep_awake_minutes=as_int(stage_minutes.get("AWAKE") or read_number(summary, "minutesAwake")),
+            sleep_awake_minutes=as_int(awake),
             sleep_deep_minutes=as_int(stage_minutes.get("DEEP")),
             sleep_rem_minutes=as_int(stage_minutes.get("REM")),
             sleep_light_minutes=as_int(stage_minutes.get("LIGHT")),

@@ -159,10 +159,22 @@ class GoogleWebhookService(BaseWebhookService):
     async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         """List the project's Health API subscribers."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(_subscribers_url(), headers=headers, timeout=30.0)
-            response.raise_for_status()
-            raw = response.json() or {}
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(_subscribers_url(), headers=headers, timeout=30.0)
+                response.raise_for_status()
+                raw = response.json() or {}
+        except httpx.HTTPError as e:
+            log_structured(
+                logger,
+                "error",
+                "Failed to list Google Health API subscribers",
+                provider="google",
+                action="google_webhook_subscription_list_error",
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+            )
+            return []
 
         result: list[ProviderWebhookSubscription] = []
         for item in raw.get("subscribers", []):
@@ -235,9 +247,14 @@ class GoogleWebhookService(BaseWebhookService):
         call; acceptable here since registration runs in a Celery task.
         """
         if settings.google_service_account_file:
-            credentials = service_account.Credentials.from_service_account_file(
-                settings.google_service_account_file, scopes=[_SUBSCRIBER_SCOPE]
-            )
+            try:
+                credentials = service_account.Credentials.from_service_account_file(
+                    settings.google_service_account_file, scopes=[_SUBSCRIBER_SCOPE]
+                )
+            except OSError as e:
+                raise ValueError(
+                    f"Could not read google_service_account_file {settings.google_service_account_file!r}: {e}"
+                ) from e
         else:
             credentials, _ = google.auth.default(scopes=[_SUBSCRIBER_SCOPE])
         credentials.refresh(GoogleAuthRequest())

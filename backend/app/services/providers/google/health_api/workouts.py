@@ -30,6 +30,7 @@ from app.services.providers.google.health_api.helpers import (
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.sentry_helpers import log_and_capture_error
 
 _MM_TO_M = Decimal("0.001")
 
@@ -155,9 +156,18 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
 
         count = 0
         for point in self.get_workouts(db, user_id, start, end):
-            record, detail = self._normalize_workout(point, user_id)
-            created = event_record_service.create(db, record)
-            event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+            try:
+                record, detail = self._normalize_workout(point, user_id)
+                created = event_record_service.create(db, record)
+                event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+            except Exception as e:
+                log_and_capture_error(
+                    e,
+                    self.logger,
+                    f"Google workout sync failed for a datapoint: {e}",
+                    extra={"user_id": str(user_id), "provider": "google", "external_id": point.get("name")},
+                )
+                continue
             count += 1
         return count
 
