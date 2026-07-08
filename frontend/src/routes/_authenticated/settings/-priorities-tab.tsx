@@ -336,16 +336,23 @@ export function PrioritiesTab() {
         </div>
 
         <div className="p-4 space-y-2">
-          {localOrder.map((provider, index) => (
-            <ProviderItem
-              key={provider.provider}
-              provider={provider}
-              index={index}
-              total={localOrder.length}
-              onMoveUp={() => handleMoveUp(index)}
-              onMoveDown={() => handleMoveDown(index)}
-            />
-          ))}
+          {localOrder.length === 0 ? (
+            <p className="px-4 py-8 text-sm text-muted-foreground text-center">
+              Providers will appear here as soon as their data starts flowing
+              in.
+            </p>
+          ) : (
+            localOrder.map((provider, index) => (
+              <ProviderItem
+                key={provider.provider}
+                provider={provider}
+                index={index}
+                total={localOrder.length}
+                onMoveUp={() => handleMoveUp(index)}
+                onMoveDown={() => handleMoveDown(index)}
+              />
+            ))
+          )}
         </div>
       </div>
 

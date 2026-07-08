@@ -19,6 +19,9 @@ import type {
   SleepSession,
   SleepSessionsParams,
   UserDataSummary,
+  DataSummaryParams,
+  MenstrualCycleRecord,
+  MenstrualCyclesParams,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -263,9 +266,35 @@ export const healthService = {
   /**
    * Get per-user data summary with counts by type and provider
    */
-  async getUserDataSummary(userId: string): Promise<UserDataSummary> {
+  async getUserDataSummary(
+    userId: string,
+    params?: DataSummaryParams
+  ): Promise<UserDataSummary> {
     return apiClient.get<UserDataSummary>(
-      API_ENDPOINTS.userDataSummary(userId)
+      API_ENDPOINTS.userDataSummary(userId),
+      params ? { params } : undefined
+    );
+  },
+
+  /**
+   * Get menstrual cycle records for a user
+   */
+  async getMenstrualCycles(
+    userId: string,
+    params: MenstrualCyclesParams
+  ): Promise<PaginatedResponse<MenstrualCycleRecord>> {
+    return apiClient.get<PaginatedResponse<MenstrualCycleRecord>>(
+      API_ENDPOINTS.userMenstrualCycles(userId),
+      { params }
+    );
+  },
+
+  /**
+   * Delete a menstrual cycle record
+   */
+  async deleteMenstrualCycle(userId: string, cycleId: string): Promise<void> {
+    return apiClient.delete<void>(
+      API_ENDPOINTS.userMenstrualCycleDetail(userId, cycleId)
     );
   },
 

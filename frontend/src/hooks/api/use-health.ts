@@ -9,6 +9,8 @@ import type {
   SleepSessionsParams,
   BodySummaryParams,
   HealthScoreParams,
+  MenstrualCyclesParams,
+  DataSummaryParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -164,13 +166,51 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get menstrual cycle records for a user
+ * Uses GET /api/v1/users/{user_id}/events/menstrual-cycles
+ */
+export function useMenstrualCycles(
+  userId: string,
+  params: MenstrualCyclesParams
+) {
+  return useQuery({
+    queryKey: queryKeys.health.menstrualCycles(userId, params),
+    queryFn: () => healthService.getMenstrualCycles(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Delete a menstrual cycle record
+ */
+export function useDeleteMenstrualCycle(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cycleId: string) =>
+      healthService.deleteMenstrualCycle(userId, cycleId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'menstrualCycles', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Record deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete record';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get per-user data summary with counts by type and provider
  * Uses GET /api/v1/users/{user_id}/summaries/data
  */
-export function useUserDataSummary(userId: string) {
+export function useUserDataSummary(userId: string, params?: DataSummaryParams) {
   return useQuery({
-    queryKey: queryKeys.health.dataSummary(userId),
-    queryFn: () => healthService.getUserDataSummary(userId),
+    queryKey: queryKeys.health.dataSummary(userId, params),
+    queryFn: () => healthService.getUserDataSummary(userId, params),
     enabled: !!userId,
     staleTime: 2 * 60 * 1000,
   });

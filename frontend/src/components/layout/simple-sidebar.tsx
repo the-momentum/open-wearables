@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Webhook,
   RefreshCw,
+  LayoutGrid,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,11 @@ const menuItems = [
     title: 'Syncs',
     url: ROUTES.syncs,
     icon: RefreshCw,
+  },
+  {
+    title: 'Data Coverage',
+    url: ROUTES.coverage,
+    icon: LayoutGrid,
   },
   {
     title: 'Settings',
@@ -114,7 +120,7 @@ export function SimpleSidebar() {
       <div className="mx-3 border-t border-border/40" />
 
       {/* Footer */}
-      <div className="p-3">
+      <div className="p-3 space-y-1">
         <Button
           variant="ghost"
           onClick={() => logout()}
@@ -124,6 +130,9 @@ export function SimpleSidebar() {
           <LogOut className="h-4 w-4" />
           {isLoggingOut ? 'Logging out...' : 'Logout'}
         </Button>
+        <p className="px-3 text-[11px] text-muted-foreground/50 select-none">
+          v{__APP_VERSION__}
+        </p>
       </div>
     </aside>
   );

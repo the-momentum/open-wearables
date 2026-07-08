@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import Invitation
 from app.schemas.model_crud.user_management import InvitationStatus
-from app.utils.email_client import send_invitation_email
+from app.utils.email_client import _is_email_configured, send_invitation_email
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -137,6 +137,21 @@ def send_invitation_email_task(
 
         if invitation.status != InvitationStatus.PENDING:
             raise ValueError(f"Invitation {invitation_id} has invalid status: {invitation.status}")
+
+        # Skip sending if email is not configured (allow manual invite links)
+        if not _is_email_configured():
+            log_structured(
+                logger,
+                "warning",
+                f"Email not configured, skipping send for invitation {invitation_id}",
+                provider="email",
+                task="send_invitation_email_task",
+            )
+            return {
+                "status": "skipped",
+                "message": "Email not configured, invitation created but not sent",
+                "invitation_id": invitation_id,
+            }
 
         # Send email only if status is PENDING
         attempt = self.request.retries + 1

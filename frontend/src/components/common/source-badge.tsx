@@ -39,6 +39,11 @@ const PROVIDER_STYLES: Record<
 
 const DEFAULT_STYLE = { bg: 'bg-muted/40', text: 'text-muted-foreground' };
 
+/** Human-readable label for a provider key (falls back to the raw key). */
+export function providerLabel(provider: string): string {
+  return PROVIDER_STYLES[provider]?.label ?? provider;
+}
+
 export function SourceBadge({ provider, className = '' }: SourceBadgeProps) {
   const style = PROVIDER_STYLES[provider] ?? DEFAULT_STYLE;
   const label = PROVIDER_STYLES[provider]?.label ?? provider;

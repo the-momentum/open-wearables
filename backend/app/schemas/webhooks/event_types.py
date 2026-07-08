@@ -24,6 +24,7 @@ class WebhookEventType(StrEnum):
     # Provider connection events
     # -------------------------------------------------------------------------
     CONNECTION_CREATED = "connection.created"
+    CONNECTION_REVOKED = "connection.revoked"
 
     # -------------------------------------------------------------------------
     # Sync lifecycle events (terminal transitions only -- per run)
@@ -38,6 +39,7 @@ class WebhookEventType(StrEnum):
     # -------------------------------------------------------------------------
     WORKOUT_CREATED = "workout.created"
     SLEEP_CREATED = "sleep.created"
+    MENSTRUAL_CYCLE_CREATED = "menstrual_cycle.created"
 
     # -------------------------------------------------------------------------
     # TimeSeries — GROUP events (one per category)
@@ -139,6 +141,7 @@ class WebhookEventType(StrEnum):
     SERIES_PHYSICAL_EFFORT = "series.physical_effort.created"
     SERIES_FLIGHTS_CLIMBED = "series.flights_climbed.created"
     SERIES_AVERAGE_MET = "series.average_met.created"
+    SERIES_ACTIVE_TIME = "series.active_time.created"
     SERIES_PUSH_COUNT = "series.push_count.created"
     SERIES_NUMBER_OF_TIMES_FALLEN = "series.number_of_times_fallen.created"
     SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES = "series.number_of_alcoholic_beverages.created"
@@ -189,11 +192,16 @@ class WebhookEventType(StrEnum):
 EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     # Session events
     WebhookEventType.CONNECTION_CREATED: "A user successfully connected a wearable provider.",
+    WebhookEventType.CONNECTION_REVOKED: (
+        "A provider connection became invalid (refresh token expired/revoked, or the user "
+        "deregistered on the provider side). The user must re-authorize to resume syncing."
+    ),
     WebhookEventType.SYNC_STARTED: "A sync run started for a user (live, historical, backfill, SDK or XML).",
     WebhookEventType.SYNC_COMPLETED: "A sync run completed successfully (terminal state).",
     WebhookEventType.SYNC_FAILED: "A sync run failed (terminal state, includes error message).",
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
+    WebhookEventType.MENSTRUAL_CYCLE_CREATED: "A new menstrual cycle record was saved.",
     # Group events
     WebhookEventType.HEART_RATE_CREATED: "Any heart-rate samples (all HR variants) were ingested.",
     WebhookEventType.HEART_RATE_VARIABILITY_CREATED: "Any HRV samples (SDNN or RMSSD) were ingested.",
@@ -268,6 +276,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_PHYSICAL_EFFORT: "Physical effort samples were ingested.",
     WebhookEventType.SERIES_FLIGHTS_CLIMBED: "Flights climbed samples were ingested.",
     WebhookEventType.SERIES_AVERAGE_MET: "Average MET samples were ingested.",
+    WebhookEventType.SERIES_ACTIVE_TIME: "Active time samples were ingested.",
     WebhookEventType.SERIES_PUSH_COUNT: "Wheelchair push count samples were ingested.",
     WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN: "Fall count samples were ingested.",
     WebhookEventType.SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES: "Alcoholic beverage count samples were ingested.",
@@ -388,6 +397,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_PHYSICAL_EFFORT,
         WebhookEventType.SERIES_FLIGHTS_CLIMBED,
         WebhookEventType.SERIES_AVERAGE_MET,
+        WebhookEventType.SERIES_ACTIVE_TIME,
         WebhookEventType.SERIES_PUSH_COUNT,
         WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN,
         WebhookEventType.SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES,

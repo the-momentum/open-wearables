@@ -435,6 +435,10 @@ Returned when an invalid mode string or an explicit `null` is sent for `live_syn
   Passing `"live_sync_mode": null` in the JSON body is invalid and returns 400. To leave the current mode unchanged, omit the field entirely from the request body.
 </Note>
 
+<Note>
+  **Pull mode and late revisions.** In `pull` mode each periodic sync starts from the connection's last synced time and moves forward, so a day a provider revises *after* we passed it (e.g. Oura finalising a step count once the ring finishes uploading) is not re-fetched. Set the server-side `PULL_SYNC_LOOKBACK` env var (compact duration — `2d`, `20h`, `90m`, `1d12h`; disabled by default, capped per provider by its `max_historical_days`) to re-fetch a trailing window on every live pull. Re-fetched days are upserted, so unchanged values stay as they are. `webhook` mode is unaffected — providers push the exact object that changed.
+</Note>
+
 ### Get Authorization URL
 
 <Warning>

@@ -53,7 +53,7 @@ def test_normalize_workout_detail_metrics(fitbit_workouts: FitbitWorkouts) -> No
 
     assert detail.heart_rate_avg == Decimal("155")
     assert detail.energy_burned == Decimal("500")
-    assert detail.distance == Decimal("10.0")
+    assert detail.distance == Decimal("10000.0")  # Fitbit sends kilometers, stored as meters
 
 
 def test_normalize_workout_missing_heart_rate(fitbit_workouts: FitbitWorkouts) -> None:

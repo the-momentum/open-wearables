@@ -1,5 +1,7 @@
+import { resolveApiUrl } from './runtime-config';
+
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseUrl: resolveApiUrl(),
   timeout: 30000, // 30 seconds
   retryAttempts: 3,
   retryDelay: 1000, // 1 second
@@ -92,6 +94,12 @@ export const API_ENDPOINTS = {
   userSleepSessionDetail: (userId: string, sessionId: string) =>
     `/api/v1/users/${userId}/events/sleep/${sessionId}`,
 
+  // Menstrual cycle endpoints
+  userMenstrualCycles: (userId: string) =>
+    `/api/v1/users/${userId}/events/menstrual-cycles`,
+  userMenstrualCycleDetail: (userId: string, cycleId: string) =>
+    `/api/v1/users/${userId}/events/menstrual-cycles/${cycleId}`,
+
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
 
@@ -110,6 +118,9 @@ export const API_ENDPOINTS = {
   webhookEndpointAttempts: (id: string) =>
     `/api/v1/webhooks/endpoints/${id}/attempts`,
   webhookMessages: '/api/v1/webhooks/messages',
+
+  // Meta endpoints
+  coverage: '/api/v1/meta/coverage',
 
   // Sync status / SSE endpoints
   // ApiKeyDep accepts both API keys and developer JWT tokens, so a single

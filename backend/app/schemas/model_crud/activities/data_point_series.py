@@ -21,6 +21,9 @@ class TimeSeriesSampleBase(BaseModel):
     zone_offset: ZoneOffset = None
     value: Decimal | float | int
     series_type: SeriesType
+    # True = daily total. False/None = not a daily total (summable sample); aggregation
+    # treats None as False. Set explicitly by the provider save path (Garmin dailies vs epochs).
+    is_daily_total: bool | None = None
 
 
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):

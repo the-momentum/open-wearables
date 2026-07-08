@@ -19,6 +19,7 @@ from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.utils.exceptions import UnsupportedProviderError
+from app.utils.sync_params import build_sync_params
 
 logger = logging.getLogger(__name__)
 
@@ -163,8 +164,9 @@ def sync_user_data(
 
     results: dict[str, Any] = {}
 
-    # Collect all parameters
-    params = {
+    # Collect all parameters. start_date/end_date come from build_sync_params so
+    # this route and the async Celery task never drift on parameter naming.
+    params: dict[str, Any] = {
         "since": since,
         "limit": limit,
         "offset": offset,
@@ -172,8 +174,7 @@ def sync_user_data(
         "samples": samples,
         "zones": zones,
         "route": route,
-        "summary_start_time": summary_start_time,
-        "summary_end_time": summary_end_time,
+        **build_sync_params(summary_start_time, summary_end_time),
     }
 
     # Sync workouts if requested

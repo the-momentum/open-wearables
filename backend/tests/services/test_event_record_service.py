@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import DataSource
+from app.models import DataSource, EventRecord
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate, EventRecordQueryParams
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
@@ -825,3 +825,57 @@ class TestGetSleepSessions:
         session = next(s for s in response.data if s.id == record.id)
         assert session.duration_seconds == 28800
         assert session.sleep_duration_seconds is None
+
+    def _sleep_record(self, mapping: DataSource) -> EventRecord:
+        """Create a sleep session ending 2026-04-11 (UTC) for the given source."""
+        return EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 11, 7, 0, tzinfo=timezone.utc),
+            duration_seconds=28800,
+        )
+
+    def test_returns_all_sources_by_default(self, db: Session) -> None:
+        """Without the flag, sessions from every source are returned (backwards compatible)."""
+        user = UserFactory()
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura_record = self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        ids = {s.id for s in response.data}
+        assert oura_record.id in ids
+        assert garmin_record.id in ids
+
+    def test_filter_by_priority_keeps_only_best_source_per_date(self, db: Session) -> None:
+        """With the flag, only the highest-priority source's sessions survive per date."""
+        from app.schemas.enums import ProviderName
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura_record = self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        # Garmin ranks above Oura.
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True)
+
+        ids = {s.id for s in response.data}
+        assert garmin_record.id in ids
+        assert oura_record.id not in ids

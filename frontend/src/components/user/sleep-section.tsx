@@ -31,6 +31,7 @@ import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
 import { SourceBadge } from '@/components/common/source-badge';
 import { SectionHeader } from '@/components/common/section-header';
+import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
   TooltipContent,
@@ -45,6 +46,7 @@ import {
   formatDuration,
   formatMinutes,
   formatBedtime,
+  parseApiDate,
 } from '@/lib/utils/format';
 import {
   calculateSleepStats,
@@ -272,11 +274,19 @@ function SleepSessionRow({
             </div>
 
             {/* Bedtime */}
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-sky-400" />
+            <div className="flex items-center gap-2 w-32">
+              <Clock className="h-4 w-4 text-sky-400 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  {format(new Date(session.start_time), 'h:mm a')}
+                  {(() => {
+                    const start = new Date(session.start_time);
+                    const end = new Date(session.end_time);
+                    const overnight =
+                      start.getFullYear() !== end.getFullYear() ||
+                      start.getMonth() !== end.getMonth() ||
+                      start.getDate() !== end.getDate();
+                    return format(start, overnight ? 'EEE h:mm a' : 'h:mm a');
+                  })()}
                 </p>
                 <p className="text-xs text-muted-foreground">Bedtime</p>
               </div>
@@ -500,6 +510,10 @@ export function SleepSection({
   // Cursor-based pagination for sleep sessions
   const pagination = useCursorPagination();
 
+  // Deduplicate sessions across providers (highest-priority source per night).
+  // On by default; the backend flag preserves raw multi-source data when off.
+  const [deduplicate, setDeduplicate] = useState(true);
+
   // Date range hooks
   const { startDate, endDate } = useDateRange(dateRange);
   const allTimeRange = useAllTimeRange();
@@ -523,7 +537,14 @@ export function SleepSection({
     ...allTimeRange,
     limit: SESSIONS_PER_PAGE,
     cursor: pagination.currentCursor ?? undefined,
+    filter_by_priority: deduplicate,
   });
+
+  // Toggling dedup changes the result set, so restart pagination from page 1.
+  const handleDeduplicateChange = (checked: boolean) => {
+    setDeduplicate(checked);
+    pagination.reset();
+  };
 
   // Derive pagination state from response
   const nextCursor = sessionsData?.pagination?.next_cursor ?? null;
@@ -556,9 +577,12 @@ export function SleepSection({
     if (summaries.length === 0) return [];
 
     return [...summaries]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(
+        (a, b) =>
+          parseApiDate(a.date).getTime() - parseApiDate(b.date).getTime()
+      )
       .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
+        date: format(parseApiDate(s.date), 'MMM d'),
         value: currentMetric.getChartValue(s),
       }));
   }, [sleepSummaries, currentMetric]);
@@ -731,11 +755,21 @@ export function SleepSection({
         <SectionHeader
           title="Sleep Sessions"
           rightContent={
-            !sessionsLoading && hasData ? (
-              <span className="text-xs text-muted-foreground">
-                Page {pagination.currentPage}
-              </span>
-            ) : undefined
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <Switch
+                  checked={deduplicate}
+                  onCheckedChange={handleDeduplicateChange}
+                  aria-label="Deduplicate sources"
+                />
+                Deduplicate sources
+              </label>
+              {!sessionsLoading && hasData ? (
+                <span className="text-xs text-muted-foreground">
+                  Page {pagination.currentPage}
+                </span>
+              ) : null}
+            </div>
           }
         />
 

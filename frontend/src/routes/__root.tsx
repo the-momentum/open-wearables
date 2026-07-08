@@ -9,6 +9,7 @@ import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/query/client';
+import { runtimeConfigScript } from '@/lib/api/runtime-config';
 import { Toaster } from '@/components/ui/sonner';
 
 import appCss from '../styles.css?url';
@@ -102,6 +103,12 @@ function RootComponent() {
     <html lang="en" className="dark">
       <head>
         <HeadContent />
+        {/* Runtime config: injects the API URL from the container env before
+            the app hydrates, so one prebuilt image works against any backend. */}
+        <script
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: runtimeConfigScript() }}
+        />
       </head>
       <body>
         <QueryClientProvider client={queryClient}>

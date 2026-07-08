@@ -214,6 +214,45 @@ export interface UserDataSummary {
   series_type_counts: Record<string, number>;
   workout_type_counts: Record<string, number>;
   by_provider: ProviderDataCount[];
+  has_womens_health_data: boolean;
+}
+
+/** Optional date scope for the data summary. Omitting both fields = all-time. */
+export interface DataSummaryParams {
+  start_date?: string; // ISO datetime
+  end_date?: string; // ISO datetime (exclusive)
+  [key: string]: string | undefined;
+}
+
+export interface MenstrualCycleRecord {
+  id: string;
+  start_time: string;
+  end_time: string;
+  zone_offset: string | null;
+  source: SourceMetadata;
+  current_phase: number | null;
+  current_phase_type: string | null;
+  day_in_cycle: number | null;
+  cycle_length: number | null;
+  predicted_cycle_length: number | null;
+  is_predicted_cycle: boolean | null;
+  period_length: number | null;
+  length_of_current_phase: number | null;
+  days_until_next_phase: number | null;
+  fertile_window_start: number | null;
+  length_of_fertile_window: number | null;
+  last_updated_at: string | null;
+  has_specified_cycle_length: boolean | null;
+  has_specified_period_length: boolean | null;
+  pregnancy_snapshot: Record<string, unknown>[] | null;
+}
+
+export interface MenstrualCyclesParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  [key: string]: string | number | undefined;
 }
 
 export interface Provider {
@@ -252,6 +291,7 @@ export interface UserConnection {
   webhook_ping?: boolean;
   webhook_callback?: boolean;
   live_sync_mode?: 'pull' | 'webhook' | null;
+  linked_user_ids?: string[];
 }
 
 // ============================================================================
@@ -295,7 +335,12 @@ export interface SleepSessionsParams {
   end_date: string;
   cursor?: string;
   limit?: number;
-  [key: string]: string | number | undefined;
+  /**
+   * When true, the backend keeps only the highest-priority source's sessions
+   * per sleep date (provider/device priority), deduplicating across providers.
+   */
+  filter_by_priority?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }
 
 export interface SleepSummary {
@@ -616,6 +661,7 @@ export interface Developer {
 export interface Invitation {
   id: string;
   email: string;
+  token: string;
   invited_by: string;
   created_at: string;
   expires_at: string;

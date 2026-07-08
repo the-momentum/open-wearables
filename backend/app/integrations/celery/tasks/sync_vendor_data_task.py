@@ -1,11 +1,12 @@
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 from celery import shared_task
 
+from app.config import settings
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -13,10 +14,13 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus
 from app.services.providers.factory import ProviderFactory
+from app.services.sync_coordination import release_primary, release_stale_primary, try_become_primary
 from app.services.sync_status_service import completed, failed, new_run_id, progress, started
+from app.utils.config_utils import format_duration
 from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
+from app.utils.sync_params import build_sync_params
 
 logger = getLogger(__name__)
 
@@ -54,6 +58,8 @@ def sync_vendor_data(
     end_date: str | None = None,
     providers: list[str] | None = None,
     is_historical: bool = False,
+    _skip_linked_fan_out: bool = False,
+    _linked_primary_user_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Synchronize workout/exercise/activity data from all providers the user is connected to.
@@ -67,6 +73,8 @@ def sync_vendor_data(
         providers: Optional list of provider names to sync (None = all active providers)
         is_historical: When True, skips updating last_synced_at so the live-sync
             cursor is not clobbered by a user-initiated historical pull.
+        _skip_linked_fan_out: Internal flag set to True when this task was triggered
+            by another profile's fan-out.  Prevents infinite fan-out loops.
 
     Returns:
         dict with sync results per provider
@@ -162,7 +170,66 @@ def sync_vendor_data(
                 )
 
                 run_id = new_run_id(prefix="pull")
-                sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
+                primary_uuid: UUID | None = None
+                if _linked_primary_user_id:
+                    with suppress(ValueError):
+                        primary_uuid = UUID(_linked_primary_user_id)
+                sync_source = (
+                    SyncSource.LINKED_ACCOUNT
+                    if _linked_primary_user_id
+                    else (SyncSource.BACKFILL if is_historical else SyncSource.PULL)
+                )
+
+                # If this provider account is shared across OW profiles, only one
+                # should make the API call at a time.  The first to acquire the lock
+                # is primary; concurrent duplicates skip and wait for the fan-out.
+                # Fan-out tasks (_skip_linked_fan_out=True) bypass this check entirely.
+                shared_token: str = ""
+                if connection.provider_user_id and not _skip_linked_fan_out:
+                    is_pull_primary, shared_token, existing_primary = try_become_primary(
+                        provider_name, connection.provider_user_id, user_uuid, scope="pull"
+                    )
+                    if not is_pull_primary and existing_primary:
+                        # If the lock holder no longer has an active connection (e.g. user
+                        # deleted), the lock is stale and will never be released naturally.
+                        # Steal it so this profile can become primary.
+                        active = user_connection_repo.get_active_connection(db, existing_primary, provider_name)
+                        if not active:
+                            log_structured(
+                                logger,
+                                "info",
+                                f"Stealing stale {provider_name} primary lock — holder has no active connection",
+                                provider=provider_name,
+                                task="sync_vendor_data",
+                                user_id=user_id,
+                                stale_primary_user_id=str(existing_primary),
+                            )
+                            release_stale_primary(provider_name, connection.provider_user_id, scope="pull")
+                            is_pull_primary, shared_token, existing_primary = try_become_primary(
+                                provider_name, connection.provider_user_id, user_uuid, scope="pull"
+                            )
+
+                    if not is_pull_primary:
+                        log_structured(
+                            logger,
+                            "info",
+                            f"Skipping {provider_name} pull — another linked profile is syncing",
+                            provider=provider_name,
+                            task="sync_vendor_data",
+                            user_id=user_id,
+                            primary_user_id=str(existing_primary) if existing_primary else None,
+                        )
+                        # No sync status event here — the primary will trigger a fan-out
+                        # task for this profile that emits a LINKED_ACCOUNT completed event
+                        # once the actual data delivery is done.  A pre-emptive event here
+                        # would show up as a duplicate in the sync log.
+                        if not is_historical:
+                            user_connection_repo.update_last_synced_at(db, connection)
+                        result.providers_synced[provider_name] = ProviderSyncResult(
+                            success=True, params={"linked_account": True}
+                        )
+                        continue
+
                 _emit_sync_status(
                     started,
                     user_uuid,
@@ -174,6 +241,7 @@ def sync_vendor_data(
                         if is_historical
                         else f"Live sync from {provider_name} started"
                     ),
+                    primary_user_id=primary_uuid,
                     metadata={
                         "trace_id": trace_id,
                         "is_historical": is_historical,
@@ -186,6 +254,13 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
+                    # New-vs-updated split for the sync-log (timeseries upserts report it
+                    # via WriteCounts). items_processed is derived from these so the headline
+                    # count always equals "X new, Y updated".
+                    pull_inserted = 0
+                    pull_updated = 0
+                    applied_lookback: timedelta | None = None  # set when the lookback actually widened the window
+
                     # Resolve effective start: explicit arg > last_synced_at > now
                     # This ensures live syncs never re-pull history.
                     effective_start = start_date
@@ -194,6 +269,15 @@ def sync_vendor_data(
                         if last is not None:
                             if last.tzinfo is None:
                                 last = last.replace(tzinfo=timezone.utc)
+                            # Optional trailing lookback so late provider revisions get
+                            # re-fetched (live pull only; capped by max_historical_days).
+                            lookback = settings.pull_sync_lookback
+                            if lookback is not None and not is_historical:
+                                last -= lookback
+                                max_days = strategy.capabilities.max_historical_days
+                                if max_days is not None:
+                                    last = max(last, datetime.now(timezone.utc) - timedelta(days=max_days))
+                                applied_lookback = lookback
                             effective_start = last.isoformat()
                         else:
                             # First ever sync — start from now, historical must be explicit
@@ -201,7 +285,7 @@ def sync_vendor_data(
 
                     # Sync workouts
                     if strategy.workouts:
-                        params = _build_sync_params(provider_name, effective_start, end_date)
+                        params = build_sync_params(effective_start, end_date)
                         _emit_sync_status(
                             progress,
                             user_uuid,
@@ -271,6 +355,9 @@ def sync_vendor_data(
                                     is_first_sync=is_first_sync,
                                 )
                                 provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
+                                for _count in results_247.values():
+                                    pull_inserted += getattr(_count, "inserted", 0)
+                                    pull_updated += getattr(_count, "updated", 0)
                             else:
                                 results_247 = strategy.data_247.load_all_247_data(
                                     db,
@@ -312,6 +399,39 @@ def sync_vendor_data(
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
 
+                    if shared_token and connection.provider_user_id:
+                        release_primary(
+                            provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
+                        )
+                        # Fan-out: trigger sync for every other OW profile sharing this
+                        # provider account so they receive the same data.
+                        linked_connections = user_connection_repo.get_all_by_provider_user_id(
+                            db, provider_name, connection.provider_user_id
+                        )
+                        for linked_conn in linked_connections:
+                            if linked_conn.user_id == user_uuid:
+                                continue
+                            log_structured(
+                                logger,
+                                "info",
+                                f"Fanning out {provider_name} sync to linked profile",
+                                provider=provider_name,
+                                task="sync_vendor_data",
+                                user_id=user_id,
+                                linked_user_id=str(linked_conn.user_id),
+                            )
+                            sync_vendor_data.apply_async(
+                                kwargs={
+                                    "user_id": str(linked_conn.user_id),
+                                    "start_date": start_date,
+                                    "end_date": end_date,
+                                    "providers": [provider_name],
+                                    "is_historical": is_historical,
+                                    "_skip_linked_fan_out": True,
+                                    "_linked_primary_user_id": user_id,
+                                }
+                            )
+
                     result.providers_synced[provider_name] = provider_result
                     log_structured(
                         logger,
@@ -320,6 +440,8 @@ def sync_vendor_data(
                         provider=provider_name,
                         task="sync_vendor_data",
                         user_id=user_id,
+                        effective_start=effective_start,
+                        lookback=format_duration(settings.pull_sync_lookback) if settings.pull_sync_lookback else None,
                     )
 
                     sub_results = list(provider_result.params.values())
@@ -343,9 +465,30 @@ def sync_vendor_data(
                             run_id=run_id,
                             error="All sync sub-tasks failed",
                             message=f"Sync from {provider_name} failed",
+                            primary_user_id=primary_uuid,
                             metadata={"is_historical": is_historical, "params": provider_result.params},
                         )
                     else:
+                        # inserted/updated are run-level totals across all timeseries
+                        # types: a single sync (historical included) can have both —
+                        # e.g. new days inserted while overlapping days are refreshed.
+                        completed_metadata: dict[str, Any] = {
+                            "is_historical": is_historical,
+                            "params": provider_result.params,
+                        }
+                        completed_message = (
+                            f"Sync from {provider_name} completed"
+                            if not any_failed
+                            else f"Sync from {provider_name} completed with errors"
+                        )
+                        if pull_inserted or pull_updated:
+                            completed_metadata["inserted"] = pull_inserted
+                            completed_metadata["updated"] = pull_updated
+                            completed_message += f" · {pull_inserted} new, {pull_updated} updated"
+                        if applied_lookback is not None:
+                            lookback_label = format_duration(applied_lookback)
+                            completed_metadata["lookback"] = lookback_label
+                            completed_message += f" · lookback {lookback_label}"
                         _emit_sync_status(
                             completed,
                             user_uuid,
@@ -353,15 +496,17 @@ def sync_vendor_data(
                             sync_source,
                             run_id=run_id,
                             status=final_status,
-                            message=(
-                                f"Sync from {provider_name} completed"
-                                if not any_failed
-                                else f"Sync from {provider_name} completed with errors"
-                            ),
-                            metadata={"is_historical": is_historical, "params": provider_result.params},
+                            message=completed_message,
+                            items_processed=pull_inserted + pull_updated,
+                            primary_user_id=primary_uuid,
+                            metadata=completed_metadata,
                         )
 
                 except Exception as e:
+                    if shared_token and connection.provider_user_id:
+                        release_primary(
+                            provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
+                        )
                     _emit_sync_status(
                         failed,
                         user_uuid,
@@ -397,87 +542,3 @@ def sync_vendor_data(
             )
             result.errors["general"] = str(e)
             return result.model_dump()
-
-
-def _build_sync_params(provider_name: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:
-    """
-    Build provider-specific parameters for syncing data.
-
-    Args:
-        provider_name: Name of the provider ('suunto', 'garmin', 'polar', etc.)
-        start_date: ISO 8601 date string for start of sync period
-        end_date: ISO 8601 date string for end of sync period
-
-    Returns:
-        Dictionary of parameters for the provider's load_data method
-    """
-    params: dict[str, Any] = {
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-
-    # Convert date strings to appropriate formats
-    start_timestamp = None
-    end_timestamp = None
-
-    if start_date:
-        try:
-            if isinstance(start_date, datetime):
-                start_dt = start_date
-            else:
-                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            start_timestamp = int(start_dt.timestamp())
-        except (ValueError, AttributeError) as e:
-            log_structured(
-                logger,
-                "warning",
-                f"Invalid start_date format: {start_date}, error: {e}",
-                provider="sync_vendor_data",
-                task="sync_vendor_data",
-            )
-
-    if end_date:
-        try:
-            if isinstance(end_date, datetime):
-                end_dt = end_date
-            else:
-                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-            end_timestamp = int(end_dt.timestamp())
-        except (ValueError, AttributeError) as e:
-            log_structured(
-                logger,
-                "warning",
-                f"Invalid end_date format: {end_date}, error: {e}",
-                provider="sync_vendor_data",
-                task="sync_vendor_data",
-            )
-
-    # Provider-specific parameter mapping
-    if provider_name == "polar":
-        # Polar parameters
-        # Note: Polar typically uses its own pagination, but we can include optional flags
-        params["samples"] = False  # Can be enabled for detailed sample data
-        params["zones"] = False
-        params["route"] = False
-
-    elif provider_name == "garmin":
-        # Garmin backfill API parameters
-        if start_date:
-            params["summary_start_time"] = start_date
-        if end_date:
-            params["summary_end_time"] = end_date
-
-    elif provider_name == "whoop":
-        # Whoop API uses 'start' and 'end' parameters (ISO 8601 strings)
-        if start_date:
-            params["start"] = start_date
-        if end_date:
-            params["end"] = end_date
-
-    # Add generic parameters for providers that might use them
-    if start_timestamp:
-        params["since"] = start_timestamp
-    if end_timestamp:
-        params["until"] = end_timestamp
-
-    return params

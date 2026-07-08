@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useActivitySummaries } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
+import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
@@ -30,6 +30,7 @@ import {
   formatNumber,
   formatDistance,
   formatMinutes,
+  parseApiDate,
 } from '@/lib/utils/format';
 import {
   calculateActivityStats,
@@ -199,10 +200,10 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
         {/* Date */}
         <div className="w-28 flex-shrink-0">
           <p className="text-sm font-medium text-foreground">
-            {format(new Date(summary.date), 'EEE, MMM d')}
+            {format(parseApiDate(summary.date), 'EEE, MMM d')}
           </p>
           <p className="text-xs text-muted-foreground">
-            {format(new Date(summary.date), 'yyyy')}
+            {format(parseApiDate(summary.date), 'yyyy')}
           </p>
           {summary.source?.provider && (
             <SourceBadge provider={summary.source.provider} className="mt-1" />
@@ -331,7 +332,13 @@ export function ActivitySection({
 
   // Date range hooks
   const { startDate, endDate } = useDateRange(dateRange);
-  const allTimeRange = useAllTimeRange();
+
+  // Reset pagination when the date range changes so a stale cursor from a
+  // previous window doesn't carry over to the new one.
+  const { reset: resetPagination } = pagination;
+  useEffect(() => {
+    resetPagination();
+  }, [dateRange, resetPagination]);
 
   // Fetch activity summaries for summary stats (date range filtered)
   const { data: summaryData, isLoading: summaryLoading } = useActivitySummaries(
@@ -343,13 +350,15 @@ export function ActivitySection({
     }
   );
 
-  // Fetch activity days with cursor-based pagination (newest first)
+  // Fetch activity days with cursor-based pagination (newest first),
+  // scoped to the selected date range so we don't aggregate all history.
   const {
     data: daysData,
     isLoading: daysLoading,
     isFetching,
   } = useActivitySummaries(userId, {
-    ...allTimeRange,
+    start_date: startDate,
+    end_date: endDate,
     limit: DAYS_PER_PAGE,
     cursor: pagination.currentCursor ?? undefined,
     sort_order: 'desc',
@@ -386,9 +395,12 @@ export function ActivitySection({
     if (summaries.length === 0) return [];
 
     return [...summaries]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(
+        (a, b) =>
+          parseApiDate(a.date).getTime() - parseApiDate(b.date).getTime()
+      )
       .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
+        date: format(parseApiDate(s.date), 'MMM d'),
         value: currentMetric.getChartValue(s),
       }));
   }, [summaryData, currentMetric]);

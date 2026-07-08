@@ -1,5 +1,6 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
@@ -35,6 +36,7 @@ from app.schemas.responses.activity import (
     HeartRateStats,
     IntensityMinutes,
     RecoverySummary,
+    SleepSessionSummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -50,13 +52,6 @@ from app.utils.pagination import (
     encode_activity_cursor,
     encode_cursor,
 )
-from app.utils.structured_logging import log_structured
-
-# Series types needed for sleep physiological metrics
-# TODO: Add HRV, respiratory rate, and SpO2 when ready
-SLEEP_PHYSIO_SERIES_TYPES = [
-    SeriesType.heart_rate,
-]
 
 # Activity summary constants
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
@@ -125,11 +120,9 @@ class SummariesService:
         device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
 
         # Group results by date
-        by_date: dict[date, list[dict]] = {}
+        by_date: dict[date, list[dict]] = defaultdict(list)
         for result in results:
             dt = result[date_key]
-            if dt not in by_date:
-                by_date[dt] = []
             by_date[dt].append(result)
 
         # For each date, pick highest priority
@@ -141,10 +134,9 @@ class SummariesService:
 
             # Sort by priority
             def sort_key(entry: dict) -> tuple[int, int, str]:
-                # Parse provider
-                source = entry.get("source", "unknown")
+                raw_provider = entry.get("provider") or entry.get("source")
                 try:
-                    provider = ProviderName(source)
+                    provider = ProviderName(raw_provider)
                 except ValueError:
                     provider = ProviderName.UNKNOWN
 
@@ -224,6 +216,7 @@ class SummariesService:
                 SeriesType.heart_rate,
                 SeriesType.distance_walking_running,
                 SeriesType.flights_climbed,
+                SeriesType.active_time,
             ]
         ]
 
@@ -311,48 +304,56 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
-            # Fetch average heart rate during the sleep period
-            # TODO: Add HRV, respiratory rate, and SpO2 when ready
-            avg_hr: int | None = None
+            hr_avg = result.get("avg_hr")
+            avg_hr: int | None = int(round(hr_avg)) if hr_avg is not None else None
+            avg_hrv_sdnn: float | None = result.get("avg_hrv_sdnn")
+            avg_hrv_rmssd: float | None = result.get("avg_hrv_rmssd")
+            avg_respiratory_rate: float | None = result.get("avg_resp")
+            avg_spo2_percent: float | None = result.get("avg_spo2")
 
-            sleep_start = result.get("min_start_time")
-            sleep_end = result.get("max_end_time")
-            if sleep_start and sleep_end:
-                try:
-                    physio_averages = self.data_point_repo.get_averages_for_time_range(
-                        db_session,
-                        user_id,
-                        sleep_start,
-                        sleep_end,
-                        SLEEP_PHYSIO_SERIES_TYPES,
-                    )
-                    hr_avg = physio_averages.get(SeriesType.heart_rate)
-                    avg_hr = int(round(hr_avg)) if hr_avg is not None else None
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Failed to fetch heart rate metrics for sleep: {e}",
-                        sleep_start=sleep_start,
-                        sleep_end=sleep_end,
-                    )
+            raw_sessions = result.get("sessions") or []
+            sessions = [
+                SleepSessionSummary(
+                    start_time=s["start_time"],
+                    end_time=s["end_time"],
+                    zone_offset=s.get("zone_offset"),
+                    duration_minutes=s.get("duration_minutes"),
+                    is_nap=s["is_nap"],
+                )
+                for s in raw_sessions
+            ]
+
+            main_minutes = result.get("total_duration_minutes")
+            nap_minutes = result.get("nap_duration_minutes")
+            total_duration_minutes = None
+            if main_minutes is not None or nap_minutes is not None:
+                total_duration_minutes = (main_minutes or 0) + (nap_minutes or 0)
+
+            main_sessions = [s for s in sessions if not s.is_nap]
+            longest_main = max(main_sessions, key=lambda s: s.duration_minutes or 0, default=None)
+            start_time = longest_main.start_time if longest_main else result["min_start_time"]
+            end_time = longest_main.end_time if longest_main else result["max_end_time"]
+            zone_offset = longest_main.zone_offset if longest_main else None
 
             summary = SleepSummary(
                 date=result["sleep_date"],
                 source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
-                start_time=result["min_start_time"],
-                end_time=result["max_end_time"],
+                start_time=start_time,
+                end_time=end_time,
+                zone_offset=zone_offset,
                 duration_minutes=result["total_duration_minutes"],
+                total_duration_minutes=total_duration_minutes,
+                sessions=sessions or None,
                 time_in_bed_minutes=result.get("time_in_bed_minutes"),
                 efficiency_percent=result.get("efficiency_percent"),
                 stages=stages,
                 nap_count=result.get("nap_count"),
                 nap_duration_minutes=result.get("nap_duration_minutes"),
                 avg_heart_rate_bpm=avg_hr,
-                # TODO: Implement these when ready
-                avg_hrv_sdnn_ms=None,
-                avg_respiratory_rate=None,
-                avg_spo2_percent=None,
+                avg_hrv_sdnn_ms=avg_hrv_sdnn,
+                avg_hrv_rmssd_ms=avg_hrv_rmssd,
+                avg_respiratory_rate=avg_respiratory_rate,
+                avg_spo2_percent=avg_spo2_percent,
             )
             data.append(summary)
 
@@ -627,8 +628,13 @@ class SummariesService:
             if active_cal is not None or basal_cal is not None:
                 total_cal = (active_cal or 0.0) + (basal_cal or 0.0)
 
-            # Get active/sedentary minutes
-            active_mins = activity_data.get("active_minutes")
+            # Active minutes: prefer the provider-reported daily active time (Garmin
+            # activeTimeInSeconds, Oura high+medium+low activity time, Polar active_duration).
+            # Fall back to the step-threshold heuristic only when the provider doesn't report it.
+            # Sedentary stays on the step-threshold path (no cross-provider source yet).
+            active_mins = result.get("active_time_minutes")
+            if active_mins is None:
+                active_mins = activity_data.get("active_minutes")
             sedentary_mins = activity_data.get("sedentary_minutes")
 
             # Get intensity minutes from HR data

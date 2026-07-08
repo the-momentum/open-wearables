@@ -312,9 +312,18 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
 }
 
 
+APPLE_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
+    k: v for k, v in METRIC_TYPE_TO_SERIES_TYPE.items() if k.value.startswith("HK")
+}
+
+ANDROID_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
+    k: v for k, v in METRIC_TYPE_TO_SERIES_TYPE.items() if not k.value.startswith("HK")
+}
+
+
 def get_series_type_from_metric_type(metric_type: SDKMetricType | str) -> SeriesType | None:
     """
     Map a metric type identifier (Apple HealthKit or Samsung/Health Connect SDK)
     to the unified SeriesType enum. Returns None when the metric type is not supported.
     """
-    return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)  # ty: ignore[invalid-argument-type]
+    return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)

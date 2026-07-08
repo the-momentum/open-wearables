@@ -55,6 +55,7 @@ WELLNESS_TYPES: list[str] = [
     "userMetrics",
     "bloodPressures",
     "activityDetails",
+    "activityFiles",
 ]
 
 # Celery task paths — used with send_task() to avoid circular imports
@@ -75,6 +76,17 @@ class GarminWebhookHandler(BaseWebhookHandler):
         self.garmin_workouts = garmin_workouts
         self.garmin_247 = garmin_247
         self.connection_repo = UserConnectionRepository()
+
+    def extract_user_id(self, payload: dict[str, Any]) -> str | None:
+        """Garmin batches items under data-type keys; userId lives per item."""
+        user_ids = {
+            str(item["userId"])
+            for items in payload.values()
+            if isinstance(items, list)
+            for item in items
+            if isinstance(item, dict) and item.get("userId")
+        }
+        return ",".join(sorted(user_ids)) or None
 
     # ------------------------------------------------------------------
     # BaseWebhookHandler interface
@@ -199,25 +211,26 @@ class GarminWebhookHandler(BaseWebhookHandler):
         details: list[dict[str, Any]] = []
 
         for notification in payload.get("activities", []):
-            result = process_activity_notification(
+            per_profile_results = process_activity_notification(
                 db, self.connection_repo, self.garmin_workouts, notification, request_trace_id
             )
-            details.append(result)
-            status = result.get("status")
-            uid_str = result.get("internal_user_id")
-            if status in ("saved", "fetched"):
-                processed_count += 1
-                if status == "saved":
-                    saved_count += len(result.get("record_ids", []))
-                if uid_str:
-                    synced_user_ids.add(UUID(uid_str))
-                    if mark_type_success(uid_str, "activities"):
+            details.extend(per_profile_results)
+            for result in per_profile_results:
+                status = result.get("status")
+                uid_str = result.get("internal_user_id")
+                if status in ("saved", "fetched"):
+                    processed_count += 1
+                    if status == "saved":
+                        saved_count += len(result.get("record_ids", []))
+                    if uid_str:
+                        synced_user_ids.add(UUID(uid_str))
+                        if mark_type_success(uid_str, "activities"):
+                            users_with_new_success.add(uid_str)
+                elif status == "duplicate":
+                    if uid_str and mark_type_success(uid_str, "activities"):
                         users_with_new_success.add(uid_str)
-            elif status == "duplicate":
-                if uid_str and mark_type_success(uid_str, "activities"):
-                    users_with_new_success.add(uid_str)
-            elif status in ("error", "user_not_found"):
-                errors.append(result.get("error", "Unknown error"))
+                elif status in ("error", "user_not_found"):
+                    errors.append(result.get("error", "Unknown error"))
 
         return {"processed_count": processed_count, "saved_count": saved_count, "details": details}
 
