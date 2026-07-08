@@ -7,7 +7,7 @@ from app.repositories.personal_record_repository import PersonalRecordRepository
 from app.schemas.model_crud.activities import PersonalRecordCreate, PersonalRecordUpsert
 from app.services.services import AppService
 from app.services.user_service import user_service
-from app.utils.exceptions import ResourceNotFoundError
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 
 
 class PersonalRecordService(
@@ -21,6 +21,7 @@ class PersonalRecordService(
             **kwargs,
         )
 
+    @handle_exceptions
     def get_for_user(
         self,
         db_session: DbSession,
@@ -32,6 +33,7 @@ class PersonalRecordService(
             raise ResourceNotFoundError(self.name, user_id)
         return record
 
+    @handle_exceptions
     def upsert(
         self,
         db_session: DbSession,

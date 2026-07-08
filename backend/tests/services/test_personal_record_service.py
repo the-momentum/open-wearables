@@ -2,11 +2,11 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.schemas.model_crud.activities import PersonalRecordUpsert
 from app.services.personal_record_service import personal_record_service
-from app.utils.exceptions import ResourceNotFoundError
 from tests.factories import UserFactory
 
 
@@ -40,9 +40,10 @@ def test_upsert_updates_when_present_without_duplicate(db: Session) -> None:
     assert len(all_for_user) == 1
 
 
-def test_upsert_unknown_user_raises_not_found(db: Session) -> None:
-    with pytest.raises(ResourceNotFoundError):
+def test_upsert_unknown_user_returns_404(db: Session) -> None:
+    with pytest.raises(HTTPException) as exc_info:
         personal_record_service.upsert(db, uuid4(), PersonalRecordUpsert(birth_date=date(1990, 1, 2)))
+    assert exc_info.value.status_code == 404
 
 
 def test_get_for_user_returns_none_when_absent(db: Session) -> None:
@@ -52,5 +53,6 @@ def test_get_for_user_returns_none_when_absent(db: Session) -> None:
 
 def test_get_for_user_raise_404_when_absent(db: Session) -> None:
     user = UserFactory()
-    with pytest.raises(ResourceNotFoundError):
+    with pytest.raises(HTTPException) as exc_info:
         personal_record_service.get_for_user(db, user.id, raise_404=True)
+    assert exc_info.value.status_code == 404
