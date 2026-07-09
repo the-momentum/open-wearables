@@ -25,8 +25,10 @@ from app.schemas.model_crud.coverage import (
 
 DOCS_PATH = Path(__file__).resolve().parents[2] / "docs" / "providers" / "coverage.mdx"
 
-START_MARKER = "<!-- GENERATED:COVERAGE:START -->"
-END_MARKER = "<!-- GENERATED:COVERAGE:END -->"
+# Mintlify's MDX parser rejects raw HTML comments (`<!-- -->`); JSX-style
+# comments are required instead.
+START_MARKER = "{/* GENERATED:COVERAGE:START */}"
+END_MARKER = "{/* GENERATED:COVERAGE:END */}"
 
 
 def _mark(supported: bool) -> str:
@@ -79,15 +81,13 @@ def generate_body(coverage: CoverageResponse) -> str:
         _render_field_section("Women's Health Coverage", "Field", coverage.menstrual_cycle_fields, coverage.providers),
         _render_field_section("Health Scores Coverage", "Score", coverage.health_scores, coverage.providers),
     ]
-    info = (
-        "<Info>\n"
-        "  This section is generated from the live provider coverage matrix "
-        "(same data as `/v1/meta/coverage` and the app's Data Coverage tab) and is "
-        "regenerated automatically whenever a provider's `coverage.py` changes. "
-        "Do not edit it by hand.\n"
-        "</Info>\n"
+    # Dev-facing note, invisible in the rendered page (reader-facing content has no
+    # reason to mention this section is auto-generated). No divider after it — the
+    # static template already places a "---" right before the START marker.
+    dev_note = (
+        "{/* Auto-generated from ProviderCoverage by scripts/generate_coverage_docs.py — do not edit by hand. */}\n"
     )
-    return info + "\n---\n\n" + "\n---\n\n".join(sections)
+    return dev_note + "\n" + "\n---\n\n".join(sections)
 
 
 def main() -> None:
