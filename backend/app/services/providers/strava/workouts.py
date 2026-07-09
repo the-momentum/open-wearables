@@ -4,7 +4,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
-from app.constants.series_types.strava import STREAM_KEY_SERIES_TYPE, STREAM_KEYS_PARAM
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
 from app.schemas.enums import SeriesType, WorkoutType
@@ -21,6 +20,7 @@ from app.schemas.providers.strava import (
     StravaStreamSet,
 )
 from app.services.event_record_service import event_record_service
+from app.services.providers.strava.coverage import STREAM_KEY_SERIES_TYPE, STREAM_KEYS_PARAM
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import offset_to_iso
