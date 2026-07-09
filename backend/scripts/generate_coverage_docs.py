@@ -101,7 +101,8 @@ def main() -> None:
 
     replacement = f"{START_MARKER}\n\n{body}\n{END_MARKER}"
     new_text = pattern.sub(replacement, text)
-    DOCS_PATH.write_text(new_text)
+    if new_text != text:
+        DOCS_PATH.write_text(new_text)
 
 
 if __name__ == "__main__":
