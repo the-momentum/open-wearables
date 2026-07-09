@@ -1,9 +1,8 @@
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
-# Strava activity stream key (https://developers.strava.com/docs/reference/#api-Streams)
-# → SeriesType, consumed by workouts.py (/api/v3/activities/{id}/streams). The "time"
-# stream is the per-sample offset axis, handled separately and excluded here.
+# (/api/v3/activities/{id}/streams)
+# time not included since it only defines offset
 STREAM_KEY_SERIES_TYPE: dict[str, SeriesType] = {
     "heartrate": SeriesType.heart_rate,
     "velocity_smooth": SeriesType.speed,
