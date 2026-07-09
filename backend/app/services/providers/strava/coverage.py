@@ -1,8 +1,9 @@
+from app.constants.series_types.strava import STREAM_KEY_SERIES_TYPE
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
-# Strava is a workouts-only service: no 24/7 timeseries, sleep, or health scores.
-TIMESERIES: frozenset[SeriesType] = frozenset()
+# Workout-context only, gated by settings.ingest_workout_samples.
+TIMESERIES: frozenset[SeriesType] = frozenset(STREAM_KEY_SERIES_TYPE.values())
 
 # EventRecordDetail fields populated by workouts.py (workout records)
 WORKOUT_FIELDS: frozenset[str] = frozenset(
