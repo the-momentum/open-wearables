@@ -12,6 +12,7 @@ export type {
   TimeseriesMetric,
   WorkoutField,
   SleepField,
+  MenstrualCycleField,
   HealthScore,
 } from './services/meta.service';
 export { usersService } from './services/users.service';

@@ -7,7 +7,13 @@ from app.services.providers.base_strategy import (
     ProviderCapabilities,
     ProviderCoverage,
 )
-from app.services.providers.garmin.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
+from app.services.providers.garmin.coverage import (
+    HEALTH_SCORES,
+    MENSTRUAL_CYCLE_FIELDS,
+    SLEEP_FIELDS,
+    TIMESERIES,
+    WORKOUT_FIELDS,
+)
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.webhook_handler import GarminWebhookHandler
@@ -68,7 +74,11 @@ class GarminStrategy(BaseProviderStrategy):
     @property
     def coverage(self) -> ProviderCoverage:
         return ProviderCoverage(
-            timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS, health_scores=HEALTH_SCORES
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            menstrual_cycle_fields=MENSTRUAL_CYCLE_FIELDS,
+            health_scores=HEALTH_SCORES,
         )
 
     def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:

@@ -37,18 +37,22 @@ class HistoricalSyncResult:
 class ProviderCoverage:
     """Declares what data a provider actually delivers, grouped by API layer.
 
-    timeseries:     SeriesType values available via /timeseries endpoint
-    workout_fields: EventRecordDetail fields populated in workout records
-    sleep_fields:   EventRecordDetail fields populated in sleep records
-    health_scores:  HealthScoreCategory values produced by this provider
+    timeseries:             SeriesType values available via /timeseries endpoint
+    workout_fields:         EventRecordDetail fields populated in workout records
+    sleep_fields:           EventRecordDetail fields populated in sleep records
+    menstrual_cycle_fields: EventRecordDetail fields populated in menstrual-cycle records
+    health_scores:          HealthScoreCategory values produced by this provider
 
     Define the frozensets in the provider's coverage.py and assign here in
     strategy.py — keeps implementation files free of metadata declarations.
+    A provider that delivers no data for a dimension simply omits it (the
+    default empty frozenset), so no empty placeholders are needed elsewhere.
     """
 
     timeseries: frozenset[SeriesType] = field(default_factory=frozenset)
     workout_fields: frozenset[str] = field(default_factory=frozenset)
     sleep_fields: frozenset[str] = field(default_factory=frozenset)
+    menstrual_cycle_fields: frozenset[str] = field(default_factory=frozenset)
     health_scores: frozenset[HealthScoreCategory] = field(default_factory=frozenset)
 
 

@@ -71,6 +71,9 @@ export function ProviderDetail({ data, provider }: Props) {
   const sleep = data.sleep_fields
     .filter((f) => f.providers.includes(provider))
     .map((f) => ({ code: f.code }));
+  const womensHealth = data.menstrual_cycle_fields
+    .filter((f) => f.providers.includes(provider))
+    .map((f) => ({ code: f.code }));
   const scores = data.health_scores
     .filter((s) => s.providers.includes(provider))
     .map((s) => ({ code: s.code }));
@@ -83,6 +86,7 @@ export function ProviderDetail({ data, provider }: Props) {
     })),
     { title: 'Workout fields', chips: workout },
     { title: 'Sleep fields', chips: sleep },
+    { title: "Women's health fields", chips: womensHealth },
     { title: 'Health scores', chips: scores },
   ].filter((c) => c.chips.length > 0);
 
@@ -94,10 +98,11 @@ export function ProviderDetail({ data, provider }: Props) {
           <SourceBadge provider={provider} />
           <span className="text-sm text-zinc-400">supported data types</span>
         </div>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           <Stat label="Timeseries" value={tsCount} />
           <Stat label="Workout" value={workout.length} />
           <Stat label="Sleep" value={sleep.length} />
+          <Stat label="Women's Health" value={womensHealth.length} />
           <Stat label="Scores" value={scores.length} />
         </div>
       </div>
