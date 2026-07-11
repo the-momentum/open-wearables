@@ -1,3 +1,9 @@
+from unittest.mock import patch
+
+import pytest
+from pydantic import SecretStr
+
+from app.config import settings
 from app.services.providers.withings.applis import (
     APPLI_DOMAIN,
     PROFILE_CHANGE_APPLI,
@@ -24,5 +30,14 @@ def test_appli_domains() -> None:
 
 
 def test_callback_url_is_https_webhooks_path() -> None:
-    url = withings_callback_url()
-    assert url.endswith("/api/v1/providers/withings/webhooks")
+    with patch.object(settings, "withings_webhook_token", SecretStr("a token/+")):
+        url = withings_callback_url()
+    assert url.endswith("/api/v1/providers/withings/webhooks?token=a+token%2F%2B")
+
+
+def test_callback_url_requires_webhook_token() -> None:
+    with (
+        patch.object(settings, "withings_webhook_token", None),
+        pytest.raises(ValueError, match="WITHINGS_WEBHOOK_TOKEN"),
+    ):
+        withings_callback_url()

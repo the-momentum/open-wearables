@@ -26,6 +26,7 @@ from app.schemas.model_crud.credentials import (
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.applis import SUBSCRIBED_APPLIS, withings_callback_url
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -174,7 +175,18 @@ class WithingsOAuth(BaseOAuthTemplate):
         flow *before* the stored token is cleared, so the bearer token is live.
         Per-appli failures are logged, never raised — disconnect must not block.
         """
-        callback = withings_callback_url()
+        try:
+            callback = withings_callback_url()
+        except ValueError as e:
+            log_and_capture_error(
+                e,
+                logger,
+                "Withings notify revoke skipped: callback URL is not configured",
+                level="warning",
+                extra={"provider": self.provider_name, "action": "deregister_user"},
+            )
+            return
+
         for appli in SUBSCRIBED_APPLIS:
             try:
                 response = httpx.post(
@@ -200,12 +212,10 @@ class WithingsOAuth(BaseOAuthTemplate):
                         withings_status=status,
                     )
             except Exception as e:
-                log_structured(
+                log_and_capture_error(
+                    e,
                     logger,
-                    "warning",
                     "Withings notify revoke failed",
-                    provider=self.provider_name,
-                    action="deregister_user",
-                    appli=appli,
-                    error=str(e),
+                    level="warning",
+                    extra={"provider": self.provider_name, "action": "deregister_user", "appli": appli},
                 )

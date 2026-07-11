@@ -1,13 +1,16 @@
 """Tests for WithingsOAuth — envelope unwrapping, action param, userid extraction."""
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import httpx
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
@@ -16,6 +19,14 @@ from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.withings.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.oauth import WithingsOAuth
 from tests.factories import UserConnectionFactory, UserFactory
+
+_CALLBACK_TOKEN = "withings-test-token"
+
+
+@pytest.fixture(autouse=True)
+def withings_webhook_token() -> Generator[None, None, None]:
+    with patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)):
+        yield
 
 
 @pytest.fixture
@@ -197,3 +208,17 @@ def test_deregister_user_is_best_effort_and_never_raises(mock_post: MagicMock, w
     mock_post.side_effect = httpx.HTTPError("boom")
     withings_oauth.deregister_user("the_token")  # must not raise
     assert mock_post.call_count == len(SUBSCRIBED_APPLIS)
+
+
+@patch("app.services.providers.withings.oauth.log_and_capture_error")
+@patch("httpx.post")
+def test_deregister_user_does_not_block_when_callback_token_is_missing(
+    mock_post: MagicMock,
+    mock_capture: MagicMock,
+    withings_oauth: WithingsOAuth,
+) -> None:
+    with patch.object(settings, "withings_webhook_token", None):
+        withings_oauth.deregister_user("the_token")
+
+    mock_post.assert_not_called()
+    mock_capture.assert_called_once()

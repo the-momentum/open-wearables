@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.auth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from app.services.providers.factory import ProviderFactory
 from tests.factories import DeveloperFactory, UserConnectionFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
@@ -208,21 +208,25 @@ class TestPolarOAuth:
 class TestWithingsOAuth:
     """Tests for Withings OAuth flow."""
 
-    @patch("app.services.providers.withings.strategy.WithingsStrategy.on_connect")
+    @patch("app.api.routes.v1.oauth.celery_app.send_task")
+    @patch(
+        "app.services.providers.withings.strategy.WithingsStrategy.effective_live_sync_mode",
+        return_value=LiveSyncMode.WEBHOOK,
+    )
     @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
     @patch("httpx.post")
-    def test_withings_callback_isolates_on_connect_failure(
+    def test_withings_callback_isolates_subscription_scheduling_failure(
         self,
         mock_httpx_post: MagicMock,
         mock_sync_task: MagicMock,
-        mock_on_connect: MagicMock,
+        mock_live_mode: MagicMock,
+        mock_send_task: MagicMock,
         client: TestClient,
         db: Session,
     ) -> None:
-        """A failing post-connect hook must not turn a successful OAuth connect
+        """A failing subscription schedule must not turn a successful OAuth connect
         into a 500: the exception is captured and the callback still redirects."""
-        # The post-connect subscription hook blows up.
-        mock_on_connect.side_effect = RuntimeError("notify subscription failed")
+        mock_send_task.side_effect = RuntimeError("notify subscription failed")
 
         user = UserFactory()
 
@@ -257,8 +261,9 @@ class TestWithingsOAuth:
             follow_redirects=False,
         )
 
-        # Assert: hook was invoked and raised, yet the callback survived it.
-        assert mock_on_connect.called
+        # Assert: scheduling was attempted and raised, yet the callback survived it.
+        mock_live_mode.assert_called_once()
+        assert mock_send_task.called
         assert response.status_code != 500
         assert response.status_code in [302, 303, 307]
 

@@ -434,7 +434,8 @@ Key differences and limitations to be aware of when working with each provider:
 
   - Scale- and device-focused provider; primary data source is body composition from Withings smart scales and health monitors
   - Notify-only webhooks: Withings sends a lightweight push notification per user; Open Wearables fetches the actual data via REST API on receipt
-  - Webhook subscriptions are **per-user**: a `WithingsNotifyService` Celery task subscribes each user on OAuth connect (unlike app-level subscriptions used by most other providers)
+  - Webhook subscriptions are **per-user**: the shared registration task fans out reconciliation of the current live-sync mode to each connected user
+  - Notification callbacks use Withings' recommended `?token=<random-secret>` validation; configure `WITHINGS_WEBHOOK_TOKEN` before enabling webhook live sync
   - Body measures from `getmeas`: weight, height, lean body mass, body fat %, body fat mass, blood pressure (systolic/diastolic), heart rate, body temperature, skin temperature, oxygen saturation, skeletal muscle mass, blood glucose, VO2 max, and vascular age mapped to `cardiovascular_age`
   - Deferred `getmeas` types are listed with their reason in the `DEFERRED_MEASURE_TYPES` map in `withings/coverage.py` — body-water compartments (kg, not the core mL intake series), AFib classifications (not burden), segmental composition, ECG intervals, bone mass, pulse wave velocity, nerve/skin conductance, visceral fat, BMR, and metabolic age all need explicit core-model agreement before ingestion
   - Daily activity from `getactivity`: steps, distance, active calories, total calories (additional requested fields such as HR and intensity durations are not yet persisted)

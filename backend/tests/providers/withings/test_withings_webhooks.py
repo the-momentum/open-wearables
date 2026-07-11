@@ -10,8 +10,19 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
+from fastapi import HTTPException
+from pydantic import SecretStr
+
+from app.config import settings
 from app.schemas.auth import LiveSyncMode
 from app.services.providers.withings.webhook_handler import WithingsWebhookHandler
+
+_CALLBACK_TOKEN = "withings-test-token"
+
+
+def _request(token: str | None = _CALLBACK_TOKEN) -> SimpleNamespace:
+    return SimpleNamespace(query_params={"token": token} if token is not None else {})
 
 
 def _handler(live_sync_mode: LiveSyncMode | None = LiveSyncMode.WEBHOOK) -> WithingsWebhookHandler:
@@ -39,23 +50,42 @@ def test_parse_payload_reads_form_fields() -> None:
 
 def test_verify_signature_accepts_wellformed_notification() -> None:
     h = _handler()
-    assert h.verify_signature(MagicMock(), b"userid=123&appli=1&startdate=1&enddate=2") is True
+    with patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)):
+        assert h.verify_signature(_request(), b"userid=123&appli=1&startdate=1&enddate=2") is True
 
 
 def test_verify_signature_accepts_unknown_user_wellformed() -> None:
     # Unknown/disconnected users are acked 200 and ignored in the worker — never 401.
     h = _handler()
-    assert h.verify_signature(MagicMock(), b"userid=999&appli=1&startdate=1&enddate=2") is True
+    with patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)):
+        assert h.verify_signature(_request(), b"userid=999&appli=1&startdate=1&enddate=2") is True
 
 
 def test_verify_signature_rejects_missing_userid() -> None:
     h = _handler()
-    assert h.verify_signature(MagicMock(), b"appli=1") is False
+    with patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)):
+        assert h.verify_signature(_request(), b"appli=1") is False
+
+
+@pytest.mark.parametrize("token", [None, "wrong-token"])
+def test_verify_signature_rejects_invalid_callback_token(token: str | None) -> None:
+    with patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)):
+        assert _handler().verify_signature(_request(token), b"userid=123&appli=1&startdate=1&enddate=2") is False
 
 
 def test_handle_challenge_returns_empty_dict_for_head_probe() -> None:
     # Withings fires a HEAD probe during subscribe; the handler must return 200.
-    assert _handler().handle_challenge(MagicMock()) == {}
+    with patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)):
+        assert _handler().handle_challenge(_request()) == {}
+
+
+def test_handle_challenge_rejects_invalid_callback_token() -> None:
+    with (
+        patch.object(settings, "withings_webhook_token", SecretStr(_CALLBACK_TOKEN)),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        _handler().handle_challenge(_request("wrong-token"))
+    assert exc_info.value.status_code == 401
 
 
 # ---------------------------- dispatch (enqueue) ----------------------------

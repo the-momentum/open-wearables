@@ -779,6 +779,10 @@ To enable this:
 
 ```python
 class MyProviderStrategy(BaseProviderStrategy):
+    def __init__(self) -> None:
+        super().__init__()
+        self.webhook_service = my_provider_webhook_service
+
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
@@ -786,12 +790,9 @@ class MyProviderStrategy(BaseProviderStrategy):
             webhook_ping=True,
             webhook_registration_api=True,
         )
-
-    async def register_webhooks(self, callback_url: str) -> Any:
-        return await my_provider_webhook_service.register_subscriptions(callback_url)
 ```
 
-When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform automatically dispatches a Celery task (`register_provider_webhooks`) that calls `strategy.register_webhooks(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform dispatches `register_provider_webhooks`. For application-scoped providers, the task calls `strategy.webhook_service.register_subscriptions(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
 
 <Note>
 If `webhook_registration_api=False` (the default), switching sync mode to `webhook` only updates the database — you must register subscriptions manually in the provider's developer portal pointing to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.

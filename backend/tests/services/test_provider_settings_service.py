@@ -364,7 +364,7 @@ class TestProviderSettingsServiceLiveSyncMode:
         self, db: Session, mode: LiveSyncMode
     ) -> None:
         """A webhook_per_user_subscriptions provider (Withings) dispatches the
-        generic sync_provider_subscriptions task with (provider, mode) — no
+        shared registration task with the provider — no
         provider name hardcoded in the service."""
         service = ProviderSettingsService()
 
@@ -375,7 +375,7 @@ class TestProviderSettingsServiceLiveSyncMode:
 
         assert result.live_sync_mode == mode
         mock_celery.send_task.assert_called_once_with(
-            "app.integrations.celery.tasks.sync_provider_subscriptions_task.sync_provider_subscriptions",
-            args=["withings", mode.value],
+            "app.integrations.celery.tasks.register_provider_webhooks_task.register_provider_webhooks",
+            args=["withings"],
             queue="webhook_sync",
         )

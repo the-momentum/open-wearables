@@ -39,14 +39,12 @@ from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
-from .register_provider_webhooks_task import register_provider_webhooks
+from .register_provider_webhooks_task import register_provider_webhooks, sync_provider_user_subscription
 from .renew_oura_webhooks_task import renew_oura_webhooks
 from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
-from .sync_provider_subscriptions_task import sync_provider_subscriptions
 from .sync_vendor_data_task import sync_vendor_data
 from .webhook_push_task import process_webhook_push
-from .withings import revoke_withings_user, subscribe_withings_user
 
 __all__ = [
     # Garmin backfill (30-day webhook-based sync)
@@ -79,11 +77,8 @@ __all__ = [
     "process_webhook_push",
     "register_provider_webhooks",
     "renew_oura_webhooks",
-    # Per-user subscription live-mode sync (generic; fans out to per-user tasks)
-    "sync_provider_subscriptions",
+    # Provider subscription live-mode sync
+    "sync_provider_user_subscription",
     # Outgoing webhooks
     "emit_webhook_event",
-    # Withings per-user notify subscription
-    "revoke_withings_user",
-    "subscribe_withings_user",
 ]

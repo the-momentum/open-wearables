@@ -2,11 +2,8 @@ from celery import current_app as celery_app
 
 from app.config import settings
 from app.database import DbSession
-from app.repositories.provider_settings_repository import (
-    ProviderSettingsRepository,
-    resolve_effective_live_sync_mode,
-)
-from app.schemas.auth.live_sync_mode import LiveSyncMode
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth.live_sync_mode import LiveSyncMode, resolve_live_sync_mode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import (
     ProviderSettingRead,
@@ -15,9 +12,6 @@ from app.schemas.model_crud.data_priority import (
 from app.services.providers.factory import ProviderFactory
 
 _REGISTER_WEBHOOKS_TASK = "app.integrations.celery.tasks.register_provider_webhooks_task.register_provider_webhooks"
-_SYNC_PROVIDER_SUBSCRIPTIONS_TASK = (
-    "app.integrations.celery.tasks.sync_provider_subscriptions_task.sync_provider_subscriptions"
-)
 
 
 class ProviderSettingsService:
@@ -36,7 +30,10 @@ class ProviderSettingsService:
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled if setting else True,
             icon_url=strategy.icon_url,
-            live_sync_mode=resolve_effective_live_sync_mode(setting, strategy.default_live_sync_mode),
+            live_sync_mode=resolve_live_sync_mode(
+                setting.live_sync_mode if setting else None,
+                strategy.default_live_sync_mode,
+            ),
             live_sync_configurable=strategy.live_sync_configurable,
         )
 
@@ -77,8 +74,8 @@ class ProviderSettingsService:
             # Per-user subscription providers (Withings): bulk subscribe/revoke
             # every active connection for the new mode via a generic fan-out task.
             celery_app.send_task(
-                _SYNC_PROVIDER_SUBSCRIPTIONS_TASK,
-                args=[provider, update.live_sync_mode.value],
+                _REGISTER_WEBHOOKS_TASK,
+                args=[provider],
                 queue="webhook_sync",
             )
         elif update.live_sync_mode == LiveSyncMode.WEBHOOK and caps.webhook_registration_api:
@@ -91,7 +88,7 @@ class ProviderSettingsService:
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled,
             icon_url=strategy.icon_url,
-            live_sync_mode=resolve_effective_live_sync_mode(setting, strategy.default_live_sync_mode),
+            live_sync_mode=resolve_live_sync_mode(setting.live_sync_mode, strategy.default_live_sync_mode),
             live_sync_configurable=strategy.live_sync_configurable,
         )
 

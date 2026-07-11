@@ -177,6 +177,7 @@ class Settings(BaseSettings):
     withings_client_id: str | None = None
     withings_client_secret: SecretStr | None = None
     withings_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
+    withings_webhook_token: SecretStr | None = None
     # Withings uses comma-separated scopes.
     withings_default_scope: str = "user.info,user.metrics,user.activity,user.sleepevents"
 

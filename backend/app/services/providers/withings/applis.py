@@ -9,6 +9,7 @@ which is unrelated to meastype 54 = SpO2.
 """
 
 from typing import Literal
+from urllib.parse import urlencode
 
 from app.config import settings
 
@@ -39,5 +40,11 @@ SUBSCRIBED_APPLIS: list[int] = sorted(APPLI_DOMAIN)
 
 
 def withings_callback_url() -> str:
-    """Public HTTPS URL Withings POSTs notifications to (and HEAD-probes at subscribe)."""
-    return f"{settings.api_base_url}/api/v1/providers/withings/webhooks"
+    """Authenticated callback URL Withings POSTs to and HEAD-probes."""
+    # Withings recommends an unguessable token on the exact callback URL:
+    # https://developer.withings.com/developer-guide/v3/data-api/notifications/notification-overview/#verify-a-shared-secret
+    token = settings.withings_webhook_token
+    if token is None or not token.get_secret_value():
+        raise ValueError("WITHINGS_WEBHOOK_TOKEN must be configured for Withings notifications")
+    query = urlencode({"token": token.get_secret_value()})
+    return f"{settings.api_base_url}{settings.api_v1}/providers/withings/webhooks?{query}"

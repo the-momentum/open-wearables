@@ -1,30 +1,30 @@
 """Withings notify-only webhook handler.
 
-Notifications arrive form-encoded and **unsigned**; the ack must be fast and
-2xx. ``verify_signature`` therefore checks only that the body is a well-formed
-notify payload — attribution (does ``userid`` map to a connection) is resolved
-later, in the worker, so a disconnected user is acked 200 and ignored rather
-than 401'd (which Withings would treat as a delivery failure and escalate).
-``subscribe`` also HEAD-probes the callback URL, answered by ``handle_challenge``.
+Notifications arrive form-encoded without a provider signature; the callback
+URL therefore carries the shared token recommended by Withings. The ack must be
+fast and 2xx after the token and payload shape are validated. Attribution (does
+``userid`` map to a connection) is resolved later, in the worker, so a
+disconnected user is acked 200 and ignored rather than 401'd. ``subscribe``
+also HEAD-probes the authenticated callback URL, answered by
+``handle_challenge``.
 """
 
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from secrets import compare_digest
 from typing import Any, assert_never, final
 from urllib.parse import parse_qs
 
 from celery import current_app as celery_app
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 from pydantic import ValidationError
 
+from app.config import settings
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
-from app.repositories.provider_settings_repository import (
-    ProviderSettingsRepository,
-    resolve_effective_live_sync_mode,
-)
-from app.schemas.auth import LiveSyncMode
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import LiveSyncMode, resolve_live_sync_mode
 from app.schemas.providers.withings import WithingsNotification
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.providers.withings.applis import APPLI_DOMAIN, PROFILE_CHANGE_APPLI, Domain
@@ -73,12 +73,20 @@ class WithingsWebhookHandler(BaseWebhookHandler):
         parsed = parse_qs(body.decode("utf-8"))
         return {k: v[0] for k, v in parsed.items()}
 
+    @staticmethod
+    def _has_valid_callback_token(request: Request) -> bool:
+        expected = settings.withings_webhook_token
+        actual = request.query_params.get("token")
+        return bool(expected is not None and actual and compare_digest(actual, expected.get_secret_value()))
+
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Accept any well-formed (userid-bearing) notify body — notifies are unsigned."""
-        return bool(self.parse_payload(body).get("userid"))
+        """Verify the callback token and require a userid-bearing notify body."""
+        return self._has_valid_callback_token(request) and bool(self.parse_payload(body).get("userid"))
 
     def handle_challenge(self, request: Request) -> dict[str, Any]:
-        """Return 200 for the subscribe-time GET/HEAD reachability probe."""
+        """Return 200 for an authenticated subscribe-time HEAD probe."""
+        if not self._has_valid_callback_token(request):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Withings callback token")
         return {}
 
     def supported_event_types(self) -> list[str]:
@@ -86,7 +94,8 @@ class WithingsWebhookHandler(BaseWebhookHandler):
 
     def _live_sync_mode_allows_webhook(self, db: DbSession) -> bool:
         setting = self.provider_settings_repo.get_all(db).get(self.provider_name)
-        return resolve_effective_live_sync_mode(setting, self._default_live_sync_mode) == LiveSyncMode.WEBHOOK
+        configured = setting.live_sync_mode if setting else None
+        return resolve_live_sync_mode(configured, self._default_live_sync_mode) == LiveSyncMode.WEBHOOK
 
     @staticmethod
     def _bounded_window(notification: WithingsNotification) -> tuple[datetime, datetime, str | None] | None:

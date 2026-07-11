@@ -3,11 +3,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
+from celery import current_app as celery_app
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
 from app.database import DbSession
+from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
 from app.schemas.model_crud.data_priority import (
@@ -25,6 +27,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 factory = ProviderFactory()
 settings_service = ProviderSettingsService()
+
+_SYNC_PROVIDER_USER_SUBSCRIPTION_TASK = (
+    "app.integrations.celery.tasks.register_provider_webhooks_task.sync_provider_user_subscription"
+)
 
 
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
@@ -121,14 +127,24 @@ def oauth_callback(
                 is_historical=True,
             )
 
-    # Provider-specific post-connect hook (default no-op).
+    # User-scoped webhook subscriptions exist only after OAuth has persisted
+    # the connection and its bearer token.
     try:
-        strategy.on_connect(oauth_state.user_id)
+        if (
+            strategy.capabilities.webhook_per_user_subscriptions
+            and strategy.webhook_service is not None
+            and strategy.effective_live_sync_mode(db) == LiveSyncMode.WEBHOOK
+        ):
+            celery_app.send_task(
+                _SYNC_PROVIDER_USER_SUBSCRIPTION_TASK,
+                args=[provider.value, str(oauth_state.user_id)],
+                queue="webhook_sync",
+            )
     except Exception as e:
         log_and_capture_error(
             e,
             logger,
-            "Provider post-connect hook failed",
+            "Provider user subscription scheduling failed",
             extra={"provider": provider.value, "user_id": str(oauth_state.user_id)},
         )
 
