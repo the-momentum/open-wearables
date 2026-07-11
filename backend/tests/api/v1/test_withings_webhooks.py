@@ -1,7 +1,7 @@
 """Webhook route contract for Withings.
 
-Withings probes the callback URL with HEAD during ``subscribe``; the unified
-GET/HEAD verification route must answer 200.
+Withings probes the callback URL with HEAD during ``subscribe``; the dedicated
+HEAD route must answer 200.
 """
 
 from fastapi.testclient import TestClient
@@ -12,10 +12,10 @@ GET_ENDPOINT = "/api/v1/providers/withings/webhooks"
 
 
 class TestWithingsWebhookHeadProbe:
-    """HEAD and GET on the webhook verification route must return 200.
+    """HEAD on the reachability route and GET on the challenge route must return 200.
 
-    FastAPI does not add HEAD to a GET-only route, so the subscribe-time HEAD
-    probe would otherwise 405.
+    FastAPI does not add HEAD to a GET-only route, so the subscribe-time probe
+    needs its own route.
     """
 
     def test_head_returns_200(self, client: TestClient, db: Session) -> None:
@@ -27,7 +27,7 @@ class TestWithingsWebhookHeadProbe:
         )
 
     def test_get_returns_200(self, client: TestClient, db: Session) -> None:
-        """GET request (challenge verification) must still return 200 after the fix."""
+        """GET challenge handling remains available on the separate route."""
         response = client.get(GET_ENDPOINT)
         assert response.status_code == 200
 

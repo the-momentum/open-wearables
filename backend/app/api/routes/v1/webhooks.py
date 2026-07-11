@@ -7,7 +7,7 @@ It resolves the provider strategy via ``ProviderFactory``, checks that the
 provider has a ``BaseWebhookHandler`` wired up, and delegates to:
 
 * ``strategy.webhooks.handle(request, body, db)``   – POST (data events)
-* ``strategy.webhooks.handle_challenge(request)``   – GET (subscription verification)
+* ``strategy.webhooks.handle_challenge(request)``   – GET (subscription verification) or HEAD (reachability probe)
 
 The per-provider webhook handlers (to be implemented under
 ``app/services/providers/{provider}/webhook_handler.py``) are responsible for:
@@ -25,7 +25,7 @@ into its strategy, traffic can be cut over to this router.
 from logging import getLogger
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.database import DbSession
 from app.schemas.responses.incoming_webhooks import (
@@ -108,24 +108,35 @@ def handle_provider_webhook(
     return handler.handle(request, body, db)
 
 
-@router.api_route("", methods=["GET", "HEAD"], response_model=dict[str, Any], status_code=status.HTTP_200_OK)
+@router.get("")
 async def verify_provider_webhook(provider: str, request: Request) -> dict[str, Any]:
-    """Handle GET/HEAD-based subscription verification challenges.
+    """Handle GET-based subscription verification challenges.
 
     Some providers (Strava ``hub.challenge``, Oura ``verification_token``)
     verify webhook subscriptions by sending a GET request that must be
     echoed back.  This endpoint delegates to the provider's
     ``handle_challenge()`` method.
 
-    HEAD is registered explicitly: Withings probes the callback URL with HEAD
-    during ``notify subscribe`` and FastAPI does not add HEAD to a GET-only route.
-
-    Providers that do not support GET/HEAD challenges will receive a ``501``
+    Providers that do not support GET challenges will receive a ``501``
     response from the default ``BaseWebhookHandler.handle_challenge()``
     implementation.
     """
     handler = _get_webhook_handler(provider)
     return handler.handle_challenge(request)
+
+
+@router.head("")
+def probe_provider_webhook(provider: str, request: Request) -> Response:
+    """Handle a provider callback reachability probe.
+
+    Withings sends HEAD during ``notify subscribe`` to confirm that its
+    callback URL is reachable. The provider handler retains control over
+    whether it supports this handshake; a successful probe intentionally has
+    no response body.
+    """
+    handler = _get_webhook_handler(provider)
+    handler.handle_challenge(request)
+    return Response(status_code=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
