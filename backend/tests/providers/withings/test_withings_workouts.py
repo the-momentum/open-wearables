@@ -206,6 +206,10 @@ def test_load_data_with_iso_dates_passes_ymd_to_paginate(mock_paginate: MagicMoc
     assert mock_paginate.called, "paginate was not called"
     _, kwargs = mock_paginate.call_args
     passed_params = kwargs.get("params", {})
+    assert kwargs["service_path"] == "/v2/measure"
+    assert kwargs["action"] == "getworkouts"
+    assert kwargs["list_key"] == "series"
+    assert passed_params["data_fields"] == "calories,steps,distance,hr_average,hr_min,hr_max,elevation"
     assert passed_params.get("startdateymd") == "2024-01-01", (
         f"Expected startdateymd='2024-01-01', got {passed_params.get('startdateymd')!r}"
     )

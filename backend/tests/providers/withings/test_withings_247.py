@@ -79,6 +79,9 @@ def test_save_measures_persists_samples(mock_paginate: MagicMock, mock_ts: Magic
     mock_paginate.return_value = [{"date": 1728000000, "measures": [{"value": 7500, "type": 1, "unit": -2}]}]
     count = d.save_measures(db, uuid4(), datetime.now(timezone.utc), datetime.now(timezone.utc))
     assert count == 1
+    assert mock_paginate.call_args.kwargs["service_path"] == "/measure"
+    assert mock_paginate.call_args.kwargs["action"] == "getmeas"
+    assert mock_paginate.call_args.kwargs["list_key"] == "measuregrps"
     requested = {int(code) for code in mock_paginate.call_args.kwargs["params"]["meastypes"].split(",")}
     assert requested == set(MEASURE_TYPE_MAP)
     mock_ts.bulk_create_samples.assert_called_once()
@@ -224,6 +227,12 @@ def test_save_activity_uses_exact_ymd_window_by_default(mock_paginate: MagicMock
     end = datetime(2018, 7, 2, 23, 0, tzinfo=timezone.utc)
     d.save_activity(MagicMock(), uuid4(), start, end)
     params = mock_paginate.call_args.kwargs["params"]
+    assert mock_paginate.call_args.kwargs["service_path"] == "/v2/measure"
+    assert mock_paginate.call_args.kwargs["action"] == "getactivity"
+    assert mock_paginate.call_args.kwargs["list_key"] == "activities"
+    assert params["data_fields"] == (
+        "steps,distance,elevation,calories,totalcalories,soft,moderate,intense,hr_average,hr_min,hr_max"
+    )
     assert params["startdateymd"] == "2018-07-02"
     assert params["enddateymd"] == "2018-07-02"
 
@@ -248,6 +257,13 @@ def test_save_sleep_uses_exact_ymd_window_by_default(mock_paginate: MagicMock) -
     end = datetime(2018, 7, 2, 23, 0, tzinfo=timezone.utc)
     d.save_sleep(MagicMock(), uuid4(), start, end)
     params = mock_paginate.call_args.kwargs["params"]
+    assert mock_paginate.call_args.kwargs["service_path"] == "/v2/sleep"
+    assert mock_paginate.call_args.kwargs["action"] == "getsummary"
+    assert mock_paginate.call_args.kwargs["list_key"] == "series"
+    assert params["data_fields"] == (
+        "deepsleepduration,lightsleepduration,remsleepduration,wakeupduration,"
+        "sleep_efficiency,sleep_score,hr_average,rr_average"
+    )
     assert params["startdateymd"] == "2018-07-02"
     assert params["enddateymd"] == "2018-07-02"
 

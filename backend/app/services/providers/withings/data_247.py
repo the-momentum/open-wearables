@@ -30,6 +30,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings._client import paginate, scale_measure
 from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP
+from app.services.providers.withings.data_requests import ACTIVITY, MEASURES, SLEEP_SUMMARY
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -45,15 +46,6 @@ _REQUESTED_MEASTYPES = ",".join(str(code) for code in MEASURE_TYPE_MAP)
 _MEASURE_UNIT_FACTOR: dict[int, Decimal] = {
     4: Decimal(100),
 }
-
-# Fields requested from getactivity.
-_ACTIVITY_FIELDS = "steps,distance,elevation,calories,totalcalories,soft,moderate,intense,hr_average,hr_min,hr_max"
-
-# Fields requested from getsummary (sleep).
-_SLEEP_SUMMARY_FIELDS = (
-    "deepsleepduration,lightsleepduration,remsleepduration,wakeupduration,"
-    "sleep_efficiency,sleep_score,hr_average,rr_average"
-)
 
 
 class Withings247Data(Base247DataTemplate):
@@ -115,15 +107,15 @@ class Withings247Data(Base247DataTemplate):
             user_id=user_id,
             connection_repo=self.connection_repo,
             oauth=self.oauth,
-            service_path="/measure",
-            action="getmeas",
+            service_path=MEASURES.service_path,
+            action=MEASURES.action,
             params={
                 "meastypes": _REQUESTED_MEASTYPES,
                 "category": 1,
                 "startdate": int(start.timestamp()),
                 "enddate": int(end.timestamp()),
             },
-            list_key="measuregrps",
+            list_key=MEASURES.list_key,
         )
         samples = self.normalize_measures(groups, user_id)
         if samples:
@@ -197,14 +189,14 @@ class Withings247Data(Base247DataTemplate):
             user_id=user_id,
             connection_repo=self.connection_repo,
             oauth=self.oauth,
-            service_path="/v2/measure",
-            action="getactivity",
+            service_path=ACTIVITY.service_path,
+            action=ACTIVITY.action,
             params={
                 "startdateymd": start_ymd,
                 "enddateymd": end_ymd,
-                "data_fields": _ACTIVITY_FIELDS,
+                "data_fields": ",".join(ACTIVITY.data_fields),
             },
-            list_key="activities",
+            list_key=ACTIVITY.list_key,
         )
         samples = self.normalize_activity(rows, user_id)
         if samples:
@@ -229,14 +221,14 @@ class Withings247Data(Base247DataTemplate):
             user_id=user_id,
             connection_repo=self.connection_repo,
             oauth=self.oauth,
-            service_path="/v2/sleep",
-            action="getsummary",
+            service_path=SLEEP_SUMMARY.service_path,
+            action=SLEEP_SUMMARY.action,
             params={
                 "startdateymd": start_ymd,
                 "enddateymd": end_ymd,
-                "data_fields": _SLEEP_SUMMARY_FIELDS,
+                "data_fields": ",".join(SLEEP_SUMMARY.data_fields),
             },
-            list_key="series",
+            list_key=SLEEP_SUMMARY.list_key,
         )
         count = 0
         for row in rows:

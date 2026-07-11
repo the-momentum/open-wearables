@@ -15,12 +15,11 @@ from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.providers.withings._client import paginate
+from app.services.providers.withings.data_requests import WORKOUTS
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
-
-_WORKOUT_FIELDS = "calories,steps,distance,hr_average,hr_min,hr_max,elevation"
 
 
 class WithingsWorkouts(BaseWorkoutsTemplate):
@@ -45,17 +44,17 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
         params = {
             "startdateymd": start_ymd,
             "enddateymd": end_ymd,
-            "data_fields": _WORKOUT_FIELDS,
+            "data_fields": ",".join(WORKOUTS.data_fields),
         }
         return paginate(
             db=db,
             user_id=user_id,
             connection_repo=self.connection_repo,
             oauth=self.oauth,
-            service_path="/v2/measure",
-            action="getworkouts",
+            service_path=WORKOUTS.service_path,
+            action=WORKOUTS.action,
             params={k: v for k, v in params.items() if v is not None},
-            list_key="series",
+            list_key=WORKOUTS.list_key,
         )
 
     @staticmethod

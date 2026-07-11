@@ -1,8 +1,9 @@
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
-# Withings ``getmeas`` type code -> unified SeriesType. Keep this list limited
-# to direct semantic + unit matches from official Withings API/OpenAPI docs.
+# Withings ``/measure?action=getmeas`` type code -> unified SeriesType. Keep
+# this list limited to direct semantic + unit matches from official Withings
+# API/OpenAPI docs.
 MEASURE_TYPE_MAP: dict[int, SeriesType] = {
     1: SeriesType.weight,
     4: SeriesType.height,
@@ -53,7 +54,7 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
     229: "electrochemical skin conductance; no core series type",
 }
 
-# Withings ``getactivity`` field -> unified SeriesType.
+# Withings ``/v2/measure?action=getactivity`` field -> unified SeriesType.
 ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "distance": SeriesType.distance_walking_running,
@@ -68,6 +69,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
     }
 )
 
+# EventRecordDetail fields populated by ``/v2/measure?action=getworkouts``.
 WORKOUT_FIELDS: frozenset[str] = frozenset(
     {
         "heart_rate_avg",
@@ -80,6 +82,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
     }
 )
 
+# EventRecordDetail fields populated by ``/v2/sleep?action=getsummary``.
 SLEEP_FIELDS: frozenset[str] = frozenset(
     {
         "sleep_total_duration_minutes",
