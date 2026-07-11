@@ -32,6 +32,7 @@ from app.services.providers.withings._client import paginate, scale_measure
 from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,15 @@ class Withings247Data(Base247DataTemplate):
             try:
                 parsed = WithingsMeasureGroup.model_validate(group)
             except ValidationError as e:
-                logger.warning("Skipping unparseable Withings measure group: %s", e)
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping unparseable Withings measure group",
+                    provider=self.provider_name,
+                    action="measure_group_validation_failed",
+                    user_id=str(user_id),
+                    error=str(e),
+                )
                 continue
             samples.extend(self._normalize_measure_group(parsed, user_id))
         return samples
@@ -131,7 +140,15 @@ class Withings247Data(Base247DataTemplate):
             try:
                 activity = WithingsActivity.model_validate(row)
             except ValidationError as e:
-                logger.warning("Skipping unparseable Withings activity row: %s", e)
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping unparseable Withings activity row",
+                    provider=self.provider_name,
+                    action="activity_row_validation_failed",
+                    user_id=str(user_id),
+                    error=str(e),
+                )
                 continue
             # A null deviceid marks a foreign-aggregated day (e.g. via Health Connect);
             # skip it so the origin connector's activity isn't double-counted.

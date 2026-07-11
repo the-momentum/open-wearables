@@ -15,6 +15,8 @@ from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.providers.withings._client import paginate
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +124,15 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             try:
                 workout = WithingsWorkout.model_validate(raw)
             except ValidationError as e:
-                logger.warning("Skipping unparseable Withings workout: %s", e)
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping unparseable Withings workout",
+                    provider=self.provider_name,
+                    action="workout_validation_failed",
+                    user_id=str(user_id),
+                    error=str(e),
+                )
                 continue
             # A null deviceid marks a workout imported from a foreign source (e.g.
             # Health Connect); skip it so the origin connector isn't double-counted.
@@ -132,7 +142,16 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             try:
                 record, detail = self._normalize_workout(workout, user_id)
             except ValueError as e:
-                logger.warning("Skipping invalid Withings workout %s: %s", workout.id, e)
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping invalid Withings workout",
+                    provider=self.provider_name,
+                    action="workout_normalization_failed",
+                    user_id=str(user_id),
+                    workout_id=workout.id,
+                    error=str(e),
+                )
                 continue
             try:
                 # create() dedups on the (source, start, end) window and returns the
@@ -143,6 +162,16 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
             except Exception as e:
                 # Reset the session so one bad record doesn't poison the batch.
                 db.rollback()
-                logger.warning("Failed to save Withings workout: %s", e)
+                log_and_capture_error(
+                    e,
+                    logger,
+                    "Failed to save Withings workout",
+                    extra={
+                        "provider": self.provider_name,
+                        "action": "workout_save_failed",
+                        "user_id": str(user_id),
+                        "workout_id": workout.id,
+                    },
+                )
                 continue
         return count
