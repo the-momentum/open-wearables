@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Webhook,
   RefreshCw,
+  LayoutGrid,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,11 @@ const menuItems = [
     title: 'Syncs',
     url: ROUTES.syncs,
     icon: RefreshCw,
+  },
+  {
+    title: 'Data Coverage',
+    url: ROUTES.coverage,
+    icon: LayoutGrid,
   },
   {
     title: 'Settings',

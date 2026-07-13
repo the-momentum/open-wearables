@@ -1,4 +1,6 @@
 import os
+import re
+from datetime import timedelta
 from enum import Enum
 from functools import wraps
 from typing import Any, Callable, Generator, Protocol
@@ -7,6 +9,34 @@ from cryptography.fernet import Fernet
 from pydantic import ValidationInfo
 
 CallableGenerator = Generator[Callable[..., Any], None, None]
+
+_DURATION_RE = re.compile(r"(\d+)([dhm])")
+_DURATION_UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60}
+
+
+def parse_duration(value: str) -> timedelta:
+    """Parse a compact duration string into a timedelta.
+
+    Units: ``d`` (days), ``h`` (hours), ``m`` (minutes). One or more segments,
+    e.g. ``"2d"``, ``"20h"``, ``"90m"``, ``"1d12h"``. Raises ``ValueError`` on an
+    invalid or empty format.
+    """
+    cleaned = value.strip().lower()
+    matches = _DURATION_RE.findall(cleaned)
+    if not matches or _DURATION_RE.sub("", cleaned).strip():
+        raise ValueError(f"Invalid duration {value!r}; expected e.g. '2d', '20h', '90m', '1d12h'")
+    total_seconds = sum(int(amount) * _DURATION_UNIT_SECONDS[unit] for amount, unit in matches)
+    return timedelta(seconds=total_seconds)
+
+
+def format_duration(value: timedelta) -> str:
+    """Render a timedelta as a compact string, omitting zero parts (e.g. '2d', '1d12h', '1h30m')."""
+    total_seconds = int(value.total_seconds())
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+    parts = [f"{n}{unit}" for n, unit in ((days, "d"), (hours, "h"), (minutes, "m")) if n]
+    return "".join(parts) or "0m"
 
 
 class EnvironmentType(str, Enum):

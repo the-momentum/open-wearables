@@ -54,7 +54,7 @@ class AppService[
         else:
             id_to_fetch = object_id
 
-        if not (fetched := self.crud.get(db_session, id_to_fetch)) and raise_404:  # ty:ignore[invalid-argument-type]
+        if not (fetched := self.crud.get(db_session, id_to_fetch)) and raise_404:
             raise ResourceNotFoundError(self.name, id_to_fetch)  # ty:ignore[invalid-argument-type]
 
         if fetched and print_log:

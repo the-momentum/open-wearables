@@ -49,6 +49,7 @@ class InvitationRead(BaseModel):
 
     id: UUID
     email: str
+    token: str
     status: InvitationStatus
     expires_at: datetime
     created_at: datetime

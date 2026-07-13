@@ -33,11 +33,7 @@ export interface UserQueryParams {
   page?: number;
   limit?: number;
   sort_by?:
-    | 'created_at'
-    | 'email'
-    | 'first_name'
-    | 'last_name'
-    | 'last_synced_at';
+    'created_at' | 'email' | 'first_name' | 'last_name' | 'last_synced_at';
   sort_order?: 'asc' | 'desc';
   search?: string;
   email?: string;
@@ -217,6 +213,13 @@ export interface UserDataSummary {
   has_womens_health_data: boolean;
 }
 
+/** Optional date scope for the data summary. Omitting both fields = all-time. */
+export interface DataSummaryParams {
+  start_date?: string; // ISO datetime
+  end_date?: string; // ISO datetime (exclusive)
+  [key: string]: string | undefined;
+}
+
 export interface MenstrualCycleRecord {
   id: string;
   start_time: string;
@@ -259,13 +262,7 @@ export interface Provider {
 }
 
 export type WearableProvider =
-  | 'fitbit'
-  | 'garmin'
-  | 'oura'
-  | 'whoop'
-  | 'strava'
-  | 'google-fit'
-  | 'withings';
+  'fitbit' | 'garmin' | 'oura' | 'whoop' | 'strava' | 'google-fit' | 'withings';
 
 export interface UserConnection {
   user_id: string;
@@ -328,7 +325,12 @@ export interface SleepSessionsParams {
   end_date: string;
   cursor?: string;
   limit?: number;
-  [key: string]: string | number | undefined;
+  /**
+   * When true, the backend keeps only the highest-priority source's sessions
+   * per sleep date (provider/device priority), deduplicating across providers.
+   */
+  filter_by_priority?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }
 
 export interface SleepSummary {
@@ -649,6 +651,7 @@ export interface Developer {
 export interface Invitation {
   id: string;
   email: string;
+  token: string;
   invited_by: string;
   created_at: string;
   expires_at: string;

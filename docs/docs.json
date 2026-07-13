@@ -49,7 +49,6 @@
             "pages": [
               "providers/supported",
               "providers/coverage",
-              "providers/garmin-api-integration",
               "providers/garmin-data-pipeline"
             ]
           },
@@ -247,6 +246,12 @@
             "group": "Data Sources",
             "pages": [
               "GET /api/v1/users/{user_id}/data-sources"
+            ]
+          },
+          {
+            "group": "Meta",
+            "pages": [
+              "GET /api/v1/meta/coverage"
             ]
           },
           {

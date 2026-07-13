@@ -124,6 +124,16 @@ class SeriesTypeDefinitionFactory(BaseFactory):
         return cls(id=86, code="flights_climbed", unit="count")
 
     @classmethod
+    def get_or_create_active_time(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded active_time series type (ID=88)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 88).first()
+            if existing:
+                return existing
+        return cls(id=88, code="active_time", unit="minutes")
+
+    @classmethod
     def get_or_create_weight(cls) -> SeriesTypeDefinition:
         """Get the pre-seeded weight series type (ID=41)."""
         session = cls._meta.sqlalchemy_session

@@ -296,12 +296,17 @@ function SyncRow({ run }: { run: SyncRunSummary }) {
         {formatRunDuration(run.started_at, run.ended_at)}
       </td>
       <td className="px-4 py-2.5 text-zinc-400 max-w-xs">
-        {run.items_processed !== null ? (
-          `${run.items_processed}${run.items_total !== null ? ` / ${run.items_total} items` : ' items'}`
-        ) : run.message ? (
-          <span className="truncate block text-xs">{run.message}</span>
+        {run.items_processed !== null && (
+          <div className="tabular-nums">
+            {`${run.items_processed}${run.items_total !== null ? ` / ${run.items_total} items` : ' items'}`}
+          </div>
+        )}
+        {run.message ? (
+          <span className="truncate block text-xs text-zinc-500">
+            {run.message}
+          </span>
         ) : (
-          '—'
+          run.items_processed === null && '—'
         )}
       </td>
       <td className="px-4 py-2.5 text-zinc-400">

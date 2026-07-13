@@ -76,15 +76,6 @@ services:
 
 The backend reads all of its configuration from the environment at runtime (`config/.env`), so its image needs no per-client rebuild either.
 
-## Publishing the images
-
-Images are built and pushed manually via the **Publish Docker images** GitHub Actions workflow (`.github/workflows/publish-images.yml`):
-
-1. Go to **Actions → Publish Docker images → Run workflow**.
-2. Both images are built and pushed, tagged with the commit SHA, plus `latest` when run from `main`, plus any optional tag you provide.
-
-The workflow requires two repository secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read & Write scope). No API URL is baked into the frontend image — it is always configured at runtime as described above.
-
 ## Related Guides
 
 - [Deploy to Railway](/deployment/railway) - One-click managed deployment
