@@ -15,6 +15,7 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./backend/scripts/init/create-svix-db.sql:/docker-entrypoint-initdb.d/create-svix-db.sql:ro
 
   app:
     build:
@@ -36,18 +37,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    healthcheck:
-      # Gates svix-server past svix-DB creation (app.sh creates it before uvicorn binds).
-      # Port mirrors app.sh's --port ${API_PORT:-8000} so the check can't drift from the bind.
-      test:
-        - CMD
-        - python
-        - -c
-        - "import socket, os; socket.create_connection(('127.0.0.1', int(os.environ.get('API_PORT', '8000'))), 2)"
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 20s
     develop:
       watch:
         - action: sync
@@ -190,8 +179,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      app:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "svix-server", "healthcheck", "http://localhost:8071"]
       interval: 5s

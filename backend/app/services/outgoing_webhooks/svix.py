@@ -116,15 +116,20 @@ def register_event_types() -> None:
     assert _client is not None
 
     # List existing types once (paginated) so a steady-state startup makes a single
-    # call instead of a create+update round-trip per type.
+    # call instead of a create+update round-trip per type. If Svix is still coming up,
+    # skip without crashing app startup — the sync is idempotent and reruns next boot.
     existing: dict[str, str] = {}
     iterator: str | None = None
-    while True:
-        page = _client.event_type.list(EventTypeListOptions(limit=250, iterator=iterator))
-        existing.update({et.name: et.description for et in page.data})
-        if page.done:
-            break
-        iterator = page.iterator
+    try:
+        while True:
+            page = _client.event_type.list(EventTypeListOptions(limit=250, iterator=iterator))
+            existing.update({et.name: et.description for et in page.data})
+            if page.done:
+                break
+            iterator = page.iterator
+    except Exception:
+        logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).")
+        return
 
     for evt in WebhookEventType:
         description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
