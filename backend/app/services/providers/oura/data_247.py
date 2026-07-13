@@ -45,7 +45,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import offset_to_iso
+from app.utils.dates import offset_to_iso, to_rfc3339
 from app.utils.structured_logging import LogContext, log_structured
 
 
@@ -1020,8 +1020,8 @@ class Oura247Data(Base247DataTemplate):
         while chunk_start < end_utc:
             chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS), end_utc)
             params = {
-                "start_datetime": chunk_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "end_datetime": chunk_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "start_datetime": to_rfc3339(chunk_start),
+                "end_datetime": to_rfc3339(chunk_end),
             }
             results.extend(self._paginate(db, user_id, "/v2/usercollection/heartrate", params))
             chunk_start = chunk_end

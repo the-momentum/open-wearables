@@ -20,7 +20,6 @@ from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDeta
 from app.services.event_record_service import event_record_service
 from app.services.providers.google.health_api.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
-    as_int,
     extract_source,
     parse_duration_seconds,
     parse_interval,
@@ -31,6 +30,7 @@ from app.services.providers.google.health_api.helpers import (
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.conversion import as_int
 from app.utils.sentry_helpers import log_and_capture_error
 
 _MM_TO_M = Decimal("0.001")

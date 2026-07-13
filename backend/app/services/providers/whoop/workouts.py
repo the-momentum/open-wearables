@@ -18,6 +18,8 @@ from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.conversion import kilojoules_to_kcal
+from app.utils.dates import to_rfc3339
 from app.utils.structured_logging import log_structured
 
 
@@ -37,8 +39,8 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         max_limit = 25  # Whoop API limit
 
         # Convert datetimes to ISO 8601 strings
-        start_iso = start_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_iso = end_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_iso = to_rfc3339(start_date)
+        end_iso = to_rfc3339(end_date)
 
         while True:
             params: dict[str, Any] = {
@@ -108,9 +110,9 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
         # Convert start/end dates to ISO 8601 if provided
         if isinstance(start, datetime):
-            start = start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            start = to_rfc3339(start)
         if isinstance(end, datetime):
-            end = end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            end = to_rfc3339(end)
 
         params: dict[str, Any] = {
             "limit": min(limit, 25),  # Whoop API max limit is 25
@@ -190,10 +192,9 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         if score.max_heart_rate is not None:
             metrics["heart_rate_max"] = score.max_heart_rate
 
-        # Energy: Convert kilojoule to kcal (1 kJ = 0.239 kcal)
+        # Energy: Convert kilojoule to kcal
         if score.kilojoule is not None:
-            energy_kcal = Decimal(str(score.kilojoule)) * Decimal("0.239")
-            metrics["energy_burned"] = energy_kcal
+            metrics["energy_burned"] = kilojoules_to_kcal(score.kilojoule)
 
         # Distance: Keep in meters (or convert to km if schema expects km)
         # Based on schema, distance is Decimal, so we'll keep in meters
@@ -319,27 +320,27 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         # Default to last 30 days if no dates provided
         if not start:
             start_dt = datetime.now(timezone.utc) - timedelta(days=30)
-            start = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            start = to_rfc3339(start_dt)
         elif isinstance(start, datetime):
-            start = start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            start = to_rfc3339(start)
         elif isinstance(start, str) and "T" not in start:
             # If it's just a date string, convert to ISO 8601
             try:
                 start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                start = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                start = to_rfc3339(start_dt)
             except (ValueError, AttributeError):
                 pass
 
         if not end:
             end_dt = datetime.now(timezone.utc)
-            end = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end = to_rfc3339(end_dt)
         elif isinstance(end, datetime):
-            end = end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            end = to_rfc3339(end)
         elif isinstance(end, str) and "T" not in end:
             # If it's just a date string, convert to ISO 8601
             try:
                 end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
-                end = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                end = to_rfc3339(end_dt)
             except (ValueError, AttributeError):
                 pass
 

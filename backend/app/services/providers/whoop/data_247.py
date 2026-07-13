@@ -27,6 +27,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.whoop.coverage import RECOVERY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import to_rfc3339
 from app.utils.structured_logging import log_structured
 
 
@@ -91,8 +92,8 @@ class Whoop247Data(Base247DataTemplate):
         max_limit = 25  # Whoop API limit
 
         # Convert datetimes to ISO 8601 strings
-        start_iso = start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_iso = end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_iso = to_rfc3339(start_time)
+        end_iso = to_rfc3339(end_time)
 
         while True:
             params: dict[str, Any] = {
@@ -663,8 +664,8 @@ class Whoop247Data(Base247DataTemplate):
         max_limit = 25  # Whoop API limit
 
         # Convert datetimes to ISO 8601 strings
-        start_iso = start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_iso = end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_iso = to_rfc3339(start_time)
+        end_iso = to_rfc3339(end_time)
 
         while True:
             params: dict[str, Any] = {

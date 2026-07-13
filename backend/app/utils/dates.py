@@ -115,6 +115,12 @@ def parse_webhook_data_timestamp(data_timestamp: str | None) -> datetime:
     return datetime.now(timezone.utc)
 
 
+def to_rfc3339(dt: datetime) -> str:
+    """Format a datetime as RFC3339 UTC with a 'Z' suffix; naive datetimes are assumed UTC."""
+    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return aware.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def offset_to_iso(offset_seconds: int | None) -> str | None:
     """Convert a timezone offset in seconds to ISO 8601 format (e.g. 3600 -> '+01:00')."""
     if offset_seconds is None:

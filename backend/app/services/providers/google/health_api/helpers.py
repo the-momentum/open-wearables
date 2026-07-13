@@ -1,43 +1,18 @@
 """Shared value/timestamp helpers for the Google Health API handlers."""
 
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
-from app.utils.dates import offset_to_iso
+from app.utils.conversion import to_decimal
+from app.utils.dates import offset_to_iso, to_rfc3339
 
 GOOGLE_HEALTH_API_SOURCE = "google_health_api"
 
 
-def _to_rfc3339(dt: datetime) -> str:
-    """RFC3339 UTC with a 'Z' suffix; naive datetimes are assumed UTC."""
-    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
-    return aware.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
     """Build a google.type.Interval; ``start`` is inclusive, ``end`` is exclusive."""
-    return {"startTime": _to_rfc3339(start), "endTime": _to_rfc3339(end)}
-
-
-def to_decimal(value: Any) -> Decimal | None:
-    """Coerce a Google numeric value (often a string) to Decimal; None if not numeric."""
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, ValueError, TypeError):
-        return None
-
-
-def as_int(value: Any) -> int | None:
-    """Coerce a value to int; None if missing or not convertible (e.g. NaN/Infinity)."""
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (ValueError, TypeError, OverflowError):
-        return None
+    return {"startTime": to_rfc3339(start), "endTime": to_rfc3339(end)}
 
 
 def read_number(
