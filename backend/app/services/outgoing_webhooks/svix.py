@@ -22,6 +22,7 @@ from svix.api import (
     EndpointOut,
     EndpointPatch,
     EventTypeIn,
+    EventTypeListOptions,
     EventTypeUpdate,
     ListResponseEndpointOut,
     ListResponseMessageAttemptOut,
@@ -109,20 +110,41 @@ def is_enabled() -> bool:
 
 
 def register_event_types() -> None:
-    """Create / update every WebhookEventType in Svix (idempotent)."""
+    """Sync every WebhookEventType into Svix: create the missing, update the changed (idempotent)."""
     if not is_enabled():
         return
     assert _client is not None
+
+    # List existing types once (paginated) so a steady-state startup makes a single
+    # call instead of a create+update round-trip per type.
+    existing: dict[str, str] = {}
+    iterator: str | None = None
+    while True:
+        page = _client.event_type.list(EventTypeListOptions(limit=250, iterator=iterator))
+        existing.update({et.name: et.description for et in page.data})
+        if page.done:
+            break
+        iterator = page.iterator
+
     for evt in WebhookEventType:
         description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
-        try:
-            _client.event_type.create(EventTypeIn(name=evt.value, description=description))
-            logger.info("Registered event type: %s", evt.value)
-        except Exception:
+        current = existing.get(evt.value)
+        if current is None:
+            try:
+                _client.event_type.create(EventTypeIn(name=evt.value, description=description))
+                logger.info("Registered event type: %s", evt.value)
+            except Exception:
+                # Deemed missing but create failed (archived/race) — update so it is never left unregistered.
+                try:
+                    _client.event_type.update(evt.value, EventTypeUpdate(description=description))
+                except Exception:
+                    logger.exception("Failed to register/update event type %s", evt.value)
+        elif current != description:
             try:
                 _client.event_type.update(evt.value, EventTypeUpdate(description=description))
+                logger.info("Updated event type description: %s", evt.value)
             except Exception:
-                logger.exception("Failed to register/update event type %s", evt.value)
+                logger.exception("Failed to update event type %s", evt.value)
 
 
 def ensure_application(developer_id: str, developer_email: str) -> str:

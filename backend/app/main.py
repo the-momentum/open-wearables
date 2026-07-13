@@ -35,6 +35,11 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger.handlers.clear()
     _logger.propagate = True
 
+# httpx/httpcore log one INFO line per outgoing request; at our request volume that is
+# pure noise (event-type sync, provider calls, webhook delivery). Keep warnings and errors.
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
