@@ -26,12 +26,17 @@ def create_svix_db() -> None:
         f"user={settings.db_user} "
         f"password={settings.db_password.get_secret_value()}"
     )
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        try:
-            conn.execute("CREATE DATABASE svix")
-            logger.info("Created 'svix' database.")
-        except psycopg.errors.DuplicateDatabase:
-            logger.info("Svix database already exists, skipping.")
+    try:
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            try:
+                conn.execute("CREATE DATABASE svix")
+                logger.info("Created 'svix' database.")
+            except psycopg.errors.DuplicateDatabase:
+                logger.info("Svix database already exists, skipping.")
+    except Exception:
+        # Best-effort: never block app boot (e.g. managed Postgres without CREATEDB).
+        # A real connectivity problem still surfaces at the next alembic step.
+        logger.warning("Could not ensure 'svix' database - continuing without it.", exc_info=True)
 
 
 if __name__ == "__main__":
