@@ -18,11 +18,12 @@ export function useWebhookEventTypes() {
   });
 }
 
-export function useWebhookEndpoints() {
+export function useWebhookEndpoints(enabled = true) {
   return useQuery({
     queryKey: queryKeys.webhooks.list(),
     queryFn: () => webhooksService.list(),
     retry: false,
+    enabled,
   });
 }
 

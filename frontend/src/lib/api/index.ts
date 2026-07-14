@@ -15,6 +15,8 @@ export type {
   MenstrualCycleField,
   HealthScore,
 } from './services/meta.service';
+export { configService } from './services/config.service';
+export type { AppConfig } from './services/config.service';
 export { usersService } from './services/users.service';
 export { dashboardService } from './services/dashboard.service';
 export { webhooksService } from './services/webhooks.service';

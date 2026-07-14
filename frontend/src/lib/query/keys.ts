@@ -183,6 +183,9 @@ export const queryKeys = {
     all: ['meta'] as const,
     coverage: () => [...queryKeys.meta.all, 'coverage'] as const,
   },
+  config: {
+    all: ['config'] as const,
+  },
 
   syncStatus: {
     all: ['syncStatus'] as const,
