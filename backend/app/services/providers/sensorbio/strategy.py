@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.sensorbio.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 from app.services.providers.sensorbio.oauth import SensorBioOAuth
 from app.services.providers.sensorbio.workouts import SensorBioWorkouts
@@ -43,3 +44,12 @@ class SensorBioStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(rest_pull=True)
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )

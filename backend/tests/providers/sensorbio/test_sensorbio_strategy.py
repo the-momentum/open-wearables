@@ -35,3 +35,10 @@ class TestSensorBioStrategy:
 
     def test_has_data_247(self, strategy: SensorBioStrategy) -> None:
         assert isinstance(strategy.data_247, SensorBio247Data)
+
+    def test_coverage(self, strategy: SensorBioStrategy) -> None:
+        cov = strategy.coverage
+        assert cov.timeseries
+        assert "is_nap" in cov.sleep_fields
+        assert "energy_burned" in cov.workout_fields
+        assert len(cov.health_scores) == 3

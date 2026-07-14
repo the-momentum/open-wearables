@@ -147,7 +147,8 @@ class Settings(BaseSettings):
     # SENSORBIO OAUTH SETTINGS
     sensorbio_client_id: str | None = None
     sensorbio_client_secret: SecretStr | None = None
-    sensorbio_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
+    # Sensor Bio OAuth currently has no granular scopes defined in the developer portal.
+    # Leave empty so the authorize URL omits scope= (mirrors Garmin/Suunto).
     sensorbio_default_scope: str = ""
 
     # FITBIT OAUTH SETTINGS

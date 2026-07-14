@@ -82,16 +82,17 @@ Fetched from `/v1/activities` using cursor pagination on `WorkoutStats.timestamp
 
 ### Sleep
 
-Fetched from `/v1/sleep` one day at a time. Each record includes:
+Fetched from `/v1/sleep` one day at a time (the API requires a single `date` parameter; there is no multi-day range for session-level sleep). Each day may return multiple sessions (overnight + nap). Each record includes:
 
 - Start/end time, total duration
 - Stage breakdown: deep, light, REM, awake minutes
 - Sleep score (mapped to `efficiency_percent`)
 - Biometrics during sleep: average HR, HRV, SpO2, resting HR
+- Sensor Bio does not label naps; sessions are stored with `is_nap=false`
 
 ### Recovery
 
-Fetched from `/v1/scores` one day at a time. Provides a daily recovery score and resting biometrics (resting HR, resting HRV, SpO2) stored as timeseries samples.
+Fetched from `/v1/scores` one day at a time (single required `date` parameter). Provides daily recovery/activity/sleep scores and resting biometrics (resting HR, resting HRV, SpO2) stored as timeseries samples plus HealthScore rows.
 
 ### 24/7 Biometric timeseries
 

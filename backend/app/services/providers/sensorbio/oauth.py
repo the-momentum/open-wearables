@@ -32,7 +32,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
             client_secret=(
                 settings.sensorbio_client_secret.get_secret_value() if settings.sensorbio_client_secret else ""
             ),
-            redirect_uri=settings.sensorbio_redirect_uri or f"{settings.api_base_url}/api/v1/oauth/callback/sensorbio",
+            redirect_uri=f"{settings.api_base_url}/api/v1/oauth/callback/sensorbio",
             default_scope=settings.sensorbio_default_scope,
         )
 

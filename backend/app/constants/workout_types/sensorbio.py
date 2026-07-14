@@ -1,9 +1,8 @@
-import logging
-
 from app.schemas.enums import WorkoutType
 
-logger = logging.getLogger(__name__)
-
+# Aliases only — Sensor Bio's `likely_name` / parent workout name can surface
+# either noun or gerund forms (e.g. "Run" vs "Running"). They map to the same
+# unified WorkoutType; they are not distinct Sensor Bio activity entities.
 SENSORBIO_NAME_TO_WORKOUT_TYPE: dict[str, WorkoutType] = {
     "run": WorkoutType.RUNNING,
     "running": WorkoutType.RUNNING,
@@ -49,11 +48,4 @@ def get_unified_workout_type(likely_name: str | None = None, activity_type: str 
         normalized = candidate.lower().strip()
         if normalized in SENSORBIO_NAME_TO_WORKOUT_TYPE:
             return SENSORBIO_NAME_TO_WORKOUT_TYPE[normalized]
-    # Log unknown names so novel SensorBio activity types are discoverable.
-    raw_name = likely_name or activity_type
-    if raw_name:
-        logger.info(
-            "SensorBio workout type mapped to OTHER — add to SENSORBIO_NAME_TO_WORKOUT_TYPE if recurring",
-            extra={"provider": "sensorbio", "raw_name": raw_name},
-        )
     return WorkoutType.OTHER

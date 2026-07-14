@@ -45,7 +45,6 @@ dev = [
     "factory-boy>=3.3.0",
     "psycopg-binary>=3.3.4",
     "testcontainers[postgres,redis]>=4.14.2",
-    "h2>=4.3.0",
 ]
 
 [tool.ruff]
@@ -81,8 +80,6 @@ ignore = [
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
-# Integration tester: HTML template strings have intentionally long lines; not production code
-"scripts/sensorbio_integration_tester.py" = ["E501", "ASYNC210"]
 
 [tool.ruff.lint.isort]
 known-third-party = ["celery"]
