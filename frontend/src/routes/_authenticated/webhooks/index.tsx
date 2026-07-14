@@ -68,7 +68,7 @@ function WebhooksPage() {
               href="https://openwearables.io/docs/api-reference/guides/webhooks"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline"
+              className="text-primary underline underline-offset-2"
             >
               webhooks guide
             </a>{' '}
