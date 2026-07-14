@@ -7,7 +7,7 @@ It resolves the provider strategy via ``ProviderFactory``, checks that the
 provider has a ``BaseWebhookHandler`` wired up, and delegates to:
 
 * ``strategy.webhooks.handle(request, body, db)``   – POST (data events)
-* ``strategy.webhooks.handle_challenge(request)``   – GET (subscription verification)
+* ``strategy.webhooks.handle_challenge(request)``   – GET (subscription verification) or HEAD (reachability probe)
 
 The per-provider webhook handlers (to be implemented under
 ``app/services/providers/{provider}/webhook_handler.py``) are responsible for:
@@ -23,9 +23,9 @@ into its strategy, traffic can be cut over to this router.
 """
 
 from logging import getLogger
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.database import DbSession
 from app.schemas.responses.incoming_webhooks import (
@@ -109,7 +109,7 @@ def handle_provider_webhook(
 
 
 @router.get("")
-def verify_provider_webhook(provider: str, request: Request) -> dict:
+async def verify_provider_webhook(provider: str, request: Request) -> dict[str, Any]:
     """Handle GET-based subscription verification challenges.
 
     Some providers (Strava ``hub.challenge``, Oura ``verification_token``)
@@ -123,6 +123,20 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     """
     handler = _get_webhook_handler(provider)
     return handler.handle_challenge(request)
+
+
+@router.head("")
+def probe_provider_webhook(provider: str, request: Request) -> Response:
+    """Handle a provider callback reachability probe.
+
+    Withings sends HEAD during ``notify subscribe`` to confirm that its
+    callback URL is reachable. The provider handler retains control over
+    whether it supports this handshake; a successful probe intentionally has
+    no response body.
+    """
+    handler = _get_webhook_handler(provider)
+    handler.handle_challenge(request)
+    return Response(status_code=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------

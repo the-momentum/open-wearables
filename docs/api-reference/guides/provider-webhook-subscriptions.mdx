@@ -25,7 +25,7 @@ Authorization: Bearer <token>
 
 **Base path**: `/api/v1/providers/{provider}/webhooks/subscriptions`
 
-Supported `{provider}` values: `polar`, `oura`, `strava`
+Supported `{provider}` values: `polar`, `oura`, `strava`. Withings subscriptions are managed per connected user.
 
 ---
 
@@ -36,6 +36,7 @@ Supported `{provider}` values: `polar`, `oura`, `strava`
 | **Polar** | 1 per app | Polar sends a `PING` event to the URL; must return `200 OK` | `signature_secret_key` returned once on creation — auto-saved to DB |
 | **Oura** | 1 per data type | GET challenge with `verification_token` query param | Client secret used for HMAC verification |
 | **Strava** | 1 per app | GET `hub.challenge` echo | `STRAVA_WEBHOOK_VERIFY_TOKEN` env var |
+| **Withings** | 1 per user and notification category | HEAD reachability probe | `WITHINGS_WEBHOOK_TOKEN` query parameter |
 
 <Warning>
   **Polar only**: when you register or update a webhook, Polar immediately sends a `PING` to the configured URL. The request must respond `200 OK` before Polar accepts the subscription. Use a publicly reachable URL (e.g. set up via [ngrok](/dev-guides/ngrok-setup)).
@@ -258,8 +259,13 @@ These endpoints receive the actual event notifications from providers. They are 
 |--------|------|-------------|
 | `POST` | `/api/v1/providers/{provider}/webhooks` | Receives incoming event payloads. Verifies the provider signature, parses the event, and dispatches a background sync task. |
 | `GET` | `/api/v1/providers/{provider}/webhooks` | Handles subscription verification challenges (Oura `verification_token`, Strava `hub.challenge`). |
+| `HEAD` | `/api/v1/providers/{provider}/webhooks` | Handles callback reachability probes (Withings). |
 
 The callback URL you register with a provider must point to `POST /api/v1/providers/{provider}/webhooks`. For local development, use [ngrok](/dev-guides/ngrok-setup) to expose that endpoint publicly.
+
+Withings recommends adding a random shared secret to the exact callback URL. Set `WITHINGS_WEBHOOK_TOKEN` to a value generated with `openssl rand -hex 32`; Open Wearables registers `?token=<secret>` and validates it on notification POSTs and reachability HEAD probes. See the [Withings notification security guidance](https://developer.withings.com/developer-guide/v3/integration-guide/public-health-data-api/data-api/notifications/notification-overview/).
+
+Withings also recommends allowing its published notification IP ranges at the network edge. Those ranges are distributed through the DNS records documented in the same security guidance and should be monitored for changes by the deployment operator.
 
 ---
 

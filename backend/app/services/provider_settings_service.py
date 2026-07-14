@@ -3,7 +3,7 @@ from celery import current_app as celery_app
 from app.config import settings
 from app.database import DbSession
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas.auth.live_sync_mode import LiveSyncMode
+from app.schemas.auth.live_sync_mode import LiveSyncMode, resolve_live_sync_mode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import (
     ProviderSettingRead,
@@ -30,10 +30,9 @@ class ProviderSettingsService:
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled if setting else True,
             icon_url=strategy.icon_url,
-            live_sync_mode=(
-                setting.live_sync_mode
-                if (setting and setting.live_sync_mode is not None)
-                else strategy.default_live_sync_mode
+            live_sync_mode=resolve_live_sync_mode(
+                setting.live_sync_mode if setting else None,
+                strategy.default_live_sync_mode,
             ),
             live_sync_configurable=strategy.live_sync_configurable,
         )
@@ -70,7 +69,16 @@ class ProviderSettingsService:
 
         setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode)
 
-        if update.live_sync_mode == LiveSyncMode.WEBHOOK and strategy.capabilities.webhook_registration_api:
+        caps = strategy.capabilities
+        if update.live_sync_mode is not None and caps.webhook_per_user_subscriptions:
+            # Per-user subscription providers (Withings): bulk subscribe/revoke
+            # every active connection for the new mode via a generic fan-out task.
+            celery_app.send_task(
+                _REGISTER_WEBHOOKS_TASK,
+                args=[provider],
+                queue="webhook_sync",
+            )
+        elif update.live_sync_mode == LiveSyncMode.WEBHOOK and caps.webhook_registration_api:
             callback_url = f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
             celery_app.send_task(_REGISTER_WEBHOOKS_TASK, args=[provider, callback_url], queue="webhook_sync")
 
@@ -80,9 +88,7 @@ class ProviderSettingsService:
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled,
             icon_url=strategy.icon_url,
-            live_sync_mode=(
-                setting.live_sync_mode if setting.live_sync_mode is not None else strategy.default_live_sync_mode
-            ),
+            live_sync_mode=resolve_live_sync_mode(setting.live_sync_mode, strategy.default_live_sync_mode),
             live_sync_configurable=strategy.live_sync_configurable,
         )
 

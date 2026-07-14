@@ -60,8 +60,9 @@ class BaseWebhookHandler(ABC):
 
     Optional overrides
     ------------------
-    * ``handle_challenge`` – GET-based subscription verification (Strava
-      ``hub.challenge``, Oura ``verification_token``).  Defaults to 501.
+    * ``handle_challenge`` – subscription verification (GET for Strava
+      ``hub.challenge`` and Oura ``verification_token``; HEAD reachability
+      probe for Withings). Defaults to 501.
     * ``handle`` – the full pipeline orchestrator; override only when the
       standard *verify → parse → dispatch* sequence is insufficient.
     """
@@ -221,18 +222,18 @@ class BaseWebhookHandler(ABC):
         return self.dispatch(db, payload)
 
     def handle_challenge(self, request: Request) -> dict[str, Any]:
-        """Handle GET-based subscription verification challenges.
+        """Handle a subscription verification challenge or reachability probe.
 
         Override this in providers that use a GET challenge/response handshake
-        to verify webhook subscriptions (Strava ``hub.challenge``, Oura
-        ``verification_token``).
+        (Strava ``hub.challenge``, Oura ``verification_token``) or a HEAD
+        reachability probe (Withings) to verify webhook subscriptions.
 
         Default implementation raises ``501 Not Implemented`` so that the
         unified router fails loudly for providers that have not wired up
         challenge handling yet.
 
         Args:
-            request: The incoming GET request (query params carry challenge data).
+            request: The incoming challenge or probe request.
 
         Returns:
             Provider-specific challenge response dict.

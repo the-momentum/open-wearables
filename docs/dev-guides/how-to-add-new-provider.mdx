@@ -31,16 +31,16 @@ Each provider declares its data delivery modes via `ProviderCapabilities`:
 
 | Capability | Description | Example providers |
 |---|---|---|
-| `rest_pull` | Usually historical REST API | Oura, Whoop, Strava, Suunto |
+| `rest_pull` | Usually historical REST API | Oura, Whoop, Strava, Suunto, Withings |
 | `client_sdk` | Data delivered via mobile SDK client | Apple, Samsung, Google |
 | `file_import` | File-based data import | Apple Health |
 | `webhook_callback` | Provider-initiates async export delivered to our webhook | Garmin backfill |
 | `webhook_stream` | Provider pushes full data payload in every webhook | Garmin, Suunto |
-| `webhook_ping` | Provider sends a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit, Polar |
+| `webhook_ping` | Provider sends a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit, Polar, Withings |
 | `webhook_registration_api` | Provider exposes an API to programmatically register webhook subscriptions. When `False`, subscriptions must be configured manually in the provider's developer portal. | Oura |
 
 <Note>
-`webhook_stream` and `webhook_ping` are mutually exclusive. Use `webhook_stream` when the provider embeds the complete record in the webhook body (Garmin, Suunto). Use `webhook_ping` when the webhook is only a trigger and you must call the REST API to retrieve the actual data (Oura, Strava, Fitbit, Polar).
+`webhook_stream` and `webhook_ping` are mutually exclusive. Use `webhook_stream` when the provider embeds the complete record in the webhook body (Garmin, Suunto). Use `webhook_ping` when the webhook is only a trigger and you must call the REST API to retrieve the actual data (Oura, Strava, Fitbit, Polar, Withings).
 </Note>
 
 <img src="/images/providers/custom-providers-architecture.png" alt="Custom providers architecture showing Strategy, OAuth, Workouts, 247 Data, and Webhook Handler components" />
@@ -779,6 +779,10 @@ To enable this:
 
 ```python
 class MyProviderStrategy(BaseProviderStrategy):
+    def __init__(self) -> None:
+        super().__init__()
+        self.webhook_service = my_provider_webhook_service
+
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
@@ -786,12 +790,9 @@ class MyProviderStrategy(BaseProviderStrategy):
             webhook_ping=True,
             webhook_registration_api=True,
         )
-
-    async def register_webhooks(self, callback_url: str) -> Any:
-        return await my_provider_webhook_service.register_subscriptions(callback_url)
 ```
 
-When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform automatically dispatches a Celery task (`register_provider_webhooks`) that calls `strategy.register_webhooks(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform dispatches `register_provider_webhooks`. For application-scoped providers, the task calls `strategy.webhook_service.register_subscriptions(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
 
 <Note>
 If `webhook_registration_api=False` (the default), switching sync mode to `webhook` only updates the database — you must register subscriptions manually in the provider's developer portal pointing to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.

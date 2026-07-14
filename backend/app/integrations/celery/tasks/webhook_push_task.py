@@ -29,7 +29,7 @@ _NONRETRIABLE_UPSTREAM_STATUSES = frozenset({400, 403, 404, 410, 422})
 # Providers whose webhook deliveries are surfaced in the sync log via this task.
 # Garmin self-reports sync status from its own handler/backfill, so it is excluded
 # here to avoid duplicate run entries.
-_SYNC_LOG_PROVIDERS = frozenset({"oura", "strava", "polar", "whoop", "suunto"})
+_SYNC_LOG_PROVIDERS = frozenset({"oura", "strava", "polar", "whoop", "suunto", "withings"})
 
 # process_payload "status" values that mean data was actually persisted.
 _SAVED_STATUSES = frozenset({"processed", "saved", "accepted", "deleted", "success"})

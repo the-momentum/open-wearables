@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.auth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
+from app.services.providers.factory import ProviderFactory
 from tests.factories import DeveloperFactory, UserConnectionFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
 
@@ -202,6 +203,69 @@ class TestPolarOAuth:
 
         # Assert
         assert response.status_code in [200, 302, 303, 307, 400, 422]
+
+
+class TestWithingsOAuth:
+    """Tests for Withings OAuth flow."""
+
+    @patch("app.api.routes.v1.oauth.celery_app.send_task")
+    @patch(
+        "app.services.providers.withings.strategy.WithingsStrategy.effective_live_sync_mode",
+        return_value=LiveSyncMode.WEBHOOK,
+    )
+    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
+    @patch("httpx.post")
+    def test_withings_callback_isolates_subscription_scheduling_failure(
+        self,
+        mock_httpx_post: MagicMock,
+        mock_sync_task: MagicMock,
+        mock_live_mode: MagicMock,
+        mock_send_task: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """A failing subscription schedule must not turn a successful OAuth connect
+        into a 500: the exception is captured and the callback still redirects."""
+        mock_send_task.side_effect = RuntimeError("notify subscription failed")
+
+        user = UserFactory()
+
+        # Seed real OAuth state in the test Redis (the autouse flush_redis fixture
+        # gives every test a clean instance), so the callback can validate it.
+        withings_strategy = ProviderFactory().get_provider("withings")
+        assert withings_strategy.oauth
+        _, state = withings_strategy.oauth.get_authorization_url(user.id)
+
+        # Withings wraps the token payload in a status/body envelope.
+        mock_httpx_post.return_value = MagicMock(
+            status_code=200,
+            raise_for_status=MagicMock(return_value=None),
+            json=MagicMock(
+                return_value={
+                    "status": 0,
+                    "body": {
+                        "userid": "999",
+                        "access_token": "withings_at",
+                        "refresh_token": "withings_rt",
+                        "expires_in": 10800,
+                        "token_type": "Bearer",
+                    },
+                }
+            ),
+        )
+
+        # Act
+        response = client.get(
+            "/api/v1/oauth/withings/callback",
+            params={"code": "authorization_code", "state": state},
+            follow_redirects=False,
+        )
+
+        # Assert: scheduling was attempted and raised, yet the callback survived it.
+        mock_live_mode.assert_called_once()
+        assert mock_send_task.called
+        assert response.status_code != 500
+        assert response.status_code in [302, 303, 307]
 
 
 class TestSuuntoOAuth:

@@ -6,11 +6,13 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.database import DbSession
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth import LiveSyncMode
+from app.schemas.auth import LiveSyncMode, resolve_live_sync_mode
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.services.providers.templates.base_247_data import Base247DataTemplate
@@ -93,6 +95,13 @@ class ProviderCapabilities:
         env vars) and is stored in ``provider_settings.webhook_secret``.
         Must be used together with ``webhook_registration_api=True``.
         Currently: Polar.
+    webhook_per_user_subscriptions:
+        Subscriptions are created per-user with the user's own bearer token
+        (not an app-level registration API). Switching live-sync mode bulk
+        subscribes/revokes every active connection via the generic
+        ``register_provider_webhooks`` task, which fans out to the provider's
+        per-user reconciliation tasks. Mutually exclusive with
+        ``webhook_registration_api``. Currently: Withings.
     max_historical_days:
         Hard upper limit on how far back the provider allows data to be
         fetched. ``None`` means no known limit. Garmin: 30 days.
@@ -106,6 +115,7 @@ class ProviderCapabilities:
     webhook_ping: bool = False
     webhook_registration_api: bool = False
     webhook_inbound_secret: bool = False
+    webhook_per_user_subscriptions: bool = False
     max_historical_days: int | None = None
 
     def __post_init__(self) -> None:
@@ -115,6 +125,10 @@ class ProviderCapabilities:
             raise ValueError("webhook_ping requires rest_pull=True (data must be fetched via REST after the ping)")
         if self.webhook_inbound_secret and not self.webhook_registration_api:
             raise ValueError("webhook_inbound_secret requires webhook_registration_api=True")
+        if self.webhook_per_user_subscriptions and not self.webhook_ping:
+            raise ValueError("webhook_per_user_subscriptions requires webhook_ping=True")
+        if self.webhook_per_user_subscriptions and self.webhook_registration_api:
+            raise ValueError("webhook_per_user_subscriptions and webhook_registration_api are mutually exclusive")
 
 
 class BaseProviderStrategy(ABC):
@@ -254,6 +268,17 @@ class BaseProviderStrategy(ABC):
         if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
         return None
+
+    def effective_live_sync_mode(self, db: DbSession) -> LiveSyncMode | None:
+        """The admin override from provider settings, else this provider's default.
+
+        ``None`` means this provider has no server-side live-sync mode.
+        """
+        setting = ProviderSettingsRepository().get_all(db).get(self.name)
+        return resolve_live_sync_mode(
+            setting.live_sync_mode if setting else None,
+            self.default_live_sync_mode,
+        )
 
     @property
     def icon_url(self) -> str:
