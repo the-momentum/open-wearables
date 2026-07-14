@@ -22,7 +22,7 @@ class TestAccessLogModeDerivation:
         ],
     )
     def test_default_is_derived_from_environment(self, environment: EnvironmentType, expected: AccessLogMode) -> None:
-        assert Settings(environment=environment).access_log_mode == expected
+        assert Settings(environment=environment, access_log_mode=None).access_log_mode == expected
 
     def test_explicit_value_overrides_derivation(self) -> None:
         settings = Settings(environment=EnvironmentType.PRODUCTION, access_log_mode=AccessLogMode.ALL)
