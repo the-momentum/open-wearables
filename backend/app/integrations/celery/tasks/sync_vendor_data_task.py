@@ -20,6 +20,7 @@ from app.utils.config_utils import format_duration
 from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
+from app.utils.sync_params import build_sync_params
 
 logger = getLogger(__name__)
 
@@ -284,7 +285,7 @@ def sync_vendor_data(
 
                     # Sync workouts
                     if strategy.workouts:
-                        params = _build_sync_params(provider_name, effective_start, end_date)
+                        params = build_sync_params(effective_start, end_date)
                         _emit_sync_status(
                             progress,
                             user_uuid,
@@ -541,87 +542,3 @@ def sync_vendor_data(
             )
             result.errors["general"] = str(e)
             return result.model_dump()
-
-
-def _build_sync_params(provider_name: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:
-    """
-    Build provider-specific parameters for syncing data.
-
-    Args:
-        provider_name: Name of the provider ('suunto', 'garmin', 'polar', etc.)
-        start_date: ISO 8601 date string for start of sync period
-        end_date: ISO 8601 date string for end of sync period
-
-    Returns:
-        Dictionary of parameters for the provider's load_data method
-    """
-    params: dict[str, Any] = {
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-
-    # Convert date strings to appropriate formats
-    start_timestamp = None
-    end_timestamp = None
-
-    if start_date:
-        try:
-            if isinstance(start_date, datetime):
-                start_dt = start_date
-            else:
-                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            start_timestamp = int(start_dt.timestamp())
-        except (ValueError, AttributeError) as e:
-            log_structured(
-                logger,
-                "warning",
-                f"Invalid start_date format: {start_date}, error: {e}",
-                provider="sync_vendor_data",
-                task="sync_vendor_data",
-            )
-
-    if end_date:
-        try:
-            if isinstance(end_date, datetime):
-                end_dt = end_date
-            else:
-                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-            end_timestamp = int(end_dt.timestamp())
-        except (ValueError, AttributeError) as e:
-            log_structured(
-                logger,
-                "warning",
-                f"Invalid end_date format: {end_date}, error: {e}",
-                provider="sync_vendor_data",
-                task="sync_vendor_data",
-            )
-
-    # Provider-specific parameter mapping
-    if provider_name == "polar":
-        # Polar parameters
-        # Note: Polar typically uses its own pagination, but we can include optional flags
-        params["samples"] = False  # Can be enabled for detailed sample data
-        params["zones"] = False
-        params["route"] = False
-
-    elif provider_name == "garmin":
-        # Garmin backfill API parameters
-        if start_date:
-            params["summary_start_time"] = start_date
-        if end_date:
-            params["summary_end_time"] = end_date
-
-    elif provider_name == "whoop":
-        # Whoop API uses 'start' and 'end' parameters (ISO 8601 strings)
-        if start_date:
-            params["start"] = start_date
-        if end_date:
-            params["end"] = end_date
-
-    # Add generic parameters for providers that might use them
-    if start_timestamp:
-        params["since"] = start_timestamp
-    if end_timestamp:
-        params["until"] = end_timestamp
-
-    return params

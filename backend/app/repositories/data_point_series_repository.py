@@ -487,53 +487,6 @@ class DataPointSeriesRepository(
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
 
-    def get_averages_for_time_range(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-        series_types: list[SeriesType],
-    ) -> dict[SeriesType, float | None]:
-        """Get average values for specified series types within a time range.
-
-        Uses half-open interval [start_time, end_time).
-
-        Returns a dict mapping SeriesType to average value (or None if no data).
-        """
-        if not series_types:
-            raise ValueError("series_types cannot be empty")
-
-        type_ids = [get_series_type_id(t) for t in series_types]
-
-        results = (
-            db_session.query(
-                self.model.series_type_definition_id,
-                func.avg(self.model.value).label("avg_value"),
-            )
-            .join(DataSource, self.model.data_source_id == DataSource.id)
-            .filter(
-                DataSource.user_id == user_id,
-                self.model.recorded_at >= start_time,
-                self.model.recorded_at < end_time,
-                self.model.series_type_definition_id.in_(type_ids),
-            )
-            .group_by(self.model.series_type_definition_id)
-            .all()
-        )
-
-        # Build result dict
-        averages: dict[SeriesType, float | None] = {t: None for t in series_types}
-        for type_id, avg_value in results:
-            try:
-                series_type = get_series_type_from_id(type_id)
-                if series_type in averages:
-                    averages[series_type] = float(avg_value) if avg_value is not None else None
-            except KeyError:
-                pass
-
-        return averages
-
     def get_daily_activity_aggregates(
         self,
         db_session: DbSession,

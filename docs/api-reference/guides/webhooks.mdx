@@ -18,6 +18,10 @@ Outgoing webhooks let Open Wearables push events to your backend in real time, s
 
 Webhooks are delivered via [Svix](https://svix.com/), which handles retries, signature signing, and delivery history.
 
+<Note>
+  **Self-hosting:** outgoing webhooks are **disabled by default**. To emit events, set `OUTGOING_WEBHOOKS_ENABLED=true` in the backend `.env` and restart — no command-line flags needed, plain `docker compose up`. The `svix-server` container runs either way, and the app runs fine when it is absent (e.g. a deployment without webhooks). On managed Postgres (AWS RDS / Railway), the app's database user must be allowed to create databases, or create a `svix` database up front — Svix keeps its schema there.
+</Note>
+
 <CardGroup cols={2}>
   <Card title="Things you can do" icon="bolt">
     Trigger downstream processing when a workout is synced, update your UI in real time when sleep data arrives, scope an endpoint to a single user's events, or verify payloads are genuinely from Open Wearables.
@@ -198,7 +202,7 @@ Fired once when a complete session is saved or merged.
 | Event | Description |
 |-------|-------------|
 | `connection.created` | A user successfully connected a wearable provider. |
-| `connection.revoked` | A connection became invalid (refresh token expired/revoked, or the user deregistered on the provider side). The user must re-authorize to resume syncing. |
+| `connection.revoked` | A connection became invalid or was disconnected (refresh token expired/revoked, the user deregistered on the provider side, or the user manually disconnected). The user must re-authorize to resume syncing. |
 | `workout.created` | A new workout session was saved. |
 | `sleep.created` | A new (or merged) sleep session was saved. |
 | `menstrual_cycle.created` | A new menstrual cycle record was saved. |
@@ -250,7 +254,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 
 ### `connection.revoked`
 
-`reason` is a short cause, e.g. `refresh_failed` or `deregistration`.
+`reason` is a short cause, e.g. `refresh_failed`, `deregistration`, or `user_disconnected`.
 
 ```json
 {

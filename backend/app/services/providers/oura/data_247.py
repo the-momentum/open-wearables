@@ -39,6 +39,7 @@ from app.services.providers.oura.coverage import (
     PERSONAL_INFO_SERIES,
     READINESS_SERIES,
     SLEEP_INTERVAL_SERIES,
+    SLEEP_SCALAR_SERIES,
 )
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -591,6 +592,10 @@ class Oura247Data(Base247DataTemplate):
         for item in raw_sleep:
             sleep = OuraSleepJSON(**item)
 
+            # Skip false detections and user-deleted records — not genuine sleep events
+            if sleep.type in {"rest", "deleted"}:
+                continue
+
             start_time = sleep.bedtime_start
             end_time = sleep.bedtime_end
 
@@ -625,7 +630,7 @@ class Oura247Data(Base247DataTemplate):
                     "zone_offset": iso_zone_offset(end_time, start_time),
                     "duration_seconds": duration_seconds,
                     "efficiency_percent": float(sleep.efficiency) if sleep.efficiency is not None else None,
-                    "is_nap": sleep.type == "rest",
+                    "is_nap": sleep.type in {"sleep", "late_nap"},
                     "stages": {
                         "deep_seconds": deep_seconds,
                         "light_seconds": light_seconds,
@@ -792,36 +797,39 @@ class Oura247Data(Base247DataTemplate):
                         trace_id=trace_id,
                     )
 
-            avg_breath = normalized_sleep.get("average_breath")
-            if avg_breath is not None and start_dt is not None:
-                try:
-                    timeseries_service.bulk_create_samples(
-                        db,
-                        [
-                            TimeSeriesSampleCreate(
-                                id=uuid4(),
-                                user_id=user_id,
-                                source=self.provider_name,
-                                recorded_at=start_dt,
-                                zone_offset=zone_offset,
-                                value=Decimal(str(avg_breath)),
-                                series_type=SeriesType.respiratory_rate,
-                            )
-                        ],
-                    )
-                    db.commit()
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        "Failed to save respiratory rate",
-                        action="oura_respiratory_rate_save_error",
-                        sleep_id=str(sleep_id),
-                        error=str(e),
-                        user_id=str(user_id),
-                        provider_user_id=provider_user_id,
-                        trace_id=trace_id,
-                    )
+            if start_dt is not None:
+                for raw_key, series_type in SLEEP_SCALAR_SERIES.items():
+                    scalar_value = normalized_sleep.get(raw_key)
+                    if scalar_value is None:
+                        continue
+                    try:
+                        timeseries_service.bulk_create_samples(
+                            db,
+                            [
+                                TimeSeriesSampleCreate(
+                                    id=uuid4(),
+                                    user_id=user_id,
+                                    source=self.provider_name,
+                                    recorded_at=start_dt,
+                                    zone_offset=zone_offset,
+                                    value=Decimal(str(scalar_value)),
+                                    series_type=series_type,
+                                )
+                            ],
+                        )
+                        db.commit()
+                    except Exception as e:
+                        log_structured(
+                            self.logger,
+                            "warning",
+                            f"Failed to save {series_type.value}",
+                            action=f"oura_{series_type.value}_save_error",
+                            sleep_id=str(sleep_id),
+                            error=str(e),
+                            user_id=str(user_id),
+                            provider_user_id=provider_user_id,
+                            trace_id=trace_id,
+                        )
 
             self._persist_resting_heart_rate(db, user_id, normalized_sleep, end_dt, zone_offset, log_ctx)
 

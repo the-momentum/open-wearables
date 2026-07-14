@@ -22,6 +22,11 @@ class SleepField(BaseModel):
     providers: list[str]
 
 
+class MenstrualCycleField(BaseModel):
+    code: str
+    providers: list[str]
+
+
 class HealthScore(BaseModel):
     code: str
     providers: list[str]
@@ -32,4 +37,5 @@ class CoverageResponse(BaseModel):
     timeseries: list[TimeseriesCategory]
     workout_fields: list[WorkoutField]
     sleep_fields: list[SleepField]
+    menstrual_cycle_fields: list[MenstrualCycleField]
     health_scores: list[HealthScore]

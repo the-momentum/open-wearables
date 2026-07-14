@@ -15,6 +15,7 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./backend/scripts/init/create-svix-db.sql:/docker-entrypoint-initdb.d/create-svix-db.sql:ro
     restart: unless-stopped
 
   app:
@@ -92,6 +93,23 @@ services:
   redis:
     container_name: redis__open-wearables
     image: redis:8
+    entrypoint:
+      - sh
+      - -c
+      - |
+        # Seed AOF from an existing RDB before enabling it, otherwise Redis boots
+        # empty and ignores dump.rdb. Skipped once appendonlydir exists.
+        if [ ! -d /data/appendonlydir ] && [ -f /data/dump.rdb ]; then
+          redis-server --daemonize no &
+          RPID=$$!
+          until redis-cli ping >/dev/null 2>&1; do sleep 0.2; done
+          redis-cli CONFIG SET appendonly yes
+          sleep 1
+          until redis-cli INFO persistence | grep -q 'aof_rewrite_in_progress:0'; do sleep 0.2; done
+          redis-cli SHUTDOWN NOSAVE
+          wait "$$RPID" 2>/dev/null
+        fi
+        exec redis-server --appendonly yes --appendfsync everysec
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -123,8 +141,6 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
-      app:
         condition: service_started
     healthcheck:
       test: ["CMD", "svix-server", "healthcheck", "http://localhost:8071"]

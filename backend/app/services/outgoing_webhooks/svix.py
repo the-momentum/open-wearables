@@ -22,6 +22,7 @@ from svix.api import (
     EndpointOut,
     EndpointPatch,
     EventTypeIn,
+    EventTypeListOptions,
     EventTypeUpdate,
     ListResponseEndpointOut,
     ListResponseMessageAttemptOut,
@@ -94,7 +95,9 @@ def _resolve_auth_token() -> str | None:
 
 
 def _build_client() -> Svix | None:
-    """Create the Svix client. Returns None when no credentials are configured."""
+    """Create the Svix client. Returns None when webhooks are disabled or no credentials are configured."""
+    if not settings.outgoing_webhooks_enabled:
+        return None
     token = _resolve_auth_token()
     if token is None:
         return None
@@ -108,21 +111,58 @@ def is_enabled() -> bool:
     return _client is not None
 
 
-def register_event_types() -> None:
-    """Create / update every WebhookEventType in Svix (idempotent)."""
+def register_event_types() -> bool:
+    """Sync every WebhookEventType into Svix: create the missing, update the changed (idempotent).
+
+    Returns:
+        True if the sync completed with no failures (or nothing needed to run). False if
+        Svix was unreachable or any individual event type failed — callers must not report
+        success in that case, since the sync simply retries next boot.
+    """
     if not is_enabled():
-        return
+        return True
     assert _client is not None
+
+    # List existing types once (paginated) so a steady-state startup makes a single
+    # call instead of a create+update round-trip per type. If Svix is still coming up,
+    # skip without crashing app startup — the sync is idempotent and reruns next boot.
+    existing: dict[str, str] = {}
+    iterator: str | None = None
+    try:
+        while True:
+            page = _client.event_type.list(EventTypeListOptions(limit=250, iterator=iterator))
+            existing.update({et.name: et.description for et in page.data})
+            if page.done:
+                break
+            iterator = page.iterator
+    except Exception:
+        logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).")
+        return False
+
+    all_ok = True
     for evt in WebhookEventType:
         description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
-        try:
-            _client.event_type.create(EventTypeIn(name=evt.value, description=description))
-            logger.info("Registered event type: %s", evt.value)
-        except Exception:
+        current = existing.get(evt.value)
+        if current is None:
+            try:
+                _client.event_type.create(EventTypeIn(name=evt.value, description=description))
+                logger.info("Registered event type: %s", evt.value)
+            except Exception:
+                # Deemed missing but create failed (archived/race) — update so it is never left unregistered.
+                try:
+                    _client.event_type.update(evt.value, EventTypeUpdate(description=description))
+                except Exception:
+                    logger.exception("Failed to register/update event type %s", evt.value)
+                    all_ok = False
+        elif current != description:
             try:
                 _client.event_type.update(evt.value, EventTypeUpdate(description=description))
+                logger.info("Updated event type description: %s", evt.value)
             except Exception:
-                logger.exception("Failed to register/update event type %s", evt.value)
+                logger.exception("Failed to update event type %s", evt.value)
+                all_ok = False
+
+    return all_ok
 
 
 def ensure_application(developer_id: str, developer_email: str) -> str:

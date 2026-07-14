@@ -5,12 +5,7 @@ import type { EventRecordResponse } from '@/lib/api/types';
  * Workout category types for field configuration
  */
 export type WorkoutCategory =
-  | 'running'
-  | 'cycling'
-  | 'swimming'
-  | 'strength'
-  | 'cardio'
-  | 'default';
+  'running' | 'cycling' | 'swimming' | 'strength' | 'cardio' | 'default';
 
 /**
  * Field configuration for workout details
