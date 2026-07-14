@@ -111,10 +111,16 @@ def is_enabled() -> bool:
     return _client is not None
 
 
-def register_event_types() -> None:
-    """Sync every WebhookEventType into Svix: create the missing, update the changed (idempotent)."""
+def register_event_types() -> bool:
+    """Sync every WebhookEventType into Svix: create the missing, update the changed (idempotent).
+
+    Returns:
+        True if the sync completed with no failures (or nothing needed to run). False if
+        Svix was unreachable or any individual event type failed — callers must not report
+        success in that case, since the sync simply retries next boot.
+    """
     if not is_enabled():
-        return
+        return True
     assert _client is not None
 
     # List existing types once (paginated) so a steady-state startup makes a single
@@ -131,8 +137,9 @@ def register_event_types() -> None:
             iterator = page.iterator
     except Exception:
         logger.warning("Svix unreachable during startup — skipping event-type sync (reruns next boot).")
-        return
+        return False
 
+    all_ok = True
     for evt in WebhookEventType:
         description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
         current = existing.get(evt.value)
@@ -146,12 +153,16 @@ def register_event_types() -> None:
                     _client.event_type.update(evt.value, EventTypeUpdate(description=description))
                 except Exception:
                     logger.exception("Failed to register/update event type %s", evt.value)
+                    all_ok = False
         elif current != description:
             try:
                 _client.event_type.update(evt.value, EventTypeUpdate(description=description))
                 logger.info("Updated event type description: %s", evt.value)
             except Exception:
                 logger.exception("Failed to update event type %s", evt.value)
+                all_ok = False
+
+    return all_ok
 
 
 def ensure_application(developer_id: str, developer_email: str) -> str:

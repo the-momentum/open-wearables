@@ -14,6 +14,6 @@ class ConfigResponse(BaseModel):
     outgoing_webhooks_enabled: bool
 
 
-@router.get("/config")
-def get_config(_developer: DeveloperDep) -> ConfigResponse:
+@router.get("/config", response_model=ConfigResponse)
+def get_config(_developer: DeveloperDep):
     return ConfigResponse(outgoing_webhooks_enabled=settings.outgoing_webhooks_enabled)

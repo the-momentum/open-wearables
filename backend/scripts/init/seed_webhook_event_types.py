@@ -12,8 +12,10 @@ def seed_webhook_event_types() -> None:
     if not svix_service.is_enabled():
         logger.info("Outgoing webhooks disabled — skipping webhook event type registration.")
         return
-    svix_service.register_event_types()
-    logger.info("Webhook event types registered with Svix.")
+    if svix_service.register_event_types():
+        logger.info("Webhook event types registered with Svix.")
+    else:
+        logger.warning("Webhook event type registration did not complete — will retry on next startup.")
 
 
 if __name__ == "__main__":

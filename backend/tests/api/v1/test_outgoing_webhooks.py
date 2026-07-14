@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -57,7 +58,7 @@ class TestWebhookEventTypes:
 
 class TestWebhookEmit:
     @pytest.fixture(autouse=True)
-    def _webhooks_enabled(self) -> Any:
+    def _webhooks_enabled(self) -> Generator[None, None, None]:
         # Dispatch only fires when webhooks are enabled; these tests assert it does.
         with patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True):
             yield

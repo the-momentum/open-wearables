@@ -49,6 +49,13 @@ function WebhooksPage() {
             <div key={i} className="h-12 bg-muted/50 rounded-md" />
           ))}
         </div>
+      ) : config.isError ? (
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 p-8 text-center backdrop-blur-xl">
+          <p className="text-muted-foreground mb-4">
+            Failed to load instance configuration. Please try again.
+          </p>
+          <Button onClick={() => config.refetch()}>Retry</Button>
+        </div>
       ) : !webhooksEnabled ? (
         <div className="rounded-2xl border border-[hsl(var(--warning-muted)/0.4)] bg-[hsl(var(--warning-muted)/0.08)] p-6">
           <p className="text-sm font-medium text-[hsl(var(--warning-muted))]">
@@ -56,7 +63,16 @@ function WebhooksPage() {
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Set <code>OUTGOING_WEBHOOKS_ENABLED=true</code> in the backend
-            environment to enable outgoing webhook delivery.
+            environment to enable outgoing webhook delivery. See the{' '}
+            <a
+              href="https://openwearables.io/docs/api-reference/guides/webhooks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              webhooks guide
+            </a>{' '}
+            for self-hosting setup.
           </p>
         </div>
       ) : endpoints.isLoading ? (

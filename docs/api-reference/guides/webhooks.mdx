@@ -202,7 +202,7 @@ Fired once when a complete session is saved or merged.
 | Event | Description |
 |-------|-------------|
 | `connection.created` | A user successfully connected a wearable provider. |
-| `connection.revoked` | A connection became invalid (refresh token expired/revoked, or the user deregistered on the provider side). The user must re-authorize to resume syncing. |
+| `connection.revoked` | A connection became invalid or was disconnected (refresh token expired/revoked, the user deregistered on the provider side, or the user manually disconnected). The user must re-authorize to resume syncing. |
 | `workout.created` | A new workout session was saved. |
 | `sleep.created` | A new (or merged) sleep session was saved. |
 | `menstrual_cycle.created` | A new menstrual cycle record was saved. |
@@ -254,7 +254,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 
 ### `connection.revoked`
 
-`reason` is a short cause, e.g. `refresh_failed` or `deregistration`.
+`reason` is a short cause, e.g. `refresh_failed`, `deregistration`, or `user_disconnected`.
 
 ```json
 {
