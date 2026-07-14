@@ -26,6 +26,7 @@ from .summaries import (
     HeartRateStats,
     IntensityMinutes,
     RecoverySummary,
+    SleepSessionSummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -57,5 +58,6 @@ __all__ = [
     "IntensityMinutes",
     "RecoverySummary",
     "SleepSummary",
+    "SleepSessionSummary",
     "SleepStagesSummary",
 ]

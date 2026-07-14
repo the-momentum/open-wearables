@@ -7,6 +7,7 @@ from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
 from app.schemas.responses.upload import ConnectionsCoverage, ProviderConnectionCount
+from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
@@ -69,6 +70,15 @@ class UserConnectionService(
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
             self.logger.info("Revoked connection for user %s from provider %s", user_id, provider)
+            connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
+            if connection:
+                on_connection_revoked(
+                    user_id=user_id,
+                    provider=provider,
+                    connection_id=connection.id,
+                    reason="user_disconnected",
+                    revoked_at=connection.updated_at.isoformat(),
+                )
             return
 
         # Nothing updated - check if connection exists (already revoked) or not found

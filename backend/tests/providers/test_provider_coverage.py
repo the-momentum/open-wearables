@@ -5,7 +5,7 @@ implementation files and assert that:
 
 - every emitted ``series_type=SeriesType.<x>`` is declared in ``TIMESERIES``
 - every EventRecordDetail data field it sets is declared in
-  ``WORKOUT_FIELDS`` or ``SLEEP_FIELDS``
+  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS`` or ``MENSTRUAL_CYCLE_FIELDS``
 - declared field/score names are valid
 
 A drift (new metric in the code, stale coverage) fails the test.
@@ -47,7 +47,24 @@ SDK_SHARED_FILES = (
 # or composite objects rather than scalar metric coverage).
 STRUCTURAL_DETAIL_FIELDS = {"record_id", "segments", "hr_zones", "power_zones"}
 
-ALL_DETAIL_FIELDS = set(EventRecordDetailCreate.model_fields)
+
+def _all_detail_fields() -> set[str]:
+    """Fields across EventRecordDetailCreate AND every polymorphic subtype.
+
+    Subtypes (e.g. MenstrualCycleDetailCreate) add their own fields on top of
+    the base; scanning only the base would leave those fields untracked and let
+    a whole detail category drift out of coverage unnoticed.
+    """
+    fields: set[str] = set()
+    stack = [EventRecordDetailCreate]
+    while stack:
+        cls = stack.pop()
+        fields |= set(cls.model_fields)
+        stack.extend(cls.__subclasses__())
+    return fields
+
+
+ALL_DETAIL_FIELDS = _all_detail_fields()
 TRACKED_DETAIL_FIELDS = ALL_DETAIL_FIELDS - STRUCTURAL_DETAIL_FIELDS
 
 _SERIES_EMIT_RE = re.compile(r"series_type=SeriesType\.(\w+)")
@@ -80,6 +97,10 @@ def _sleep_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "SLEEP_FIELDS", frozenset())
 
 
+def _menstrual_cycle_fields(cov: ModuleType) -> frozenset:
+    return getattr(cov, "MENSTRUAL_CYCLE_FIELDS", frozenset())
+
+
 def _health_scores(cov: ModuleType) -> frozenset:
     return getattr(cov, "HEALTH_SCORES", frozenset())
 
@@ -101,7 +122,7 @@ def test_emitted_timeseries_are_declared(provider: str) -> None:
 def test_set_detail_fields_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
-    declared = _workout_fields(cov) | _sleep_fields(cov)
+    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)
 
     used = {field for field in TRACKED_DETAIL_FIELDS if re.search(rf"\b{field}=", source) or f'"{field}"' in source}
     undeclared = used - declared
@@ -133,6 +154,9 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
     assert exposed.timeseries == _timeseries(cov), f"{provider}: strategy drops/alters TIMESERIES"
     assert exposed.workout_fields == _workout_fields(cov), f"{provider}: strategy drops/alters WORKOUT_FIELDS"
     assert exposed.sleep_fields == _sleep_fields(cov), f"{provider}: strategy drops/alters SLEEP_FIELDS"
+    assert exposed.menstrual_cycle_fields == _menstrual_cycle_fields(cov), (
+        f"{provider}: strategy drops/alters MENSTRUAL_CYCLE_FIELDS"
+    )
     assert exposed.health_scores == _health_scores(cov), f"{provider}: strategy drops/alters HEALTH_SCORES"
 
 
@@ -140,7 +164,7 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
 def test_declared_names_are_valid(provider: str) -> None:
     cov = _load_coverage(provider)
 
-    bad_fields = (_workout_fields(cov) | _sleep_fields(cov)) - ALL_DETAIL_FIELDS
+    bad_fields = (_workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)) - ALL_DETAIL_FIELDS
     assert not bad_fields, f"{provider}: unknown EventRecordDetail fields declared: {sorted(bad_fields)}"
 
     assert all(isinstance(s, HealthScoreCategory) for s in _health_scores(cov))

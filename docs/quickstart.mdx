@@ -49,6 +49,11 @@ Get Open Wearables running locally and start integrating wearable device data.
     - `VITE_API_URL` - Backend API URL (default: `http://localhost:8000`)
     
     <Tip>Default credentials are provided in the `.env.example` files for local development.</Tip>
+
+    <Tip>
+      Outgoing webhooks are disabled by default. Set `OUTGOING_WEBHOOKS_ENABLED=true` to enable
+      real-time event delivery — see the [webhooks guide](/api-reference/guides/webhooks).
+    </Tip>
   </Accordion>
 </AccordionGroup>
 

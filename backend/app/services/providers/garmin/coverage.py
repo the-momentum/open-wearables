@@ -86,6 +86,27 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
     }
 )
 
+# MenstrualCycleDetail fields populated by data_247.py (Garmin MCT cycle summaries).
+MENSTRUAL_CYCLE_FIELDS: frozenset[str] = frozenset(
+    {
+        "day_in_cycle",
+        "current_phase",
+        "current_phase_type",
+        "length_of_current_phase",
+        "days_until_next_phase",
+        "predicted_cycle_length",
+        "is_predicted_cycle",
+        "cycle_length",
+        "last_updated_at",
+        "has_specified_cycle_length",
+        "has_specified_period_length",
+        "period_length",
+        "fertile_window_start",
+        "length_of_fertile_window",
+        "pregnancy_snapshot",
+    }
+)
+
 HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset(
     {
         HealthScoreCategory.SLEEP,

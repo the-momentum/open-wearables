@@ -33,11 +33,7 @@ export interface UserQueryParams {
   page?: number;
   limit?: number;
   sort_by?:
-    | 'created_at'
-    | 'email'
-    | 'first_name'
-    | 'last_name'
-    | 'last_synced_at';
+    'created_at' | 'email' | 'first_name' | 'last_name' | 'last_synced_at';
   sort_order?: 'asc' | 'desc';
   search?: string;
   email?: string;
@@ -266,13 +262,7 @@ export interface Provider {
 }
 
 export type WearableProvider =
-  | 'fitbit'
-  | 'garmin'
-  | 'oura'
-  | 'whoop'
-  | 'strava'
-  | 'google-fit'
-  | 'withings';
+  'fitbit' | 'garmin' | 'oura' | 'whoop' | 'strava' | 'google-fit' | 'withings';
 
 export interface UserConnection {
   user_id: string;

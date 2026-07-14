@@ -557,11 +557,11 @@ class TestSDKImportUnitConversion:
         return ImportService(log=logging.getLogger("test"))
 
     @staticmethod
-    def _record(metric_type: str, value: float) -> dict[str, Any]:
+    def _record(metric_type: str, value: float, unit: str | None = "") -> dict[str, Any]:
         return {
             "id": f"test-{metric_type}",
             "type": metric_type,
-            "unit": "",
+            "unit": unit,
             "value": value,
             "startDate": "2025-04-10T12:00:00Z",
             "endDate": "2025-04-10T12:00:00Z",
@@ -660,3 +660,46 @@ class TestSDKImportUnitConversion:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
+
+    @pytest.mark.parametrize(
+        ("unit", "expected"),
+        [
+            ("mmol/L", Decimal("110.1092202")),
+            ("MMOL/L", Decimal("110.1092202")),
+            (None, Decimal("6.111")),
+            ("", Decimal("6.111")),
+        ],
+    )
+    def test_health_connect_blood_glucose_unit_handling(
+        self,
+        import_service: ImportService,
+        unit: str | None,
+        expected: Decimal,
+    ) -> None:
+        """Health Connect glucose arrives in mmol/L and must be stored as mg/dL; only a mmol unit converts."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "samsung",
+            [self._record("BLOOD_GLUCOSE", 6.111, unit=unit)],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.blood_glucose
+        assert samples[0].value == expected
+
+    def test_healthkit_blood_glucose_not_scaled(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """HealthKit reports glucose in mg/dL - stored unchanged."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._record("HKQuantityTypeIdentifierBloodGlucose", 105, unit="mg/dL")],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.blood_glucose
+        assert samples[0].value == Decimal("105")
