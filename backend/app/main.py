@@ -14,7 +14,7 @@ from app.api import head_router
 from app.config import settings
 from app.integrations.celery import create_celery
 from app.integrations.sentry import init_sentry
-from app.middlewares import add_cors_middleware
+from app.middlewares import add_access_log_middleware, add_cors_middleware
 from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
@@ -29,11 +29,15 @@ basicConfig(
 )
 
 # Remove uvicorn's default handlers to prevent duplicate logs (uvicorn.error)
-# and ensure access logs (uvicorn.access) also get timestamps via the root logger
-for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+# and route startup/error lines through the root logger for timestamps.
+for _name in ("uvicorn", "uvicorn.error"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
     _logger.propagate = True
+
+# uvicorn.access is silenced: add_access_log_middleware is the single, structured
+# source of per-request logs (gated by settings.access_log_mode).
+logging.getLogger("uvicorn.access").disabled = True
 
 # httpx/httpcore log one INFO line per outgoing request; at our request volume that is
 # pure noise (event-type sync, provider calls, webhook delivery). Keep warnings and errors.
@@ -60,6 +64,7 @@ raw_payload_storage.configure(
 )
 
 add_cors_middleware(api)
+add_access_log_middleware(api)
 
 # Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"
