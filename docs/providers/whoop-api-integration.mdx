@@ -238,7 +238,7 @@ Whoop applies two rate limits by default:
 | Per minute | 100 requests |
 | Per day | 10,000 requests |
 
-**How Open Wearables uses the quota:** Each sync cycle per user makes ~4-7 API requests (workouts, sleep, recovery, and body measurements — each paginated at 25 items per page). With the default polling interval of 1 hour, that's roughly **~120 requests per user per day**. This means the default rate limits comfortably support **~60-80 connected users** per app.
+**How Open Wearables uses the quota:** Each sync cycle per user makes ~5-8 API requests (workouts, sleep, recovery, cycles, and body measurements - each paginated at 25 items per page). With the default polling interval of 1 hour, that's roughly **~140 requests per user per day**. This means the default rate limits comfortably support **~60-70 connected users** per app.
 
 If you need to support more users right now, you can request increased rate limits from Whoop via the [Developer Dashboard](https://developer-dashboard.whoop.com/).
 
