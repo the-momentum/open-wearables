@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.utils.config_utils import AccessLogMode
+from app.utils.config_utils import AccessLogLevel
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger("app.access")
@@ -28,13 +28,14 @@ def add_cors_middleware(app: FastAPI) -> None:
 
 
 def add_access_log_middleware(app: FastAPI) -> None:
-    mode = settings.access_log_mode
-    if mode == AccessLogMode.OFF:
+    level = settings.access_log_level
+    if level == AccessLogLevel.OFF:
         return
 
     def emit(request: Request, status: int, duration_ms: float) -> None:
-        if mode == AccessLogMode.ERRORS and status < 400:
+        if level == AccessLogLevel.ERRORS and status < 400:
             return
+        path = f"{request.url.path}?{request.url.query}" if request.url.query else request.url.path
         # a logging failure must never break request handling
         with contextlib.suppress(Exception):
             log_structured(
@@ -42,7 +43,7 @@ def add_access_log_middleware(app: FastAPI) -> None:
                 "error" if status >= 400 else "info",
                 "http_request",
                 method=request.method,
-                path=request.url.path,
+                path=path,
                 status=status,
                 duration_ms=duration_ms,
             )

@@ -36,7 +36,7 @@ for _name in ("uvicorn", "uvicorn.error"):
     _logger.propagate = True
 
 # uvicorn.access is silenced: add_access_log_middleware is the single, structured
-# source of per-request logs (gated by settings.access_log_mode).
+# source of per-request logs (gated by settings.access_log_level).
 logging.getLogger("uvicorn.access").disabled = True
 
 # httpx/httpcore log one INFO line per outgoing request; at our request volume that is
