@@ -139,11 +139,11 @@ class XMLService:
 
         return SourceInfo(
             name=raw_fields.get("name"),
-            device_id=raw_fields.get("device"),  # ty:ignore[unknown-argument]
-            device_model=raw_fields.get("model"),  # ty:ignore[unknown-argument]
-            device_manufacturer=raw_fields.get("manufacturer"),  # ty:ignore[unknown-argument]
-            device_hardware_version=raw_fields.get("hardware"),  # ty:ignore[unknown-argument]
-            device_software_version=raw_fields.get("software"),  # ty:ignore[unknown-argument]
+            device_id=raw_fields.get("device"),
+            device_model=raw_fields.get("model"),
+            device_manufacturer=raw_fields.get("manufacturer"),
+            device_hardware_version=raw_fields.get("hardware"),
+            device_software_version=raw_fields.get("software"),
         )
 
     def _normalize_sleep_record(self, document: dict[str, Any]) -> SleepRecord | None:

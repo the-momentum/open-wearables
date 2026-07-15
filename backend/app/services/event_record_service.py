@@ -799,7 +799,7 @@ class EventRecordService(
             distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=self._resolve_avg_hr(db_session, [record]).get(record.id),
             max_heart_rate_bpm=details.heart_rate_max if details else None,
-            avg_pace_sec_per_km=avg_pace_sec_per_km,  # ty:ignore[invalid-argument-type]
+            avg_pace_sec_per_km=avg_pace_sec_per_km,
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,
@@ -887,7 +887,7 @@ class EventRecordService(
                 if details and details.sleep_efficiency_score
                 else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
-                sleep_stage_intervals=details.sleep_stages if details else None,  # ty:ignore[invalid-argument-type]
+                sleep_stage_intervals=details.sleep_stages if details else None,
                 stages=SleepStagesSummary(
                     deep_minutes=details.sleep_deep_minutes or 0 if details else 0,
                     light_minutes=details.sleep_light_minutes or 0 if details else 0,
