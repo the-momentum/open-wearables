@@ -2,6 +2,7 @@
 
 import json
 import sys
+from datetime import datetime, timezone
 from logging import Logger
 from typing import Any, NamedTuple
 from uuid import UUID
@@ -79,6 +80,7 @@ def log_structured(
             attributes["trace_id"] = tid
 
     log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "level": level.lower(),
         "message": message,
         "provider": provider,
