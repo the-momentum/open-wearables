@@ -336,6 +336,27 @@ class DataPointSeriesRepository(
         limit = params.limit or 50
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
+    def has_samples_in_range(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        source: str,
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> bool:
+        """Whether any sample from `source` exists for the user in [start, end)."""
+        query = (
+            db_session.query(self.model.id)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.source == source,
+                self.model.recorded_at >= start_datetime,
+                self.model.recorded_at < end_datetime,
+            )
+        )
+        return bool(db_session.query(query.exists()).scalar())
+
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
         return db_session.query(func.count(self.model.id)).scalar() or 0

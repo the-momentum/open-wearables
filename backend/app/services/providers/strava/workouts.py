@@ -309,6 +309,19 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         """Fetch + persist per-sample streams on workout arrival, flag-gated and failure-isolated."""
         if not settings.ingest_workout_samples:
             return 0
+        # Workouts are re-upserted whenever a sync window re-covers them (webhook
+        # arrival followed by the periodic pull is the common case). Streams are
+        # immutable once the activity is uploaded, so if samples already exist in
+        # the workout window skip the extra API call instead of re-fetching and
+        # re-upserting identical rows.
+        if record.end_datetime is not None and timeseries_service.has_samples_in_range(
+            db,
+            user_id,
+            "strava",
+            record.start_datetime,
+            record.end_datetime,
+        ):
+            return 0
         try:
             samples = self._build_workout_samples(
                 db,
