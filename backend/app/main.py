@@ -35,10 +35,6 @@ for _name in ("uvicorn", "uvicorn.error"):
     _logger.handlers.clear()
     _logger.propagate = True
 
-# uvicorn.access is silenced: add_access_log_middleware is the single, structured
-# source of per-request logs (gated by settings.access_log_level).
-logging.getLogger("uvicorn.access").disabled = True
-
 # httpx/httpcore log one INFO line per outgoing request; at our request volume that is
 # pure noise (event-type sync, provider calls, webhook delivery). Keep warnings and errors.
 for _name in ("httpx", "httpcore"):
@@ -47,6 +43,10 @@ for _name in ("httpx", "httpcore"):
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    # Silence uvicorn.access here, not at import: uvicorn's configure_logging() runs a
+    # dictConfig that re-creates the logger and undoes an import-time disable. Lifespan
+    # runs after it, so add_access_log_middleware stays the single access-log source.
+    logging.getLogger("uvicorn.access").disabled = True
     svix_service.register_event_types()
     yield
 
