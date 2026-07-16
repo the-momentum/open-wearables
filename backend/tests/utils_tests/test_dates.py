@@ -49,3 +49,7 @@ class TestParseQueryEndDatetime:
     def test_invalid_format_raises_error(self) -> None:
         with pytest.raises(DatetimeParseError):
             parse_query_end_datetime("invalid")
+
+    def test_invalid_calendar_date_raises_error(self) -> None:
+        with pytest.raises(DatetimeParseError):
+            parse_query_end_datetime("2024-02-30")

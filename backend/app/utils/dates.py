@@ -73,7 +73,11 @@ def parse_query_end_datetime(dt_str: str) -> datetime:
     window at midnight that matches nothing.
     """
     if _DATE_ONLY_RE.fullmatch(dt_str.strip()):
-        return datetime.combine(date.fromisoformat(dt_str.strip()), time.max)
+        try:
+            return datetime.combine(date.fromisoformat(dt_str.strip()), time.max)
+        except ValueError:
+            # Date-shaped but not a real calendar date (e.g. 2024-02-30).
+            raise DatetimeParseError(dt_str)
     return parse_query_datetime(dt_str)
 
 
