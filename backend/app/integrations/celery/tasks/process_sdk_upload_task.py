@@ -6,6 +6,7 @@ from celery import shared_task
 
 from app.database import SessionLocal
 from app.models import User
+from app.models.user_connection import ConnectionStatus
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.sync_status import SyncSource, SyncStatus
@@ -15,6 +16,7 @@ from app.services.apple.healthkit.import_service import (
 from app.services.apple.healthkit.import_service import (
     import_service as sdk_import_service,
 )
+from app.services.outgoing_webhooks.events import on_connection_created
 from app.services.sync_status_service import completed, failed, started
 from app.utils.structured_logging import log_structured
 
@@ -103,9 +105,20 @@ def process_sdk_upload(
     )
 
     with SessionLocal() as db:
-        # Ensure SDK connection exists for this user (SDK-based, no OAuth tokens)
+        # Ensure SDK connection exists for this user (SDK-based, no OAuth tokens).
+        # Emit connection.created on first sync or reactivation so Lucie can backfill.
         connection_repo = UserConnectionRepository()
-        connection_repo.ensure_sdk_connection(db, user_uuid, provider)
+        existing = connection_repo.get_by_user_and_provider(db, user_uuid, provider)
+        was_active = existing is not None and existing.status == ConnectionStatus.ACTIVE
+        connection = connection_repo.ensure_sdk_connection(db, user_uuid, provider)
+        if not was_active:
+            connected_at = connection.updated_at.isoformat()
+            on_connection_created(
+                user_id=user_uuid,
+                provider=provider,
+                connection_id=connection.id,
+                connected_at=connected_at,
+            )
 
         # Select the appropriate import service based on source
         import_service = _get_import_service(provider)

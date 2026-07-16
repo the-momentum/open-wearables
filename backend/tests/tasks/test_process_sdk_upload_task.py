@@ -131,3 +131,53 @@ class TestProcessSDKUploadTask:
         call_args = mock_user_repo.get.call_args
         assert call_args[0][0] == mock_db
         assert call_args[0][1] == UUID(user_id)
+
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.on_connection_created")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserConnectionRepository")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_process_sdk_upload_emits_connection_created_on_first_apple_sync(
+        self,
+        mock_user_repo_class: MagicMock,
+        mock_session_local: MagicMock,
+        mock_hk_import_service: MagicMock,
+        mock_connection_repo_class: MagicMock,
+        mock_on_connection_created: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        """First Apple SDK sync should emit connection.created like OAuth does."""
+        user = UserFactory()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.get.return_value = user
+        mock_user_repo_class.return_value = mock_user_repo
+
+        mock_connection_repo = MagicMock()
+        mock_connection_repo.get_by_user_and_provider.return_value = None
+        connection = MagicMock()
+        connection.id = uuid4()
+        connection.updated_at.isoformat.return_value = "2026-07-16T10:00:00+00:00"
+        mock_connection_repo.ensure_sdk_connection.return_value = connection
+        mock_connection_repo_class.return_value = mock_connection_repo
+
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {"status_code": 200, "message": "Import successful"}
+        mock_hk_import_service.import_data_from_request.return_value = mock_response
+
+        process_sdk_upload(
+            content='{"data":{"workouts":[],"records":[]}}',
+            content_type="application/json",
+            user_id=str(user.id),
+            provider="apple",
+        )
+
+        mock_on_connection_created.assert_called_once_with(
+            user_id=user.id,
+            provider="apple",
+            connection_id=connection.id,
+            connected_at="2026-07-16T10:00:00+00:00",
+        )
