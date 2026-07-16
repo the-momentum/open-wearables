@@ -26,8 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails
-from app.models.workout_details import WorkoutDetails
+from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
@@ -258,7 +257,7 @@ class EventRecordRepository(
     ) -> EventRecord | None:
         return (
             db_session.query(EventRecord)
-            .options(selectinload(EventRecord.detail))
+            .options(*[selectinload(r) for r in EventRecord.detail_relationship(category)])
             .filter(EventRecord.id == record_id, EventRecord.category == category)
             .first()
         )
@@ -276,7 +275,7 @@ class EventRecordRepository(
                 DataSource,
                 EventRecord.data_source_id == DataSource.id,
             )
-            .options(selectinload(EventRecord.detail))
+            .options(*[selectinload(r) for r in EventRecord.detail_relationship(query_params.category)])
         )
 
         filters = [DataSource.user_id == UUID(user_id)]
@@ -535,7 +534,7 @@ class EventRecordRepository(
         # SQLAlchemy expr: SleepDetails.sleep_stages.contains([{'stage': stage_name}])
         return (
             db_session.query(EventRecord)
-            .join(EventRecord.detail.of_type(SleepDetails))
+            .join(EventRecord.sleep_detail)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
@@ -960,7 +959,7 @@ class EventRecordRepository(
         return (
             db_session.query(self.model)
             .join(DataSource, self.model.data_source_id == DataSource.id)
-            .options(selectinload(self.model.detail))
+            .options(selectinload(self.model.sleep_detail))
             .filter(*filters)
             .order_by(self.model.start_datetime.desc())
             .with_for_update()

@@ -16,7 +16,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
+from app.models import SleepDetails, WorkoutDetails
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.schemas.model_crud.activities import EventRecordDetailCreate, EventRecordDetailUpdate
 from tests.factories import EventRecordFactory, SleepDetailsFactory, WorkoutDetailsFactory
@@ -28,7 +28,7 @@ class TestEventRecordDetailRepository:
     @pytest.fixture
     def detail_repo(self) -> EventRecordDetailRepository:
         """Create EventRecordDetailRepository instance."""
-        return EventRecordDetailRepository(EventRecordDetail)
+        return EventRecordDetailRepository(WorkoutDetails)
 
     def test_create_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating workout details."""
@@ -139,50 +139,39 @@ class TestEventRecordDetailRepository:
         # Assert
         assert result is None
 
-    def test_get_all_empty_database(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
-        """Test get_all returns empty list when no details exist."""
-        # Act
-        result = detail_repo.get_all(db, filters={}, offset=0, limit=10, sort_by=None)
-
-        # Assert
+    def test_get_all_empty_database(self, db: Session) -> None:
+        """Test get_all returns empty list when no workout details exist."""
+        repo = EventRecordDetailRepository(WorkoutDetails)
+        result = repo.get_all(db, filters={}, offset=0, limit=10, sort_by=None)
         assert result == []
 
-    def test_get_all_multiple_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
-        """Test get_all returns multiple detail records."""
-        # Arrange
+    def test_get_all_multiple_details(self, db: Session) -> None:
+        """Test get_all returns multiple workout detail records."""
+        repo = EventRecordDetailRepository(WorkoutDetails)
         workout1 = WorkoutDetailsFactory()
         workout2 = WorkoutDetailsFactory()
-        sleep1 = SleepDetailsFactory()
 
-        # Act
-        result = detail_repo.get_all(db, filters={}, offset=0, limit=10, sort_by=None)
+        result = repo.get_all(db, filters={}, offset=0, limit=10, sort_by=None)
 
-        # Assert
-        assert len(result) >= 3
+        assert len(result) >= 2
         record_ids = [d.record_id for d in result]
         assert workout1.record_id in record_ids
         assert workout2.record_id in record_ids
-        assert sleep1.record_id in record_ids
 
-    def test_get_all_with_pagination(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
+    def test_get_all_with_pagination(self, db: Session) -> None:
         """Test pagination with offset and limit."""
-        # Arrange
+        repo = EventRecordDetailRepository(WorkoutDetails)
         for _ in range(5):
             WorkoutDetailsFactory()
 
-        # Act - Get first 2 details
-        page1 = detail_repo.get_all(db, filters={}, offset=0, limit=2, sort_by=None)
+        page1 = repo.get_all(db, filters={}, offset=0, limit=2, sort_by=None)
+        page2 = repo.get_all(db, filters={}, offset=2, limit=2, sort_by=None)
 
-        # Act - Get next 2 details
-        page2 = detail_repo.get_all(db, filters={}, offset=2, limit=2, sort_by=None)
-
-        # Assert
         assert len(page1) == 2
         assert len(page2) == 2
-        # Verify different results
         page1_ids = {d.record_id for d in page1}
         page2_ids = {d.record_id for d in page2}
-        assert len(page1_ids & page2_ids) == 0  # No overlap
+        assert len(page1_ids & page2_ids) == 0
 
     def test_update_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test updating workout details."""

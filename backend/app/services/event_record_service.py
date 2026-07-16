@@ -285,7 +285,7 @@ class EventRecordService(
                         setattr(adjacent, field, new_val)
                 adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
                 db_session.flush()
-                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
+                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
                     detail.model_copy(update={"record_id": adjacent.id}),
@@ -416,7 +416,7 @@ class EventRecordService(
             )
 
             if same_window:
-                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
+                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
                     detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
@@ -443,7 +443,7 @@ class EventRecordService(
             if created_record.id == adjacent.id:
                 # data_source_id was None (resolved at insert time) and the
                 # constraint returned the existing row — treat as same_window.
-                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
+                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
                     detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),

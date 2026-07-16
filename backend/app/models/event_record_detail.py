@@ -5,14 +5,9 @@ from app.mappings import FKEventRecord, str_32
 
 
 class EventRecordDetail(BaseDbModel):
-    """Base polymorphic detail model used by specific aggregates (workout, sleep, etc.)."""
+    """Abstract polymorphic base for per-event detail models."""
 
-    __tablename__ = "event_record_detail"
+    __abstract__ = True
 
     record_id: Mapped[FKEventRecord]
     detail_type: Mapped[str_32]
-
-    __mapper_args__ = {
-        "polymorphic_on": "detail_type",
-        "polymorphic_identity": "base",
-    }

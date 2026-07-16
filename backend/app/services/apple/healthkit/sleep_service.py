@@ -26,6 +26,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.schemas.providers.mobile_sdk import (
     SyncRequest as SDKSyncRequest,
 )
+from app.models.sleep_details import SleepDetails
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
@@ -462,7 +463,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # Deserialise the stored stages back to SleepStateStage so we can feed
         # them into _calculate_final_metrics together with the new stages.
         existing_state_stages: list[SleepStateStage] = []
-        if adjacent.detail and adjacent.detail.sleep_stages:
+        if adjacent.detail and isinstance(adjacent.detail, SleepDetails) and adjacent.detail.sleep_stages:
             for s in adjacent.detail.sleep_stages:
                 with contextlib.suppress(Exception):
                     existing_state_stages.append(SleepStateStage.model_validate(s))

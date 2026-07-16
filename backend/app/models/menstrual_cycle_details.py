@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecordDetail, json_binary, str_32
+from app.mappings import FKEventRecord, json_binary, str_32
 
 from .event_record_detail import EventRecordDetail
 
@@ -11,9 +11,9 @@ class MenstrualCycleDetails(EventRecordDetail):
     """Per-cycle aggregates from Garmin MCT and other providers."""
 
     __tablename__ = "menstrual_cycle_details"
-    __mapper_args__ = {"polymorphic_identity": "menstrual_cycle"}
 
-    record_id: Mapped[FKEventRecordDetail]
+    record_id: Mapped[FKEventRecord]
+    detail_type: Mapped[str_32]
 
     day_in_cycle: Mapped[int | None]
     current_phase: Mapped[int | None]

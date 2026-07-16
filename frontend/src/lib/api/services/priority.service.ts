@@ -3,11 +3,23 @@ import { ApiError } from '../../errors/api-error';
 
 // Provider enum matching backend ProviderName
 export type ProviderName =
-  'apple' | 'garmin' | 'polar' | 'suunto' | 'whoop' | 'oura' | 'unknown';
+  | 'apple'
+  | 'garmin'
+  | 'polar'
+  | 'suunto'
+  | 'whoop'
+  | 'oura'
+  | 'unknown';
 
 // Device type enum matching backend DeviceType
 export type DeviceType =
-  'watch' | 'band' | 'ring' | 'phone' | 'scale' | 'other' | 'unknown';
+  | 'watch'
+  | 'band'
+  | 'ring'
+  | 'phone'
+  | 'scale'
+  | 'other'
+  | 'unknown';
 
 // Types
 export interface ProviderPriority {
