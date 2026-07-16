@@ -61,6 +61,16 @@ class StravaOAuth(BaseOAuthTemplate):
             provider_user_id = athlete_data.get("id")
             provider_user_id = str(provider_user_id) if provider_user_id is not None else None
             username = athlete_data.get("username")
-            return {"user_id": provider_user_id, "username": username}
+            return {
+                "user_id": provider_user_id,
+                "username": username,
+                "first_name": athlete_data.get("firstname"),
+                "last_name": athlete_data.get("lastname"),
+            }
         except Exception:
-            return {"user_id": None, "username": None}
+            return {
+                "user_id": None,
+                "username": None,
+                "first_name": None,
+                "last_name": None,
+            }

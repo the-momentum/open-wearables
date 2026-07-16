@@ -211,7 +211,7 @@ class BaseOAuthTemplate(ABC):
             revoked_at=connection.updated_at.isoformat(),
         )
 
-    def _build_auth_url(self, state: str) -> tuple[str, dict[str, Any] | None]:
+    def _build_auth_url(self, state: str, scope_override: str | None = None) -> tuple[str, dict[str, Any] | None]:
         """Builds the authorization URL.
 
         Returns:
@@ -234,10 +234,11 @@ class BaseOAuthTemplate(ABC):
             f"{extra_params}"
         )
 
-        if self.credentials.default_scope:
+        requested_scope = self.credentials.default_scope if scope_override is None else scope_override
+        if requested_scope:
             from urllib.parse import quote
 
-            encoded_scope = quote(self.credentials.default_scope)
+            encoded_scope = quote(requested_scope)
             auth_url += f"&scope={encoded_scope}"
 
         # pkce_data will be None for non-PKCE providers

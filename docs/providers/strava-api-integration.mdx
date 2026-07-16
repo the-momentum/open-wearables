@@ -175,6 +175,15 @@ curl -X DELETE "https://www.strava.com/api/v3/push_subscriptions/SUBSCRIPTION_ID
 
 The default scope `activity:read_all,profile:read_all` is recommended for full activity data access.
 
+## Optional identity handoff
+
+Open Wearables can act as the token-owning side of a short-lived Strava
+identity handoff for Team42. This feature is disabled by default and does not
+change the standard provider connection flow.
+
+See [OAuth Identity Handoffs](/api-reference/guides/oauth-identity-handoffs)
+for the security model, configuration, and endpoint sequence.
+
 ## Next Steps
 
 <CardGroup cols={2}>

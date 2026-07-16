@@ -15,6 +15,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderSettingUpdate,
 )
 from app.services import DeveloperDep, user_connection_service
+from app.services.oauth_handoff_service import oauth_handoff_service
 from app.services.provider_settings_service import ProviderSettingsService
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
@@ -68,12 +69,18 @@ def oauth_callback(
     state: Annotated[str | None, Query(description="State parameter for CSRF protection")] = None,
     error: Annotated[str | None, Query()] = None,
     error_description: Annotated[str | None, Query()] = None,
+    scope: Annotated[str | None, Query(description="Scopes granted by the provider")] = None,
 ):
     """
     OAuth callback endpoint.
 
     Provider redirects here after user authorizes. Exchanges code for tokens.
     """
+    if provider == ProviderName.STRAVA:
+        handoff_response = oauth_handoff_service.handle_callback(code, state, error, error_description, scope)
+        if handoff_response is not None:
+            return handoff_response
+
     if error:
         return RedirectResponse(
             url=f"/api/v1/oauth/error?message={error}:+{error_description or 'Unknown+error'}",

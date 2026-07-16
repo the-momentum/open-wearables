@@ -150,6 +150,30 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         """
         return self._active_by_provider_external_id(db_session, provider, provider_user_id).all()
 
+    def get_all_by_provider_user_id_any_status(
+        self,
+        db_session: DbSession,
+        provider: str,
+        provider_user_id: str,
+    ) -> list[UserConnection]:
+        """Get every connection with a provider subject, including revoked rows.
+
+        Authentication handoffs use this stricter lookup because a disconnected
+        connection still establishes historical ownership of the provider
+        account and must not be reassigned silently.
+        """
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.provider_user_id == provider_user_id,
+                ),
+            )
+            .order_by(self.model.created_at.asc(), self.model.id.asc())
+            .all()
+        )
+
     def get_by_provider_user_id(
         self,
         db_session: DbSession,

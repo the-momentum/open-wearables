@@ -1,0 +1,89 @@
+---
+title: "OAuth Identity Handoffs"
+description: "Use short-lived, encrypted OAuth handoffs without exposing provider tokens to an integrating application."
+---
+
+OAuth identity handoffs let an API-key-authenticated application use Strava as
+an account identity provider while Open Wearables remains the only owner of the
+Strava access and refresh tokens.
+
+<Warning>
+The Team42 handoff integration is disabled by default. It is intentionally
+separate from the normal provider connection endpoint and should only be
+enabled after the website and Open Wearables configuration have been deployed
+and tested together.
+</Warning>
+
+## Security model
+
+The protocol rotates each secret exactly once:
+
+1. The bootstrap endpoint stores an encrypted, short-lived callback state.
+2. The Strava callback consumes that state and redirects with an opaque
+   inspection code in the URL fragment.
+3. Inspection consumes its code and returns token-free identity information.
+4. A registration that received `activity:read_all` also receives a new
+   one-time claim code.
+5. Claim consumes that code and binds the tokens to a specific Open Wearables
+   user. It does not start historical synchronization.
+
+Login and identity-linking handoffs can never be claimed. Consequently, signing
+in cannot reactivate or replace a disconnected data connection.
+
+## Configuration
+
+```bash
+TEAM42_OAUTH_HANDOFF_ENABLED=false
+TEAM42_OAUTH_HANDOFF_KEY=your-fernet-key
+TEAM42_OAUTH_HANDOFF_RETURN_URIS=https://science.team42.run/auth/strava/callback
+TEAM42_OAUTH_HANDOFF_ALLOWED_SCOPES=read,activity:read_all
+TEAM42_OAUTH_HANDOFF_STATE_TTL_SECONDS=600
+TEAM42_OAUTH_HANDOFF_CODE_TTL_SECONDS=600
+```
+
+Generate the encryption key outside the repository and store it in the
+deployment secret manager:
+
+```bash
+python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+```
+
+Return URIs are compared exactly. Multiple URIs may be configured as a
+comma-separated list. Production return URIs should use HTTPS.
+
+## Flow
+
+Start with `POST /api/v1/oauth/bootstrap/strava`. Provide:
+
+- A website-generated OAuth `state`.
+- An exact registered `return_uri`.
+- A purpose: `login`, `register`, or `link_identity`.
+- `read` for login or linking.
+- `read` and `activity:read_all` when registration also offers activity sync.
+
+After Strava authorization, the browser returns to the registered URI with a
+URL fragment containing the original state and an opaque handoff code. Post the
+code from the browser to the integrating application's server, then call
+`POST /api/v1/oauth/handoffs/inspect`.
+
+Inspection returns the Strava subject and profile fields but never returns
+tokens. Registration responses indicate whether activity synchronization was
+authorized and may include a short-lived `claim_code`.
+
+To connect the registration to data syncing, create or locate the intended
+Open Wearables user and pass its UUID with the claim code to
+`POST /api/v1/oauth/handoffs/claim`.
+
+After the account is verified, explicitly call the provider historical-sync
+endpoint. Claim itself deliberately has no backfill side effect.
+
+## Collision behavior
+
+Claim fails safely when:
+
+- The Strava subject appears on another Open Wearables user, even if revoked.
+- The target Open Wearables user already has a different Strava subject.
+- The handoff is expired, malformed, replayed, or already being claimed.
+
+The caller must start a fresh Strava authorization after a consumed handoff
+fails. Tokens are never returned for recovery.

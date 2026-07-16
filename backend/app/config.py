@@ -167,6 +167,16 @@ class Settings(BaseSettings):
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
 
+    # TEAM42 STRAVA AUTHENTICATION HANDOFF
+    # This integration is intentionally separate from the normal provider
+    # connection flow and remains disabled until both applications are ready.
+    team42_oauth_handoff_enabled: bool = False
+    team42_oauth_handoff_key: SecretStr | None = None
+    team42_oauth_handoff_return_uris: str = ""
+    team42_oauth_handoff_allowed_scopes: str = "read,activity:read_all"
+    team42_oauth_handoff_state_ttl_seconds: int = Field(600, ge=60, le=900)
+    team42_oauth_handoff_code_ttl_seconds: int = Field(600, ge=60, le=900)
+
     # ULTRAHUMAN OAUTH SETTINGS
     ultrahuman_client_id: str | None = None
     ultrahuman_client_secret: SecretStr | None = None

@@ -167,6 +167,7 @@
               "api-reference/guides/sync-status-stream",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
+              "api-reference/guides/oauth-identity-handoffs",
               "api-reference/guides/error-handling"
             ]
           },
@@ -198,7 +199,10 @@
             "group": "Providers",
             "pages": [
               "GET /api/v1/oauth/providers",
-              "GET /api/v1/oauth/{provider}/authorize"
+              "GET /api/v1/oauth/{provider}/authorize",
+              "POST /api/v1/oauth/bootstrap/strava",
+              "POST /api/v1/oauth/handoffs/inspect",
+              "POST /api/v1/oauth/handoffs/claim"
             ]
           },
           {

@@ -17,6 +17,15 @@ from .oauth import (
     ProviderCredentials,
     ProviderEndpoints,
 )
+from .oauth_handoff import (
+    OAuthHandoffBootstrapRequest,
+    OAuthHandoffBootstrapResponse,
+    OAuthHandoffClaimRequest,
+    OAuthHandoffClaimResponse,
+    OAuthHandoffInspectRequest,
+    OAuthHandoffInspectResponse,
+    OAuthHandoffPurpose,
+)
 from .user_invitation_code import (
     InvitationCodeRedeemResponse,
     UserInvitationCodeCreate,
@@ -41,6 +50,13 @@ __all__ = [
     "ProviderEndpoints",
     "ProviderCredentials",
     "AuthorizationURLResponse",
+    "OAuthHandoffPurpose",
+    "OAuthHandoffBootstrapRequest",
+    "OAuthHandoffBootstrapResponse",
+    "OAuthHandoffInspectRequest",
+    "OAuthHandoffInspectResponse",
+    "OAuthHandoffClaimRequest",
+    "OAuthHandoffClaimResponse",
     # UserInvitationCode
     "UserInvitationCodeCreate",
     "UserInvitationCodeRead",
