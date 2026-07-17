@@ -16,7 +16,6 @@ from app.mappings import (
 )
 
 if TYPE_CHECKING:
-    from app.models.event_record_detail import EventRecordDetail
     from app.models.sleep_details import SleepDetails
     from app.models.workout_details import WorkoutDetails
     from app.models.menstrual_cycle_details import MenstrualCycleDetails
@@ -61,10 +60,6 @@ class EventRecord(BaseDbModel):
         cascade="all, delete-orphan",
         foreign_keys="[MenstrualCycleDetails.record_id]",
     )
-
-    @property
-    def detail(self) -> "SleepDetails | WorkoutDetails | MenstrualCycleDetails | None":
-        return self.sleep_detail or self.workout_detail or self.menstrual_cycle_detail
 
     @classmethod
     def detail_relationship(cls, category: str | None) -> list[QueryableAttribute]:

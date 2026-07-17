@@ -87,7 +87,7 @@ class EventRecordService(
         missing = []
 
         for r in records:
-            details = r.detail if isinstance(r.detail, WorkoutDetails) else None
+            details = r.workout_detail
             if details and details.heart_rate_avg is not None:
                 result[r.id] = round(details.heart_rate_avg)
             else:
@@ -302,7 +302,7 @@ class EventRecordService(
                 db_session.commit()
                 return adjacent, False, detail
 
-            adj_detail: SleepDetails | None = adjacent.detail if isinstance(adjacent.detail, SleepDetails) else None
+            adj_detail: SleepDetails | None = adjacent.sleep_detail
 
             def _adj_int(attr: str) -> int:
                 return (getattr(adj_detail, attr) or 0) if adj_detail else 0
@@ -720,7 +720,7 @@ class EventRecordService(
 
         data = []
         for record, data_source in records:
-            details: WorkoutDetails | None = record.detail if isinstance(record.detail, WorkoutDetails) else None
+            details: WorkoutDetails | None = record.workout_detail
 
             workout = Workout(
                 id=record.id,
@@ -775,7 +775,7 @@ class EventRecordService(
         if not data_source or data_source.user_id != user_id:
             return None
 
-        details: WorkoutDetails | None = record.detail if isinstance(record.detail, WorkoutDetails) else None
+        details: WorkoutDetails | None = record.workout_detail
 
         if details and record.type in WORKOUTS_WITH_PACE:
             # Seconds per kilometer - speed is in meters per second
@@ -868,7 +868,7 @@ class EventRecordService(
 
         data = []
         for record, data_source in records:
-            details: SleepDetails | None = record.detail if isinstance(record.detail, SleepDetails) else None
+            details: SleepDetails | None = record.sleep_detail
 
             sleep_duration_seconds = (
                 details.sleep_total_duration_minutes * 60
@@ -953,9 +953,7 @@ class EventRecordService(
 
         data = []
         for record, data_source in records:
-            details: MenstrualCycleDetails | None = (
-                record.detail if isinstance(record.detail, MenstrualCycleDetails) else None
-            )
+            details: MenstrualCycleDetails | None = record.menstrual_cycle_detail
             data.append(
                 MenstrualCycleRecord(
                     id=record.id,

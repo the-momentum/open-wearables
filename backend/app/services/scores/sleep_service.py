@@ -166,7 +166,7 @@ class SleepScoreService:
             (record, detail)
             for record, _ in records
             if self._apply_zone_offset(record.start_datetime, record.zone_offset).date() == sleep_date
-            and isinstance((detail := record.detail), SleepDetails)
+            and (detail := record.sleep_detail) is not None
             and not detail.is_nap
         ]
 
@@ -203,7 +203,7 @@ class SleepScoreService:
         seen_nights: set[date] = set()
         historical_bedtimes: list[datetime] = []
         for r, _ in hist_records:
-            if isinstance(r.detail, SleepDetails) and not r.detail.is_nap:
+            if r.sleep_detail and not r.sleep_detail.is_nap:
                 local_start = self._apply_zone_offset(r.start_datetime, r.zone_offset)
                 night = local_start.date()
                 if night not in seen_nights:
@@ -277,7 +277,7 @@ class SleepScoreService:
         target_by_id: dict[UUID, tuple[EventRecord, SleepDetails]] = {}
 
         for record, _ in all_records:
-            if isinstance((detail := record.detail), SleepDetails) and not detail.is_nap:
+            if (detail := record.sleep_detail) is not None and not detail.is_nap:
                 local_start = self._apply_zone_offset(record.start_datetime, record.zone_offset)
                 all_sessions_asc.append((local_start.date(), record, detail))
                 if record.id in target_ids:
@@ -386,7 +386,7 @@ class SleepScoreService:
         # Build a per-night index keeping the longest non-nap session per calendar date.
         sessions_by_date: dict[date, tuple[EventRecord, SleepDetails]] = {}
         for record, _ in all_records:
-            if isinstance((detail := record.detail), SleepDetails) and not detail.is_nap:
+            if (detail := record.sleep_detail) is not None and not detail.is_nap:
                 local_start = self._apply_zone_offset(record.start_datetime, record.zone_offset)
                 night = local_start.date()
                 existing = sessions_by_date.get(night)

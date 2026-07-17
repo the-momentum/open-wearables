@@ -76,14 +76,15 @@ def downgrade() -> None:
         sa.PrimaryKeyConstraint("record_id"),
     )
 
-    op.execute("INSERT INTO event_record_detail (record_id, detail_type) SELECT record_id, 'sleep' FROM sleep_details")
-    op.execute(
-        "INSERT INTO event_record_detail (record_id, detail_type) SELECT record_id, 'workout' FROM workout_details"
-    )
-    op.execute(
-        "INSERT INTO event_record_detail (record_id, detail_type) "
-        "SELECT record_id, 'menstrual_cycle' FROM menstrual_cycle_details"
-    )
+    for table, dtype in [
+        ("sleep_details", "sleep"),
+        ("workout_details", "workout"),
+        ("menstrual_cycle_details", "menstrual_cycle"),
+    ]:
+        op.execute(
+            f"INSERT INTO event_record_detail (record_id, detail_type) "
+            f"SELECT record_id, '{dtype}' FROM {table} ON CONFLICT (record_id) DO NOTHING"
+        )
 
     conn = op.get_bind()
     inspector = sa.inspect(conn)
