@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.schemas.model_crud.user_management import UserCreate, UserUpdate
@@ -86,6 +87,15 @@ class TestUserServiceCreate:
         db_user = user_service.get(db, user.id)
         assert db_user is not None
         assert db_user.email == "persist@example.com"
+
+    def test_create_user_duplicate_email_returns_409(self, db: Session) -> None:
+        """Should raise 409 when registering with an already-used email."""
+        UserFactory(email="taken@example.com")
+
+        with pytest.raises(HTTPException) as exc_info:
+            user_service.create(db, UserCreate(email="taken@example.com"))
+
+        assert exc_info.value.status_code == 409
 
 
 class TestUserServiceUpdate:

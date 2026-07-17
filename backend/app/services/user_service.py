@@ -21,7 +21,7 @@ from app.services.providers.garmin.backfill_state import force_release_backfill_
 from app.services.services import AppService
 from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
-from app.utils.exceptions import handle_exceptions
+from app.utils.exceptions import ResourceAlreadyExistsError, handle_exceptions
 from app.utils.structured_logging import log_structured
 
 
@@ -38,8 +38,11 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Get count of users created within a date range."""
         return self.crud.get_count_in_range(db_session, start_date, end_date)
 
+    @handle_exceptions
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create a user with server-generated id and created_at."""
+        if db_session.query(User).filter(User.email == creator.email).first():
+            raise ResourceAlreadyExistsError("User with this email already exists.")
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data)
         return super().create(db_session, internal_creator)
