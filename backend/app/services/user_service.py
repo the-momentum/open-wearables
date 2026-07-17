@@ -41,7 +41,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
     @handle_exceptions
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create a user with server-generated id and created_at."""
-        if db_session.query(User).filter(User.email == creator.email).first():
+        if self.crud.get_by_email(db_session, creator.email):
             raise ResourceAlreadyExistsError("User with this email already exists.")
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data)
