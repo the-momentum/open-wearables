@@ -5,6 +5,8 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
@@ -32,6 +34,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 from .device_resolution import extract_device_info
@@ -331,6 +334,7 @@ class ImportService:
         user_id: str,
         batch_id: str | None = None,
     ) -> UploadDataResponse:
+        provider = "unknown"
         try:
             # Parse content based on type
             if "multipart/form-data" in content_type:
@@ -380,7 +384,49 @@ class ImportService:
                 sleep_saved=saved_counts["sleep_saved"],
             )
 
+        except ValidationError as e:
+            # Payload failed schema validation in the worker (moved here from the HTTP
+            # layer so a single bad record no longer 400s the whole request pre-dispatch).
+            # Report to Sentry with the field-level errors so the offending record is known.
+            errors = e.errors()
+            first = errors[0] if errors else {}
+            log_and_capture_error(
+                e,
+                self.log,
+                f"{provider} SDK payload failed validation for user {user_id}",
+                extra={
+                    "user_id": user_id,
+                    "batch_id": batch_id,
+                    "provider": provider,
+                    "error_count": len(errors),
+                    "errors": errors[:20],
+                },
+            )
+            log_structured(
+                self.log,
+                "warning",
+                f"{provider.capitalize()} SDK payload validation failed",
+                provider=f"{provider}",
+                action=f"{provider}_sdk_validation_failed",
+                batch_id=batch_id,
+                user_id=user_id,
+                error_count=len(errors),
+                first_error_loc=".".join(str(x) for x in first.get("loc", [])),
+                first_error_msg=first.get("msg"),
+            )
+            return UploadDataResponse(
+                status_code=400,
+                response=f"Validation failed: {first.get('msg', 'invalid payload')}",
+                user_id=user_id,
+            )
+
         except Exception as e:
+            log_and_capture_error(
+                e,
+                self.log,
+                f"Import failed for user {user_id}",
+                extra={"user_id": user_id, "batch_id": batch_id, "provider": provider},
+            )
             log_structured(
                 self.log,
                 "error",
