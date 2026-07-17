@@ -71,6 +71,12 @@ def parse_query_end_datetime(dt_str: str) -> datetime:
     Without this, a date-only end bound excludes the entire end day, and a
     single-day range (start_date == end_date) collapses to a zero-length
     window at midnight that matches nothing.
+
+    This is a separate function rather than a boundary flag on
+    parse_query_datetime because the choice is static at every call site
+    (start params parse one way, end params the other): named functions keep
+    call sites self-documenting, and an end bound parsed with the plain
+    function is easy to spot in review.
     """
     if _DATE_ONLY_RE.fullmatch(dt_str.strip()):
         try:
