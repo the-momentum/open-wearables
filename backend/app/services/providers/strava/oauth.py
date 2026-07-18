@@ -38,7 +38,7 @@ class StravaOAuth(BaseOAuthTemplate):
     use_pkce: bool = False  # Strava doesn't require PKCE
     auth_method: AuthenticationMethod = AuthenticationMethod.BODY  # Strava expects credentials in body
 
-    def deregister_user(self, access_token: str) -> None:
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke access and remove the app from the athlete's connected apps."""
         response = httpx.post(
             f"{self.api_base_url}/oauth/deauthorize",

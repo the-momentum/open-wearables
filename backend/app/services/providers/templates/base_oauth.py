@@ -354,7 +354,7 @@ class BaseOAuthTemplate(ABC):
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
-    def deregister_user(self, access_token: str) -> None:
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Notify provider that user is disconnecting. Override in subclasses that support deregistration."""
         log_structured(
             logger,

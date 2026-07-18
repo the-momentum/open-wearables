@@ -107,7 +107,10 @@ class UserConnectionService(
             return
 
         try:
-            oauth.deregister_user(connection.access_token)
+            oauth.deregister_user(
+                connection.access_token,
+                provider_user_id=connection.provider_user_id,
+            )
             log_structured(
                 self.logger,
                 "info",
