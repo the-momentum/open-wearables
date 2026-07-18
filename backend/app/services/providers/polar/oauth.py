@@ -57,6 +57,7 @@ class PolarOAuth(BaseOAuthTemplate):
     
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Call Polar's user deregistration endpoint to remove the app association."""
+        
         if not provider_user_id:
             raise ValueError("Polar deregistration requires provider_user_id")
 
