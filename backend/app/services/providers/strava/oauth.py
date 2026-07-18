@@ -41,8 +41,9 @@ class StravaOAuth(BaseOAuthTemplate):
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke access and remove the app from the athlete's connected apps."""
         response = httpx.post(
-            f"{self.api_base_url}/oauth/deauthorize",
-            params={"access_token": access_token},
+            f"{self.api_base_url}/oauth/revoke",
+            data={"token": access_token, "token_type_hint": "access_token"},
+            headers=self._get_basic_auth_headers(),
             timeout=30.0,
         )
         response.raise_for_status()
