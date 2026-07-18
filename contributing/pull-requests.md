@@ -13,6 +13,7 @@ This guide covers how to submit pull requests to Open Wearables.
 Use this format: `<issue-number>-<brief-description>`
 
 Examples:
+
 - `123-fix-user-authentication`
 - `456-add-garmin-provider`
 - `789-update-dashboard-layout`
@@ -29,19 +30,25 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 [optional footer]
 ```
 
+
+
 ### Types
 
-| Type | Description |
-|------|-------------|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `docs` | Documentation changes |
-| `chore` | Maintenance tasks |
+
+| Type       | Description                             |
+| ---------- | --------------------------------------- |
+| `feat`     | New feature                             |
+| `fix`      | Bug fix                                 |
+| `docs`     | Documentation changes                   |
+| `chore`    | Maintenance tasks                       |
 | `refactor` | Code refactoring (no functional change) |
-| `test` | Adding or updating tests |
-| `style` | Formatting changes |
-| `perf` | Performance improvements |
-| `ci` | CI/CD changes |
+| `test`     | Adding or updating tests                |
+| `style`    | Formatting changes                      |
+| `perf`     | Performance improvements                |
+| `ci`       | CI/CD changes                           |
+
+
+
 
 ### Examples
 
@@ -64,6 +71,8 @@ pagination in the workouts list endpoint.
 Closes #123
 ```
 
+
+
 ## PR Title Convention
 
 **PR titles must follow the same [Conventional Commits](https://www.conventionalcommits.org/) format as commit messages.**
@@ -74,6 +83,8 @@ The CI workflow automatically validates PR titles to ensure they follow this con
 <type>(<optional scope>): <description>
 ```
 
+
+
 ### Examples
 
 - `feat: add user profile endpoint`
@@ -82,39 +93,49 @@ The CI workflow automatically validates PR titles to ensure they follow this con
 - `ci: add PR title validation to workflow`
 - `refactor(backend): simplify authentication logic`
 
+
+
 ## Creating a Pull Request
 
 1. **Create a branch** from `main`:
-   ```bash
+  ```bash
    git checkout -b 123-your-feature-description
-   ```
-
+  ```
 2. **Make your changes** and commit following the conventions above
-
 3. **Push your branch**:
-   ```bash
+  ```bash
    git push -u origin 123-your-feature-description
-   ```
-
+  ```
 4. **Open a PR** on GitHub and fill out the template
+
+
 
 ## PR Checklist
 
 The PR template includes these requirements:
 
 ### General
+
 - [ ] Code follows the project's code style
 - [ ] Self-review completed
 - [ ] Tests added (if applicable)
 - [ ] All tests pass locally
 
+
+
 ### Backend Changes
+
 - [ ] `uv run pre-commit run --all-files` passes (runs ruff, ty, and formatting checks)
 
+
+
 ### Frontend Changes
+
 - [ ] `pnpm run lint` passes
 - [ ] `pnpm run format:check` passes
 - [ ] `pnpm run build` succeeds
+
+
 
 ## Linking Issues
 
@@ -124,12 +145,16 @@ Link related issues in your PR description:
 - `Closes #456` - Same as Fixes
 - `Relates to #789` - References without closing
 
+
+
 ## Code Review Process
 
 1. **Request review**: PRs require at least one approval
 2. **Address feedback**: Respond to comments and make requested changes
 3. **CI must pass**: All automated checks must be green
 4. **Merge**: Once approved, the PR can be merged
+
+
 
 ## Tips for a Good PR
 
@@ -138,3 +163,4 @@ Link related issues in your PR description:
 - Include screenshots for UI changes
 - Update documentation if needed
 - Add tests for new functionality
+

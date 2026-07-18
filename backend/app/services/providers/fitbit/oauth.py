@@ -1,4 +1,5 @@
 import httpx
+
 from app.config import settings
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.enums import ProviderName
@@ -48,6 +49,6 @@ class FitbitOAuth(BaseOAuthTemplate):
             f"{self.api_base_url}/oauth2/revoke",
             data={"token": access_token},
             headers=self._get_basic_auth_headers(),
-            timeout=30.0
+            timeout=30.0,
         )
         response.raise_for_status()

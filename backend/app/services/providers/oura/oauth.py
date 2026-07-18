@@ -74,7 +74,7 @@ class OuraOAuth(BaseOAuthTemplate):
                 error=str(e),
             )
             return {"user_id": None, "username": None}
-    
+
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke Oura OAuth access for this user."""
         response = httpx.post(

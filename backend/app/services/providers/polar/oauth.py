@@ -1,4 +1,5 @@
 import httpx
+
 from app.config import settings
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
@@ -54,10 +55,10 @@ class PolarOAuth(BaseOAuthTemplate):
         except Exception:
             # Don't fail the entire flow - user might already be registered
             pass
-    
+
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Call Polar's user deregistration endpoint to remove the app association."""
-        
+
         if not provider_user_id:
             raise ValueError("Polar deregistration requires provider_user_id")
 

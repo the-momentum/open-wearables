@@ -77,7 +77,7 @@ class WhoopOAuth(BaseOAuthTemplate):
                 user_id=user_id,
             )
             return {"user_id": None, "username": None}
-    
+
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke WHOOP OAuth access for this user."""
 
