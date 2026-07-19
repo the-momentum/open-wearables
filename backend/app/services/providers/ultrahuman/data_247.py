@@ -281,6 +281,69 @@ class Ultrahuman247Data(Base247DataTemplate):
         }
 
     # -------------------------------------------------------------------------
+    # Resting Heart Rate (night_rhr)
+    # -------------------------------------------------------------------------
+
+    def normalize_night_rhr(
+        self,
+        raw_rhr: dict[str, Any],
+        user_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Normalize Ultrahuman night_rhr object into individual bpm sample dicts.
+
+        Prefers the fine-grained ``values[]`` time-series entries.  Falls back to
+        a single daily record using ``avg`` + ``day_start_timestamp`` when no
+        individual samples are present (e.g. older firmware responses).
+
+        Args:
+            raw_rhr: The ``object`` dict from the ``night_rhr`` metric item.
+            user_id: Owner's UUID.
+
+        Returns:
+            List of sample dicts, each with keys:
+            ``id``, ``user_id``, ``provider``, ``recorded_at`` (ISO-8601 str),
+            ``value`` (int bpm), ``unit`` ("bpm").
+        """
+        samples: list[dict[str, Any]] = []
+
+        values = raw_rhr.get("values", [])
+        if values:
+            for entry in values:
+                ts = entry.get("timestamp")
+                value = entry.get("value")
+                if ts is None or value is None:
+                    continue
+                recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+                samples.append(
+                    {
+                        "id": uuid4(),
+                        "user_id": user_id,
+                        "provider": self.provider_name,
+                        "recorded_at": recorded_at,
+                        "value": int(value),
+                        "unit": "bpm",
+                    }
+                )
+        else:
+            # Fallback: use the daily average as a single data point
+            avg = raw_rhr.get("avg")
+            day_ts = raw_rhr.get("day_start_timestamp")
+            if avg is not None and day_ts is not None:
+                recorded_at = datetime.fromtimestamp(day_ts, tz=timezone.utc).isoformat()
+                samples.append(
+                    {
+                        "id": uuid4(),
+                        "user_id": user_id,
+                        "provider": self.provider_name,
+                        "recorded_at": recorded_at,
+                        "value": int(avg),
+                        "unit": "bpm",
+                    }
+                )
+
+        return samples
+
+    # -------------------------------------------------------------------------
     # Activity Samples (HR, HRV, Temperature, Steps)
     # -------------------------------------------------------------------------
 
@@ -547,6 +610,37 @@ class Ultrahuman247Data(Base247DataTemplate):
                                 ),
                             )
                             results["activity_samples"] += 1
+
+                    # Resting heart rate — nightly time-series samples (night_rhr)
+                    if "night_rhr" in items_by_type:
+                        rhr_samples = self.normalize_night_rhr(items_by_type["night_rhr"], user_id)
+                        for sample in rhr_samples:
+                            recorded_at_str = sample["recorded_at"]
+                            try:
+                                recorded_at = datetime.fromisoformat(
+                                    recorded_at_str.replace("Z", "+00:00")
+                                )
+                                self.data_point_repo.create(
+                                    db,
+                                    TimeSeriesSampleCreate(
+                                        id=uuid4(),
+                                        user_id=user_id,
+                                        provider=self.provider_name,
+                                        recorded_at=recorded_at,
+                                        value=Decimal(str(sample["value"])),
+                                        series_type=SeriesType.resting_heart_rate,
+                                        is_daily_total=daily_total_flag(
+                                            SeriesType.resting_heart_rate, is_daily=False
+                                        ),
+                                    ),
+                                )
+                                results["activity_samples"] += 1
+                            except Exception as e:
+                                self.logger.warning(
+                                    f"Failed to save night_rhr sample for user {user_id} "
+                                    f"at {recorded_at_str}: {e}"
+                                )
+
                 except Exception as e:
                     day_error = f"Activity samples processing failed: {e}"
 
@@ -652,7 +746,7 @@ class Ultrahuman247Data(Base247DataTemplate):
 
             for item in metrics_list:
                 item_type = item.get("type")
-                if item_type in ("hr", "hrv", "temp", "steps") and "object" in item:
+                if item_type in ("hr", "hrv", "temp", "steps", "night_rhr") and "object" in item:
                     item["object"]["ultrahuman_date"] = date_str
                     samples.append({"type": item_type, "object": item["object"]})
 
