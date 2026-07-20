@@ -53,10 +53,8 @@ def sync_sdk_data(
             detail="Token does not match user_id",
         )
 
-    # Accept the raw payload without SyncRequest validation here. Validating at this
-    # layer 400s the whole batch on a single bad record and never enqueues it, so the
-    # failing payload is neither stored nor logged. Instead we store + enqueue and let
-    # the worker validate, where the error is reported to Sentry and can be handled.
+    # Raw dict, not SyncRequest: schema-validating here would 400 the whole batch on one
+    # bad record pre-dispatch. The worker validates and reports failures to Sentry.
     provider = str(body.get("provider") or "").lower()
 
     # Validate provider (routing decision — needed to select an import service)

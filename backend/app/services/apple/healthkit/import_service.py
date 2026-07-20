@@ -385,9 +385,7 @@ class ImportService:
             )
 
         except ValidationError as e:
-            # Payload failed schema validation in the worker (moved here from the HTTP
-            # layer so a single bad record no longer 400s the whole request pre-dispatch).
-            # Report to Sentry with the field-level errors so the offending record is known.
+            # Payload failed schema validation; report to Sentry with the field-level errors.
             errors = e.errors()
             first = errors[0] if errors else {}
             log_and_capture_error(
