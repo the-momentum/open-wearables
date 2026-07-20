@@ -5,6 +5,7 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
+from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import SDKAuthDep
@@ -14,7 +15,17 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-@router.post("/sdk/users/{user_id}/sync", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/sdk/users/{user_id}/sync",
+    status_code=status.HTTP_202_ACCEPTED,
+    # body is `dict` at runtime; keep the SyncRequest shape in the OpenAPI docs.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": SyncRequest.model_json_schema()}},
+        }
+    },
+)
 def sync_sdk_data(
     user_id: str,
     body: dict,
@@ -45,7 +56,8 @@ def sync_sdk_data(
         UploadDataResponse with 202 status and task queued message
 
     Raises:
-        HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported
+        HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported.
+        Payload validation runs async in the worker, not here.
     """
     if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
         raise HTTPException(
@@ -68,10 +80,14 @@ def sync_sdk_data(
     batch_id = str(uuid.uuid4())
 
     # Extract and count data types from payload (best-effort; structure not yet validated)
-    data = body.get("data") if isinstance(body.get("data"), dict) else {}
-    records_count = len(data.get("records") or [])
-    workouts_count = len(data.get("workouts") or [])
-    sleep_count = len(data.get("sleep") or [])
+    raw_data = body.get("data")
+    data = raw_data if isinstance(raw_data, dict) else {}
+    records = data.get("records")
+    workouts = data.get("workouts")
+    sleep = data.get("sleep")
+    records_count = len(records) if isinstance(records, list) else 0
+    workouts_count = len(workouts) if isinstance(workouts, list) else 0
+    sleep_count = len(sleep) if isinstance(sleep, list) else 0
 
     # Log initial batch receipt with counts
     log_structured(

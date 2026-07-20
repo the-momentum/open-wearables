@@ -353,12 +353,18 @@ class ImportService:
                 )
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
-            # Extract incoming counts for logging
+            # Extract incoming counts (best-effort; invalid types must reach validation
+            # below rather than raising TypeError here)
             provider = data.get("provider", "unknown")
-            inner_data = data.get("data", {})
-            incoming_records = len(inner_data.get("records", []))
-            incoming_workouts = len(inner_data.get("workouts", []))
-            incoming_sleep = len(inner_data.get("sleep", []))
+            inner_data = data.get("data")
+            if not isinstance(inner_data, dict):
+                inner_data = {}
+            records = inner_data.get("records")
+            workouts = inner_data.get("workouts")
+            sleep = inner_data.get("sleep")
+            incoming_records = len(records) if isinstance(records, list) else 0
+            incoming_workouts = len(workouts) if isinstance(workouts, list) else 0
+            incoming_sleep = len(sleep) if isinstance(sleep, list) else 0
 
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
@@ -388,6 +394,9 @@ class ImportService:
             # Payload failed schema validation; report to Sentry with the field-level errors.
             errors = e.errors()
             first = errors[0] if errors else {}
+            # Drop `input` (raw record value — may contain health data/PII) and `url`
+            # before sending to Sentry; keep loc/msg/type. Preserve the 20-error cap.
+            safe_errors = [{k: v for k, v in err.items() if k not in ("input", "url")} for err in errors[:20]]
             log_and_capture_error(
                 e,
                 self.log,
@@ -397,7 +406,7 @@ class ImportService:
                     "batch_id": batch_id,
                     "provider": provider,
                     "error_count": len(errors),
-                    "errors": errors[:20],
+                    "errors": safe_errors,
                 },
             )
             log_structured(
