@@ -45,7 +45,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import offset_to_iso, to_rfc3339
+from app.utils.dates import offset_to_iso, to_rfc3339, parse_iso_datetime
 from app.utils.structured_logging import LogContext, log_structured
 
 
@@ -566,12 +566,12 @@ class Oura247Data(Base247DataTemplate):
         self, hypnogram: str | None, epoch_seconds: int, sleep_start: str | None
     ) -> list[SleepStage]:
         """Convert an Oura hypnogram string (one digit per epoch) into a list of SleepStage."""
-        if not (hypnogram and sleep_start):
+        parsed_start = parse_iso_datetime(sleep_start)
+        if not hypnogram or parsed_start is None:
             return []
 
+        phase_start = parsed_start.astimezone(timezone.utc)
         stages: list[SleepStage] = []
-
-        phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
 
         for stage, group in groupby(hypnogram, lambda x: SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
             occurrences = len(list(group))
