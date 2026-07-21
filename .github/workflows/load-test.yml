@@ -1,0 +1,92 @@
+name: Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: "Target host URL (e.g. https://api.example.com)"
+        required: true
+        default: "localhost:8000"
+      users:
+        description: "Peak number of concurrent users"
+        required: false
+        default: "50"
+      spawn_rate:
+        description: "Users spawned per second"
+        required: false
+        default: "5"
+      run_time:
+        description: "Test duration (e.g. 60s, 2m)"
+        required: false
+        default: "60s"
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_HOST: ${{ github.event.inputs.target_host }}
+      LOAD_TEST_EMAIL: ${{ secrets.LOAD_TEST_EMAIL }}
+      LOAD_TEST_PASSWORD: ${{ secrets.LOAD_TEST_PASSWORD }}
+      LOAD_TEST_API_KEY: ${{ secrets.LOAD_TEST_API_KEY }}
+      LOAD_TEST_USER_ID: ${{ secrets.LOAD_TEST_USER_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install load-test dependencies
+        working-directory: backend
+        run: uv sync --group load-test
+
+      - name: Run Locust headless
+        working-directory: backend
+        run: |
+          uv run --group load-test locust \
+            -f load_tests/locustfile.py \
+            --host "$TARGET_HOST" \
+            --headless \
+            --users ${{ github.event.inputs.users }} \
+            --spawn-rate ${{ github.event.inputs.spawn_rate }} \
+            --run-time ${{ github.event.inputs.run_time }} \
+            --csv /tmp/locust_results \
+            --html /tmp/locust_report.html \
+            --exit-code-on-error 1
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-results-${{ github.run_id }}
+          path: |
+            /tmp/locust_results*.csv
+            /tmp/locust_report.html
+          retention-days: 30
+
+      - name: Print summary
+        if: always()
+        run: |
+          echo "## Load Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ github.event.inputs.target_host }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Users | ${{ github.event.inputs.users }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Spawn rate | ${{ github.event.inputs.spawn_rate }}/s |" >> $GITHUB_STEP_SUMMARY
+          echo "| Duration | ${{ github.event.inputs.run_time }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f /tmp/locust_results_stats.csv ]; then
+            echo "### Request Stats" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/locust_results_stats.csv >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi

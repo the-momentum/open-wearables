@@ -46,6 +46,9 @@ dev = [
     "psycopg-binary>=3.3.4",
     "testcontainers[postgres,redis]>=4.14.2",
 ]
+load-test = [
+    "locust>=2.37.0",
+]
 
 [tool.ruff]
 line-length = 120
@@ -85,7 +88,7 @@ ignore = [
 known-third-party = ["celery"]
 
 [tool.ty.src]
-exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]
+exclude = ["migrations/", "app/models/", "tests/", "load_tests/", "README.md", ".python-version", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

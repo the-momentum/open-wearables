@@ -49,3 +49,17 @@ downgrade:  ## Revert the last migration
 
 reset_db:  ## Truncate all tables in the database (WARNING: deletes all data)
 	$(DOCKER_EXEC) uv run python scripts/reset_database.py
+
+load-test:  ## Run load tests (UI). Set HOST=http://... to override target (default: http://localhost:8000)
+	cd backend && uv run --group load-test locust -f load_tests/locustfile.py --host $(or $(HOST),http://localhost:8000)
+
+load-test-headless:  ## Run load tests headless. Set HOST, USERS, SPAWN_RATE, RUN_TIME as needed
+	cd backend && uv run --group load-test locust \
+		-f load_tests/locustfile.py \
+		--host $(or $(HOST),http://localhost:8000) \
+		--headless \
+		--users $(or $(USERS),50) \
+		--spawn-rate $(or $(SPAWN_RATE),5) \
+		--run-time $(or $(RUN_TIME),60s) \
+		--csv /tmp/locust_results \
+		--html /tmp/locust_report.html
