@@ -1,3 +1,4 @@
+import json
 import uuid
 from logging import getLogger
 
@@ -14,10 +15,20 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-@router.post("/sdk/users/{user_id}/sync", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/sdk/users/{user_id}/sync",
+    status_code=status.HTTP_202_ACCEPTED,
+    # body is `dict` at runtime; keep the SyncRequest shape in the OpenAPI docs.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": SyncRequest.model_json_schema()}},
+        }
+    },
+)
 def sync_sdk_data(
     user_id: str,
-    body: SyncRequest,
+    body: dict,
     auth: SDKAuthDep,
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.
@@ -45,7 +56,8 @@ def sync_sdk_data(
         UploadDataResponse with 202 status and task queued message
 
     Raises:
-        HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported
+        HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported.
+        Payload validation runs async in the worker, not here.
     """
     if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
         raise HTTPException(
@@ -53,10 +65,11 @@ def sync_sdk_data(
             detail="Token does not match user_id",
         )
 
-    # Normalize provider name
-    provider = body.provider.lower()
+    # Raw dict, not SyncRequest: schema-validating here would 400 the whole batch on one
+    # bad record pre-dispatch. The worker validates and reports failures to Sentry.
+    provider = str(body.get("provider") or "").lower()
 
-    # Validate provider
+    # Validate provider (routing decision — needed to select an import service)
     if provider not in ("apple", "samsung", "google"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,11 +79,15 @@ def sync_sdk_data(
     # Generate unique batch ID for tracking
     batch_id = str(uuid.uuid4())
 
-    # Extract and count data types from payload
-    data = body.data
-    records_count = len(data.records)
-    workouts_count = len(data.workouts)
-    sleep_count = len(data.sleep)
+    # Extract and count data types from payload (best-effort; structure not yet validated)
+    raw_data = body.get("data")
+    data = raw_data if isinstance(raw_data, dict) else {}
+    records = data.get("records")
+    workouts = data.get("workouts")
+    sleep = data.get("sleep")
+    records_count = len(records) if isinstance(records, list) else 0
+    workouts_count = len(workouts) if isinstance(workouts, list) else 0
+    sleep_count = len(sleep) if isinstance(sleep, list) else 0
 
     # Log initial batch receipt with counts
     log_structured(
@@ -87,7 +104,7 @@ def sync_sdk_data(
         total_items=records_count + workouts_count + sleep_count,
     )
 
-    content_str = body.model_dump_json()
+    content_str = json.dumps(body)
 
     store_raw_payload(
         source="sdk",
