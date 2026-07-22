@@ -1,5 +1,5 @@
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped, relationship
@@ -12,6 +12,7 @@ from app.mappings import (
     str_32,
     str_64,
     str_100,
+    str_255,
 )
 
 
@@ -28,6 +29,8 @@ class EventRecord(BaseDbModel):
 
     category: Mapped[str_32]
     type: Mapped[str_32 | None]
+    # Provider-supplied display title, e.g. a Strava activity name
+    name: Mapped[str_255 | None]
     source_name: Mapped[str_64]
 
     duration_seconds: Mapped[int | None]

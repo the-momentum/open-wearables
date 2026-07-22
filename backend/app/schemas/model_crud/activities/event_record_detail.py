@@ -31,6 +31,9 @@ class EventRecordDetailBase(BaseModel):
     elev_high: Decimal | None = None
     elev_low: Decimal | None = None
 
+    # Encoded GPS route (Google Encoded Polyline Algorithm, precision 5)
+    route_polyline: str | None = None
+
     # Sleep-specific fields
     sleep_total_duration_minutes: int | None = None
     sleep_time_in_bed_minutes: int | None = None
