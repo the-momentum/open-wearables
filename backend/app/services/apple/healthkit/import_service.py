@@ -449,8 +449,14 @@ class ImportService:
                 response=f"Import failed: {str(e)}",
                 user_id=user_id,
             )
-
-        return UploadDataResponse(status_code=200, response="Import successful", user_id=user_id)
+        return UploadDataResponse(
+            status_code=200,
+            response="Import successful",
+            user_id=user_id,
+            records_saved=saved_counts["records_saved"],
+            workouts_saved=saved_counts["workouts_saved"],
+            sleep_saved=saved_counts["sleep_saved"],
+        )
 
     def _parse_multipart_content(self, content: str) -> dict | None:
         """Parse multipart form data to extract JSON."""
