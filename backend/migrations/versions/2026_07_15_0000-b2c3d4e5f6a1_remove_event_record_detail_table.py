@@ -6,7 +6,7 @@ menstrual_cycle_details) now has a direct FK to event_record.id and carries
 its own detail_type discriminator column.
 
 Revision ID: b2c3d4e5f6a1
-Revises: 9f0940493a9b
+Revises: 7d6921a86914
 
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "b2c3d4e5f6a1"
-down_revision: Union[str, None] = "9f0940493a9b"
+down_revision: Union[str, None] = "7d6921a86914"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
