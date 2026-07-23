@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 import re
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -56,6 +57,12 @@ class TestWebhookEventTypes:
 
 
 class TestWebhookEmit:
+    @pytest.fixture(autouse=True)
+    def _webhooks_enabled(self) -> Generator[None, None, None]:
+        # Dispatch only fires when webhooks are enabled; these tests assert it does.
+        with patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True):
+            yield
+
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_workout_created_dispatches(self, mock_task: MagicMock) -> None:
         uid = uuid4()
@@ -273,6 +280,20 @@ class TestWebhookEmit:
             mock_task.delay.side_effect = ConnectionError("Redis not available")
             # Should NOT raise
             _dispatch("workout.created", {"type": "workout.created", "data": {}})
+
+    def test_dispatch_skipped_when_webhooks_disabled(self) -> None:
+        """With OUTGOING_WEBHOOKS_ENABLED off, nothing is enqueued."""
+        with (
+            patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=False),
+            patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event") as mock_task,
+        ):
+            on_connection_created(
+                user_id=uuid4(),
+                provider="garmin",
+                connection_id=uuid4(),
+                connected_at="2026-01-01T12:00:00+00:00",
+            )
+            mock_task.delay.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

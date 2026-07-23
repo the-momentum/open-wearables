@@ -1,3 +1,5 @@
+import httpx
+
 from app.config import settings
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.enums import ProviderName
@@ -40,3 +42,13 @@ class FitbitOAuth(BaseOAuthTemplate):
             "user_id": provider_user_id,
             "username": None,
         }
+
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
+        """Call Fitbit's user deregistration endpoint to remove the app association."""
+        response = httpx.post(
+            f"{self.api_base_url}/oauth2/revoke",
+            data={"token": access_token},
+            headers=self._get_basic_auth_headers(),
+            timeout=30.0,
+        )
+        response.raise_for_status()

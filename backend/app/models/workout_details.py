@@ -1,16 +1,17 @@
+from typing import ClassVar
+
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecordDetail, json_binary, numeric_5_2, numeric_10_3
+from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3
 
-from .event_record_detail import EventRecordDetail
+from .event_record_detail import DetailType, EventRecordDetail
 
 
 class WorkoutDetails(EventRecordDetail):
     """Per-workout aggregates and metrics."""
 
     __tablename__ = "workout_details"
-    __mapper_args__ = {"polymorphic_identity": "workout"}
     __table_args__ = (
         Index(
             "ix_workout_details_segments_gin",
@@ -32,7 +33,9 @@ class WorkoutDetails(EventRecordDetail):
         ),
     )
 
-    record_id: Mapped[FKEventRecordDetail]
+    detail_type: ClassVar[DetailType] = "workout"
+
+    record_id: Mapped[FKEventRecord]
 
     heart_rate_min: Mapped[int | None]
     heart_rate_max: Mapped[int | None]

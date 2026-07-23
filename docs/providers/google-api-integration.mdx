@@ -1,0 +1,342 @@
+---
+title: "Google Health API Integration"
+description: "Connect Google Health via OAuth 2.0 to sync 24/7 metrics, workouts, and sleep. Choose reconcile (app-accurate merged totals) or list (per-device) fetch modes. Notify-only webhooks supported."
+keywords: ["google health api integration", "google health oauth", "google health connect api", "reconcile vs list", "google health webhooks"]
+"og:title": "Google Health API Integration | Open Wearables"
+"og:description": "Connect Google Health via OAuth 2.0. Syncs 24/7 metrics, workouts, and sleep. Reconcile or list fetch modes; notify-only webhooks."
+"og:url": "https://docs.openwearables.io/providers/google-api-integration"
+"og:type": "article"
+"twitter:title": "Google Health API Integration | Open Wearables"
+"twitter:description": "Connect Google Health via OAuth 2.0. Reconcile or list fetch modes; notify-only webhooks."
+"twitter:card": "summary_large_image"
+---
+
+<Note>
+**Need help with your Google Health integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Google Health data reaches Open Wearables through two independent paths that share the single `google` provider identity:
+
+- **Health Connect (mobile SDK)** — data pushed from an Android device via the Sync SDK. See the [Android SDK guide](/sdk/android/integration).
+- **Google Health API (cloud OAuth)** — this guide. A server-side OAuth 2.0 flow against the [Google Health API](https://developers.google.com/health) that lets you connect a user's Google account and pull their data over REST, plus receive notify-only webhooks.
+
+The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
+
+### Supported data types
+
+| Data type | Path |
+|-----------|------|
+| Steps, distance, calories, hydration | 24/7 metrics |
+| Heart rate, resting heart rate, HRV (RMSSD + SDNN) | 24/7 metrics |
+| VO₂ max, respiratory rate, SpO₂ | 24/7 metrics |
+| Weight, body fat, core body temperature, blood glucose | 24/7 metrics |
+| Workouts (Exercise sessions) | Sessions |
+| Sleep (with stages) | Sessions |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** | Open Wearables periodically fetches data via the Health API (Celery Beat), driven by the [fetch mode](#data-granularity-and-fetch-modes) below. |
+| **Webhooks (notify-only)** | Google sends a lightweight ping naming the changed `dataType` and time intervals; Open Wearables then fetches the changed data over REST. Requires a project-level [subscriber registration](#webhook-subscriber-registration). |
+
+## Data granularity and fetch modes
+
+The Health API exposes the same underlying data through three different operations. Open Wearables picks one per the `DEFAULT_DATA_GRANULARITY` setting, and — at the finest granularity — the `GOOGLE_USE_RECONCILE` flag.
+
+| Granularity | Operation | Resolution | Cross-source | Device attribution |
+|-------------|-----------|------------|--------------|--------------------|
+| `raw` + `GOOGLE_USE_RECONCILE=true` **(default)** | `dataPoints:reconcile` | native | **merged & deduplicated** | none |
+| `raw` + `GOOGLE_USE_RECONCILE=false` | `dataPoints` (list) | native | raw, per-source | **per-device** |
+| `hourly` / `daily` | `dataPoints:rollUp` | windowed | reconciled | none |
+
+<Info>
+`GOOGLE_USE_RECONCILE` only takes effect at `raw` granularity. `hourly`/`daily` always use windowed `rollUp` aggregates regardless of the flag.
+</Info>
+
+### Reconcile vs. list — why it matters
+
+A user commonly has the **same activity reported by multiple sources** (e.g. the phone's pedometer *and* the Fitbit app both counting steps). The two modes handle that overlap differently:
+
+- **`reconcile` (default)** returns **one merged stream**, deduplicated across all sources at the interval level — exactly what the native Google Health / Fitbit app displays. There is no single device behind a merged value, so reconciled points carry **no device attribution** (`device_model` is empty).
+- **`list`** returns the **raw per-source points**, each tagged with its originating device. This preserves device attribution but stores overlapping sources separately; Open Wearables then **deduplicates on read** by source priority (it does *not* sum them).
+
+A concrete example — steps for one day for a user tracked by both their phone (Health Connect) and Fitbit MobileTrack:
+
+| | steps |
+|---|---|
+| Fitbit MobileTrack (list, one source) | 2506 |
+| Phone / Health Connect (list, one source) | 1919 |
+| **`reconcile` (merged)** | **2560** |
+| What the native health app shows | **2560** |
+
+Reconcile (2560) matches the app exactly — it keeps intervals that *either* source captured while removing the overlap. Read-time dedup of the list data would instead pick a single source (1919), which is why **reconcile is the default**: it produces app-accurate totals.
+
+<Note>
+Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per-device attribution (e.g. to know which watch recorded a reading). For app-matching totals, keep the default.
+</Note>
+
+## What you need by the end
+
+- A **Google Cloud project** with the Health API enabled
+- **OAuth client credentials** (Client ID + Secret) with the Google Health scopes
+- **Redirect URI** registered in your OAuth client
+- *(Webhooks only)* A **service account** for project-level subscriber registration
+
+## Prerequisites
+
+- A [Google Cloud](https://console.cloud.google.com) project
+- Access to the Google Health API for that project (`gcloud services enable health.googleapis.com`)
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Enable the Health API and create an OAuth client">
+    In the [Google Cloud Console](https://console.cloud.google.com), select your project and enable the Health API:
+
+    ```bash
+    gcloud config set project YOUR_PROJECT_ID
+    gcloud services enable health.googleapis.com
+    ```
+
+    Then create an **OAuth 2.0 Client ID** (Web application) under **APIs & Services → Credentials**, and add your server-side callback as an **Authorized redirect URI**:
+
+    - Local dev: `http://localhost:8000/api/v1/oauth/google/callback`
+
+    <Warning>
+    Store the Client Secret securely — Google shows it once.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+#--- Google ---#
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_DEFAULT_SCOPE=openid email https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly https://www.googleapis.com/auth/googlehealth.nutrition.readonly https://www.googleapis.com/auth/googlehealth.sleep.readonly https://www.googleapis.com/auth/googlehealth.settings.readonly
+# Fetch mode for raw-granularity 24/7 data (see "Data granularity and fetch modes")
+GOOGLE_USE_RECONCILE=true
+```
+
+    **Configuration details:**
+
+    | Variable | Description | Default |
+    |----------|-------------|---------|
+    | `GOOGLE_CLIENT_ID` | OAuth Client ID | — |
+    | `GOOGLE_CLIENT_SECRET` | OAuth Client Secret | — |
+    | `GOOGLE_DEFAULT_SCOPE` | Space-separated Health API scopes to request | (full read-only set) |
+    | `GOOGLE_USE_RECONCILE` | `true` = reconcile (merged, app-accurate, no device attribution); `false` = list (per-device). Only applies at `raw` granularity. | `true` |
+    | `DEFAULT_DATA_GRANULARITY` | `raw` \| `hourly` \| `daily` — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
+
+    <Note>
+    The redirect URI is derived from `API_BASE_URL` — it must match the Authorized redirect URI on your OAuth client (`{API_BASE_URL}/api/v1/oauth/google/callback`).
+    </Note>
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your instance running, initiate the OAuth flow.
+
+    <Tip>
+    **Using the Open Wearables frontend?** You don't need any of the curls below — open the connect view and click **Connect** on Google Health. The frontend runs this whole authorize → consent → callback → verify flow for you. The steps below are for integrating directly against the API.
+    </Tip>
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/google/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **2. Redirect the user** to the returned `authorization_url`. They log in to Google and grant consent.
+
+    **3. Google redirects back** to `{API_BASE_URL}/api/v1/oauth/google/callback`; Open Wearables exchanges the code for tokens and stores the connection. It also resolves the user's stable `healthUserId` (via the Health API identity endpoint) as the connection's provider user id — this is what inbound webhooks are matched against.
+
+    **4. Verify the connection:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "google"` and `"status": "active"`.
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync runs automatically after a successful OAuth connection. To trigger one manually:
+
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/providers/google/users/{user_id}/sync" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+  </Step>
+
+  <Step title="Verify the integration">
+    Fetch a synced 24/7 series (e.g. steps):
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries/steps?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Google Health API integration is working end-to-end.
+  </Step>
+</Steps>
+
+## Webhooks
+
+Google Health webhooks are **notify-only**: each notification names the changed `dataType`, `operation` (`UPSERT`/`DELETE`), and the physical-time `intervals` that changed — but carries no data. Open Wearables verifies the request, then fetches the changed data over REST for those intervals.
+
+Two distinct secrets are involved:
+
+- **`GOOGLE_WEBHOOK_SECRET`** — a bearer token you register with Google that it echoes back in the `Authorization` header of every notification, so Open Wearables can verify the ping is genuine. Defaults to `SECRET_KEY` if unset.
+- **Service-account credentials** — used only to *register* the subscriber (a project-level admin call). Not involved in receiving notifications.
+
+<Info>
+Receiving and processing webhooks needs only `GOOGLE_WEBHOOK_SECRET`. The service account is required only to register the subscriber programmatically — you can also register it manually via `gcloud`/the API console.
+</Info>
+
+### Webhook subscriber registration
+
+Subscribers live at the **project** level (`POST /v4/projects/{project}/subscribers`), so registration authenticates as the project via a **service account**, not a user's OAuth token.
+
+<Warning>
+`gcloud` commands need the project **ID** (e.g. `open-wearables-prod`). The `GOOGLE_PROJECT_ID` env var, however, needs the project **number** (e.g. `123456789012`) — the subscriber API requires the number in its path.
+</Warning>
+
+<Steps>
+  <Step title="Create a service account">
+    ```bash
+    gcloud iam service-accounts create health-webhooks \
+      --project=YOUR_PROJECT_ID \
+      --display-name="Health API webhook subscriber registration"
+
+    # Grant a role that can manage Health API subscribers (narrow this to the
+    # dedicated Health API role once confirmed; roles/editor works but is broad):
+    gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+      --member="serviceAccount:health-webhooks@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+      --role="roles/editor"
+    ```
+  </Step>
+
+  <Step title="Provide the credentials">
+    Either mount a JSON key and point to it, or rely on Application Default Credentials (ADC) if running on GCP:
+
+    ```bash
+    gcloud iam service-accounts keys create ./config/health-webhooks-key.json \
+      --project=YOUR_PROJECT_ID \
+      --iam-account=health-webhooks@YOUR_PROJECT_ID.iam.gserviceaccount.com
+    ```
+
+    Add to `.env`:
+
+    ```bash
+    GOOGLE_PROJECT_ID=your-project-number   # the numeric project NUMBER, not the ID
+    GOOGLE_SERVICE_ACCOUNT_FILE=config/health-webhooks-key.json   # unset = use ADC
+    # GOOGLE_WEBHOOK_SECRET=your-token   # optional; defaults to SECRET_KEY
+    ```
+
+    <Warning>
+    Subscriber registration runs in the **Celery worker**, not the backend/API service. The key file (or credentials) and the `GOOGLE_*` env vars must be present on the **worker** service — a key mounted only into the backend container won't be seen.
+    </Warning>
+
+    <Warning>
+    A JSON key never expires until deleted — prefer ADC / Workload Identity in production, and keep key files out of version control.
+    </Warning>
+  </Step>
+
+  <Step title="Register the subscriber">
+    Switching the provider's live sync mode to `webhook` registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
+  </Step>
+</Steps>
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GOOGLE_PROJECT_ID` | GCP project **number** (not ID) that owns the subscriber. Get it with `gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)'`. | — |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Path to the SA JSON key; unset uses ADC | — |
+| `GOOGLE_WEBHOOK_SECRET` | Bearer secret Google echoes on notifications | `SECRET_KEY` |
+
+### Managing subscribers without app credentials (gcloud / console)
+
+If you'd rather not give the app a service account, create and manage the subscriber
+yourself and leave `GOOGLE_SERVICE_ACCOUNT_FILE`/`GOOGLE_PROJECT_ID` unset. The app then
+needs only `GOOGLE_WEBHOOK_SECRET` to verify inbound notifications — it never calls the
+project-level subscriber API.
+
+<Info>
+In this mode the in-app `.../webhooks/subscriptions` management endpoints (list / register /
+update / delete) won't work — they require project credentials. Use the commands below instead.
+</Info>
+
+<Warning>
+The `endpointAuthorization.secret` you set here **must** equal `"Bearer "` + the app's
+`GOOGLE_WEBHOOK_SECRET` (which defaults to `SECRET_KEY`). If they don't match, every
+notification fails signature verification and Open Wearables returns 401.
+</Warning>
+
+All calls authenticate with your own gcloud identity, which must hold the Health API
+subscriber role on the project. You can also run these from the Cloud Console API Explorer,
+but the CLI steps below are easier to copy end-to-end. Use the same `subscriberId`
+(`open-wearables`) the app uses, so it stays interchangeable.
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+PROJECT=your-project-number   # numeric project number
+
+# Create
+curl -X POST \
+  "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers?subscriberId=open-wearables" \
+  -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+  -d '{
+    "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google/webhooks",
+    "subscriberConfigs": [
+      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
+    ],
+    "endpointAuthorization": {"secret": "Bearer YOUR_GOOGLE_WEBHOOK_SECRET"}
+  }'
+
+# List
+curl "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+# Update the callback URL (endpoint re-verification runs again)
+curl -X PATCH \
+  "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers/open-wearables?updateMask=endpointUri" \
+  -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+  -d '{"endpointUri": "https://NEW_URL/api/v1/providers/google/webhooks"}'
+
+# Delete
+curl -X DELETE \
+  "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers/open-wearables" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+<Note>
+`dataTypes` above is an abbreviated example — use the set the app supports for webhooks
+(steps, distance, hydration-log, heart-rate, run-vo2-max, daily-resting-heart-rate,
+heart-rate-variability, weight, body-fat, blood-glucose, daily-respiratory-rate, sleep,
+exercise). Registering a data type the app doesn't handle just means its notifications are ignored.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Supported Providers" icon="list" href="/providers/supported">
+    See all supported providers.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Google Health API Documentation](https://developers.google.com/health).
+</Note>

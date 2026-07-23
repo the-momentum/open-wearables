@@ -4,6 +4,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import ProviderSetting
 from app.schemas.auth import LiveSyncMode
+from app.schemas.enums import DataGranularity
 from app.schemas.enums.provider import ProviderName
 
 
@@ -21,22 +22,35 @@ class ProviderSettingsRepository:
         provider: str,
         is_enabled: bool,
         live_sync_mode: LiveSyncMode | None = None,
+        data_granularity: DataGranularity | None = None,
     ) -> ProviderSetting:
-        """Insert or update a provider setting."""
+        """Insert or update a provider setting. None fields leave existing values untouched."""
 
         update_fields: dict = {"is_enabled": is_enabled}
         if live_sync_mode is not None:
             update_fields["live_sync_mode"] = live_sync_mode
+        if data_granularity is not None:
+            update_fields["data_granularity"] = data_granularity
 
         stmt = (
             insert(ProviderSetting)
-            .values(provider=provider, is_enabled=is_enabled, live_sync_mode=live_sync_mode)
+            .values(
+                provider=provider,
+                is_enabled=is_enabled,
+                live_sync_mode=live_sync_mode,
+                data_granularity=data_granularity,
+            )
             .on_conflict_do_update(index_elements=["provider"], set_=update_fields)
             .returning(ProviderSetting)
         )
         setting = db.execute(stmt).scalar_one()
         db.commit()
         return setting
+
+    def get_data_granularity(self, db: DbSession, provider: str) -> DataGranularity | None:
+        """Return the configured granularity for a provider, or None if unset."""
+        stmt = select(ProviderSetting.data_granularity).where(ProviderSetting.provider == provider)
+        return db.execute(stmt).scalar_one_or_none()
 
     def ensure_all_providers_exist(
         self,

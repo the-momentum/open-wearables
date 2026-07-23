@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.database import DbSession
 from app.models import EventRecord
@@ -35,7 +35,7 @@ from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
-_SchemaT = TypeVar("_SchemaT")
+_SchemaT = TypeVar("_SchemaT", bound=BaseModel)
 
 
 class SensorBio247Data(Base247DataTemplate):
@@ -90,7 +90,7 @@ class SensorBio247Data(Base247DataTemplate):
         Callers skip None results rather than propagating bad data to DB writes.
         """
         try:
-            return schema.model_validate(raw)  # type: ignore[attr-defined]
+            return schema.model_validate(raw)
         except ValidationError as e:
             log_structured(
                 self.logger,

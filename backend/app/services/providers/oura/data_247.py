@@ -45,7 +45,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import offset_to_iso
+from app.utils.dates import offset_to_iso, parse_iso_datetime, to_rfc3339
 from app.utils.structured_logging import LogContext, log_structured
 
 
@@ -562,23 +562,22 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
-    def _extract_sleep_stages(self, sleep_phase_5_min: str | None, sleep_start: str | None) -> list[SleepStage]:
-        """Convert Oura's 5-minute sleep phase string into list of SleepStage."""
-        if not (sleep_phase_5_min and sleep_start):
+    def _extract_sleep_stages(
+        self, hypnogram: str | None, epoch_seconds: int, sleep_start: str | None
+    ) -> list[SleepStage]:
+        """Convert an Oura hypnogram string (one digit per epoch) into a list of SleepStage."""
+        parsed_start = parse_iso_datetime(sleep_start)
+        if not hypnogram or parsed_start is None:
             return []
 
+        phase_start = parsed_start.astimezone(timezone.utc)
         stages: list[SleepStage] = []
 
-        phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
-
-        for stage, group in groupby(sleep_phase_5_min, lambda x: SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
+        for stage, group in groupby(hypnogram, lambda x: SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
             occurrences = len(list(group))
-            stages.append(
-                SleepStage(
-                    stage=stage, start_time=phase_start, end_time=phase_start + timedelta(minutes=5 * occurrences)
-                )
-            )
-            phase_start += timedelta(minutes=5 * occurrences)
+            phase_end = phase_start + timedelta(seconds=epoch_seconds * occurrences)
+            stages.append(SleepStage(stage=stage, start_time=phase_start, end_time=phase_end))
+            phase_start = phase_end
 
         return stages
 
@@ -615,7 +614,11 @@ class Oura247Data(Base247DataTemplate):
                 except (ValueError, AttributeError):
                     pass
 
-            sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
+            # Prefer the 30-second hypnogram; fall back to the coarser 5-minute one.
+            if sleep.sleep_phase_30_sec:
+                sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_30_sec, 30, start_time)
+            else:
+                sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, 300, start_time)
 
             internal_id = uuid4()
 
@@ -1020,8 +1023,8 @@ class Oura247Data(Base247DataTemplate):
         while chunk_start < end_utc:
             chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS), end_utc)
             params = {
-                "start_datetime": chunk_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "end_datetime": chunk_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "start_datetime": to_rfc3339(chunk_start),
+                "end_datetime": to_rfc3339(chunk_end),
             }
             results.extend(self._paginate(db, user_id, "/v2/usercollection/heartrate", params))
             chunk_start = chunk_end

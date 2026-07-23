@@ -153,6 +153,10 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 **Solution:** Ensure UUIDs are in the correct format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
 
+### SDK Sync Payloads (Async Validation)
+
+`POST /api/v1/sdk/users/{user_id}/sync` returns **202 Accepted** immediately and validates/imports the payload in a background worker. A malformed record does **not** produce a synchronous `400`/`422` — validation failures are surfaced via the batch's sync status (and internal error reporting), not the HTTP response. The endpoint returns `400` only for an unsupported `provider`.
+
 ---
 
 ## Resource Errors

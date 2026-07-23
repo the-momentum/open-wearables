@@ -10,6 +10,7 @@ from app.schemas.enums.series_types import SERIES_TYPE_CATEGORY_BY_ENUM, SERIES_
 from app.schemas.model_crud.coverage import (
     CoverageResponse,
     HealthScore,
+    MenstrualCycleField,
     SleepField,
     TimeseriesCategory,
     TimeseriesMetric,
@@ -80,6 +81,17 @@ def _build_coverage() -> CoverageResponse:
         SleepField(code=f, providers=sorted(prov_list)) for f, prov_list in sorted(sleep_to_providers.items())
     ]
 
+    # --- Menstrual cycle fields ---
+    menstrual_to_providers: dict[str, list[str]] = {}
+    for provider, cov in coverage_by_provider.items():
+        for f in cov.menstrual_cycle_fields:
+            menstrual_to_providers.setdefault(f, []).append(provider)
+
+    menstrual_cycle_fields = [
+        MenstrualCycleField(code=f, providers=sorted(prov_list))
+        for f, prov_list in sorted(menstrual_to_providers.items())
+    ]
+
     # --- Health scores ---
     score_to_providers: dict[str, list[str]] = {}
     for provider, cov in coverage_by_provider.items():
@@ -95,6 +107,7 @@ def _build_coverage() -> CoverageResponse:
         timeseries=timeseries,
         workout_fields=workout_fields,
         sleep_fields=sleep_fields,
+        menstrual_cycle_fields=menstrual_cycle_fields,
         health_scores=health_scores,
     )
 

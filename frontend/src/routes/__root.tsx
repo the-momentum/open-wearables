@@ -12,7 +12,7 @@ import { queryClient } from '@/lib/query/client';
 import { runtimeConfigScript } from '@/lib/api/runtime-config';
 import { Toaster } from '@/components/ui/sonner';
 
-import appCss from '../styles.css?url';
+import '../styles.css';
 
 export const Route = createRootRoute({
   head: () => ({
@@ -47,10 +47,6 @@ export const Route = createRootRoute({
       {
         rel: 'stylesheet',
         href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
-      },
-      {
-        rel: 'stylesheet',
-        href: appCss,
       },
       // Fallback for browsers that don't support media queries
       {

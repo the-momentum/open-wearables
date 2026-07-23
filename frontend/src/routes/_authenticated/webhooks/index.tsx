@@ -8,7 +8,7 @@ import { WebhooksTable } from '@/components/webhooks/webhooks-table';
 import { WebhookCreateDialog } from '@/components/webhooks/webhook-create-dialog';
 import { WebhookDeleteDialog } from '@/components/webhooks/webhook-delete-dialog';
 import { useWebhookEndpoints } from '@/hooks/api/use-webhooks';
-import { ApiError } from '@/lib/errors/api-error';
+import { useConfig } from '@/hooks/api/use-config';
 
 export const Route = createFileRoute('/_authenticated/webhooks/')({
   component: WebhooksPage,
@@ -18,15 +18,14 @@ function WebhooksPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const endpoints = useWebhookEndpoints();
+  const config = useConfig();
+  const webhooksEnabled = config.data?.outgoing_webhooks_enabled === true;
+  const endpoints = useWebhookEndpoints(webhooksEnabled);
 
   const deleteUrl = useMemo(
     () => endpoints.data?.find((e) => e.id === deleteId)?.url,
     [endpoints.data, deleteId]
   );
-
-  const isSvixDisabled =
-    endpoints.error instanceof ApiError && endpoints.error.statusCode === 503;
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -36,7 +35,7 @@ function WebhooksPage() {
         action={
           <Button
             onClick={() => setIsCreateOpen(true)}
-            disabled={isSvixDisabled}
+            disabled={!webhooksEnabled}
           >
             <Plus className="h-4 w-4" />
             Add webhook
@@ -44,15 +43,36 @@ function WebhooksPage() {
         }
       />
 
-      {isSvixDisabled ? (
+      {config.isLoading ? (
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 p-6 backdrop-blur-xl animate-pulse space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-12 bg-muted/50 rounded-md" />
+          ))}
+        </div>
+      ) : config.isError ? (
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 p-8 text-center backdrop-blur-xl">
+          <p className="text-muted-foreground mb-4">
+            Failed to load instance configuration. Please try again.
+          </p>
+          <Button onClick={() => config.refetch()}>Retry</Button>
+        </div>
+      ) : !webhooksEnabled ? (
         <div className="rounded-2xl border border-[hsl(var(--warning-muted)/0.4)] bg-[hsl(var(--warning-muted)/0.08)] p-6">
           <p className="text-sm font-medium text-[hsl(var(--warning-muted))]">
             Webhooks are not enabled on this instance.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Configure <code>SVIX_AUTH_TOKEN</code> or{' '}
-            <code>SVIX_JWT_SECRET</code> in the backend environment to enable
-            outgoing webhook delivery.
+            Set <code>OUTGOING_WEBHOOKS_ENABLED=true</code> in the backend
+            environment to enable outgoing webhook delivery. See the{' '}
+            <a
+              href="https://openwearables.io/docs/api-reference/guides/webhooks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-2"
+            >
+              webhooks guide
+            </a>{' '}
+            for self-hosting setup.
           </p>
         </div>
       ) : endpoints.isLoading ? (

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response, status
 from app.database import DbSession
 from app.models import ProviderSetting
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas.auth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.user_management import UserConnectionWithCapabilities
 from app.services import ApiKeyDep, user_connection_service
@@ -32,11 +32,13 @@ def _with_capabilities(
         enriched.webhook_ping = caps.webhook_ping
         enriched.webhook_callback = caps.webhook_callback
         setting = settings_map.get(enriched.provider)
-        enriched.live_sync_mode = (
+        mode = (
             setting.live_sync_mode
             if (setting and setting.live_sync_mode is not None)
             else strategy.default_live_sync_mode
         )
+        # ORM yields a plain str and attribute assignment skips validation; coerce to the enum
+        enriched.live_sync_mode = LiveSyncMode(mode) if mode is not None else None
     if linked_user_ids:
         enriched.linked_user_ids = linked_user_ids
     return enriched

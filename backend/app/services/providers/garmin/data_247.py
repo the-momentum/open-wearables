@@ -293,10 +293,6 @@ class Garmin247Data(Base247DataTemplate):
                 "awake_seconds": awake_seconds,
             },
             "stage_timestamps": sleep_stages,
-            "avg_heart_rate_bpm": raw_sleep.get("averageHeartRate"),
-            "min_heart_rate_bpm": raw_sleep.get("lowestHeartRate"),
-            "avg_respiration": raw_sleep.get("respirationAvg"),
-            "avg_spo2_percent": raw_sleep.get("avgOxygenSaturation"),
             "sleep_score": sleep_score,
             "sleep_qualifier": sleep_qualifier,
             "sleep_score_components": sleep_score_components,
@@ -400,10 +396,6 @@ class Garmin247Data(Base247DataTemplate):
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
             is_nap=normalized_sleep.get("is_nap", False),
-            heart_rate_avg=Decimal(str(normalized_sleep["avg_heart_rate_bpm"]))
-            if normalized_sleep.get("avg_heart_rate_bpm")
-            else None,
-            heart_rate_min=normalized_sleep.get("min_heart_rate_bpm"),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
         )
 

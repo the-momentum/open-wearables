@@ -46,6 +46,12 @@ class EnvironmentType(str, Enum):
     PRODUCTION = "production"
 
 
+class AccessLogLevel(str, Enum):
+    ALL = "all"  # log every request
+    ERRORS = "errors"  # log only 4xx/5xx
+    OFF = "off"  # log nothing
+
+
 class Decryptor(Protocol):
     def decrypt(self, value: bytes) -> bytes: ...
 

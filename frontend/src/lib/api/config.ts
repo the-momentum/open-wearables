@@ -121,6 +121,7 @@ export const API_ENDPOINTS = {
 
   // Meta endpoints
   coverage: '/api/v1/meta/coverage',
+  config: '/api/v1/config',
 
   // Sync status / SSE endpoints
   // ApiKeyDep accepts both API keys and developer JWT tokens, so a single

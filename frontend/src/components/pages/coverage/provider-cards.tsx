@@ -43,7 +43,8 @@ interface Props {
 }
 
 export function ProviderCards({ data }: Props) {
-  const { providers, timeseries, workout_fields, sleep_fields, health_scores } = data;
+  const { providers, timeseries, workout_fields, sleep_fields, menstrual_cycle_fields, health_scores } =
+    data;
 
   const maxTimeseries = Math.max(
     ...providers.map((p) =>
@@ -52,6 +53,7 @@ export function ProviderCards({ data }: Props) {
   );
   const maxWorkout = workout_fields.length;
   const maxSleep = sleep_fields.length;
+  const maxWomensHealth = menstrual_cycle_fields.length;
   const maxScores = health_scores.length;
 
   return (
@@ -62,6 +64,7 @@ export function ProviderCards({ data }: Props) {
           .filter((m) => m.providers.includes(p)).length;
         const wCount = workout_fields.filter((f) => f.providers.includes(p)).length;
         const sCount = sleep_fields.filter((f) => f.providers.includes(p)).length;
+        const mCount = menstrual_cycle_fields.filter((f) => f.providers.includes(p)).length;
         const hCount = health_scores.filter((s) => s.providers.includes(p)).length;
 
         return (
@@ -86,6 +89,7 @@ export function ProviderCards({ data }: Props) {
               <StatBar label="Timeseries" value={tsCount} max={maxTimeseries} />
               <StatBar label="Workout" value={wCount} max={maxWorkout} />
               <StatBar label="Sleep" value={sCount} max={maxSleep} />
+              <StatBar label="Women's Health" value={mCount} max={maxWomensHealth} />
               <StatBar label="Scores" value={hCount} max={maxScores} />
             </div>
           </div>

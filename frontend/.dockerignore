@@ -1,5 +1,11 @@
 node_modules
 dist
+dist-ssr
+.output
+.nitro
+.tanstack
+.vinxi
+.wrangler
 .git
 .gitignore
 README.md

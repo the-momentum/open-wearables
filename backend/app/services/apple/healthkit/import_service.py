@@ -5,6 +5,8 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
@@ -32,6 +34,7 @@ from app.schemas.providers.mobile_sdk import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 from .device_resolution import extract_device_info
@@ -331,6 +334,7 @@ class ImportService:
         user_id: str,
         batch_id: str | None = None,
     ) -> UploadDataResponse:
+        provider = "unknown"
         try:
             # Parse content based on type
             if "multipart/form-data" in content_type:
@@ -349,12 +353,18 @@ class ImportService:
                 )
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
-            # Extract incoming counts for logging
+            # Extract incoming counts (best-effort; invalid types must reach validation
+            # below rather than raising TypeError here)
             provider = data.get("provider", "unknown")
-            inner_data = data.get("data", {})
-            incoming_records = len(inner_data.get("records", []))
-            incoming_workouts = len(inner_data.get("workouts", []))
-            incoming_sleep = len(inner_data.get("sleep", []))
+            inner_data = data.get("data")
+            if not isinstance(inner_data, dict):
+                inner_data = {}
+            records = inner_data.get("records")
+            workouts = inner_data.get("workouts")
+            sleep = inner_data.get("sleep")
+            incoming_records = len(records) if isinstance(records, list) else 0
+            incoming_workouts = len(workouts) if isinstance(workouts, list) else 0
+            incoming_sleep = len(sleep) if isinstance(sleep, list) else 0
 
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
@@ -380,7 +390,50 @@ class ImportService:
                 sleep_saved=saved_counts["sleep_saved"],
             )
 
+        except ValidationError as e:
+            # Payload failed schema validation; report to Sentry with the field-level errors.
+            errors = e.errors()
+            first = errors[0] if errors else {}
+            # Drop `input` (raw record value — may contain health data/PII) and `url`
+            # before sending to Sentry; keep loc/msg/type. Preserve the 20-error cap.
+            safe_errors = [{k: v for k, v in err.items() if k not in ("input", "url")} for err in errors[:20]]
+            log_and_capture_error(
+                e,
+                self.log,
+                f"{provider} SDK payload failed validation for user {user_id}",
+                extra={
+                    "user_id": user_id,
+                    "batch_id": batch_id,
+                    "provider": provider,
+                    "error_count": len(errors),
+                    "errors": safe_errors,
+                },
+            )
+            log_structured(
+                self.log,
+                "warning",
+                f"{provider.capitalize()} SDK payload validation failed",
+                provider=f"{provider}",
+                action=f"{provider}_sdk_validation_failed",
+                batch_id=batch_id,
+                user_id=user_id,
+                error_count=len(errors),
+                first_error_loc=".".join(str(x) for x in first.get("loc", [])),
+                first_error_msg=first.get("msg"),
+            )
+            return UploadDataResponse(
+                status_code=400,
+                response=f"Validation failed: {first.get('msg', 'invalid payload')}",
+                user_id=user_id,
+            )
+
         except Exception as e:
+            log_and_capture_error(
+                e,
+                self.log,
+                f"Import failed for user {user_id}",
+                extra={"user_id": user_id, "batch_id": batch_id, "provider": provider},
+            )
             log_structured(
                 self.log,
                 "error",

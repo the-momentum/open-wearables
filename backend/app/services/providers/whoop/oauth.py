@@ -77,3 +77,13 @@ class WhoopOAuth(BaseOAuthTemplate):
                 user_id=user_id,
             )
             return {"user_id": None, "username": None}
+
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
+        """Revoke WHOOP OAuth access for this user."""
+
+        response = httpx.delete(
+            f"{self.api_base_url}/v2/user/access",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()

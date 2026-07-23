@@ -9,7 +9,9 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.models import SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
+from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums.series_types import SeriesType
 from app.services.providers.garmin.data_247 import Garmin247Data
@@ -48,10 +50,6 @@ class TestGarmin247Data:
             "lightSleepDurationInSeconds": 14400,  # 4 hours
             "remSleepInSeconds": 5400,  # 1.5 hours
             "awakeDurationInSeconds": 1800,  # 30 minutes
-            "averageHeartRate": 58,
-            "lowestHeartRate": 48,
-            "respirationAvg": 14.5,
-            "avgOxygenSaturation": 96.5,
             "validation": "DEVICE",
         }
 
@@ -207,11 +205,6 @@ class TestGarmin247Data:
         assert stages["light_seconds"] == 14400
         assert stages["rem_seconds"] == 5400
         assert stages["awake_seconds"] == 1800
-
-        # Heart rate and respiration
-        assert normalized["avg_heart_rate_bpm"] == 58
-        assert normalized["min_heart_rate_bpm"] == 48
-        assert normalized["avg_respiration"] == 14.5
 
     def test_extract_sleep_stages_from_map(self, garmin_247: Garmin247Data) -> None:
         """Sleep stage intervals are parsed, sorted, and typed correctly."""
@@ -637,6 +630,20 @@ class TestGarmin247Data:
         assert record.category == "sleep"
         assert record.type == "sleep_session"
         assert detail.sleep_deep_minutes == 120  # 7200 / 60
+
+    def test_build_sleep_detail_orm_object(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
+        """Regression test for #1135: real Garmin sleep payloads (no heart rate fields -
+        Garmin's ClientSleep schema doesn't expose them) must build a SleepDetails ORM
+        object without TypeError."""
+        user_id = uuid4()
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
+        result = garmin_247._build_sleep_record(user_id, normalized)
+        assert result is not None
+        _, detail = result
+
+        repo = EventRecordDetailRepository.__new__(EventRecordDetailRepository)
+        orm_detail = repo._build_detail(detail, "sleep")
+        assert isinstance(orm_detail, SleepDetails)
 
     def test_build_activity_record(self, garmin_247: Garmin247Data) -> None:
         """Test _build_activity_record returns record + detail without DB call."""

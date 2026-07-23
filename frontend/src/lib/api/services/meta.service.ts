@@ -22,6 +22,11 @@ export interface SleepField {
   providers: string[];
 }
 
+export interface MenstrualCycleField {
+  code: string;
+  providers: string[];
+}
+
 export interface HealthScore {
   code: string;
   providers: string[];
@@ -32,6 +37,7 @@ export interface CoverageResponse {
   timeseries: TimeseriesCategory[];
   workout_fields: WorkoutField[];
   sleep_fields: SleepField[];
+  menstrual_cycle_fields: MenstrualCycleField[];
   health_scores: HealthScore[];
 }
 

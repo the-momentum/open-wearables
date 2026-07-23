@@ -19,6 +19,11 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
     def __init__(self, model: type[User]):
         super().__init__(model)
 
+    def get_by_email(self, db_session: DbSession, email: str | None) -> User | None:
+        if email is None:
+            return None
+        return db_session.query(self.model).filter(self.model.email == email).one_or_none()
+
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of users."""
         return db_session.query(func.count(self.model.id)).scalar() or 0

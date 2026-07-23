@@ -24,7 +24,6 @@ from app.models import (
     DataSource,
     Developer,
     EventRecord,
-    EventRecordDetail,
     HealthScore,
     PersonalRecord,
     ProviderSetting,
@@ -444,31 +443,6 @@ class EventRecordFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
-class EventRecordDetailFactory(BaseFactory):
-    """Factory for EventRecordDetail model."""
-
-    class Meta:
-        model = EventRecordDetail
-
-    detail_type = "workout"
-
-    @classmethod
-    def _create(
-        cls,
-        model_class: type[EventRecordDetail],
-        *args: Any,
-        **kwargs: Any,
-    ) -> EventRecordDetail:
-        """Override create to handle event_record relationship."""
-        event_record = kwargs.pop("event_record", None)
-        # Remove any stale record_id that might have been set
-        kwargs.pop("record_id", None)
-        if event_record is None:
-            event_record = EventRecordFactory()
-        kwargs["record_id"] = event_record.id
-        return super()._create(model_class, *args, **kwargs)
-
-
 class DataPointSeriesFactory(BaseFactory):
     """Factory for DataPointSeries model."""
 
@@ -605,7 +579,6 @@ __all__ = [
     "DataSourceFactory",  # Backward-compatible alias for DataSourceFactory
     "UserConnectionFactory",
     "EventRecordFactory",
-    "EventRecordDetailFactory",
     "DataPointSeriesFactory",
     "ProviderSettingFactory",
     "WorkoutDetailsFactory",
