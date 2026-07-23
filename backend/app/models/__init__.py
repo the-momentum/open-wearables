@@ -15,6 +15,7 @@ from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
+from .telemetry_state import TelemetryState
 from .menstrual_cycle_details import MenstrualCycleDetails
 from .sleep_details import SleepDetails
 from .user import User
@@ -46,4 +47,5 @@ __all__ = [
     "DataPointSeries",
     "SeriesTypeDefinition",
     "HealthScore",
+    "TelemetryState",
 ]

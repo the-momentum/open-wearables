@@ -1,0 +1,94 @@
+---
+title: "Anonymous Telemetry"
+description: "What anonymous usage data Open Wearables collects, exactly what is in the payload, and how to opt out with a single environment variable."
+keywords: ["open wearables telemetry", "usage telemetry opt out", "anonymous usage statistics", "self-hosted telemetry"]
+"og:title": "Anonymous Telemetry | Open Wearables"
+"og:description": "What anonymous usage data Open Wearables collects, exactly what is in the payload, and how to opt out."
+"og:url": "https://docs.openwearables.io/dev-guides/telemetry"
+"og:type": "article"
+"twitter:title": "Anonymous Telemetry | Open Wearables"
+"twitter:description": "What anonymous usage data Open Wearables collects and how to opt out with a single environment variable."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+Open Wearables collects **anonymous usage telemetry** from self-hosted instances. It tells us how many
+instances are alive, which versions they run, and which providers and features are actually used - this
+is what we use to prioritize provider integrations and to know when it is safe to deprecate something.
+
+Telemetry is **enabled by default** and can be disabled with a single environment variable at any time.
+
+## What is collected
+
+One small JSON document ("ping"), at most once per 24 hours, plus one on startup (debounced to at most
+one ping per 12 hours, so restarts and redeploys don't send extra data). Everything in it is either an
+aggregate count or a configuration flag:
+
+```json
+{
+  "schema_version": 1,
+  "instance_id": "f11594b65f9242398c31fc3c41adb64a",
+  "event": "daily",
+  "sent_at": "2026-07-23T04:12:00+00:00",
+  "app_version": "0.6.3",
+  "git_sha": "abc1234",
+  "python_version": "3.13.1",
+  "platform": "Linux-6.1.0-x86_64-with-glibc2.36",
+  "environment": "production",
+  "instance_age_days": 41,
+  "total_users": 42,
+  "users_with_active_connection": 30,
+  "active_connections": 57,
+  "connections_by_provider": { "garmin": 20, "oura": 15 },
+  "data_points_by_provider": { "garmin": 1284932, "oura": 402113 },
+  "workouts_by_provider": { "garmin": 2101, "oura": 118 },
+  "providers": [
+    { "provider": "garmin", "is_enabled": true, "live_sync_mode": "webhook", "data_granularity": null }
+  ],
+  "features": {
+    "sentry_enabled": true,
+    "ingest_workout_samples": false,
+    "store_fit_files": false,
+    "historical_sync_on_connect": true,
+    "raw_payload_storage": "s3",
+    "outgoing_webhooks_enabled": true,
+    "default_data_granularity": "raw"
+  }
+}
+```
+
+The `instance_id` is a random UUID generated locally on first use (stored in the `telemetry_state`
+table). It is not derived from any secret, hostname, or account and cannot be traced back to you.
+
+## What is never collected
+
+- No user data of any kind: no names, emails, IDs, or health data
+- No credentials, tokens, API keys, or secrets
+- No hostnames, IP addresses, or URLs of your deployment
+- No per-user or per-request information - only instance-wide aggregate counts
+
+Pings are sent to `https://telemetry.mntm.dev`, a collector operated by the Open Wearables team. The
+sending code lives in `backend/app/services/telemetry_service.py` - it is easy to audit.
+
+## Opting out
+
+Set one environment variable and restart:
+
+```bash
+TELEMETRY_ENABLED=false
+```
+
+Open Wearables also honors the [Console Do Not Track](https://consoledonottrack.com/) convention:
+
+```bash
+DO_NOT_TRACK=1
+```
+
+Either one fully disables telemetry: no scheduled task, no startup ping, no HTTP calls. When telemetry
+is enabled, the API logs a notice at startup so it is never running silently.
+
+## Failure behavior
+
+Telemetry is best-effort and can never affect your instance: delivery uses a 5-second timeout, failures
+are logged at `WARNING` and swallowed, and the ping is simply retried on the next hourly due-check.

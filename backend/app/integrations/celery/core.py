@@ -2,7 +2,7 @@ import logging
 import ssl
 import sys
 from logging import Formatter, LogRecord, StreamHandler, getLogger
-from typing import cast
+from typing import Any, cast
 
 from celery import Celery, signals
 from celery import current_app as current_celery_app
@@ -61,6 +61,25 @@ def setup_celery_logging(**kwargs) -> None:
     # every task execution.  Suppress those lines only for the high-frequency
     # webhook emit task to avoid log spam while keeping traces for all others.
     getLogger("celery.app.trace").addFilter(_WebhookTraceFilter())
+
+
+@signals.worker_ready.connect
+def enqueue_startup_telemetry_ping(sender: Any, **kwargs) -> None:
+    """Send the "startup" telemetry ping once the worker can reach the broker.
+
+    Multiple workers may each enqueue this; the 12h debounce in
+    TelemetryService turns the extras into no-ops.
+    """
+    if not settings.telemetry_enabled:
+        return
+    try:
+        sender.app.send_task(
+            "app.integrations.celery.tasks.telemetry_task.send_telemetry_ping",
+            kwargs={"event": "startup"},
+            queue="default",
+        )
+    except Exception:
+        getLogger(__name__).debug("Could not enqueue startup telemetry ping", exc_info=True)
 
 
 @signals.worker_init.connect
@@ -155,5 +174,16 @@ def create_celery() -> Celery:
             "kwargs": {},
         },
     }
+
+    if settings.telemetry_enabled:
+        # Hourly due-check, not an hourly ping: the task delivers at most one
+        # ping per 24h (see TelemetryService) and the hourly cadence doubles as
+        # the retry mechanism after failed deliveries.
+        celery_app.conf.beat_schedule["send-telemetry-ping"] = {
+            "task": "app.integrations.celery.tasks.telemetry_task.send_telemetry_ping",
+            "schedule": settings.telemetry_beat_interval_seconds,
+            "args": (),
+            "kwargs": {"event": "daily"},
+        }
 
     return celery_app

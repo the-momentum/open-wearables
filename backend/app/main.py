@@ -66,6 +66,12 @@ raw_payload_storage.configure(
 add_cors_middleware(api)
 add_access_log_middleware(api)
 
+if settings.telemetry_enabled:
+    logging.getLogger(__name__).info(
+        "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
+        "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
+    )
+
 # Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():

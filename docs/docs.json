@@ -129,7 +129,8 @@
             "group": "Configuration",
             "pages": [
               "dev-guides/aws-setup",
-              "dev-guides/raw-payload-storage"
+              "dev-guides/raw-payload-storage",
+              "dev-guides/telemetry"
             ]
           },
           {
