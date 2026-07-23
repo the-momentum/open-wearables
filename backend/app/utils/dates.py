@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, time, timezone
 from typing import Annotated
 
 from fastapi import Query
@@ -8,8 +9,12 @@ from app.utils.exceptions import DatetimeParseError
 
 _DATE_PARAM_DESCRIPTION = (
     "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. "
-    "Date-only strings (e.g. `2023-11-07`) are also accepted and normalized to midnight UTC."
+    "Date-only strings (e.g. `2023-11-07`) are also accepted: start bounds normalize "
+    "to midnight and end bounds to the end of the day, so date-only ranges include "
+    "both boundary days."
 )
+
+_DATE_ONLY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 DateTimeQueryParam = Annotated[
     str,
@@ -56,6 +61,30 @@ def parse_query_datetime(dt_str: str) -> datetime:
         return datetime.fromisoformat(dt_str)
     except ValueError:
         raise DatetimeParseError(dt_str)
+
+
+def parse_query_end_datetime(dt_str: str) -> datetime:
+    """Parse an end-of-range datetime from ISO string or Unix timestamp.
+
+    Like parse_query_datetime, but a date-only string (e.g. `2023-11-07`) is
+    normalized to the END of that day (23:59:59.999999) instead of midnight.
+    Without this, a date-only end bound excludes the entire end day, and a
+    single-day range (start_date == end_date) collapses to a zero-length
+    window at midnight that matches nothing.
+
+    This is a separate function rather than a boundary flag on
+    parse_query_datetime because the choice is static at every call site
+    (start params parse one way, end params the other): named functions keep
+    call sites self-documenting, and an end bound parsed with the plain
+    function is easy to spot in review.
+    """
+    if _DATE_ONLY_RE.fullmatch(dt_str.strip()):
+        try:
+            return datetime.combine(date.fromisoformat(dt_str.strip()), time.max)
+        except ValueError:
+            # Date-shaped but not a real calendar date (e.g. 2024-02-30).
+            raise DatetimeParseError(dt_str)
+    return parse_query_datetime(dt_str)
 
 
 def parse_iso_datetime(dt_str: str | None) -> datetime | None:
