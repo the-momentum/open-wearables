@@ -9,8 +9,8 @@ dependencies = [
     "email-validator>=2.2.0",
     "psycopg>=3.3.4",
     "sqlalchemy>=2.0.51",
-    "fastapi>=0.139.0",
-    "fastapi-cli>=0.0.29",
+    "fastapi>=0.139.2",
+    "fastapi-cli>=0.0.32",
     "celery>=5.6.3",
     "flower>=2.0.1",
     "redis>=8.0.1",
@@ -19,24 +19,24 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
     "alembic>=1.18.5",
-    "boto3>=1.43.48",
+    "boto3>=1.43.52",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
     "resend>=2.33.0",
     "pyyaml>=6.0.3",
-    "svix>=1.96.1",
+    "svix>=1.97.0",
     "numpy>=2.5.1",
     "faker>=40.31.0",
     "fitdecode>=0.11.0",
-    "google-auth>=2.55.1",
+    "google-auth>=2.56.0",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.6.0",
-    "ruff>=0.15.21",
-    "ty>=0.0.59",
+    "ruff>=0.15.22",
+    "ty>=0.0.61",
 ]
 dev = [
     "pytest>=9.1.1",
