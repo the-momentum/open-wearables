@@ -1,7 +1,6 @@
 import json
 import uuid
 from logging import getLogger
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -9,39 +8,12 @@ from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_up
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.api_utils import inline_schema_defs
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 
 router = APIRouter()
 logger = getLogger(__name__)
-
-
-def _inline_defs(schema: dict[str, Any]) -> dict[str, Any]:
-    """Inline local ``#/$defs/`` references produced by ``model_json_schema()``.
-
-    ``openapi_extra`` is embedded verbatim into the OpenAPI document, where local
-    ``$defs`` refs don't resolve (validators look them up at the document root).
-    """
-    defs: dict[str, Any] = schema.get("$defs", {})
-
-    def resolve(node: Any, seen: tuple[str, ...]) -> Any:
-        if isinstance(node, dict):
-            ref = node.get("$ref")
-            if isinstance(ref, str) and ref.startswith("#/$defs/"):
-                name = ref.removeprefix("#/$defs/")
-                if name in seen:
-                    raise ValueError(f"Circular $defs reference: {name}")
-                if name not in defs:
-                    raise ValueError(f"Unknown $defs reference: {name}")
-                target = resolve(defs[name], (*seen, name))
-                siblings = {key: resolve(value, seen) for key, value in node.items() if key != "$ref"}
-                return {**target, **siblings}
-            return {key: resolve(value, seen) for key, value in node.items() if key != "$defs"}
-        if isinstance(node, list):
-            return [resolve(item, seen) for item in node]
-        return node
-
-    return resolve(schema, ())
 
 
 @router.post(
@@ -51,7 +23,7 @@ def _inline_defs(schema: dict[str, Any]) -> dict[str, Any]:
     openapi_extra={
         "requestBody": {
             "required": True,
-            "content": {"application/json": {"schema": _inline_defs(SyncRequest.model_json_schema())}},
+            "content": {"application/json": {"schema": inline_schema_defs(SyncRequest.model_json_schema())}},
         }
     },
 )
