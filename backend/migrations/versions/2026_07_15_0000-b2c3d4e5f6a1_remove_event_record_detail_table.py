@@ -2,8 +2,8 @@
 
 Removes the event_record_detail middle table from the joined-table polymorphic
 inheritance chain. Each concrete detail table (sleep_details, workout_details,
-menstrual_cycle_details) now has a direct FK to event_record.id and carries
-its own detail_type discriminator column.
+menstrual_cycle_details) now has a direct FK to event_record.id.
+detail_type is omitted — it is redundant since the Python class encodes the type.
 
 Revision ID: b2c3d4e5f6a1
 Revises: 7d6921a86914
@@ -22,18 +22,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("sleep_details", sa.Column("detail_type", sa.String(32), nullable=True))
-    op.add_column("workout_details", sa.Column("detail_type", sa.String(32), nullable=True))
-    op.add_column("menstrual_cycle_details", sa.Column("detail_type", sa.String(32), nullable=True))
-
-    op.execute("UPDATE sleep_details SET detail_type = 'sleep'")
-    op.execute("UPDATE workout_details SET detail_type = 'workout'")
-    op.execute("UPDATE menstrual_cycle_details SET detail_type = 'menstrual_cycle'")
-
-    op.alter_column("sleep_details", "detail_type", nullable=False)
-    op.alter_column("workout_details", "detail_type", nullable=False)
-    op.alter_column("menstrual_cycle_details", "detail_type", nullable=False)
-
     # Drop the old FK from each child table pointing to event_record_detail,
     #    and add a new FK pointing directly to event_record.id.
     #    record_id values are identical in both tables (joined-table inheritance
@@ -65,6 +53,12 @@ def upgrade() -> None:
             )
 
     op.drop_table("event_record_detail")
+
+    for table_name in ("sleep_details", "workout_details", "menstrual_cycle_details"):
+        op.add_column(
+            table_name,
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        )
 
 
 def downgrade() -> None:
@@ -109,6 +103,13 @@ def downgrade() -> None:
                 ondelete="CASCADE",
             )
 
-    op.drop_column("sleep_details", "detail_type")
-    op.drop_column("workout_details", "detail_type")
-    op.drop_column("menstrual_cycle_details", "detail_type")
+    for table_name in ("sleep_details", "workout_details", "menstrual_cycle_details"):
+        op.drop_column(table_name, "created_at")
+
+    op.add_column("sleep_details", sa.Column("detail_type", sa.String(32), nullable=True))
+    op.add_column("workout_details", sa.Column("detail_type", sa.String(32), nullable=True))
+    op.add_column("menstrual_cycle_details", sa.Column("detail_type", sa.String(32), nullable=True))
+
+    op.execute("UPDATE sleep_details SET detail_type = 'sleep'")
+    op.execute("UPDATE workout_details SET detail_type = 'workout'")
+    op.execute("UPDATE menstrual_cycle_details SET detail_type = 'menstrual_cycle'")

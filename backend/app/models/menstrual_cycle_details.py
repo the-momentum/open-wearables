@@ -13,7 +13,6 @@ class MenstrualCycleDetails(EventRecordDetail):
     __tablename__ = "menstrual_cycle_details"
 
     record_id: Mapped[FKEventRecord]
-    detail_type: Mapped[str_32]
 
     day_in_cycle: Mapped[int | None]
     current_phase: Mapped[int | None]

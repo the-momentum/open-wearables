@@ -1,7 +1,7 @@
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3, str_32
+from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3
 
 from .event_record_detail import EventRecordDetail
 
@@ -32,7 +32,6 @@ class WorkoutDetails(EventRecordDetail):
     )
 
     record_id: Mapped[FKEventRecord]
-    detail_type: Mapped[str_32]
 
     heart_rate_min: Mapped[int | None]
     heart_rate_max: Mapped[int | None]

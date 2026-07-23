@@ -32,7 +32,6 @@ class EventRecordDetailRepository(
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
         """Construct the polymorphic ORM object without touching the session."""
         creation_data = creator.model_dump(exclude_none=True)
-        creation_data["detail_type"] = detail_type
         match detail_type:
             case "workout":
                 return cast(EventRecordDetail, WorkoutDetails(**creation_data))
@@ -115,7 +114,6 @@ class EventRecordDetailRepository(
             data = creator.model_dump()
             if detail_type == "sleep" and data.get("sleep_stages"):
                 data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
-            data["detail_type"] = detail_type
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)
 

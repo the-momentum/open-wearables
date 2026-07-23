@@ -27,8 +27,13 @@ class TestEventRecordDetailRepository:
 
     @pytest.fixture
     def detail_repo(self) -> EventRecordDetailRepository:
-        """Create EventRecordDetailRepository instance."""
+        """Create EventRecordDetailRepository instance configured for WorkoutDetails."""
         return EventRecordDetailRepository(WorkoutDetails)
+
+    @pytest.fixture
+    def sleep_detail_repo(self) -> EventRecordDetailRepository:
+        """Create EventRecordDetailRepository instance configured for SleepDetails."""
+        return EventRecordDetailRepository(SleepDetails)
 
     def test_create_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating workout details."""
@@ -52,7 +57,6 @@ class TestEventRecordDetailRepository:
         assert result.heart_rate_max == 175
         assert result.heart_rate_min == 95
         assert result.steps_count == 8500
-        assert result.detail_type == "workout"
 
     def test_create_sleep_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating sleep details."""
@@ -78,7 +82,6 @@ class TestEventRecordDetailRepository:
         assert result.sleep_light_minutes == 240
         assert result.sleep_rem_minutes == 90
         assert result.sleep_awake_minutes == 30
-        assert result.detail_type == "sleep"
 
     def test_create_with_minimal_fields(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating workout details with only required fields."""
@@ -118,13 +121,13 @@ class TestEventRecordDetailRepository:
         assert result.record_id == workout_details.record_id
         assert isinstance(result, WorkoutDetails)
 
-    def test_get_by_record_id_sleep(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
+    def test_get_by_record_id_sleep(self, db: Session, sleep_detail_repo: EventRecordDetailRepository) -> None:
         """Test getting sleep details by record_id."""
         # Arrange
         sleep_details = SleepDetailsFactory()
 
         # Act
-        result = detail_repo.get_by_record_id(db, sleep_details.record_id)
+        result = sleep_detail_repo.get_by_record_id(db, sleep_details.record_id)
 
         # Assert
         assert result is not None
@@ -164,8 +167,8 @@ class TestEventRecordDetailRepository:
         for _ in range(5):
             WorkoutDetailsFactory()
 
-        page1 = repo.get_all(db, filters={}, offset=0, limit=2, sort_by=None)
-        page2 = repo.get_all(db, filters={}, offset=2, limit=2, sort_by=None)
+        page1 = repo.get_all(db, filters={}, offset=0, limit=2, sort_by="record_id")
+        page2 = repo.get_all(db, filters={}, offset=2, limit=2, sort_by="record_id")
 
         assert len(page1) == 2
         assert len(page2) == 2
@@ -225,23 +228,26 @@ class TestEventRecordDetailRepository:
         deleted = detail_repo.get_by_record_id(db, record_id)
         assert deleted is None
 
-    def test_polymorphic_inheritance_behavior(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
+    def test_polymorphic_inheritance_behavior(
+        self,
+        db: Session,
+        detail_repo: EventRecordDetailRepository,
+        sleep_detail_repo: EventRecordDetailRepository,
+    ) -> None:
         """Test that polymorphic inheritance correctly returns specific detail types."""
         # Arrange
         workout_details = WorkoutDetailsFactory(heart_rate_avg=Decimal("150.0"))
         sleep_details = SleepDetailsFactory(sleep_total_duration_minutes=420)
 
-        # Act - Query base class but get specific types
+        # Act - each repo queries its own table
         workout_result = detail_repo.get_by_record_id(db, workout_details.record_id)
-        sleep_result = detail_repo.get_by_record_id(db, sleep_details.record_id)
+        sleep_result = sleep_detail_repo.get_by_record_id(db, sleep_details.record_id)
 
-        # Assert - Should return specific types, not base class
+        # Assert - should return specific types, not base class
         assert isinstance(workout_result, WorkoutDetails)
         assert not isinstance(workout_result, SleepDetails)
-        assert workout_result.detail_type == "workout"
         assert workout_result.heart_rate_avg == Decimal("150.0")
 
         assert isinstance(sleep_result, SleepDetails)
         assert not isinstance(sleep_result, WorkoutDetails)
-        assert sleep_result.detail_type == "sleep"
         assert sleep_result.sleep_total_duration_minutes == 420

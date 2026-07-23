@@ -1,7 +1,7 @@
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecord, json_binary, numeric_5_2, str_32
+from app.mappings import FKEventRecord, json_binary, numeric_5_2
 
 from .event_record_detail import EventRecordDetail
 
@@ -20,7 +20,6 @@ class SleepDetails(EventRecordDetail):
     )
 
     record_id: Mapped[FKEventRecord]
-    detail_type: Mapped[str_32]
 
     sleep_total_duration_minutes: Mapped[int | None]
     sleep_time_in_bed_minutes: Mapped[int | None]
