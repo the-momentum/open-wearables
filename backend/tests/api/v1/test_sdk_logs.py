@@ -173,30 +173,39 @@ class TestSDKLogsAuth:
         assert response.status_code == 403
 
 
-class TestSDKLogsValidation:
-    def test_empty_events_rejected(self, client: TestClient, db: Session) -> None:
+class TestSDKLogsRetainsMalformed:
+    """This endpoint is an observability sink: it stores any shape rather than
+    dropping diagnostics on a schema mismatch (empty/forward-versioned batches)."""
+
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_empty_events_stored(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
             headers={"X-Open-Wearables-API-Key": api_key.id},
             json={"sdkVersion": "1.0.0", "provider": "apple", "events": []},
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 202
+        mock_store.assert_called_once()
 
-    def test_unknown_event_type_rejected(self, client: TestClient, db: Session) -> None:
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_unknown_event_type_stored(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
             headers={"X-Open-Wearables-API-Key": api_key.id},
             json=_payload({"eventType": "something_unknown", "timestamp": "2026-04-09T10:00:00Z"}),
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 202
+        mock_store.assert_called_once()
 
-    def test_missing_sdk_version_rejected(self, client: TestClient, db: Session) -> None:
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_missing_sdk_version_stored(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
         response = client.post(
             _url(),
             headers={"X-Open-Wearables-API-Key": api_key.id},
             json={"provider": "apple", "events": [DEVICE_STATE_EVENT]},
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 202
+        mock_store.assert_called_once()

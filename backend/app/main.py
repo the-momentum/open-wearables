@@ -18,6 +18,7 @@ from app.middlewares import add_access_log_middleware, add_cors_middleware
 from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
+from app.utils.structured_logging import log_structured
 
 # Configure logging to use stdout instead of stderr
 # Some platforms convert stderr logs to level.error automatically, so we must use stdout
@@ -39,6 +40,8 @@ for _name in ("uvicorn", "uvicorn.error"):
 # pure noise (event-type sync, provider calls, webhook delivery). Keep warnings and errors.
 for _name in ("httpx", "httpcore"):
     logging.getLogger(_name).setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -86,6 +89,15 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
             content={"detail": "Incorrect email or password"},
             headers={"WWW-Authenticate": "Bearer"},
         )
+    log_structured(
+        logger,
+        "warning",
+        "Request validation failed",
+        action="request_validation_error",
+        method=request.method,
+        path=request.url.path,
+        errors=[{"loc": e.get("loc"), "msg": e.get("msg"), "type": e.get("type")} for e in exc.errors()],
+    )
     raise handle_exception(exc, "")
 
 
