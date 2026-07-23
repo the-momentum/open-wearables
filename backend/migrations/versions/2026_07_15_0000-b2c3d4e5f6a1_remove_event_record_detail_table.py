@@ -62,10 +62,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # created_at is restored on the parent (it lived there before this migration,
+    # added by 4bd01c907050) so a further downgrade through that revision finds it.
     op.create_table(
         "event_record_detail",
         sa.Column("record_id", sa.UUID(), nullable=False),
         sa.Column("detail_type", sa.String(32), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.ForeignKeyConstraint(["record_id"], ["event_record.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("record_id"),
     )
@@ -76,8 +79,8 @@ def downgrade() -> None:
         ("menstrual_cycle_details", "menstrual_cycle"),
     ]:
         op.execute(
-            f"INSERT INTO event_record_detail (record_id, detail_type) "
-            f"SELECT record_id, '{dtype}' FROM {table} ON CONFLICT (record_id) DO NOTHING"
+            f"INSERT INTO event_record_detail (record_id, detail_type, created_at) "
+            f"SELECT record_id, '{dtype}', created_at FROM {table} ON CONFLICT (record_id) DO NOTHING"
         )
 
     conn = op.get_bind()
@@ -103,13 +106,7 @@ def downgrade() -> None:
                 ondelete="CASCADE",
             )
 
+    # Children never had a detail_type column before this migration (it lived only
+    # on the parent), so downgrade only removes the created_at we added to them.
     for table_name in ("sleep_details", "workout_details", "menstrual_cycle_details"):
         op.drop_column(table_name, "created_at")
-
-    op.add_column("sleep_details", sa.Column("detail_type", sa.String(32), nullable=True))
-    op.add_column("workout_details", sa.Column("detail_type", sa.String(32), nullable=True))
-    op.add_column("menstrual_cycle_details", sa.Column("detail_type", sa.String(32), nullable=True))
-
-    op.execute("UPDATE sleep_details SET detail_type = 'sleep'")
-    op.execute("UPDATE workout_details SET detail_type = 'workout'")
-    op.execute("UPDATE menstrual_cycle_details SET detail_type = 'menstrual_cycle'")
