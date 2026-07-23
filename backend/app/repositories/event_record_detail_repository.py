@@ -1,4 +1,4 @@
-from typing import Any, Literal, cast
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import Table, update
@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.models import (
+    DETAIL_MODELS,
+    DetailType,
     EventRecordDetail,
-    MenstrualCycleDetails,
-    SleepDetails,
     WorkoutDetails,
 )
 from app.repositories.repositories import CrudRepository
@@ -20,8 +20,6 @@ from app.schemas.model_crud.activities import (
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
-DetailType = Literal["workout", "sleep", "menstrual_cycle"]
-
 
 class EventRecordDetailRepository(
     CrudRepository[EventRecordDetail, EventRecordDetailCreate, EventRecordDetailUpdate],
@@ -30,21 +28,16 @@ class EventRecordDetailRepository(
         super().__init__(model)
 
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
-        """Construct the polymorphic ORM object without touching the session."""
+        """Construct the concrete detail ORM object without touching the session."""
+        model = DETAIL_MODELS.get(detail_type)
+        if model is None:
+            raise ValueError(f"Unknown detail type: {detail_type}")
         creation_data = creator.model_dump(exclude_none=True)
-        match detail_type:
-            case "workout":
-                return cast(EventRecordDetail, WorkoutDetails(**creation_data))
-            case "sleep":
-                # sleep_stages contains datetime fields that JSONB cannot serialize directly;
-                # use Pydantic's JSON mode to convert datetimes to ISO strings.
-                if creator.sleep_stages:
-                    creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
-                return cast(EventRecordDetail, SleepDetails(**creation_data))
-            case "menstrual_cycle":
-                return cast(EventRecordDetail, MenstrualCycleDetails(**creation_data))
-            case _:
-                raise ValueError(f"Unknown detail type: {detail_type}")
+        if detail_type == "sleep" and creator.sleep_stages:
+            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
+            # use Pydantic's JSON mode to convert datetimes to ISO strings.
+            creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
+        return model(**creation_data)
 
     @handle_exceptions
     @handle_duplicates
@@ -81,7 +74,7 @@ class EventRecordDetailRepository(
             return detail
         except IntegrityError:
             nested.rollback()
-            if existing := self.get_by_record_id(db_session, creator.record_id):
+            if existing := self.get_by_record_id(db_session, creator.record_id, detail_type):
                 return existing
             raise
 
@@ -92,79 +85,67 @@ class EventRecordDetailRepository(
         creators: list[EventRecordDetailCreate],
         detail_type: DetailType = "workout",
     ) -> None:
-        """Bulk create detail records using batch insert.
-
-        For joined table inheritance, we need to insert into both the base table
-        (event_record_detail) and the child table (workout_details/sleep_details).
-        """
+        """Bulk create detail records using batch insert."""
         if not creators:
             return
 
-        # Build values for base table (event_record_detail)
-        base_values = []
-        for creator in creators:
-            base_values.append(
-                {
-                    "record_id": creator.record_id,
-                    "detail_type": detail_type,
-                }
-            )
+        model = DETAIL_MODELS.get(detail_type)
+        if model is None:
+            raise ValueError(f"Unknown detail type: {detail_type}")
 
-        if not base_values:
-            return
-
-        # Use __table__ for raw INSERT to avoid polymorphic mapper issues
-        base_table = cast(Table, EventRecordDetail.__table__)
-        base_stmt = insert(base_table).values(base_values).on_conflict_do_nothing(index_elements=["record_id"])
-        db_session.execute(base_stmt)
-
-        # Use appropriate model based on detail_type
-        match detail_type:
-            case "workout":
-                model = WorkoutDetails
-            case "sleep":
-                model = SleepDetails
-            case "menstrual_cycle":
-                model = MenstrualCycleDetails
-            case _:
-                raise ValueError(f"Unknown detail type: {detail_type}")
-
-        # Get columns from the actual child TABLE (not mapper which includes inherited columns)
         child_table = cast(Table, model.__table__)
         valid_columns = set(child_table.columns.keys())
 
-        # Build values for child table (workout_details or sleep_details)
         child_values = []
         for creator in creators:
             data = creator.model_dump()
-            # Serialize sleep_stages datetimes to ISO strings for JSONB storage
             if detail_type == "sleep" and data.get("sleep_stages"):
                 data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
-            # Filter to keep only columns present in the target model
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)
 
         if not child_values:
             return
 
-        # Use __table__ for raw INSERT to avoid polymorphic mapper issues
         child_stmt = insert(child_table).values(child_values)
-
-        # Upsert: Update fields if record exists (fixes NULLs if record was created empty)
-        update_dict = {col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name != "record_id"}
-
+        # record_id is the conflict key; created_at is an immutable audit column and
+        # must not be reset to now() when an existing row is re-synced.
+        immutable_on_upsert = {"record_id", "created_at"}
+        update_dict = {
+            col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name not in immutable_on_upsert
+        }
         child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
         db_session.execute(child_stmt)
         # NOTE: Caller should commit - allows batching multiple operations
 
-    def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:
-        """Get detail by its associated event record ID."""
-        return db_session.query(EventRecordDetail).filter(EventRecordDetail.record_id == record_id).one_or_none()
+    def get_by_record_id(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        detail_type: DetailType | None = None,
+    ) -> EventRecordDetail | None:
+        """Get detail by its associated event record ID.
 
-    def delete_by_record_id(self, db_session: DbSession, record_id: UUID) -> None:
+        Pass detail_type when known to avoid querying all three tables.
+        """
+        if detail_type is not None:
+            model = DETAIL_MODELS[detail_type]
+            return db_session.query(model).filter(model.record_id == record_id).one_or_none()
+        for model in DETAIL_MODELS.values():
+            result = db_session.query(model).filter(model.record_id == record_id).one_or_none()
+            if result is not None:
+                return result
+        return None
+
+    def delete_by_record_id(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        detail_type: DetailType | None = None,
+    ) -> None:
         """Delete the detail row for a given record, flushing immediately so the
         slot is free for a replacement insert in the same transaction."""
-        detail = self.get_by_record_id(db_session, record_id)
+        detail = self.get_by_record_id(db_session, record_id, detail_type)
         if detail is not None:
             db_session.delete(detail)
             db_session.flush()

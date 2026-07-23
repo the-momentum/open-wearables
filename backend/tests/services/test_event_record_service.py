@@ -500,7 +500,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        d = result.detail
+        d = result.sleep_detail
         assert d.sleep_deep_minutes == 90  # 0 + 90
         assert d.sleep_light_minutes == 208  # 8 + 200
         assert d.sleep_rem_minutes == 80  # 0 + 80
@@ -534,7 +534,7 @@ class TestCreateOrMergeSleep:
         detail = self._detail(record.id, in_bed=430, efficiency="80.00")
         # Existing: 27% efficiency, 30 min in bed
         # existing detail created without efficiency — add manually
-        existing.detail.sleep_efficiency_score = Decimal("27.00")
+        existing.sleep_detail.sleep_efficiency_score = Decimal("27.00")
         db.flush()
 
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
@@ -542,7 +542,7 @@ class TestCreateOrMergeSleep:
         db.refresh(result)
         # (27*30 + 80*430) / 460 = (810 + 34400) / 460 = 35210 / 460 ≈ 76.54
         expected = round((27 * 30 + 80 * 430) / 460, 2)
-        assert result.detail.sleep_efficiency_score == Decimal(str(expected))
+        assert result.sleep_detail.sleep_efficiency_score == Decimal(str(expected))
 
     def test_old_record_deleted_after_merge(self, db: Session) -> None:
         """The adjacent record is deleted after merging."""
@@ -633,7 +633,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        assert result.detail.is_nap is False
+        assert result.sleep_detail.is_nap is False
 
     def test_is_nap_true_when_both_are_naps(self, db: Session) -> None:
         """Merged session is a nap when both sessions are naps."""
@@ -655,7 +655,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        assert result.detail.is_nap is True
+        assert result.sleep_detail.is_nap is True
 
     def test_same_user_different_source_not_merged(self, db: Session) -> None:
         """Sessions from different data sources for the same user are never merged."""
@@ -727,7 +727,7 @@ class TestCreateOrMergeSleep:
         assert result.end_datetime == self._dt(8, 0)
         # Detail must be present — no silent data loss
         db.refresh(result)
-        assert result.detail is not None
+        assert result.sleep_detail is not None
 
     def test_merge_concatenates_sleep_stages(self, db: Session) -> None:
         """Sleep stages from both sessions are concatenated and sorted."""
@@ -763,7 +763,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        stages = result.detail.sleep_stages
+        stages = result.sleep_detail.sleep_stages
         assert stages is not None
         assert len(stages) == 2
         # Stages should be sorted by start_time (early first)

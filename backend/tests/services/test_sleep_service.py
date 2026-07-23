@@ -799,8 +799,8 @@ class TestHistoricalBulkUploadMerging:
         mock_adjacent.id = uuid4()
         mock_adjacent.start_datetime = _dt("2026-03-22T23:00:00Z")
         mock_adjacent.end_datetime = _dt("2026-03-23T01:00:00Z")
-        mock_adjacent.detail = MagicMock()
-        mock_adjacent.detail.sleep_stages = [
+        mock_adjacent.sleep_detail = MagicMock()
+        mock_adjacent.sleep_detail.sleep_stages = [
             {"stage": "light", "start_time": "2026-03-22T23:00:00+00:00", "end_time": "2026-03-22T23:45:00+00:00"},
             {"stage": "deep", "start_time": "2026-03-22T23:45:00+00:00", "end_time": "2026-03-23T01:00:00+00:00"},
         ]

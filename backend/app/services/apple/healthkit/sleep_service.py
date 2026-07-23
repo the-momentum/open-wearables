@@ -462,8 +462,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # Deserialise the stored stages back to SleepStateStage so we can feed
         # them into _calculate_final_metrics together with the new stages.
         existing_state_stages: list[SleepStateStage] = []
-        if adjacent.detail and adjacent.detail.sleep_stages:
-            for s in adjacent.detail.sleep_stages:
+        if adjacent.sleep_detail and adjacent.sleep_detail.sleep_stages:
+            for s in adjacent.sleep_detail.sleep_stages:
                 with contextlib.suppress(Exception):
                     existing_state_stages.append(SleepStateStage.model_validate(s))
 
