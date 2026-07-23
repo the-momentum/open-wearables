@@ -1,4 +1,4 @@
-from typing import Any, Literal, cast
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import Table, update
@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.models import (
+    DETAIL_MODELS,
+    DetailType,
     EventRecordDetail,
-    MenstrualCycleDetails,
-    SleepDetails,
     WorkoutDetails,
 )
 from app.repositories.repositories import CrudRepository
@@ -20,8 +20,6 @@ from app.schemas.model_crud.activities import (
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
-DetailType = Literal["workout", "sleep", "menstrual_cycle"]
-
 
 class EventRecordDetailRepository(
     CrudRepository[EventRecordDetail, EventRecordDetailCreate, EventRecordDetailUpdate],
@@ -30,21 +28,16 @@ class EventRecordDetailRepository(
         super().__init__(model)
 
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
-        """Construct the polymorphic ORM object without touching the session."""
+        """Construct the concrete detail ORM object without touching the session."""
+        model = DETAIL_MODELS.get(detail_type)
+        if model is None:
+            raise ValueError(f"Unknown detail type: {detail_type}")
         creation_data = creator.model_dump(exclude_none=True)
-        match detail_type:
-            case "workout":
-                return cast(EventRecordDetail, WorkoutDetails(**creation_data))
-            case "sleep":
-                # sleep_stages contains datetime fields that JSONB cannot serialize directly;
-                # use Pydantic's JSON mode to convert datetimes to ISO strings.
-                if creator.sleep_stages:
-                    creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
-                return cast(EventRecordDetail, SleepDetails(**creation_data))
-            case "menstrual_cycle":
-                return cast(EventRecordDetail, MenstrualCycleDetails(**creation_data))
-            case _:
-                raise ValueError(f"Unknown detail type: {detail_type}")
+        if detail_type == "sleep" and creator.sleep_stages:
+            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
+            # use Pydantic's JSON mode to convert datetimes to ISO strings.
+            creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
+        return model(**creation_data)
 
     @handle_exceptions
     @handle_duplicates
@@ -96,15 +89,9 @@ class EventRecordDetailRepository(
         if not creators:
             return
 
-        match detail_type:
-            case "workout":
-                model = WorkoutDetails
-            case "sleep":
-                model = SleepDetails
-            case "menstrual_cycle":
-                model = MenstrualCycleDetails
-            case _:
-                raise ValueError(f"Unknown detail type: {detail_type}")
+        model = DETAIL_MODELS.get(detail_type)
+        if model is None:
+            raise ValueError(f"Unknown detail type: {detail_type}")
 
         child_table = cast(Table, model.__table__)
         valid_columns = set(child_table.columns.keys())
@@ -121,7 +108,12 @@ class EventRecordDetailRepository(
             return
 
         child_stmt = insert(child_table).values(child_values)
-        update_dict = {col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name != "record_id"}
+        # record_id is the conflict key; created_at is an immutable audit column and
+        # must not be reset to now() when an existing row is re-synced.
+        immutable_on_upsert = {"record_id", "created_at"}
+        update_dict = {
+            col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name not in immutable_on_upsert
+        }
         child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
         db_session.execute(child_stmt)
         # NOTE: Caller should commit - allows batching multiple operations
@@ -137,13 +129,9 @@ class EventRecordDetailRepository(
         Pass detail_type when known to avoid querying all three tables.
         """
         if detail_type is not None:
-            model: type[EventRecordDetail] = {
-                "workout": WorkoutDetails,
-                "sleep": SleepDetails,
-                "menstrual_cycle": MenstrualCycleDetails,
-            }[detail_type]
+            model = DETAIL_MODELS[detail_type]
             return db_session.query(model).filter(model.record_id == record_id).one_or_none()
-        for model in (WorkoutDetails, SleepDetails, MenstrualCycleDetails):
+        for model in DETAIL_MODELS.values():
             result = db_session.query(model).filter(model.record_id == record_id).one_or_none()
             if result is not None:
                 return result

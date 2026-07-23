@@ -1,9 +1,11 @@
+from typing import ClassVar
+
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.mappings import FKEventRecord, json_binary, numeric_5_2
 
-from .event_record_detail import EventRecordDetail
+from .event_record_detail import DetailType, EventRecordDetail
 
 
 class SleepDetails(EventRecordDetail):
@@ -18,6 +20,8 @@ class SleepDetails(EventRecordDetail):
             postgresql_ops={"sleep_stages": "jsonb_path_ops"},
         ),
     )
+
+    detail_type: ClassVar[DetailType] = "sleep"
 
     record_id: Mapped[FKEventRecord]
 

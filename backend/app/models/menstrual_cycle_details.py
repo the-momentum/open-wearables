@@ -1,16 +1,19 @@
 from datetime import datetime
+from typing import ClassVar
 
 from sqlalchemy.orm import Mapped
 
 from app.mappings import FKEventRecord, json_binary, str_32
 
-from .event_record_detail import EventRecordDetail
+from .event_record_detail import DetailType, EventRecordDetail
 
 
 class MenstrualCycleDetails(EventRecordDetail):
     """Per-cycle aggregates from Garmin MCT and other providers."""
 
     __tablename__ = "menstrual_cycle_details"
+
+    detail_type: ClassVar[DetailType] = "menstrual_cycle"
 
     record_id: Mapped[FKEventRecord]
 

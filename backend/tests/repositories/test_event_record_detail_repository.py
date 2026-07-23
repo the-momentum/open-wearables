@@ -11,12 +11,13 @@ Tests cover:
 """
 
 from decimal import Decimal
+from typing import get_args
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import SleepDetails, WorkoutDetails
+from app.models import DETAIL_MODELS, DetailType, EventRecordDetail, SleepDetails, WorkoutDetails
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.schemas.model_crud.activities import EventRecordDetailCreate, EventRecordDetailUpdate
 from tests.factories import EventRecordFactory, SleepDetailsFactory, WorkoutDetailsFactory
@@ -251,3 +252,20 @@ class TestEventRecordDetailRepository:
         assert isinstance(sleep_result, SleepDetails)
         assert not isinstance(sleep_result, WorkoutDetails)
         assert sleep_result.sleep_total_duration_minutes == 420
+
+
+class TestDetailTypeRegistry:
+    """Guard tests keeping the DetailType literal, the DETAIL_MODELS registry and
+    the model classes as a single source of truth. A new detail subtype only needs
+    a model (with its ``detail_type`` ClassVar) plus a DetailType member; these
+    tests fail if the two ever drift apart."""
+
+    def test_registry_matches_detail_type_literal(self) -> None:
+        assert set(DETAIL_MODELS) == set(get_args(DetailType))
+
+    def test_registry_covers_every_subclass(self) -> None:
+        assert set(DETAIL_MODELS.values()) == set(EventRecordDetail.__subclasses__())
+
+    def test_each_model_declares_matching_detail_type(self) -> None:
+        for detail_type, model in DETAIL_MODELS.items():
+            assert model.detail_type == detail_type

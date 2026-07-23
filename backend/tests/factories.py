@@ -522,7 +522,6 @@ class WorkoutDetailsFactory(BaseFactory):
     class Meta:
         model = WorkoutDetails
 
-    detail_type = "workout"
     heart_rate_avg = LazyFunction(lambda: Decimal("145.5"))
     heart_rate_max = 175
     heart_rate_min = 95
@@ -551,7 +550,6 @@ class SleepDetailsFactory(BaseFactory):
     class Meta:
         model = SleepDetails
 
-    detail_type = "sleep"
     sleep_total_duration_minutes = 480  # 8 hours
     sleep_deep_minutes = 120  # 2 hours
     sleep_light_minutes = 240  # 4 hours

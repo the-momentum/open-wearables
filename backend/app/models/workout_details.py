@@ -1,9 +1,11 @@
+from typing import ClassVar
+
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3
 
-from .event_record_detail import EventRecordDetail
+from .event_record_detail import DetailType, EventRecordDetail
 
 
 class WorkoutDetails(EventRecordDetail):
@@ -30,6 +32,8 @@ class WorkoutDetails(EventRecordDetail):
             postgresql_ops={"power_zones": "jsonb_path_ops"},
         ),
     )
+
+    detail_type: ClassVar[DetailType] = "workout"
 
     record_id: Mapped[FKEventRecord]
 
