@@ -44,6 +44,7 @@ from .renew_oura_webhooks_task import renew_oura_webhooks
 from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
 from .sync_vendor_data_task import sync_vendor_data
+from .telemetry_task import send_telemetry_ping
 from .webhook_push_task import process_webhook_push
 
 __all__ = [
@@ -77,6 +78,7 @@ __all__ = [
     "process_webhook_push",
     "register_provider_webhooks",
     "renew_oura_webhooks",
+    "send_telemetry_ping",
     # Outgoing webhooks
     "emit_webhook_event",
 ]
