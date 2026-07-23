@@ -12,7 +12,7 @@ from app.config import settings
 from app.models import ProviderSetting
 from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from app.services.telemetry_service import telemetry_service
-from tests.factories import UserConnectionFactory, UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, UserConnectionFactory, UserFactory
 
 FEATURE_KEYS = {
     "sentry_enabled",
@@ -56,7 +56,7 @@ class TestBuildPayload:
 
         payload = telemetry_service.build_payload(db, event="daily")
 
-        assert payload["schema_version"] == 1
+        assert payload["schema_version"] == 2
         assert payload["event"] == "daily"
         assert len(payload["instance_id"]) == 32
         assert payload["app_version"]
@@ -64,6 +64,7 @@ class TestBuildPayload:
         assert payload["sent_at"]
         assert payload["total_users"] == 2
         assert payload["active_connections"] == 1
+        assert payload["inactive_connections"] == 1
         assert payload["users_with_active_connection"] == 1
         assert payload["connections_by_provider"] == {"garmin": 1}
 
@@ -72,6 +73,21 @@ class TestBuildPayload:
         assert garmin["live_sync_mode"] == "webhook"
 
         assert set(payload["features"]) == FEATURE_KEYS
+
+    def test_event_counts_are_split_by_category(self, db: Session) -> None:
+        garmin_source = DataSourceFactory(provider="garmin")
+        oura_source = DataSourceFactory(provider="oura")
+        EventRecordFactory(data_source=garmin_source, category="workout")
+        EventRecordFactory(data_source=garmin_source, category="sleep")
+        EventRecordFactory(data_source=oura_source, category="sleep")
+        EventRecordFactory(data_source=oura_source, category="menstrual_cycle")
+        db.flush()
+
+        payload = telemetry_service.build_payload(db, event="daily")
+
+        assert payload["workouts_by_provider"] == {"garmin": 1}
+        assert payload["sleep_sessions_by_provider"] == {"garmin": 1, "oura": 1}
+        assert payload["menstrual_cycles_by_provider"] == {"oura": 1}
 
     def test_payload_is_json_serializable_and_contains_no_pii(self, db: Session) -> None:
         user = UserFactory(email="jane.doe@example.com", first_name="Jane", last_name="Doe")

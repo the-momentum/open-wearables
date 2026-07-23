@@ -27,7 +27,7 @@ aggregate count or a configuration flag:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "instance_id": "f11594b65f9242398c31fc3c41adb64a",
   "event": "daily",
   "sent_at": "2026-07-23T04:12:00+00:00",
@@ -40,9 +40,12 @@ aggregate count or a configuration flag:
   "total_users": 42,
   "users_with_active_connection": 30,
   "active_connections": 57,
+  "inactive_connections": 4,
   "connections_by_provider": { "garmin": 20, "oura": 15 },
   "data_points_by_provider": { "garmin": 1284932, "oura": 402113 },
   "workouts_by_provider": { "garmin": 2101, "oura": 118 },
+  "sleep_sessions_by_provider": { "garmin": 1730, "oura": 96 },
+  "menstrual_cycles_by_provider": { "oura": 12 },
   "providers": [
     { "provider": "garmin", "is_enabled": true, "live_sync_mode": "webhook", "data_granularity": null }
   ],

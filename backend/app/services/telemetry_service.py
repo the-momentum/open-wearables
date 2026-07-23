@@ -31,7 +31,7 @@ from app.schemas.auth import ConnectionStatus
 
 logger = getLogger(__name__)
 
-TELEMETRY_SCHEMA_VERSION = 1
+TELEMETRY_SCHEMA_VERSION = 2
 SEND_TIMEOUT_SECONDS = 5.0
 
 
@@ -89,9 +89,12 @@ class TelemetryService:
                 select(func.count(distinct(UserConnection.user_id))).where(active)
             ),
             "active_connections": sum(connections_by_provider.values()),
+            "inactive_connections": db.scalar(select(func.count()).select_from(UserConnection).where(~active)),
             "connections_by_provider": connections_by_provider,
             "data_points_by_provider": self._count_by_provider(db, DataPointSeries),
-            "workouts_by_provider": self._count_by_provider(db, EventRecord),
+            "workouts_by_provider": self._count_by_provider(db, EventRecord, category="workout"),
+            "sleep_sessions_by_provider": self._count_by_provider(db, EventRecord, category="sleep"),
+            "menstrual_cycles_by_provider": self._count_by_provider(db, EventRecord, category="menstrual_cycle"),
             "providers": [
                 {
                     "provider": provider_setting.provider,
@@ -149,13 +152,20 @@ class TelemetryService:
         return datetime.now(timezone.utc) - last_sent_at >= timedelta(seconds=interval_seconds)
 
     @staticmethod
-    def _count_by_provider(db: Session, model: type[DataPointSeries] | type[EventRecord]) -> dict:
-        rows = db.execute(
+    def _count_by_provider(
+        db: Session,
+        model: type[DataPointSeries] | type[EventRecord],
+        category: str | None = None,
+    ) -> dict:
+        query = (
             select(DataSource.provider, func.count())
             .select_from(model)
             .join(DataSource, model.data_source_id == DataSource.id)
             .group_by(DataSource.provider)
-        ).all()
+        )
+        if category is not None:
+            query = query.where(EventRecord.category == category)
+        rows = db.execute(query).all()
         return {provider.value if hasattr(provider, "value") else provider: count for provider, count in rows}
 
 
