@@ -47,6 +47,10 @@ class Settings(BaseSettings):
 
     # None → derived in derive_access_log_level (prod: errors only, else: all)
     access_log_level: AccessLogLevel | None = None
+    # Include the 4xx response body the client received in the access log.
+    log_error_response_body: bool = False
+    log_error_response_body_max_bytes: int = 8192  # truncate a logged body
+    log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min
 
     # DATABASE SETTINGS
     db_host: str = "db"
