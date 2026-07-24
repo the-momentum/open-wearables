@@ -1,5 +1,6 @@
 """Tests for SDK logs endpoint."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
@@ -180,32 +181,38 @@ class TestSDKLogsRetainsMalformed:
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_empty_events_stored(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
+        payload = {"sdkVersion": "1.0.0", "provider": "apple", "events": []}
         response = client.post(
             _url(),
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            json={"sdkVersion": "1.0.0", "provider": "apple", "events": []},
+            json=payload,
         )
         assert response.status_code == 202
         mock_store.assert_called_once()
+        assert mock_store.call_args.kwargs["payload"] == json.dumps(payload)
 
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_unknown_event_type_stored(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
+        payload = _payload({"eventType": "something_unknown", "timestamp": "2026-04-09T10:00:00Z"})
         response = client.post(
             _url(),
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            json=_payload({"eventType": "something_unknown", "timestamp": "2026-04-09T10:00:00Z"}),
+            json=payload,
         )
         assert response.status_code == 202
         mock_store.assert_called_once()
+        assert mock_store.call_args.kwargs["payload"] == json.dumps(payload)
 
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_missing_sdk_version_stored(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
+        payload = {"provider": "apple", "events": [DEVICE_STATE_EVENT]}
         response = client.post(
             _url(),
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            json={"provider": "apple", "events": [DEVICE_STATE_EVENT]},
+            json=payload,
         )
         assert response.status_code == 202
         mock_store.assert_called_once()
+        assert mock_store.call_args.kwargs["payload"] == json.dumps(payload)

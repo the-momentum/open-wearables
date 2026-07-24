@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
@@ -92,6 +94,17 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 @api.exception_handler(DatetimeParseError)
 async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
     raise handle_exception(exc, "")
+
+
+@api.exception_handler(StarletteHTTPException)
+async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
+    # Relay the client-facing detail via request.state (shared ASGI scope survives the
+    # BaseHTTPMiddleware boundary) so the access log can add it to the http_request line
+    # without reading the response stream. Every 4xx — including validation errors
+    # re-dispatched through handle_exception — passes through here.
+    if settings.log_error_response_body and 400 <= exc.status_code < 500:
+        request.state.error_response_body = str(exc.detail)[: settings.log_error_response_body_max_bytes]
+    return await http_exception_handler(request, exc)
 
 
 api.include_router(head_router)
