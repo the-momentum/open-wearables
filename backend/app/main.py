@@ -79,13 +79,23 @@ async def root() -> dict[str, str]:
     return {"message": "Server is running!"}
 
 
+def _capture_error_body(request: Request, status_code: int, detail: object) -> None:
+    """Stash a 4xx response body on request.state for the access log (flag-gated, byte-capped)."""
+    if settings.log_error_response_body and 400 <= status_code < 500:
+        # truncate on the byte limit; errors="ignore" drops a partial codepoint at the cut
+        truncated = str(detail).encode("utf-8")[: settings.log_error_response_body_max_bytes]
+        request.state.error_response_body = truncated.decode("utf-8", errors="ignore")
+
+
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
     if request.url.path.endswith("/auth/login"):
+        detail = "Incorrect email or password"
+        _capture_error_body(request, status.HTTP_401_UNAUTHORIZED, detail)
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Incorrect email or password"},
+            content={"detail": detail},
             headers={"WWW-Authenticate": "Bearer"},
         )
     raise handle_exception(exc, "")
@@ -98,10 +108,8 @@ async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) 
 
 @api.exception_handler(StarletteHTTPException)
 async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
-    # Stash the 4xx detail on request.state for the access log (shared scope survives the
-    # middleware boundary), then defer to the default handler.
-    if settings.log_error_response_body and 400 <= exc.status_code < 500:
-        request.state.error_response_body = str(exc.detail)[: settings.log_error_response_body_max_bytes]
+    # request.state survives the middleware boundary, so the access log can read it.
+    _capture_error_body(request, exc.status_code, exc.detail)
     return await http_exception_handler(request, exc)
 
 
