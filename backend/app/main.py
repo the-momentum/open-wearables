@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
@@ -77,13 +79,23 @@ async def root() -> dict[str, str]:
     return {"message": "Server is running!"}
 
 
+def _capture_error_body(request: Request, status_code: int, detail: object) -> None:
+    """Stash a 4xx response body on request.state for the access log (flag-gated, byte-capped)."""
+    if settings.log_error_response_body and 400 <= status_code < 500:
+        # truncate on the byte limit; errors="ignore" drops a partial codepoint at the cut
+        truncated = str(detail).encode("utf-8")[: settings.log_error_response_body_max_bytes]
+        request.state.error_response_body = truncated.decode("utf-8", errors="ignore")
+
+
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
     if request.url.path.endswith("/auth/login"):
+        detail = "Incorrect email or password"
+        _capture_error_body(request, status.HTTP_401_UNAUTHORIZED, detail)
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Incorrect email or password"},
+            content={"detail": detail},
             headers={"WWW-Authenticate": "Bearer"},
         )
     raise handle_exception(exc, "")
@@ -92,6 +104,13 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 @api.exception_handler(DatetimeParseError)
 async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
     raise handle_exception(exc, "")
+
+
+@api.exception_handler(StarletteHTTPException)
+async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
+    # request.state survives the middleware boundary, so the access log can read it.
+    _capture_error_body(request, exc.status_code, exc.detail)
+    return await http_exception_handler(request, exc)
 
 
 api.include_router(head_router)
