@@ -82,13 +82,7 @@ Set one environment variable and restart:
 TELEMETRY_ENABLED=false
 ```
 
-Open Wearables also honors the [Console Do Not Track](https://consoledonottrack.com/) convention:
-
-```bash
-DO_NOT_TRACK=1
-```
-
-Either one fully disables telemetry: no scheduled task, no startup ping, no HTTP calls. When telemetry
+This fully disables telemetry: no scheduled task, no startup ping, no HTTP calls. When telemetry
 is enabled, the API logs a notice at startup so it is never running silently.
 
 ## Failure behavior

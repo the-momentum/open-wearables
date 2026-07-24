@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import warnings
 from datetime import timedelta
 from functools import lru_cache
@@ -247,7 +246,7 @@ class Settings(BaseSettings):
     # TELEMETRY SETTINGS
     # Anonymous usage telemetry: aggregate counts and config flags only, never
     # user data - see docs/dev-guides/telemetry.mdx for the full payload.
-    # Disable with TELEMETRY_ENABLED=false (or the standard DO_NOT_TRACK=1).
+    # Disable with TELEMETRY_ENABLED=false.
     telemetry_enabled: bool = True
     telemetry_endpoint_url: str = "https://telemetry.mntm.dev/api/v1/pings"
     # How often the beat due-check task runs; it only sends when a ping is due.
@@ -255,12 +254,6 @@ class Settings(BaseSettings):
     # Minimum time between "daily" pings / debounce window for "startup" pings.
     telemetry_send_interval_seconds: float = 86400.0
     telemetry_startup_debounce_seconds: float = 43200.0
-
-    @model_validator(mode="after")
-    def honor_do_not_track(self) -> "Settings":
-        if os.environ.get("DO_NOT_TRACK", "").strip().lower() in {"1", "true", "yes", "on"}:
-            self.telemetry_enabled = False
-        return self
 
     @model_validator(mode="after")
     def derive_access_log_level(self) -> "Settings":
