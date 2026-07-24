@@ -172,7 +172,7 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
             state = get_redis_client().get(key) or "pending"
             window_states[dt] = state  # ty:ignore[invalid-assignment]
             if state in summary[dt]:
-                summary[dt][state] += 1  # ty:ignore[invalid-argument-type]
+                summary[dt][state] += 1
         windows[str(w)] = window_states
 
     if current_window < total_windows:
