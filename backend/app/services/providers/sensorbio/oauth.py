@@ -17,6 +17,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
 
     use_pkce = False
     auth_method = AuthenticationMethod.BODY
+    use_http2 = True
 
     @property
     def endpoints(self) -> ProviderEndpoints:
@@ -39,11 +40,11 @@ class SensorBioOAuth(BaseOAuthTemplate):
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, Any]:
         """Fetches Sensor Bio user profile via /v1/user."""
         try:
-            response = httpx.get(
-                f"{self.api_base_url}/v1/user",
-                headers={"Authorization": f"Bearer {token_response.access_token}"},
-                timeout=30.0,
-            )
+            with self._http_client() as client:
+                response = client.get(
+                    f"{self.api_base_url}/v1/user",
+                    headers={"Authorization": f"Bearer {token_response.access_token}"},
+                )
             response.raise_for_status()
             payload = response.json()
             data = payload.get("data", payload) if isinstance(payload, dict) else {}

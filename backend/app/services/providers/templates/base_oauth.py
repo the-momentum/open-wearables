@@ -66,6 +66,11 @@ class BaseOAuthTemplate(ABC):
 
     use_pkce: bool = False
     auth_method: AuthenticationMethod = AuthenticationMethod.BASIC_AUTH
+    use_http2: bool = False
+
+    def _http_client(self) -> httpx.Client:
+        """Build an HTTP client configured for this provider's OAuth endpoints."""
+        return httpx.Client(http2=self.use_http2, timeout=30.0)
 
     def get_authorization_url(self, user_id: UUID, redirect_uri: str | None = None) -> tuple[str, str]:
         """Generates the provider's authorization URL.
@@ -138,12 +143,12 @@ class BaseOAuthTemplate(ABC):
         data, headers = self._prepare_refresh_request(refresh_token)
 
         try:
-            response = httpx.post(
-                self.endpoints.token_url,
-                data=data,
-                headers=headers,
-                timeout=30.0,
-            )
+            with self._http_client() as client:
+                response = client.post(
+                    self.endpoints.token_url,
+                    data=data,
+                    headers=headers,
+                )
             response.raise_for_status()
             token_response = OAuthTokenResponse.model_validate(response.json())
 
@@ -276,12 +281,12 @@ class BaseOAuthTemplate(ABC):
         data, headers = self._prepare_token_request(code, code_verifier)
 
         try:
-            response = httpx.post(
-                self.endpoints.token_url,
-                data=data,
-                headers=headers,
-                timeout=30.0,
-            )
+            with self._http_client() as client:
+                response = client.post(
+                    self.endpoints.token_url,
+                    data=data,
+                    headers=headers,
+                )
             response.raise_for_status()
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:

@@ -7,12 +7,13 @@ Tests the /api/v1/oauth endpoints including:
 - PUT /api/v1/oauth/providers/{provider} - test update provider status
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas.model_crud.credentials import OAuthState
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -126,6 +127,37 @@ class TestOAuthAuthorizeEndpoint:
 
         # Assert - Should fail because apple doesn't have OAuth
         assert response.status_code in [400, 401, 422]
+
+
+class TestOAuthCallbackEndpoint:
+    """Test suite for OAuth callback endpoints."""
+
+    @patch("app.api.routes.v1.oauth.user_connection_service.stamp_last_synced_at")
+    @patch("app.api.routes.v1.oauth.get_oauth_strategy")
+    def test_compat_callback_routes_to_oauth_handler(
+        self,
+        mock_get_oauth_strategy: MagicMock,
+        mock_stamp_last_synced_at: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """The registered redirect URI path should dispatch to the OAuth callback handler."""
+        user_id = uuid4()
+        strategy = MagicMock()
+        strategy.oauth.handle_callback.return_value = OAuthState(user_id=user_id, provider="sensorbio")
+        strategy.capabilities.webhook_callback = False
+        strategy.capabilities.rest_pull = False
+        mock_get_oauth_strategy.return_value = strategy
+
+        response = client.get(
+            "/api/v1/oauth/callback/sensorbio",
+            params={"code": "synthetic-code", "state": "synthetic-state"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        strategy.oauth.handle_callback.assert_called_once_with(db, "synthetic-code", "synthetic-state")
+        mock_stamp_last_synced_at.assert_called_once_with(db, user_id, "sensorbio")
 
 
 class TestOAuthProvidersEndpoint:
