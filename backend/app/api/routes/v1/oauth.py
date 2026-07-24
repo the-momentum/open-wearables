@@ -129,7 +129,7 @@ def oauth_callback(
     )
 
 
-@router.get("/callback/{provider}", tags=["System: OAuth"])
+@router.get("/callback/{provider}", tags=["System: OAuth"], status_code=status.HTTP_303_SEE_OTHER)
 def oauth_callback_compat(
     provider: ProviderName,
     db: DbSession,
@@ -137,7 +137,7 @@ def oauth_callback_compat(
     state: Annotated[str | None, Query(description="State parameter for CSRF protection")] = None,
     error: Annotated[str | None, Query()] = None,
     error_description: Annotated[str | None, Query()] = None,
-):
+) -> RedirectResponse:
     """Handle the callback path used by already-registered provider redirect URIs."""
     return oauth_callback(
         provider=provider,

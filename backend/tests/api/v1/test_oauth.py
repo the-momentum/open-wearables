@@ -156,6 +156,11 @@ class TestOAuthCallbackEndpoint:
         )
 
         assert response.status_code == 303
+        # The compat route must redirect to the same success page as the canonical
+        # oauth_callback success path (redirect_uri is None here, so the internal
+        # /api/v1/oauth/success page is used). Asserting Location guards against a
+        # wrong or missing redirect destination that a status-only check would miss.
+        assert response.headers["location"] == f"/api/v1/oauth/success?provider=sensorbio&user_id={user_id}"
         strategy.oauth.handle_callback.assert_called_once_with(db, "synthetic-code", "synthetic-state")
         mock_stamp_last_synced_at.assert_called_once_with(db, user_id, "sensorbio")
 

@@ -7,6 +7,7 @@ from app.config import settings
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.model_crud.credentials import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import handle_exceptions
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
             default_scope=settings.sensorbio_default_scope,
         )
 
+    @handle_exceptions
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, Any]:
         """Fetches Sensor Bio user profile via /v1/user."""
         try:

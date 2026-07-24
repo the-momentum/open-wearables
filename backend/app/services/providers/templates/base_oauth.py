@@ -26,6 +26,7 @@ from app.schemas.model_crud.credentials import (
 )
 from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.services.outgoing_webhooks.events import on_connection_created, on_connection_revoked
+from app.utils.exceptions import handle_exceptions
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,7 @@ class BaseOAuthTemplate(ABC):
 
         return oauth_state
 
+    @handle_exceptions
     def refresh_access_token(self, db: DbSession, user_id: UUID, refresh_token: str) -> OAuthTokenResponse:
         """Refreshes the access token using the refresh token."""
         data, headers = self._prepare_refresh_request(refresh_token)
@@ -276,6 +278,7 @@ class BaseOAuthTemplate(ABC):
         # code_verifier will be None for non-PKCE providers
         return oauth_state, code_verifier
 
+    @handle_exceptions
     def _exchange_token(self, code: str, code_verifier: str | None) -> OAuthTokenResponse:
         """Exchanges authorization code for tokens."""
         data, headers = self._prepare_token_request(code, code_verifier)
