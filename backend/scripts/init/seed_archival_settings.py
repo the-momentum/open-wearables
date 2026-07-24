@@ -4,7 +4,7 @@
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
-from app.models.archival_setting import ArchivalSetting
+from app.models import AppSetting
 
 
 def seed_archival_settings() -> None:
@@ -14,12 +14,12 @@ def seed_archival_settings() -> None:
     instance inserts the row between our SELECT and INSERT.
     """
     with SessionLocal() as db:
-        existing = db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).first()
+        existing = db.query(AppSetting).filter(AppSetting.id == 1).first()
         if existing:
-            print("Archival settings already initialized.")
+            print("App settings already initialized.")
             return
 
-        setting = ArchivalSetting(id=1, archive_after_days=None, delete_after_days=None)
+        setting = AppSetting(id=1, archive_after_days=None, delete_after_days=None)
         db.add(setting)
         try:
             db.commit()
