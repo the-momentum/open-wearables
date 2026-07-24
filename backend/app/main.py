@@ -98,10 +98,8 @@ async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) 
 
 @api.exception_handler(StarletteHTTPException)
 async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
-    # Relay the client-facing detail via request.state (shared ASGI scope survives the
-    # BaseHTTPMiddleware boundary) so the access log can add it to the http_request line
-    # without reading the response stream. Every 4xx — including validation errors
-    # re-dispatched through handle_exception — passes through here.
+    # Stash the 4xx detail on request.state for the access log (shared scope survives the
+    # middleware boundary), then defer to the default handler.
     if settings.log_error_response_body and 400 <= exc.status_code < 500:
         request.state.error_response_body = str(exc.detail)[: settings.log_error_response_body_max_bytes]
     return await http_exception_handler(request, exc)

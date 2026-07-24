@@ -29,22 +29,7 @@ def inline_schema_defs(schema: dict[str, Any]) -> dict[str, Any]:
                 target = resolve(defs[name], (*seen, name))
                 siblings = {key: resolve(value, seen) for key, value in node.items() if key != "$ref"}
                 return {**target, **siblings}
-            resolved = {key: resolve(value, seen) for key, value in node.items() if key != "$defs"}
-            # A discriminated union's mapping may point at #/$defs/ names that no longer
-            # resolve once the variants are inlined; drop only those entries, keeping mappings
-            # to component schemas or external URIs (and the discriminator itself).
-            discriminator = resolved.get("discriminator")
-            if isinstance(discriminator, dict) and isinstance(discriminator.get("mapping"), dict):
-                kept = {
-                    label: target
-                    for label, target in discriminator["mapping"].items()
-                    if not (isinstance(target, str) and target.startswith("#/$defs/"))
-                }
-                new_discriminator = {key: value for key, value in discriminator.items() if key != "mapping"}
-                if kept:
-                    new_discriminator["mapping"] = kept
-                resolved["discriminator"] = new_discriminator
-            return resolved
+            return {key: resolve(value, seen) for key, value in node.items() if key != "$defs"}
         if isinstance(node, list):
             return [resolve(item, seen) for item in node]
         return node

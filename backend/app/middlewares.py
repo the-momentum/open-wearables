@@ -81,9 +81,7 @@ def add_access_log_middleware(app: FastAPI) -> None:
             emit(request, 500, round((time.perf_counter() - start) * 1000, 1))
             raise
 
-        # The 4xx detail is stashed on request.state by the HTTPException handler (shared
-        # scope survives the middleware boundary), so we log the client-facing body without
-        # ever touching the response stream. Rate-capped so a client hammering 4xx can't flood.
+        # 4xx detail stashed on request.state by the HTTPException handler; rate-capped.
         response_body: str | None = None
         if capture_body:
             detail = getattr(request.state, "error_response_body", None)

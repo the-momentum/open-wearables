@@ -61,14 +61,6 @@ def sync_sdk_data(
         Payload validation runs async in the worker, not here.
     """
     if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
-        log_structured(
-            logger,
-            "warning",
-            "SDK sync rejected: token does not match user_id",
-            action="sdk_sync_rejected",
-            user_id=user_id,
-            status_code=403,
-        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Token does not match user_id",
@@ -80,15 +72,6 @@ def sync_sdk_data(
 
     # Validate provider (routing decision — needed to select an import service)
     if provider not in ("apple", "samsung", "google"):
-        log_structured(
-            logger,
-            "warning",
-            f"SDK sync rejected: unsupported provider '{provider}'",
-            action="sdk_sync_rejected",
-            user_id=user_id,
-            provider=provider,
-            status_code=400,
-        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",

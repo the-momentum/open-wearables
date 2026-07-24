@@ -47,11 +47,10 @@ class Settings(BaseSettings):
 
     # None → derived in derive_access_log_level (prod: errors only, else: all)
     access_log_level: AccessLogLevel | None = None
-    # When true, the access log for a failed request (>= 400) includes the response
-    # body the client received — the 4xx detail otherwise only sent to the client.
+    # Include the 4xx response body the client received in the access log.
     log_error_response_body: bool = False
-    log_error_response_body_max_bytes: int = 8192  # truncate a logged body to this size
-    log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min so a client hammering 4xx can't flood logs
+    log_error_response_body_max_bytes: int = 8192  # truncate a logged body
+    log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min
 
     # DATABASE SETTINGS
     db_host: str = "db"
