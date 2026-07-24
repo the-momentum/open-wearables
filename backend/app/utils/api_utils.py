@@ -29,7 +29,14 @@ def inline_schema_defs(schema: dict[str, Any]) -> dict[str, Any]:
                 target = resolve(defs[name], (*seen, name))
                 siblings = {key: resolve(value, seen) for key, value in node.items() if key != "$ref"}
                 return {**target, **siblings}
-            return {key: resolve(value, seen) for key, value in node.items() if key != "$defs"}
+            resolved = {key: resolve(value, seen) for key, value in node.items() if key != "$defs"}
+            # A discriminated union keeps a discriminator.mapping of #/$defs/ names that no
+            # longer resolve once the variants are inlined; drop the mapping (propertyName +
+            # oneOf remain valid) so no dangling refs are left in the spec.
+            discriminator = resolved.get("discriminator")
+            if isinstance(discriminator, dict) and "mapping" in discriminator:
+                resolved["discriminator"] = {key: value for key, value in discriminator.items() if key != "mapping"}
+            return resolved
         if isinstance(node, list):
             return [resolve(item, seen) for item in node]
         return node
