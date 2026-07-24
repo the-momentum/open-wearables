@@ -4,6 +4,7 @@ from sqlalchemy.orm import Mapped
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey
 from app.schemas.enums import DataGranularity
+from app.utils.config_utils import AccessLogLevel
 
 
 class AppSetting(BaseDbModel):
@@ -52,6 +53,13 @@ class AppSetting(BaseDbModel):
 
     # Requires a restart for now — the Svix client is built at startup (pending a hot-reload refactor).
     outgoing_webhooks_enabled: Mapped[bool | None]
+
+    # Access log — require a restart for now (captured into the middleware closure at startup;
+    # pending a per-request-read refactor that would make the whole group hot).
+    access_log_level: Mapped[AccessLogLevel | None]  # all | errors | off
+    log_error_response_body: Mapped[bool | None]
+    log_error_response_body_max_bytes: Mapped[int | None]
+    log_error_response_body_max_per_minute: Mapped[int | None]
 
     # Data lifecycle (merged from archival_settings): NULL archive = disabled, NULL delete = keep forever.
     archive_after_days: Mapped[int | None]
