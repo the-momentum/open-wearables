@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.models.archival_setting import ArchivalSetting
+from app.models import AppSetting
 from app.repositories.archival_repository import (
     ArchivalSettingRepository,
     DataPointSeriesArchiveRepository,
@@ -144,7 +144,7 @@ class ArchivalService:
 
     # ── Private helpers ───────────────────────────────────────────
 
-    def _get_storage(self, db: DbSession, setting: ArchivalSetting) -> StorageEstimate:
+    def _get_storage(self, db: DbSession, setting: AppSetting) -> StorageEstimate:
         raw = self.archive_repo.get_storage_estimate(db)
 
         if setting.delete_after_days is not None:
