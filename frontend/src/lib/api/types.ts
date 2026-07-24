@@ -275,6 +275,7 @@ export interface UserConnection {
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
+  icon_url?: string | null;
   max_historical_days?: number | null;
   rest_pull?: boolean;
   webhook_stream?: boolean;

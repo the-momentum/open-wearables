@@ -64,6 +64,13 @@ class UserConnectionWithCapabilities(UserConnectionRead):
     Extra fields are populated by the endpoint, not from the ORM model.
     """
 
+    icon_url: str | None = Field(
+        None,
+        description=(
+            "Relative URL to provider icon (e.g., '/static/provider-icons/garmin.svg')."
+            " Resolve against the API base URL."
+        ),
+    )
     max_historical_days: int | None = None
     rest_pull: bool = False
     webhook_stream: bool = False

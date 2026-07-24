@@ -14,13 +14,13 @@ import {
   Timer,
   TriangleAlert,
   Unlink,
-  Watch,
   XCircle,
   Zap,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
+import { API_CONFIG } from '@/lib/api/config';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { providerLabel } from '@/components/common/source-badge';
 import { cn } from '@/lib/utils';
 import {
   STAGE_LABELS,
@@ -253,6 +254,12 @@ export function ConnectionCard({
 }: ConnectionCardProps) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showLastSyncs, setShowLastSyncs] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const iconUrl = connection.icon_url
+    ? new URL(connection.icon_url, API_CONFIG.baseUrl).toString()
+    : null;
+  const displayName = providerLabel(connection.provider);
 
   const { mutate: disconnectProvider, isPending: isDisconnecting } =
     useDisconnectProvider(connection.provider, connection.user_id);
@@ -346,13 +353,23 @@ export function ConnectionCard({
       <CardHeader className="pb-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            {/* Provider Icon - placeholder for now TODO: Implement provider icon */}
-            <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center">
-              <Watch className="h-6 w-6 text-muted-foreground" />
+            <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center overflow-hidden p-2">
+              {iconUrl && !imageError ? (
+                <img
+                  src={iconUrl}
+                  alt={`${displayName} logo`}
+                  className="h-full w-full object-contain"
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <span className="text-lg font-medium text-black">
+                  {displayName.charAt(0).toUpperCase()}
+                </span>
+              )}
             </div>
             <div>
               <h3 className="font-semibold text-card-foreground text-lg">
-                {connection.provider}
+                {displayName}
               </h3>
               <p className="text-sm text-muted-foreground mt-0.5">
                 Last live sync:{' '}
@@ -474,12 +491,10 @@ export function ConnectionCard({
             >
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    Disconnect {connection.provider}?
-                  </AlertDialogTitle>
+                  <AlertDialogTitle>Disconnect {displayName}?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This will revoke the connection. The user will need to
-                    reconnect to {connection.provider} to resume data syncing.
+                    reconnect to {displayName} to resume data syncing.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

@@ -171,12 +171,14 @@ class TestConnectionsEndpoints:
         assert "status" in connection_data
         assert "created_at" in connection_data
         assert "updated_at" in connection_data
+        assert "icon_url" in connection_data
 
         # Verify values
         assert connection_data["id"] == str(connection.id)
         assert connection_data["user_id"] == str(user.id)
         assert connection_data["provider"] == "garmin"
         assert connection_data["status"] == ConnectionStatus.ACTIVE.value
+        assert connection_data["icon_url"] == "/static/provider-icons/garmin.svg"
 
     def test_get_connections_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""

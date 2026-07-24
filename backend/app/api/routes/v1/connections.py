@@ -26,6 +26,7 @@ def _with_capabilities(
     with contextlib.suppress(ValueError):
         strategy = factory.get_provider(enriched.provider)
         caps = strategy.capabilities
+        enriched.icon_url = strategy.icon_url
         enriched.max_historical_days = caps.max_historical_days
         enriched.rest_pull = caps.rest_pull
         enriched.webhook_stream = caps.webhook_stream
