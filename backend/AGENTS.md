@@ -43,10 +43,12 @@ from app.services import ApiKeyDep, user_service
 
 router = APIRouter()
 
+
 @router.get("/users", response_model=list[UserRead])
 def list_users(db: DbSession, _api_key: ApiKeyDep):
     """List all users."""
     return db.query(user_service.crud.model).all()
+
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserRead)
 def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
@@ -65,6 +67,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas import UserCreate, UserCreateInternal
 from app.services.services import AppService
 
+
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=UserRepository, model=User, log=log, **kwargs)
@@ -73,6 +76,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Create user with server-generated id and created_at."""
         internal_creator = UserCreateInternal(**creator.model_dump())
         return super().create(db_session, internal_creator)
+
 
 # Instantiate as singleton
 user_service = UserService(log=getLogger(__name__))
@@ -87,12 +91,14 @@ from sqlalchemy import func
 from app.database import DbSession
 from app.repositories.repositories import CrudRepository
 
+
 class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal]):
     def get_count_in_range(self, db: DbSession, start: datetime, end: datetime) -> int:
         return (
             db.query(func.count(self.model.id))
             .filter(self.model.created_at >= start, self.model.created_at < end)
-            .scalar() or 0
+            .scalar()
+            or 0
         )
 ```
 
@@ -104,6 +110,7 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped, relationship
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, datetime_tz, str_100
+
 
 class User(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
@@ -120,14 +127,17 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     created_at: datetime
     first_name: str | None = None
 
+
 class UserCreate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
+
 
 class UserCreateInternal(UserCreate):
     id: UUID = Field(default_factory=uuid4)
@@ -168,10 +178,7 @@ try:
     process_item(item)
 except Exception as e:
     log_and_capture_error(
-        e,
-        logger,
-        f"Failed to process item {item.id}: {e}",
-        extra={"item_id": item.id, "user_id": user_id}
+        e, logger, f"Failed to process item {item.id}: {e}", extra={"item_id": item.id, "user_id": user_id}
     )
     continue
 ```
@@ -247,11 +254,13 @@ from sqlalchemy.orm import Mapped
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, Unique, datetime_tz, email, OneToMany, ManyToOne, FKUser
 
+
 class User(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     email: Mapped[Unique[email]]
     created_at: Mapped[datetime_tz]
     workouts: Mapped[OneToMany["Workout"]]
+
 
 class Workout(BaseDbModel):
     user_id: Mapped[FKUser]
@@ -272,6 +281,7 @@ Repositories handle **ONLY** database operations. Input/output must be SQLAlchem
 **CRUD repository:**
 ```python
 from app.repositories.repositories import CrudRepository
+
 
 class UserRepository(CrudRepository[User, UserCreate, UserUpdate]):
     def __init__(self, model: type[User]):
@@ -302,9 +312,11 @@ Services contain business logic. They **NEVER** perform database operations dire
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
+
 class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
     def __init__(self, crud_model: type[UserRepository], model: type[User], log: Logger, **kwargs):
         super().__init__(crud_model, model, log, **kwargs)
+
 
 # Mixin pattern for additional functionality
 class ActivityMixin:
