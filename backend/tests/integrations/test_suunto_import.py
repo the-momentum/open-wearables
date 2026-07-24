@@ -88,7 +88,7 @@ class TestSuuntoImport:
             ],
         }
 
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     def test_oauth_token_exchange_with_jwt(
         self,
         mock_post: MagicMock,
@@ -116,7 +116,7 @@ class TestSuuntoImport:
         }
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_post.return_value.__enter__.return_value.post.return_value = mock_response
 
         # Mock Redis state
         assert suunto_strategy.oauth is not None
@@ -251,7 +251,7 @@ class TestSuuntoImport:
         assert "samples" in result
         mock_request.assert_called_once()
 
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     def test_token_refresh_flow(
         self,
         mock_post: MagicMock,
@@ -277,7 +277,7 @@ class TestSuuntoImport:
         }
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_post.return_value.__enter__.return_value.post.return_value = mock_response
         assert suunto_strategy.oauth is not None
 
         # Act

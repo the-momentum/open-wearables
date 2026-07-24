@@ -142,7 +142,7 @@ class TestSuuntoOAuth:
         assert user_info["user_id"] is None
         assert user_info["username"] is None
 
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     def test_exchange_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
         """Should exchange authorization code for tokens."""
         # Arrange
@@ -155,7 +155,7 @@ class TestSuuntoOAuth:
         }
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_post.return_value.__enter__.return_value.post.return_value = mock_response
 
         # Act
         token_response = suunto_oauth._exchange_token("test_code", None)
@@ -164,9 +164,9 @@ class TestSuuntoOAuth:
         assert token_response.access_token == "test_access_token"
         assert token_response.refresh_token == "test_refresh_token"
         assert token_response.expires_in == 3600
-        mock_post.assert_called_once()
+        mock_post.return_value.__enter__.return_value.post.assert_called_once()
 
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     def test_refresh_access_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
         """Should refresh access token using refresh token."""
         # Arrange
@@ -188,7 +188,7 @@ class TestSuuntoOAuth:
         }
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+        mock_post.return_value.__enter__.return_value.post.return_value = mock_response
 
         # Act
         token_response = suunto_oauth.refresh_access_token(db, user.id, "old_refresh_token")
@@ -196,7 +196,7 @@ class TestSuuntoOAuth:
         # Assert
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
-        mock_post.assert_called_once()
+        mock_post.return_value.__enter__.return_value.post.assert_called_once()
 
     def test_uses_basic_auth_method(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should use Basic Auth for token exchange."""
