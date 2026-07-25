@@ -4,7 +4,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import HealthScore
 from app.repositories import HealthScoreRepository
-from app.schemas.enums import HealthScoreCategory
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -53,7 +53,7 @@ class HealthScoreService(
         db_session: DbSession,
         user_id: UUID,
         params: HealthScoreQueryParams,
-    ) -> tuple[list[HealthScore], int]:
+    ) -> tuple[list[tuple[HealthScore, ProviderName | None]], int]:
         return self.crud.get_with_filters(db_session, user_id, params)
 
 

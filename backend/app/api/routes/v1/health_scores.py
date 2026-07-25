@@ -38,7 +38,11 @@ def list_health_scores(
     )
     scores, total_count = health_score_service.get_scores_with_filters(db, user_id, params)
 
-    data = [HealthScoreResponse.model_validate(s) for s in scores]
+    data = []
+    for health_score, source_provider in scores:
+        response = HealthScoreResponse.model_validate(health_score)
+        response.source_provider = source_provider if health_score.provider == ProviderName.INTERNAL else health_score.provider
+        data.append(response)
     has_more = (offset + len(data)) < total_count
 
     return PaginatedResponse(

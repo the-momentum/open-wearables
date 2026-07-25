@@ -64,3 +64,4 @@ class HealthScoreResponse(HealthScoreBase):
     id: UUID
     data_source_id: UUID | None
     provider: ProviderName | None
+    source_provider: ProviderName | None = None

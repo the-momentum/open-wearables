@@ -679,6 +679,7 @@ export interface HealthScoreResponse {
   id: string;
   data_source_id: string | null;
   provider: string | null;
+  source_provider: string | null;
   category: string;
   value: number | null;
   qualifier: string | null;
