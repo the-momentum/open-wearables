@@ -41,7 +41,9 @@ def list_health_scores(
     data = []
     for health_score, source_provider in scores:
         response = HealthScoreResponse.model_validate(health_score)
-        response.source_provider = source_provider if health_score.provider == ProviderName.INTERNAL else health_score.provider
+        response.source_provider = (
+            source_provider if health_score.provider == ProviderName.INTERNAL else health_score.provider
+        )
         data.append(response)
     has_more = (offset + len(data)) < total_count
 

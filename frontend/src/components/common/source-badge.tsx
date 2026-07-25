@@ -45,7 +45,11 @@ export function providerLabel(provider: string): string {
   return PROVIDER_STYLES[provider]?.label ?? provider;
 }
 
-export function SourceBadge({ provider, sourceProvider, className = '' }: SourceBadgeProps) {
+export function SourceBadge({
+  provider,
+  sourceProvider,
+  className = '',
+}: SourceBadgeProps) {
   const style = PROVIDER_STYLES[provider] ?? DEFAULT_STYLE;
   const providerLabel = PROVIDER_STYLES[provider]?.label ?? provider;
   let label = providerLabel;

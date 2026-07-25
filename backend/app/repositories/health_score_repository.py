@@ -6,7 +6,7 @@ from sqlalchemy import and_, asc, desc, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
-from app.models import HealthScore, EventRecord, DataSource
+from app.models import DataSource, EventRecord, HealthScore
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
@@ -27,10 +27,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         db_session: DbSession,
         user_id: UUID,
         params: HealthScoreQueryParams,
-    ) -> tuple[
-            list[tuple[HealthScore, ProviderName | None]],
-            int
-        ]:
+    ) -> tuple[list[tuple[HealthScore, ProviderName | None]], int]:
         filters = [HealthScore.user_id == user_id]
 
         if params.category:
@@ -52,7 +49,10 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         )
 
         total_count = query.count()
-        results = query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all()
+        results = cast(
+            list[tuple[HealthScore, ProviderName | None]],
+            query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all(),
+        )
         return results, total_count
 
     def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> None:

@@ -86,6 +86,35 @@ class TestHealthScoresEndpoint:
         assert len(data) == 1
         assert data[0]["id"] == str(garmin_score.id)
 
+    def test_list_health_scores_includes_source_provider_for_internal_scores(
+        self,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        user = UserFactory()
+        source_data_source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        sleep_record = HealthScoreFactory(data_source=source_data_source, provider=ProviderName.GARMIN)
+        internal_score = HealthScoreFactory(
+            data_source=DataSourceFactory(user=user, provider=ProviderName.INTERNAL),
+            provider=ProviderName.INTERNAL,
+            sleep_record_id=sleep_record.id,
+            category=HealthScoreCategory.SLEEP,
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/health-scores",
+            headers=api_key_headers(api_key.id),
+            params={"provider": "internal"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        assert data[0]["id"] == str(internal_score.id)
+        assert data[0]["provider"] == ProviderName.INTERNAL
+        assert data[0]["source_provider"] == ProviderName.GARMIN
+
     def test_list_health_scores_filter_by_date_range(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
         data_source = DataSourceFactory(user=user)

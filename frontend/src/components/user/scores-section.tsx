@@ -299,9 +299,9 @@ function ScoreDayCard({
                           key={score.id}
                           className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-muted/50 border border-border/30"
                         >
-                          <SourceBadge 
-                          provider={score.provider || 'unknown'}
-                          sourceProvider={score.source_provider ?? undefined}
+                          <SourceBadge
+                            provider={score.provider || 'unknown'}
+                            sourceProvider={score.source_provider ?? undefined}
                           />
                           <span className="text-sm font-semibold text-foreground">
                             {resilienceScore !== null
