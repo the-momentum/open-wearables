@@ -13,9 +13,11 @@ Tests cover:
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesTypeDefinition, User
+from app.repositories import DataPointSeriesRepository
 from app.schemas.enums import SeriesType, TimeseriesResolution
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.services.timeseries_service import timeseries_service
@@ -295,3 +297,201 @@ class TestDownsampledEdgeCases:
         assert page2.pagination.has_more is False
         # No overlap and no gap between pages
         assert page1.data[-1].timestamp < page2.data[0].timestamp
+
+
+class TestDailyTotalRowsInSumBuckets:
+    """SUM buckets must not double-count daily-total rows with intraday samples.
+
+    Providers can write BOTH a daily-total row (is_daily_total=True) and
+    intraday samples for the same day/series. At sub-day resolutions only the
+    intraday samples count (mirroring prefer_daily_sum semantics).
+    """
+
+    def test_sum_bucket_excludes_daily_total_row(self, db: Session, user_setup: UserSetup) -> None:
+        user, mapping, _, steps_type = user_setup
+        # A provider-reported daily total of 5000 steps plus two intraday
+        # samples, all inside the same five-minute bucket.
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=steps_type,
+            recorded_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+            value=5000,
+            is_daily_total=True,
+        )
+        for seconds, value in [(30, 10), (90, 20)]:
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=steps_type,
+                recorded_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc) + timedelta(seconds=seconds),
+                value=value,
+            )
+
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], make_params(TimeseriesResolution.FIVE_MINUTES)
+        )
+
+        assert len(result.data) == 1
+        # 10 + 20 — the 5000 daily total must NOT be added on top
+        assert result.data[0].value == pytest.approx(30.0)
+
+    def test_active_time_daily_total_excluded_from_sum_bucket(self, db: Session, user_setup: UserSetup) -> None:
+        """Same double-count guard for active_time, a SUM series providers report daily."""
+        user, mapping, _, _ = user_setup
+        active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=active_time_type,
+            recorded_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+            value=480,
+            is_daily_total=True,
+        )
+        for seconds, value in [(30, 5), (90, 7)]:
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=active_time_type,
+                recorded_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc) + timedelta(seconds=seconds),
+                value=value,
+            )
+
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.active_time], make_params(TimeseriesResolution.FIVE_MINUTES)
+        )
+
+        assert len(result.data) == 1
+        assert result.data[0].value == pytest.approx(12.0)  # 5 + 7, without the 480 daily total
+        assert result.data[0].unit == "minutes"
+
+    def test_bucket_with_only_daily_total_rows_is_dropped(self, db: Session, user_setup: UserSetup) -> None:
+        """A sub-day bucket holding only daily-total rows has nothing to report."""
+        user, mapping, _, steps_type = user_setup
+        # Daily total in the 10:00 bucket, one intraday sample in the 10:05 bucket
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=steps_type,
+            recorded_at=datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
+            value=5000,
+            is_daily_total=True,
+        )
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=steps_type,
+            recorded_at=datetime(2024, 1, 1, 10, 5, 30, tzinfo=timezone.utc),
+            value=42,
+        )
+
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], make_params(TimeseriesResolution.FIVE_MINUTES)
+        )
+
+        assert len(result.data) == 1
+        assert result.pagination.total_count == 1
+        assert result.data[0].timestamp == datetime(2024, 1, 1, 10, 5, 0, tzinfo=timezone.utc)
+        assert result.data[0].value == pytest.approx(42.0)
+
+    def test_avg_series_still_uses_all_samples(self, db: Session, user_setup: UserSetup) -> None:
+        """The daily-total filter applies to SUM series only; AVG buckets are unchanged."""
+        user, mapping, hr_type, _ = user_setup
+        for seconds, value in [(5, 60), (25, 90)]:
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=hr_type,
+                recorded_at=datetime(2024, 1, 1, 10, 0, seconds, tzinfo=timezone.utc),
+                value=value,
+            )
+
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate], make_params(TimeseriesResolution.ONE_MINUTE)
+        )
+
+        assert len(result.data) == 1
+        assert result.data[0].value == pytest.approx(75.0)
+
+
+class TestDownsampledRangeLimits:
+    """Downsampled queries reject spans beyond the resolution's maximum, before fetching."""
+
+    @pytest.fixture
+    def fail_on_fetch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Any call to the unpaginated range fetch fails the test (proves no fetch happened)."""
+
+        def _forbidden_fetch(*args: object, **kwargs: object) -> None:
+            raise AssertionError("get_samples_for_range must not be called for an oversized range")
+
+        monkeypatch.setattr(DataPointSeriesRepository, "get_samples_for_range", _forbidden_fetch)
+
+    @pytest.mark.parametrize(
+        ("resolution", "span_days"),
+        [
+            (TimeseriesResolution.ONE_MINUTE, 32),
+            (TimeseriesResolution.FIVE_MINUTES, 94),
+            (TimeseriesResolution.FIFTEEN_MINUTES, 94),
+            (TimeseriesResolution.ONE_HOUR, 367),
+        ],
+    )
+    def test_oversized_span_rejected_with_400(
+        self,
+        db: Session,
+        user_setup: UserSetup,
+        fail_on_fetch: None,
+        resolution: TimeseriesResolution,
+        span_days: int,
+    ) -> None:
+        user, _, _, _ = user_setup
+        params = TimeSeriesQueryParams(
+            start_datetime=RANGE_START,
+            end_datetime=RANGE_START + timedelta(days=span_days),
+            resolution=resolution,
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            timeseries_service.get_timeseries(db, user.id, [], params)
+
+        assert exc_info.value.status_code == 400
+        assert "maximum" in exc_info.value.detail
+
+    @pytest.mark.parametrize(
+        ("resolution", "span_days"),
+        [
+            (TimeseriesResolution.ONE_MINUTE, 31),
+            (TimeseriesResolution.ONE_HOUR, 366),
+        ],
+    )
+    def test_max_allowed_span_is_accepted(
+        self, db: Session, user_setup: UserSetup, resolution: TimeseriesResolution, span_days: int
+    ) -> None:
+        user, mapping, hr_type, _ = user_setup
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=hr_type,
+            recorded_at=RANGE_START + timedelta(hours=1),
+            value=60,
+        )
+        params = TimeSeriesQueryParams(
+            start_datetime=RANGE_START,
+            end_datetime=RANGE_START + timedelta(days=span_days),
+            resolution=resolution,
+        )
+
+        result = timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], params)
+
+        assert len(result.data) == 1
+        assert result.metadata.resolution == resolution
+
+    def test_raw_resolution_has_no_span_cap(self, db: Session, user_setup: UserSetup) -> None:
+        """Raw reads paginate at the database level, so the span cap does not apply."""
+        user, mapping, hr_type, _ = user_setup
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=hr_type,
+            recorded_at=RANGE_START + timedelta(hours=1),
+            value=60,
+        )
+        params = TimeSeriesQueryParams(
+            start_datetime=RANGE_START,
+            end_datetime=RANGE_START + timedelta(days=400),
+            resolution=TimeseriesResolution.RAW,
+        )
+
+        result = timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], params)
+
+        assert len(result.data) == 1

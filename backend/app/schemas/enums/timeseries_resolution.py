@@ -24,3 +24,19 @@ RESOLUTION_BUCKET_SECONDS: dict[TimeseriesResolution, int] = {
     TimeseriesResolution.FIFTEEN_MINUTES: 900,
     TimeseriesResolution.ONE_HOUR: 3_600,
 }
+
+# Maximum queryable span (days) per aggregating resolution.
+# Downsampling loads every raw row of the requested range into memory before
+# bucketing, so the span is capped relative to the bucket width: finer buckets
+# mean more rows per day, hence a shorter allowed span. Each cap allows roughly
+# 45k buckets (1min: 31d x 1440/day ~= 44.6k; 5min/15min: 93d x 288/96 per day
+# ~= 26.8k/8.9k; 1hour: 366d x 24/day ~= 8.8k), keeping memory usage bounded
+# while covering realistic dashboards (a month of minute data, a quarter of
+# 5/15-minute data, a leap year of hourly data).
+# Raw is absent intentionally — it paginates at the database level.
+RESOLUTION_MAX_RANGE_DAYS: dict[TimeseriesResolution, int] = {
+    TimeseriesResolution.ONE_MINUTE: 31,
+    TimeseriesResolution.FIVE_MINUTES: 93,
+    TimeseriesResolution.FIFTEEN_MINUTES: 93,
+    TimeseriesResolution.ONE_HOUR: 366,
+}

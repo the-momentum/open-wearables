@@ -29,6 +29,7 @@ from .series_types import (
 )
 from .timeseries_resolution import (
     RESOLUTION_BUCKET_SECONDS,
+    RESOLUTION_MAX_RANGE_DAYS,
     TimeseriesResolution,
 )
 from .workout_types import (
@@ -60,4 +61,5 @@ __all__ = [
     "HealthScoreCategory",
     "TimeseriesResolution",
     "RESOLUTION_BUCKET_SECONDS",
+    "RESOLUTION_MAX_RANGE_DAYS",
 ]

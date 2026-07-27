@@ -38,6 +38,14 @@ class InvalidCursorError(Exception):
         self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
 
 
+class TimeseriesRangeTooLargeError(Exception):
+    def __init__(self, resolution: str, max_days: int):
+        self.detail = (
+            f"Requested time range exceeds the maximum of {max_days} days allowed for resolution '{resolution}'."
+        )
+        super().__init__(self.detail)
+
+
 class DatetimeParseError(ValueError):
     def __init__(self, value: str):
         self.detail = f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp."
@@ -69,6 +77,11 @@ def _(exc: ResourceAlreadyExistsError, _: str) -> HTTPException:
 
 @handle_exception.register
 def _(exc: InvalidCursorError, _: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.detail)
+
+
+@handle_exception.register
+def _(exc: TimeseriesRangeTooLargeError, _: str) -> HTTPException:
     return HTTPException(status_code=400, detail=exc.detail)
 
 

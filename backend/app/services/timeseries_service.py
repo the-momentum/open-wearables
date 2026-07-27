@@ -1,6 +1,6 @@
 import threading
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 from typing import Any, NamedTuple
 from uuid import UUID
@@ -13,6 +13,7 @@ from app.repositories import DataPointSeriesRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import (
     RESOLUTION_BUCKET_SECONDS,
+    RESOLUTION_MAX_RANGE_DAYS,
     AggregationMethod,
     SeriesType,
     TimeseriesResolution,
@@ -37,7 +38,7 @@ from app.schemas.utils import (
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
-from app.utils.exceptions import handle_exceptions
+from app.utils.exceptions import TimeseriesRangeTooLargeError, handle_exceptions
 from app.utils.pagination import decode_cursor, encode_cursor
 
 
@@ -253,6 +254,7 @@ class TimeSeriesService(
         distance, energy), AVG for rate/level metrics (heart rate, temperature),
         MAX for peak metrics.
         """
+        self._validate_downsampled_range(params)
         interval_seconds = RESOLUTION_BUCKET_SECONDS[params.resolution]
         rows = self.crud.get_samples_for_range(db_session, params, types, user_id)
         buckets = self._bucket_samples(rows, interval_seconds)
@@ -326,6 +328,23 @@ class TimeSeriesService(
         )
 
     @staticmethod
+    def _validate_downsampled_range(params: TimeSeriesQueryParams) -> None:
+        """Reject downsampled queries whose span exceeds the resolution's cap.
+
+        Downsampling loads every raw row of the requested range into memory
+        before bucketing (no raw-level pagination), so the span must be bounded
+        relative to the bucket width — see RESOLUTION_MAX_RANGE_DAYS. Raises
+        before any database fetch. Bounds are optional in the query params, so
+        a range that cannot be measured (missing bound) is left to the raw path
+        conventions and not validated here.
+        """
+        if params.start_datetime is None or params.end_datetime is None:
+            return
+        max_days = RESOLUTION_MAX_RANGE_DAYS[params.resolution]
+        if params.end_datetime - params.start_datetime > timedelta(days=max_days):
+            raise TimeseriesRangeTooLargeError(params.resolution, max_days)
+
+    @staticmethod
     def _bucket_samples(
         rows: list[tuple[DataPointSeries, DataSource]],
         interval_seconds: int,
@@ -346,14 +365,26 @@ class TimeSeriesService(
         for (bucket_start, series_type_id, _), members in groups.items():
             series_type = get_series_type_from_id(series_type_id)
             method = get_aggregation_method(series_type)
-            values = [float(sample.value) for sample, _ in members]
 
             if method is AggregationMethod.SUM:
-                value = sum(values)
+                # Providers can store BOTH a daily-total row (is_daily_total=True)
+                # and intraday samples for the same day/series (e.g. Garmin
+                # dailies alongside epochs). Summing both would double-count the
+                # day, so — mirroring the daily rollup's prefer_daily_sum
+                # semantics, where daily-total rows win over intraday samples at
+                # daily granularity — sub-day SUM buckets count intraday samples
+                # only and drop daily-total rows. None counts as intraday
+                # (legacy rows), matching prefer_daily_sum's NULL handling.
+                members = [(sample, ds) for sample, ds in members if sample.is_daily_total is not True]
+                if not members:
+                    # The bucket only held daily-total rows: nothing to report
+                    # at sub-day granularity.
+                    continue
+                value = sum(float(sample.value) for sample, _ in members)
             elif method is AggregationMethod.MAX:
-                value = max(values)
+                value = max(float(sample.value) for sample, _ in members)
             else:
-                value = sum(values) / len(values)
+                value = sum(float(sample.value) for sample, _ in members) / len(members)
 
             # Members arrive in chronological order; the last one anchors the
             # bucket's cursor identity and representative zone offset.
