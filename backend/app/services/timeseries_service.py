@@ -1,18 +1,22 @@
 import threading
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from logging import Logger, getLogger
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataPointSeries
+from app.models import DataPointSeries, DataSource
 from app.repositories import DataPointSeriesRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import (
+    RESOLUTION_BUCKET_SECONDS,
+    AggregationMethod,
     SeriesType,
+    TimeseriesResolution,
+    get_aggregation_method,
     get_series_type_from_id,
     get_series_type_unit,
 )
@@ -34,7 +38,18 @@ from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import encode_cursor
+from app.utils.pagination import decode_cursor, encode_cursor
+
+
+class _SampleBucket(NamedTuple):
+    """One downsampled time bucket, ready to be mapped to a response item."""
+
+    timestamp: datetime  # UTC-aligned bucket start
+    sample_id: UUID  # id of the latest raw sample in the bucket (cursor tiebreaker)
+    series_type: SeriesType
+    value: float
+    zone_offset: str | None
+    data_source: DataSource | None
 
 
 class TimeSeriesService(
@@ -143,6 +158,9 @@ class TimeSeriesService(
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
     ) -> PaginatedResponse[TimeSeriesSample]:
+        if params.resolution is not TimeseriesResolution.RAW:
+            return self._get_downsampled_timeseries(db_session, user_id, types, params)
+
         samples, total_count = self.crud.get_samples(db_session, params, types, user_id)
 
         limit = params.limit or 50
@@ -218,6 +236,141 @@ class TimeSeriesService(
                 end_time=params.end_datetime,
             ),
         )
+
+    def _get_downsampled_timeseries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        params: TimeSeriesQueryParams,
+    ) -> PaginatedResponse[TimeSeriesSample]:
+        """Downsample raw samples into fixed time buckets before paginating.
+
+        Bucketing happens over the full requested range (no raw-level pagination),
+        so a bucket can never be split across pages. The aggregation function is
+        chosen per series type via ``get_aggregation_method`` — the same mapping
+        the daily archive rollup uses: SUM for cumulative metrics (steps,
+        distance, energy), AVG for rate/level metrics (heart rate, temperature),
+        MAX for peak metrics.
+        """
+        interval_seconds = RESOLUTION_BUCKET_SECONDS[params.resolution]
+        rows = self.crud.get_samples_for_range(db_session, params, types, user_id)
+        buckets = self._bucket_samples(rows, interval_seconds)
+
+        limit = params.limit or 50
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Total matching buckets, calculated BEFORE cursor pagination (as the
+        # raw path does for raw samples)
+        total_count = len(buckets)
+
+        # Keyset pagination over the buckets, mirroring the raw path semantics
+        if params.cursor:
+            cursor_ts, cursor_id, direction = decode_cursor(params.cursor)
+            if direction == "prev":
+                buckets = [b for b in buckets if (b.timestamp, b.sample_id) < (cursor_ts, cursor_id)]
+            else:
+                buckets = [b for b in buckets if (b.timestamp, b.sample_id) > (cursor_ts, cursor_id)]
+
+        has_more = len(buckets) > limit
+        if has_more:
+            buckets = buckets[-limit:] if is_backward else buckets[:limit]
+
+        next_cursor = None
+        previous_cursor = None
+        if buckets:
+            if has_more:
+                next_cursor = encode_cursor(buckets[-1].timestamp, buckets[-1].sample_id, "next")
+            if params.cursor:
+                if is_backward:
+                    if has_more:
+                        previous_cursor = encode_cursor(buckets[0].timestamp, buckets[0].sample_id, "prev")
+                else:
+                    previous_cursor = encode_cursor(buckets[0].timestamp, buckets[0].sample_id, "prev")
+
+        data = []
+        for bucket in buckets:
+            source = None
+            if bucket.data_source:
+                source = SourceMetadata(
+                    provider=bucket.data_source.source or "unknown",
+                    device=bucket.data_source.device_model,
+                )
+            data.append(
+                TimeSeriesSample(
+                    timestamp=bucket.timestamp,
+                    zone_offset=bucket.zone_offset,
+                    type=bucket.series_type,
+                    value=bucket.value,
+                    unit=get_series_type_unit(bucket.series_type),
+                    source=source,
+                    # A bucket is never a provider-reported daily total
+                    is_daily_total=None,
+                )
+            )
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+                total_count=total_count,
+            ),
+            metadata=TimeseriesMetadata(
+                resolution=params.resolution,
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
+
+    @staticmethod
+    def _bucket_samples(
+        rows: list[tuple[DataPointSeries, DataSource]],
+        interval_seconds: int,
+    ) -> list[_SampleBucket]:
+        """Group raw samples into UTC-aligned buckets and aggregate each group.
+
+        Samples are bucketed per (bucket start, series type, data source), so
+        two devices reporting the same metric never merge into one value.
+        Returns buckets ordered by (timestamp, sample_id) for keyset pagination.
+        """
+        groups: dict[tuple[int, int, UUID], list[tuple[DataPointSeries, DataSource]]] = defaultdict(list)
+        for sample, data_source in rows:
+            bucket_start = int(sample.recorded_at.timestamp()) // interval_seconds * interval_seconds
+            key = (bucket_start, sample.series_type_definition_id, sample.data_source_id)
+            groups[key].append((sample, data_source))
+
+        buckets: list[_SampleBucket] = []
+        for (bucket_start, series_type_id, _), members in groups.items():
+            series_type = get_series_type_from_id(series_type_id)
+            method = get_aggregation_method(series_type)
+            values = [float(sample.value) for sample, _ in members]
+
+            if method is AggregationMethod.SUM:
+                value = sum(values)
+            elif method is AggregationMethod.MAX:
+                value = max(values)
+            else:
+                value = sum(values) / len(values)
+
+            # Members arrive in chronological order; the last one anchors the
+            # bucket's cursor identity and representative zone offset.
+            representative, data_source = members[-1]
+            buckets.append(
+                _SampleBucket(
+                    timestamp=datetime.fromtimestamp(bucket_start, tz=timezone.utc),
+                    sample_id=representative.id,
+                    series_type=series_type,
+                    value=value,
+                    zone_offset=representative.zone_offset,
+                    data_source=data_source,
+                )
+            )
+
+        buckets.sort(key=lambda b: (b.timestamp, b.sample_id))
+        return buckets
 
 
 timeseries_service = TimeSeriesService(log=getLogger(__name__))

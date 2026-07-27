@@ -2,6 +2,7 @@ from .aggregation_method import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
     daily_total_flag,
+    get_aggregation_method,
 )
 from .data_granularity import (
     GRANULARITY_WINDOW_SECONDS,
@@ -26,6 +27,10 @@ from .series_types import (
     get_series_type_id,
     get_series_type_unit,
 )
+from .timeseries_resolution import (
+    RESOLUTION_BUCKET_SECONDS,
+    TimeseriesResolution,
+)
 from .workout_types import (
     WORKOUTS_WITH_PACE,
     WorkoutType,
@@ -39,6 +44,7 @@ __all__ = [
     "AggregationMethod",
     "AGGREGATION_METHOD_BY_TYPE",
     "daily_total_flag",
+    "get_aggregation_method",
     "DataGranularity",
     "GRANULARITY_WINDOW_SECONDS",
     "SeriesType",
@@ -52,4 +58,6 @@ __all__ = [
     "ProviderName",
     "DEFAULT_PROVIDER_PRIORITY",
     "HealthScoreCategory",
+    "TimeseriesResolution",
+    "RESOLUTION_BUCKET_SECONDS",
 ]
