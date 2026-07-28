@@ -81,6 +81,20 @@ def create_celery() -> Celery:
     celery_app.conf.update(
         broker_url=settings.redis_url,
         result_backend=settings.redis_url,
+        # Detect and drop half-open TCP connections to Redis. Behind a NAT (e.g. Docker ->
+        # ElastiCache) the conntrack entry can expire and the server-side RST never reaches
+        # the worker, so it hangs forever on a dead socket and stops consuming — which is
+        # what let the queue grow until Redis hit maxmemory. Keepalive probes surface the
+        # dead socket so the connection is recycled instead of blocking indefinitely.
+        broker_transport_options={
+            "socket_keepalive": True,
+            # Linux TCP socket-option ints: 4=TCP_KEEPIDLE (60s idle before probing),
+            # 5=TCP_KEEPINTVL (10s between probes), 6=TCP_KEEPCNT (3 failed probes -> drop).
+            "socket_keepalive_options": {4: 60, 5: 10, 6: 3},
+            # redis-py periodic health check: PING idle pooled connections so a dead one is
+            # replaced rather than handed to the next publish/consume.
+            "health_check_interval": 30,
+        },
         task_serializer="json",
         accept_content=["json"],
         result_serializer="json",
