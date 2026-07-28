@@ -39,7 +39,7 @@ class InvalidCursorError(Exception):
 
 
 class TimeseriesRangeTooLargeError(Exception):
-    def __init__(self, resolution: str, max_days: int):
+    def __init__(self, resolution: str, max_days: int) -> None:
         self.detail = (
             f"Requested time range exceeds the maximum of {max_days} days allowed for resolution '{resolution}'."
         )
