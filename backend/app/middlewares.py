@@ -76,9 +76,17 @@ def add_access_log_middleware(app: FastAPI) -> None:
         if error is not None:
             # Attach the cause so a 500 is diagnosable from our own logs (stdout),
             # which — unlike Sentry — is not subject to rate-limiting/quota drops.
+            # Formatting runs before the suppress() block below, so guard it here: a
+            # broken __str__/__repr__ must not raise and mask the original exception.
+            try:
+                error_message = str(error)
+                formatted_traceback = "".join(traceback.format_exception(error))
+            except Exception:
+                error_message = "<unavailable>"
+                formatted_traceback = "<unavailable>"
             attributes["error_type"] = type(error).__name__
-            attributes["error_message"] = str(error)
-            attributes["traceback"] = "".join(traceback.format_exception(error))
+            attributes["error_message"] = error_message
+            attributes["traceback"] = formatted_traceback
         # a logging failure must never break request handling
         with contextlib.suppress(Exception):
             log_structured(logger, "error" if status >= 400 else "info", "http_request", **attributes)
