@@ -132,6 +132,15 @@ export const healthService = {
   },
 
   /**
+   * Delete all of a user's data for a provider (also revokes the connection)
+   */
+  async purgeProviderData(userId: string, provider: string): Promise<void> {
+    await apiClient.delete(
+      API_ENDPOINTS.userConnectionPurgeData(userId, provider)
+    );
+  },
+
+  /**
    * Get user connections for a user
    */
   async getUserConnections(userId: string): Promise<UserConnection[]> {

@@ -38,6 +38,28 @@ export function useDisconnectProvider(provider: string, userId: string) {
 }
 
 /**
+ * Delete all of a user's data for a provider (also revokes the connection)
+ * Uses DELETE /api/v1/users/{user_id}/connections/{provider}/data
+ */
+export function usePurgeProviderData(provider: string, userId: string) {
+  return useMutation({
+    mutationFn: () => healthService.purgeProviderData(userId, provider),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.all(userId),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.health.all });
+      toast.success(`Deleted all ${provider} data`);
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete data';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get user connections for a user
  * Uses GET /api/v1/users/{user_id}/connections
  */

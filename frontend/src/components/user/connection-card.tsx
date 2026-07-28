@@ -12,6 +12,7 @@ import {
   RefreshCw,
   RotateCcw,
   Timer,
+  Trash2,
   TriangleAlert,
   Unlink,
   XCircle,
@@ -56,6 +57,7 @@ import {
 } from '@/lib/utils/sync-format';
 import {
   useDisconnectProvider,
+  usePurgeProviderData,
   useSynchronizeDataFromProvider,
   useSyncHistoricalData,
   useGarminBackfillStatus,
@@ -253,6 +255,7 @@ export function ConnectionCard({
   recentRuns,
 }: ConnectionCardProps) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showLastSyncs, setShowLastSyncs] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -263,6 +266,9 @@ export function ConnectionCard({
 
   const { mutate: disconnectProvider, isPending: isDisconnecting } =
     useDisconnectProvider(connection.provider, connection.user_id);
+
+  const { mutate: purgeProviderData, isPending: isPurgingData } =
+    usePurgeProviderData(connection.provider, connection.user_id);
 
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
@@ -483,6 +489,14 @@ export function ConnectionCard({
                     Disconnect
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                  disabled={isPurgingData}
+                  onClick={() => setShowDeleteDataDialog(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete all data
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <AlertDialog
@@ -501,6 +515,33 @@ export function ConnectionCard({
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction onClick={() => disconnectProvider()}>
                     Disconnect
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog
+              open={showDeleteDataDialog}
+              onOpenChange={setShowDeleteDataDialog}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete all {displayName} data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently deletes every record synced from{' '}
+                    {displayName} for this user — activities, sleep, time series
+                    and health scores — and revokes the connection. Data from
+                    other providers is not affected. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => purgeProviderData()}
+                  >
+                    Delete all data
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
