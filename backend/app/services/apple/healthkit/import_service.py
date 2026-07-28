@@ -74,29 +74,28 @@ class LoadDataResult(TypedDict):
 
 
 def _parse_sync_request(raw: dict) -> tuple[SDKSyncRequest, list[InvalidRecord]]:
-    """Parse a raw sync payload into a SyncRequest, keeping valid records when items fail.
+    """Parse a raw payload into a SyncRequest, salvaging valid records when items fail.
 
-    Fast path: the whole payload validates in one shot — no per-item cost when clean.
-    On failure, validate the envelope plus each record independently, keep the valid
-    ones, and return the per-item failures (loc/msg/type only — no record values, so
-    the result is PII-free). Raises ``ValidationError`` only when the envelope itself
-    (provider/sdkVersion/syncTimestamp/data shape) is invalid — i.e. nothing is
-    salvageable, so the whole batch is legitimately rejected.
+    Fast path validates in one shot. On failure, valid records are kept and the per-item
+    failures returned (PII-free: loc/msg/type). Raises ValidationError when the envelope or
+    a container shape is invalid — nothing salvageable, so the batch is rejected (400).
     """
     try:
         return SDKSyncRequest(**raw), []
     except ValidationError:
         pass  # fall through to per-item validation
 
-    inner = raw.get("data")
-    inner = inner if isinstance(inner, dict) else {}
+    # Only individual records are salvageable. A malformed container shape (data not a dict,
+    # or a collection not a list) is not — re-validate to re-raise the real ValidationError.
+    data = raw.get("data")
+    if not isinstance(data, dict) or any(not isinstance(data.get(key, []), list) for key, _ in _SDK_ITEM_MODELS):
+        return SDKSyncRequest(**raw), []
+
     kept: dict[str, list] = {}
     dropped: list[InvalidRecord] = []
     for key, model in _SDK_ITEM_MODELS:
-        items = inner.get(key)
-        items = items if isinstance(items, list) else []
         good: list = []
-        for idx, item in enumerate(items):
+        for idx, item in enumerate(data.get(key, [])):
             try:
                 good.append(model.model_validate(item))
             except ValidationError as exc:
@@ -112,10 +111,8 @@ def _parse_sync_request(raw: dict) -> tuple[SDKSyncRequest, list[InvalidRecord]]
                 )
         kept[key] = good
 
-    # The envelope must still validate on its own; if it does not, nothing is
-    # salvageable and this raises ValidationError (handled by the caller as a 400).
-    # model_validate (vs kwargs) keeps the raw envelope values as-is and lets Pydantic
-    # reject a bad provider/sdkVersion/syncTimestamp, while `data` carries the kept records.
+    # Reconstruct via model_validate so Pydantic still rejects a bad envelope; `data` now
+    # carries only the kept records.
     request = SDKSyncRequest.model_validate(
         {**raw, "data": SyncRequestData(records=kept["records"], sleep=kept["sleep"], workouts=kept["workouts"])}
     )
@@ -509,6 +506,9 @@ class ImportService:
                 response="Import successful",
                 user_id=user_id,
                 dropped_count=len(dropped),
+                records_saved=saved_counts["records_saved"],
+                workouts_saved=saved_counts["workouts_saved"],
+                sleep_saved=saved_counts["sleep_saved"],
             )
 
         except ValidationError as e:
