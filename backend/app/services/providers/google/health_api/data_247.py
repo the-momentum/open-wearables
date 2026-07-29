@@ -14,6 +14,8 @@ from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
+from fastapi import HTTPException
+
 from app.config import settings
 from app.constants.google_health_endpoints import LIST_ENDPOINT, RECONCILE_ENDPOINT, ROLLUP_ENDPOINT
 from app.database import DbSession
@@ -66,11 +68,21 @@ class GoogleHealth247Data(Base247DataTemplate):
         end_time: datetime,
         is_first_sync: bool = False,
     ) -> dict[str, WriteCounts]:
-        """Fetch + persist every registered metric; failures are isolated per metric."""
+        """Fetch + persist every registered metric; failures are isolated per metric.
+
+        Raises HTTPException(502) when every unit (all registered metrics and
+        sleep) failed — otherwise a totally failed run would return an empty
+        result indistinguishable from a linked account with no data, and no
+        caller could ever report it (the sync task's FAILED/PARTIAL machinery
+        keys off sub-result success flags that this method's per-metric
+        isolation would never let it see). Partial failures still return
+        normally: per-metric isolation is deliberate and unchanged.
+        """
         granularity = (
             self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
         )
         results: dict[str, WriteCounts] = {}
+        failures: dict[str, str] = {}
 
         for metric in METRICS:
             # Confine each metric (fetch + write) to a savepoint so a failed write rolls
@@ -84,6 +96,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                     counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
             except Exception as e:
                 self._log_metric_failure(metric.data_type, user_id, e)
+                failures[metric.data_type] = str(e)
                 continue
             if counts is not None:
                 results[metric.data_type] = counts
@@ -92,7 +105,21 @@ class GoogleHealth247Data(Base247DataTemplate):
             sleep_count = self.sleep.load_and_save(db, user_id, start_time, end_time)
         except Exception as e:
             self._log_metric_failure("sleep", user_id, e)
+            failures["sleep"] = str(e)
             sleep_count = 0
+
+        # len(METRICS) + 1 = every registered metric plus the sleep unit above.
+        # A metric that succeeds with no samples records no failure, so an
+        # empty `results` alone does NOT mean the run failed — only a failure
+        # recorded for every single unit does.
+        if len(failures) == len(METRICS) + 1:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Google 24/7 sync failed for all {len(failures)} data types "
+                    f"({', '.join(failures)}); first error: {next(iter(failures.values()))}"
+                ),
+            )
 
         if results or sleep_count:
             db.commit()
