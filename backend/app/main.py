@@ -110,14 +110,13 @@ async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) 
 async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
     # request.state survives the middleware boundary, so the access log can read it.
     _capture_error_body(request, exc.status_code, exc.detail)
-    # FastAPI raises the HTTPException `from` the real error — e.g. a body-parse failure does
-    # `raise HTTPException(400, "There was an error parsing the body") from e` — and that cause
-    # is otherwise lost. Stash it so the access log shows what actually happened (e.g.
-    # ClientDisconnect = truncated upload vs UnicodeDecodeError = bad encoding).
-    if exc.__cause__ is not None:
-        request.state.error_cause_type = type(exc.__cause__).__name__
+    # real cause behind an opaque HTTPException (e.g. FastAPI's body-parse 400): explicit
+    # `from e`, else the implicitly-chained exception unless suppressed via `from None`.
+    cause = exc.__cause__ or (exc.__context__ if not exc.__suppress_context__ else None)
+    if cause is not None:
+        request.state.error_cause_type = type(cause).__name__
         try:
-            request.state.error_cause_msg = str(exc.__cause__)[:300]
+            request.state.error_cause_msg = str(cause)[:300]
         except Exception:
             request.state.error_cause_msg = "<unavailable>"
     return await http_exception_handler(request, exc)
