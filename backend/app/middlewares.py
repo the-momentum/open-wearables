@@ -80,6 +80,19 @@ def add_access_log_middleware(app: FastAPI) -> None:
                 attributes["request_bytes"] = content_length
         if response_body is not None:
             attributes["response_body"] = response_body
+        if status >= 400:
+            # Extra 4xx/5xx context: content headers + the underlying cause of a body-parse
+            # HTTPException (stashed on request.state by the exception handler).
+            content_type = request.headers.get("content-type")
+            if content_type:
+                attributes["content_type"] = content_type
+            content_encoding = request.headers.get("content-encoding")
+            if content_encoding:
+                attributes["content_encoding"] = content_encoding
+            cause_type = getattr(request.state, "error_cause_type", None)
+            if cause_type:
+                attributes["error_cause_type"] = cause_type
+                attributes["error_cause_msg"] = getattr(request.state, "error_cause_msg", None)
         if error is not None:
             # Attach the cause so a 500 is diagnosable from our own logs (stdout),
             # which — unlike Sentry — is not subject to rate-limiting/quota drops.
