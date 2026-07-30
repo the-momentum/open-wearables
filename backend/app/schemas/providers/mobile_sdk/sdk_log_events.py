@@ -16,7 +16,9 @@ class DataTypeCount(BaseModel):
 
 
 class TimeRange(BaseModel):
-    startDate: datetime
+    # startDate is absent when the SDK syncs the full available history (no syncDaysBack
+    # limit configured) — both the iOS and Android SDKs omit it in that case.
+    startDate: datetime | None = None
     endDate: datetime
 
 

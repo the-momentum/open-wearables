@@ -116,6 +116,24 @@ class TestSDKLogsHappyPath:
         assert mock_store.call_args.kwargs["provider"] == "unknown"
 
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_time_range_without_start_date_accepted(
+        self, mock_store: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """Full-history sync: the SDK omits startDate when no day limit is configured."""
+        api_key = ApiKeyFactory()
+        event = {
+            **SYNC_START_EVENT,
+            "timeRange": {"endDate": "2026-04-09T10:00:00Z"},
+        }
+        response = client.post(
+            _url(),
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+            json=_payload(event, DEVICE_STATE_EVENT),
+        )
+        assert response.status_code == 202
+        mock_store.assert_called_once()
+
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_android_data_types_accepted(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
         event = {
