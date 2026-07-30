@@ -488,6 +488,13 @@ class ImportService:
                         },
                     )
                     sentry_sdk.capture_message(f"{provider} SDK payload: dropped invalid records, kept the rest")
+                # Compose the full location (collection[index].field) so the log one-liner
+                # says which record failed, not just the field — the per-record `loc` is
+                # relative to a single record. The full breakdown is in the Sentry context.
+                first = dropped[0]
+                first_loc = f"{first['collection']}[{first['index']}]"
+                if first.get("loc"):
+                    first_loc += f".{first['loc']}"
                 log_structured(
                     self.log,
                     "warning",
@@ -497,8 +504,8 @@ class ImportService:
                     batch_id=batch_id,
                     user_id=user_id,
                     dropped_count=len(dropped),
-                    first_error_loc=dropped[0].get("loc"),
-                    first_error_msg=dropped[0].get("msg"),
+                    first_error_loc=first_loc,
+                    first_error_msg=first["msg"],
                 )
 
             return UploadDataResponse(
