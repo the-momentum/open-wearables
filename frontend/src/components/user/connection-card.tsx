@@ -331,21 +331,21 @@ export function ConnectionCard({
       case 'active':
         return (
           <Badge variant="success" className="flex items-center gap-1">
-            <CheckCircle2 className="h-3 w-3 text-green-400" />
+            <CheckCircle2 className="h-3 w-3" />
             Active
           </Badge>
         );
       case 'revoked':
         return (
           <Badge variant="destructive" className="flex items-center gap-1">
-            <XCircle className="h-3 w-3 text-[hsl(var(--destructive-muted))]" />
+            <XCircle className="h-3 w-3" />
             Revoked
           </Badge>
         );
       case 'expired':
         return (
           <Badge variant="warning" className="flex items-center gap-1">
-            <TriangleAlert className="h-3 w-3 text-orange-400" />
+            <TriangleAlert className="h-3 w-3" />
             Expired
           </Badge>
         );

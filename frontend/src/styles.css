@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@config '../tailwind.config.ts';
+
 /* ============================================
    ELECTRIC NEON DESIGN SYSTEM
    Open Wearables - 2025 Modern Redesign
