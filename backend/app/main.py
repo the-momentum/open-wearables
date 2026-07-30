@@ -112,7 +112,9 @@ async def http_exception_handler_with_body_log(request: Request, exc: StarletteH
     _capture_error_body(request, exc.status_code, exc.detail)
     # real cause behind an opaque HTTPException (e.g. FastAPI's body-parse 400): explicit
     # `from e`, else the implicitly-chained exception unless suppressed via `from None`.
-    cause = exc.__cause__ or (exc.__context__ if not exc.__suppress_context__ else None)
+    cause = exc.__cause__
+    if cause is None and not exc.__suppress_context__:
+        cause = exc.__context__
     if cause is not None:
         request.state.error_cause_type = type(cause).__name__
         try:
