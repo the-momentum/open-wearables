@@ -684,6 +684,26 @@ class TestPolarExerciseFitIngestion:
         assert no_fit_file_storage.call_args.kwargs["activity_id"] == "ABC123"
 
     @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_storage_failure_still_saves_laps(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+        no_fit_file_storage: MagicMock,
+    ) -> None:
+        """Archiving the raw file is incidental — a storage failure must not cost the laps."""
+        # Arrange
+        mock_download.return_value = make_running_fit()
+        no_fit_file_storage.side_effect = RuntimeError("S3 unavailable")
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        assert len(self._saved_fields(polar_workouts)["segments"]) == 2
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
     def test_download_failure_writes_nothing(
         self,
         mock_download: MagicMock,
