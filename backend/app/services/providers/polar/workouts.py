@@ -8,7 +8,7 @@ import isodate
 from app.config import settings
 from app.constants.workout_types.polar import get_unified_workout_type
 from app.database import DbSession
-from app.models import EventRecordDetail
+from app.models import EventRecordDetail, WorkoutDetails
 from app.repositories import EventRecordDetailRepository
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -202,8 +202,29 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         Deliberately best-effort: the summary row is already committed by the caller,
         and AccessLink has no FIT for every exercise (manual entries, third-party
         uploads), so a miss here is logged and the workout is kept as-is.
+
+        Skips exercises already carrying segments. /v3/exercises returns a 30-day
+        window and event_record_repo.create returns the existing row on a duplicate,
+        so without this every sync would re-download every FIT in that window.
         """
         if not exercise_id:
+            return
+
+        try:
+            existing = db.get(WorkoutDetails, record_id)
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to check for existing Polar FIT segments",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+            return
+        if existing is not None and existing.segments:
             return
 
         try:

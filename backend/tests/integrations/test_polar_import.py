@@ -6,6 +6,7 @@ Tests end-to-end import flows for Polar exercise data through API endpoints.
 
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -252,6 +253,7 @@ class TestPolarDataSync:
         headers = api_key_headers(api_key.id)
 
         mock_request.return_value = [sample_polar_exercise]
+        mock_create.return_value = MagicMock(id=uuid4(), external_id=sample_polar_exercise["id"])
         mock_download.return_value = b""  # no exercise FIT — summary sync only
 
         # Act
