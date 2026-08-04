@@ -15,6 +15,7 @@ from app.services.system_info_service import system_info_service
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
+    EventRecordFactory,
     SeriesTypeDefinitionFactory,
     UserConnectionFactory,
     UserFactory,
@@ -90,6 +91,24 @@ class TestSystemInfoServiceGetSystemInfo:
         # Assert
         assert isinstance(info.data_points.count, int)
         assert info.data_points.count >= 0
+
+    def test_get_system_info_event_records(self, db: Session) -> None:
+        """Should report event-record totals with a per-category breakdown."""
+        # Arrange
+        initial = system_info_service.get_system_info(db).event_records
+        mapping = DataSourceFactory()
+        EventRecordFactory(mapping=mapping, category="workout", type_="running")
+        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
+        EventRecordFactory(mapping=mapping, category="sleep", type_=None)
+
+        # Act
+        event_records = system_info_service.get_system_info(db).event_records
+
+        # Assert
+        assert event_records.workouts == initial.workouts + 2
+        assert event_records.sleep == initial.sleep + 1
+        assert event_records.count == initial.count + 3
+        assert isinstance(event_records.menstrual_cycles, int)
 
     def test_get_system_info_connections_coverage(self, db: Session) -> None:
         """Should include connections coverage in the response."""

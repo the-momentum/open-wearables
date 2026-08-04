@@ -1,5 +1,5 @@
-import { Users, Activity, Database } from 'lucide-react';
-import { StatsCard, type StatsCardAccent } from './stats-card';
+import { Users, Activity, Database, CalendarClock } from 'lucide-react';
+import { StatsCard, type StatsCardProps } from './stats-card';
 import { cn } from '@/lib/utils';
 import { formatCompactNumber } from '@/lib/utils/format';
 import type { DashboardStats } from '@/lib/api/types';
@@ -10,48 +10,47 @@ export interface StatsGridProps {
 }
 
 export function StatsGrid({ stats, className }: StatsGridProps) {
-  const statCards: Array<{
-    title: string;
-    value: number;
-    description: string;
-    icon: typeof Users;
-    accent: StatsCardAccent;
-  }> = [
+  const cards: StatsCardProps[] = [
     {
       title: 'Total Users',
       value: stats.total_users.count,
-      description: 'Registered users',
       icon: Users,
       accent: 'cyan',
+      format: formatCompactNumber,
     },
     {
       title: 'Active Connections',
       value: stats.active_conn.count,
-      description: 'Connected wearables',
       icon: Activity,
       accent: 'magenta',
+      format: formatCompactNumber,
     },
     {
       title: 'Data Points',
       value: stats.data_points.count,
-      description: 'Health data collected',
       icon: Database,
       accent: 'purple',
+      format: formatCompactNumber,
+      breakdown: [{ label: 'Archived', value: stats.data_points.archived }],
+    },
+    {
+      title: 'Event Records',
+      value: stats.event_records.count,
+      icon: CalendarClock,
+      accent: 'green',
+      format: formatCompactNumber,
+      breakdown: [
+        { label: 'Workouts', value: stats.event_records.workouts },
+        { label: 'Sleep', value: stats.event_records.sleep },
+        { label: 'Cycles', value: stats.event_records.menstrual_cycles },
+      ],
     },
   ];
 
   return (
-    <div className={cn('grid gap-4 md:grid-cols-2 lg:grid-cols-3', className)}>
-      {statCards.map((stat) => (
-        <StatsCard
-          key={stat.title}
-          title={stat.title}
-          value={stat.value}
-          description={stat.description}
-          icon={stat.icon}
-          format={formatCompactNumber}
-          accent={stat.accent}
-        />
+    <div className={cn('grid gap-4 md:grid-cols-2 lg:grid-cols-4', className)}>
+      {cards.map((card) => (
+        <StatsCard key={card.title} {...card} />
       ))}
     </div>
   );

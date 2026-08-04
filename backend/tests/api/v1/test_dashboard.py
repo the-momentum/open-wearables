@@ -174,13 +174,19 @@ class TestGetDashboardStats:
         data = response.json()
 
         # Validate complete schema
-        required_keys = ["total_users", "active_conn", "data_points", "connections_coverage"]
+        required_keys = ["total_users", "active_conn", "data_points", "event_records", "connections_coverage"]
         for key in required_keys:
             assert key in data, f"Missing required key: {key}"
 
         for key in ["total_users", "active_conn", "data_points"]:
             assert "count" in data[key]
             assert isinstance(data[key]["count"], int)
+
+        assert isinstance(data["data_points"]["archived"], int)
+
+        event_records = data["event_records"]
+        for key in ["count", "workouts", "sleep", "menstrual_cycles"]:
+            assert isinstance(event_records[key], int)
 
         coverage = data["connections_coverage"]
         assert "users_with_active" in coverage

@@ -8,9 +8,23 @@ class MetricCount(BaseModel):
 
 
 class DataPointsInfo(BaseModel):
-    """Data points information."""
+    """Data points information.
+
+    ``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive
+    table. Both are approximate on a cold cache / from planner statistics.
+    """
 
     count: int
+    archived: int
+
+
+class EventRecordsInfo(BaseModel):
+    """Event record counts with a breakdown by category."""
+
+    count: int
+    workouts: int
+    sleep: int
+    menstrual_cycles: int
 
 
 class ProviderConnectionCount(BaseModel):
@@ -30,4 +44,5 @@ class SystemInfoResponse(BaseModel):
     total_users: MetricCount
     active_conn: MetricCount
     data_points: DataPointsInfo
+    event_records: EventRecordsInfo
     connections_coverage: ConnectionsCoverage

@@ -7,6 +7,7 @@ from app.database import DbSession
 from app.schemas.responses.dashboard import ProviderDataCount, UserDataSummaryResponse
 from app.schemas.responses.upload import (
     DataPointsInfo,
+    EventRecordsInfo,
     MetricCount,
     SystemInfoResponse,
 )
@@ -41,10 +42,22 @@ class SystemInfoService:
         multi-second full scan on every dashboard load; the remaining figures are cheap counts on
         small tables.
         """
+        category_counts = dict(self.event_record_service.get_category_counts(db_session))
+        event_records = EventRecordsInfo(
+            count=sum(category_counts.values()),
+            workouts=category_counts.get("workout", 0),
+            sleep=category_counts.get("sleep", 0),
+            menstrual_cycles=category_counts.get("menstrual_cycle", 0),
+        )
+
         return SystemInfoResponse(
             total_users=MetricCount(count=self.user_service.crud.get_total_count(db_session)),
             active_conn=MetricCount(count=self.user_connection_service.crud.get_active_count(db_session)),
-            data_points=DataPointsInfo(count=get_total_data_points(db_session)),
+            data_points=DataPointsInfo(
+                count=get_total_data_points(db_session),
+                archived=self.timeseries_service.get_approximate_archived_count(db_session),
+            ),
+            event_records=event_records,
             connections_coverage=self.user_connection_service.get_connections_coverage(db_session),
         )
 

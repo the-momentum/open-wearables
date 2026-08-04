@@ -474,6 +474,19 @@ class EventRecordRepository(
         )
         return [(provider, category, event_type, count) for provider, category, event_type, count in results]
 
+    def get_category_counts(self, db_session: DbSession) -> list[tuple[str, int]]:
+        """Count event records grouped by category (workout, sleep, menstrual_cycle, ...).
+
+        Cheap: ``event_record`` is a small table, so this is a quick aggregate (no big scan).
+        Returns list of (category, count) tuples.
+        """
+        results = (
+            db_session.query(self.model.category, func.count(self.model.id).label("count"))
+            .group_by(self.model.category)
+            .all()
+        )
+        return [(category, count) for category, count in results]
+
     def get_sleep_stage_stats_via_json(self, db_session: DbSession, record_id: UUID) -> list[dict]:
         """
         Calculates sleep stage statistics directly from the JSONB column using SQL/JSON standard.

@@ -118,6 +118,10 @@ class TimeSeriesService(
         """Get an approximate total count of all data points (planner statistics, no scan)."""
         return self.crud.get_approximate_total_count(db_session)
 
+    def get_approximate_archived_count(self, db_session: DbSession) -> int:
+        """Get an approximate count of archived data points (planner statistics, no scan)."""
+        return self.crud.get_approximate_archived_count(db_session)
+
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return self.crud.get_count_in_range(db_session, start_datetime, end_datetime)

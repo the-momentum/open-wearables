@@ -40,7 +40,7 @@ class UserConnectionService(
             users_with_multi_active=self.crud.get_users_with_multi_active_conn_count(db_session),
             top_providers=[
                 ProviderConnectionCount(provider=p, count=c)
-                for p, c in self.crud.get_top_providers_by_active_conn(db_session)
+                for p, c in self.crud.get_top_providers_by_active_conn(db_session, limit=6)
             ],
         )
 

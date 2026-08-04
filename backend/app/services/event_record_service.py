@@ -660,6 +660,10 @@ class EventRecordService(
 
         return [self._build_response(record, data_source) for record, data_source in records]
 
+    def get_category_counts(self, db_session: DbSession) -> list[tuple[str, int]]:
+        """Count event records grouped by category (cheap aggregate on a small table)."""
+        return self.crud.get_category_counts(db_session)
+
     def _map_source(self, data_source: DataSource) -> DataSourceSchema:
         return DataSourceSchema(
             provider=data_source.source or "unknown",

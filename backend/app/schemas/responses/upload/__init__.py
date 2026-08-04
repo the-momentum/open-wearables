@@ -6,6 +6,7 @@ from .sync_results import (
 from .system_info import (
     ConnectionsCoverage,
     DataPointsInfo,
+    EventRecordsInfo,
     MetricCount,
     ProviderConnectionCount,
     SystemInfoResponse,
@@ -24,6 +25,7 @@ __all__ = [
     # System info
     "ConnectionsCoverage",
     "DataPointsInfo",
+    "EventRecordsInfo",
     "MetricCount",
     "ProviderConnectionCount",
     "SystemInfoResponse",

@@ -160,6 +160,14 @@ export interface MetricCount {
 
 export interface DataPointsInfo {
   count: number;
+  archived: number;
+}
+
+export interface EventRecordsInfo {
+  count: number;
+  workouts: number;
+  sleep: number;
+  menstrual_cycles: number;
 }
 
 export interface ProviderConnectionCount {
@@ -177,6 +185,7 @@ export interface DashboardStats {
   total_users: MetricCount;
   active_conn: MetricCount;
   data_points: DataPointsInfo;
+  event_records: EventRecordsInfo;
   connections_coverage: ConnectionsCoverage;
 }
 
