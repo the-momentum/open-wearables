@@ -9,6 +9,8 @@ interface NumberTickerProps extends ComponentPropsWithoutRef<'span'> {
   direction?: 'up' | 'down';
   delay?: number;
   decimalPlaces?: number;
+  /** Custom formatter for the displayed value (e.g. compact K/M/B). Overrides decimalPlaces. */
+  format?: (value: number) => string;
 }
 
 export function NumberTicker({
@@ -18,6 +20,7 @@ export function NumberTicker({
   delay = 0,
   className,
   decimalPlaces = 0,
+  format,
   ...props
 }: NumberTickerProps) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -51,12 +54,15 @@ export function NumberTicker({
     () =>
       springValue.on('change', (latest) => {
         if (ref.current) {
-          ref.current.textContent = formatter.format(
-            Number(latest.toFixed(decimalPlaces))
-          );
+          // Quantize the mid-animation spring value to whole units (decimalPlaces defaults to 0)
+          // before formatting, so counts don't flash fractional values like "4.8" while animating.
+          const current = Number(latest.toFixed(decimalPlaces));
+          ref.current.textContent = format
+            ? format(current)
+            : formatter.format(current);
         }
       }),
-    [springValue, formatter, decimalPlaces]
+    [springValue, formatter, decimalPlaces, format]
   );
 
   return (
@@ -68,7 +74,7 @@ export function NumberTicker({
       )}
       {...props}
     >
-      {startValue}
+      {format ? format(startValue) : startValue}
     </span>
   );
 }

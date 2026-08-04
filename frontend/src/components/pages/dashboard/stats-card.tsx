@@ -11,6 +11,7 @@ export interface StatsCardProps {
   description: string;
   icon: LucideIcon;
   decimalPlaces?: number;
+  format?: (value: number) => string;
   accent?: StatsCardAccent;
   className?: string;
 }
@@ -52,6 +53,7 @@ export function StatsCard({
   description,
   icon: Icon,
   decimalPlaces = 0,
+  format,
   accent = 'cyan',
   className,
 }: StatsCardProps) {
@@ -87,6 +89,7 @@ export function StatsCard({
           <NumberTicker
             value={value}
             decimalPlaces={decimalPlaces}
+            format={format}
             className="text-foreground"
           />
         </span>

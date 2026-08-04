@@ -1,7 +1,7 @@
 import { Database, Dumbbell, Moon, ChevronDown, ChevronUp } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 import { useUserDataSummary } from '@/hooks/api/use-health';
-import { formatNumber } from '@/lib/utils/format';
+import { formatCompactNumber } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { DateFilter } from '@/components/ui/date-filter';
 import type { DataSummaryParams, ProviderDataCount } from '@/lib/api/types';
@@ -44,7 +44,7 @@ function StatCard({
         <Icon className="h-4 w-4" />
       </div>
       <p className="text-2xl font-bold tabular-nums text-foreground">
-        {formatNumber(value)}
+        {formatCompactNumber(value)}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
     </div>
@@ -83,7 +83,7 @@ const TypeGrid = memo(function TypeGrid({
             #{i + 1}
           </span>
           <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
-            {formatNumber(count)}
+            {formatCompactNumber(count)}
           </p>
           <p
             className="truncate text-xs text-muted-foreground"
@@ -125,7 +125,7 @@ const ProviderCard = memo(function ProviderCard({
               {formatProvider(provider.provider)}
             </span>
             <span className="ml-2 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
-              {formatNumber(totalRecords)}
+              {formatCompactNumber(totalRecords)}
             </span>
           </div>
         </div>
@@ -149,7 +149,7 @@ const ProviderCard = memo(function ProviderCard({
                 className="flex flex-col items-center gap-1 rounded-xl border border-border/60 bg-card/40 p-3 text-center"
               >
                 <p className="text-xl font-bold tabular-nums leading-none text-foreground">
-                  {formatNumber(value)}
+                  {formatCompactNumber(value)}
                 </p>
                 <p className="text-[11px] text-muted-foreground">{label}</p>
               </div>

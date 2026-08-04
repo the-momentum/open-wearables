@@ -1,5 +1,6 @@
 import { BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatCompactNumber } from '@/lib/utils/format';
 import { SourceBadge } from '@/components/common/source-badge';
 import type { ConnectionsCoverage } from '@/lib/api/types';
 
@@ -100,23 +101,25 @@ export function DataMetricsSection({
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[hsl(var(--success-muted))]" />
                   <span className="font-mono font-semibold text-foreground">
-                    {connectionsCoverage.users_with_active.toLocaleString()}
+                    {formatCompactNumber(connectionsCoverage.users_with_active)}
                   </span>{' '}
                   connected
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block h-0 w-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
                   <span className="font-mono font-semibold text-foreground">
-                    {connectionsCoverage.users_with_multi_active.toLocaleString()}
+                    {formatCompactNumber(
+                      connectionsCoverage.users_with_multi_active
+                    )}
                   </span>{' '}
                   multiple connections
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[hsl(var(--destructive-muted))]" />
                   <span className="font-mono font-semibold text-foreground">
-                    {(
+                    {formatCompactNumber(
                       totalUsers - connectionsCoverage.users_with_active
-                    ).toLocaleString()}
+                    )}
                   </span>{' '}
                   not connected
                 </span>
@@ -139,7 +142,7 @@ export function DataMetricsSection({
                     >
                       <SourceBadge provider={provider} />
                       <p className="font-mono text-2xl font-bold tabular-nums leading-none text-foreground">
-                        {count.toLocaleString()}
+                        {formatCompactNumber(count)}
                       </p>
                       <p className="text-[10px] leading-none text-muted-foreground">
                         connections
