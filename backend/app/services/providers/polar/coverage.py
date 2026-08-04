@@ -22,13 +22,18 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
     }
 )
 
-# EventRecordDetail fields populated by workouts.py (workout records)
+# EventRecordDetail fields populated by workouts.py (workout records).
+# segments/hr_zones/power_zones come from the exercise FIT file
+# (/v3/exercises/{id}/fit) and appear when the device recorded them.
 WORKOUT_FIELDS: frozenset[str] = frozenset(
     {
         "heart_rate_max",
         "heart_rate_avg",
         "energy_burned",
         "distance",
+        "segments",
+        "hr_zones",
+        "power_zones",
     }
 )
 

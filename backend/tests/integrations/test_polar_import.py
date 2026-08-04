@@ -229,6 +229,7 @@ class TestPolarWorkoutsAPI:
 class TestPolarDataSync:
     """Tests for syncing Polar data."""
 
+    @patch("app.services.providers.polar.workouts.download_binary_content")
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
@@ -237,6 +238,7 @@ class TestPolarDataSync:
         mock_create_detail: MagicMock,
         mock_create: MagicMock,
         mock_request: MagicMock,
+        mock_download: MagicMock,
         client: TestClient,
         db: Session,
         sample_polar_exercise: dict[str, Any],
@@ -250,6 +252,7 @@ class TestPolarDataSync:
         headers = api_key_headers(api_key.id)
 
         mock_request.return_value = [sample_polar_exercise]
+        mock_download.return_value = b""  # no exercise FIT — summary sync only
 
         # Act
         response = client.post(
