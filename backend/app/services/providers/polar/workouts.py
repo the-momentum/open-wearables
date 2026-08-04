@@ -231,14 +231,13 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         if not fit_bytes:
             return
 
-        store_fit_file(
-            provider=self.provider_name,
-            fit_bytes=fit_bytes,
-            user_id=str(user_id),
-            activity_id=exercise_id,
-        )
-
         try:
+            store_fit_file(
+                provider=self.provider_name,
+                fit_bytes=fit_bytes,
+                user_id=str(user_id),
+                activity_id=exercise_id,
+            )
             fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
             fields: dict[str, Any] = {}
             if fit_result.segments:
