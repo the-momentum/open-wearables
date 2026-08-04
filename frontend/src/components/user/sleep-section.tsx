@@ -361,6 +361,7 @@ function SleepSessionRow({
                     content={<ChartTooltipContent />}
                   />
                   <Line
+                    isAnimationActive={false}
                     dataKey="hr"
                     type="monotone"
                     stroke="var(--color-avgHr)"
@@ -696,6 +697,7 @@ export function SleepSection({
                         }
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="value"
                         fill="var(--color-value)"
                         radius={[4, 4, 0, 0]}

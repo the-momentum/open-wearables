@@ -1,5 +1,5 @@
 import { Database, Dumbbell, Moon, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useUserDataSummary } from '@/hooks/api/use-health';
 import { formatNumber } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
@@ -51,15 +51,17 @@ function StatCard({
   );
 }
 
-function TypeGrid({
+const TypeGrid = memo(function TypeGrid({
   counts,
   limit,
 }: {
   counts: Record<string, number>;
   limit?: number;
 }) {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const displayed = limit ? entries.slice(0, limit) : entries;
+  const displayed = useMemo(() => {
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return limit ? entries.slice(0, limit) : entries;
+  }, [counts, limit]);
 
   if (displayed.length === 0) {
     return <p className="text-sm text-muted-foreground">No data points</p>;
@@ -93,9 +95,13 @@ function TypeGrid({
       ))}
     </div>
   );
-}
+});
 
-function ProviderCard({ provider }: { provider: ProviderDataCount }) {
+const ProviderCard = memo(function ProviderCard({
+  provider,
+}: {
+  provider: ProviderDataCount;
+}) {
   const [expanded, setExpanded] = useState(false);
   const totalRecords =
     provider.data_points + provider.workout_count + provider.sleep_count;
@@ -157,7 +163,7 @@ function ProviderCard({ provider }: { provider: ProviderDataCount }) {
       )}
     </div>
   );
-}
+});
 
 function LoadingSkeleton() {
   return (

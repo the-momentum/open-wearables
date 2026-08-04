@@ -491,6 +491,7 @@ export function ActivitySection({
                         content={<ChartTooltipContent />}
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="value"
                         fill="var(--color-value)"
                         radius={[4, 4, 0, 0]}

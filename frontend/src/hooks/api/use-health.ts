@@ -68,8 +68,9 @@ export function useUserConnections(userId: string, enabled: boolean = true) {
     queryKey: queryKeys.connections.all(userId),
     queryFn: () => healthService.getUserConnections(userId),
     enabled: !!userId && enabled,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    // The SSE sync stream already invalidates this query on relevant events, so we don't need
+    // zero-staleness + refetch-on-focus (which re-rendered the whole profile tab on every focus).
+    staleTime: 30 * 1000,
   });
 }
 
