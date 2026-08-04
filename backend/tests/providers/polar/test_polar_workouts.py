@@ -4,6 +4,7 @@ Tests for Polar workouts implementation.
 Tests the PolarWorkouts class for fetching and processing workout data from Polar API.
 """
 
+from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -570,6 +571,13 @@ class TestPolarWorkoutsDataLoading:
 
 
 @pytest.fixture
+def no_fit_file_storage() -> Generator[MagicMock, None, None]:
+    """Keep FIT ingestion tests off S3 for anyone running with STORE_FIT_FILES enabled."""
+    with patch("app.services.providers.polar.workouts.store_fit_file") as mock_store:
+        yield mock_store
+
+
+@pytest.fixture
 def polar_workouts() -> PolarWorkouts:
     """PolarWorkouts wired with the real repositories."""
     from app.models import EventRecord, User
@@ -594,6 +602,7 @@ def polar_workouts() -> PolarWorkouts:
     )
 
 
+@pytest.mark.usefixtures("no_fit_file_storage")
 class TestPolarExerciseFitIngestion:
     """Tests for the FIT enrichment step itself (_ingest_exercise_fit).
 
@@ -650,6 +659,28 @@ class TestPolarExerciseFitIngestion:
         # Assert
         assert mock_download.call_args.kwargs["url"] == "https://www.polaraccesslink.com/v3/exercises/ABC123/fit"
         assert mock_download.call_args.kwargs["provider_name"] == "polar"
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_raw_fit_is_offered_to_storage(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+        no_fit_file_storage: MagicMock,
+    ) -> None:
+        """The downloaded FIT is handed to raw storage, which no-ops unless enabled."""
+        # Arrange
+        fit_bytes = make_running_fit()
+        mock_download.return_value = fit_bytes
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        no_fit_file_storage.assert_called_once()
+        assert no_fit_file_storage.call_args.kwargs["fit_bytes"] == fit_bytes
+        assert no_fit_file_storage.call_args.kwargs["activity_id"] == "ABC123"
 
     @patch("app.services.providers.polar.workouts.download_binary_content")
     def test_download_failure_writes_nothing(
@@ -768,6 +799,7 @@ class TestPolarExerciseFitIngestion:
         assert {s.source for s in samples} == {"polar"}
 
 
+@pytest.mark.usefixtures("no_fit_file_storage")
 class TestPolarFitPersistence:
     """The segments write has to survive the transaction, not just reach the repository.
 
@@ -832,6 +864,7 @@ class TestPolarFitPersistence:
         assert len(db.get(WorkoutDetails, healthy.record_id).segments) == 2
 
 
+@pytest.mark.usefixtures("no_fit_file_storage")
 class TestPolarFitIngestionWiring:
     """Both exercise entry points — the pull sync and the EXERCISE webhook — enrich with FIT."""
 
