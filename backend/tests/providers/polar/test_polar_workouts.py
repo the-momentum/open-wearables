@@ -521,6 +521,7 @@ class TestPolarWorkoutsDataLoading:
         )
 
         mock_request.return_value = [sample_polar_exercise]
+        mock_create.return_value = MagicMock(id=uuid4(), external_id=sample_polar_exercise["id"])
         mock_download.return_value = b""  # no FIT available — summary ingestion only
 
         # Act
@@ -735,6 +736,26 @@ class TestPolarExerciseFitIngestion:
 
         # Assert
         polar_workouts.event_record_detail_repo.update_workout_fields.assert_not_called()
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_already_enriched_exercise_skips_download(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Re-syncs must not re-fetch a FIT whose laps are already stored."""
+        # Arrange
+        from tests.factories import WorkoutDetailsFactory
+
+        details = WorkoutDetailsFactory(segments=[{"kind": "lap", "index": 0, "elapsed_seconds": 60.0}])
+        db.commit()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), details.record_id, "ABC123")
+
+        # Assert
+        mock_download.assert_not_called()
 
     @patch("app.services.providers.polar.workouts.download_binary_content")
     def test_missing_exercise_id_skips_download(
