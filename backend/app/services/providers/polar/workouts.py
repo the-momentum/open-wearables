@@ -216,7 +216,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             log_structured(
                 self.logger,
                 "warning",
-                "Failed to check for existing Polar FIT segments",
+                "Failed to check for existing FIT segments",
                 provider=self.provider_name,
                 task="_ingest_exercise_fit",
                 user_id=str(user_id),
@@ -240,7 +240,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             log_structured(
                 self.logger,
                 "warning",
-                "Failed to download Polar exercise FIT",
+                "Failed to download FIT file",
                 provider=self.provider_name,
                 task="_ingest_exercise_fit",
                 user_id=str(user_id),
@@ -259,23 +259,49 @@ class PolarWorkouts(BaseWorkoutsTemplate):
                 user_id=str(user_id),
                 activity_id=exercise_id,
             )
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to store FIT file",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+
+        try:
             fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
-            fields: dict[str, Any] = {}
-            if fit_result.segments:
-                fields["segments"] = fit_result.segments
-            if fit_result.hr_zones:
-                fields["hr_zones"] = fit_result.hr_zones.model_dump()
-            if fit_result.power_zones:
-                fields["power_zones"] = fit_result.power_zones.model_dump()
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to parse FIT file",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+            return
+
+        fields: dict[str, Any] = {}
+        if fit_result.segments:
+            fields["segments"] = fit_result.segments
+        if fit_result.hr_zones:
+            fields["hr_zones"] = fit_result.hr_zones.model_dump()
+        if fit_result.power_zones:
+            fields["power_zones"] = fit_result.power_zones.model_dump()
+
+        samples_saved = 0
+        try:
             if fields:
                 self.event_record_detail_repo.update_workout_fields(db, record_id, fields)
-
-            samples_saved = 0
             if settings.ingest_workout_samples and fit_result.samples:
                 samples_saved = int(timeseries_service.bulk_create_samples(db, fit_result.samples))
-
-            # Both writes above leave the transaction open by contract, and the exercise
-            # summary is already committed, so this method has to commit its own work.
+            # Both writes leave the transaction open by contract, and the exercise summary
+            # is already committed, so this method commits its own work.
             if fields or samples_saved:
                 db.commit()
         except Exception as e:
@@ -283,7 +309,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             log_structured(
                 self.logger,
                 "warning",
-                "Failed to ingest Polar exercise FIT",
+                "Failed to save FIT workout fields",
                 provider=self.provider_name,
                 task="_ingest_exercise_fit",
                 user_id=str(user_id),
@@ -295,7 +321,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         log_structured(
             self.logger,
             "info",
-            "Parsed Polar exercise FIT",
+            "Parsed FIT file",
             provider=self.provider_name,
             task="_ingest_exercise_fit",
             user_id=str(user_id),
