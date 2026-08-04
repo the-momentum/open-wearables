@@ -15,7 +15,6 @@ export function StatsGrid({ stats, className }: StatsGridProps) {
     suffix: string;
     description: string;
     icon: typeof Users;
-    growth?: number;
     decimalPlaces?: number;
     accent: StatsCardAccent;
   }> = [
@@ -25,7 +24,6 @@ export function StatsGrid({ stats, className }: StatsGridProps) {
       suffix: '',
       description: 'Registered users',
       icon: Users,
-      growth: stats.total_users.weekly_growth,
       accent: 'cyan',
     },
     {
@@ -34,7 +32,6 @@ export function StatsGrid({ stats, className }: StatsGridProps) {
       suffix: '',
       description: 'Connected wearables',
       icon: Activity,
-      growth: stats.active_conn.weekly_growth,
       accent: 'magenta',
     },
     {
@@ -44,7 +41,6 @@ export function StatsGrid({ stats, className }: StatsGridProps) {
       description: 'Health data collected',
       icon: Database,
       decimalPlaces: 1,
-      growth: stats.data_points.weekly_growth,
       accent: 'purple',
     },
   ];
@@ -59,7 +55,6 @@ export function StatsGrid({ stats, className }: StatsGridProps) {
           suffix={stat.suffix}
           description={stat.description}
           icon={stat.icon}
-          growth={stat.growth}
           decimalPlaces={stat.decimalPlaces}
           accent={stat.accent}
         />

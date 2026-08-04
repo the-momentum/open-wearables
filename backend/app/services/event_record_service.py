@@ -660,10 +660,6 @@ class EventRecordService(
 
         return [self._build_response(record, data_source) for record, data_source in records]
 
-    def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
-        """Get count of workouts grouped by workout type."""
-        return self.crud.get_count_by_workout_type(db_session)
-
     def _map_source(self, data_source: DataSource) -> DataSourceSchema:
         return DataSourceSchema(
             provider=data_source.source or "unknown",

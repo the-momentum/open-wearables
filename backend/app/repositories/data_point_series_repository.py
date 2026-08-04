@@ -340,6 +340,20 @@ class DataPointSeriesRepository(
         """Get total count of all data points."""
         return db_session.query(func.count(self.model.id)).scalar() or 0
 
+    def get_approximate_total_count(self, db_session: DbSession) -> int:
+        """Approximate total row count from planner statistics (``pg_class.reltuples``).
+
+        Instant (metadata lookup, no table scan), unlike ``get_total_count`` which is a full
+        ``COUNT(*)`` over the whole table. The estimate is refreshed by (auto)VACUUM/ANALYZE and
+        may lag by a few percent, so it is only suitable for a non-critical dashboard figure.
+        """
+        result = db_session.execute(
+            text("SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(:table)"),
+            {"table": self.model.__tablename__},
+        ).scalar()
+        # Postgres reports reltuples = -1 for a table that has never been ANALYZEd; clamp to 0.
+        return max(int(result or 0), 0)
+
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return (
@@ -407,19 +421,6 @@ class DataPointSeriesRepository(
             .all()
         )
         return [(provider, code, count) for provider, code, count in results]
-
-    def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
-        """Get count of data points grouped by series type ID.
-
-        Returns list of (series_type_definition_id, count) tuples ordered by count descending.
-        """
-        results = (
-            db_session.query(self.model.series_type_definition_id, func.count(self.model.id).label("count"))
-            .group_by(self.model.series_type_definition_id)
-            .order_by(func.count(self.model.id).desc())
-            .all()
-        )
-        return [(series_type_definition_id, count) for series_type_definition_id, count in results]
 
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source.

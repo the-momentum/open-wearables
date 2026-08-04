@@ -154,26 +154,12 @@ export interface ChangePasswordRequest {
   confirm_password: string;
 }
 
-export interface CountWithGrowth {
-  count: number;
-  weekly_growth: number;
-}
-
-export interface SeriesTypeMetric {
-  series_type: string;
-  count: number;
-}
-
-export interface WorkoutTypeMetric {
-  workout_type: string | null;
+export interface MetricCount {
   count: number;
 }
 
 export interface DataPointsInfo {
   count: number;
-  weekly_growth: number;
-  top_series_types: SeriesTypeMetric[];
-  top_workout_types: WorkoutTypeMetric[];
 }
 
 export interface ProviderConnectionCount {
@@ -188,8 +174,8 @@ export interface ConnectionsCoverage {
 }
 
 export interface DashboardStats {
-  total_users: CountWithGrowth;
-  active_conn: CountWithGrowth;
+  total_users: MetricCount;
+  active_conn: MetricCount;
   data_points: DataPointsInfo;
   connections_coverage: ConnectionsCoverage;
 }

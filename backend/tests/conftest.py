@@ -232,6 +232,21 @@ def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
 
 
 @pytest.fixture(autouse=True)
+def mock_dashboard_stats_refresh() -> Generator[MagicMock, None, None]:
+    """Prevent the on-demand dashboard stats refresh task from hitting a real broker.
+
+    ``get_total_data_points`` dispatches this task on a cold/stale cache; without this patch the
+    dispatch would try to connect to a missing broker and hang the test.
+    """
+    with patch(
+        "app.integrations.celery.tasks.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"
+    ) as mock:
+        mock.apply_async.return_value = None
+        mock.delay.return_value = None
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
     """Mock Celery tasks to run synchronously."""
     mock_task = MagicMock()

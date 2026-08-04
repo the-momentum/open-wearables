@@ -1,5 +1,4 @@
 import type { LucideIcon } from 'lucide-react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { cn } from '@/lib/utils';
 
@@ -11,7 +10,6 @@ export interface StatsCardProps {
   suffix?: string;
   description: string;
   icon: LucideIcon;
-  growth?: number;
   decimalPlaces?: number;
   accent?: StatsCardAccent;
   className?: string;
@@ -53,7 +51,6 @@ export function StatsCard({
   suffix,
   description,
   icon: Icon,
-  growth,
   decimalPlaces = 0,
   accent = 'cyan',
   className,
@@ -100,25 +97,8 @@ export function StatsCard({
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-4">
         <p className="text-xs text-muted-foreground">{description}</p>
-        {growth !== undefined && (
-          <div
-            className={cn(
-              'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-              growth >= 0
-                ? 'bg-[hsl(var(--success-muted)/0.15)] text-[hsl(var(--success-muted))]'
-                : 'bg-[hsl(var(--destructive-muted)/0.15)] text-[hsl(var(--destructive-muted))]'
-            )}
-          >
-            {growth >= 0 ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : (
-              <TrendingDown className="h-3 w-3" />
-            )}
-            <span>{Math.abs(growth).toFixed(1)}%</span>
-          </div>
-        )}
       </div>
     </div>
   );

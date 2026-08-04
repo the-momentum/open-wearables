@@ -5,12 +5,10 @@ from .sync_results import (
 )
 from .system_info import (
     ConnectionsCoverage,
-    CountWithGrowth,
     DataPointsInfo,
+    MetricCount,
     ProviderConnectionCount,
-    SeriesTypeMetric,
     SystemInfoResponse,
-    WorkoutTypeMetric,
 )
 from .upload_response import (
     UploadDataResponse,
@@ -25,10 +23,8 @@ __all__ = [
     "UploadDataResponse",
     # System info
     "ConnectionsCoverage",
-    "CountWithGrowth",
     "DataPointsInfo",
+    "MetricCount",
     "ProviderConnectionCount",
     "SystemInfoResponse",
-    "SeriesTypeMetric",
-    "WorkoutTypeMetric",
 ]

@@ -69,8 +69,6 @@ function DashboardPage() {
         {/* Charts Section */}
         <div className="grid gap-6 lg:grid-cols-7">
           <DataMetricsSection
-            topSeriesTypes={stats.data_points.top_series_types}
-            topWorkoutTypes={stats.data_points.top_workout_types}
             connectionsCoverage={stats.connections_coverage}
             totalUsers={stats.total_users.count}
             className="lg:col-span-4"
