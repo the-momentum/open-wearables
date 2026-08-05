@@ -123,7 +123,7 @@ export function WebhookForm({
           className="bg-muted border-border"
         />
         {form.formState.errors.url && (
-          <p className="text-xs text-[hsl(var(--destructive-muted))]">
+          <p className="text-xs text-destructive-muted">
             {form.formState.errors.url.message}
           </p>
         )}
@@ -146,7 +146,7 @@ export function WebhookForm({
           className="bg-muted border-border"
         />
         {form.formState.errors.description && (
-          <p className="text-xs text-[hsl(var(--destructive-muted))]">
+          <p className="text-xs text-destructive-muted">
             {form.formState.errors.description.message}
           </p>
         )}
@@ -167,7 +167,7 @@ export function WebhookForm({
           className="bg-muted border-border font-mono text-xs"
         />
         {form.formState.errors.user_id && (
-          <p className="text-xs text-[hsl(var(--destructive-muted))]">
+          <p className="text-xs text-destructive-muted">
             {form.formState.errors.user_id.message}
           </p>
         )}
@@ -186,7 +186,7 @@ export function WebhookForm({
             Loading event types...
           </div>
         ) : eventTypes.error ? (
-          <p className="text-xs text-[hsl(var(--destructive-muted))]">
+          <p className="text-xs text-destructive-muted">
             Failed to load event types.
           </p>
         ) : (

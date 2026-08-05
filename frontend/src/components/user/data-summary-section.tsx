@@ -8,9 +8,9 @@ import type { DataSummaryParams, ProviderDataCount } from '@/lib/api/types';
 
 // Rank accents for the top three entries (matches the dashboard metrics cards).
 const RANK_COLORS = [
-  'text-[hsl(var(--primary))]',
-  'text-[hsl(var(--foreground-muted))]',
-  'text-[hsl(var(--foreground-subtle))]',
+  'text-primary',
+  'text-foreground-muted',
+  'text-foreground-subtle',
 ];
 
 interface DataSummarySectionProps {
@@ -222,19 +222,19 @@ export function DataSummarySection({ userId }: DataSummarySectionProps) {
                 icon={Database}
                 label="Data Points"
                 value={data.total_data_points}
-                iconClass="border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary-muted))]"
+                iconClass="border-primary/30 bg-primary/10 text-primary-muted"
               />
               <StatCard
                 icon={Dumbbell}
                 label="Workouts"
                 value={data.total_workouts}
-                iconClass="border-[hsl(var(--secondary-muted)/0.3)] bg-[hsl(var(--secondary-muted)/0.1)] text-[hsl(var(--secondary-muted))]"
+                iconClass="border-secondary-muted/30 bg-secondary-muted/10 text-secondary-muted"
               />
               <StatCard
                 icon={Moon}
                 label="Sleep Events"
                 value={data.total_sleep_events}
-                iconClass="border-[hsl(var(--accent-muted)/0.3)] bg-[hsl(var(--accent-muted)/0.1)] text-[hsl(var(--accent-muted))]"
+                iconClass="border-accent-muted/30 bg-accent-muted/10 text-accent-muted"
               />
             </div>
 

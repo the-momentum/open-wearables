@@ -30,29 +30,29 @@ const PENDING_STATUSES = new Set([1, 3, 'pending', 'sending']);
 function statusBadge(status: number | string) {
   if (SUCCESS_STATUSES.has(status)) {
     return (
-      <Badge className="bg-[hsl(var(--success-muted)/0.15)] text-[hsl(var(--success-muted))] border border-[hsl(var(--success-muted)/0.3)]">
+      <Badge className="bg-success-muted/15 text-success-muted border border-success-muted/30">
         Success
       </Badge>
     );
   }
   if (PENDING_STATUSES.has(status)) {
     return (
-      <Badge className="bg-[hsl(var(--warning-muted)/0.15)] text-[hsl(var(--warning-muted))] border border-[hsl(var(--warning-muted)/0.3)]">
+      <Badge className="bg-warning-muted/15 text-warning-muted border border-warning-muted/30">
         Pending
       </Badge>
     );
   }
   return (
-    <Badge className="bg-[hsl(var(--destructive-muted)/0.15)] text-[hsl(var(--destructive-muted))] border border-[hsl(var(--destructive-muted)/0.3)]">
+    <Badge className="bg-destructive-muted/15 text-destructive-muted border border-destructive-muted/30">
       Failed
     </Badge>
   );
 }
 
 function statusCodeColor(code: number) {
-  if (code >= 200 && code < 300) return 'text-[hsl(var(--success-muted))]';
-  if (code >= 300 && code < 400) return 'text-[hsl(var(--warning-muted))]';
-  return 'text-[hsl(var(--destructive-muted))]';
+  if (code >= 200 && code < 300) return 'text-success-muted';
+  if (code >= 300 && code < 400) return 'text-warning-muted';
+  return 'text-destructive-muted';
 }
 
 export function WebhookAttemptsTable({

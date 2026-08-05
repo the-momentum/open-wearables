@@ -141,7 +141,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                       onClick={handleCopyUserId}
                     >
                       {copiedUserId ? (
-                        <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
+                        <Check className="h-3 w-3 text-success-muted" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
@@ -230,7 +230,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                 <Button variant="outline" onClick={handleCopyPairLink}>
                   {copied ? (
                     <>
-                      <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                      <Check className="h-4 w-4 text-success-muted" />
                       Link Copied!
                     </>
                   ) : (

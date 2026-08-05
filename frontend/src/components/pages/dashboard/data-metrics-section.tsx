@@ -24,9 +24,9 @@ export interface DataMetricsSectionProps {
 }
 
 const RANK_COLORS = [
-  'text-[hsl(var(--primary))]',
-  'text-[hsl(var(--foreground-muted))]',
-  'text-[hsl(var(--foreground-subtle))]',
+  'text-primary',
+  'text-foreground-muted',
+  'text-foreground-subtle',
 ];
 
 function SeriesCard({
@@ -229,7 +229,7 @@ export function DataMetricsSection({
                       className="absolute top-full mt-1 -translate-x-1/2 transition-[left] duration-700 ease-out"
                       style={{ left: `${multiPct}%` }}
                     >
-                      <div className="h-0 w-0 border-l-[7px] border-r-[7px] border-b-[9px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
+                      <div className="h-0 w-0 border-l-[7px] border-r-[7px] border-b-[9px] border-l-transparent border-r-transparent border-b-primary/80" />
                     </div>
                   </div>
                 </div>
@@ -237,21 +237,21 @@ export function DataMetricsSection({
                 {/* Legend */}
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-[hsl(var(--success-muted))]" />
+                    <span className="h-2 w-2 rounded-full bg-success-muted" />
                     <span className="font-mono font-semibold text-foreground">
                       {connectionsCoverage.users_with_active.toLocaleString()}
                     </span>{' '}
                     connected
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-0 w-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
+                    <span className="inline-block h-0 w-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-primary/80" />
                     <span className="font-mono font-semibold text-foreground">
                       {connectionsCoverage.users_with_multi_active.toLocaleString()}
                     </span>{' '}
                     multiple connections
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-[hsl(var(--destructive-muted))]" />
+                    <span className="h-2 w-2 rounded-full bg-destructive-muted" />
                     <span className="font-mono font-semibold text-foreground">
                       {(
                         totalUsers - connectionsCoverage.users_with_active

@@ -31,8 +31,8 @@ const PROVIDER_STYLES: Record<
   },
   apple: { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: 'Apple' },
   internal: {
-    bg: 'bg-[hsl(var(--success-muted)/0.15)]',
-    text: 'text-[hsl(var(--success-muted))]',
+    bg: 'bg-success-muted/15',
+    text: 'text-success-muted',
     label: 'OW',
   },
 };
