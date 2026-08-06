@@ -109,6 +109,57 @@ class TestEventRecordDetailRepository:
         with pytest.raises(ValueError, match="Unknown detail type: invalid"):
             detail_repo.create(db, detail_data, detail_type="invalid")
 
+    def test_create_duplicate_returns_existing(self, db: Session) -> None:
+        """Re-syncing the same record_id returns the existing detail instead of raising.
+
+        Regression for #1375: production wires the repo with the abstract
+        ``EventRecordDetail`` base, so the old ``@handle_duplicates`` recovery blew up
+        with ``NoInspectionAvailable`` on the unique-violation retry.
+        """
+        # Arrange - repo built with the abstract base, mirroring production wiring
+        repo = EventRecordDetailRepository(EventRecordDetail)
+        event_record = EventRecordFactory(category="workout")
+        first = repo.create(
+            db,
+            EventRecordDetailCreate(record_id=event_record.id, steps_count=8500),
+            detail_type="workout",
+        )
+
+        # Act - inserting the same record_id again must not raise
+        duplicate = repo.create(
+            db,
+            EventRecordDetailCreate(record_id=event_record.id, steps_count=9999),
+            detail_type="workout",
+        )
+
+        # Assert - existing row returned unchanged, not a new/overwritten one
+        assert isinstance(duplicate, WorkoutDetails)
+        assert duplicate.record_id == first.record_id
+        assert duplicate.steps_count == 8500
+
+    def test_create_and_flush_duplicate_returns_existing(self, db: Session) -> None:
+        """create_and_flush is idempotent on record_id via its savepoint recovery."""
+        # Arrange
+        repo = EventRecordDetailRepository(EventRecordDetail)
+        event_record = EventRecordFactory(category="workout")
+        first = repo.create(
+            db,
+            EventRecordDetailCreate(record_id=event_record.id, steps_count=8500),
+            detail_type="workout",
+        )
+
+        # Act
+        duplicate = repo.create_and_flush(
+            db,
+            EventRecordDetailCreate(record_id=event_record.id, steps_count=9999),
+            detail_type="workout",
+        )
+
+        # Assert
+        assert isinstance(duplicate, WorkoutDetails)
+        assert duplicate.record_id == first.record_id
+        assert duplicate.steps_count == 8500
+
     def test_get_by_record_id_workout(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test getting workout details by record_id."""
         # Arrange
