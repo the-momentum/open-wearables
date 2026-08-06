@@ -53,7 +53,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   readiness: {
     label: 'Readiness',
     icon: Zap,
-    color: 'text-[hsl(var(--success-muted))]',
+    color: 'text-success-muted',
     maxScale: 100,
   },
   activity: {
@@ -77,7 +77,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   strain: {
     label: 'Strain',
     icon: Dumbbell,
-    color: 'text-[hsl(var(--destructive-muted))]',
+    color: 'text-destructive-muted',
     maxScale: 21,
   },
   resilience: {
@@ -609,6 +609,7 @@ export function ScoresSection({
                         {providers.map((provider) => (
                           <Line
                             key={provider}
+                            isAnimationActive={false}
                             dataKey={provider}
                             type="monotone"
                             stroke={`var(--color-${provider})`}

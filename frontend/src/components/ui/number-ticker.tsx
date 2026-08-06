@@ -1,4 +1,4 @@
-import { ComponentPropsWithoutRef, useEffect, useRef } from 'react';
+import { ComponentPropsWithoutRef, useEffect, useMemo, useRef } from 'react';
 import { useInView, useMotionValue, useSpring } from 'motion/react';
 
 import { cn } from '@/lib/utils';
@@ -9,6 +9,8 @@ interface NumberTickerProps extends ComponentPropsWithoutRef<'span'> {
   direction?: 'up' | 'down';
   delay?: number;
   decimalPlaces?: number;
+  /** Custom formatter for the displayed value (e.g. compact K/M/B). Overrides decimalPlaces. */
+  format?: (value: number) => string;
 }
 
 export function NumberTicker({
@@ -18,6 +20,7 @@ export function NumberTicker({
   delay = 0,
   className,
   decimalPlaces = 0,
+  format,
   ...props
 }: NumberTickerProps) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -27,6 +30,16 @@ export function NumberTicker({
     stiffness: 100,
   });
   const isInView = useInView(ref, { once: true, margin: '0px' });
+
+  // Reuse one formatter instead of allocating a new Intl.NumberFormat on every animation frame.
+  const formatter = useMemo(
+    () =>
+      new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: decimalPlaces,
+        maximumFractionDigits: decimalPlaces,
+      }),
+    [decimalPlaces]
+  );
 
   useEffect(() => {
     if (isInView) {
@@ -41,13 +54,15 @@ export function NumberTicker({
     () =>
       springValue.on('change', (latest) => {
         if (ref.current) {
-          ref.current.textContent = Intl.NumberFormat('en-US', {
-            minimumFractionDigits: decimalPlaces,
-            maximumFractionDigits: decimalPlaces,
-          }).format(Number(latest.toFixed(decimalPlaces)));
+          // Quantize the mid-animation spring value to whole units (decimalPlaces defaults to 0)
+          // before formatting, so counts don't flash fractional values like "4.8" while animating.
+          const current = Number(latest.toFixed(decimalPlaces));
+          ref.current.textContent = format
+            ? format(current)
+            : formatter.format(current);
         }
       }),
-    [springValue, decimalPlaces]
+    [springValue, formatter, decimalPlaces, format]
   );
 
   return (
@@ -59,7 +74,7 @@ export function NumberTicker({
       )}
       {...props}
     >
-      {startValue}
+      {format ? format(startValue) : startValue}
     </span>
   );
 }

@@ -154,26 +154,20 @@ export interface ChangePasswordRequest {
   confirm_password: string;
 }
 
-export interface CountWithGrowth {
-  count: number;
-  weekly_growth: number;
-}
-
-export interface SeriesTypeMetric {
-  series_type: string;
-  count: number;
-}
-
-export interface WorkoutTypeMetric {
-  workout_type: string | null;
+export interface MetricCount {
   count: number;
 }
 
 export interface DataPointsInfo {
   count: number;
-  weekly_growth: number;
-  top_series_types: SeriesTypeMetric[];
-  top_workout_types: WorkoutTypeMetric[];
+  archived: number;
+}
+
+export interface EventRecordsInfo {
+  count: number;
+  workouts: number;
+  sleep: number;
+  menstrual_cycles: number;
 }
 
 export interface ProviderConnectionCount {
@@ -188,9 +182,10 @@ export interface ConnectionsCoverage {
 }
 
 export interface DashboardStats {
-  total_users: CountWithGrowth;
-  active_conn: CountWithGrowth;
+  total_users: MetricCount;
+  active_conn: MetricCount;
   data_points: DataPointsInfo;
+  event_records: EventRecordsInfo;
   connections_coverage: ConnectionsCoverage;
 }
 
@@ -275,6 +270,7 @@ export interface UserConnection {
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
+  icon_url?: string | null;
   max_historical_days?: number | null;
   rest_pull?: boolean;
   webhook_stream?: boolean;

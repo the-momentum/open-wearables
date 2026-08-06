@@ -11,3 +11,7 @@ class UploadDataResponse(BaseModel):
     status_code: int = Field(..., description="HTTP status code (typically 202 for async operations)")
     response: str = Field(..., description="Human-readable response message")
     user_id: str | None = Field(None, description="User ID associated with the import operation")
+    dropped_count: int = Field(0, description="Number of individual records dropped by per-record validation")
+    records_saved: int = Field(0, description="Time-series samples saved")
+    workouts_saved: int = Field(0, description="Workouts saved")
+    sleep_saved: int = Field(0, description="Sleep records saved")

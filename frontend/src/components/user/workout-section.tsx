@@ -210,6 +210,7 @@ function WorkoutRow({
                     content={<ChartTooltipContent />}
                   />
                   <Line
+                    isAnimationActive={false}
                     dataKey="hr"
                     type="monotone"
                     stroke="var(--color-hr)"
@@ -276,7 +277,7 @@ function WorkoutRow({
           <div className="flex justify-end pt-2 border-t border-border/40">
             <button
               onClick={() => setShowDelete(true)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[hsl(var(--destructive-muted))] transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive-muted transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete workout

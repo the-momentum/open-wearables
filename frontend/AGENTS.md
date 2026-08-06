@@ -48,7 +48,7 @@ src/
 │   ├── query/keys.ts    # Query key factory
 │   ├── validation/      # Zod schemas
 │   └── errors/          # Error handling
-└── styles.css           # Tailwind + CSS variables
+└── styles.css           # Tailwind theme config (@theme) + CSS variables
 ```
 
 ## Reusable Components
@@ -417,6 +417,36 @@ onError: (error) => {
   toast.error(error instanceof Error ? error.message : 'Operation failed');
 },
 ```
+
+## Styling
+
+Tailwind v4 is configured CSS-first. There is no `tailwind.config.ts` — the
+theme lives in `src/styles.css`:
+
+- `:root` holds the raw design tokens as HSL triplets (`--primary: 185 100% 50%`)
+- `@theme inline` maps them to Tailwind namespaces (`--color-primary: hsl(var(--primary))`).
+  Use `inline` for any token that references another variable, otherwise the
+  `var()` resolves where the theme variable is defined rather than where it is used
+- `@theme` holds static tokens (`--font-sans`, `--ease-*`, `--shadow-*`)
+
+Add a token by declaring it in `:root` and mapping it in `@theme inline`; the
+matching utility (`bg-*`, `text-*`, `rounded-*`, `animate-*`) is generated
+automatically. Do not reintroduce a JS config or `@config` — v4 treats those as
+legacy.
+
+Three things to know:
+
+- `dark:` is driven by a `.dark` ancestor class via `@custom-variant`, not by
+  `prefers-color-scheme`
+- a token declared in `@theme` is only emitted to `:root` if some utility uses
+  it. Unused ones are stripped from the build, so reaching for one directly in a
+  `var()` — in an inline style or a hand-written rule — resolves to nothing.
+  Tokens that need to exist regardless belong in `:root`, like the `--duration-*`
+  values
+- there is no `--duration-*` namespace, so `duration-fast` and similar names do
+  not work. Use `duration-150` or the arbitrary-value form reading the variable
+
+See [Theme variables](https://tailwindcss.com/docs/theme).
 
 ## Adding shadcn/ui Components
 

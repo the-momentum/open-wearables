@@ -37,6 +37,6 @@ ACTIVITY_METRICS: tuple[DataTypeMetric, ...] = (
         SeriesType.hydration,
         value_key="hydrationLog",
         rollup_spec=RollupSpec("amountConsumed", subfield="millilitersSum"),
-        list_spec=ListSpec("amountConsumed", TimeShape.INTERVAL, subfield="milliliters"),
+        list_spec=ListSpec("amountConsumed", TimeShape.INTERVAL, subfield="milliliters", session_interval=True),
     ),
 )

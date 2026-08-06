@@ -23,6 +23,8 @@ export const API_ENDPOINTS = {
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userConnectionDisconnect: (userId: string, provider: string) =>
     `/api/v1/users/${userId}/connections/${provider}`,
+  userConnectionPurgeData: (userId: string, provider: string) =>
+    `/api/v1/users/${userId}/connections/${provider}/data`,
   providerSetting: (provider: string) => `/api/v1/oauth/providers/${provider}`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
   userWorkoutDetail: (userId: string, workoutId: string) =>

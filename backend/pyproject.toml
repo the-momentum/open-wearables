@@ -4,7 +4,7 @@ version = "0.6.3"
 description = ""
 requires-python = ">=3.13"
 dependencies = [
-    "cryptography>=49.0.0",
+    "cryptography>=50.0.0",
     "pydantic-settings>=2.14.2",
     "email-validator>=2.2.0",
     "psycopg>=3.3.4",
@@ -13,21 +13,21 @@ dependencies = [
     "fastapi-cli>=0.0.32",
     "celery>=5.6.3",
     "flower>=2.0.1",
-    "redis>=8.0.1",
+    "redis>=8.1.0",
     "sentry-sdk[fastapi]>=2.66.1",
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
     "alembic>=1.18.5",
-    "boto3>=1.43.55",
+    "boto3>=1.43.62",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.34.0",
+    "resend>=2.35.0",
     "pyyaml>=6.0.3",
     "svix>=1.99.1",
     "numpy>=2.5.1",
-    "faker>=40.35.0",
+    "faker>=40.36.0",
     "fitdecode>=0.11.0",
     "google-auth>=2.56.2",
 ]
@@ -35,8 +35,8 @@ dependencies = [
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.6.1",
-    "ruff>=0.16.0",
-    "ty>=0.0.63",
+    "ruff>=0.16.1",
+    "ty>=0.0.65",
 ]
 dev = [
     "pytest>=9.1.1",

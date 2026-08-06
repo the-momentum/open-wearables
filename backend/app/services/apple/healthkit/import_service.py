@@ -1,10 +1,12 @@
 import json
+import time
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
-from typing import Iterable
+from typing import Iterable, TypedDict
 from uuid import UUID, uuid4
 
+import sentry_sdk
 from pydantic import ValidationError
 
 from app.constants.series_types.sdk import (
@@ -31,6 +33,12 @@ from app.schemas.providers.mobile_sdk import (
 from app.schemas.providers.mobile_sdk import (
     WorkoutStatistic,
 )
+from app.schemas.providers.mobile_sdk.sync_request import (
+    MetricRecord,
+    SleepRecord,
+    SyncRequestData,
+    Workout,
+)
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
@@ -43,6 +51,72 @@ from .sleep_service import handle_sleep_data
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
 # in mg/dL round-trip with a ~0.1% offset under this factor.
 MMOL_L_TO_MG_DL = Decimal("18.0182")
+
+_SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
+
+
+class InvalidRecord(TypedDict):
+    """A single record dropped by per-record validation (PII-free — only the location, no values)."""
+
+    collection: str  # "records" | "sleep" | "workouts"
+    index: int
+    loc: str
+    msg: str | None
+    type: str | None
+
+
+class LoadDataResult(TypedDict):
+    workouts_saved: int
+    records_saved: int
+    sleep_saved: int
+    dropped: list[InvalidRecord]
+    validation_ms: float
+
+
+def _parse_sync_request(raw: dict) -> tuple[SDKSyncRequest, list[InvalidRecord]]:
+    """Parse a raw payload into a SyncRequest, salvaging valid records when items fail.
+
+    Fast path validates in one shot. On failure, valid records are kept and the per-item
+    failures returned (PII-free: loc/msg/type). Raises ValidationError when the envelope or
+    a container shape is invalid — nothing salvageable, so the batch is rejected (400).
+    """
+    try:
+        return SDKSyncRequest(**raw), []
+    except ValidationError:
+        pass  # fall through to per-item validation
+
+    # Only individual records are salvageable. A malformed container shape (data not a dict,
+    # or a collection not a list) is not — re-validate to re-raise the real ValidationError.
+    data = raw.get("data")
+    if not isinstance(data, dict) or any(not isinstance(data.get(key, []), list) for key, _ in _SDK_ITEM_MODELS):
+        return SDKSyncRequest(**raw), []
+
+    kept: dict[str, list] = {}
+    dropped: list[InvalidRecord] = []
+    for key, model in _SDK_ITEM_MODELS:
+        good: list = []
+        for idx, item in enumerate(data.get(key, [])):
+            try:
+                good.append(model.model_validate(item))
+            except ValidationError as exc:
+                err = (exc.errors() or [{}])[0]
+                dropped.append(
+                    {
+                        "collection": key,
+                        "index": idx,
+                        "loc": ".".join(str(x) for x in err.get("loc", [])),
+                        "msg": err.get("msg"),
+                        "type": err.get("type"),
+                    }
+                )
+        kept[key] = good
+
+    # Reconstruct via model_validate so Pydantic still rejects a bad envelope; `data` now
+    # carries only the kept records.
+    request = SDKSyncRequest.model_validate(
+        {**raw, "data": SyncRequestData(records=kept["records"], sleep=kept["sleep"], workouts=kept["workouts"])}
+    )
+    return request, dropped
 
 
 class ImportService:
@@ -269,14 +343,17 @@ class ImportService:
         raw: dict,
         user_id: str,
         batch_id: str | None = None,
-    ) -> dict[str, int]:
+    ) -> LoadDataResult:
         """
-        Load data into database and return counts of saved items.
-
-        Returns:
-            dict with counts: {"workouts_saved": int, "records_saved": int, "sleep_saved": int}
+        Load data into database and return counts of saved items plus per-record failures.
         """
-        request = SDKSyncRequest(**raw)
+        # Per-record validation: keep valid records, drop+report the invalid ones instead
+        # of failing the whole batch. Raises ValidationError only if the envelope is invalid.
+        # validation_ms measures the parse/per-record pass so we can watch the cost of a
+        # malformed payload in the logs.
+        started = time.perf_counter()
+        request, dropped = _parse_sync_request(raw)
+        validation_ms = round((time.perf_counter() - started) * 1000, 1)
         workouts_saved = 0
         records_saved = 0
         sleep_saved = 0
@@ -324,6 +401,8 @@ class ImportService:
             "workouts_saved": workouts_saved,
             "records_saved": records_saved,
             "sleep_saved": sleep_saved,
+            "dropped": dropped,
+            "validation_ms": validation_ms,
         }
 
     def import_data_from_request(
@@ -388,10 +467,62 @@ class ImportService:
                 records_saved=saved_counts["records_saved"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
+                validation_ms=saved_counts["validation_ms"],
+            )
+
+            dropped = saved_counts.get("dropped") or []
+            if dropped:
+                # Partial success: some records failed per-record validation. The good
+                # ones are already saved above; report the exact field errors to Sentry
+                # (PII-free: loc/msg/type) so we keep full visibility into what was lost.
+                with sentry_sdk.push_scope() as scope:
+                    scope.set_level("warning")
+                    scope.set_context(
+                        "dropped_records",
+                        {
+                            "batch_id": batch_id,
+                            "user_id": user_id,
+                            "provider": provider,
+                            "dropped_count": len(dropped),
+                            "errors": dropped[:20],
+                        },
+                    )
+                    sentry_sdk.capture_message(f"{provider} SDK payload: dropped invalid records, kept the rest")
+                # Compose the full location (collection[index].field) so the log one-liner
+                # says which record failed, not just the field — the per-record `loc` is
+                # relative to a single record. The full breakdown is in the Sentry context.
+                first = dropped[0]
+                first_loc = f"{first['collection']}[{first['index']}]"
+                if first.get("loc"):
+                    first_loc += f".{first['loc']}"
+                log_structured(
+                    self.log,
+                    "warning",
+                    f"{provider.capitalize()} SDK dropped invalid records",
+                    provider=f"{provider}",
+                    action=f"{provider}_sdk_records_dropped",
+                    batch_id=batch_id,
+                    user_id=user_id,
+                    dropped_count=len(dropped),
+                    first_error_loc=first_loc,
+                    first_error_msg=first["msg"],
+                )
+
+            return UploadDataResponse(
+                status_code=200,
+                response="Import successful",
+                user_id=user_id,
+                dropped_count=len(dropped),
+                records_saved=saved_counts["records_saved"],
+                workouts_saved=saved_counts["workouts_saved"],
+                sleep_saved=saved_counts["sleep_saved"],
             )
 
         except ValidationError as e:
-            # Payload failed schema validation; report to Sentry with the field-level errors.
+            # Reached ONLY when the envelope itself is invalid (provider/sdkVersion/
+            # syncTimestamp/data shape) — _parse_sync_request re-raised because nothing was
+            # salvageable. Per-record failures never reach here: they are collected inside
+            # load_data and handled above as a partial success. Report + 400 the whole batch.
             errors = e.errors()
             first = errors[0] if errors else {}
             # Drop `input` (raw record value — may contain health data/PII) and `url`
@@ -449,8 +580,6 @@ class ImportService:
                 response=f"Import failed: {str(e)}",
                 user_id=user_id,
             )
-
-        return UploadDataResponse(status_code=200, response="Import successful", user_id=user_id)
 
     def _parse_multipart_content(self, content: str) -> dict | None:
         """Parse multipart form data to extract JSON."""

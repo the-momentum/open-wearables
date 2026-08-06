@@ -201,7 +201,7 @@ export function TeamTab() {
         <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60">
             <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4 text-[hsl(var(--warning-muted))]" />
+              <Clock className="h-4 w-4 text-warning-muted" />
               Pending Invitations
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
@@ -253,10 +253,10 @@ export function TeamTab() {
                         className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase ${
                           invitation.status === 'sent' ||
                           invitation.status === 'pending'
-                            ? 'bg-[hsl(var(--success-muted)/0.15)] text-[hsl(var(--success-muted))]'
+                            ? 'bg-success-muted/15 text-success-muted'
                             : invitation.status === 'failed'
-                              ? 'bg-[hsl(var(--destructive-muted)/0.15)] text-[hsl(var(--destructive-muted))]'
-                              : 'bg-[hsl(var(--warning-muted)/0.15)] text-[hsl(var(--warning-muted))]'
+                              ? 'bg-destructive-muted/15 text-destructive-muted'
+                              : 'bg-warning-muted/15 text-warning-muted'
                         }`}
                       >
                         {invitation.status}
@@ -271,7 +271,7 @@ export function TeamTab() {
                           title="Copy invite link"
                         >
                           {copiedInviteId === invitation.id ? (
-                            <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                            <Check className="h-4 w-4 text-success-muted" />
                           ) : (
                             <Link className="h-4 w-4" />
                           )}
@@ -372,7 +372,7 @@ export function TeamTab() {
                           title="Copy ID"
                         >
                           {copiedId === developer.id ? (
-                            <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
+                            <Check className="h-3 w-3 text-success-muted" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}

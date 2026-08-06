@@ -224,7 +224,7 @@ function UsersPage() {
                 className="bg-muted border-border"
               />
               {formErrors.external_user_id && (
-                <p className="text-xs text-[hsl(var(--destructive-muted))]">
+                <p className="text-xs text-destructive-muted">
                   {formErrors.external_user_id}
                 </p>
               )}
@@ -249,7 +249,7 @@ function UsersPage() {
                   className="bg-muted border-border"
                 />
                 {formErrors.first_name && (
-                  <p className="text-xs text-[hsl(var(--destructive-muted))]">
+                  <p className="text-xs text-destructive-muted">
                     {formErrors.first_name}
                   </p>
                 )}
@@ -270,7 +270,7 @@ function UsersPage() {
                   className="bg-muted border-border"
                 />
                 {formErrors.last_name && (
-                  <p className="text-xs text-[hsl(var(--destructive-muted))]">
+                  <p className="text-xs text-destructive-muted">
                     {formErrors.last_name}
                   </p>
                 )}
@@ -291,7 +291,7 @@ function UsersPage() {
                 className="bg-muted border-border"
               />
               {formErrors.email && (
-                <p className="text-xs text-[hsl(var(--destructive-muted))]">
+                <p className="text-xs text-destructive-muted">
                   {formErrors.email}
                 </p>
               )}

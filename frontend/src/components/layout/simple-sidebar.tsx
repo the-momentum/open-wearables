@@ -107,7 +107,7 @@ export function SimpleSidebar() {
               />
               <span>{item.title}</span>
               {item.badge ? (
-                <span className="ml-auto rounded-full border border-[hsl(var(--warning-muted)/0.3)] bg-[hsl(var(--warning-muted)/0.1)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--warning-muted))]">
+                <span className="ml-auto rounded-full border border-warning-muted/30 bg-warning-muted/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning-muted">
                   {item.badge}
                 </span>
               ) : null}
@@ -125,7 +125,7 @@ export function SimpleSidebar() {
           variant="ghost"
           onClick={() => logout()}
           disabled={isLoggingOut}
-          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-[hsl(var(--destructive-muted))]"
+          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-destructive-muted"
         >
           <LogOut className="h-4 w-4" />
           {isLoggingOut ? 'Logging out...' : 'Logout'}

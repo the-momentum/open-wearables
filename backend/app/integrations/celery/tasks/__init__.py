@@ -39,6 +39,7 @@ from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
+from .refresh_dashboard_stats_task import refresh_dashboard_total_data_points
 from .register_provider_webhooks_task import register_provider_webhooks
 from .renew_oura_webhooks_task import renew_oura_webhooks
 from .seed_data_task import generate_seed_data
@@ -72,6 +73,7 @@ __all__ = [
     "process_xml_upload",
     "sync_vendor_data",
     "sync_all_users",
+    "refresh_dashboard_total_data_points",
     "generate_seed_data",
     "send_invitation_email_task",
     "process_webhook_push",

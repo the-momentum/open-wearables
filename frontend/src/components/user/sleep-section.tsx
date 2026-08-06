@@ -98,8 +98,8 @@ const SLEEP_METRICS: SleepMetricDefinition[] = [
     label: 'Avg Efficiency',
     shortLabel: 'Efficiency',
     icon: Zap,
-    color: 'text-[hsl(var(--success-muted))]',
-    bgColor: 'bg-[hsl(var(--success-muted)/0.1)]',
+    color: 'text-success-muted',
+    bgColor: 'bg-success-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
     getValue: (stats) => stats.avgEfficiency,
     formatValue: (v) => (v !== null ? `${Math.round(v)}%` : '-'),
@@ -211,7 +211,7 @@ function SleepSessionRow({
         <div className="w-28 flex-shrink-0">
           <div className="flex items-center gap-1">
             {session.is_nap && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-[hsl(var(--warning-muted)/0.15)] text-[hsl(var(--warning-muted))] rounded">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-warning-muted/15 text-warning-muted rounded">
                 NAP
               </span>
             )}
@@ -238,7 +238,7 @@ function SleepSessionRow({
           <div className="flex items-center justify-around">
             {/* Efficiency */}
             <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+              <Zap className="h-4 w-4 text-success-muted" />
               <div>
                 <p className="text-sm font-medium text-foreground">
                   {session.efficiency_percent !== null
@@ -294,7 +294,7 @@ function SleepSessionRow({
 
             {/* Wake Time */}
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-[hsl(var(--warning-muted))]" />
+              <Clock className="h-4 w-4 text-warning-muted" />
               <div>
                 <p className="text-sm font-medium text-foreground">
                   {format(new Date(session.end_time), 'h:mm a')}
@@ -361,6 +361,7 @@ function SleepSessionRow({
                     content={<ChartTooltipContent />}
                   />
                   <Line
+                    isAnimationActive={false}
                     dataKey="hr"
                     type="monotone"
                     stroke="var(--color-avgHr)"
@@ -427,7 +428,7 @@ function SleepSessionRow({
           <div className="flex justify-end pt-2 border-t border-border/40">
             <button
               onClick={() => setShowDelete(true)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[hsl(var(--destructive-muted))] transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive-muted transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete sleep session
@@ -696,6 +697,7 @@ export function SleepSection({
                         }
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="value"
                         fill="var(--color-value)"
                         radius={[4, 4, 0, 0]}

@@ -114,6 +114,14 @@ class TimeSeriesService(
         """Get total count of all data points."""
         return self.crud.get_total_count(db_session)
 
+    def get_approximate_total_count(self, db_session: DbSession) -> int:
+        """Get an approximate total count of all data points (planner statistics, no scan)."""
+        return self.crud.get_approximate_total_count(db_session)
+
+    def get_approximate_archived_count(self, db_session: DbSession) -> int:
+        """Get an approximate count of archived data points (planner statistics, no scan)."""
+        return self.crud.get_approximate_archived_count(db_session)
+
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return self.crud.get_count_in_range(db_session, start_datetime, end_datetime)
@@ -126,10 +134,6 @@ class TimeSeriesService(
     ) -> list[int]:
         """Get daily histogram of data points for the given date range."""
         return self.crud.get_daily_histogram(db_session, start_datetime, end_datetime)
-
-    def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
-        """Get count of data points grouped by series type ID."""
-        return self.crud.get_count_by_series_type(db_session)
 
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source."""

@@ -71,6 +71,8 @@ class GoogleHealth247Data(Base247DataTemplate):
             self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
         )
         results: dict[str, WriteCounts] = {}
+        failures: dict[str, str] = {}
+        succeeded = 0
 
         for metric in METRICS:
             # Confine each metric (fetch + write) to a savepoint so a failed write rolls
@@ -84,18 +86,27 @@ class GoogleHealth247Data(Base247DataTemplate):
                     counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
             except Exception as e:
                 self._log_metric_failure(metric.data_type, user_id, e)
+                failures[metric.data_type] = str(e)
                 continue
+            succeeded += 1
             if counts is not None:
                 results[metric.data_type] = counts
 
         try:
             sleep_count = self.sleep.load_and_save(db, user_id, start_time, end_time)
+            succeeded += 1
         except Exception as e:
             self._log_metric_failure("sleep", user_id, e)
+            failures["sleep"] = str(e)
             sleep_count = 0
 
         if results or sleep_count:
             db.commit()
+
+        # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — surface it so the sync
+        # is marked FAILED rather than an empty success. A partial/empty run returns normally.
+        if failures and not succeeded:
+            raise RuntimeError(f"All Google 24/7 data types failed: {failures}")
         log_structured(
             self.logger,
             "info",
@@ -266,7 +277,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         reconcile = settings.google_use_reconcile
         template = RECONCILE_ENDPOINT if reconcile else LIST_ENDPOINT
         endpoint = template.format(data_type=metric.data_type)
-        time_filter = self._time_filter(metric.data_type, spec.time, start_time, end_time)
+        time_filter = self._time_filter(metric.data_type, spec.time, start_time, end_time, spec.session_interval)
 
         samples: list[TimeSeriesSampleCreate] = []
         for point in self._fetch_points(db, user_id, endpoint, time_filter):
@@ -314,18 +325,26 @@ class GoogleHealth247Data(Base247DataTemplate):
                 return parse_date(point.get("date")), None
 
     @staticmethod
-    def _time_filter(data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime) -> str:
+    def _time_filter(
+        data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime, session_interval: bool = False
+    ) -> str:
         """AIP-160 filter bounding the fetch to [start_time, end_time) for the type's time shape."""
         field = data_type.replace("-", "_")
-        if shape == TimeShape.DATE:
-            member = f"{field}.date"
-            low = start_time.date().isoformat()
-            high = (end_time.date() + timedelta(days=1)).isoformat()
-        else:
-            suffix = "interval.start_time" if shape == TimeShape.INTERVAL else "sample_time.physical_time"
-            member = f"{field}.{suffix}"
-            window = physical_interval(start_time, end_time)
-            low, high = window["startTime"], window["endTime"]
+        match shape:
+            case TimeShape.INTERVAL if session_interval:
+                # SessionTimeInterval types (excl. sleep/ECG) filter on civil start time, not physical.
+                member = f"{field}.interval.civil_start_time"
+                low = (start_time.date() - timedelta(days=1)).isoformat()
+                high = (end_time.date() + timedelta(days=1)).isoformat()
+            case TimeShape.DATE:
+                member = f"{field}.date"
+                low = start_time.date().isoformat()
+                high = (end_time.date() + timedelta(days=1)).isoformat()
+            case TimeShape.INTERVAL | TimeShape.SAMPLE:
+                suffix = "interval.start_time" if shape is TimeShape.INTERVAL else "sample_time.physical_time"
+                member = f"{field}.{suffix}"
+                window = physical_interval(start_time, end_time)
+                low, high = window["startTime"], window["endTime"]
         return f'{member} >= "{low}" AND {member} < "{high}"'
 
     def _fetch_points(
