@@ -609,6 +609,7 @@ export function ScoresSection({
                         {providers.map((provider) => (
                           <Line
                             key={provider}
+                            isAnimationActive={false}
                             dataKey={provider}
                             type="monotone"
                             stroke={`var(--color-${provider})`}

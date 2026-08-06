@@ -74,7 +74,7 @@ export function RecentUsersSection({
   isLoadingLastSynced,
   className,
 }: RecentUsersSectionProps) {
-  const [tab, setTab] = useState<'recent' | 'last-synced'>('recent');
+  const [tab, setTab] = useState<'recent' | 'last-synced'>('last-synced');
 
   return (
     <div

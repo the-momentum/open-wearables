@@ -181,64 +181,6 @@ class TestTimeSeriesServiceGetDailyHistogram:
         assert histogram == []
 
 
-class TestTimeSeriesServiceGetCountBySeriesType:
-    """Test counting data points by series type."""
-
-    def test_get_count_by_series_type_groups_correctly(self, db: Session) -> None:
-        """Should group and count data points by series type."""
-        # Arrange
-        mapping = DataSourceFactory()
-        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-        step_type = SeriesTypeDefinitionFactory.get_or_create_steps()
-
-        # Create 3 heart rate samples
-        for _ in range(3):
-            DataPointSeriesFactory(mapping=mapping, series_type=hr_type)
-
-        # Create 2 step samples
-        for _ in range(2):
-            DataPointSeriesFactory(mapping=mapping, series_type=step_type)
-
-        # Act
-        results = timeseries_service.get_count_by_series_type(db)
-
-        # Assert
-        results_dict = dict(results)
-        assert results_dict[hr_type.id] == 3
-        assert results_dict[step_type.id] == 2
-
-    def test_get_count_by_series_type_ordered_by_count(self, db: Session) -> None:
-        """Should order results by count descending."""
-        # Arrange
-        mapping = DataSourceFactory()
-        # Use existing seeded series types to avoid ID conflicts
-        type1 = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-        type2 = SeriesTypeDefinitionFactory.get_or_create_steps()
-
-        # Create more of type1
-        for _ in range(5):
-            DataPointSeriesFactory(mapping=mapping, series_type=type1)
-
-        # Create fewer of type2
-        for _ in range(2):
-            DataPointSeriesFactory(mapping=mapping, series_type=type2)
-
-        # Act
-        results = timeseries_service.get_count_by_series_type(db)
-
-        # Assert
-        # Results should be ordered by count descending
-        assert results[0][1] >= results[1][1]
-
-    def test_get_count_by_series_type_empty_result(self, db: Session) -> None:
-        """Should return empty list when no data points exist."""
-        # Act
-        results = timeseries_service.get_count_by_series_type(db)
-
-        # Assert
-        assert results == []
-
-
 class TestTimeSeriesServiceGetCountBySource:
     """Test counting data points by source."""
 

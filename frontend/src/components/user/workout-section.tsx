@@ -210,6 +210,7 @@ function WorkoutRow({
                     content={<ChartTooltipContent />}
                   />
                   <Line
+                    isAnimationActive={false}
                     dataKey="hr"
                     type="monotone"
                     stroke="var(--color-hr)"

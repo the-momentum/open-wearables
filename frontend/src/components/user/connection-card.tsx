@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -248,7 +248,7 @@ function formatScopeChip(scope: string): string {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-export function ConnectionCard({
+function ConnectionCardComponent({
   connection,
   className,
   activeSync,
@@ -826,3 +826,5 @@ export function ConnectionCard({
     </Card>
   );
 }
+
+export const ConnectionCard = memo(ConnectionCardComponent);

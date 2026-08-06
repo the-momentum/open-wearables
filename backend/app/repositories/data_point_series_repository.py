@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, DeviceTypePriority, ProviderPriority
+from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
@@ -340,6 +340,29 @@ class DataPointSeriesRepository(
         """Get total count of all data points."""
         return db_session.query(func.count(self.model.id)).scalar() or 0
 
+    @staticmethod
+    def _approximate_row_count(db_session: DbSession, table_name: str) -> int:
+        """Approximate row count of ``table_name`` from planner statistics (``pg_class.reltuples``).
+
+        Instant (metadata lookup, no table scan), unlike a full ``COUNT(*)``. The estimate is
+        refreshed by (auto)VACUUM/ANALYZE and may lag by a few percent, so it is only suitable for a
+        non-critical dashboard figure. Postgres reports reltuples = -1 for a never-ANALYZEd table;
+        clamp to 0.
+        """
+        result = db_session.execute(
+            text("SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(:table)"),
+            {"table": table_name},
+        ).scalar()
+        return max(int(result or 0), 0)
+
+    def get_approximate_total_count(self, db_session: DbSession) -> int:
+        """Approximate total row count of the (hot) data point table."""
+        return self._approximate_row_count(db_session, self.model.__tablename__)
+
+    def get_approximate_archived_count(self, db_session: DbSession) -> int:
+        """Approximate row count of the archive table (archived data points)."""
+        return self._approximate_row_count(db_session, DataPointSeriesArchive.__tablename__)
+
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return (
@@ -407,19 +430,6 @@ class DataPointSeriesRepository(
             .all()
         )
         return [(provider, code, count) for provider, code, count in results]
-
-    def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
-        """Get count of data points grouped by series type ID.
-
-        Returns list of (series_type_definition_id, count) tuples ordered by count descending.
-        """
-        results = (
-            db_session.query(self.model.series_type_definition_id, func.count(self.model.id).label("count"))
-            .group_by(self.model.series_type_definition_id)
-            .order_by(func.count(self.model.id).desc())
-            .all()
-        )
-        return [(series_type_definition_id, count) for series_type_definition_id, count in results]
 
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source.
