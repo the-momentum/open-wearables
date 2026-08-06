@@ -6,6 +6,7 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy import ColumnElement, Date, Interval, String, and_, asc, case, cast, func, literal_column, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+from sqlalchemy.orm.query import RowReturningQuery
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
@@ -263,18 +264,15 @@ class DataPointSeriesRepository(
             source=creator.source,
         )
 
-    def get_samples(
+    def _build_samples_query(
         self,
         db_session: DbSession,
         params: TimeSeriesQueryParams,
         types: list[SeriesType],
         user_id: UUID,
-    ) -> tuple[list[tuple[DataPointSeries, DataSource]], int]:
-        """Get data points with filtering and keyset pagination.
-
-        Returns a tuple of (samples, total_count) where total_count is calculated
-        BEFORE applying cursor pagination, giving the total number of matching records.
-        """
+    ) -> "RowReturningQuery[tuple[DataPointSeries, DataSource]]":
+        """Base query for timeseries reads: join data sources and apply all filters
+        except cursor pagination and limit."""
         query = (
             db_session.query(self.model, DataSource)
             .join(
@@ -304,6 +302,22 @@ class DataPointSeriesRepository(
             if end_dt.time() == time.min:
                 end_dt = end_dt + timedelta(days=1)
             query = query.filter(self.model.recorded_at < end_dt)
+
+        return query
+
+    def get_samples(
+        self,
+        db_session: DbSession,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        user_id: UUID,
+    ) -> tuple[list[tuple[DataPointSeries, DataSource]], int]:
+        """Get data points with filtering and keyset pagination.
+
+        Returns a tuple of (samples, total_count) where total_count is calculated
+        BEFORE applying cursor pagination, giving the total number of matching records.
+        """
+        query = self._build_samples_query(db_session, params, types, user_id)
 
         # Calculate total count BEFORE applying cursor pagination
         # This gives us the total matching records (after all other filters)
@@ -335,6 +349,22 @@ class DataPointSeriesRepository(
         # Limit + 1 to check for next page
         limit = params.limit or 50
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+
+    def get_samples_for_range(
+        self,
+        db_session: DbSession,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        user_id: UUID,
+    ) -> list[tuple[DataPointSeries, DataSource]]:
+        """Get all data points in the requested range, without pagination.
+
+        Used by server-side downsampling, which must see every sample of a time
+        bucket before aggregating it — paginating raw rows first would split
+        buckets across pages and corrupt the aggregates.
+        """
+        query = self._build_samples_query(db_session, params, types, user_id)
+        return query.order_by(asc(self.model.recorded_at), asc(self.model.id)).all()  # ty:ignore[invalid-return-type]
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

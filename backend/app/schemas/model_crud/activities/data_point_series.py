@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import SeriesType
+from app.schemas.enums import SeriesType, TimeseriesResolution
 from app.utils.dates import ZoneOffset
 
 
@@ -75,4 +75,9 @@ class TimeSeriesQueryParams(BaseModel):
     cursor: str | None = Field(
         None,
         description="Pagination cursor (use next_cursor for forward, previous_cursor for backward)",
+    )
+    resolution: TimeseriesResolution = Field(
+        TimeseriesResolution.RAW,
+        description="Downsampling resolution. 'raw' returns stored samples unchanged; "
+        "other values aggregate samples into fixed time buckets.",
     )
