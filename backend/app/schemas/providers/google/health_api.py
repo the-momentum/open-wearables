@@ -66,6 +66,7 @@ class ListSpec:
     time:           where the data point carries its timestamp (record-type dependent).
     scale:          unit factor applied to the value.
     is_daily_total: True for once-per-day summaries (Daily types), False for raw samples.
+    session_interval: True for SessionTimeInterval types (filter on interval.civil_start_time).
     extra:          additional series emitted from the same value object, if any.
     """
 
@@ -74,6 +75,7 @@ class ListSpec:
     subfield: str | None = None
     scale: Decimal = Decimal(1)
     is_daily_total: bool = False
+    session_interval: bool = False
     extra: tuple[SeriesField, ...] | None = None
 
 
