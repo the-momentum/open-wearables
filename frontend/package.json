@@ -65,7 +65,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "jsdom": "^29.1.1",
     "oxlint": "^1.77.0",
-    "prettier": "3.9.4",
+    "prettier": "3.9.6",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10",
