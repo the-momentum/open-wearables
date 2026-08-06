@@ -484,6 +484,37 @@ class SummariesService:
             key = (wa["workout_date"], wa["source"], wa.get("device_model"))
             workout_lookup[key] = wa
 
+        # Days with a workout but no time-series data at all (e.g. Strava-only
+        # accounts, which never populate data_point_series) would otherwise be
+        # dropped entirely, since `results` only contains dates present in the
+        # time-series aggregates. Add an all-null placeholder row for those
+        # dates so they still surface below, enriched via workout_lookup.
+        existing_dates = {r["activity_date"] for r in results}
+        workout_only_dates = {wa["workout_date"] for wa in workout_aggregates} - existing_dates
+        if workout_only_dates:
+            for wa in workout_aggregates:
+                if wa["workout_date"] not in workout_only_dates:
+                    continue
+                results.append(
+                    {
+                        "activity_date": wa["workout_date"],
+                        "provider": wa["source"],
+                        "source": wa["source"],
+                        "device_model": wa.get("device_model"),
+                        "steps_sum": None,
+                        "active_energy_sum": None,
+                        "basal_energy_sum": None,
+                        "hr_avg": None,
+                        "hr_max": None,
+                        "hr_min": None,
+                        "distance_sum": None,
+                        "flights_climbed_sum": None,
+                        "active_time_minutes": None,
+                    }
+                )
+            results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+            results.sort(key=lambda r: r["activity_date"])
+
         # Get active/sedentary minutes from step data
         activity_minutes = self.data_point_repo.get_daily_active_minutes(
             db_session, user_id, start_date, end_date, active_threshold=ACTIVE_STEPS_THRESHOLD
