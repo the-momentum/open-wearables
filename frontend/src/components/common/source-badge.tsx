@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils';
 
 interface SourceBadgeProps {
   provider: string;
+  sourceProvider?: string | null;
   className?: string;
 }
 
@@ -44,10 +45,20 @@ export function providerLabel(provider: string): string {
   return PROVIDER_STYLES[provider]?.label ?? provider;
 }
 
-export function SourceBadge({ provider, className = '' }: SourceBadgeProps) {
+export function SourceBadge({
+  provider,
+  sourceProvider,
+  className = '',
+}: SourceBadgeProps) {
   const style = PROVIDER_STYLES[provider] ?? DEFAULT_STYLE;
-  const label = PROVIDER_STYLES[provider]?.label ?? provider;
+  const providerLabel = PROVIDER_STYLES[provider]?.label ?? provider;
+  let label = providerLabel;
+  if (provider === 'internal' && sourceProvider) {
+    const sourceLabel =
+      PROVIDER_STYLES[sourceProvider]?.label ?? sourceProvider;
 
+    label = `${providerLabel} · ${sourceLabel}`;
+  }
   return (
     <span
       className={cn(

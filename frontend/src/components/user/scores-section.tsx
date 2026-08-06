@@ -299,7 +299,10 @@ function ScoreDayCard({
                           key={score.id}
                           className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-muted/50 border border-border/30"
                         >
-                          <SourceBadge provider={score.provider || 'unknown'} />
+                          <SourceBadge
+                            provider={score.provider || 'unknown'}
+                            sourceProvider={score.source_provider ?? undefined}
+                          />
                           <span className="text-sm font-semibold text-foreground">
                             {resilienceScore !== null
                               ? Number(resilienceScore).toFixed(0)
@@ -340,7 +343,10 @@ function ScoreDayCard({
               .map((score) => (
                 <div key={score.id}>
                   <div className="flex items-center gap-2 mb-2">
-                    <SourceBadge provider={score.provider || 'unknown'} />
+                    <SourceBadge
+                      provider={score.provider || 'unknown'}
+                      sourceProvider={score.source_provider ?? undefined}
+                    />
                     <span className="text-xs text-muted-foreground">
                       {CATEGORY_CONFIG[score.category]?.label || score.category}
                     </span>
