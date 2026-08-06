@@ -12,6 +12,7 @@ pays for the scan. A short-lived lock ensures only one refresh is in flight at a
 """
 
 from logging import getLogger
+from uuid import uuid4
 
 import redis
 
@@ -27,6 +28,10 @@ _LOCK_KEY = "dashboard:total_data_points:refreshing"
 
 _FRESH_TTL_SECONDS = 300  # how long a cached value is considered fresh (no refresh triggered)
 _LOCK_TTL_SECONDS = 120  # safety expiry so a crashed refresh cannot wedge the lock forever
+
+# Compare-and-delete: only release the lock if we still own it (its value matches our token), so a
+# slow or expired refresh can never delete a lock already acquired by a newer refresh cycle.
+_RELEASE_IF_OWNER = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
 
 
 def get_total_data_points(db_session: DbSession) -> int:
@@ -52,14 +57,20 @@ def get_total_data_points(db_session: DbSession) -> int:
 
 def _trigger_refresh(client: redis.Redis) -> None:
     """Enqueue a background recount, at most one in flight at a time."""
-    if not client.set(_LOCK_KEY, "1", nx=True, ex=_LOCK_TTL_SECONDS):
+    token = uuid4().hex
+    if not client.set(_LOCK_KEY, token, nx=True, ex=_LOCK_TTL_SECONDS):
         return
     # Imported lazily to avoid a circular import (task -> this module -> task).
     from app.integrations.celery.tasks.refresh_dashboard_stats_task import refresh_dashboard_total_data_points
 
-    # retry=False: never let broker connection retries block the dashboard request. A dispatch
-    # failure is swallowed by the caller's try/except, which falls back to the approximate count.
-    refresh_dashboard_total_data_points.apply_async(retry=False)
+    # retry=False: never let broker connection retries block the dashboard request. The task
+    # releases the lock (matching this token) when it finishes.
+    try:
+        refresh_dashboard_total_data_points.apply_async(args=[token], retry=False)
+    except Exception:
+        # Dispatch failed (e.g. broker down): free our lock so a later request can retry.
+        logger.warning("Failed to dispatch dashboard stats refresh", exc_info=True)
+        release_refresh_lock(token)
 
 
 def store_total_data_points(count: int) -> None:
@@ -69,6 +80,6 @@ def store_total_data_points(count: int) -> None:
     client.set(_FRESH_KEY, "1", ex=_FRESH_TTL_SECONDS)
 
 
-def release_refresh_lock() -> None:
-    """Release the refresh lock so the next stale read can trigger another recount."""
-    get_redis_client().delete(_LOCK_KEY)
+def release_refresh_lock(token: str) -> None:
+    """Release the refresh lock, but only if we still own it (its value matches ``token``)."""
+    get_redis_client().eval(_RELEASE_IF_OWNER, 1, _LOCK_KEY, token)
