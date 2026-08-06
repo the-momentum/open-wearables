@@ -434,12 +434,17 @@ matching utility (`bg-*`, `text-*`, `rounded-*`, `animate-*`) is generated
 automatically. Do not reintroduce a JS config or `@config` — v4 treats those as
 legacy.
 
-Two things to know:
+Three things to know:
 
 - `dark:` is driven by a `.dark` ancestor class via `@custom-variant`, not by
   `prefers-color-scheme`
+- a token declared in `@theme` is only emitted to `:root` if some utility uses
+  it. Unused ones are stripped from the build, so reaching for one directly in a
+  `var()` — in an inline style or a hand-written rule — resolves to nothing.
+  Tokens that need to exist regardless belong in `:root`, like the `--duration-*`
+  values
 - there is no `--duration-*` namespace, so `duration-fast` and similar names do
-  not work. Use `duration-150` or `duration-[var(--duration-fast)]`
+  not work. Use `duration-150` or the arbitrary-value form reading the variable
 
 See [Theme variables](https://tailwindcss.com/docs/theme).
 
