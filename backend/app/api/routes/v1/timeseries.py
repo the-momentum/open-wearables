@@ -9,7 +9,7 @@ from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.schemas.responses.activity import TimeSeriesSample
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, timeseries_service
-from app.utils.dates import DateTimeQueryParam, parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
 
 router = APIRouter()
 
@@ -29,7 +29,7 @@ def get_timeseries(
     """Returns granular time series data (biometrics or activity)."""
     params = TimeSeriesQueryParams(
         start_datetime=parse_query_datetime(start_time),
-        end_datetime=parse_query_datetime(end_time),
+        end_datetime=parse_query_end_datetime(end_time),
         limit=limit,
         cursor=cursor,
     )

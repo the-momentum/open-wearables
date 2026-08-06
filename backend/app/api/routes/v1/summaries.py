@@ -14,7 +14,7 @@ from app.schemas.responses.dashboard import UserDataSummaryResponse
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
-from app.utils.dates import DateTimeQueryParam, parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ def get_activity_summary(
     Aggregates time-series data (steps, energy, heart rate, etc.) by day.
     """
     start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_activity_summaries(
         db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
     )
@@ -53,7 +53,7 @@ def get_sleep_summary(
 ) -> PaginatedResponse[SleepSummary]:
     """Returns daily sleep metrics."""
     start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
@@ -69,7 +69,7 @@ def get_recovery_summary(
 ) -> PaginatedResponse[RecoverySummary]:
     """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2)."""
     start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_recovery_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
@@ -112,5 +112,5 @@ def get_data_summary(
     filtered by `recorded_at`, events by their start time). Omitting both returns all-time counts.
     """
     start_datetime = parse_query_datetime(start_date) if start_date is not None else None
-    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
+    end_datetime = parse_query_end_datetime(end_date) if end_date is not None else None
     return system_info_service.get_user_data_summary(db, user_id, start_datetime, end_datetime)
