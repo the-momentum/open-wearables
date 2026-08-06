@@ -548,53 +548,14 @@ class TestDataPointSeriesRepository:
         assert result[1] == 2  # Yesterday
         assert result[2] == 3  # Today
 
-    def test_get_count_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test aggregating data point counts by series type."""
-        # Arrange
-        user = UserFactory()
-        mapping = DataSourceFactory(user=user)
-        now = datetime.now(timezone.utc)
-
-        # Create heart rate samples
-        for i in range(3):
-            sample = TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source="apple",
-                device_model="device1",
-                data_source_id=mapping.id,
-                recorded_at=now + timedelta(seconds=i),
-                value=72,
-                series_type=SeriesType.heart_rate,
-            )
-            series_repo.create(db, sample)
-
-        # Create steps samples
-        for i in range(2):
-            sample = TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source="apple",
-                device_model="device1",
-                data_source_id=mapping.id,
-                recorded_at=now + timedelta(seconds=i),
-                value=10000,
-                series_type=SeriesType.steps,
-            )
-            series_repo.create(db, sample)
-
+    def test_get_approximate_total_count(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """The reltuples-based approximate count should return a non-negative integer."""
         # Act
-        results = series_repo.get_count_by_series_type(db)
+        result = series_repo.get_approximate_total_count(db)
 
         # Assert
-        counts_dict = dict(results)
-        from app.schemas.enums import get_series_type_id
-
-        hr_type_id = get_series_type_id(SeriesType.heart_rate)
-        steps_type_id = get_series_type_id(SeriesType.steps)
-
-        assert counts_dict.get(hr_type_id, 0) >= 3
-        assert counts_dict.get(steps_type_id, 0) >= 2
+        assert isinstance(result, int)
+        assert result >= 0
 
     def test_get_count_by_source(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test aggregating data point counts by source."""

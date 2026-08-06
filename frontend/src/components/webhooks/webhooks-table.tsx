@@ -106,7 +106,7 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                     size="sm"
                     onClick={() => onDelete(endpoint.id)}
                     title="Delete"
-                    className="text-muted-foreground hover:text-[hsl(var(--destructive-muted))]"
+                    className="text-muted-foreground hover:text-destructive-muted"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

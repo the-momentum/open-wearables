@@ -69,8 +69,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Total Steps',
     shortLabel: 'Steps',
     icon: Footprints,
-    color: 'text-[hsl(var(--success-muted))]',
-    bgColor: 'bg-[hsl(var(--success-muted)/0.1)]',
+    color: 'text-success-muted',
+    bgColor: 'bg-success-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
     getValue: (stats) => stats.totalSteps,
     formatValue: formatNumber,
@@ -134,8 +134,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Floors Climbed',
     shortLabel: 'Floors',
     icon: TrendingUp,
-    color: 'text-[hsl(var(--warning-muted))]',
-    bgColor: 'bg-[hsl(var(--warning-muted)/0.1)]',
+    color: 'text-warning-muted',
+    bgColor: 'bg-warning-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(245,158,11,0.5)]',
     getValue: (stats) => stats.totalFloorsClimbed,
     formatValue: formatNumber,
@@ -214,7 +214,7 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
         <div className="flex-1 flex items-center justify-around">
           {/* Steps */}
           <div className="flex items-center gap-2">
-            <Footprints className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+            <Footprints className="h-4 w-4 text-success-muted" />
             <div>
               <p className="text-sm font-medium text-foreground">
                 {formatNumber(summary.steps)}
@@ -491,6 +491,7 @@ export function ActivitySection({
                         content={<ChartTooltipContent />}
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="value"
                         fill="var(--color-value)"
                         radius={[4, 4, 0, 0]}

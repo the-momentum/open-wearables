@@ -198,7 +198,7 @@ export function UsersTable({
             onClick={() => handleCopyId(row.original.id)}
           >
             {copiedId === row.original.id ? (
-              <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
+              <Check className="h-3 w-3 text-success-muted" />
             ) : (
               <Copy className="h-3 w-3" />
             )}
@@ -287,7 +287,7 @@ export function UsersTable({
             title="Copy pairing link"
           >
             {copiedPairLink === row.original.id ? (
-              <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+              <Check className="h-4 w-4 text-success-muted" />
             ) : (
               <LinkIcon className="h-4 w-4" />
             )}

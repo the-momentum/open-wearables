@@ -1,20 +1,17 @@
 from collections import defaultdict
-from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.schemas.enums import get_series_type_from_id
-from app.schemas.enums.series_types import SERIES_TYPE_ENUM_BY_ID
 from app.schemas.responses.dashboard import ProviderDataCount, UserDataSummaryResponse
 from app.schemas.responses.upload import (
-    CountWithGrowth,
     DataPointsInfo,
-    SeriesTypeMetric,
+    EventRecordsInfo,
+    MetricCount,
     SystemInfoResponse,
-    WorkoutTypeMetric,
 )
+from app.services.dashboard_stats_cache import get_total_data_points
 from app.services.event_record_service import EventRecordService, event_record_service
 from app.services.timeseries_service import TimeSeriesService, timeseries_service
 from app.services.user_connection_service import UserConnectionService, user_connection_service
@@ -38,94 +35,29 @@ class SystemInfoService:
         self.timeseries_service = timeseries_service
         self.event_record_service = event_record_service
 
-    def _calculate_weekly_growth(self, current: int, previous: int) -> float:
-        """Calculate weekly growth percentage."""
-        if previous == 0:
-            return 0.0 if current == 0 else 100.0
-        return ((current - previous) / previous) * 100.0
+    def get_system_info(self, db_session: DbSession) -> SystemInfoResponse:
+        """Get system dashboard information.
 
-    def _get_growth_stats(
-        self,
-        db_session: DbSession,
-        total_count_func: Callable[[DbSession], int],
-        range_count_func: Callable[[DbSession, datetime, datetime], int],
-        week_ago: datetime,
-        two_weeks_ago: datetime,
-        now: datetime,
-    ) -> CountWithGrowth:
-        """Calculate stats with growth based on current and previous week."""
-        total = total_count_func(db_session)
-        this_week = range_count_func(db_session, week_ago, now)
-        last_week = range_count_func(db_session, two_weeks_ago, week_ago)
-        growth = self._calculate_weekly_growth(this_week, last_week)
-        return CountWithGrowth(count=total, weekly_growth=growth)
-
-    def get_system_info(self, db_session: DbSession, top_limit: int = 6) -> SystemInfoResponse:
-        """Get system dashboard information."""
-        now = datetime.now(timezone.utc)
-        week_ago = now - timedelta(days=7)
-        two_weeks_ago = now - timedelta(days=14)
-
-        # Users
-        users_stats = self._get_growth_stats(
-            db_session,
-            self.user_service.crud.get_total_count,
-            self.user_service.get_count_in_range,
-            week_ago,
-            two_weeks_ago,
-            now,
+        The total data-point count is served from cache (approximate on a cold cache) to avoid a
+        multi-second full scan on every dashboard load; the remaining figures are cheap counts on
+        small tables.
+        """
+        category_counts = dict(self.event_record_service.get_category_counts(db_session))
+        event_records = EventRecordsInfo(
+            count=sum(category_counts.values()),
+            workouts=category_counts.get("workout", 0),
+            sleep=category_counts.get("sleep", 0),
+            menstrual_cycles=category_counts.get("menstrual_cycle", 0),
         )
-
-        # Active Connections
-        active_conn_stats = self._get_growth_stats(
-            db_session,
-            self.user_connection_service.crud.get_active_count,
-            self.user_connection_service.get_active_count_in_range,
-            week_ago,
-            two_weeks_ago,
-            now,
-        )
-
-        # Data Points
-        data_points_stats = self._get_growth_stats(
-            db_session,
-            self.timeseries_service.crud.get_total_count,
-            self.timeseries_service.get_count_in_range,
-            week_ago,
-            two_weeks_ago,
-            now,
-        )
-
-        # Get metrics by series type
-        series_type_counts = self.timeseries_service.get_count_by_series_type(db_session)
-        top_series_types = [
-            SeriesTypeMetric(
-                series_type=get_series_type_from_id(series_type_id).value,
-                count=count,
-            )
-            for series_type_id, count in series_type_counts
-            if series_type_id in SERIES_TYPE_ENUM_BY_ID
-        ][:top_limit]
-
-        # Get metrics by workout type
-        workout_type_counts = self.event_record_service.get_count_by_workout_type(db_session)
-        top_workout_types = [
-            WorkoutTypeMetric(
-                workout_type=workout_type or "Unknown",
-                count=count,
-            )
-            for workout_type, count in workout_type_counts[:top_limit]
-        ]
 
         return SystemInfoResponse(
-            total_users=users_stats,
-            active_conn=active_conn_stats,
+            total_users=MetricCount(count=self.user_service.crud.get_total_count(db_session)),
+            active_conn=MetricCount(count=self.user_connection_service.crud.get_active_count(db_session)),
             data_points=DataPointsInfo(
-                count=data_points_stats.count,
-                weekly_growth=data_points_stats.weekly_growth,
-                top_series_types=top_series_types,
-                top_workout_types=top_workout_types,
+                count=get_total_data_points(db_session),
+                archived=self.timeseries_service.get_approximate_archived_count(db_session),
             ),
+            event_records=event_records,
             connections_coverage=self.user_connection_service.get_connections_coverage(db_session),
         )
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -248,7 +248,7 @@ function formatScopeChip(scope: string): string {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
-export function ConnectionCard({
+function ConnectionCardComponent({
   connection,
   className,
   activeSync,
@@ -629,8 +629,8 @@ export function ConnectionCard({
         {timedOutTypes.length > 0 &&
           !isBackfillInProgress &&
           !isPermanentlyFailed && (
-            <div className="space-y-2 p-3 bg-[hsl(var(--warning-muted)/0.1)] rounded-lg border border-[hsl(var(--warning-muted)/0.2)]">
-              <p className="text-sm font-medium text-[hsl(var(--warning-muted))] dark:text-[hsl(var(--warning-muted))]">
+            <div className="space-y-2 p-3 bg-warning-muted/10 rounded-lg border border-warning-muted/20">
+              <p className="text-sm font-medium text-warning-muted dark:text-warning-muted">
                 Some data types timed out:
               </p>
               <div className="space-y-1.5">
@@ -826,3 +826,5 @@ export function ConnectionCard({
     </Card>
   );
 }
+
+export const ConnectionCard = memo(ConnectionCardComponent);

@@ -298,7 +298,7 @@ function UserDetailPage() {
           <Button variant="secondary" onClick={handleCopyPairLink}>
             {copied ? (
               <>
-                <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                <Check className="h-4 w-4 text-success-muted" />
                 Copied!
               </>
             ) : (
@@ -455,7 +455,7 @@ function UserDetailPage() {
                   aria-label="Copy API URL"
                 >
                   {urlCopied ? (
-                    <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                    <Check className="h-4 w-4 text-success-muted" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -481,7 +481,7 @@ function UserDetailPage() {
                   aria-label="Copy invitation code"
                 >
                   {codeCopied ? (
-                    <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                    <Check className="h-4 w-4 text-success-muted" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}

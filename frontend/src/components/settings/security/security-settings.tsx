@@ -82,7 +82,7 @@ export function SecuritySettings() {
             </button>
           </div>
           {form.formState.errors.current_password && (
-            <p className="text-xs text-[hsl(var(--destructive-muted))]">
+            <p className="text-xs text-destructive-muted">
               {form.formState.errors.current_password.message}
             </p>
           )}
@@ -117,7 +117,7 @@ export function SecuritySettings() {
             </button>
           </div>
           {form.formState.errors.new_password && (
-            <p className="text-xs text-[hsl(var(--destructive-muted))]">
+            <p className="text-xs text-destructive-muted">
               {form.formState.errors.new_password.message}
             </p>
           )}
@@ -157,7 +157,7 @@ export function SecuritySettings() {
             </button>
           </div>
           {form.formState.errors.confirm_password && (
-            <p className="text-xs text-[hsl(var(--destructive-muted))]">
+            <p className="text-xs text-destructive-muted">
               {form.formState.errors.confirm_password.message}
             </p>
           )}
