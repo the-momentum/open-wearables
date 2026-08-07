@@ -24,6 +24,7 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Exercises | Yes (with optional HR samples, zones, route) |
+| Laps, splits, pool lengths | Yes (parsed from the exercise FIT file) |
 | Sleep (with stages) | Yes |
 | Daily activity (steps, calories, activity zones) | Yes |
 | Continuous heart rate | Yes |
@@ -41,6 +42,7 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Method | Description |
 |--------|-------------|
 | **Polling (pull) — Exercises** | Open Wearables fetches exercises via the AccessLink v3 API (`/v3/exercises`). Returns all exercises available in Polar Flow for the connected user. |
+| **Polling (pull) — Exercise FIT** | For each saved exercise, Open Wearables also pulls the device's own recording ([`/v3/exercises/{id}/fit`](https://www.polar.com/accesslink-api/#get-exercise-fit)). Laps, splits and pool lengths go to `workout_details.segments`, and time-in-zone to `hr_zones` / `power_zones` when the device recorded it. The file's per-second samples are written to `data_point_series` only when `INGEST_WORKOUT_SAMPLES` is enabled (off by default). Exercises without a FIT file (manual entries, third-party uploads) keep their summary. |
 | **Polling (pull) — 24/7 data** | Sleep, daily activity, continuous HR, Nightly Recharge, cardio load, and Elixir/Sleepwise metrics are fetched via range endpoints covering the last 90 days. |
 | **Webhooks (push)** | Polar sends a lightweight notification on each event (exercise, sleep, activity, etc.). Open Wearables acknowledges immediately and enqueues a targeted sync for the affected data type. |
 
