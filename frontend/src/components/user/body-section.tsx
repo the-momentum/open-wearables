@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useBodySummary } from '@/hooks/api/use-health';
-import { SourceBadge } from '@/components/common/source-badge';
+import { DataSourceInfo } from '@/components/common/data-source-info';
 import {
   formatWeight,
   formatHeight,
@@ -175,9 +175,7 @@ export function BodySection({ userId }: BodySectionProps) {
       <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium text-foreground">Body Metrics</h3>
-          {bodySummary?.source?.provider && (
-            <SourceBadge provider={bodySummary.source.provider} />
-          )}
+          <DataSourceInfo source={bodySummary?.source} />
         </div>
         <Scale className="h-4 w-4 text-muted-foreground" />
       </div>

@@ -11,6 +11,7 @@ import type {
   ProviderPriority,
   DeviceTypePriority,
 } from '@/lib/api/services/priority.service';
+import { deviceTypeInfo } from '@/components/common/device-type';
 
 // Provider display info
 const PROVIDER_INFO: Record<string, { name: string; color: string }> = {
@@ -20,17 +21,6 @@ const PROVIDER_INFO: Record<string, { name: string; color: string }> = {
   suunto: { name: 'Suunto', color: 'bg-orange-500' },
   whoop: { name: 'WHOOP', color: 'bg-teal-500' },
   oura: { name: 'Oura', color: 'bg-purple-500' },
-};
-
-// Device type display info
-const DEVICE_TYPE_INFO: Record<string, { name: string; icon: string }> = {
-  watch: { name: 'Watch', icon: '⌚' },
-  band: { name: 'Band', icon: '📿' },
-  ring: { name: 'Ring', icon: '💍' },
-  phone: { name: 'Phone', icon: '📱' },
-  scale: { name: 'Scale', icon: '⚖️' },
-  other: { name: 'Other', icon: '📦' },
-  unknown: { name: 'Unknown', icon: '❓' },
 };
 
 interface ProviderItemProps {
@@ -99,10 +89,7 @@ function DeviceTypeItem({
   onMoveUp,
   onMoveDown,
 }: DeviceTypeItemProps) {
-  const info = DEVICE_TYPE_INFO[deviceType.device_type] || {
-    name: deviceType.device_type,
-    icon: '❓',
-  };
+  const { label, Icon } = deviceTypeInfo(deviceType.device_type);
 
   return (
     <div className="flex items-center gap-4 px-4 py-3 bg-card/40 border border-border/60 rounded-lg">
@@ -126,8 +113,8 @@ function DeviceTypeItem({
       </div>
 
       <div className="flex items-center gap-3 flex-1">
-        <span className="text-2xl">{info.icon}</span>
-        <span className="text-foreground font-medium">{info.name}</span>
+        <Icon className="h-5 w-5 text-muted-foreground" />
+        <span className="text-foreground font-medium">{label}</span>
       </div>
 
       <div className="text-sm text-muted-foreground">Priority {index + 1}</div>

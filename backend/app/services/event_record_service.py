@@ -666,8 +666,10 @@ class EventRecordService(
 
     def _map_source(self, data_source: DataSource) -> DataSourceSchema:
         return DataSourceSchema(
-            provider=data_source.source or "unknown",
+            provider=data_source.provider or "unknown",
+            source=data_source.source,
             device=data_source.device_model,
+            device_type=data_source.device_type,
         )
 
     @handle_exceptions

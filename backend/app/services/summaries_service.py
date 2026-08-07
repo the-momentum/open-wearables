@@ -337,7 +337,12 @@ class SummariesService:
 
             summary = SleepSummary(
                 date=result["sleep_date"],
-                source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
+                source=SourceMetadata(
+                    provider=result.get("provider") or "unknown",
+                    source=result.get("source"),
+                    device=result.get("device_model"),
+                    device_type=result.get("device_type"),
+                ),
                 start_time=start_time,
                 end_time=end_time,
                 zone_offset=zone_offset,
@@ -411,7 +416,12 @@ class SummariesService:
         data = [
             RecoverySummary(
                 date=r["recovery_date"],
-                source=SourceMetadata(provider=r["source"] or "unknown", device=r.get("device_model")),
+                source=SourceMetadata(
+                    provider=r.get("provider") or "unknown",
+                    source=r.get("source"),
+                    device=r.get("device_model"),
+                    device_type=r.get("device_type"),
+                ),
                 sleep_duration_seconds=None,
                 sleep_efficiency_percent=None,
                 resting_heart_rate_bpm=int(r["resting_heart_rate"])
@@ -652,7 +662,12 @@ class SummariesService:
             steps = result.get("steps_sum")
             summary = ActivitySummary(
                 date=result["activity_date"],
-                source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
+                source=SourceMetadata(
+                    provider=result.get("provider") or "unknown",
+                    source=result.get("source"),
+                    device=result.get("device_model"),
+                    device_type=result.get("device_type"),
+                ),
                 steps=steps if steps is not None else None,
                 distance_meters=total_distance,
                 floors_climbed=floors_climbed,
@@ -764,13 +779,18 @@ class SummariesService:
         # Calculate age
         age = self._calculate_age(birth_date, now.date()) if birth_date else None
 
-        # Determine source from most recent slow-changing measurement
+        # Determine source from most recent slow-changing measurement.
+        # Tuple layout: (value, recorded_at, provider, source, device_model, device_type)
         provider = "unknown"
+        source_name = None
         device_id = None
+        device_type = None
         for data in [weight_data, height_data, body_fat_data, muscle_mass_data]:
             if data:
                 provider = data[2] or "unknown"
-                device_id = data[3]
+                source_name = data[3]
+                device_id = data[4]
+                device_type = data[5]
                 break
 
         body_slow_changing = BodySlowChanging(
@@ -871,7 +891,12 @@ class SummariesService:
         )
 
         return BodySummary(
-            source=SourceMetadata(provider=provider, device=device_id),
+            source=SourceMetadata(
+                provider=provider,
+                source=source_name,
+                device=device_id,
+                device_type=device_type,
+            ),
             slow_changing=body_slow_changing,
             averaged=body_averaged,
             latest=body_latest,

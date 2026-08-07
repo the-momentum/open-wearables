@@ -556,7 +556,7 @@ class EventRecordRepository(
 
         Returns list of dicts with keys:
         - sleep_date, min_start_time, max_end_time, total_duration_minutes
-        - source, device_model, record_id
+        - provider, source, device_model, device_type, record_id
         - time_in_bed_minutes, efficiency_percent
         - deep_minutes, light_minutes, rem_minutes, awake_minutes
         - nap_count, nap_duration_minutes
@@ -602,6 +602,9 @@ class EventRecordRepository(
                 DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                # Functionally dependent on the three columns above (uq_data_source_identity),
+                # so grouping by it as well cannot change the number of groups.
+                DataSource.device_type,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
                 # Sleep details aggregations - main sleep only (minutes stored, convert to seconds later)
                 func.sum(case((is_main_sleep, SleepDetails.sleep_time_in_bed_minutes), else_=None)).label(
@@ -649,6 +652,7 @@ class EventRecordRepository(
                 DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                DataSource.device_type,
             )
         ).subquery()
 
@@ -697,6 +701,7 @@ class EventRecordRepository(
             subquery.c.provider,
             subquery.c.source,
             subquery.c.device_model,
+            subquery.c.device_type,
             record_id_col,
             subquery.c.time_in_bed_minutes,
             subquery.c.deep_minutes,
@@ -751,6 +756,7 @@ class EventRecordRepository(
                     "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
+                    "device_type": row.device_type,
                     "record_id": row.record_id,
                     "time_in_bed_minutes": int(row.time_in_bed_minutes)
                     if row.time_in_bed_minutes is not None
