@@ -779,19 +779,22 @@ class SummariesService:
         # Calculate age
         age = self._calculate_age(birth_date, now.date()) if birth_date else None
 
-        # Determine source from most recent slow-changing measurement.
+        # Determine source from the most recently recorded slow-changing measurement.
         # Tuple layout: (value, recorded_at, provider, source, device_model, device_type)
+        latest_measurement = max(
+            (data for data in (weight_data, height_data, body_fat_data, muscle_mass_data, bmi_data) if data),
+            key=lambda data: data[1],
+            default=None,
+        )
         provider = "unknown"
         source_name = None
         device_id = None
         device_type = None
-        for data in [weight_data, height_data, body_fat_data, muscle_mass_data]:
-            if data:
-                provider = data[2] or "unknown"
-                source_name = data[3]
-                device_id = data[4]
-                device_type = data[5]
-                break
+        if latest_measurement:
+            provider = latest_measurement[2] or "unknown"
+            source_name = latest_measurement[3]
+            device_id = latest_measurement[4]
+            device_type = latest_measurement[5]
 
         body_slow_changing = BodySlowChanging(
             weight_kg=weight_kg,

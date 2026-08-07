@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, computed_field
 
 from app.constants.devices_map import resolve_device_name
+from app.schemas.enums import DeviceType
 
 
 class SourceMetadata(BaseModel):
@@ -14,7 +15,7 @@ class SourceMetadata(BaseModel):
     provider: str = Field(..., example="apple")
     source: str | None = Field(None, example="Connect")
     device: str | None = Field(None, example="iPhone15,2")
-    device_type: str | None = Field(None, example="phone")
+    device_type: DeviceType | None = Field(None, example="phone")
 
     @computed_field
     @property
