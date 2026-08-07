@@ -73,11 +73,23 @@ class StravaWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Validate timestamp from X-Strava-Signature; skip HMAC.
+        """Verify X-Strava-Signature using HMAC-SHA256 over the raw body.
 
-        Security relies on the hub.challenge handshake at subscription time.
-        Replays are rejected using the timestamp in X-Strava-Signature.
+        Strava signs the message ``{t}.{raw_request_body}`` with
+        HMAC-SHA256(strava_client_secret) and sends the hex digest as ``v1``.
+        The timestamp is also checked for freshness to bound replay windows.
         """
+        secret_setting = settings.strava_client_secret
+        if not secret_setting:
+            log_structured(
+                logger,
+                "error",
+                "STRAVA_CLIENT_SECRET not configured; rejecting webhook",
+                provider="strava",
+                action="webhook_signature_missing_secret",
+            )
+            return False
+
         header = request.headers.get("X-Strava-Signature", "")
         if not header:
             return False
@@ -85,6 +97,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
         try:
             parts = dict(p.split("=", 1) for p in header.split(","))
             timestamp = int(parts["t"])
+            provided_signature = parts["v1"]
         except (KeyError, ValueError):
             return False
 
@@ -98,7 +111,13 @@ class StravaWebhookHandler(BaseWebhookHandler):
             )
             return False
 
-        return True
+        secret = secret_setting.get_secret_value()
+        return self._verify_hmac_sha256(
+            secret,
+            body,
+            provided_signature,
+            prefix=f"{timestamp}.".encode(),
+        )
 
     def parse_payload(self, body: bytes) -> StravaWebhookEvent:
         try:
