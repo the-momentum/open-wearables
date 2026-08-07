@@ -28,6 +28,7 @@ from app.integrations.redis_client import get_redis_client
 from app.main import api
 from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
+from app.services.config_service import config_service
 from tests import factories
 
 # Set test environment before importing app modules
@@ -200,9 +201,11 @@ def flush_redis(_redis_url: str) -> Generator[None, None, None]:
     """Flush Redis state before each test to ensure isolation."""
     redis_lib.from_url(_redis_url).flushdb()
     get_redis_client.cache_clear()
+    config_service.clear_cache()
     yield
     redis_lib.from_url(_redis_url).flushdb()
     get_redis_client.cache_clear()
+    config_service.clear_cache()
 
 
 # ============================================================================

@@ -6,50 +6,26 @@ from datetime import date, timedelta
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.models.archival_setting import ArchivalSetting
-from app.repositories.archival_repository import (
-    ArchivalSettingRepository,
-    DataPointSeriesArchiveRepository,
-)
-from app.schemas.utils import (
-    ArchivalSettingRead,
-    ArchivalSettingUpdate,
-    ArchivalSettingWithEstimate,
-    StorageEstimate,
-)
+from app.models import AppSetting
+from app.repositories.app_settings_repository import AppSettingRepository
+from app.repositories.archival_repository import DataPointSeriesArchiveRepository
+from app.schemas.utils import StorageEstimate
 from app.utils.exceptions import handle_exceptions
 from app.utils.structured_logging import log_structured
 
 
 class ArchivalService:
-    """Orchestrates archival settings CRUD, storage estimates, and the daily archival job."""
+    """Storage estimates and the daily archival + retention job (settings live in app_settings)."""
 
     def __init__(self, log: Logger):
         self.logger = log
-        self.settings_repo = ArchivalSettingRepository()
+        self.settings_repo = AppSettingRepository()
         self.archive_repo = DataPointSeriesArchiveRepository()
 
-    # ── Settings CRUD ─────────────────────────────────────────────
-
     @handle_exceptions
-    def get_settings(self, db: DbSession) -> ArchivalSettingWithEstimate:
-        """Return current archival configuration together with table-size estimates."""
-        setting = self.settings_repo.get(db)
-        storage = self._get_storage(db, setting)
-        return ArchivalSettingWithEstimate(
-            settings=ArchivalSettingRead.model_validate(setting),
-            storage=storage,
-        )
-
-    @handle_exceptions
-    def update_settings(self, db: DbSession, update: ArchivalSettingUpdate) -> ArchivalSettingWithEstimate:
-        """Persist new archival settings and return updated estimates."""
-        setting = self.settings_repo.update(db, update.archive_after_days, update.delete_after_days)
-        storage = self._get_storage(db, setting)
-        return ArchivalSettingWithEstimate(
-            settings=ArchivalSettingRead.model_validate(setting),
-            storage=storage,
-        )
+    def get_storage(self, db: DbSession) -> StorageEstimate:
+        """Return current table-size estimates and growth projection."""
+        return self._get_storage(db, self.settings_repo.get(db))
 
     # ── Daily job (called by Celery) ──────────────────────────────
 
@@ -144,7 +120,7 @@ class ArchivalService:
 
     # ── Private helpers ───────────────────────────────────────────
 
-    def _get_storage(self, db: DbSession, setting: ArchivalSetting) -> StorageEstimate:
+    def _get_storage(self, db: DbSession, setting: AppSetting) -> StorageEstimate:
         raw = self.archive_repo.get_storage_estimate(db)
 
         if setting.delete_after_days is not None:

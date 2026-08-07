@@ -1,38 +1,6 @@
-"""Schemas for data lifecycle / archival settings."""
+"""Schemas for data lifecycle storage estimates."""
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class ArchivalSettingRead(BaseModel):
-    """Response schema for archival settings."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    archive_after_days: int | None = Field(
-        None,
-        description="Days before live samples are aggregated into daily archive. NULL = archival disabled.",
-    )
-    delete_after_days: int | None = Field(
-        None,
-        description="Days before archived data is permanently removed. NULL = kept indefinitely.",
-    )
-
-
-class ArchivalSettingUpdate(BaseModel):
-    """Request schema for updating archival settings."""
-
-    archive_after_days: int | None = Field(
-        None,
-        ge=1,
-        le=3650,
-        description="Days before live data is archived. NULL to disable archival.",
-    )
-    delete_after_days: int | None = Field(
-        None,
-        ge=1,
-        le=7300,
-        description="Days before data is permanently deleted. NULL to keep indefinitely.",
-    )
+from pydantic import BaseModel, Field
 
 
 class StorageEstimate(BaseModel):
@@ -58,10 +26,3 @@ class StorageEstimate(BaseModel):
     other_tables_pretty: str = Field(description="Human-readable other tables size")
     total_pretty: str = Field(description="Human-readable total DB size")
     growth_class: str = Field(description="Growth complexity class: 'bounded' | 'linear_efficient' | 'linear'")
-
-
-class ArchivalSettingWithEstimate(BaseModel):
-    """Combined archival settings + storage estimates response."""
-
-    settings: ArchivalSettingRead
-    storage: StorageEstimate

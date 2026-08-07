@@ -4,7 +4,7 @@ import warnings
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 if TYPE_CHECKING:
@@ -382,4 +382,30 @@ def _get_settings() -> Settings:
     return Settings()
 
 
-settings = _get_settings()
+_raw_settings = _get_settings()
+
+
+class _SettingsProxy:
+    """`settings.X` access point after config moved to the DB: managed keys resolve via
+    ConfigService (DB value else the config.py default, cached in Redis + RAM); everything
+    else — and all writes — go to the static Settings. Lazy imports avoid an import cycle."""
+
+    def __getattr__(self, name: str) -> Any:
+        from app.schemas.app_config import MANAGED_SETTING_KEYS
+
+        if name in MANAGED_SETTING_KEYS:
+            from app.services.config_service import config_service
+
+            return getattr(config_service.get(), name)
+        return getattr(_raw_settings, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(_raw_settings, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        delattr(_raw_settings, name)
+
+
+# Typed as Settings so call sites keep the precise field types (the proxy delegates to a real
+# Settings / to AppConfig, whose managed-key types match); the runtime object is the proxy.
+settings: Settings = cast(Settings, _SettingsProxy())

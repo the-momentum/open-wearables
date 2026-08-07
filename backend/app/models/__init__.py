@@ -1,6 +1,6 @@
 from .api_key import ApiKey
+from .app_setting import AppSetting
 from .application import Application
-from .archival_setting import ArchivalSetting
 from .data_point_series import DataPointSeries
 from .data_point_series_archive import DataPointSeriesArchive
 from .data_source import DataSource
@@ -31,8 +31,8 @@ DETAIL_MODELS: dict[DetailType, type[EventRecordDetail]] = {
 
 __all__ = [
     "ApiKey",
+    "AppSetting",
     "Application",
-    "ArchivalSetting",
     "Developer",
     "DataSource",
     "DataPointSeriesArchive",

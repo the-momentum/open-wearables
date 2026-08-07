@@ -1,5 +1,6 @@
 from .api_key_repository import ApiKeyRepository
-from .archival_repository import ArchivalSettingRepository, DataPointSeriesArchiveRepository
+from .app_settings_repository import AppSettingRepository
+from .archival_repository import DataPointSeriesArchiveRepository
 from .data_point_series_repository import DataPointSeriesRepository
 from .data_source_repository import DataSourceRepository
 from .developer_repository import DeveloperRepository
@@ -16,7 +17,7 @@ from .user_repository import UserRepository
 __all__ = [
     "UserRepository",
     "ApiKeyRepository",
-    "ArchivalSettingRepository",
+    "AppSettingRepository",
     "DataPointSeriesArchiveRepository",
     "EventRecordRepository",
     "EventRecordDetailRepository",

@@ -62,9 +62,9 @@ echo 'Running is_daily_total backfill...'
 uv run python scripts/data_migrations/backfill_is_daily_total.py \
     || echo "Warning: is_daily_total backfill failed — will retry on next startup."
 
-# Initialize archival settings
-echo 'Initializing archival settings...'
-uv run python scripts/init/seed_archival_settings.py
+# Initialize app settings
+echo 'Initializing app settings...'
+uv run python scripts/init/seed_app_settings.py
 
 # Register webhook event types with Svix (with retry, non-fatal)
 echo 'Registering webhook event types...'

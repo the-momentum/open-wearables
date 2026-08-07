@@ -10,7 +10,6 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource
-from app.models.archival_setting import ArchivalSetting
 from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
@@ -18,28 +17,6 @@ from app.schemas.enums import (
     get_series_type_from_id,
     get_series_type_id,
 )
-
-# ---------------------------------------------------------------------------
-# Archival Settings repository
-# ---------------------------------------------------------------------------
-
-
-class ArchivalSettingRepository:
-    """Manages the singleton archival_settings row (id=1 enforced by check constraint)."""
-
-    def get(self, db: DbSession) -> ArchivalSetting:
-        """Return the current archival settings (singleton row with id=1)."""
-        return db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).one()
-
-    def update(self, db: DbSession, archive_after_days: int | None, delete_after_days: int | None) -> ArchivalSetting:
-        """Update archival settings."""
-        setting = self.get(db)
-        setting.archive_after_days = archive_after_days
-        setting.delete_after_days = delete_after_days
-        db.commit()
-        db.refresh(setting)
-        return setting
-
 
 # ---------------------------------------------------------------------------
 # Data-point archive repository

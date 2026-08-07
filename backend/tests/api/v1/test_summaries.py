@@ -7,8 +7,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeriesArchive
-from app.models.archival_setting import ArchivalSetting
+from app.models import AppSetting, DataPointSeriesArchive
 from app.schemas.enums import AggregationMethod, HealthScoreCategory, ProviderName
 from tests.factories import (
     ApiKeyFactory,
@@ -656,8 +655,9 @@ class TestActivitySummaryEndpoint:
         active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
 
         # Enable archival (singleton id=1) so the summaries service queries the archive.
-        if not db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).first():
-            db.add(ArchivalSetting(id=1, archive_after_days=30, delete_after_days=None))
+        setting = db.query(AppSetting).filter(AppSetting.id == 1).first() or AppSetting(id=1)
+        setting.archive_after_days = 30
+        db.add(setting)
         # Archived daily active_time (archive holds one SUM row per day) for a day with no live data.
         db.add(
             DataPointSeriesArchive(
@@ -683,6 +683,40 @@ class TestActivitySummaryEndpoint:
         assert "2025-12-26" in days
         # Comes from the archived active_time row, not the step-threshold fallback.
         assert days["2025-12-26"]["active_minutes"] == 275
+
+    def test_archive_ignored_when_archival_disabled(self, client: TestClient, db: Session) -> None:
+        """With archival disabled (archive_after_days=None), archive-only days are not merged in."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source=ProviderName.GARMIN)
+        active_time_type = SeriesTypeDefinitionFactory.get_or_create_active_time()
+
+        # Disable archival on the singleton (id=1).
+        setting = db.query(AppSetting).filter(AppSetting.id == 1).first() or AppSetting(id=1)
+        setting.archive_after_days = None
+        db.add(setting)
+        # An archive-only day that must NOT surface while archival is disabled.
+        db.add(
+            DataPointSeriesArchive(
+                id=uuid4(),
+                data_source_id=mapping.id,
+                series_type_definition_id=active_time_type.id,
+                bucket_start_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+                aggregation_type=AggregationMethod.SUM,
+                value=Decimal("275"),
+                sample_count=1,
+            )
+        )
+        db.commit()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        days = {d["date"]: d for d in response.json()["data"]}
+        assert "2025-12-26" not in days
 
     def test_get_activity_summary_multiple_days(self, client: TestClient, db: Session) -> None:
         """Test activity summary returns data grouped by day."""

@@ -2,7 +2,6 @@ from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
 from .applications import router as applications_router
-from .archival import router as archival_router
 from .auth import router as auth_router
 from .config import router as config_router
 from .connections import router as connections_router
@@ -65,7 +64,6 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: 
 v1_router.include_router(applications_router, tags=["Internal: Applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Internal: Dashboard"])
 v1_router.include_router(config_router, tags=["Internal: Config"])
-v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
 v1_router.include_router(seed_data_router, tags=["Internal: Seed Data"])
 v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
