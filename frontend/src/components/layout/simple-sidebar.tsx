@@ -9,12 +9,22 @@ import {
   Webhook,
   RefreshCw,
   LayoutGrid,
+  Menu,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ROUTES } from '@/lib/constants/routes';
 import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 
 const menuItems = [
   {
@@ -56,12 +66,12 @@ const menuItems = [
   },
 ];
 
-export function SimpleSidebar() {
+function SidebarContent() {
   const location = useLocation();
   const { logout, isLoggingOut } = useAuth();
 
   return (
-    <aside className="relative w-64 bg-black flex flex-col border-r border-border/40">
+    <>
       {/* Header */}
       <div className="p-4 border-b border-border/40">
         <img src={logotype} alt="Open Wearables" className="h-auto" />
@@ -134,6 +144,40 @@ export function SimpleSidebar() {
           v{__APP_VERSION__}
         </p>
       </div>
+    </>
+  );
+}
+
+export function SimpleSidebar() {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/40 bg-black px-4 py-3 md:hidden">
+        <img src={logotype} alt="Open Wearables" className="h-6" />
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Open menu">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-64 bg-black p-0 text-sidebar-foreground">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Navigation</SheetTitle>
+              <SheetDescription>Open Wearables navigation menu</SheetDescription>
+            </SheetHeader>
+            <div className="flex h-full w-full flex-col">
+              <SidebarContent />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  }
+
+  return (
+    <aside className="relative hidden w-64 bg-black flex-col border-r border-border/40 md:flex">
+      <SidebarContent />
     </aside>
   );
 }
