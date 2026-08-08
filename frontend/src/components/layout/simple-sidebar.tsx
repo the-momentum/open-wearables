@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import {
   Home,
@@ -66,7 +67,7 @@ const menuItems = [
   },
 ];
 
-function SidebarContent() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const { logout, isLoggingOut } = useAuth();
 
@@ -89,6 +90,7 @@ function SidebarContent() {
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={onNavigate}
                 className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-card/40 hover:text-foreground transition-all duration-200"
               >
                 <item.icon className="h-4 w-4 text-muted-foreground" />
@@ -102,6 +104,7 @@ function SidebarContent() {
             <Link
               key={item.title}
               to={item.url}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200',
                 isActive
@@ -150,24 +153,30 @@ function SidebarContent() {
 
 export function SimpleSidebar() {
   const isMobile = useIsMobile();
+  const [openMobile, setOpenMobile] = useState(false);
 
   if (isMobile) {
     return (
       <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/40 bg-black px-4 py-3 md:hidden">
         <img src={logotype} alt="Open Wearables" className="h-6" />
-        <Sheet>
+        <Sheet open={openMobile} onOpenChange={setOpenMobile}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Open menu">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-64 bg-black p-0 text-sidebar-foreground">
+          <SheetContent
+            side="left"
+            className="w-64 bg-black p-0 text-sidebar-foreground"
+          >
             <SheetHeader className="sr-only">
               <SheetTitle>Navigation</SheetTitle>
-              <SheetDescription>Open Wearables navigation menu</SheetDescription>
+              <SheetDescription>
+                Open Wearables navigation menu
+              </SheetDescription>
             </SheetHeader>
             <div className="flex h-full w-full flex-col">
-              <SidebarContent />
+              <SidebarContent onNavigate={() => setOpenMobile(false)} />
             </div>
           </SheetContent>
         </Sheet>
