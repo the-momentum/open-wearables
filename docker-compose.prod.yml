@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: open-wearables
       POSTGRES_USER: open-wearables
-      POSTGRES_PASSWORD: open-wearables
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-open-wearables}
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:
@@ -31,6 +31,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - DB_PASSWORD=${DB_PASSWORD:-open-wearables}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
