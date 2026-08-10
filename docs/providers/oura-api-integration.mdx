@@ -69,7 +69,7 @@ Oura provides access to sleep, readiness, activity, heart rate, and workout data
     - **Contact Email**: Who Oura can contact about the app
     - **Website**: Your application or company URL
     - **Privacy Policy** / **Terms of Service**: URLs to your policy pages
-    - **Redirect URIs**: Your OAuth callback URL. Oura requires a publicly accessible **HTTPS** URL, so plain `http://localhost` is not accepted. For local development, expose your backend with [ngrok](/dev-guides/ngrok-setup) and use e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback`. In production use your public domain, e.g. `https://your-domain/api/v1/oauth/oura/callback`.
+    - **Redirect URIs**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/oura/callback`, so register that exact URL here. Oura requires a publicly accessible **HTTPS** URL, so plain `http://localhost` is not accepted - for local development, expose your backend with [ngrok](/dev-guides/ngrok-setup) and register e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback`. In production use your public domain, e.g. `https://your-domain/api/v1/oauth/oura/callback`.
     - **Scopes**: Select the data scopes your app needs (see the [OAuth Scopes Reference](#oauth-scopes-reference) below)
 
     Tick **I agree to the Oura API Agreement**, then click **Create Application**.
@@ -87,10 +87,13 @@ Oura provides access to sleep, readiness, activity, heart rate, and workout data
     Add the following to your `.env` file:
 
 ```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/oura/callback. For local dev, use your ngrok URL.
+API_BASE_URL=https://your-subdomain.ngrok-free.app
+
 #--- Oura ---#
 OURA_CLIENT_ID=your-oura-client-id
 OURA_CLIENT_SECRET=your-oura-client-secret
-OURA_REDIRECT_URI=https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback
 OURA_DEFAULT_SCOPE=personal daily activity heartrate workout session spo2 ring_configuration heart_health
 # Optional: token Oura echoes when verifying your webhook subscription.
 # Defaults to your SECRET_KEY if left unset.
@@ -101,9 +104,9 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
 
     | Variable | Description |
     |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/oura/callback`, which must match the redirect URI registered in the Developer portal and must be a public HTTPS URL. For local dev, use your [ngrok](/dev-guides/ngrok-setup) URL |
     | `OURA_CLIENT_ID` | Client ID from the Developer portal |
     | `OURA_CLIENT_SECRET` | Client Secret from the Developer portal |
-    | `OURA_REDIRECT_URI` | Must match a redirect URI registered in the Developer portal, and must be a public HTTPS URL. For local dev, use your [ngrok](/dev-guides/ngrok-setup) URL, e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback` |
     | `OURA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Must be a subset of the scopes enabled on your application |
     | `OURA_WEBHOOK_VERIFICATION_TOKEN` | Token used to verify webhook subscriptions. Optional - defaults to your `SECRET_KEY` if unset |
 
@@ -129,7 +132,7 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
 
     **2. Redirect the user** to the `authorization_url`. They will log in to Oura and authorize your app.
 
-    **3. Oura redirects back** to the callback URI configured in your `.env` (`OURA_REDIRECT_URI`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+    **3. Oura redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/oura/callback`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
 
     **4. Verify the connection:**
 
@@ -141,7 +144,7 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     You should see a connection with `"provider": "oura"` and `"status": "active"`.
 
     <Note>
-      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `OURA_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback that Oura sends the authorization code to.
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/oura/callback`) that Oura sends the authorization code to.
     </Note>
   </Step>
 
