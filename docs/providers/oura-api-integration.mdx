@@ -169,24 +169,6 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
 
     **Subscribed data types:** `sleep`, `daily_sleep`, `daily_readiness`, `daily_activity`, `daily_spo2`, `daily_cardiovascular_age`, `workout` - each for the `create` and `update` events.
 
-    <Accordion title="Prefer the API? Switch modes programmatically">
-    The dashboard toggle calls the same endpoint you can hit directly:
-
-    ```bash
-    curl -X PUT "http://localhost:8000/api/v1/oauth/providers/oura" \
-      -H "X-Open-Wearables-API-Key: YOUR_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{"live_sync_mode": "webhook"}'
-    ```
-
-    Verify the subscriptions were registered:
-
-    ```bash
-    curl -X GET "http://localhost:8000/api/v1/providers/oura/webhooks/subscriptions" \
-      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
-    ```
-    </Accordion>
-
     <Note>
     Oura subscriptions expire after 90 days and are renewed automatically by a scheduled task (monthly). You can also manage them manually via `POST /api/v1/providers/oura/webhooks/subscriptions` (register / re-register with a `callback_url`) and `POST /api/v1/providers/oura/webhooks/subscriptions/renew`.
     </Note>
