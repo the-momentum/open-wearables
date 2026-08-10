@@ -69,7 +69,7 @@ Oura provides access to sleep, readiness, activity, heart rate, and workout data
     - **Contact Email**: Who Oura can contact about the app
     - **Website**: Your application or company URL
     - **Privacy Policy** / **Terms of Service**: URLs to your policy pages
-    - **Redirect URIs**: Your OAuth callback URL (e.g. `http://localhost:8000/api/v1/oauth/oura/callback` for local development)
+    - **Redirect URIs**: Your OAuth callback URL. Oura requires a publicly accessible **HTTPS** URL, so plain `http://localhost` is not accepted. For local development, expose your backend with [ngrok](/dev-guides/ngrok-setup) and use e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback`. In production use your public domain, e.g. `https://your-domain/api/v1/oauth/oura/callback`.
     - **Scopes**: Select the data scopes your app needs (see the [OAuth Scopes Reference](#oauth-scopes-reference) below)
 
     Tick **I agree to the Oura API Agreement**, then click **Create Application**.
@@ -90,7 +90,7 @@ Oura provides access to sleep, readiness, activity, heart rate, and workout data
 #--- Oura ---#
 OURA_CLIENT_ID=your-oura-client-id
 OURA_CLIENT_SECRET=your-oura-client-secret
-OURA_REDIRECT_URI=http://localhost:8000/api/v1/oauth/oura/callback
+OURA_REDIRECT_URI=https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback
 OURA_DEFAULT_SCOPE=personal daily activity heartrate workout session spo2 ring_configuration heart_health
 # Optional: token Oura echoes when verifying your webhook subscription.
 # Defaults to your SECRET_KEY if left unset.
@@ -103,7 +103,7 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     |----------|-------------|
     | `OURA_CLIENT_ID` | Client ID from the Developer portal |
     | `OURA_CLIENT_SECRET` | Client Secret from the Developer portal |
-    | `OURA_REDIRECT_URI` | Must match a redirect URI registered in the Developer portal. For local dev: `http://localhost:8000/api/v1/oauth/oura/callback` |
+    | `OURA_REDIRECT_URI` | Must match a redirect URI registered in the Developer portal, and must be a public HTTPS URL. For local dev, use your [ngrok](/dev-guides/ngrok-setup) URL, e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback` |
     | `OURA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Must be a subset of the scopes enabled on your application |
     | `OURA_WEBHOOK_VERIFICATION_TOKEN` | Token used to verify webhook subscriptions. Optional - defaults to your `SECRET_KEY` if unset |
 
@@ -160,7 +160,7 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     For local development, use a tunnel such as [ngrok](/dev-guides/ngrok-setup) as the `callback_url`:
 
     ```
-    https://your-ngrok-subdomain.ngrok.io/api/v1/oura/webhooks
+    https://your-subdomain.ngrok-free.app/api/v1/oura/webhooks
     ```
 
     Open Wearables registers a subscription for every supported data type and event type, and Oura verifies each one using your `OURA_WEBHOOK_VERIFICATION_TOKEN`.
