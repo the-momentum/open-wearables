@@ -17,7 +17,7 @@ keywords: ["oura api integration", "oura ring api", "oura health data", "oura sl
 
 ## Overview
 
-Oura provides access to sleep, readiness, activity, heart rate, and workout data through the Oura API v2. The integration uses OAuth 2.0 for authentication, pull-based syncing to fetch daily metrics, and webhooks for real-time updates.
+Oura provides access to sleep, readiness, activity, heart rate, and workout data through the Oura API v2. The integration uses OAuth 2.0 for authentication and supports both pull-based syncing and real-time webhooks - **we recommend running Oura in webhook mode** for the freshest data.
 
 ### Supported data types
 
@@ -36,15 +36,19 @@ Oura provides access to sleep, readiness, activity, heart rate, and workout data
 
 | Method | Description |
 |--------|-------------|
+| **Webhooks (push)** - *recommended* | Oura notifies Open Wearables in real time when sleep, readiness, activity, SpO2, or workout data is created or updated. Subscriptions are app-level and are registered automatically when you switch Oura to webhook live-sync mode. |
 | **Polling (pull)** | Open Wearables periodically fetches daily metrics via the Oura API v2 (default: every hour via Celery Beat) |
-| **Webhooks (push)** | Oura notifies Open Wearables in real time when sleep, readiness, activity, SpO2, or workout data is created or updated. Subscriptions are app-level and are registered automatically when you switch Oura to webhook live-sync mode. |
+
+<Tip>
+**We recommend running Oura in webhook mode.** You get data as soon as Oura finalizes it - typically within seconds instead of up to an hour - with less API traffic and no polling lag. Open Wearables still falls back to periodic pull, so webhooks are purely additive. See **Enable webhooks (recommended)** in the walkthrough below.
+</Tip>
 
 ## What you need by the end
 
 - **App credentials**: Client ID + Client Secret from the Oura Developer portal
 - **OAuth scopes** configured
 - **Redirect URI** registered in the Oura Developer portal
-- **Webhook mode** enabled (optional, for real-time updates) - subscriptions are registered automatically
+- **Webhook mode** enabled (recommended, for real-time updates) - subscriptions are registered automatically
 
 ## Prerequisites
 
@@ -148,8 +152,8 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     </Note>
   </Step>
 
-  <Step title="Enable webhooks for real-time updates (optional)">
-    Webhooks give you real-time updates instead of waiting for the next polling cycle. When Oura records new sleep, readiness, activity, SpO2, or workout data, it immediately notifies Open Wearables, which fetches and saves the record.
+  <Step title="Enable webhooks (recommended)">
+    **We recommend webhooks over polling.** They give you real-time updates instead of waiting for the next polling cycle - when Oura records new sleep, readiness, activity, SpO2, or workout data, it immediately notifies Open Wearables, which fetches and saves the record.
 
     By default Oura runs in **pull** (polling) mode. Switching its live-sync mode to **webhook** registers the subscriptions for you automatically - Open Wearables dispatches a background task that creates a subscription for every supported data type and event type. Make sure `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, and a public `API_BASE_URL` are configured first.
 
