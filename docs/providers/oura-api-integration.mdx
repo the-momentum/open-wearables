@@ -98,9 +98,9 @@ API_BASE_URL=https://your-subdomain.ngrok-free.app
 #--- Oura ---#
 OURA_CLIENT_ID=your-oura-client-id
 OURA_CLIENT_SECRET=your-oura-client-secret
-OURA_DEFAULT_SCOPE=personal daily activity heartrate workout session spo2 ring_configuration heart_health
-# Optional: token Oura echoes when verifying your webhook subscription.
-# Defaults to your SECRET_KEY if left unset.
+OURA_DEFAULT_SCOPE=personal daily heartrate workout session spo2 ring_configuration heart_health
+# Token Oura echoes back when verifying your webhook subscription.
+# Set a dedicated random value - do not reuse your app SECRET_KEY.
 OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
 ```
 
@@ -112,7 +112,7 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     | `OURA_CLIENT_ID` | Client ID from the Developer portal |
     | `OURA_CLIENT_SECRET` | Client Secret from the Developer portal |
     | `OURA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Must be a subset of the scopes enabled on your application |
-    | `OURA_WEBHOOK_VERIFICATION_TOKEN` | Token used to verify webhook subscriptions. Optional - defaults to your `SECRET_KEY` if unset |
+    | `OURA_WEBHOOK_VERIFICATION_TOKEN` | Token Oura echoes back when verifying your webhook subscriptions. Set a dedicated random value - do not reuse your app `SECRET_KEY` |
 
   </Step>
 
@@ -129,7 +129,7 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     **Response:**
     ```json
     {
-      "authorization_url": "https://cloud.ouraring.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&scope=personal+daily+activity+heartrate+workout+session+spo2+ring_configuration+heart_health&state=...",
+      "authorization_url": "https://cloud.ouraring.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&scope=personal+daily+heartrate+workout+session+spo2+ring_configuration+heart_health&state=...",
       "state": "abc123..."
     }
     ```
