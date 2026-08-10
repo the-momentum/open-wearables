@@ -153,7 +153,20 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
 
     By default Oura runs in **pull** (polling) mode. Switching its live-sync mode to **webhook** registers the subscriptions for you automatically - Open Wearables dispatches a background task that creates a subscription for every supported data type and event type. Make sure `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, and a public `API_BASE_URL` are configured first.
 
-    **Switch Oura to webhook mode:**
+    **Switch Oura to webhook mode from the dashboard:**
+
+    In your Open Wearables dashboard, go to **Settings → Providers**, find **Oura**, and switch its live-sync control from **Periodic pull** to **Webhook**. That's it - the subscriptions are registered in the background.
+
+    <Note>
+    Because the callback must be publicly reachable over HTTPS, set `API_BASE_URL` to your public domain (or your [ngrok](/dev-guides/ngrok-setup) URL for local development) before switching to webhook mode.
+    </Note>
+
+    Open Wearables derives the callback URL from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/providers/oura/webhooks`, registers a subscription for each data type / event type, and Oura verifies each one using your `OURA_WEBHOOK_VERIFICATION_TOKEN`. Subscriptions are **app-level** - they cover all authorized users.
+
+    **Subscribed data types:** `sleep`, `daily_sleep`, `daily_readiness`, `daily_activity`, `daily_spo2`, `daily_cardiovascular_age`, `workout` - each for the `create` and `update` events.
+
+    <Accordion title="Prefer the API? Switch modes programmatically">
+    The dashboard toggle calls the same endpoint you can hit directly:
 
     ```bash
     curl -X PUT "http://localhost:8000/api/v1/oauth/providers/oura" \
@@ -162,20 +175,13 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
       -d '{"live_sync_mode": "webhook"}'
     ```
 
-    Open Wearables derives the callback URL from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/providers/oura/webhooks`, registers a subscription for each data type / event type, and Oura verifies each one using your `OURA_WEBHOOK_VERIFICATION_TOKEN`. Subscriptions are **app-level** - they cover all authorized users.
-
-    <Note>
-    Because the callback must be publicly reachable over HTTPS, set `API_BASE_URL` to your public domain (or your [ngrok](/dev-guides/ngrok-setup) URL for local development) before switching to webhook mode.
-    </Note>
-
-    **Subscribed data types:** `sleep`, `daily_sleep`, `daily_readiness`, `daily_activity`, `daily_spo2`, `daily_cardiovascular_age`, `workout` - each for the `create` and `update` events.
-
-    **Verify the subscriptions** were registered:
+    Verify the subscriptions were registered:
 
     ```bash
     curl -X GET "http://localhost:8000/api/v1/providers/oura/webhooks/subscriptions" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
+    </Accordion>
 
     <Note>
     Oura subscriptions expire after 90 days and are renewed automatically by a scheduled task (monthly). You can also manage them manually via `POST /api/v1/providers/oura/webhooks/subscriptions` (register / re-register with a `callback_url`) and `POST /api/v1/providers/oura/webhooks/subscriptions/renew`.
