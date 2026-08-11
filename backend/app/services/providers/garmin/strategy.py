@@ -61,7 +61,7 @@ class GarminStrategy(BaseProviderStrategy):
 
     @property
     def api_base_url(self) -> str:
-        return "https://apis.garmin.com"
+        return self._resolve_api_base_url("https://apis.garmin.com")
 
     @property
     def capabilities(self) -> ProviderCapabilities:

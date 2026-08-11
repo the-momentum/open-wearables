@@ -136,6 +136,7 @@
             "group": "Deployment",
             "pages": [
               "deployment/docker-images",
+              "deployment/provider-api-base-urls",
               "deployment/railway"
             ]
           },

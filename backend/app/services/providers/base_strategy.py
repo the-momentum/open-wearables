@@ -6,6 +6,7 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.config import settings
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -142,6 +143,10 @@ class BaseProviderStrategy(ABC):
     @abstractmethod
     def api_base_url(self) -> str:
         """Returns the base URL for the provider's API."""
+
+    def _resolve_api_base_url(self, default: str) -> str:
+        """Resolve this provider's optional deployment-level API URL override."""
+        return settings.resolve_provider_api_base_url(self.name, default)
 
     @property
     def api_version(self) -> str:

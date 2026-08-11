@@ -32,7 +32,7 @@ class FitbitStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         """Base URL for the Fitbit Web API."""
-        return "https://api.fitbit.com"
+        return self._resolve_api_base_url("https://api.fitbit.com")
 
     @property
     def coverage(self) -> ProviderCoverage:

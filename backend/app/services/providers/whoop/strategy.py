@@ -49,7 +49,7 @@ class WhoopStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
-        return "https://api.prod.whoop.com/developer"
+        return self._resolve_api_base_url("https://api.prod.whoop.com/developer")
 
     @property
     def coverage(self) -> ProviderCoverage:

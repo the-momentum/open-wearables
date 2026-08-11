@@ -28,8 +28,7 @@ from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
-# hard-coded value - update with base template changes
-_STRAVA_API_URL = "https://www.strava.com/api/v3"
+_STRAVA_API_BASE_URL = "https://www.strava.com"
 
 
 class StravaWebhookService(BaseWebhookService):
@@ -37,7 +36,8 @@ class StravaWebhookService(BaseWebhookService):
 
     @property
     def api_current_url(self) -> str:
-        return _STRAVA_API_URL
+        api_base_url = settings.resolve_provider_api_base_url("strava", _STRAVA_API_BASE_URL)
+        return f"{api_base_url}/api/v3"
 
     def _get_strava_credentials(self) -> tuple[str, str]:
         """Get Strava client credentials. Raises ValueError if not configured."""

@@ -39,7 +39,7 @@ class PolarStrategy(BaseProviderStrategy):
 
     @property
     def api_base_url(self) -> str:
-        return "https://www.polaraccesslink.com"
+        return self._resolve_api_base_url("https://www.polaraccesslink.com")
 
     @property
     def capabilities(self) -> ProviderCapabilities:

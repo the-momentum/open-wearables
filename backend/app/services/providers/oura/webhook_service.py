@@ -26,7 +26,13 @@ from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
-OURA_WEBHOOK_API_URL = "https://api.ouraring.com/v2/webhook/subscription"
+_OURA_API_BASE_URL = "https://api.ouraring.com"
+
+
+def _oura_webhook_api_url() -> str:
+    api_base_url = settings.resolve_provider_api_base_url("oura", _OURA_API_BASE_URL)
+    return f"{api_base_url}/v2/webhook/subscription"
+
 
 OURA_WEBHOOK_DATA_TYPES = [
     "workout",
@@ -107,7 +113,7 @@ class OuraWebhookService(BaseWebhookService):
             # Build index of existing subscriptions keyed by (data_type, event_type) → (id, callback_url)
             existing: dict[tuple[str, str], tuple[str, str]] = {}
             try:
-                list_resp = await client.get(OURA_WEBHOOK_API_URL, headers=headers, timeout=30.0)
+                list_resp = await client.get(_oura_webhook_api_url(), headers=headers, timeout=30.0)
                 list_resp.raise_for_status()
                 for sub in list_resp.json() or []:
                     key = (sub.get("data_type", ""), sub.get("event_type", ""))
@@ -140,7 +146,7 @@ class OuraWebhookService(BaseWebhookService):
                     # callback_url changed — update the subscription
                     try:
                         response = await client.put(
-                            f"{OURA_WEBHOOK_API_URL}/{sub_id}",
+                            f"{_oura_webhook_api_url()}/{sub_id}",
                             headers=headers,
                             json=body,
                             timeout=30.0,
@@ -167,7 +173,7 @@ class OuraWebhookService(BaseWebhookService):
 
                 try:
                     response = await client.post(
-                        OURA_WEBHOOK_API_URL,
+                        _oura_webhook_api_url(),
                         headers=headers,
                         json=body,
                         timeout=30.0,
@@ -213,7 +219,7 @@ class OuraWebhookService(BaseWebhookService):
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                OURA_WEBHOOK_API_URL,
+                _oura_webhook_api_url(),
                 headers=headers,
                 timeout=30.0,
             )
@@ -241,7 +247,7 @@ class OuraWebhookService(BaseWebhookService):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{OURA_WEBHOOK_API_URL}/{subscription_id}",
+                    f"{_oura_webhook_api_url()}/{subscription_id}",
                     headers=headers,
                     timeout=30.0,
                 )
@@ -279,7 +285,7 @@ class OuraWebhookService(BaseWebhookService):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.delete(
-                    f"{OURA_WEBHOOK_API_URL}/{subscription_id}",
+                    f"{_oura_webhook_api_url()}/{subscription_id}",
                     headers=headers,
                     timeout=30.0,
                 )
@@ -340,7 +346,7 @@ class OuraWebhookService(BaseWebhookService):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.put(
-                    f"{OURA_WEBHOOK_API_URL}/{subscription_id}",
+                    f"{_oura_webhook_api_url()}/{subscription_id}",
                     headers=headers,
                     json=body,
                     timeout=30.0,
@@ -379,7 +385,7 @@ class OuraWebhookService(BaseWebhookService):
 
         async with httpx.AsyncClient() as client:
             list_response = await client.get(
-                OURA_WEBHOOK_API_URL,
+                _oura_webhook_api_url(),
                 headers=headers,
                 timeout=30.0,
             )
@@ -396,7 +402,7 @@ class OuraWebhookService(BaseWebhookService):
 
                 try:
                     renew_response = await client.put(
-                        f"{OURA_WEBHOOK_API_URL}/renew/{sub_id}",
+                        f"{_oura_webhook_api_url()}/renew/{sub_id}",
                         headers=headers,
                         timeout=30.0,
                     )

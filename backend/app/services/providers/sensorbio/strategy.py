@@ -39,7 +39,7 @@ class SensorBioStrategy(BaseProviderStrategy):
 
     @property
     def api_base_url(self) -> str:
-        return "https://api.sensorbio.com"
+        return self._resolve_api_base_url("https://api.sensorbio.com")
 
     @property
     def capabilities(self) -> ProviderCapabilities:

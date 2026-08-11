@@ -1,0 +1,89 @@
+---
+title: "Provider API base URLs"
+description: "Route server-to-server wearable provider requests through reverse proxies, API gateways, or compatible endpoints."
+---
+
+## Override provider API endpoints
+
+Open Wearables uses each wearable provider's official API endpoint by default. Self-hosted deployments can replace an
+individual provider's server-to-server API base URL with an environment variable. This is useful for reverse proxies,
+egress gateways, compatible API implementations, and development emulators.
+
+<Warning>
+  Provider access tokens are sent to the configured endpoint. Only use an endpoint controlled by your deployment
+  operator, and use HTTPS outside local development.
+</Warning>
+
+| Provider | Environment variable | Default |
+| --- | --- | --- |
+| Fitbit | `FITBIT_API_BASE_URL` | `https://api.fitbit.com` |
+| Garmin | `GARMIN_API_BASE_URL` | `https://apis.garmin.com` |
+| Google Health | `GOOGLE_API_BASE_URL` | `https://health.googleapis.com` |
+| Oura | `OURA_API_BASE_URL` | `https://api.ouraring.com` |
+| Polar | `POLAR_API_BASE_URL` | `https://www.polaraccesslink.com` |
+| Sensor Bio | `SENSORBIO_API_BASE_URL` | `https://api.sensorbio.com` |
+| Strava | `STRAVA_API_BASE_URL` | `https://www.strava.com` |
+| Suunto | `SUUNTO_API_BASE_URL` | `https://cloudapi.suunto.com` |
+| Ultrahuman | `ULTRAHUMAN_API_BASE_URL` | `https://partner.ultrahuman.com/api/partners/v1` |
+| Whoop | `WHOOP_API_BASE_URL` | `https://api.prod.whoop.com/developer` |
+
+Apple Health and Samsung Health do not expose cloud APIs, so they have no corresponding setting.
+
+## Configure a reverse proxy
+
+<Steps>
+  <Step title="Set the provider URL">
+    Add only the providers you want to override to `backend/config/.env`. Path prefixes are preserved.
+
+    ```dotenv backend/config/.env
+    OURA_API_BASE_URL=https://wearables-gateway.example.com/oura
+    WHOOP_API_BASE_URL=https://wearables-gateway.example.com/whoop/developer
+    ```
+  </Step>
+
+  <Step title="Restart the backend and workers">
+    Provider strategies read the settings when each process starts.
+
+    ```bash
+    docker compose restart app celery-worker celery-beat
+    ```
+  </Step>
+
+  <Step title="Verify the resolved endpoints">
+    Run this command in the application container:
+
+    ```bash
+    docker compose exec app python -c "from app.services.providers.factory import ProviderFactory; factory = ProviderFactory(); print(factory.get_provider('oura').api_base_url); print(factory.get_provider('whoop').api_base_url)"
+    ```
+
+    Expected output:
+
+    ```text
+    https://wearables-gateway.example.com/oura
+    https://wearables-gateway.example.com/whoop/developer
+    ```
+  </Step>
+</Steps>
+
+The override is used by the provider's API-facing OAuth, webhook-registration, workout, and continuous-data
+components. OAuth URLs hosted on a separate domain remain unchanged. When a provider normally serves an OAuth URL
+from its API base, such as Strava's authorization endpoint or Oura's token endpoint, that request also uses the
+override.
+
+## Configure a forward proxy
+
+Base URL overrides are not required for a conventional HTTP forward proxy. The backend uses HTTPX, which reads the
+standard proxy environment variables. Configure them on both the API and Celery worker processes:
+
+```dotenv backend/config/.env
+HTTPS_PROXY=http://proxy.internal:3128
+NO_PROXY=db,redis,svix-server,localhost,127.0.0.1
+```
+
+Use `SSL_CERT_FILE` when the proxy terminates TLS with a private certificate authority:
+
+```dotenv backend/config/.env
+SSL_CERT_FILE=/etc/ssl/certs/company-ca-bundle.pem
+```
+
+Mount that certificate file into every container that performs provider requests.

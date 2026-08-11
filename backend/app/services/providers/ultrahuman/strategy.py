@@ -49,4 +49,4 @@ class UltrahumanStrategy(BaseProviderStrategy):
         Base URL for data endpoints: https://partner.ultrahuman.com/api/partners/v1
         OAuth authorization is on: https://auth.ultrahuman.com
         """
-        return "https://partner.ultrahuman.com/api/partners/v1"
+        return self._resolve_api_base_url("https://partner.ultrahuman.com/api/partners/v1")

@@ -51,7 +51,7 @@ class OuraStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
-        return "https://api.ouraring.com"
+        return self._resolve_api_base_url("https://api.ouraring.com")
 
     @property
     def capabilities(self) -> ProviderCapabilities:

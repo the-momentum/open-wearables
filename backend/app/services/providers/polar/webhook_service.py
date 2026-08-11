@@ -41,6 +41,11 @@ logger = getLogger(__name__)
 
 _POLAR_API_URL = "https://www.polaraccesslink.com"
 
+
+def _polar_api_url() -> str:
+    return settings.resolve_provider_api_base_url("polar", _POLAR_API_URL)
+
+
 _ALL_EVENTS = [e for e in PolarWebhookEventType if e is not PolarWebhookEventType.PING]
 
 
@@ -59,7 +64,7 @@ class PolarWebhookService(BaseWebhookService):
         auth = self._get_basic_auth()
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{_POLAR_API_URL}/v3/webhooks", auth=auth, timeout=30.0)
+                resp = await client.get(f"{_polar_api_url()}/v3/webhooks", auth=auth, timeout=30.0)
                 resp.raise_for_status()
                 data = resp.json()
                 webhooks = data.get("data", [])
@@ -144,7 +149,7 @@ class PolarWebhookService(BaseWebhookService):
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.delete(
-                    f"{_POLAR_API_URL}/v3/webhooks/{subscription_id}",
+                    f"{_polar_api_url()}/v3/webhooks/{subscription_id}",
                     auth=auth,
                     timeout=30.0,
                 )
@@ -181,7 +186,7 @@ class PolarWebhookService(BaseWebhookService):
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.patch(
-                    f"{_POLAR_API_URL}/v3/webhooks/{subscription_id}",
+                    f"{_polar_api_url()}/v3/webhooks/{subscription_id}",
                     auth=auth,
                     json={"events": _ALL_EVENTS, "url": callback_url},
                     timeout=30.0,
@@ -216,7 +221,7 @@ class PolarWebhookService(BaseWebhookService):
     async def _create_webhook(self, auth: httpx.BasicAuth, callback_url: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"{_POLAR_API_URL}/v3/webhooks",
+                f"{_polar_api_url()}/v3/webhooks",
                 auth=auth,
                 json={"events": _ALL_EVENTS, "url": callback_url},
                 timeout=30.0,
@@ -250,7 +255,7 @@ class PolarWebhookService(BaseWebhookService):
         """Activate a deactivated Polar webhook."""
         auth = self._get_basic_auth()
         async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/activate", auth=auth, timeout=30.0)
+            resp = await client.post(f"{_polar_api_url()}/v3/webhooks/activate", auth=auth, timeout=30.0)
             resp.raise_for_status()
             log_structured(logger, "info", "Polar webhook activated", provider="polar")
             return {"status": "activated"}
@@ -259,7 +264,7 @@ class PolarWebhookService(BaseWebhookService):
         """Deactivate the active Polar webhook."""
         auth = self._get_basic_auth()
         async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/deactivate", auth=auth, timeout=30.0)
+            resp = await client.post(f"{_polar_api_url()}/v3/webhooks/deactivate", auth=auth, timeout=30.0)
             resp.raise_for_status()
             log_structured(logger, "info", "Polar webhook deactivated", provider="polar")
             return {"status": "deactivated"}

@@ -85,7 +85,8 @@ GOOGLE_WEBHOOK_DATA_TYPES = [
 def _subscribers_url() -> str:
     if not settings.google_project_id:
         raise ValueError("GOOGLE_PROJECT_ID is not configured; cannot manage Health API subscribers")
-    return f"{GOOGLE_HEALTH_API_BASE}{SUBSCRIBERS_ENDPOINT.format(project=settings.google_project_id)}"
+    api_base_url = settings.resolve_provider_api_base_url("google", GOOGLE_HEALTH_API_BASE)
+    return f"{api_base_url}{SUBSCRIBERS_ENDPOINT.format(project=settings.google_project_id)}"
 
 
 def _error_result(subscription_id: str, action: str, error: httpx.HTTPError) -> WebhookOperationResult:

@@ -137,6 +137,7 @@ class Settings(BaseSettings):
     suunto_subscription_key: SecretStr | None = None
     suunto_default_scope: str = ""
     suunto_webhook_secret: SecretStr | None = None
+    suunto_api_base_url: AnyHttpUrl | None = None
     # Derived from secret_key if not set — configure the same value in Suunto developer portal.
 
     # GARMIN OAUTH SETTINGS
@@ -144,22 +145,26 @@ class Settings(BaseSettings):
     garmin_client_secret: SecretStr | None = None
     garmin_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     garmin_default_scope: str = ""  # Scope is managed at app creation in Garmin Developer Portal
+    garmin_api_base_url: AnyHttpUrl | None = None
 
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None
     polar_client_secret: SecretStr | None = None
     polar_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     polar_default_scope: str = "accesslink.read_all"
+    polar_api_base_url: AnyHttpUrl | None = None
 
     # WHOOP OAUTH SETTINGS
     whoop_client_id: str | None = None
     whoop_client_secret: SecretStr | None = None
     whoop_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
+    whoop_api_base_url: AnyHttpUrl | None = None
 
     # SENSORBIO OAUTH SETTINGS
     sensorbio_client_id: str | None = None
     sensorbio_client_secret: SecretStr | None = None
+    sensorbio_api_base_url: AnyHttpUrl | None = None
     # Sensor Bio OAuth currently has no granular scopes defined in the developer portal.
     # Leave empty so the authorize URL omits scope= (mirrors Garmin/Suunto).
     sensorbio_default_scope: str = ""
@@ -169,6 +174,7 @@ class Settings(BaseSettings):
     fitbit_client_secret: SecretStr | None = None
     fitbit_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     fitbit_default_scope: str = "activity heartrate sleep profile"
+    fitbit_api_base_url: AnyHttpUrl | None = None
 
     # OURA OAUTH SETTINGS
     oura_client_id: str | None = None
@@ -176,6 +182,7 @@ class Settings(BaseSettings):
     oura_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     oura_default_scope: str = "personal daily activity heartrate workout session spo2 ring_configuration heart_health"
     oura_webhook_verification_token: SecretStr | None = None
+    oura_api_base_url: AnyHttpUrl | None = None
 
     # STRAVA OAUTH SETTINGS
     strava_client_id: str | None = None
@@ -184,6 +191,7 @@ class Settings(BaseSettings):
     strava_default_scope: str = "activity:read_all,profile:read_all"
     strava_webhook_verify_token: SecretStr | None = None
     strava_webhook_signature_tolerance_seconds: int = Field(300, ge=0)
+    strava_api_base_url: AnyHttpUrl | None = None
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
 
@@ -192,6 +200,7 @@ class Settings(BaseSettings):
     ultrahuman_client_secret: SecretStr | None = None
     ultrahuman_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     ultrahuman_default_scope: str = "ring_data cgm_data profile"
+    ultrahuman_api_base_url: AnyHttpUrl | None = None
 
     # GOOGLE OAUTH SETTINGS
     google_client_id: str | None = None
@@ -215,6 +224,7 @@ class Settings(BaseSettings):
     # with RAW granularity, either list or reconcile is used
     # true - reconcile, false - list; for details check docs
     google_use_reconcile: bool = True
+    google_api_base_url: AnyHttpUrl | None = None
 
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
@@ -315,6 +325,29 @@ class Settings(BaseSettings):
             return None
         return parse_duration(str(v))  # "2d" / "20h" / "1d12h" → timedelta (fail fast at startup)
 
+    @field_validator(
+        "fitbit_api_base_url",
+        "garmin_api_base_url",
+        "google_api_base_url",
+        "oura_api_base_url",
+        "polar_api_base_url",
+        "sensorbio_api_base_url",
+        "strava_api_base_url",
+        "suunto_api_base_url",
+        "ultrahuman_api_base_url",
+        "whoop_api_base_url",
+    )
+    @classmethod
+    def validate_provider_api_base_url(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        """Reject URL parts that would make endpoint joining unsafe or ambiguous."""
+        if value is None:
+            return None
+        if value.username is not None or value.password is not None:
+            raise ValueError("provider API base URLs must not contain credentials")
+        if value.query is not None or value.fragment is not None:
+            raise ValueError("provider API base URLs must not contain a query string or fragment")
+        return value
+
     def oauth_redirect_uri(self, provider: ProviderName) -> str:
         """Build OAuth redirect URI for a provider.
 
@@ -331,6 +364,11 @@ class Settings(BaseSettings):
             )
             return legacy_value
         return f"{self.api_base_url}/api/v1/oauth/{provider.value}/callback"
+
+    def resolve_provider_api_base_url(self, provider: str, default: str) -> str:
+        """Return an operator-configured provider API URL or its built-in default."""
+        override = getattr(self, f"{provider}_api_base_url", None)
+        return str(override or default).rstrip("/")
 
     @property
     def redis_url(self) -> str:

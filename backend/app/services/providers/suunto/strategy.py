@@ -40,7 +40,7 @@ class SuuntoStrategy(BaseProviderStrategy):
 
     @property
     def api_base_url(self) -> str:
-        return "https://cloudapi.suunto.com"
+        return self._resolve_api_base_url("https://cloudapi.suunto.com")
 
     @property
     def coverage(self) -> ProviderCoverage:

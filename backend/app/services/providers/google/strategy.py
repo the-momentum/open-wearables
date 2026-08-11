@@ -44,7 +44,7 @@ class GoogleStrategy(BaseProviderStrategy):
 
     @property
     def api_base_url(self) -> str:
-        return "https://health.googleapis.com"
+        return self._resolve_api_base_url("https://health.googleapis.com")
 
     @property
     def capabilities(self) -> ProviderCapabilities:

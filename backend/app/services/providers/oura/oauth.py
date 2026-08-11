@@ -26,7 +26,7 @@ class OuraOAuth(BaseOAuthTemplate):
         """OAuth endpoints for authorization and token exchange."""
         return ProviderEndpoints(
             authorize_url="https://cloud.ouraring.com/oauth/authorize",
-            token_url="https://api.ouraring.com/oauth/token",
+            token_url=f"{self.api_base_url}/oauth/token",
         )
 
     @property
