@@ -319,7 +319,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             return 0
 
         if data_type == "workout":
-            return self.workouts.save_by_id(db, user_id, object_id)
+            return self.workouts.save_by_id(db, user_id, object_id, trace_id=trace_id)
 
         collection = _COLLECTION_NAME.get(data_type, data_type)
         endpoint = f"/v2/usercollection/{collection}/{object_id}"
@@ -343,7 +343,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
             provider="oura",
             payload=raw,
             user_id=str(user_id),
-            trace_id=endpoint,
+            trace_id=trace_id,
         )
 
         docs = [raw]
