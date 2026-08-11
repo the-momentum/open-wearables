@@ -57,6 +57,10 @@ graph TD
   **Never embed your `app_id` / `app_secret` in the mobile app.** App credentials should only exist on your backend server. Only the `access_token` and `refresh_token` are passed to the mobile app.
 </Warning>
 
+<Note>
+  **Building a standalone app with no backend of your own?** There is a third onboarding option: the **invitation code** flow, where a single-use code is redeemed directly by the app - no live backend channel required. It powers the [Open Wearables app](/app/introduction) and the [React Native example app](/sdk/react-native/example-app). Use the backend token flow above when your app already authenticates users against your backend; use invitation codes for standalone onboarding. Both keep `app_secret` off the device and both are automatable via the API. See [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+</Note>
+
 ## Step 1: Backend Setup
 
 Your backend needs a single endpoint that generates access tokens for your users by calling the Open Wearables API and forwarding the tokens.
