@@ -5,6 +5,9 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
+from app.api.routes.v1.sdk_logs import _event_fields
+from app.schemas.enums import SeriesType
+from app.schemas.providers.mobile_sdk import SDKLogRequest
 from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import ApiKeyFactory
 
@@ -150,6 +153,46 @@ class TestSDKLogsHappyPath:
             json=_payload(event),
         )
         assert response.status_code == 202
+
+
+class TestSDKLogsEventFields:
+    """The flattened fields are what makes per-type outcomes queryable in the logs."""
+
+    def test_data_type_is_normalised_native_kept(self) -> None:
+        fields = _event_fields(SDKLogRequest(**_payload(SYNC_END_EVENT, DEVICE_STATE_EVENT)))
+
+        assert fields["data_type"] == SeriesType.heart_rate.value
+        assert fields["native_data_type"] == "HKQuantityTypeIdentifierHeartRate"
+        assert fields["success"] is True
+        assert fields["record_count"] == 500
+        assert fields["task_type"] == "background"
+        assert fields["low_power"] is False
+        assert fields["thermal_state"] == "nominal"
+
+    def test_android_data_type_maps_to_same_series_type(self) -> None:
+        """Health Connect and HealthKit heart rate must land on one series for a shared panel."""
+        event = {**SYNC_END_EVENT, "dataType": "HEART_RATE"}
+
+        fields = _event_fields(SDKLogRequest(**_payload(event)))
+
+        assert fields["data_type"] == SeriesType.heart_rate.value
+        assert fields["native_data_type"] == "HEART_RATE"
+
+    def test_unmappable_data_type_falls_back_to_native(self) -> None:
+        """Sleep and workout identifiers are not series types."""
+        event = {**SYNC_END_EVENT, "dataType": "HKWorkoutTypeIdentifier"}
+
+        fields = _event_fields(SDKLogRequest(**_payload(event)))
+
+        assert fields["data_type"] == "HKWorkoutTypeIdentifier"
+        assert fields["native_data_type"] == "HKWorkoutTypeIdentifier"
+
+    def test_start_event_reports_declared_totals(self) -> None:
+        fields = _event_fields(SDKLogRequest(**_payload(SYNC_START_EVENT)))
+
+        assert fields["types_declared"] == 4
+        assert fields["samples_expected"] == 715
+        assert "data_type" not in fields
 
 
 class TestSDKLogsAuth:

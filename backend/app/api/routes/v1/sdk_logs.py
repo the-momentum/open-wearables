@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.schemas.providers.mobile_sdk import (
     DeviceStateEvent,
     HistoricalDataSyncStartEvent,
@@ -49,8 +50,11 @@ def _event_fields(body: SDKLogRequest) -> dict[str, Any]:
                     "samples_expected": sum(count.count for count in populated),
                 }
             case HistoricalDataTypeSyncEndEvent() if flatten_outcome:
+                # Sleep and workout identifiers have no series type, so they keep the native one.
+                series_type = get_series_type_from_metric_type(event.dataType)
                 fields |= {
-                    "data_type": event.dataType,
+                    "data_type": series_type.value if series_type else event.dataType,
+                    "native_data_type": event.dataType,
                     "success": event.success,
                     "record_count": event.recordCount,
                 }
