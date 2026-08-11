@@ -59,7 +59,7 @@ graph TD
 </Warning>
 
 <Note>
-  **Building a standalone app with no backend of your own?** There is a third onboarding option: the **invitation code** flow, where a single-use code is redeemed directly by the app - no live backend channel required. It powers the [Open Wearables app](/app/introduction) and the [example apps](/sdk/flutter/example-app). Use the backend token flow above when your app already authenticates users against your backend; use invitation codes for standalone onboarding. Both keep `app_secret` off the device and both are automatable via the API. See [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+  **Building a standalone app with no backend of your own?** Invitation codes are an alternative - a single-use code the app redeems directly, no backend channel required. This is **not** the standard flow; it exists mainly for the [Open Wearables app](/app/introduction) and the [example apps](/sdk/flutter/example-app). If your app authenticates users against your own backend (the normal case), use the backend token flow above. See [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
 </Note>
 
 ## Step 1: Backend Setup

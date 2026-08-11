@@ -72,20 +72,13 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
 
 ## Choosing an onboarding flow
 
-There are two ways to get a session onto the device. Both hand the SDK the **same** short-lived, user-scoped token (write-only to the `/sdk/*` endpoints), both keep your `app_secret` off the device, and both are fully automatable via the API. They differ only in **how the credential reaches the app** - so choose based on whether your app already has an authenticated channel to your own backend on the device.
+For any real integration, use the **backend token flow**: your backend mints a short-lived, user-scoped token (write-only to the `/sdk/*` endpoints) via [`POST /api/v1/users/{user_id}/token`](/api-reference/mobile-sdk/create-user-token) and forwards it to the app over its own authenticated API. Your `app_secret` never touches the device. This is the standard path, covered in each platform's Integration Guide.
 
-<CardGroup cols={2}>
-  <Card title="Backend token" icon="server">
-    Your backend mints a token via [`POST /api/v1/users/{user_id}/token`](/n/create-user-token) and forwards it to the app over its own authenticated API. **Use this when your app already signs users in against your backend** - it is the default for building your own app. Covered in each platform's Integration Guide.
-  </Card>
-  <Card title="Invitation code" icon="ticket">
-    Your backend (or the dashboard) issues a single-use code with `POST /api/v1/users/{user_id}/invitation-code`; the app redeems it directly against the public `POST /api/v1/invitation-code/redeem`. **Use this for standalone apps with no backend channel on the device** - the [Open Wearables app](/app/introduction), a coach handing a code to a client, or quick testing.
-  </Card>
-</CardGroup>
+<Warning>
+  **Invitation codes are a niche mechanism, not a co-equal second option.** They exist for apps with **no backend of their own** to mint and forward tokens - in practice the [Open Wearables app](/app/introduction) and quick manual testing. If you are building your own app, use the backend token flow above.
+</Warning>
 
-<Note>
-  The distinction is architectural (where the handoff happens), **not** manual-vs-programmatic. Invitation codes can be generated programmatically per user via the developer-authenticated generate endpoint - the dashboard is just one way to do it.
-</Note>
+With an invitation code, your backend (or the dashboard) issues a single-use code via [`POST /api/v1/users/{user_id}/invitation-code`](/api-reference/mobile-sdk/generate-invitation-code); the app redeems it directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/mobile-sdk/redeem-invitation-code) to obtain the same write-only SDK token. Redeeming on the client is acceptable only because the code is single-use and the token is write-only to `/sdk/*`.
 
 ## Security Model
 

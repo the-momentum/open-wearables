@@ -38,9 +38,9 @@ The example app demonstrates the complete integration flow:
 8. **Log Viewer** - Browse SDK logs with search
 
 <Note>
-  **Which onboarding flow is this?** This example uses the **invitation code** flow: a single-use code is issued for a user, and the app redeems it directly against the public `POST /api/v1/invitation-code/redeem` endpoint. Redeeming on the client is fine here - the code is single-use and the resulting token is write-only to `/sdk/*`, so your `app_secret` never touches the device.
+  **Heads-up - this example uses the invitation code flow, which is not the standard way to integrate the SDK.** The example app has no backend of its own, so it redeems a single-use invitation code directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/mobile-sdk/redeem-invitation-code) endpoint to get a session. That is fine for a self-contained demo - the code is single-use and the resulting token is write-only to `/sdk/*`, so your `app_secret` never touches the device.
 
-  If your app already signs users in against **your own backend**, prefer the [backend token flow](/sdk/flutter/integration#authentication-architecture), where your backend mints and forwards the token. Both flows are valid and equally automatable - see [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+  When you build your own app, use the **backend token flow** instead, where your backend mints and forwards the token. See the [Integration Guide](/sdk/flutter/integration#authentication-architecture) and [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
 </Note>
 
 <Card title="See the full flow in action" icon="play" href="/app/introduction#see-it-in-action">
