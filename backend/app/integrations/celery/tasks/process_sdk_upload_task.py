@@ -136,6 +136,7 @@ def process_sdk_upload(
         workouts_saved = int(result.get("workouts_saved", 0) or 0)
         sleep_saved = int(result.get("sleep_saved", 0) or 0)
         dropped_count = int(result.get("dropped_count", 0) or 0)
+        types = result.get("types") or []
         items_total = records_saved + workouts_saved + sleep_saved
 
         if isinstance(status_code, int) and 200 <= status_code < 300:
@@ -155,6 +156,7 @@ def process_sdk_upload(
                     "records_saved": records_saved,
                     "workouts_saved": workouts_saved,
                     "sleep_saved": sleep_saved,
+                    "types": types,
                     "dropped_count": dropped_count,
                 },
             )

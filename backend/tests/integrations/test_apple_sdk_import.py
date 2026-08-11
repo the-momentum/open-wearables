@@ -4,6 +4,7 @@ Integration tests for Apple SDK (HealthKit) data import.
 Tests the full import flow for Apple HealthKit data via SDK.
 """
 
+import json
 import logging
 from decimal import Decimal
 from typing import Any
@@ -342,6 +343,21 @@ class TestAppleSDKImport:
         result = import_service.load_data(db, sample_sdk_payload, str(user.id))
 
         assert result["records_saved"] >= 0
+
+    def test_types_written_reach_the_response(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        """types lists the series types the batch wrote, for absence-alerting in the logs."""
+        user = UserFactory()
+        payload = {**SDK_ENVELOPE, "data": {"records": sample_sdk_payload["data"]["records"]}}
+
+        response = import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+
+        assert response.types == [SeriesType.steps.value]
+        assert response.model_dump()["types"] == [SeriesType.steps.value]
 
     def test_import_empty_payload(
         self,

@@ -98,6 +98,7 @@ def emit(event: SyncStatusEvent) -> None:
             "items_total": event.items_total,
             "inserted": event.metadata.get("inserted"),
             "updated": event.metadata.get("updated"),
+            "types": event.metadata.get("types"),
             "detail": event.message,
             "error": event.error,
         }.items()

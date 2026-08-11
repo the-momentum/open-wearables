@@ -68,6 +68,7 @@ class InvalidRecord(TypedDict):
 class LoadDataResult(TypedDict):
     workouts_saved: int
     records_saved: int
+    types: list[str]  # series types written
     sleep_saved: int
     dropped: list[InvalidRecord]
     validation_ms: float
@@ -357,6 +358,7 @@ class ImportService:
         workouts_saved = 0
         records_saved = 0
         sleep_saved = 0
+        types: set[str] = set()
 
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))
@@ -382,12 +384,14 @@ class ImportService:
             if time_series_samples:
                 self.timeseries_service.bulk_create_samples(db_session, time_series_samples)
                 records_saved += len(time_series_samples)
+                types.update(sample.series_type.value for sample in time_series_samples)
 
         # Process time series samples (records)
         samples = self._build_statistic_bundles(request, user_id)
         if samples:
             self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
+            types.update(sample.series_type.value for sample in samples)
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
@@ -400,6 +404,7 @@ class ImportService:
         return {
             "workouts_saved": workouts_saved,
             "records_saved": records_saved,
+            "types": sorted(types),
             "sleep_saved": sleep_saved,
             "dropped": dropped,
             "validation_ms": validation_ms,
@@ -514,6 +519,7 @@ class ImportService:
                 user_id=user_id,
                 dropped_count=len(dropped),
                 records_saved=saved_counts["records_saved"],
+                types=saved_counts["types"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
             )
