@@ -110,6 +110,13 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         raw = self.get_workout_detail_from_api(db, user_id, workout_id)
         if not raw or not isinstance(raw, dict):
             return 0
+        store_raw_payload(
+            source="api_response",
+            provider="oura",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=f"/v2/usercollection/workout/{workout_id}",
+        )
         count = 0
         for record, details in self._build_bundles([OuraWorkoutJSON(**raw)], user_id):
             created = event_record_service.create(db, record)
