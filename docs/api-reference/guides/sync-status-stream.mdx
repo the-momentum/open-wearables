@@ -90,6 +90,7 @@ Every event is a JSON object emitted as the `data` field of an SSE message with 
 | `progress`        | `number \| null`      | Optional 0..1 fraction. Not all syncs report this.                                                                   |
 | `items_processed` | `number \| null`      | Optional count of items processed so far.                                                                            |
 | `items_total`     | `number \| null`      | Optional total when known.                                                                                           |
+| `metadata`        | `object`              | Provider-specific detail, e.g. `types` (SeriesType slugs written), `inserted`, `updated`.                             |
 | `started_at`      | `string \| null`      | ISO-8601 timestamp when the run started.                                                                             |
 | `ended_at`        | `string \| null`      | ISO-8601 timestamp when the run reached a terminal status.                                                           |
 | `timestamp`       | `string`              | ISO-8601 timestamp of this individual event.                                                                         |

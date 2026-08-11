@@ -33,7 +33,10 @@ def _event_fields(body: SDKLogRequest) -> dict[str, Any]:
     type in a run reports the same value.
     """
     fields: dict[str, Any] = {}
-    flatten_outcome = len(body.events) <= _MAX_FLATTENED_EVENTS
+    # Several outcomes in one batch cannot share these fields without overwriting
+    # each other, so they stay in the stored payload only.
+    outcome_count = sum(isinstance(event, HistoricalDataTypeSyncEndEvent) for event in body.events)
+    flatten_outcome = len(body.events) <= _MAX_FLATTENED_EVENTS and outcome_count == 1
 
     for event in body.events:
         match event:

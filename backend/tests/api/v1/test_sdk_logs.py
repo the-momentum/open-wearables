@@ -187,6 +187,23 @@ class TestSDKLogsEventFields:
         assert fields["data_type"] == "HKWorkoutTypeIdentifier"
         assert fields["native_data_type"] == "HKWorkoutTypeIdentifier"
 
+    def test_two_outcome_events_are_not_flattened(self) -> None:
+        """Sharing the fields would silently report only the last outcome."""
+        second = {**SYNC_END_EVENT, "dataType": "HKQuantityTypeIdentifierStepCount", "recordCount": 200}
+
+        fields = _event_fields(SDKLogRequest(**_payload(SYNC_END_EVENT, second)))
+
+        for key in ("data_type", "native_data_type", "success", "record_count"):
+            assert key not in fields
+
+    def test_two_outcome_events_still_report_device_state(self) -> None:
+        second = {**SYNC_END_EVENT, "dataType": "HKQuantityTypeIdentifierStepCount"}
+
+        fields = _event_fields(SDKLogRequest(**_payload(SYNC_END_EVENT, second, DEVICE_STATE_EVENT)))
+
+        assert "data_type" not in fields
+        assert fields["task_type"] == "background"
+
     def test_start_event_reports_declared_totals(self) -> None:
         fields = _event_fields(SDKLogRequest(**_payload(SYNC_START_EVENT)))
 

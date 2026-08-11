@@ -1,5 +1,6 @@
 import uuid
 from logging import getLogger
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -34,7 +35,7 @@ def process_sdk_upload(
     user_id: str,
     provider: str,
     batch_id: str | None = None,
-) -> dict[str, int | str]:
+) -> dict[str, Any]:
     """
     Process SDK data import asynchronously.
 
