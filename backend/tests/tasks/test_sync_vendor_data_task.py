@@ -8,8 +8,9 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
 
-from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
+from app.integrations.celery.tasks.sync_vendor_data_task import classify_sync_outcome, sync_vendor_data
 from app.schemas.auth import ConnectionStatus
+from app.schemas.sync_status import SyncStatus
 from app.utils.sync_params import build_sync_params
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -233,6 +234,7 @@ class TestSyncVendorDataTask:
         mock_strategy.capabilities.rest_pull = True
         mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
+        mock_strategy.data_247 = None
         mock_get_provider.return_value = mock_strategy
 
         # Act
@@ -241,6 +243,7 @@ class TestSyncVendorDataTask:
         # Assert
         assert str(result["user_id"]) == str(user.id)
         assert "garmin" in result["providers_synced"]
+        assert result["providers_synced"]["garmin"]["success"] is False
         assert result["providers_synced"]["garmin"]["params"]["workouts"]["success"] is False
         assert "Provider API unavailable" in result["providers_synced"]["garmin"]["params"]["workouts"]["error"]
 
@@ -268,6 +271,7 @@ class TestSyncVendorDataTask:
         mock_strategy.capabilities.rest_pull = True
         mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
+        mock_strategy.data_247 = None
         mock_get_provider.return_value = mock_strategy
 
         # Act
@@ -275,6 +279,7 @@ class TestSyncVendorDataTask:
 
         # Assert - provider is added to providers_synced with workouts success=False
         assert "polar" in result["providers_synced"]
+        assert result["providers_synced"]["polar"]["success"] is False
         assert result["providers_synced"]["polar"]["params"]["workouts"]["success"] is False
         assert result["errors"] == {}
 
@@ -375,3 +380,40 @@ class TestBuildSyncParams:
         params = build_sync_params("invalid-date", "2025-12-31T23:59:59Z")
 
         assert params == {"start_date": "invalid-date", "end_date": "2025-12-31T23:59:59Z"}
+
+
+class TestClassifySyncOutcome:
+    """Test suite for provider sync outcome classification."""
+
+    def test_all_sub_tasks_failed_is_failed(self) -> None:
+        params = {
+            "data_247": {"success": False, "error": "401"},
+            "workouts": {"success": False, "error": "401"},
+        }
+
+        assert classify_sync_outcome(params) == SyncStatus.FAILED
+
+    def test_some_sub_tasks_failed_is_partial(self) -> None:
+        params = {
+            "data_247": {"success": False, "error": "401"},
+            "workouts": {"success": True},
+        }
+
+        assert classify_sync_outcome(params) == SyncStatus.PARTIAL
+
+    def test_no_sub_tasks_failed_is_success(self) -> None:
+        params = {"data_247": {"success": True}, "workouts": {"success": True}}
+
+        assert classify_sync_outcome(params) == SyncStatus.SUCCESS
+
+    def test_no_sub_tasks_is_success(self) -> None:
+        assert classify_sync_outcome({}) == SyncStatus.SUCCESS
+
+    def test_non_outcome_values_are_ignored(self) -> None:
+        params = {
+            "linked_account": True,
+            "metadata": {"is_historical": True},
+            "data_247": {"success": False},
+        }
+
+        assert classify_sync_outcome(params) == SyncStatus.FAILED

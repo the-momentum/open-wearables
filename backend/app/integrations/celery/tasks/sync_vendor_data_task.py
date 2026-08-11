@@ -51,6 +51,24 @@ def _include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is
     return live_sync_mode == LiveSyncMode.PULL
 
 
+def classify_sync_outcome(params: dict[str, Any]) -> SyncStatus:
+    """Classify a provider sync from its sub-task results.
+
+    Only mappings with an explicit boolean ``success`` field represent sub-task
+    outcomes. Other values, such as linked-account metadata, are ignored. A
+    provider with no sub-task outcomes has nothing to fail and is successful.
+    """
+    sub_results = [
+        value for value in params.values() if isinstance(value, dict) and isinstance(value.get("success"), bool)
+    ]
+    failures = [result for result in sub_results if result["success"] is False]
+    if not failures:
+        return SyncStatus.SUCCESS
+    if len(failures) == len(sub_results):
+        return SyncStatus.FAILED
+    return SyncStatus.PARTIAL
+
+
 @shared_task
 def sync_vendor_data(
     user_id: str,
@@ -432,29 +450,20 @@ def sync_vendor_data(
                                 }
                             )
 
+                    final_status = classify_sync_outcome(provider_result.params)
+                    provider_result.success = final_status != SyncStatus.FAILED
                     result.providers_synced[provider_name] = provider_result
                     log_structured(
                         logger,
-                        "info",
-                        f"Successfully synced {provider_name} for user {user_id}",
+                        "error" if final_status == SyncStatus.FAILED else "info",
+                        f"Sync from {provider_name} for user {user_id} finished with status {final_status.value}",
                         provider=provider_name,
                         task="sync_vendor_data",
                         user_id=user_id,
+                        sync_outcome=final_status.value,
                         effective_start=effective_start,
                         lookback=format_duration(settings.pull_sync_lookback) if settings.pull_sync_lookback else None,
                     )
-
-                    sub_results = list(provider_result.params.values())
-                    all_failed = bool(sub_results) and all(
-                        isinstance(r, dict) and r.get("success") is False for r in sub_results
-                    )
-                    any_failed = any(isinstance(r, dict) and r.get("success") is False for r in sub_results)
-                    if all_failed:
-                        final_status = SyncStatus.FAILED
-                    elif any_failed:
-                        final_status = SyncStatus.PARTIAL
-                    else:
-                        final_status = SyncStatus.SUCCESS
 
                     if final_status == SyncStatus.FAILED:
                         _emit_sync_status(
@@ -478,7 +487,7 @@ def sync_vendor_data(
                         }
                         completed_message = (
                             f"Sync from {provider_name} completed"
-                            if not any_failed
+                            if final_status == SyncStatus.SUCCESS
                             else f"Sync from {provider_name} completed with errors"
                         )
                         if pull_inserted or pull_updated:
