@@ -29,6 +29,13 @@ class SyncSource(StrEnum):
     )
 
 
+class SyncScope(StrEnum):
+    """Whether the run backfills history or delivers current data."""
+
+    HISTORICAL = "historical"
+    LIVE = "live"
+
+
 class SyncStage(StrEnum):
     """Coarse-grained stage label for a sync run."""
 
@@ -51,6 +58,7 @@ class SyncStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"  # Delivered but no data saved (ignored/duplicate/no-op webhook)
+    UNKNOWN = "unknown"  # Never reported an outcome — distinct from a reported failure
 
 
 class SyncStatusEvent(BaseModel):
