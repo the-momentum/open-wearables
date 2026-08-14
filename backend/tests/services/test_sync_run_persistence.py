@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.integrations.celery.tasks.close_stale_sync_runs_task import close_stale_sync_runs
 from app.models import SyncRun, SyncRunDataType
 from app.schemas.enums import SeriesType
 from app.schemas.sync_status import (
@@ -23,7 +24,6 @@ from app.schemas.sync_status import (
     SyncStatus,
     SyncStatusEvent,
 )
-from app.integrations.celery.tasks.close_stale_sync_runs_task import close_stale_sync_runs
 from app.services.sync_status_service import try_persist_run, try_record_data_types
 from tests.factories import UserFactory
 
