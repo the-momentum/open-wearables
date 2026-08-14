@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     sync_run_tracking_enabled: bool = True
     # Persist live runs too. WARNING: space-consuming — one row per webhook and per SDK
     # batch, so hundreds a day for an active user. Historical runs are a handful, ever.
-    sync_run_persist_live: bool = False
+    persist_live_sync_runs: bool = False
     # Closed as stale once this long passes with no event. Covers the gap between events,
     # not the whole run: the sweep leaves anything still reporting in Redis alone.
     sync_run_stale_after_hours: int = Field(2, ge=1)

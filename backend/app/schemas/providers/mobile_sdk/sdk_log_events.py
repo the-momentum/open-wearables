@@ -42,6 +42,10 @@ class HistoricalDataTypeSyncEndEvent(BaseModel):
     durationMs: int | None = None
     errorCode: str | None = None
     errorMessage: str | None = None
+    # Span this type actually covered, which the run-level range cannot give us: HealthKit
+    # grants authorization per type and the device may hold less history for some of them.
+    # Absent on SDK versions that predate it, and coverage stays unknown rather than guessed.
+    timeRange: TimeRange | None = None
 
 
 class DeviceStateEvent(BaseModel):

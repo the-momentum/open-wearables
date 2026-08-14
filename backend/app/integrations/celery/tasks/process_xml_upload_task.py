@@ -119,7 +119,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                     items_processed=stats.records.processed + stats.workouts.processed + stats.sleep.processed,
                     metadata={"filename": filename},
                 )
-                try_record_data_types(run_id, _xml_outcomes(stats))
+                try_record_data_types(run_id, _xml_outcomes(stats), scope=SyncScope.HISTORICAL)
 
             return {
                 "user_id": user_id,

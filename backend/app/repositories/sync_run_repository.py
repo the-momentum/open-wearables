@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import DbSession
 from app.models import SyncRun, SyncRunDataType
-from app.schemas.sync_status import SyncScope, SyncSource, SyncStatus
+from app.schemas.sync_status import DataTypeOutcome, SyncScope, SyncSource, SyncStatus
 
 
 class SyncRunRepository:
@@ -84,50 +84,39 @@ class SyncRunRepository:
         db_session.commit()
         return run_id
 
-    def upsert_data_type(
+    def upsert_data_types(
         self,
         db_session: DbSession,
         *,
         run_id: UUID,
-        data_type: str,
-        kind: str,
-        status: SyncStatus,
+        outcomes: Sequence[DataTypeOutcome],
         updated_at: datetime,
-        native_type: str | None = None,
-        reported_records: int | None = None,
-        items_inserted: int = 0,
-        items_updated: int = 0,
-        covered_start: datetime | None = None,
-        covered_end: datetime | None = None,
-        started_at: datetime | None = None,
-        ended_at: datetime | None = None,
-        duration_ms: int | None = None,
-        error_code: str | None = None,
-        error: str | None = None,
     ) -> None:
-        """Record the outcome of one data type within a run.
+        """Record the outcome of each data type within a run, in one transaction.
 
         Covered range widens rather than being replaced, so several batches of the same
         type accumulate into one span. A retried type increments attempt.
+
+        DataTypeOutcome's fields are the columns, so it is unpacked wholesale rather than
+        restated: a field added to the schema needs a migration, not an edit here.
         """
+        for outcome in outcomes:
+            self._upsert_data_type(db_session, run_id=run_id, outcome=outcome, updated_at=updated_at)
+        db_session.commit()
+
+    def _upsert_data_type(
+        self,
+        db_session: DbSession,
+        *,
+        run_id: UUID,
+        outcome: DataTypeOutcome,
+        updated_at: datetime,
+    ) -> None:
         stmt = insert(SyncRunDataType).values(
             run_id=run_id,
-            data_type=data_type,
-            kind=kind,
-            status=status,
-            native_type=native_type,
-            reported_records=reported_records,
-            items_inserted=items_inserted,
-            items_updated=items_updated,
-            covered_start=covered_start,
-            covered_end=covered_end,
-            started_at=started_at,
-            ended_at=ended_at,
-            duration_ms=duration_ms,
-            error_code=error_code,
-            error=error,
             attempt=1,
             updated_at=updated_at,
+            **outcome.model_dump(),
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=["run_id", "data_type"],
@@ -147,7 +136,6 @@ class SyncRunRepository:
             },
         )
         db_session.execute(stmt)
-        db_session.commit()
 
     def find_stale(self, db_session: DbSession, cutoff: datetime) -> list[str]:
         """Keys of runs still in progress since before the cutoff.

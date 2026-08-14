@@ -104,6 +104,8 @@ def _outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
                 native_type=event.dataType,
                 status=status,
                 reported_records=event.recordCount if status == SyncStatus.SUCCESS else None,
+                covered_start=event.timeRange.startDate if event.timeRange else None,
+                covered_end=event.timeRange.endDate if event.timeRange else None,
                 ended_at=event.timestamp,
                 duration_ms=event.durationMs,
                 error_code=event.errorCode,
@@ -161,7 +163,7 @@ def submit_sdk_logs(
                 message=f"Historical {provider} export started",
                 metadata={"sdk_version": body.sdkVersion, **_event_fields(body)},
             )
-        try_record_data_types(run_key, _outcomes(body))
+        try_record_data_types(run_key, _outcomes(body), scope=SyncScope.HISTORICAL)
 
     store_raw_payload(
         source="sdk_logs",

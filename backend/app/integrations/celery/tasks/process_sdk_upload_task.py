@@ -232,6 +232,7 @@ def process_sdk_upload(
                     DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS)
                     for data_type in types
                 ],
+                scope=scope,
             )
             if payload_ref and settings.raw_payload_storage == "disabled":
                 # Transport-only copy and the data is committed, so drop it. A failed batch

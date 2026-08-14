@@ -561,7 +561,7 @@ def sync_vendor_data(
                             requested_start=start_dt,
                             requested_end=end_dt,
                         )
-                        try_record_data_types(run_id, data_type_outcomes)
+                        try_record_data_types(run_id, data_type_outcomes, scope=sync_scope)
 
                 except Exception as e:
                     if shared_token and connection.provider_user_id:

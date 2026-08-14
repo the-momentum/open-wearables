@@ -75,7 +75,7 @@ class TestTryPersistRun:
     ) -> None:
         mock_session_local.return_value.__enter__.return_value = db
         mock_settings.sync_run_tracking_enabled = True
-        mock_settings.sync_run_persist_live = True
+        mock_settings.persist_live_sync_runs = True
         user = UserFactory()
         event = _event(user.id, scope=SyncScope.LIVE)
 
@@ -158,6 +158,7 @@ class TestTryRecordDataTypes:
                     error="authorization_denied",
                 ),
             ],
+            scope=SyncScope.HISTORICAL,
         )
 
         rows = {r.data_type: r for r in db.query(SyncRunDataType).all()}
@@ -190,6 +191,7 @@ class TestTryRecordDataTypes:
                         covered_end=covered_end,
                     )
                 ],
+                scope=SyncScope.HISTORICAL,
             )
 
         row = db.query(SyncRunDataType).filter(SyncRunDataType.data_type == "steps").one()
@@ -200,15 +202,27 @@ class TestTryRecordDataTypes:
 
     @patch("app.services.sync_status_service.SessionLocal")
     def test_no_run_row_means_no_op(self, mock_session_local: MagicMock, db: Session) -> None:
-        """Live syncs are not persisted, so their outcomes have nowhere to go."""
+        """A historical run whose parent row is missing must not create orphan rows."""
         mock_session_local.return_value.__enter__.return_value = db
 
         try_record_data_types(
             "pull_does_not_exist",
             [DataTypeOutcome(data_type="steps", kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS)],
+            scope=SyncScope.HISTORICAL,
         )
 
         assert db.query(SyncRunDataType).count() == 0
+
+    @patch("app.services.sync_status_service.SessionLocal")
+    def test_live_scope_skips_the_lookup(self, mock_session_local: MagicMock) -> None:
+        """Live runs are never stored, so their outcomes must not cost a query."""
+        try_record_data_types(
+            "pull_live",
+            [DataTypeOutcome(data_type="steps", kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS)],
+            scope=SyncScope.LIVE,
+        )
+
+        mock_session_local.assert_not_called()
 
 
 class TestCloseStaleSyncRuns:

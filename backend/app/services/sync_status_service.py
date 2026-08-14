@@ -81,16 +81,24 @@ def new_run_id(prefix: str = "run") -> str:
     return f"{prefix}_{uuid4().hex[:16]}"
 
 
+def is_persisted_scope(scope: SyncScope | str) -> bool:
+    """Whether runs of this scope are stored at all.
+
+    Historical runs always are. Live ones need persist_live_sync_runs as well, since a live
+    run is one row per webhook and per SDK batch.
+    """
+    if not settings.sync_run_tracking_enabled:
+        return False
+    return SyncScope(scope) == SyncScope.HISTORICAL or settings.persist_live_sync_runs
+
+
 def try_persist_run(event: SyncStatusEvent) -> None:
     """Store the event's run in Postgres, best effort.
 
-    Historical runs only unless sync_run_persist_live is on. Uses its own session so it
-    never joins the caller's transaction, and swallows failures: a sync must not fail
-    because run tracking did.
+    Uses its own session so it never joins the caller's transaction, and swallows
+    failures: a sync must not fail because run tracking did.
     """
-    if not settings.sync_run_tracking_enabled:
-        return
-    if event.scope != SyncScope.HISTORICAL and not settings.sync_run_persist_live:
+    if not is_persisted_scope(event.scope):
         return
 
     try:
@@ -118,12 +126,13 @@ def try_persist_run(event: SyncStatusEvent) -> None:
         logger.warning("Failed to persist sync run %s: %s", event.run_id, exc, exc_info=True)
 
 
-def try_record_data_types(run_key: str, outcomes: Sequence[DataTypeOutcome]) -> None:
+def try_record_data_types(run_key: str, outcomes: Sequence[DataTypeOutcome], *, scope: SyncScope | str) -> None:
     """Store the per-data-type outcomes of a run, best effort.
 
-    No-op when the run was not persisted, which is the normal case for live syncs.
+    Takes the scope so a run we never stored is skipped without a lookup, rather than
+    querying for a parent row that was never written.
     """
-    if not settings.sync_run_tracking_enabled or not outcomes:
+    if not outcomes or not is_persisted_scope(scope):
         return
 
     try:
@@ -131,27 +140,12 @@ def try_record_data_types(run_key: str, outcomes: Sequence[DataTypeOutcome]) -> 
             run = sync_run_repository.get_by_run_key(db, run_key)
             if run is None:
                 return
-            now = datetime.now(timezone.utc)
-            for outcome in outcomes:
-                sync_run_repository.upsert_data_type(
-                    db,
-                    run_id=run.id,
-                    data_type=outcome.data_type,
-                    kind=outcome.kind,
-                    status=outcome.status,
-                    native_type=outcome.native_type,
-                    reported_records=outcome.reported_records,
-                    items_inserted=outcome.items_inserted,
-                    items_updated=outcome.items_updated,
-                    covered_start=outcome.covered_start,
-                    covered_end=outcome.covered_end,
-                    started_at=outcome.started_at,
-                    ended_at=outcome.ended_at,
-                    duration_ms=outcome.duration_ms,
-                    error_code=outcome.error_code,
-                    error=outcome.error,
-                    updated_at=now,
-                )
+            sync_run_repository.upsert_data_types(
+                db,
+                run_id=run.id,
+                outcomes=outcomes,
+                updated_at=datetime.now(timezone.utc),
+            )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to record data types for run %s: %s", run_key, exc, exc_info=True)
 
