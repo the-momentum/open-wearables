@@ -20,6 +20,7 @@ import.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -27,7 +28,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.database import DbSession
-from app.schemas.sync_status import SyncRunSummary, SyncStatusEvent
+from app.repositories.sync_run_repository import sync_run_repository
+from app.schemas.sync_status import SyncRunRecord, SyncRunSummary, SyncScope, SyncStatusEvent
 from app.services import ApiKeyDep, user_service
 from app.services.sync_status_service import (
     get_all_run_summaries,
@@ -158,3 +160,51 @@ def list_all_sync_run_summaries(
 
 
 __all__ = ["router"]
+
+
+@router.get(
+    "/users/{user_id}/sync/history",
+    response_model=list[SyncRunRecord],
+    status_code=status.HTTP_200_OK,
+)
+def list_stored_sync_runs(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    scope: Annotated[SyncScope | None, Query(description="Filter by historical or live.")] = None,
+    since: Annotated[datetime | None, Query(description="Only runs started at or after this time.")] = None,
+    include_data_types: Annotated[bool, Query(description="Include the per-data-type breakdown.")] = False,
+) -> list[SyncRunRecord]:
+    """Stored sync runs for a user, newest first.
+
+    Unlike /sync/runs this reads from the database rather than the Redis event buffer,
+    so it is not limited to the last 24 hours. Only historical runs are stored by default.
+    """
+    _ensure_user_exists(db, user_id)
+    runs = sync_run_repository.list_for_user(
+        db,
+        user_id,
+        limit=limit,
+        scope=scope,
+        since=since,
+        with_data_types=include_data_types,
+    )
+    return [SyncRunRecord.model_validate(run) for run in runs]
+
+
+@router.get(
+    "/sync/history/{run_key}",
+    response_model=SyncRunRecord,
+    status_code=status.HTTP_200_OK,
+)
+def get_stored_sync_run(
+    run_key: str,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> SyncRunRecord:
+    """One stored sync run with its per-data-type breakdown."""
+    run = sync_run_repository.get_with_data_types(db, run_key)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found")
+    return SyncRunRecord.model_validate(run)

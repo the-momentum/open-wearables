@@ -1,8 +1,9 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import selectinload
 
 from app.database import DbSession
 from app.models import SyncRun, SyncRunDataType
@@ -143,8 +144,48 @@ class SyncRunRepository:
         db_session.execute(stmt)
         db_session.commit()
 
+    def close_stale(self, db_session: DbSession, cutoff: datetime, ended_at: datetime) -> list[str]:
+        """Mark runs that never reported an outcome as unknown, returning their keys.
+
+        A run stays in_progress when the process handling it died, so nothing distinguishes
+        it from one still going except age. Unknown is deliberately not failed: we never
+        heard what happened.
+        """
+        stmt = (
+            update(SyncRun)
+            .where(SyncRun.status == SyncStatus.IN_PROGRESS, SyncRun.started_at < cutoff)
+            .values(status=SyncStatus.UNKNOWN, ended_at=ended_at, updated_at=ended_at)
+            .returning(SyncRun.run_key)
+        )
+        run_keys = list(db_session.scalars(stmt).all())
+        db_session.commit()
+        return run_keys
+
     def get_by_run_key(self, db_session: DbSession, run_key: str) -> SyncRun | None:
         return db_session.execute(select(SyncRun).where(SyncRun.run_key == run_key)).scalar_one_or_none()
+
+    def get_with_data_types(self, db_session: DbSession, run_key: str) -> SyncRun | None:
+        stmt = select(SyncRun).where(SyncRun.run_key == run_key).options(selectinload(SyncRun.data_types))
+        return db_session.execute(stmt).scalar_one_or_none()
+
+    def list_for_user(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        *,
+        limit: int = 20,
+        scope: SyncScope | None = None,
+        since: datetime | None = None,
+        with_data_types: bool = False,
+    ) -> list[SyncRun]:
+        stmt = select(SyncRun).where(SyncRun.user_id == user_id).order_by(SyncRun.started_at.desc()).limit(limit)
+        if scope is not None:
+            stmt = stmt.where(SyncRun.scope == scope)
+        if since is not None:
+            stmt = stmt.where(SyncRun.started_at >= since)
+        if with_data_types:
+            stmt = stmt.options(selectinload(SyncRun.data_types))
+        return list(db_session.execute(stmt).scalars().unique().all())
 
 
 sync_run_repository = SyncRunRepository()

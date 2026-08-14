@@ -1,6 +1,7 @@
 import uuid
 from logging import getLogger
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -12,7 +13,15 @@ from app.schemas.providers.mobile_sdk import (
     SDKLogRequest,
 )
 from app.schemas.responses.upload import UploadDataResponse
+from app.schemas.sync_status import (
+    DataTypeKind,
+    DataTypeOutcome,
+    SyncScope,
+    SyncSource,
+    SyncStatus,
+)
 from app.services.raw_payload_storage import store_raw_payload
+from app.services.sync_status_service import started, try_record_data_types
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 
@@ -65,6 +74,40 @@ def _event_fields(body: SDKLogRequest) -> dict[str, Any]:
     return {key: value for key, value in fields.items() if value is not None}
 
 
+def _outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
+    """Per-type outcomes carried by this batch of log events.
+
+    success=False means the export ended with that type unfinished rather than a
+    reported error, so it maps to UNKNOWN. A genuine failure carries an error code.
+    """
+    outcomes = []
+    for event in body.events:
+        if not isinstance(event, HistoricalDataTypeSyncEndEvent):
+            continue
+        series_type = get_series_type_from_metric_type(event.dataType)
+        if event.success:
+            status = SyncStatus.SUCCESS
+        elif event.errorCode or event.errorMessage:
+            status = SyncStatus.FAILED
+        else:
+            status = SyncStatus.UNKNOWN
+        outcomes.append(
+            DataTypeOutcome(
+                data_type=series_type.value if series_type else event.dataType,
+                # The identifiers with no series type are sleep and workout, both events.
+                kind=DataTypeKind.SERIES if series_type else DataTypeKind.EVENT,
+                native_type=event.dataType,
+                status=status,
+                reported_records=event.recordCount,
+                ended_at=event.timestamp,
+                duration_ms=event.durationMs,
+                error_code=event.errorCode,
+                error=event.errorMessage,
+            )
+        )
+    return outcomes
+
+
 @router.post("/sdk/users/{user_id}/logs", status_code=status.HTTP_202_ACCEPTED)
 def submit_sdk_logs(
     user_id: str,
@@ -99,6 +142,21 @@ def submit_sdk_logs(
         sdk_version=body.sdkVersion,
         **_event_fields(body),
     )
+
+    if body.syncSessionId:
+        run_key = f"sdk_{body.syncSessionId}"
+        # The start event usually arrives before the first data batch, so it opens the run.
+        if any(isinstance(event, HistoricalDataSyncStartEvent) for event in body.events):
+            started(
+                UUID(user_id),
+                provider,
+                SyncSource.SDK,
+                scope=SyncScope.HISTORICAL,
+                run_id=run_key,
+                message=f"Historical {provider} export started",
+                metadata={"sdk_version": body.sdkVersion, **_event_fields(body)},
+            )
+        try_record_data_types(run_key, _outcomes(body))
 
     store_raw_payload(
         source="sdk_logs",

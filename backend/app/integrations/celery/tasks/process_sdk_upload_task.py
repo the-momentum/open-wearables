@@ -9,7 +9,13 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.sync_status import SyncSource, SyncStatus
+from app.schemas.sync_status import (
+    DataTypeKind,
+    DataTypeOutcome,
+    SyncScope,
+    SyncSource,
+    SyncStatus,
+)
 from app.services.apple.healthkit.import_service import (
     ImportService as SDKImportService,
 )
@@ -17,7 +23,12 @@ from app.services.apple.healthkit.import_service import (
     import_service as sdk_import_service,
 )
 from app.services.raw_payload_storage import delete_payload_from_s3, get_payload_from_s3
-from app.services.sync_status_service import completed, failed, started
+from app.services.sync_status_service import (
+    completed,
+    failed,
+    started,
+    try_record_data_types,
+)
 from app.services.user_connection_service import user_connection_service
 from app.utils.structured_logging import log_structured
 
@@ -38,6 +49,8 @@ def process_sdk_upload(
     provider: str,
     batch_id: str | None = None,
     payload_ref: str | None = None,
+    sync_session_id: str | None = None,
+    sync_type: str | None = None,
 ) -> dict[str, Any]:
     """
     Process SDK data import asynchronously.
@@ -51,6 +64,9 @@ def process_sdk_upload(
         batch_id: Unique batch identifier for tracking (optional for backwards compatibility)
         payload_ref: ``s3://bucket/key`` of the stored payload. When set (and ``content`` is
             None) the body is loaded from S3 here, so it never travels through the broker.
+        sync_session_id: Device-generated id shared by every batch of one historical
+            export. Absent on SDK versions that do not send it yet.
+        sync_type: Whether this batch belongs to a historical export or to live sync.
 
     Returns:
         Dictionary with status_code and response message
@@ -89,6 +105,11 @@ def process_sdk_upload(
             user_id=user_id,
         )
         return {"status": "error", "reason": "missing_payload", "batch_id": batch_id}
+
+    # A historical export spans many batches, so its run is keyed by the device's session
+    # id. Without one the batch is its own run, which is why live syncs are not persisted.
+    scope = SyncScope.HISTORICAL if sync_type == SyncScope.HISTORICAL and sync_session_id else SyncScope.LIVE
+    run_id = f"sdk_{sync_session_id}" if scope == SyncScope.HISTORICAL else batch_id
 
     # Validate user_id format
     try:
@@ -135,7 +156,8 @@ def process_sdk_upload(
         user_uuid,
         provider,
         SyncSource.SDK,
-        run_id=batch_id,
+        scope=scope,
+        run_id=run_id,
         message=f"Processing {provider} SDK batch",
         metadata={"batch_id": batch_id},
     )
@@ -188,7 +210,8 @@ def process_sdk_upload(
                 user_uuid,
                 provider,
                 SyncSource.SDK,
-                run_id=batch_id,
+                scope=scope,
+                run_id=run_id,
                 status=SyncStatus.SUCCESS,
                 message=message,
                 items_processed=items_total,
@@ -203,6 +226,13 @@ def process_sdk_upload(
                     "dropped_count": dropped_count,
                 },
             )
+            try_record_data_types(
+                run_id,
+                [
+                    DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS)
+                    for data_type in types
+                ],
+            )
             if payload_ref and settings.raw_payload_storage == "disabled":
                 # Transport-only copy and the data is committed, so drop it. A failed batch
                 # keeps its payload for diagnosis.
@@ -212,7 +242,8 @@ def process_sdk_upload(
                 user_uuid,
                 provider,
                 SyncSource.SDK,
-                run_id=batch_id,
+                scope=scope,
+                run_id=run_id,
                 error=str(result.get("response", "Unknown error")),
                 message=f"{provider.capitalize()} batch failed",
                 metadata={"batch_id": batch_id, "status_code": status_code},

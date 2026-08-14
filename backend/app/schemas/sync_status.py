@@ -146,3 +146,44 @@ class SyncRunSummary(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     last_update: datetime
+
+
+class SyncRunDataTypeRecord(BaseModel):
+    """Stored outcome of one data type within a run."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    data_type: str
+    kind: DataTypeKind
+    status: SyncStatus
+    native_type: str | None = None
+    reported_records: int | None = None
+    items_inserted: int = 0
+    items_updated: int = 0
+    covered_start: datetime | None = None
+    covered_end: datetime | None = None
+    error_code: str | None = None
+    error: str | None = None
+    attempt: int = 0
+
+
+class SyncRunRecord(BaseModel):
+    """A stored sync run. Unlike the Redis-backed summaries this is not time limited."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    run_key: str
+    user_id: UUID
+    provider: str
+    source: SyncSource
+    scope: SyncScope
+    status: SyncStatus
+    trace_id: str | None = None
+    requested_start: datetime | None = None
+    requested_end: datetime | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    items_inserted: int = 0
+    items_updated: int = 0
+    error: str | None = None
+    data_types: list[SyncRunDataTypeRecord] = Field(default_factory=list)

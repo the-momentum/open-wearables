@@ -134,6 +134,10 @@ class Settings(BaseSettings):
     # hundreds of rows a day and the table grows without bound. Historical runs are a
     # handful per user, ever.
     sync_run_persist_live: bool = False
+    # A run still in_progress after this long never reported an outcome, so it is closed
+    # as unknown. Historical imports can legitimately run for a while, hence the default.
+    sync_run_stale_after_hours: int = Field(6, ge=1)
+    sync_run_sweep_interval_seconds: int = Field(1800, ge=60)
 
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"

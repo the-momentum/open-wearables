@@ -33,9 +33,15 @@ class HistoricalDataTypeSyncEndEvent(BaseModel):
     eventType: Literal["historical_data_type_sync_end"]
     timestamp: datetime
     dataType: str
+    # False means the export ended with this type unfinished, which is not the same as a
+    # failure. A genuine on-device error carries errorCode as well.
     success: bool
     recordCount: int | None = None
+    # Measured from the start of the whole run, so every type in a run reports the same
+    # value. Not usable for per-type timing until the SDK measures it per type.
     durationMs: int | None = None
+    errorCode: str | None = None
+    errorMessage: str | None = None
 
 
 class DeviceStateEvent(BaseModel):
@@ -61,4 +67,11 @@ class SDKLogRequest(BaseModel):
 
     sdkVersion: str
     provider: str | None = None
+    syncSessionId: str | None = Field(
+        None,
+        description=(
+            "Device-generated id, stable for one historical export and shared with the "
+            "sync endpoint, so log events can be attached to the run their data belongs to."
+        ),
+    )
     events: list[SDKLogEvent] = Field(..., min_length=1, max_length=100)

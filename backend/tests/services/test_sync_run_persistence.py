@@ -23,6 +23,7 @@ from app.schemas.sync_status import (
     SyncStatus,
     SyncStatusEvent,
 )
+from app.integrations.celery.tasks.close_stale_sync_runs_task import close_stale_sync_runs
 from app.services.sync_status_service import try_persist_run, try_record_data_types
 from tests.factories import UserFactory
 
@@ -207,3 +208,25 @@ class TestTryRecordDataTypes:
         )
 
         assert db.query(SyncRunDataType).count() == 0
+
+
+class TestCloseStaleSyncRuns:
+    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal")
+    def test_only_old_in_progress_runs_are_closed(
+        self, mock_emit_session: MagicMock, mock_task_session: MagicMock, db: Session
+    ) -> None:
+        """Unknown rather than failed: the run never reported what happened."""
+        mock_emit_session.return_value.__enter__.return_value = db
+        mock_task_session.return_value.__enter__.return_value = db
+        user = UserFactory()
+        old = datetime.now(timezone.utc) - timedelta(hours=48)
+
+        try_persist_run(_event(user.id, run_id="pull_stale", started_at=old))
+        try_persist_run(_event(user.id, run_id="pull_recent"))
+
+        result = close_stale_sync_runs()
+
+        assert result["run_keys"] == ["pull_stale"]
+        assert db.query(SyncRun).filter(SyncRun.run_key == "pull_stale").one().status == SyncStatus.UNKNOWN
+        assert db.query(SyncRun).filter(SyncRun.run_key == "pull_recent").one().status == SyncStatus.IN_PROGRESS
