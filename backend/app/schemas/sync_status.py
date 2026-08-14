@@ -61,6 +61,45 @@ class SyncStatus(StrEnum):
     UNKNOWN = "unknown"  # Never reported an outcome — distinct from a reported failure
 
 
+class DataTypeKind(StrEnum):
+    """What sort of thing a data type entry describes.
+
+    Providers report at different granularities. SDK uploads report per series type,
+    while REST pulls report per fetch task, and one task can write several series types.
+    The kind records which of those a row represents so the two are not confused.
+    """
+
+    SERIES = "series"
+    SCORE = "score"
+    PROFILE = "profile"
+    EVENT = "event"
+    TASK = "task"
+
+
+class DataTypeOutcome(BaseModel):
+    """Result of one data type within a sync run.
+
+    data_type is the canonical SeriesType slug when the provider's key maps to one,
+    otherwise the provider's own string. reported_records is what the provider claimed
+    it sent, which is not the same as what we wrote.
+    """
+
+    data_type: str
+    kind: DataTypeKind
+    status: SyncStatus
+    native_type: str | None = None
+    reported_records: int | None = None
+    items_inserted: int = 0
+    items_updated: int = 0
+    covered_start: datetime | None = None
+    covered_end: datetime | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    duration_ms: int | None = None
+    error_code: str | None = None
+    error: str | None = None
+
+
 class SyncStatusEvent(BaseModel):
     """A single status update for a sync run."""
 
@@ -71,6 +110,7 @@ class SyncStatusEvent(BaseModel):
     user_id: UUID
     provider: str = Field(description="Provider slug (e.g. 'garmin', 'apple', 'whoop').")
     source: SyncSource
+    scope: SyncScope = SyncScope.LIVE
     stage: SyncStage
     status: SyncStatus
     message: str | None = None

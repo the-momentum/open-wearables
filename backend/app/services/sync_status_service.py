@@ -25,20 +25,26 @@ Keys (all TTL'd to ``HISTORY_TTL_SECONDS``):
 import logging
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.config import settings
+from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
+from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import (
+    DataTypeOutcome,
     SyncRunSummary,
+    SyncScope,
     SyncSource,
     SyncStage,
     SyncStatus,
     SyncStatusEvent,
 )
+from app.utils.context import trace_id_var
 from app.utils.sse import format_comment, format_event
 from app.utils.structured_logging import log_structured
 
@@ -73,6 +79,79 @@ def _run_key(run_id: str) -> str:
 def new_run_id(prefix: str = "run") -> str:
     """Allocate a fresh run identifier."""
     return f"{prefix}_{uuid4().hex[:16]}"
+
+
+def try_persist_run(event: SyncStatusEvent) -> None:
+    """Store the event's run in Postgres, best effort.
+
+    Historical runs only unless sync_run_persist_live is on. Uses its own session so it
+    never joins the caller's transaction, and swallows failures: a sync must not fail
+    because run tracking did.
+    """
+    if not settings.sync_run_tracking_enabled:
+        return
+    if event.scope != SyncScope.HISTORICAL and not settings.sync_run_persist_live:
+        return
+
+    try:
+        with SessionLocal() as db:
+            sync_run_repository.upsert_run(
+                db,
+                run_key=event.run_id,
+                user_id=event.user_id,
+                provider=event.provider,
+                source=SyncSource(event.source),
+                scope=SyncScope(event.scope),
+                status=SyncStatus(event.status),
+                trace_id=trace_id_var.get(),
+                started_at=event.started_at or event.timestamp,
+                ended_at=event.ended_at,
+                items_inserted=event.metadata.get("inserted") or 0,
+                items_updated=event.metadata.get("updated") or 0,
+                error=event.error,
+                meta=event.metadata or None,
+                updated_at=event.timestamp,
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to persist sync run %s: %s", event.run_id, exc, exc_info=True)
+
+
+def try_record_data_types(run_key: str, outcomes: Sequence[DataTypeOutcome]) -> None:
+    """Store the per-data-type outcomes of a run, best effort.
+
+    No-op when the run was not persisted, which is the normal case for live syncs.
+    """
+    if not settings.sync_run_tracking_enabled or not outcomes:
+        return
+
+    try:
+        with SessionLocal() as db:
+            run = sync_run_repository.get_by_run_key(db, run_key)
+            if run is None:
+                return
+            now = datetime.now(timezone.utc)
+            for outcome in outcomes:
+                sync_run_repository.upsert_data_type(
+                    db,
+                    run_id=run.id,
+                    data_type=outcome.data_type,
+                    kind=outcome.kind,
+                    status=outcome.status,
+                    native_type=outcome.native_type,
+                    reported_records=outcome.reported_records,
+                    items_inserted=outcome.items_inserted,
+                    items_updated=outcome.items_updated,
+                    covered_start=outcome.covered_start,
+                    covered_end=outcome.covered_end,
+                    started_at=outcome.started_at,
+                    ended_at=outcome.ended_at,
+                    duration_ms=outcome.duration_ms,
+                    error_code=outcome.error_code,
+                    error=outcome.error,
+                    updated_at=now,
+                )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to record data types for run %s: %s", run_key, exc, exc_info=True)
 
 
 def emit(event: SyncStatusEvent) -> None:
@@ -117,6 +196,8 @@ def emit(event: SyncStatusEvent) -> None:
         user_id=str(event.user_id),
         **extra,
     )
+
+    try_persist_run(event)
 
     try:
         client = get_redis_client()
@@ -200,6 +281,7 @@ def emit_event(
     source: SyncSource | str,
     stage: SyncStage | str,
     status: SyncStatus | str,
+    scope: SyncScope | str = SyncScope.LIVE,
     run_id: str | None = None,
     message: str | None = None,
     progress: float | None = None,
@@ -217,6 +299,7 @@ def emit_event(
         user_id=user_id if isinstance(user_id, UUID) else UUID(str(user_id)),
         provider=provider,
         source=SyncSource(source) if not isinstance(source, SyncSource) else source,
+        scope=SyncScope(scope) if not isinstance(scope, SyncScope) else scope,
         stage=SyncStage(stage) if not isinstance(stage, SyncStage) else stage,
         status=SyncStatus(status) if not isinstance(status, SyncStatus) else status,
         message=message,
@@ -415,6 +498,7 @@ def started(
     provider: str,
     source: SyncSource | str,
     *,
+    scope: SyncScope | str = SyncScope.LIVE,
     run_id: str | None = None,
     message: str | None = None,
     primary_user_id: UUID | None = None,
@@ -425,6 +509,7 @@ def started(
         user_id=user_id,
         provider=provider,
         source=source,
+        scope=scope,
         stage=SyncStage.STARTED,
         status=SyncStatus.IN_PROGRESS,
         run_id=run_id,
@@ -470,6 +555,7 @@ def completed(
     source: SyncSource | str,
     *,
     run_id: str,
+    scope: SyncScope | str = SyncScope.LIVE,
     status: SyncStatus | str = SyncStatus.SUCCESS,
     message: str | None = None,
     items_processed: int | None = None,
@@ -481,6 +567,7 @@ def completed(
         user_id=user_id,
         provider=provider,
         source=source,
+        scope=scope,
         stage=SyncStage.COMPLETED,
         status=status,
         run_id=run_id,
@@ -500,6 +587,7 @@ def failed(
     *,
     run_id: str,
     error: str,
+    scope: SyncScope | str = SyncScope.LIVE,
     message: str | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
@@ -509,6 +597,7 @@ def failed(
         user_id=user_id,
         provider=provider,
         source=source,
+        scope=scope,
         stage=SyncStage.FAILED,
         status=SyncStatus.FAILED,
         run_id=run_id,

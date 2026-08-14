@@ -127,6 +127,14 @@ class Settings(BaseSettings):
         600  # How often to run the fill-missing-resilience-scores task (default: 10 min)
     )
 
+    # SYNC RUN TRACKING
+    sync_run_tracking_enabled: bool = True
+    # Persist live runs as well as historical ones. WARNING: space-consuming. A live run
+    # is one row per webhook notification and per SDK batch, so an active user produces
+    # hundreds of rows a day and the table grows without bound. Historical runs are a
+    # handful per user, ever.
+    sync_run_persist_live: bool = False
+
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"
 
