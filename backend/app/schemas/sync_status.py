@@ -58,7 +58,8 @@ class SyncStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"  # Delivered but no data saved (ignored/duplicate/no-op webhook)
-    UNKNOWN = "unknown"  # Never reported an outcome — distinct from a reported failure
+    UNFINISHED = "unfinished"  # Ended early with work outstanding, not in error — resumable
+    STALE = "stale"  # Stopped reporting without saying how it ended; we lost track of it
 
 
 class DataTypeKind(StrEnum):
@@ -123,6 +124,9 @@ class SyncStatusEvent(BaseModel):
         description="For LINKED_ACCOUNT events: the OW user whose sync run produced this data.",
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # The window the run was asked to cover, as opposed to what it managed to cover.
+    requested_start: datetime | None = None
+    requested_end: datetime | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

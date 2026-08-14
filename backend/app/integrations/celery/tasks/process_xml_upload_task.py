@@ -21,10 +21,10 @@ from app.services import event_record_service
 from app.services.apple.apple_xml.xml_service import XMLService
 from app.services.apple.healthkit.sleep_service import handle_sleep_data
 from app.services.sync_status_service import (
-    completed,
-    failed,
+    emit_sync_completed,
+    emit_sync_failed,
+    emit_sync_started,
     new_run_id,
-    started,
     try_record_data_types,
 )
 from app.services.timeseries_service import timeseries_service
@@ -45,12 +45,13 @@ def _xml_outcomes(stats: XMLParseStats) -> list[DataTypeOutcome]:
     for name, metric in (("records", stats.records), ("workouts", stats.workouts), ("sleep", stats.sleep)):
         if not metric.processed and not metric.skipped:
             continue
-        if not metric.processed:
-            status = SyncStatus.FAILED
-        elif metric.skipped:
-            status = SyncStatus.PARTIAL
-        else:
-            status = SyncStatus.SUCCESS
+        match (bool(metric.processed), bool(metric.skipped)):
+            case (False, _):
+                status = SyncStatus.FAILED
+            case (_, True):
+                status = SyncStatus.PARTIAL
+            case _:
+                status = SyncStatus.SUCCESS
         outcomes.append(
             DataTypeOutcome(
                 data_type=name,
@@ -86,7 +87,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
 
     run_id = new_run_id(prefix="xml")
     if user_uuid is not None:
-        started(
+        emit_sync_started(
             user_uuid,
             "apple",
             SyncSource.XML_IMPORT,
@@ -107,7 +108,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
             stats = _import_xml_data(db, temp_xml_file, user_id)
 
             if user_uuid is not None:
-                completed(
+                emit_sync_completed(
                     user_uuid,
                     "apple",
                     SyncSource.XML_IMPORT,
@@ -138,7 +139,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         except Exception as e:
             db.rollback()
             if user_uuid is not None:
-                failed(
+                emit_sync_failed(
                     user_uuid,
                     "apple",
                     SyncSource.XML_IMPORT,

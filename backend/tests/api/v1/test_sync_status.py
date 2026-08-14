@@ -81,7 +81,7 @@ class TestRunsEndpoint:
         user = UserFactory()
         run_id = sync_status_service.new_run_id()
         _emit(user.id, run_id=run_id)
-        sync_status_service.completed(
+        sync_status_service.emit_sync_completed(
             user.id,
             "garmin",
             SyncSource.PULL,

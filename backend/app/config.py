@@ -129,14 +129,12 @@ class Settings(BaseSettings):
 
     # SYNC RUN TRACKING
     sync_run_tracking_enabled: bool = True
-    # Persist live runs as well as historical ones. WARNING: space-consuming. A live run
-    # is one row per webhook notification and per SDK batch, so an active user produces
-    # hundreds of rows a day and the table grows without bound. Historical runs are a
-    # handful per user, ever.
+    # Persist live runs too. WARNING: space-consuming — one row per webhook and per SDK
+    # batch, so hundreds a day for an active user. Historical runs are a handful, ever.
     sync_run_persist_live: bool = False
-    # A run still in_progress after this long never reported an outcome, so it is closed
-    # as unknown. Historical imports can legitimately run for a while, hence the default.
-    sync_run_stale_after_hours: int = Field(6, ge=1)
+    # Closed as stale once this long passes with no event. Covers the gap between events,
+    # not the whole run: the sweep leaves anything still reporting in Redis alone.
+    sync_run_stale_after_hours: int = Field(2, ge=1)
     sync_run_sweep_interval_seconds: int = Field(1800, ge=60)
 
     # API SETTINGS

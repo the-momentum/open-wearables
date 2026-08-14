@@ -104,6 +104,8 @@ def try_persist_run(event: SyncStatusEvent) -> None:
                 scope=SyncScope(event.scope),
                 status=SyncStatus(event.status),
                 trace_id=trace_id_var.get(),
+                requested_start=event.requested_start,
+                requested_end=event.requested_end,
                 started_at=event.started_at or event.timestamp,
                 ended_at=event.ended_at,
                 items_inserted=event.metadata.get("inserted") or 0,
@@ -290,6 +292,8 @@ def emit_event(
     error: str | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
+    requested_start: datetime | None = None,
+    requested_end: datetime | None = None,
     started_at: datetime | None = None,
     ended_at: datetime | None = None,
 ) -> SyncStatusEvent:
@@ -309,11 +313,42 @@ def emit_event(
         error=error,
         primary_user_id=primary_user_id,
         metadata=metadata or {},
+        requested_start=requested_start,
+        requested_end=requested_end,
         started_at=started_at,
         ended_at=ended_at,
     )
     emit(event)
     return event
+
+
+def last_event_at(run_ids: Sequence[str]) -> dict[str, datetime]:
+    """When each run last emitted anything, according to Redis.
+
+    Runs missing from the result either never emitted or fell out of the 24h window.
+    Used by the stale sweep to tell a run whose worker died from a long one still
+    reporting progress, since progress is not written to Postgres.
+    """
+    if not run_ids:
+        return {}
+
+    try:
+        client = get_redis_client()
+        pipe = client.pipeline(transaction=False)
+        for run_id in run_ids:
+            pipe.get(_run_key(run_id))
+
+        seen: dict[str, datetime] = {}
+        for run_id, raw in zip(run_ids, pipe.execute()):
+            if not raw:
+                continue
+            with suppress(ValueError, TypeError):
+                seen[run_id] = SyncStatusEvent.model_validate_json(raw).timestamp
+        return seen
+    except Exception as exc:  # pragma: no cover - defensive
+        # No liveness information means the sweep falls back to age alone.
+        logger.warning("Failed to read sync run liveness: %s", exc, exc_info=True)
+        return {}
 
 
 def get_recent_events(user_id: str | UUID, limit: int = 50) -> list[SyncStatusEvent]:
@@ -493,7 +528,7 @@ def stream_user_events(
 # ---------------------------------------------------------------------------
 
 
-def started(
+def emit_sync_started(
     user_id: str | UUID,
     provider: str,
     source: SyncSource | str,
@@ -503,8 +538,14 @@ def started(
     message: str | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
+    requested_start: datetime | None = None,
+    requested_end: datetime | None = None,
 ) -> SyncStatusEvent:
-    """Emit a STARTED / IN_PROGRESS event."""
+    """Open a sync run: emits the first event, stamping started_at as now.
+
+    Callers pass run_id to group every later event of the same run under it. Omitting it
+    allocates a fresh one, which only makes sense for a run that emits nothing else.
+    """
     return emit_event(
         user_id=user_id,
         provider=provider,
@@ -516,11 +557,13 @@ def started(
         message=message,
         primary_user_id=primary_user_id,
         metadata=metadata,
+        requested_start=requested_start,
+        requested_end=requested_end,
         started_at=datetime.now(timezone.utc),
     )
 
 
-def progress(
+def emit_sync_progress(
     user_id: str | UUID,
     provider: str,
     source: SyncSource | str,
@@ -533,7 +576,14 @@ def progress(
     items_total: int | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
-    """Emit a progress update."""
+    """Report mid-run progress without changing the run's outcome.
+
+    Status stays IN_PROGRESS; only stage, counts and the 0..1 progress value move.
+
+    Takes no scope, so progress never reaches Postgres: it is our highest-frequency event
+    and carries nothing durable, since the terminal event has the final counts. Redis keeps
+    it for 24h, which the stale sweep reads back as a liveness signal.
+    """
     return emit_event(
         user_id=user_id,
         provider=provider,
@@ -549,7 +599,7 @@ def progress(
     )
 
 
-def completed(
+def emit_sync_completed(
     user_id: str | UUID,
     provider: str,
     source: SyncSource | str,
@@ -561,8 +611,14 @@ def completed(
     items_processed: int | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
+    requested_start: datetime | None = None,
+    requested_end: datetime | None = None,
 ) -> SyncStatusEvent:
-    """Emit a COMPLETED terminal event."""
+    """Close a sync run that finished, stamping ended_at as now.
+
+    Finished is not the same as succeeded: pass status=PARTIAL when some types failed,
+    or SKIPPED when the run was a no-op. FAILED belongs on emit_sync_failed instead.
+    """
     return emit_event(
         user_id=user_id,
         provider=provider,
@@ -576,11 +632,13 @@ def completed(
         primary_user_id=primary_user_id,
         progress=1.0,
         metadata=metadata,
+        requested_start=requested_start,
+        requested_end=requested_end,
         ended_at=datetime.now(timezone.utc),
     )
 
 
-def failed(
+def emit_sync_failed(
     user_id: str | UUID,
     provider: str,
     source: SyncSource | str,
@@ -592,7 +650,11 @@ def failed(
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
-    """Emit a FAILED terminal event."""
+    """Close a sync run that raised, stamping ended_at as now.
+
+    For a run that ended without ever reporting an outcome, leave it open and let the
+    stale-run sweep close it as STALE. Failed means we know it failed.
+    """
     return emit_event(
         user_id=user_id,
         provider=provider,
@@ -609,20 +671,26 @@ def failed(
     )
 
 
-def cancelled(
+def emit_sync_cancelled(
     user_id: str | UUID,
     provider: str,
     source: SyncSource | str,
     *,
     run_id: str,
+    scope: SyncScope | str = SyncScope.LIVE,
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
-    """Emit a CANCELLED terminal event."""
+    """Close a sync run that was deliberately stopped before finishing.
+
+    Cancelled is a reported outcome, unlike the STALE the sweep assigns: we know
+    the run stopped and why.
+    """
     return emit_event(
         user_id=user_id,
         provider=provider,
         source=source,
+        scope=scope,
         stage=SyncStage.CANCELLED,
         status=SyncStatus.CANCELLED,
         run_id=run_id,
@@ -632,7 +700,7 @@ def cancelled(
     )
 
 
-def webhook_delivered(
+def emit_webhook_delivered(
     user_id: str | UUID,
     provider: str,
     *,

@@ -7,8 +7,9 @@ cannot break the sync it is tracking.
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,7 @@ from app.services.sync_status_service import try_persist_run, try_record_data_ty
 from tests.factories import UserFactory
 
 
-def _event(user_id, **overrides) -> SyncStatusEvent:
+def _event(user_id: UUID, **overrides: Any) -> SyncStatusEvent:
     defaults = {
         "run_id": f"pull_{uuid4().hex[:16]}",
         "user_id": user_id,
@@ -216,7 +217,7 @@ class TestCloseStaleSyncRuns:
     def test_only_old_in_progress_runs_are_closed(
         self, mock_emit_session: MagicMock, mock_task_session: MagicMock, db: Session
     ) -> None:
-        """Unknown rather than failed: the run never reported what happened."""
+        """Stale rather than failed: the run never reported what happened."""
         mock_emit_session.return_value.__enter__.return_value = db
         mock_task_session.return_value.__enter__.return_value = db
         user = UserFactory()
@@ -228,5 +229,27 @@ class TestCloseStaleSyncRuns:
         result = close_stale_sync_runs()
 
         assert result["run_keys"] == ["pull_stale"]
-        assert db.query(SyncRun).filter(SyncRun.run_key == "pull_stale").one().status == SyncStatus.UNKNOWN
+        assert db.query(SyncRun).filter(SyncRun.run_key == "pull_stale").one().status == SyncStatus.STALE
         assert db.query(SyncRun).filter(SyncRun.run_key == "pull_recent").one().status == SyncStatus.IN_PROGRESS
+
+    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.last_event_at")
+    @patch("app.integrations.celery.tasks.close_stale_sync_runs_task.SessionLocal")
+    @patch("app.services.sync_status_service.SessionLocal")
+    def test_run_still_emitting_progress_is_left_open(
+        self, mock_emit_session: MagicMock, mock_task_session: MagicMock, mock_last_event: MagicMock, db: Session
+    ) -> None:
+        """A long backfill is old but alive. Progress is Redis-only, so that is where we look."""
+        mock_emit_session.return_value.__enter__.return_value = db
+        mock_task_session.return_value.__enter__.return_value = db
+        user = UserFactory()
+        old = datetime.now(timezone.utc) - timedelta(hours=48)
+        try_persist_run(_event(user.id, run_id="garmin_backfill_alive", started_at=old))
+        mock_last_event.return_value = {"garmin_backfill_alive": datetime.now(timezone.utc)}
+
+        result = close_stale_sync_runs()
+
+        assert result["closed_count"] == 0
+        assert result["still_active"] == 1
+        assert db.query(SyncRun).filter(SyncRun.run_key == "garmin_backfill_alive").one().status == (
+            SyncStatus.IN_PROGRESS
+        )

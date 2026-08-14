@@ -107,7 +107,7 @@ class TestTerminalSvixDispatch:
         user_id: str,
         mock_outgoing: dict[str, object],
     ) -> None:
-        sync_status_service.started(user_id, "garmin", SyncSource.PULL, run_id="run_a")
+        sync_status_service.emit_sync_started(user_id, "garmin", SyncSource.PULL, run_id="run_a")
         mock_outgoing["started"].assert_called_once()
 
     def test_completed_dispatches_outgoing_completed(
@@ -115,7 +115,7 @@ class TestTerminalSvixDispatch:
         user_id: str,
         mock_outgoing: dict[str, object],
     ) -> None:
-        sync_status_service.completed(user_id, "garmin", SyncSource.PULL, run_id="run_b")
+        sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.PULL, run_id="run_b")
         mock_outgoing["completed"].assert_called_once()
 
     def test_failed_dispatches_outgoing_failed(
@@ -123,7 +123,7 @@ class TestTerminalSvixDispatch:
         user_id: str,
         mock_outgoing: dict[str, object],
     ) -> None:
-        sync_status_service.failed(user_id, "garmin", SyncSource.PULL, run_id="run_c", error="boom")
+        sync_status_service.emit_sync_failed(user_id, "garmin", SyncSource.PULL, run_id="run_c", error="boom")
         mock_outgoing["failed"].assert_called_once()
 
     def test_progress_does_not_fire_outgoing_webhook(
@@ -131,7 +131,7 @@ class TestTerminalSvixDispatch:
         user_id: str,
         mock_outgoing: dict[str, object],
     ) -> None:
-        sync_status_service.progress(user_id, "garmin", SyncSource.PULL, run_id="run_d")
+        sync_status_service.emit_sync_progress(user_id, "garmin", SyncSource.PULL, run_id="run_d")
         for mock in mock_outgoing.values():
             mock.assert_not_called()
 

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -41,8 +42,10 @@ class SyncRunRepository:
     ) -> UUID:
         """Insert or update the run, returning its id.
 
-        started_at and requested_* are only set on insert: they describe the run's
-        intent, which later events must not overwrite.
+        started_at is only set on insert, and requested_* only fill in while still empty:
+        they describe the run's intent, which later events must not overwrite. The window
+        is often not known until after the run has opened, hence filling rather than
+        insert-only.
         """
         stmt = insert(SyncRun).values(
             id=uuid4(),
@@ -67,6 +70,8 @@ class SyncRunRepository:
             index_elements=["run_key"],
             set_={
                 "status": stmt.excluded.status,
+                "requested_start": func.coalesce(SyncRun.requested_start, stmt.excluded.requested_start),
+                "requested_end": func.coalesce(SyncRun.requested_end, stmt.excluded.requested_end),
                 "ended_at": stmt.excluded.ended_at,
                 "items_inserted": stmt.excluded.items_inserted,
                 "items_updated": stmt.excluded.items_updated,
@@ -144,22 +149,39 @@ class SyncRunRepository:
         db_session.execute(stmt)
         db_session.commit()
 
-    def close_stale(self, db_session: DbSession, cutoff: datetime, ended_at: datetime) -> list[str]:
-        """Mark runs that never reported an outcome as unknown, returning their keys.
+    def find_stale(self, db_session: DbSession, cutoff: datetime) -> list[str]:
+        """Keys of runs still in progress since before the cutoff.
 
-        A run stays in_progress when the process handling it died, so nothing distinguishes
-        it from one still going except age. Unknown is deliberately not failed: we never
-        heard what happened.
+        Age alone does not prove a run is dead, so the caller checks liveness before
+        closing anything.
         """
+        stmt = select(SyncRun.run_key).where(
+            SyncRun.status == SyncStatus.IN_PROGRESS,
+            SyncRun.started_at < cutoff,
+        )
+        return list(db_session.scalars(stmt).all())
+
+    def close_as_stale(self, db_session: DbSession, run_keys: Sequence[str], ended_at: datetime) -> list[str]:
+        """Close the named runs as stale, returning the keys that actually changed.
+
+        Stale is deliberately not failed: the run stopped reporting and we never heard what
+        happened, which is not the same as being told it went wrong. ended_at is when we
+        gave up on it, not when it really stopped, so treat the duration as an upper bound.
+        The in_progress check is repeated here because a run can report its outcome between
+        being picked as a candidate and this update.
+        """
+        if not run_keys:
+            return []
+
         stmt = (
             update(SyncRun)
-            .where(SyncRun.status == SyncStatus.IN_PROGRESS, SyncRun.started_at < cutoff)
-            .values(status=SyncStatus.UNKNOWN, ended_at=ended_at, updated_at=ended_at)
+            .where(SyncRun.run_key.in_(run_keys), SyncRun.status == SyncStatus.IN_PROGRESS)
+            .values(status=SyncStatus.STALE, ended_at=ended_at, updated_at=ended_at)
             .returning(SyncRun.run_key)
         )
-        run_keys = list(db_session.scalars(stmt).all())
+        closed = list(db_session.scalars(stmt).all())
         db_session.commit()
-        return run_keys
+        return closed
 
     def get_by_run_key(self, db_session: DbSession, run_key: str) -> SyncRun | None:
         return db_session.execute(select(SyncRun).where(SyncRun.run_key == run_key)).scalar_one_or_none()

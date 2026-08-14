@@ -21,7 +21,7 @@ from app.schemas.sync_status import (
     SyncStatus,
 )
 from app.services.raw_payload_storage import store_raw_payload
-from app.services.sync_status_service import started, try_record_data_types
+from app.services.sync_status_service import emit_sync_started, try_record_data_types
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 
@@ -77,20 +77,25 @@ def _event_fields(body: SDKLogRequest) -> dict[str, Any]:
 def _outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
     """Per-type outcomes carried by this batch of log events.
 
-    success=False means the export ended with that type unfinished rather than a
-    reported error, so it maps to UNKNOWN. A genuine failure carries an error code.
+    success=False means the export ended with that type still outstanding rather than a
+    reported error, so it maps to UNFINISHED. A genuine failure carries an error code.
+
+    recordCount is only kept for a type that finished. On an unfinished type the SDK sends
+    the same running total for every type in the batch rather than that type's own count,
+    so storing it would make each row claim the whole session's records.
     """
     outcomes = []
     for event in body.events:
         if not isinstance(event, HistoricalDataTypeSyncEndEvent):
             continue
         series_type = get_series_type_from_metric_type(event.dataType)
-        if event.success:
-            status = SyncStatus.SUCCESS
-        elif event.errorCode or event.errorMessage:
-            status = SyncStatus.FAILED
-        else:
-            status = SyncStatus.UNKNOWN
+        match (event.success, bool(event.errorCode or event.errorMessage)):
+            case (True, _):
+                status = SyncStatus.SUCCESS
+            case (_, True):
+                status = SyncStatus.FAILED
+            case _:
+                status = SyncStatus.UNFINISHED
         outcomes.append(
             DataTypeOutcome(
                 data_type=series_type.value if series_type else event.dataType,
@@ -98,7 +103,7 @@ def _outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
                 kind=DataTypeKind.SERIES if series_type else DataTypeKind.EVENT,
                 native_type=event.dataType,
                 status=status,
-                reported_records=event.recordCount,
+                reported_records=event.recordCount if status == SyncStatus.SUCCESS else None,
                 ended_at=event.timestamp,
                 duration_ms=event.durationMs,
                 error_code=event.errorCode,
@@ -147,7 +152,7 @@ def submit_sdk_logs(
         run_key = f"sdk_{body.syncSessionId}"
         # The start event usually arrives before the first data batch, so it opens the run.
         if any(isinstance(event, HistoricalDataSyncStartEvent) for event in body.events):
-            started(
+            emit_sync_started(
                 UUID(user_id),
                 provider,
                 SyncSource.SDK,

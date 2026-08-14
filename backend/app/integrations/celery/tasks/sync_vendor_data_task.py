@@ -23,11 +23,11 @@ from app.schemas.sync_status import (
 from app.services.providers.factory import ProviderFactory
 from app.services.sync_coordination import release_primary, release_stale_primary, try_become_primary
 from app.services.sync_status_service import (
-    completed,
-    failed,
+    emit_sync_completed,
+    emit_sync_failed,
+    emit_sync_progress,
+    emit_sync_started,
     new_run_id,
-    progress,
-    started,
     try_record_data_types,
 )
 from app.utils.config_utils import format_duration
@@ -246,7 +246,7 @@ def sync_vendor_data(
                         continue
 
                 _emit_sync_status(
-                    started,
+                    emit_sync_started,
                     user_uuid,
                     provider_name,
                     sync_source,
@@ -300,11 +300,18 @@ def sync_vendor_data(
                             # First ever sync — start from now, historical must be explicit
                             effective_start = datetime.now(timezone.utc).isoformat()
 
+                    # effective_start is always set above; parse into datetime objects
+                    start_dt = datetime.fromisoformat(effective_start.replace("Z", "+00:00"))
+                    end_dt = datetime.now(timezone.utc)
+                    if end_date:
+                        with suppress(ValueError):
+                            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+
                     # Sync workouts
                     if strategy.workouts:
                         params = build_sync_params(effective_start, end_date)
                         _emit_sync_status(
-                            progress,
+                            emit_sync_progress,
                             user_uuid,
                             provider_name,
                             sync_source,
@@ -315,6 +322,18 @@ def sync_vendor_data(
                         try:
                             success = strategy.workouts.load_data(db, user_uuid, **params)
                             provider_result.params["workouts"] = {"success": success, **params}
+                            # load_data returns how many workouts it wrote, not a boolean.
+                            data_type_outcomes.append(
+                                DataTypeOutcome(
+                                    data_type="workouts",
+                                    kind=DataTypeKind.TASK,
+                                    native_type="workouts",
+                                    status=SyncStatus.SUCCESS if success else SyncStatus.SKIPPED,
+                                    items_inserted=int(success or 0),
+                                    # Workouts are event records, which do not report a
+                                    # written span, so coverage stays unknown here.
+                                )
+                            )
                         except Exception as e:
                             log_structured(
                                 logger,
@@ -336,21 +355,23 @@ def sync_vendor_data(
                                 },
                             )
                             provider_result.params["workouts"] = {"success": False, "error": str(e)}
+                            data_type_outcomes.append(
+                                DataTypeOutcome(
+                                    data_type="workouts",
+                                    kind=DataTypeKind.TASK,
+                                    native_type="workouts",
+                                    status=SyncStatus.FAILED,
+                                    error=str(e),
+                                )
+                            )
 
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
                         # Determine if this is first sync (for API compatibility with providers)
                         is_first_sync = connection.last_synced_at is None
 
-                        # effective_start is always set above; parse into datetime objects
-                        start_dt = datetime.fromisoformat(effective_start.replace("Z", "+00:00"))
-                        end_dt = datetime.now(timezone.utc)
-                        if end_date:
-                            with suppress(ValueError):
-                                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-
                         _emit_sync_status(
-                            progress,
+                            emit_sync_progress,
                             user_uuid,
                             provider_name,
                             sync_source,
@@ -387,8 +408,10 @@ def sync_vendor_data(
                                             else SyncStatus.SKIPPED,
                                             items_inserted=getattr(_count, "inserted", 0),
                                             items_updated=getattr(_count, "updated", 0),
-                                            covered_start=start_dt,
-                                            covered_end=end_dt,
+                                            # Span of the rows written, not the window asked
+                                            # for. Absent when the task wrote nothing.
+                                            covered_start=getattr(_count, "covered_start", None),
+                                            covered_end=getattr(_count, "covered_end", None),
                                         )
                                     )
                             else:
@@ -491,7 +514,7 @@ def sync_vendor_data(
 
                     if final_status == SyncStatus.FAILED:
                         _emit_sync_status(
-                            failed,
+                            emit_sync_failed,
                             user_uuid,
                             provider_name,
                             sync_source,
@@ -524,7 +547,7 @@ def sync_vendor_data(
                             completed_metadata["lookback"] = lookback_label
                             completed_message += f" · lookback {lookback_label}"
                         _emit_sync_status(
-                            completed,
+                            emit_sync_completed,
                             user_uuid,
                             provider_name,
                             sync_source,
@@ -535,6 +558,8 @@ def sync_vendor_data(
                             items_processed=pull_inserted + pull_updated,
                             primary_user_id=primary_uuid,
                             metadata=completed_metadata,
+                            requested_start=start_dt,
+                            requested_end=end_dt,
                         )
                         try_record_data_types(run_id, data_type_outcomes)
 
@@ -544,7 +569,7 @@ def sync_vendor_data(
                             provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
                         )
                     _emit_sync_status(
-                        failed,
+                        emit_sync_failed,
                         user_uuid,
                         provider_name,
                         sync_source,
