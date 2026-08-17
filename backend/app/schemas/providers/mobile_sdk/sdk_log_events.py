@@ -16,8 +16,7 @@ class DataTypeCount(BaseModel):
 
 
 class TimeRange(BaseModel):
-    # startDate is absent when the SDK syncs the full available history (no syncDaysBack
-    # limit configured) — both the iOS and Android SDKs omit it in that case.
+    # Absent when the SDK exports full history rather than a bounded window.
     startDate: datetime | None = None
     endDate: datetime
 
@@ -33,18 +32,14 @@ class HistoricalDataTypeSyncEndEvent(BaseModel):
     eventType: Literal["historical_data_type_sync_end"]
     timestamp: datetime
     dataType: str
-    # False means the export ended with this type unfinished, which is not the same as a
-    # failure. A genuine on-device error carries errorCode as well.
+    # False means unfinished, not failed; a genuine error also carries errorCode.
     success: bool
     recordCount: int | None = None
-    # Measured from the start of the whole run, so every type in a run reports the same
-    # value. Not usable for per-type timing until the SDK measures it per type.
+    # Measured from the start of the whole run, so every type reports the same value.
     durationMs: int | None = None
     errorCode: str | None = None
     errorMessage: str | None = None
-    # Span this type actually covered, which the run-level range cannot give us: HealthKit
-    # grants authorization per type and the device may hold less history for some of them.
-    # Absent on SDK versions that predate it, and coverage stays unknown rather than guessed.
+    # Span this type covered. Absent on SDK versions that predate it.
     timeRange: TimeRange | None = None
 
 
@@ -73,9 +68,6 @@ class SDKLogRequest(BaseModel):
     provider: str | None = None
     syncSessionId: str | None = Field(
         None,
-        description=(
-            "Device-generated id, stable for one historical export and shared with the "
-            "sync endpoint, so log events can be attached to the run their data belongs to."
-        ),
+        description="Device-generated id, stable for one historical export and shared with the sync endpoint.",
     )
     events: list[SDKLogEvent] = Field(..., min_length=1, max_length=100)

@@ -16,11 +16,10 @@ logger = getLogger(__name__)
 def close_stale_sync_runs() -> dict:
     """Close sync runs that stopped reporting without an outcome.
 
-    Postgres only receives a run's start and its terminal event, so one whose worker died
-    stays in progress forever. Age alone would also catch a long backfill that is still
-    working, so candidates are checked against Redis first: progress events keep the
-    run's Redis entry fresh even though they are never persisted. A run that emitted
-    something after the cutoff is alive and left alone.
+    Postgres only sees a run's start and its terminal event, so one whose worker died stays
+    in progress forever. Age alone would also catch a long backfill still working, so
+    candidates are checked against Redis first: anything that emitted after the cutoff is
+    alive and left alone.
     """
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=settings.sync_run_stale_after_hours)

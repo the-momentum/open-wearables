@@ -41,6 +41,29 @@ def _get_import_service(provider: str) -> SDKImportService:
     raise ValueError(f"Unsupported provider: {provider}")
 
 
+def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int) -> list[DataTypeOutcome]:
+    """What this batch wrote, per data type.
+
+    types holds series type slugs only, since the importer collects it from the samples it
+    writes. Workouts and sleep are event records counted separately, so they would go
+    unrecorded without their own entries.
+    """
+    outcomes = [
+        DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS) for data_type in types
+    ]
+    for name, saved in (("workouts", workouts_saved), ("sleep", sleep_saved)):
+        if saved:
+            outcomes.append(
+                DataTypeOutcome(
+                    data_type=name,
+                    kind=DataTypeKind.EVENT,
+                    status=SyncStatus.SUCCESS,
+                    items_inserted=saved,
+                )
+            )
+    return outcomes
+
+
 @shared_task(queue="sdk_sync")
 def process_sdk_upload(
     content: str | None,
@@ -226,14 +249,7 @@ def process_sdk_upload(
                     "dropped_count": dropped_count,
                 },
             )
-            try_record_data_types(
-                run_id,
-                [
-                    DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS)
-                    for data_type in types
-                ],
-                scope=scope,
-            )
+            try_record_data_types(run_id, _batch_outcomes(types, workouts_saved, sleep_saved), scope=scope)
             if payload_ref and settings.raw_payload_storage == "disabled":
                 # Transport-only copy and the data is committed, so drop it. A failed batch
                 # keeps its payload for diagnosis.

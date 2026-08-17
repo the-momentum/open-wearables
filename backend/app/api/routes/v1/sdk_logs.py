@@ -74,7 +74,7 @@ def _event_fields(body: SDKLogRequest) -> dict[str, Any]:
     return {key: value for key, value in fields.items() if value is not None}
 
 
-def _outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
+def _data_type_outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
     """Per-type outcomes carried by this batch of log events.
 
     success=False means the export ended with that type still outstanding rather than a
@@ -163,7 +163,7 @@ def submit_sdk_logs(
                 message=f"Historical {provider} export started",
                 metadata={"sdk_version": body.sdkVersion, **_event_fields(body)},
             )
-        try_record_data_types(run_key, _outcomes(body), scope=SyncScope.HISTORICAL)
+        try_record_data_types(run_key, _data_type_outcomes(body), scope=SyncScope.HISTORICAL)
 
     store_raw_payload(
         source="sdk_logs",

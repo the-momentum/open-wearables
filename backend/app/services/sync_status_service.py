@@ -25,7 +25,7 @@ Keys (all TTL'd to ``HISTORY_TTL_SECONDS``):
 import logging
 import threading
 import time
-from collections.abc import Generator, Sequence
+from collections.abc import Generator
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
@@ -38,6 +38,7 @@ from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import (
     DataTypeOutcome,
     SyncRunSummary,
+    SyncRunWrite,
     SyncScope,
     SyncSource,
     SyncStage,
@@ -105,32 +106,42 @@ def try_persist_run(event: SyncStatusEvent) -> None:
         with SessionLocal() as db:
             sync_run_repository.upsert_run(
                 db,
-                run_key=event.run_id,
-                user_id=event.user_id,
-                provider=event.provider,
-                source=SyncSource(event.source),
-                scope=SyncScope(event.scope),
-                status=SyncStatus(event.status),
-                trace_id=trace_id_var.get(),
-                requested_start=event.requested_start,
-                requested_end=event.requested_end,
-                started_at=event.started_at or event.timestamp,
-                ended_at=event.ended_at,
-                items_inserted=event.metadata.get("inserted") or 0,
-                items_updated=event.metadata.get("updated") or 0,
-                error=event.error,
-                meta=event.metadata or None,
-                updated_at=event.timestamp,
+                SyncRunWrite(
+                    run_key=event.run_id,
+                    user_id=event.user_id,
+                    provider=event.provider,
+                    source=SyncSource(event.source),
+                    scope=SyncScope(event.scope),
+                    status=SyncStatus(event.status),
+                    trace_id=trace_id_var.get(),
+                    requested_start=event.requested_start,
+                    requested_end=event.requested_end,
+                    started_at=event.started_at or event.timestamp,
+                    ended_at=event.ended_at,
+                    items_inserted=event.metadata.get("inserted") or 0,
+                    items_updated=event.metadata.get("updated") or 0,
+                    error=event.error,
+                    meta=event.metadata or None,
+                    updated_at=event.timestamp,
+                ),
             )
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Failed to persist sync run %s: %s", event.run_id, exc, exc_info=True)
+    except Exception as exc:
+        log_structured(
+            logger,
+            "warning",
+            "Failed to persist sync run",
+            provider=event.provider,
+            action="sync_run_persist_failed",
+            run_id=event.run_id,
+            user_id=str(event.user_id),
+            error=str(exc),
+        )
 
 
-def try_record_data_types(run_key: str, outcomes: Sequence[DataTypeOutcome], *, scope: SyncScope | str) -> None:
+def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scope: SyncScope | str) -> None:
     """Store the per-data-type outcomes of a run, best effort.
 
-    Takes the scope so a run we never stored is skipped without a lookup, rather than
-    querying for a parent row that was never written.
+    Takes the scope so a run we never stored is skipped without a lookup.
     """
     if not outcomes or not is_persisted_scope(scope):
         return
@@ -146,8 +157,15 @@ def try_record_data_types(run_key: str, outcomes: Sequence[DataTypeOutcome], *, 
                 outcomes=outcomes,
                 updated_at=datetime.now(timezone.utc),
             )
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning("Failed to record data types for run %s: %s", run_key, exc, exc_info=True)
+    except Exception as exc:
+        log_structured(
+            logger,
+            "warning",
+            "Failed to record sync run data types",
+            action="sync_run_data_types_failed",
+            run_id=run_key,
+            error=str(exc),
+        )
 
 
 def emit(event: SyncStatusEvent) -> None:
@@ -187,6 +205,7 @@ def emit(event: SyncStatusEvent) -> None:
         action="sync_status",
         status=str(event.status),
         source=str(event.source),
+        scope=str(event.scope),
         stage=str(event.stage),
         run_id=event.run_id,
         user_id=str(event.user_id),
@@ -316,7 +335,7 @@ def emit_event(
     return event
 
 
-def last_event_at(run_ids: Sequence[str]) -> dict[str, datetime]:
+def last_event_at(run_ids: list[str]) -> dict[str, datetime]:
     """When each run last emitted anything, according to Redis.
 
     Runs missing from the result either never emitted or fell out of the 24h window.
@@ -339,9 +358,15 @@ def last_event_at(run_ids: Sequence[str]) -> dict[str, datetime]:
             with suppress(ValueError, TypeError):
                 seen[run_id] = SyncStatusEvent.model_validate_json(raw).timestamp
         return seen
-    except Exception as exc:  # pragma: no cover - defensive
-        # No liveness information means the sweep falls back to age alone.
-        logger.warning("Failed to read sync run liveness: %s", exc, exc_info=True)
+    except Exception as exc:
+        # Without liveness the sweep falls back to age alone.
+        log_structured(
+            logger,
+            "warning",
+            "Failed to read sync run liveness",
+            action="sync_run_liveness_failed",
+            error=str(exc),
+        )
         return {}
 
 

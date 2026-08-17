@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -8,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import DbSession
 from app.models import SyncRun, SyncRunDataType
-from app.schemas.sync_status import DataTypeOutcome, SyncScope, SyncSource, SyncStatus
+from app.schemas.sync_status import DataTypeOutcome, SyncRunWrite, SyncScope, SyncStatus
 
 
 class SyncRunRepository:
@@ -19,53 +18,13 @@ class SyncRunRepository:
     a run inserts the row, later events update it in place.
     """
 
-    def upsert_run(
-        self,
-        db_session: DbSession,
-        *,
-        run_key: str,
-        user_id: UUID,
-        provider: str,
-        source: SyncSource,
-        scope: SyncScope,
-        status: SyncStatus,
-        started_at: datetime,
-        updated_at: datetime,
-        ended_at: datetime | None = None,
-        trace_id: str | None = None,
-        requested_start: datetime | None = None,
-        requested_end: datetime | None = None,
-        items_inserted: int = 0,
-        items_updated: int = 0,
-        error: str | None = None,
-        meta: dict | None = None,
-    ) -> UUID:
+    def upsert_run(self, db_session: DbSession, run: SyncRunWrite) -> UUID:
         """Insert or update the run, returning its id.
 
-        started_at is only set on insert, and requested_* only fill in while still empty:
-        they describe the run's intent, which later events must not overwrite. The window
-        is often not known until after the run has opened, hence filling rather than
-        insert-only.
+        started_at is insert-only; requested_* fill in while empty, since the window is
+        often not known until after the run has opened.
         """
-        stmt = insert(SyncRun).values(
-            id=uuid4(),
-            run_key=run_key,
-            user_id=user_id,
-            provider=provider,
-            source=source,
-            scope=scope,
-            status=status,
-            trace_id=trace_id,
-            requested_start=requested_start,
-            requested_end=requested_end,
-            started_at=started_at,
-            ended_at=ended_at,
-            items_inserted=items_inserted,
-            items_updated=items_updated,
-            error=error,
-            meta=meta,
-            updated_at=updated_at,
-        )
+        stmt = insert(SyncRun).values(id=uuid4(), **run.model_dump())
         stmt = stmt.on_conflict_do_update(
             index_elements=["run_key"],
             set_={
@@ -89,16 +48,14 @@ class SyncRunRepository:
         db_session: DbSession,
         *,
         run_id: UUID,
-        outcomes: Sequence[DataTypeOutcome],
+        outcomes: list[DataTypeOutcome],
         updated_at: datetime,
     ) -> None:
         """Record the outcome of each data type within a run, in one transaction.
 
         Covered range widens rather than being replaced, so several batches of the same
-        type accumulate into one span. A retried type increments attempt.
-
-        DataTypeOutcome's fields are the columns, so it is unpacked wholesale rather than
-        restated: a field added to the schema needs a migration, not an edit here.
+        type accumulate into one span. attempt counts how many times the type reported in,
+        which for an SDK export is once per batch plus once for its end event.
         """
         for outcome in outcomes:
             self._upsert_data_type(db_session, run_id=run_id, outcome=outcome, updated_at=updated_at)
@@ -122,6 +79,8 @@ class SyncRunRepository:
             index_elements=["run_id", "data_type"],
             set_={
                 "status": stmt.excluded.status,
+                # Only the log end event knows the provider's own name for the type.
+                "native_type": func.coalesce(stmt.excluded.native_type, SyncRunDataType.native_type),
                 "reported_records": func.coalesce(stmt.excluded.reported_records, SyncRunDataType.reported_records),
                 "items_inserted": SyncRunDataType.items_inserted + stmt.excluded.items_inserted,
                 "items_updated": SyncRunDataType.items_updated + stmt.excluded.items_updated,
@@ -149,14 +108,12 @@ class SyncRunRepository:
         )
         return list(db_session.scalars(stmt).all())
 
-    def close_as_stale(self, db_session: DbSession, run_keys: Sequence[str], ended_at: datetime) -> list[str]:
+    def close_as_stale(self, db_session: DbSession, run_keys: list[str], ended_at: datetime) -> list[str]:
         """Close the named runs as stale, returning the keys that actually changed.
 
-        Stale is deliberately not failed: the run stopped reporting and we never heard what
-        happened, which is not the same as being told it went wrong. ended_at is when we
-        gave up on it, not when it really stopped, so treat the duration as an upper bound.
-        The in_progress check is repeated here because a run can report its outcome between
-        being picked as a candidate and this update.
+        Stale is not failed: we never heard what happened. ended_at is when we gave up,
+        not when it really stopped. The in_progress check is repeated because a run can
+        report its outcome between being picked as a candidate and this update.
         """
         if not run_keys:
             return []
@@ -186,15 +143,12 @@ class SyncRunRepository:
         limit: int = 20,
         scope: SyncScope | None = None,
         since: datetime | None = None,
-        with_data_types: bool = False,
     ) -> list[SyncRun]:
         stmt = select(SyncRun).where(SyncRun.user_id == user_id).order_by(SyncRun.started_at.desc()).limit(limit)
         if scope is not None:
             stmt = stmt.where(SyncRun.scope == scope)
         if since is not None:
             stmt = stmt.where(SyncRun.started_at >= since)
-        if with_data_types:
-            stmt = stmt.options(selectinload(SyncRun.data_types))
         return list(db_session.execute(stmt).scalars().unique().all())
 
 

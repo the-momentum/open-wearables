@@ -190,4 +190,19 @@ class SyncRunRecord(BaseModel):
     items_inserted: int = 0
     items_updated: int = 0
     error: str | None = None
+
+
+class SyncRunWrite(SyncRunRecord):
+    """A sync run as it is written. Its fields are the columns, so it is unpacked as-is."""
+
+    meta: dict[str, Any] | None = None
+    updated_at: datetime
+
+
+class SyncRunDetail(SyncRunRecord):
+    """A stored sync run with its per-data-type breakdown.
+
+    Separate from SyncRunRecord so listing runs does not lazy-load the children.
+    """
+
     data_types: list[SyncRunDataTypeRecord] = Field(default_factory=list)
