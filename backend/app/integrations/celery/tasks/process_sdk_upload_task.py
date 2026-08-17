@@ -240,6 +240,7 @@ def process_sdk_upload(
                 items_processed=items_total,
                 metadata={
                     "batch_id": batch_id,
+                    "inserted": items_total,
                     "records_saved": records_saved,
                     "inserted": records_inserted,
                     "updated": records_updated,

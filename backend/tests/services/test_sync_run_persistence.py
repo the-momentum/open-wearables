@@ -126,6 +126,33 @@ class TestTryPersistRun:
         assert run.started_at == started_at
 
     @patch("app.services.sync_status_service.SessionLocal")
+    def test_late_event_cannot_reopen_a_closed_run(self, mock_session_local: MagicMock, db: Session) -> None:
+        """A start event arriving after the terminal one must not clear the outcome."""
+        mock_session_local.return_value.__enter__.return_value = db
+        user = UserFactory()
+        started_at = datetime.now(timezone.utc)
+        run_id = f"pull_{uuid4().hex[:16]}"
+
+        try_persist_run(
+            _event(
+                user.id,
+                run_id=run_id,
+                stage=SyncStage.COMPLETED,
+                status=SyncStatus.SUCCESS,
+                started_at=started_at,
+                ended_at=started_at + timedelta(seconds=30),
+                timestamp=started_at + timedelta(seconds=30),
+                metadata={"inserted": 120},
+            )
+        )
+        try_persist_run(_event(user.id, run_id=run_id, started_at=started_at, timestamp=started_at))
+
+        run = db.query(SyncRun).filter(SyncRun.run_key == run_id).one()
+        assert run.status == SyncStatus.SUCCESS
+        assert run.ended_at is not None
+        assert run.items_inserted == 120
+
+    @patch("app.services.sync_status_service.SessionLocal")
     def test_storage_failure_does_not_raise(self, mock_session_local: MagicMock, db: Session) -> None:
         """A sync must not fail because run tracking did."""
         mock_session_local.side_effect = RuntimeError("db gone")
@@ -237,7 +264,7 @@ class TestCloseStaleSyncRuns:
         user = UserFactory()
         old = datetime.now(timezone.utc) - timedelta(hours=48)
 
-        try_persist_run(_event(user.id, run_id="pull_stale", started_at=old))
+        try_persist_run(_event(user.id, run_id="pull_stale", started_at=old, timestamp=old))
         try_persist_run(_event(user.id, run_id="pull_recent"))
 
         result = close_stale_sync_runs()
@@ -257,7 +284,7 @@ class TestCloseStaleSyncRuns:
         mock_task_session.return_value.__enter__.return_value = db
         user = UserFactory()
         old = datetime.now(timezone.utc) - timedelta(hours=48)
-        try_persist_run(_event(user.id, run_id="garmin_backfill_alive", started_at=old))
+        try_persist_run(_event(user.id, run_id="garmin_backfill_alive", started_at=old, timestamp=old))
         mock_last_event.return_value = {"garmin_backfill_alive": datetime.now(timezone.utc)}
 
         result = close_stale_sync_runs()

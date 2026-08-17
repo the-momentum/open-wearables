@@ -22,7 +22,8 @@ class SyncRunRepository:
         """Insert or update the run, returning its id.
 
         started_at is insert-only; requested_* fill in while empty, since the window is
-        often not known until after the run has opened.
+        often not known until after the run has opened. Events older than the row are
+        ignored, so a late start cannot reopen a run that already reported its outcome.
         """
         stmt = insert(SyncRun).values(id=uuid4(), **run.model_dump())
         stmt = stmt.on_conflict_do_update(
@@ -38,8 +39,12 @@ class SyncRunRepository:
                 "meta": stmt.excluded.meta,
                 "updated_at": stmt.excluded.updated_at,
             },
+            where=SyncRun.updated_at <= stmt.excluded.updated_at,
         ).returning(SyncRun.id)
-        run_id = db_session.execute(stmt).scalar_one()
+        # No row comes back when the where clause rejected an out-of-order event.
+        run_id = db_session.execute(stmt).scalar_one_or_none()
+        if run_id is None:
+            run_id = db_session.execute(select(SyncRun.id).where(SyncRun.run_key == run.run_key)).scalar_one()
         db_session.commit()
         return run_id
 
@@ -97,14 +102,15 @@ class SyncRunRepository:
         db_session.execute(stmt)
 
     def find_stale(self, db_session: DbSession, cutoff: datetime) -> list[str]:
-        """Keys of runs still in progress since before the cutoff.
+        """Keys of runs in progress that have not been written to since the cutoff.
 
-        Age alone does not prove a run is dead, so the caller checks liveness before
-        closing anything.
+        Matches on updated_at, not started_at, so a long run that keeps reporting is not
+        a candidate. Age alone still does not prove it is dead, so the caller checks
+        liveness before closing anything.
         """
         stmt = select(SyncRun.run_key).where(
             SyncRun.status == SyncStatus.IN_PROGRESS,
-            SyncRun.started_at < cutoff,
+            SyncRun.updated_at < cutoff,
         )
         return list(db_session.scalars(stmt).all())
 

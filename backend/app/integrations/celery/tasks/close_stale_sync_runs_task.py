@@ -30,6 +30,10 @@ def close_stale_sync_runs() -> dict:
             return {"closed_count": 0, "run_keys": [], "still_active": 0}
 
         last_seen = last_event_at(candidates)
+        if last_seen is None:
+            # Without Redis every candidate looks dead, so skip rather than close them.
+            return {"closed_count": 0, "run_keys": [], "still_active": len(candidates), "skipped": True}
+
         stale = [
             key for key in candidates if (last_seen.get(key) or datetime.min.replace(tzinfo=timezone.utc)) < cutoff
         ]

@@ -117,7 +117,7 @@ def _data_type_outcomes(body: SDKLogRequest) -> list[DataTypeOutcome]:
 
 @router.post("/sdk/users/{user_id}/logs", status_code=status.HTTP_202_ACCEPTED)
 def submit_sdk_logs(
-    user_id: str,
+    user_id: UUID,
     body: SDKLogRequest,
     auth: SDKAuthDep,
 ) -> UploadDataResponse:
@@ -126,7 +126,7 @@ def submit_sdk_logs(
     Used for observability into mobile SDK sync behavior (background task
     lifecycle, device state, sync success/failure).
     """
-    if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
+    if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != str(user_id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Token does not match user_id",
@@ -142,7 +142,7 @@ def submit_sdk_logs(
         "SDK log events received",
         action="sdk_logs_received",
         batch_id=batch_id,
-        user_id=user_id,
+        user_id=str(user_id),
         provider=provider,
         event_count=len(body.events),
         event_types=event_types,
@@ -155,7 +155,7 @@ def submit_sdk_logs(
         # The start event usually arrives before the first data batch, so it opens the run.
         if any(isinstance(event, HistoricalDataSyncStartEvent) for event in body.events):
             emit_sync_started(
-                UUID(user_id),
+                user_id,
                 provider,
                 SyncSource.SDK,
                 scope=SyncScope.HISTORICAL,
@@ -169,12 +169,12 @@ def submit_sdk_logs(
         source="sdk_logs",
         provider=provider,
         payload=body.model_dump_json(),
-        user_id=user_id,
+        user_id=str(user_id),
         trace_id=batch_id,
     )
 
     return UploadDataResponse(
         status_code=202,
         response="Log events stored successfully",
-        user_id=user_id,
+        user_id=str(user_id),
     )

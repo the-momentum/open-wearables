@@ -28,6 +28,7 @@ from app.services.sync_status_service import (
     emit_sync_progress,
     emit_sync_started,
     new_run_id,
+    run_status_from,
     try_record_data_types,
 )
 from app.utils.config_utils import format_duration
@@ -451,6 +452,15 @@ def sync_vendor_data(
                                 },
                             )
                             provider_result.params["data_247"] = {"success": False, "error": str(e)}
+                            data_type_outcomes.append(
+                                DataTypeOutcome(
+                                    data_type="data_247",
+                                    kind=DataTypeKind.TASK,
+                                    native_type="data_247",
+                                    status=SyncStatus.FAILED,
+                                    error=str(e),
+                                )
+                            )
 
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
@@ -500,17 +510,7 @@ def sync_vendor_data(
                         lookback=format_duration(settings.pull_sync_lookback) if settings.pull_sync_lookback else None,
                     )
 
-                    sub_results = list(provider_result.params.values())
-                    all_failed = bool(sub_results) and all(
-                        isinstance(r, dict) and r.get("success") is False for r in sub_results
-                    )
-                    any_failed = any(isinstance(r, dict) and r.get("success") is False for r in sub_results)
-                    if all_failed:
-                        final_status = SyncStatus.FAILED
-                    elif any_failed:
-                        final_status = SyncStatus.PARTIAL
-                    else:
-                        final_status = SyncStatus.SUCCESS
+                    final_status = run_status_from(data_type_outcomes)
 
                     if final_status == SyncStatus.FAILED:
                         _emit_sync_status(
@@ -535,7 +535,7 @@ def sync_vendor_data(
                         }
                         completed_message = (
                             f"Sync from {provider_name} completed"
-                            if not any_failed
+                            if final_status == SyncStatus.SUCCESS
                             else f"Sync from {provider_name} completed with errors"
                         )
                         if pull_inserted or pull_updated:
@@ -573,6 +573,7 @@ def sync_vendor_data(
                         user_uuid,
                         provider_name,
                         sync_source,
+                        scope=sync_scope,
                         run_id=run_id,
                         error=str(e),
                         message=f"Sync from {provider_name} failed",

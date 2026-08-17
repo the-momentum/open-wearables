@@ -93,6 +93,19 @@ def is_persisted_scope(scope: SyncScope | str) -> bool:
     return SyncScope(scope) == SyncScope.HISTORICAL or settings.persist_live_sync_runs
 
 
+def run_status_from(outcomes: list[DataTypeOutcome]) -> SyncStatus:
+    """Overall status of a run, from the outcomes of its data types."""
+    match {outcome.status for outcome in outcomes}:
+        case seen if seen == {SyncStatus.SKIPPED}:
+            return SyncStatus.SKIPPED
+        case seen if seen <= {SyncStatus.SUCCESS, SyncStatus.SKIPPED}:
+            return SyncStatus.SUCCESS
+        case seen if seen <= {SyncStatus.FAILED, SyncStatus.SKIPPED}:
+            return SyncStatus.FAILED
+        case _:
+            return SyncStatus.PARTIAL
+
+
 def try_persist_run(event: SyncStatusEvent) -> None:
     """Store the event's run in Postgres, best effort.
 
@@ -335,12 +348,12 @@ def emit_event(
     return event
 
 
-def last_event_at(run_ids: list[str]) -> dict[str, datetime]:
+def last_event_at(run_ids: list[str]) -> dict[str, datetime] | None:
     """When each run last emitted anything, according to Redis.
 
     Runs missing from the result either never emitted or fell out of the 24h window.
-    Used by the stale sweep to tell a run whose worker died from a long one still
-    reporting progress, since progress is not written to Postgres.
+    Returns None when Redis could not be read, which is not the same as nothing being
+    alive: the caller must skip the sweep rather than close every candidate.
     """
     if not run_ids:
         return {}
@@ -359,7 +372,6 @@ def last_event_at(run_ids: list[str]) -> dict[str, datetime]:
                 seen[run_id] = SyncStatusEvent.model_validate_json(raw).timestamp
         return seen
     except Exception as exc:
-        # Without liveness the sweep falls back to age alone.
         log_structured(
             logger,
             "warning",
@@ -367,7 +379,7 @@ def last_event_at(run_ids: list[str]) -> dict[str, datetime]:
             action="sync_run_liveness_failed",
             error=str(exc),
         )
-        return {}
+        return None
 
 
 def get_recent_events(user_id: str | UUID, limit: int = 50) -> list[SyncStatusEvent]:

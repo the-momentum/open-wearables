@@ -25,6 +25,7 @@ from app.services.sync_status_service import (
     emit_sync_failed,
     emit_sync_started,
     new_run_id,
+    run_status_from,
     try_record_data_types,
 )
 from app.services.timeseries_service import timeseries_service
@@ -108,18 +109,19 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
             stats = _import_xml_data(db, temp_xml_file, user_id)
 
             if user_uuid is not None:
+                outcomes = _xml_outcomes(stats)
                 emit_sync_completed(
                     user_uuid,
                     "apple",
                     SyncSource.XML_IMPORT,
                     scope=SyncScope.HISTORICAL,
                     run_id=run_id,
-                    status=SyncStatus.SUCCESS,
+                    status=run_status_from(outcomes),
                     message="Apple Health XML import completed",
                     items_processed=stats.records.processed + stats.workouts.processed + stats.sleep.processed,
                     metadata={"filename": filename},
                 )
-                try_record_data_types(run_id, _xml_outcomes(stats), scope=SyncScope.HISTORICAL)
+                try_record_data_types(run_id, outcomes, scope=SyncScope.HISTORICAL)
 
             return {
                 "user_id": user_id,
@@ -143,6 +145,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                     user_uuid,
                     "apple",
                     SyncSource.XML_IMPORT,
+                    scope=SyncScope.HISTORICAL,
                     run_id=run_id,
                     error=str(e),
                     message=f"Apple Health XML import failed: {filename}",
