@@ -1,6 +1,7 @@
 from typing import Any, cast
 from uuid import UUID
 
+from psycopg.errors import UniqueViolation
 from sqlalchemy import Table, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -55,9 +56,12 @@ class EventRecordDetailRepository(
             db_session.commit()
             db_session.refresh(detail)
             return detail
-        except IntegrityError:
+        except IntegrityError as exc:
             db_session.rollback()
-            if existing := self.get_by_record_id(db_session, creator.record_id, detail_type):
+            # record_id is the only unique index here; FK and other violations are real errors
+            if isinstance(exc.orig, UniqueViolation) and (
+                existing := self.get_by_record_id(db_session, creator.record_id, detail_type)
+            ):
                 return existing
             raise
 
@@ -79,9 +83,11 @@ class EventRecordDetailRepository(
             db_session.flush()
             nested.commit()
             return detail
-        except IntegrityError:
+        except IntegrityError as exc:
             nested.rollback()
-            if existing := self.get_by_record_id(db_session, creator.record_id, detail_type):
+            if isinstance(exc.orig, UniqueViolation) and (
+                existing := self.get_by_record_id(db_session, creator.record_id, detail_type)
+            ):
                 return existing
             raise
 
