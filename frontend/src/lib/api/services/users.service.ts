@@ -1,6 +1,7 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS, API_CONFIG } from '../config';
-import { getToken } from '@/lib/auth/session';
+import { getToken, clearSession } from '@/lib/auth/session';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
 import { appendSearchParams } from '@/lib/utils/url';
 import type {
   UserRead,
@@ -74,6 +75,8 @@ export const usersService = {
     const { status, statusText } = await uploadWithProgress(url, formData, {
       onProgress,
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      // This hits our authenticated backend, so treat a 401 like apiClient does.
+      handleUnauthorized: true,
     });
     if (status < 200 || status >= 300) {
       throw new Error(`Upload failed (${status} ${statusText})`);
@@ -130,17 +133,24 @@ export const usersService = {
 interface UploadWithProgressOptions {
   onProgress?: (percent: number) => void;
   headers?: Record<string, string>;
+  /**
+   * When true, a 401 clears the session and redirects to login — mirroring
+   * `apiClient`. Only enable for requests to our own authenticated backend;
+   * a 401/403 from a presigned S3/MinIO URL is not an app-auth failure.
+   */
+  handleUnauthorized?: boolean;
 }
 
 /**
  * POST a FormData body via XMLHttpRequest so upload progress can be reported.
  * `fetch` cannot observe request-body upload progress, which is why this exists.
- * Resolves with the final status even for 4xx/5xx — callers decide how to react.
+ * Resolves with the final status even for 4xx/5xx — callers decide how to react,
+ * except a 401 with `handleUnauthorized` which triggers the shared re-login flow.
  */
 function uploadWithProgress(
   url: string,
   formData: FormData,
-  { onProgress, headers }: UploadWithProgressOptions = {}
+  { onProgress, headers, handleUnauthorized }: UploadWithProgressOptions = {}
 ): Promise<{ status: number; statusText: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -161,6 +171,14 @@ function uploadWithProgress(
     }
 
     xhr.addEventListener('load', () => {
+      if (handleUnauthorized && xhr.status === 401) {
+        clearSession();
+        if (typeof window !== 'undefined') {
+          window.location.href = DEFAULT_REDIRECTS.unauthenticated;
+        }
+        reject(new Error('Session expired — please sign in again.'));
+        return;
+      }
       resolve({ status: xhr.status, statusText: xhr.statusText });
     });
     xhr.addEventListener('error', () =>
