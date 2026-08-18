@@ -164,16 +164,6 @@ WHOOP_ID_TO_UNIFIED: dict[int, WorkoutType] = {
     sport_id: unified_type for _, sport_id, unified_type in WHOOP_WORKOUT_TYPE_MAPPINGS
 }
 
-# Alternate spellings for slugs where WHOOP's rendering of "&", "/" and "'" is unverified.
-# The sport_id fallback covers these too; these keep name-only lookups working.
-WHOOP_TO_UNIFIED.update(
-    {
-        "track-and-field": WorkoutType.RUNNING,  # 35
-        "barry-s": WorkoutType.GROUP_EXERCISE,  # 250
-        "hurling-and-camogie": WorkoutType.SPORT,  # 112
-    }
-)
-
 
 def get_unified_workout_type(whoop_sport_name: str | None, whoop_sport_id: int | None = None) -> WorkoutType:
     """
