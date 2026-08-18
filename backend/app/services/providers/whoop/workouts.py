@@ -256,8 +256,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         """Normalize Whoop workout to EventRecordCreate, EventRecordDetailCreate, and strain HealthScoreCreate."""
         workout_id = uuid4()
 
-        # Get workout type from sport_name (sport_id deprecated after 09/01/2025)
-        workout_type = get_unified_workout_type(raw_workout.sport_name)
+        workout_type = get_unified_workout_type(raw_workout.sport_name, raw_workout.sport_id)
 
         # Extract dates
         start_date, end_date = self._extract_dates(raw_workout.start, raw_workout.end)
