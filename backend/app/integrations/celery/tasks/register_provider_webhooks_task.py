@@ -33,7 +33,9 @@ def register_provider_webhooks(self: Task, provider: str, callback_url: str) -> 
     """
     try:
         strategy = ProviderFactory().get_provider(provider)
-        results = asyncio.run(strategy.register_webhooks(callback_url))
+        if strategy.webhook_service is None:
+            raise NotImplementedError(f"Provider '{provider}' does not support webhook subscription management")
+        results = asyncio.run(strategy.webhook_service.register_subscriptions(callback_url))
         created = sum(1 for r in results if r.get("status") == "created")
         skipped = sum(1 for r in results if r.get("status") == "skipped")
         errors = sum(1 for r in results if r.get("status") == "error")

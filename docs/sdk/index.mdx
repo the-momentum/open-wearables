@@ -70,12 +70,22 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
   </Card>
 </CardGroup>
 
+## Choosing an onboarding flow
+
+For any real integration, use the **backend token flow**: your backend mints a short-lived, user-scoped token (write-only to the `/sdk/*` endpoints) via [`POST /api/v1/users/{user_id}/token`](/api-reference/mobile-sdk/create-user-token) and forwards it to the app over its own authenticated API. Your `app_secret` never touches the device. This is the standard path, covered in each platform's Integration Guide.
+
+<Warning>
+  **Invitation codes are a niche mechanism, not a co-equal second option.** They exist for apps with **no backend of their own** to mint and forward tokens. Right now the flow is aimed primarily at individual users self-hosting Open Wearables for their own data (and the [Open Wearables app](/app/introduction) / quick manual testing), not at multi-user production integrations. If you are building your own app with its own backend, use the backend token flow above.
+</Warning>
+
+With an invitation code, a single-use code is issued via [`POST /api/v1/users/{user_id}/invitation-code`](/api-reference/mobile-sdk/generate-invitation-code) - from the dashboard or the API - and the app redeems it directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/mobile-sdk/redeem-invitation-code) to obtain SDK tokens. Two situations are possible: in the primary case the same person generates the code in their own dashboard and enters it in their own app, so it never leaves that person. A code can also be delegated - for example a coach or clinician issuing one for a client - and **only in that hand-off** does the code travel to someone else; when it does, use a **secure channel**, because the code is the sole credential (single-use blocks replay after redemption, but not first-use theft if the code is intercepted in transit).
+
 ## Security Model
 
 The SDK uses a secure token-based authentication flow that keeps your App credentials safe:
 
 1. **App credentials stay on your backend** - `app_id` and `app_secret` are never exposed to mobile apps
-2. **Short-lived access tokens** - Generated server-to-server via `POST /api/v1/users/{user_id}/token`, forwarded to the mobile SDK
+2. **Short-lived access tokens** - In the standard backend token flow, generated server-to-server via `POST /api/v1/users/{user_id}/token` and forwarded to the mobile SDK. With the invitation code flow, the app instead redeems a single-use code at `POST /api/v1/invitation-code/redeem` and receives the tokens directly.
 3. **Secure credential storage** - iOS Keychain / Android EncryptedSharedPreferences
 4. **Automatic token refresh** - SDK can automatically refresh expired tokens using the `refresh_token`
 5. **API key auth** - Alternative for internal tools (not recommended for production)

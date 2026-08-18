@@ -12,11 +12,7 @@ export type SyncStage =
   | 'failed'
   | 'cancelled';
 export type SyncStatus =
-  | 'in_progress'
-  | 'success'
-  | 'partial'
-  | 'failed'
-  | 'cancelled';
+  'in_progress' | 'success' | 'partial' | 'failed' | 'cancelled' | 'skipped';
 
 export interface SyncStatusEvent {
   event_id: string;
@@ -49,6 +45,7 @@ export interface SyncRunSummary {
   items_processed: number | null;
   items_total: number | null;
   error: string | null;
+  primary_user_id: string | null;
   started_at: string | null;
   ended_at: string | null;
   last_update: string;

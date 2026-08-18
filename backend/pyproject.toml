@@ -1,44 +1,46 @@
 [project]
 name = "open-wearables"
-version = "0.1.0"
+version = "0.7.0"
 description = ""
 requires-python = ">=3.13"
 dependencies = [
-    "cryptography>=48.0.0",
-    "pydantic-settings>=2.14.1",
+    "cryptography>=50.0.0",
+    "pydantic-settings>=2.15.0",
     "email-validator>=2.2.0",
     "psycopg>=3.3.4",
-    "sqlalchemy>=2.0.49",
-    "fastapi>=0.136.1",
-    "fastapi-cli>=0.0.24",
+    "sqlalchemy>=2.0.51",
+    "fastapi>=0.139.2",
+    "fastapi-cli>=0.0.32",
     "celery>=5.6.3",
     "flower>=2.0.1",
-    "redis>=7.4.0",
-    "sentry-sdk[fastapi]>=2.59.0",
-    "python-multipart>=0.0.28",
+    "redis>=8.1.0",
+    "sentry-sdk[fastapi]>=2.66.1",
+    "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
-    "httpx>=0.28.1",
-    "alembic>=1.18.4",
-    "boto3>=1.43.6",
-    "requests>=2.34.0",
+    "httpx[http2]>=0.28.1",
+    "alembic>=1.18.5",
+    "boto3>=1.43.62",
+    "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.30.0",
+    "resend>=2.35.0",
     "pyyaml>=6.0.3",
-    "svix>=1.93.0",
-    "numpy>=2.4.4",
-    "faker>=40.15.0",
+    "svix>=1.99.1",
+    "numpy>=2.5.1",
+    "faker>=40.36.0",
+    "fitdecode>=0.11.0",
+    "google-auth>=2.56.2",
 ]
 
 [dependency-groups]
 code-quality = [
-    "pre-commit>=4.6.0",
-    "ruff>=0.15.12",
-    "ty>=0.0.35",
+    "pre-commit>=4.6.1",
+    "ruff>=0.16.1",
+    "ty>=0.0.65",
 ]
 dev = [
-    "pytest>=9.0.3",
-    "pytest-asyncio>=1.0.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "freezegun>=1.5.0",
     "factory-boy>=3.3.0",

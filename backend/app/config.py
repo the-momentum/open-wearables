@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import warnings
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     from app.schemas.enums import ProviderName
@@ -11,10 +13,13 @@ if TYPE_CHECKING:
 from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.schemas.enums.data_granularity import DataGranularity
 from app.utils.config_utils import (
+    AccessLogLevel,
     EncryptedField,
     EnvironmentType,
     FernetDecryptorField,
+    parse_duration,
 )
 
 
@@ -40,6 +45,13 @@ class Settings(BaseSettings):
     cors_origins: list[AnyHttpUrl] = []
     cors_allow_all: bool = False
 
+    # None → derived in derive_access_log_level (prod: errors only, else: all)
+    access_log_level: AccessLogLevel | None = None
+    # Include the 4xx response body the client received in the access log.
+    log_error_response_body: bool = False
+    log_error_response_body_max_bytes: int = 8192  # truncate a logged body
+    log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min
+
     # DATABASE SETTINGS
     db_host: str = "db"
     db_port: int = 5432
@@ -53,6 +65,7 @@ class Settings(BaseSettings):
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
     SENTRY_SERVER_NAME: str | None = None
+    GIT_SHA: str | None = None
 
     # AUTH SETTINGS
     secret_key: str
@@ -69,6 +82,7 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
+    redis_ssl: bool = False  # True for TLS (e.g. ElastiCache transit_encryption_enabled)
 
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
@@ -83,10 +97,28 @@ class Settings(BaseSettings):
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+    # Re-fetch a trailing window on each *live* pull sync so late provider revisions
+    # (e.g. Oura finalising a day's step count after we already moved past it) are
+    # picked up. Disabled by default. Set via a compact duration string: "2d", "20h",
+    # "90m", "1d12h". Capped per provider by max_historical_days.
+    pull_sync_lookback: timedelta | None = None
     # Grace-period flag: auto-dispatch historical sync after OAuth connect (default: true).
     # Pre-0.4.2 behaviour. Set to false once your integration calls /sync/historical explicitly.
     # Will default to false in a future release.
     historical_sync_on_connect: bool = True
+
+    # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
+    # data_point_series on workout webhook arrival. Significantly increases DB storage.
+    # Per-provider granularity will be added via ProviderSetting in a future release.
+    ingest_workout_samples: bool = False
+
+    # Whether to store raw FIT files in S3 when received via provider APIs.
+    # Independent of ingest_workout_samples (DB samples) and raw_payload_storage (JSON payloads).
+    store_fit_files: bool = False
+
+    # Default 24/7 data granularity (raw | hourly | daily) for providers that support it
+    # (Google Health), used when a provider has no explicit ProviderSetting.data_granularity.
+    default_data_granularity: DataGranularity = DataGranularity.RAW
 
     # SCORE SETTINGS
     score_backfill_days: int = 30  # How far back the missing-score query looks
@@ -125,6 +157,13 @@ class Settings(BaseSettings):
     whoop_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
+    # SENSORBIO OAUTH SETTINGS
+    sensorbio_client_id: str | None = None
+    sensorbio_client_secret: SecretStr | None = None
+    # Sensor Bio OAuth currently has no granular scopes defined in the developer portal.
+    # Leave empty so the authorize URL omits scope= (mirrors Garmin/Suunto).
+    sensorbio_default_scope: str = ""
+
     # FITBIT OAUTH SETTINGS
     fitbit_client_id: str | None = None
     fitbit_client_secret: SecretStr | None = None
@@ -153,6 +192,29 @@ class Settings(BaseSettings):
     ultrahuman_client_secret: SecretStr | None = None
     ultrahuman_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     ultrahuman_default_scope: str = "ring_data cgm_data profile"
+
+    # GOOGLE OAUTH SETTINGS
+    google_client_id: str | None = None
+    google_client_secret: SecretStr | None = None
+    google_default_scope: str = (
+        "openid email "
+        "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly "
+        "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly "
+        "https://www.googleapis.com/auth/googlehealth.nutrition.readonly "
+        "https://www.googleapis.com/auth/googlehealth.sleep.readonly "
+        "https://www.googleapis.com/auth/googlehealth.settings.readonly"
+    )
+    # Bearer secret Google echoes in the Authorization header of every webhook
+    # notification. Defaults to secret_key (see derive_google_webhook_secret).
+    google_webhook_secret: SecretStr | None = None
+    # GCP project NUMBER (not ID) for Health API subscriber registration.
+    google_project_id: str | None = None
+    # Path to the service-account JSON key used to authenticate project-level
+    # subscriber registration. If unset, Application Default Credentials are used.
+    google_service_account_file: str | None = None
+    # with RAW granularity, either list or reconcile is used
+    # true - reconcile, false - list; for details check docs
+    google_use_reconcile: bool = True
 
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
@@ -183,11 +245,22 @@ class Settings(BaseSettings):
     raw_payload_s3_endpoint_url: str | None = None  # for S3-compatible storage (e.g. Railway Object Storage)
 
     # SVIX WEBHOOK SETTINGS
+    # Master switch for outgoing webhooks. Off by default so deployments without Svix
+    # (no svix-server container) never build a client, emit, or register event types.
+    outgoing_webhooks_enabled: bool = False
     svix_server_url: str = "http://svix-server:8071"
     # Signing secret used by the Svix server to verify JWTs.  Must match SVIX_JWT_SECRET in docker-compose.
     svix_jwt_secret: SecretStr | None = None
     # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
     svix_auth_token: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def derive_access_log_level(self) -> "Settings":
+        if self.access_log_level is None:
+            self.access_log_level = (
+                AccessLogLevel.ERRORS if self.environment == EnvironmentType.PRODUCTION else AccessLogLevel.ALL
+            )
+        return self
 
     @model_validator(mode="after")
     def derive_svix_jwt_secret(self) -> "Settings":
@@ -216,6 +289,12 @@ class Settings(BaseSettings):
             self.oura_webhook_verification_token = SecretStr(self.secret_key)
         return self
 
+    @model_validator(mode="after")
+    def derive_google_webhook_secret(self) -> "Settings":
+        if self.google_webhook_secret is None or self.google_webhook_secret.get_secret_value() == "":
+            self.google_webhook_secret = SecretStr(self.secret_key)
+        return self
+
     @field_validator("cors_origins", mode="after")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:
@@ -226,6 +305,15 @@ class Settings(BaseSettings):
 
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
+
+    @field_validator("pull_sync_lookback", mode="before")
+    @classmethod
+    def _parse_pull_sync_lookback(cls, v: Any) -> timedelta | None:
+        if v is None or isinstance(v, timedelta):
+            return v
+        if isinstance(v, str) and not v.strip():
+            return None
+        return parse_duration(str(v))  # "2d" / "20h" / "1d12h" → timedelta (fail fast at startup)
 
     def oauth_redirect_uri(self, provider: ProviderName) -> str:
         """Build OAuth redirect URI for a provider.
@@ -246,16 +334,26 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
-        """Get Redis connection URL built from individual settings."""
+        """Get Redis connection URL built from individual settings.
+
+        Credentials are URL-encoded so tokens containing reserved characters
+        (managed Redis AUTH tokens often do) don't corrupt the URL. When
+        redis_ssl is set the scheme becomes rediss:// and TLS cert verification
+        is required — needed for ElastiCache (transit_encryption_enabled).
+        """
         auth_part = ""
         if self.redis_username and self.redis_password:
-            auth_part = f"{self.redis_username}:{self.redis_password.get_secret_value()}@"
+            auth_part = (
+                f"{quote(self.redis_username, safe='')}:{quote(self.redis_password.get_secret_value(), safe='')}@"
+            )
         elif self.redis_password:
-            auth_part = f":{self.redis_password.get_secret_value()}@"
+            auth_part = f":{quote(self.redis_password.get_secret_value(), safe='')}@"
         elif self.redis_username:
-            auth_part = f"{self.redis_username}@"
+            auth_part = f"{quote(self.redis_username, safe='')}@"
 
-        return f"redis://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        scheme = "rediss" if self.redis_ssl else "redis"
+        query = "?ssl_cert_reqs=required" if self.redis_ssl else ""
+        return f"{scheme}://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}{query}"
 
     # Decryptor for encrypted fields
     @field_validator("*", mode="after")
@@ -281,7 +379,7 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def _get_settings() -> Settings:
-    return Settings()  # ty: ignore[missing-argument]
+    return Settings()
 
 
 settings = _get_settings()

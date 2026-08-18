@@ -1,5 +1,6 @@
 import uuid
 from logging import getLogger
+from typing import Any
 from uuid import UUID
 
 from celery import shared_task
@@ -34,7 +35,7 @@ def process_sdk_upload(
     user_id: str,
     provider: str,
     batch_id: str | None = None,
-) -> dict[str, int | str]:
+) -> dict[str, Any]:
     """
     Process SDK data import asynchronously.
 
@@ -135,22 +136,29 @@ def process_sdk_upload(
         records_saved = int(result.get("records_saved", 0) or 0)
         workouts_saved = int(result.get("workouts_saved", 0) or 0)
         sleep_saved = int(result.get("sleep_saved", 0) or 0)
+        dropped_count = int(result.get("dropped_count", 0) or 0)
+        types = result.get("types") or []
         items_total = records_saved + workouts_saved + sleep_saved
 
         if isinstance(status_code, int) and 200 <= status_code < 300:
+            message = f"{provider.capitalize()} batch saved"
+            if dropped_count:
+                message += f" ({dropped_count} record(s) dropped by validation)"
             completed(
                 user_uuid,
                 provider,
                 SyncSource.SDK,
                 run_id=batch_id,
                 status=SyncStatus.SUCCESS,
-                message=f"{provider.capitalize()} batch saved",
+                message=message,
                 items_processed=items_total,
                 metadata={
                     "batch_id": batch_id,
                     "records_saved": records_saved,
                     "workouts_saved": workouts_saved,
                     "sleep_saved": sleep_saved,
+                    "types": types,
+                    "dropped_count": dropped_count,
                 },
             )
         else:

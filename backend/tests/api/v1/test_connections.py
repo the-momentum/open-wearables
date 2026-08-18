@@ -15,9 +15,18 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import UserConnection
+from app.models import DataPointSeries, DataSource, EventRecord, HealthScore, User, UserConnection, WorkoutDetails
 from app.schemas.auth import ConnectionStatus
-from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
+from tests.factories import (
+    ApiKeyFactory,
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    HealthScoreFactory,
+    UserConnectionFactory,
+    UserFactory,
+    WorkoutDetailsFactory,
+)
 from tests.utils import api_key_headers
 
 
@@ -171,12 +180,14 @@ class TestConnectionsEndpoints:
         assert "status" in connection_data
         assert "created_at" in connection_data
         assert "updated_at" in connection_data
+        assert "icon_url" in connection_data
 
         # Verify values
         assert connection_data["id"] == str(connection.id)
         assert connection_data["user_id"] == str(user.id)
         assert connection_data["provider"] == "garmin"
         assert connection_data["status"] == ConnectionStatus.ACTIVE.value
+        assert connection_data["icon_url"] == "/static/provider-icons/garmin.svg"
 
     def test_get_connections_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""
@@ -461,6 +472,129 @@ class TestDisconnectEndpoint:
         conn2 = db.query(UserConnection).filter_by(user_id=user2.id, provider="garmin").one()
         assert conn1.status == ConnectionStatus.REVOKED
         assert conn2.status == ConnectionStatus.ACTIVE
+
+
+class TestDeleteProviderDataEndpoint:
+    """Test suite for DELETE /api/v1/users/{user_id}/connections/{provider}/data."""
+
+    def _seed_provider_data(self, user: User, provider: str) -> DataSource:
+        """Create a data_source with a workout (+details), a time series and a health score."""
+        data_source = DataSourceFactory(user=user, provider=provider)
+        event = EventRecordFactory(data_source=data_source, category="workout")
+        WorkoutDetailsFactory(event_record=event)
+        DataPointSeriesFactory(data_source=data_source)
+        HealthScoreFactory(user_id=user.id, data_source_id=data_source.id, provider=provider)
+        return data_source
+
+    def test_delete_data_removes_all_provider_data_and_revokes(self, client: TestClient, db: Session) -> None:
+        """Deleting provider data removes every dependent row (via cascade) and revokes the connection."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
+        ds = self._seed_provider_data(user, "apple")
+        ds_id = ds.id
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data", headers=headers)
+
+        # Assert
+        assert response.status_code == 204
+        db.expire_all()
+        assert db.query(DataSource).filter_by(user_id=user.id, provider="apple").count() == 0
+        assert db.query(EventRecord).filter_by(data_source_id=ds_id).count() == 0
+        assert db.query(WorkoutDetails).count() == 0
+        assert db.query(DataPointSeries).filter_by(data_source_id=ds_id).count() == 0
+        assert db.query(HealthScore).filter_by(user_id=user.id, provider="apple").count() == 0
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="apple").one()
+        assert conn.status == ConnectionStatus.REVOKED
+
+    def test_delete_data_does_not_affect_other_providers(self, client: TestClient, db: Session) -> None:
+        """Deleting Apple data leaves Suunto's data and connection untouched."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
+        self._seed_provider_data(user, "apple")
+        suunto_ds = self._seed_provider_data(user, "suunto")
+        suunto_ds_id = suunto_ds.id
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data", headers=headers)
+
+        # Assert
+        assert response.status_code == 204
+        db.expire_all()
+        assert db.query(DataSource).filter_by(user_id=user.id, provider="apple").count() == 0
+        assert db.query(DataSource).filter_by(user_id=user.id, provider="suunto").count() == 1
+        assert db.query(EventRecord).filter_by(data_source_id=suunto_ds_id).count() == 1
+        assert db.query(HealthScore).filter_by(user_id=user.id, provider="suunto").count() == 1
+        suunto_conn = db.query(UserConnection).filter_by(user_id=user.id, provider="suunto").one()
+        assert suunto_conn.status == ConnectionStatus.ACTIVE
+
+    def test_delete_data_only_affects_target_user(self, client: TestClient, db: Session) -> None:
+        """Deleting user1's Apple data leaves user2's Apple data intact."""
+        # Arrange
+        user1 = UserFactory()
+        user2 = UserFactory()
+        UserConnectionFactory(user=user1, provider="apple", status=ConnectionStatus.ACTIVE)
+        self._seed_provider_data(user1, "apple")
+        self._seed_provider_data(user2, "apple")
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user1.id}/connections/apple/data", headers=headers)
+
+        # Assert
+        assert response.status_code == 204
+        db.expire_all()
+        assert db.query(DataSource).filter_by(user_id=user1.id, provider="apple").count() == 0
+        assert db.query(DataSource).filter_by(user_id=user2.id, provider="apple").count() == 1
+
+    def test_delete_data_on_revoked_connection_still_deletes(self, client: TestClient, db: Session) -> None:
+        """Data can be purged even when the connection is already revoked."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.REVOKED)
+        self._seed_provider_data(user, "apple")
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data", headers=headers)
+
+        # Assert
+        assert response.status_code == 204
+        db.expire_all()
+        assert db.query(DataSource).filter_by(user_id=user.id, provider="apple").count() == 0
+
+    def test_delete_data_nonexistent_connection_returns_404(self, client: TestClient, db: Session) -> None:
+        """Purging a provider the user was never connected to returns 404."""
+        # Arrange
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin/data", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
+
+    def test_delete_data_missing_api_key(self, client: TestClient, db: Session) -> None:
+        """Request without API key is rejected."""
+        # Arrange
+        user = UserFactory()
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data")
+
+        # Assert
+        assert response.status_code == 401
 
 
 class TestDisconnectDeregistration:

@@ -10,6 +10,7 @@ from sqlalchemy import event as sa_event
 from app.database import DbSession
 from app.models import DataPointSeries
 from app.repositories import DataPointSeriesRepository
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import (
     SeriesType,
     get_series_type_from_id,
@@ -53,8 +54,8 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
-    ) -> None:
-        self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
+    ) -> WriteCounts:
+        counts = self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
         samples_copy = list(samples)
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
@@ -66,6 +67,8 @@ class TimeSeriesService(
                 args=(samples_copy,),
                 daemon=True,
             ).start()
+
+        return counts
 
     @staticmethod
     def _emit_timeseries_webhooks(
@@ -91,6 +94,7 @@ class TimeSeriesService(
                         "value": float(s.value),
                         "unit": unit,
                         "source": {"provider": provider, "device": s.device_model},
+                        "is_daily_total": s.is_daily_total,
                     }
                     for s in sorted_samples
                 ]
@@ -110,6 +114,14 @@ class TimeSeriesService(
         """Get total count of all data points."""
         return self.crud.get_total_count(db_session)
 
+    def get_approximate_total_count(self, db_session: DbSession) -> int:
+        """Get an approximate total count of all data points (planner statistics, no scan)."""
+        return self.crud.get_approximate_total_count(db_session)
+
+    def get_approximate_archived_count(self, db_session: DbSession) -> int:
+        """Get an approximate count of archived data points (planner statistics, no scan)."""
+        return self.crud.get_approximate_archived_count(db_session)
+
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return self.crud.get_count_in_range(db_session, start_datetime, end_datetime)
@@ -122,10 +134,6 @@ class TimeSeriesService(
     ) -> list[int]:
         """Get daily histogram of data points for the given date range."""
         return self.crud.get_daily_histogram(db_session, start_datetime, end_datetime)
-
-    def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
-        """Get count of data points grouped by series type ID."""
-        return self.crud.get_count_by_series_type(db_session)
 
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source."""
@@ -185,8 +193,10 @@ class TimeSeriesService(
             source = None
             if data_source:
                 source = SourceMetadata(
-                    provider=data_source.source or "unknown",
+                    provider=data_source.provider or "unknown",
+                    source=data_source.source,
                     device=data_source.device_model,
+                    device_type=data_source.device_type,
                 )
 
             item = TimeSeriesSample(
@@ -196,6 +206,7 @@ class TimeSeriesService(
                 value=float(sample.value),
                 unit=unit,
                 source=source,
+                is_daily_total=sample.is_daily_total,
             )
             data.append(item)
 

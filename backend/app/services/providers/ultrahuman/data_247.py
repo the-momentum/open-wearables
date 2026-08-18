@@ -12,6 +12,7 @@ from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
+from app.schemas.enums import daily_total_flag
 from app.schemas.enums.series_types import SeriesType
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
@@ -20,6 +21,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 
 
@@ -381,16 +383,8 @@ class Ultrahuman247Data(Base247DataTemplate):
         """Save normalized activity samples (HR, HRV, etc.) to DataPointSeries."""
         count = 0
 
-        # Map internal keys to SeriesType
-        type_mapping = {
-            "heart_rate": SeriesType.heart_rate,
-            "hrv": SeriesType.heart_rate_variability_sdnn,
-            "temperature": SeriesType.body_temperature,
-            "steps": SeriesType.steps,
-        }
-
         for key, samples in normalized_samples.items():
-            series_type = type_mapping.get(key)
+            series_type = ACTIVITY_SAMPLE_SERIES.get(key)
             if not series_type:
                 continue
 
@@ -411,6 +405,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(sample.get("value"))),
                         series_type=series_type,
+                        is_daily_total=daily_total_flag(series_type, is_daily=False),
                     )
 
                     self.data_point_repo.create(db, ts_sample)
@@ -530,6 +525,27 @@ class Ultrahuman247Data(Base247DataTemplate):
                                 series_type=SeriesType.vo2_max,
                             )
                             self.data_point_repo.create(db, ts_sample)
+                            results["activity_samples"] += 1
+
+                    # Active time (single daily value in minutes, like vo2_max)
+                    if "active_minutes" in items_by_type:
+                        active_obj = items_by_type["active_minutes"]
+                        active_value = active_obj.get("value")
+                        active_ts = active_obj.get("day_start_timestamp")
+                        if active_value is not None and active_ts:
+                            recorded_at = datetime.fromtimestamp(active_ts, tz=timezone.utc)
+                            self.data_point_repo.create(
+                                db,
+                                TimeSeriesSampleCreate(
+                                    id=uuid4(),
+                                    user_id=user_id,
+                                    provider=self.provider_name,
+                                    recorded_at=recorded_at,
+                                    value=Decimal(str(active_value)),
+                                    series_type=SeriesType.active_time,
+                                    is_daily_total=True,
+                                ),
+                            )
                             results["activity_samples"] += 1
                 except Exception as e:
                     day_error = f"Activity samples processing failed: {e}"

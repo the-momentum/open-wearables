@@ -1,9 +1,11 @@
 """Tests for Oura247Data normalization."""
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
+from app.constants.sleep import SleepStageType
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.strategy import OuraStrategy
 
@@ -61,6 +63,50 @@ class TestOura247SleepNormalization:
         assert stages["rem_seconds"] == 7200
         assert stages["awake_seconds"] == 1800
 
+    def test_stage_timestamps_use_30_sec_hypnogram(self, data_247: Oura247Data) -> None:
+        raw = {
+            "id": "sleep-30s",
+            "bedtime_start": "2024-01-15T23:00:00+00:00",
+            "bedtime_end": "2024-01-16T07:00:00+00:00",
+            "type": "long_sleep",
+            "sleep_phase_30_sec": "1" * 4 + "3" * 2,  # 120s deep, 60s rem
+        }
+        stages = data_247.normalize_sleeps([raw], uuid4())[0]["stage_timestamps"]
+
+        assert [s.stage for s in stages] == [SleepStageType.DEEP, SleepStageType.REM]
+        assert stages[0].start_time == datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
+        assert stages[0].end_time == datetime(2024, 1, 15, 23, 2, tzinfo=timezone.utc)
+        assert stages[1].end_time == datetime(2024, 1, 15, 23, 3, tzinfo=timezone.utc)
+
+    def test_stage_timestamps_prefer_30_sec_over_5_min(self, data_247: Oura247Data) -> None:
+        raw = {
+            "id": "sleep-both",
+            "bedtime_start": "2024-01-15T23:00:00+00:00",
+            "bedtime_end": "2024-01-16T07:00:00+00:00",
+            "type": "long_sleep",
+            "sleep_phase_30_sec": "111",  # 90s deep — not expressible at 5-min resolution
+            "sleep_phase_5_min": "2",
+        }
+        stages = data_247.normalize_sleeps([raw], uuid4())[0]["stage_timestamps"]
+
+        assert len(stages) == 1
+        assert stages[0].stage == SleepStageType.DEEP
+        assert stages[0].end_time == datetime(2024, 1, 15, 23, 1, 30, tzinfo=timezone.utc)
+
+    def test_stage_timestamps_fall_back_to_5_min(self, data_247: Oura247Data) -> None:
+        raw = {
+            "id": "sleep-5m",
+            "bedtime_start": "2024-01-15T23:00:00+00:00",
+            "bedtime_end": "2024-01-16T07:00:00+00:00",
+            "type": "long_sleep",
+            "sleep_phase_5_min": "14",  # 5min deep, 5min awake
+        }
+        stages = data_247.normalize_sleeps([raw], uuid4())[0]["stage_timestamps"]
+
+        assert [s.stage for s in stages] == [SleepStageType.DEEP, SleepStageType.AWAKE]
+        assert stages[0].end_time == datetime(2024, 1, 15, 23, 5, tzinfo=timezone.utc)
+        assert stages[1].end_time == datetime(2024, 1, 15, 23, 10, tzinfo=timezone.utc)
+
     def test_normalize_sleep_timestamps(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
         result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
@@ -73,17 +119,90 @@ class TestOura247SleepNormalization:
         result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
         assert result["is_nap"] is False
 
-    def test_normalize_sleep_nap_detection(self, data_247: Oura247Data) -> None:
+    def test_normalize_sleep_nap_detection_sleep_type(self, data_247: Oura247Data) -> None:
         user_id = uuid4()
         raw = {
             "id": "sleep-nap",
             "bedtime_start": "2024-01-15T14:00:00+00:00",
             "bedtime_end": "2024-01-15T14:30:00+00:00",
-            "type": "rest",
+            "type": "sleep",
             "time_in_bed": 1800,
         }
         result = data_247.normalize_sleeps([raw], user_id)[0]
         assert result["is_nap"] is True
+
+    def test_normalize_sleep_nap_detection_late_nap_type(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = {
+            "id": "sleep-late-nap",
+            "bedtime_start": "2024-01-15T23:30:00+00:00",
+            "bedtime_end": "2024-01-16T00:30:00+00:00",
+            "type": "late_nap",
+            "time_in_bed": 3600,
+        }
+        result = data_247.normalize_sleeps([raw], user_id)[0]
+        assert result["is_nap"] is True
+
+    def test_normalize_sleep_skips_rest_type(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = {
+            "id": "sleep-rest",
+            "bedtime_start": "2024-01-15T14:00:00+00:00",
+            "bedtime_end": "2024-01-15T14:30:00+00:00",
+            "type": "rest",
+            "time_in_bed": 1800,
+        }
+        result = data_247.normalize_sleeps([raw], user_id)
+        assert result == []
+
+    def test_normalize_sleep_skips_deleted_type(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = {
+            "id": "sleep-deleted",
+            "bedtime_start": "2024-01-15T14:00:00+00:00",
+            "bedtime_end": "2024-01-15T14:30:00+00:00",
+            "type": "deleted",
+            "time_in_bed": 1800,
+        }
+        result = data_247.normalize_sleeps([raw], user_id)
+        assert result == []
+
+    def test_normalize_sleep_mixed_types_filters_correctly(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        items = [
+            {
+                "id": "s1",
+                "bedtime_start": "2024-01-15T00:00:00+00:00",
+                "bedtime_end": "2024-01-15T08:00:00+00:00",
+                "type": "long_sleep",
+                "time_in_bed": 28800,
+            },
+            {
+                "id": "s2",
+                "bedtime_start": "2024-01-15T14:00:00+00:00",
+                "bedtime_end": "2024-01-15T14:30:00+00:00",
+                "type": "sleep",
+                "time_in_bed": 1800,
+            },
+            {
+                "id": "s3",
+                "bedtime_start": "2024-01-15T15:00:00+00:00",
+                "bedtime_end": "2024-01-15T15:20:00+00:00",
+                "type": "rest",
+                "time_in_bed": 1200,
+            },
+            {
+                "id": "s4",
+                "bedtime_start": "2024-01-15T16:00:00+00:00",
+                "bedtime_end": "2024-01-15T16:30:00+00:00",
+                "type": "deleted",
+                "time_in_bed": 1800,
+            },
+        ]
+        result = data_247.normalize_sleeps(items, user_id)
+        assert len(result) == 2
+        assert result[0]["is_nap"] is False  # long_sleep
+        assert result[1]["is_nap"] is True  # sleep
 
     def test_normalize_sleep_heart_rate(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()

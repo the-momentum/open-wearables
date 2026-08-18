@@ -6,7 +6,7 @@ from sqlalchemy import and_, asc, desc, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
-from app.models import HealthScore
+from app.models import DataSource, HealthScore
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
@@ -108,16 +108,22 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
     ) -> list[dict[str, Any]]:
         """Get recovery health scores for a date range with cursor-based pagination.
 
-        Returns list of dicts with keys: recovery_date, source, device_model, record_id,
-        recorded_at, recovery_score, resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
+        Returns list of dicts with keys: recovery_date, provider, source, device_model,
+        device_type, record_id, recorded_at, recovery_score, resting_heart_rate,
+        hrv_rmssd_milli, spo2_percentage.
         Fetches limit+1 rows so callers can detect has_more without a separate COUNT query.
         Ordering matches get_sleep_summaries: ASC by default, DESC when paginating backward.
         """
-        query = db_session.query(HealthScore).filter(
-            HealthScore.user_id == user_id,
-            HealthScore.category == HealthScoreCategory.RECOVERY,
-            HealthScore.recorded_at >= start_date,
-            HealthScore.recorded_at < end_date,
+        # Outer join so scores without a data_source (older rows) still come back.
+        query = (
+            db_session.query(HealthScore, DataSource)
+            .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
+            .filter(
+                HealthScore.user_id == user_id,
+                HealthScore.category == HealthScoreCategory.RECOVERY,
+                HealthScore.recorded_at >= start_date,
+                HealthScore.recorded_at < end_date,
+            )
         )
 
         if cursor:
@@ -138,8 +144,10 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         return [
             {
                 "recovery_date": row.recorded_at.date(),
-                "source": row.provider,
-                "device_model": None,
+                "provider": row.provider,
+                "source": data_source.source if data_source else None,
+                "device_model": data_source.device_model if data_source else None,
+                "device_type": data_source.device_type if data_source else None,
                 "record_id": row.id,
                 "recorded_at": row.recorded_at,
                 "recovery_score": int(row.value) if row.value is not None else None,
@@ -147,7 +155,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                 "hrv_rmssd_milli": cast(dict, row.components or {}).get("hrv_rmssd_milli", {}).get("value"),
                 "spo2_percentage": cast(dict, row.components or {}).get("spo2_percentage", {}).get("value"),
             }
-            for row in rows
+            for row, data_source in rows
         ]
 
     def get_latest_per_category(

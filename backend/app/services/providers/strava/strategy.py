@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.strava.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.webhook_handler import StravaWebhookHandler
 from app.services.providers.strava.webhook_service import strava_webhook_service
@@ -32,6 +33,7 @@ class StravaStrategy(BaseProviderStrategy):
         self.data_247 = None
 
         self.webhooks = StravaWebhookHandler(workouts=self.workouts)
+        self.webhook_service = strava_webhook_service
 
     @property
     def name(self) -> str:
@@ -55,11 +57,17 @@ class StravaStrategy(BaseProviderStrategy):
         return f"{self.api_base_url}/api/{self.api_version}"
 
     @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
+
+    @property
     def capabilities(self) -> ProviderCapabilities:
         # Strava REST API is used for historical activity backfills.
         # Strava webhook events contain only the object_id and aspect_type;
         # the full activity must still be fetched via GET /activities/{id}.
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
-
-    async def register_webhooks(self, callback_url: str) -> list[dict]:
-        return await strava_webhook_service.register_subscriptions(callback_url)

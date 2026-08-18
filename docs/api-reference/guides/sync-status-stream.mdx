@@ -1,5 +1,5 @@
 ---
-title: "Live Sync Status (SSE) | Open Wearables"
+title: "Live Sync Status (SSE)"
 sidebarTitle: "Live Sync Status"
 description: "Stream real-time sync lifecycle events for a user via Server-Sent Events. Track when pulls, webhooks, SDK uploads, Apple Health imports, and Garmin backfills start, progress, and complete."
 keywords: ["sync status", "server-sent events", "SSE", "real-time sync", "sync progress", "open wearables"]
@@ -22,11 +22,11 @@ Three endpoints are exposed:
 - **`GET /api/v1/users/{user_id}/sync/recent`** — the last N events buffered in Redis (default 50, max 200, retained for 24 hours).
 - **`GET /api/v1/users/{user_id}/sync/runs`** — the latest event per run (one row per `run_id`), so you can quickly inspect which syncs are in progress and how recent ones ended.
 
-All three accept the same `ApiKeyDep` authentication as the rest of the public API: pass your API key via the `X-API-Key` header.
+All three accept the same `ApiKeyDep` authentication as the rest of the public API: pass your API key via the `X-Open-Wearables-API-Key` header.
 
 <CodeGroup>
-```bash X-API-Key
-curl -H "X-API-Key: YOUR_API_KEY" \
+```bash X-Open-Wearables-API-Key
+curl -H "X-Open-Wearables-API-Key: YOUR_API_KEY" \
   "https://api.openwearables.io/api/v1/users/USER_ID/sync/stream"
 ```
 </CodeGroup>
@@ -90,6 +90,7 @@ Every event is a JSON object emitted as the `data` field of an SSE message with 
 | `progress`        | `number \| null`      | Optional 0..1 fraction. Not all syncs report this.                                                                   |
 | `items_processed` | `number \| null`      | Optional count of items processed so far.                                                                            |
 | `items_total`     | `number \| null`      | Optional total when known.                                                                                           |
+| `metadata`        | `object`              | Provider-specific detail, e.g. `types` (SeriesType slugs written), `inserted`, `updated`.                             |
 | `started_at`      | `string \| null`      | ISO-8601 timestamp when the run started.                                                                             |
 | `ended_at`        | `string \| null`      | ISO-8601 timestamp when the run reached a terminal status.                                                           |
 | `timestamp`       | `string`              | ISO-8601 timestamp of this individual event.                                                                         |
@@ -100,7 +101,7 @@ Every event is a JSON object emitted as the `data` field of an SSE message with 
 
 ```bash
 curl -N "https://api.openwearables.io/api/v1/users/USER_ID/sync/stream?replay=20" \
-  -H "X-API-Key: YOUR_API_KEY"
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 
 **Path parameters**
@@ -160,7 +161,7 @@ const url =
   'https://api.openwearables.io/api/v1/users/USER_ID/sync/stream?replay=20';
 const es = new EventSource(url, {
   fetch: (input, init) =>
-    fetch(input, { ...init, headers: { ...init.headers, 'X-API-Key': KEY } }),
+    fetch(input, { ...init, headers: { ...init.headers, 'X-Open-Wearables-API-Key': KEY } }),
 });
 
 es.addEventListener('sync.status', (msg) => {
@@ -175,7 +176,7 @@ es.addEventListener('sync.status', (msg) => {
 
 ```bash
 curl "https://api.openwearables.io/api/v1/users/USER_ID/sync/recent?limit=50" \
-  -H "X-API-Key: YOUR_API_KEY"
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 
 **Path parameters**
@@ -223,7 +224,7 @@ Events are retained in Redis for **24 hours**. Useful when reconnecting or rende
 
 ```bash
 curl "https://api.openwearables.io/api/v1/users/USER_ID/sync/runs?limit=20" \
-  -H "X-API-Key: YOUR_API_KEY"
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 
 **Path parameters**

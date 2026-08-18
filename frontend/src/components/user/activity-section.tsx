@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
@@ -15,11 +15,11 @@ import {
 } from 'lucide-react';
 import { useActivitySummaries } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
+import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
-import { SourceBadge } from '@/components/common/source-badge';
+import { DataSourceInfo } from '@/components/common/data-source-info';
 import { SectionHeader } from '@/components/common/section-header';
 import {
   ChartContainer,
@@ -30,6 +30,7 @@ import {
   formatNumber,
   formatDistance,
   formatMinutes,
+  parseApiDate,
 } from '@/lib/utils/format';
 import {
   calculateActivityStats,
@@ -68,8 +69,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Total Steps',
     shortLabel: 'Steps',
     icon: Footprints,
-    color: 'text-[hsl(var(--success-muted))]',
-    bgColor: 'bg-[hsl(var(--success-muted)/0.1)]',
+    color: 'text-success-muted',
+    bgColor: 'bg-success-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
     getValue: (stats) => stats.totalSteps,
     formatValue: formatNumber,
@@ -133,8 +134,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Floors Climbed',
     shortLabel: 'Floors',
     icon: TrendingUp,
-    color: 'text-[hsl(var(--warning-muted))]',
-    bgColor: 'bg-[hsl(var(--warning-muted)/0.1)]',
+    color: 'text-warning-muted',
+    bgColor: 'bg-warning-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(245,158,11,0.5)]',
     getValue: (stats) => stats.totalFloorsClimbed,
     formatValue: formatNumber,
@@ -193,81 +194,82 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
       {/* Main row - always visible */}
       <button
         onClick={() => hasDetails && setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center text-left"
+        className="w-full px-4 py-3 flex flex-col gap-1.5 text-left"
         disabled={!hasDetails}
       >
-        {/* Date */}
-        <div className="w-28 flex-shrink-0">
-          <p className="text-sm font-medium text-foreground">
-            {format(new Date(summary.date), 'EEE, MMM d')}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {format(new Date(summary.date), 'yyyy')}
-          </p>
-          {summary.source?.provider && (
-            <SourceBadge provider={summary.source.provider} className="mt-1" />
+        <div className="w-full flex items-center">
+          {/* Date */}
+          <div className="w-28 flex-shrink-0">
+            <p className="text-sm font-medium text-foreground">
+              {format(parseApiDate(summary.date), 'EEE, MMM d')}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {format(parseApiDate(summary.date), 'yyyy')}
+            </p>
+          </div>
+
+          {/* Stats - evenly spaced */}
+          <div className="flex-1 flex items-center justify-around">
+            {/* Steps */}
+            <div className="flex items-center gap-2">
+              <Footprints className="h-4 w-4 text-success-muted" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {formatNumber(summary.steps)}
+                </p>
+                <p className="text-xs text-muted-foreground">Steps</p>
+              </div>
+            </div>
+
+            {/* Calories */}
+            <div className="flex items-center gap-2">
+              <Flame className="h-4 w-4 text-orange-400" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {formatNumber(summary.active_calories_kcal)}
+                </p>
+                <p className="text-xs text-muted-foreground">Calories</p>
+              </div>
+            </div>
+
+            {/* Avg Heart Rate */}
+            <div className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-rose-400" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {summary.heart_rate?.avg_bpm
+                    ? `${Math.round(summary.heart_rate.avg_bpm)} bpm`
+                    : '-'}
+                </p>
+                <p className="text-xs text-muted-foreground">Avg HR</p>
+              </div>
+            </div>
+
+            {/* Active Time */}
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 text-sky-400" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {formatMinutes(summary.active_minutes)}
+                </p>
+                <p className="text-xs text-muted-foreground">Active</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Expand indicator */}
+          {hasDetails && (
+            <div className="w-8 flex-shrink-0 flex justify-end">
+              {isExpanded ? (
+                <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              )}
+            </div>
           )}
         </div>
 
-        {/* Stats - evenly spaced */}
-        <div className="flex-1 flex items-center justify-around">
-          {/* Steps */}
-          <div className="flex items-center gap-2">
-            <Footprints className="h-4 w-4 text-[hsl(var(--success-muted))]" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {formatNumber(summary.steps)}
-              </p>
-              <p className="text-xs text-muted-foreground">Steps</p>
-            </div>
-          </div>
-
-          {/* Calories */}
-          <div className="flex items-center gap-2">
-            <Flame className="h-4 w-4 text-orange-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {formatNumber(summary.active_calories_kcal)}
-              </p>
-              <p className="text-xs text-muted-foreground">Calories</p>
-            </div>
-          </div>
-
-          {/* Avg Heart Rate */}
-          <div className="flex items-center gap-2">
-            <Heart className="h-4 w-4 text-rose-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {summary.heart_rate?.avg_bpm
-                  ? `${Math.round(summary.heart_rate.avg_bpm)} bpm`
-                  : '-'}
-              </p>
-              <p className="text-xs text-muted-foreground">Avg HR</p>
-            </div>
-          </div>
-
-          {/* Active Time */}
-          <div className="flex items-center gap-2">
-            <Timer className="h-4 w-4 text-sky-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {formatMinutes(summary.active_minutes)}
-              </p>
-              <p className="text-xs text-muted-foreground">Active</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Expand indicator */}
-        {hasDetails && (
-          <div className="w-8 flex-shrink-0 flex justify-end">
-            {isExpanded ? (
-              <ChevronUp className="h-5 w-5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
-            )}
-          </div>
-        )}
+        <DataSourceInfo source={summary.source} />
       </button>
 
       {/* Expanded details */}
@@ -331,7 +333,13 @@ export function ActivitySection({
 
   // Date range hooks
   const { startDate, endDate } = useDateRange(dateRange);
-  const allTimeRange = useAllTimeRange();
+
+  // Reset pagination when the date range changes so a stale cursor from a
+  // previous window doesn't carry over to the new one.
+  const { reset: resetPagination } = pagination;
+  useEffect(() => {
+    resetPagination();
+  }, [dateRange, resetPagination]);
 
   // Fetch activity summaries for summary stats (date range filtered)
   const { data: summaryData, isLoading: summaryLoading } = useActivitySummaries(
@@ -343,13 +351,15 @@ export function ActivitySection({
     }
   );
 
-  // Fetch activity days with cursor-based pagination (newest first)
+  // Fetch activity days with cursor-based pagination (newest first),
+  // scoped to the selected date range so we don't aggregate all history.
   const {
     data: daysData,
     isLoading: daysLoading,
     isFetching,
   } = useActivitySummaries(userId, {
-    ...allTimeRange,
+    start_date: startDate,
+    end_date: endDate,
     limit: DAYS_PER_PAGE,
     cursor: pagination.currentCursor ?? undefined,
     sort_order: 'desc',
@@ -386,9 +396,12 @@ export function ActivitySection({
     if (summaries.length === 0) return [];
 
     return [...summaries]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(
+        (a, b) =>
+          parseApiDate(a.date).getTime() - parseApiDate(b.date).getTime()
+      )
       .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
+        date: format(parseApiDate(s.date), 'MMM d'),
         value: currentMetric.getChartValue(s),
       }));
   }, [summaryData, currentMetric]);
@@ -479,6 +492,7 @@ export function ActivitySection({
                         content={<ChartTooltipContent />}
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="value"
                         fill="var(--color-value)"
                         radius={[4, 4, 0, 0]}

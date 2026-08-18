@@ -17,9 +17,11 @@ from app.schemas.model_crud.user_management import (
 )
 from app.schemas.utils import OldPaginatedResponse
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.garmin.backfill_state import force_release_backfill_lock
 from app.services.services import AppService
+from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
-from app.utils.exceptions import handle_exceptions
+from app.utils.exceptions import ResourceAlreadyExistsError, handle_exceptions
 from app.utils.structured_logging import log_structured
 
 
@@ -36,8 +38,11 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Get count of users created within a date range."""
         return self.crud.get_count_in_range(db_session, start_date, end_date)
 
+    @handle_exceptions
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create a user with server-generated id and created_at."""
+        if self.crud.get_by_email(db_session, creator.email):
+            raise ResourceAlreadyExistsError("User with this email already exists.")
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data)
         return super().create(db_session, internal_creator)
@@ -64,13 +69,14 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         if not user:
             return None
         provider_factory = ProviderFactory()
-        for connection in user_connection_service.get_connections_by_user(db_session, user.id):
+        connections = list(user_connection_service.get_connections_by_user(db_session, user.id))
+        for connection in connections:
             if not connection.access_token:
                 continue
             try:
                 strategy = provider_factory.get_provider(connection.provider)
                 if oauth := strategy.oauth:
-                    oauth.deregister_user(connection.access_token)
+                    oauth.deregister_user(connection.access_token, provider_user_id=connection.provider_user_id)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -80,6 +86,24 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                     provider=connection.provider,
                     error=str(e),
                 )
+
+        # Release any Redis locks held by this user before DB deletion.
+        # Must happen before DB delete so we still have provider_user_id from connections.
+        try:
+            for connection in connections:
+                if connection.provider_user_id:
+                    for scope in ("pull", "backfill"):
+                        release_stale_primary(connection.provider, connection.provider_user_id, scope=scope)
+            force_release_backfill_lock(user.id)
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to release Redis locks on user deletion",
+                user_id=user.id,
+                error=str(e),
+            )
+
         return self.crud.delete(db_session, user)
 
     @handle_exceptions

@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from app.utils.structured_logging import json_serial
+from app.utils.structured_logging import json_serial, log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ _max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
 _s3_bucket: str | None = None
 _s3_prefix: str = "raw-payloads"
 _s3_client: Any = None
+_fit_files_enabled: bool = False
 
 
 def configure(
@@ -36,23 +37,30 @@ def configure(
     s3_bucket: str | None = None,
     s3_prefix: str = "raw-payloads",
     s3_endpoint_url: str | None = None,
+    fit_files_enabled: bool = False,
 ) -> None:
     """Called once at startup from settings."""
-    global _storage_backend, _max_size_bytes, _s3_bucket, _s3_prefix, _s3_client
+    global _storage_backend, _max_size_bytes, _s3_bucket, _s3_prefix, _s3_client, _fit_files_enabled
     _storage_backend = storage_backend
     _max_size_bytes = max_size_bytes
     _s3_prefix = s3_prefix
+    _fit_files_enabled = False
 
-    if storage_backend == "s3":
+    if storage_backend == "s3" or fit_files_enabled:
         _s3_bucket = s3_bucket
         if not _s3_bucket:
-            logger.error("RAW_PAYLOAD_STORAGE=s3 but no S3 bucket configured")
+            logger.error("S3 storage requested but no S3 bucket configured")
             _storage_backend = "disabled"
             return
         _s3_client = _create_s3_client(endpoint_url=s3_endpoint_url)
         if _s3_client is None:
             logger.error("Failed to create S3 client - raw payload storage disabled")
             _storage_backend = "disabled"
+            return
+        if storage_backend != "s3":
+            # Client created solely for FIT file storage
+            _storage_backend = "disabled"
+        _fit_files_enabled = fit_files_enabled
 
 
 def _create_s3_client(endpoint_url: str | None = None) -> Any:
@@ -188,3 +196,36 @@ def _store_to_s3(
         )
     except Exception:
         logger.exception("Failed to store raw payload to S3: s3://%s/%s", _s3_bucket, key)
+
+
+def store_fit_file(
+    *,
+    provider: str,
+    fit_bytes: bytes,
+    user_id: str,
+    activity_id: str,
+) -> None:
+    """Store a raw FIT file to S3. No-op when STORE_FIT_FILES is disabled.
+
+    Key format: fit-files/{provider}/{YYYY-MM-DD}/{user_id}/{activity_id}.fit
+    Uses the same S3 client and bucket as raw payload storage.
+    """
+    if not _fit_files_enabled:
+        return
+    if _s3_client is None or _s3_bucket is None:
+        log_structured(logger, "warning", "Cannot store FIT file — S3 not configured")
+        return
+
+    now = datetime.now(UTC)
+    key = f"fit-files/{provider}/{now.strftime('%Y-%m-%d')}/{user_id}/{activity_id}.fit"
+    try:
+        _s3_client.put_object(
+            Bucket=_s3_bucket,
+            Key=key,
+            Body=fit_bytes,
+            ContentType="application/octet-stream",
+            Metadata={"provider": provider, "user_id": user_id, "activity_id": str(activity_id)},
+        )
+        logger.debug("Stored FIT file to S3: s3://%s/%s (%d bytes)", _s3_bucket, key, len(fit_bytes))
+    except Exception:
+        log_structured(logger, "error", "Failed to store FIT file to S3", bucket=_s3_bucket, key=key)

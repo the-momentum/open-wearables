@@ -33,11 +33,7 @@ export interface UserQueryParams {
   page?: number;
   limit?: number;
   sort_by?:
-    | 'created_at'
-    | 'email'
-    | 'first_name'
-    | 'last_name'
-    | 'last_synced_at';
+    'created_at' | 'email' | 'first_name' | 'last_name' | 'last_synced_at';
   sort_order?: 'asc' | 'desc';
   search?: string;
   email?: string;
@@ -158,26 +154,20 @@ export interface ChangePasswordRequest {
   confirm_password: string;
 }
 
-export interface CountWithGrowth {
-  count: number;
-  weekly_growth: number;
-}
-
-export interface SeriesTypeMetric {
-  series_type: string;
-  count: number;
-}
-
-export interface WorkoutTypeMetric {
-  workout_type: string | null;
+export interface MetricCount {
   count: number;
 }
 
 export interface DataPointsInfo {
   count: number;
-  weekly_growth: number;
-  top_series_types: SeriesTypeMetric[];
-  top_workout_types: WorkoutTypeMetric[];
+  archived: number;
+}
+
+export interface EventRecordsInfo {
+  count: number;
+  workouts: number;
+  sleep: number;
+  menstrual_cycles: number;
 }
 
 export interface ProviderConnectionCount {
@@ -192,9 +182,10 @@ export interface ConnectionsCoverage {
 }
 
 export interface DashboardStats {
-  total_users: CountWithGrowth;
-  active_conn: CountWithGrowth;
+  total_users: MetricCount;
+  active_conn: MetricCount;
   data_points: DataPointsInfo;
+  event_records: EventRecordsInfo;
   connections_coverage: ConnectionsCoverage;
 }
 
@@ -214,6 +205,45 @@ export interface UserDataSummary {
   series_type_counts: Record<string, number>;
   workout_type_counts: Record<string, number>;
   by_provider: ProviderDataCount[];
+  has_womens_health_data: boolean;
+}
+
+/** Optional date scope for the data summary. Omitting both fields = all-time. */
+export interface DataSummaryParams {
+  start_date?: string; // ISO datetime
+  end_date?: string; // ISO datetime (exclusive)
+  [key: string]: string | undefined;
+}
+
+export interface MenstrualCycleRecord {
+  id: string;
+  start_time: string;
+  end_time: string;
+  zone_offset: string | null;
+  source: SourceMetadata;
+  current_phase: number | null;
+  current_phase_type: string | null;
+  day_in_cycle: number | null;
+  cycle_length: number | null;
+  predicted_cycle_length: number | null;
+  is_predicted_cycle: boolean | null;
+  period_length: number | null;
+  length_of_current_phase: number | null;
+  days_until_next_phase: number | null;
+  fertile_window_start: number | null;
+  length_of_fertile_window: number | null;
+  last_updated_at: string | null;
+  has_specified_cycle_length: boolean | null;
+  has_specified_period_length: boolean | null;
+  pregnancy_snapshot: Record<string, unknown>[] | null;
+}
+
+export interface MenstrualCyclesParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  [key: string]: string | number | undefined;
 }
 
 export interface Provider {
@@ -227,13 +257,7 @@ export interface Provider {
 }
 
 export type WearableProvider =
-  | 'fitbit'
-  | 'garmin'
-  | 'oura'
-  | 'whoop'
-  | 'strava'
-  | 'google-fit'
-  | 'withings';
+  'fitbit' | 'garmin' | 'oura' | 'whoop' | 'strava' | 'google-fit' | 'withings';
 
 export interface UserConnection {
   user_id: string;
@@ -246,12 +270,14 @@ export interface UserConnection {
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
+  icon_url?: string | null;
   max_historical_days?: number | null;
   rest_pull?: boolean;
   webhook_stream?: boolean;
   webhook_ping?: boolean;
   webhook_callback?: boolean;
   live_sync_mode?: 'pull' | 'webhook' | null;
+  linked_user_ids?: string[];
 }
 
 // ============================================================================
@@ -272,9 +298,15 @@ export interface SleepStage {
   duration_seconds?: number;
 }
 
+export type DeviceType =
+  'watch' | 'band' | 'ring' | 'phone' | 'scale' | 'other' | 'unknown';
+
 export interface SourceMetadata {
   provider: string;
+  source: string | null;
   device: string | null;
+  device_name: string | null;
+  device_type: DeviceType | null;
 }
 
 export interface SleepSession {
@@ -295,12 +327,17 @@ export interface SleepSessionsParams {
   end_date: string;
   cursor?: string;
   limit?: number;
-  [key: string]: string | number | undefined;
+  /**
+   * When true, the backend keeps only the highest-priority source's sessions
+   * per sleep date (provider/device priority), deduplicating across providers.
+   */
+  filter_by_priority?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }
 
 export interface SleepSummary {
   date: string;
-  source: DataSource;
+  source: SourceMetadata;
   start_time: string | null;
   end_time: string | null;
   duration_minutes: number | null;
@@ -368,7 +405,7 @@ export interface BodyLatest {
  * Returns null from API if no body data exists.
  */
 export interface BodySummary {
-  source: DataSource;
+  source: SourceMetadata;
   slow_changing: BodySlowChanging;
   averaged: BodyAveraged;
   latest: BodyLatest;
@@ -385,18 +422,13 @@ export interface BodySummaryParams {
 
 export interface RecoverySummary {
   date: string;
-  source: DataSource;
+  source: SourceMetadata;
   sleep_duration_seconds: number | null;
   sleep_efficiency_percent: number | null;
   resting_heart_rate_bpm: number | null;
   avg_hrv_sdnn_ms: number | null;
   avg_spo2_percent: number | null;
   recovery_score: number | null;
-}
-
-export interface DataSource {
-  provider: string;
-  device: string | null;
 }
 
 export interface HeartRateStats {
@@ -413,7 +445,7 @@ export interface IntensityMinutes {
 
 export interface ActivitySummary {
   date: string;
-  source: DataSource;
+  source: SourceMetadata;
   // Step and movement metrics
   steps: number | null;
   distance_meters: number | null;
@@ -445,6 +477,23 @@ export interface ApiKeyCreate {
 
 export interface ApiKeyUpdate {
   name?: string | null;
+}
+
+/** SDK application credentials for mobile app authentication. */
+export interface Application {
+  id: string;
+  app_id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface ApplicationCreate {
+  name: string;
+}
+
+/** Returned only on create / rotate-secret — secret cannot be retrieved again. */
+export interface ApplicationWithSecret extends Application {
+  app_secret: string;
 }
 
 export interface Automation {
@@ -556,10 +605,7 @@ export interface EventRecordResponse {
   start_time: string;
   end_time: string;
   duration_seconds?: number | null;
-  source?: {
-    provider: string;
-    device?: string | null;
-  };
+  source?: SourceMetadata;
   calories_kcal?: number | null;
   distance_meters?: number | null;
   // Heart rate fields (matching backend Workout schema)
@@ -616,6 +662,7 @@ export interface Developer {
 export interface Invitation {
   id: string;
   email: string;
+  token: string;
   invited_by: string;
   created_at: string;
   expires_at: string;

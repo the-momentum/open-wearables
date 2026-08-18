@@ -3,7 +3,8 @@ from logging import getLogger
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, func, select, update
+from sqlalchemy import CursorResult, and_, func, select, tuple_, update
+from sqlalchemy.orm import Query
 from sqlalchemy.orm.exc import MultipleResultsFound
 
 from app.database import DbSession
@@ -115,6 +116,40 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .one_or_none()
         )
 
+    def _active_by_provider_external_id(
+        self, db_session: DbSession, provider: str, provider_user_id: str
+    ) -> Query[UserConnection]:
+        """Base query: active connections for a given (provider, provider_user_id) pair.
+
+        Ordered by created_at asc, id asc so the oldest connection is always
+        index 0 — stable primary attribution in webhook fan-out across query
+        plans and restarts.
+        """
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.provider_user_id == provider_user_id,
+                    self.model.status == ConnectionStatus.ACTIVE,
+                )
+            )
+            .order_by(self.model.created_at.asc(), self.model.id.asc())
+        )
+
+    def get_all_by_provider_user_id(
+        self,
+        db_session: DbSession,
+        provider: str,
+        provider_user_id: str,
+    ) -> list[UserConnection]:
+        """Get all active connections sharing the same external provider account.
+
+        Used for multi-account sync fan-out: one provider account connected to
+        several OpenWearables profiles.
+        """
+        return self._active_by_provider_external_id(db_session, provider, provider_user_id).all()
+
     def get_by_provider_user_id(
         self,
         db_session: DbSession,
@@ -127,33 +162,13 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         and need to find our internal user.
         """
         try:
-            return (
-                db_session.query(self.model)
-                .filter(
-                    and_(
-                        self.model.provider == provider,
-                        self.model.provider_user_id == provider_user_id,
-                        self.model.status == ConnectionStatus.ACTIVE,
-                    ),
-                )
-                .one_or_none()
-            )
+            return self._active_by_provider_external_id(db_session, provider, provider_user_id).one_or_none()
         except MultipleResultsFound:
             logger.warning(
                 "Multiple active connections found for provider_user_id — returning first",
                 extra={"provider": provider, "provider_user_id": provider_user_id},
             )
-            return (
-                db_session.query(self.model)
-                .filter(
-                    and_(
-                        self.model.provider == provider,
-                        self.model.provider_user_id == provider_user_id,
-                        self.model.status == ConnectionStatus.ACTIVE,
-                    ),
-                )
-                .first()
-            )
+            return self._active_by_provider_external_id(db_session, provider, provider_user_id).first()
 
     def get_by_provider_username(
         self,
@@ -194,6 +209,32 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 )
                 .first()
             )
+
+    def get_linked_user_ids(
+        self,
+        db_session: DbSession,
+        exclude_user_id: UUID,
+        provider_pairs: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], list[UUID]]:
+        """For a list of (provider, provider_user_id) pairs, return other active OW users
+        sharing the same external account, grouped by pair."""
+        if not provider_pairs:
+            return {}
+        rows = (
+            db_session.query(self.model.provider, self.model.provider_user_id, self.model.user_id)
+            .filter(
+                and_(
+                    self.model.status == ConnectionStatus.ACTIVE,
+                    self.model.user_id != exclude_user_id,
+                    tuple_(self.model.provider, self.model.provider_user_id).in_(provider_pairs),
+                )
+            )
+            .all()
+        )
+        result: dict[tuple[str, str], list[UUID]] = {}
+        for provider, provider_user_id, linked_user_id in rows:
+            result.setdefault((provider, provider_user_id), []).append(linked_user_id)
+        return result
 
     def get_by_user_id(
         self,

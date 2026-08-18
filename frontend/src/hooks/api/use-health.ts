@@ -9,6 +9,8 @@ import type {
   SleepSessionsParams,
   BodySummaryParams,
   HealthScoreParams,
+  MenstrualCyclesParams,
+  DataSummaryParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -36,6 +38,28 @@ export function useDisconnectProvider(provider: string, userId: string) {
 }
 
 /**
+ * Delete all of a user's data for a provider (also revokes the connection)
+ * Uses DELETE /api/v1/users/{user_id}/connections/{provider}/data
+ */
+export function usePurgeProviderData(provider: string, userId: string) {
+  return useMutation({
+    mutationFn: () => healthService.purgeProviderData(userId, provider),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.all(userId),
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.health.all });
+      toast.success(`Deleted all ${provider} data`);
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete data';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get user connections for a user
  * Uses GET /api/v1/users/{user_id}/connections
  */
@@ -44,8 +68,9 @@ export function useUserConnections(userId: string, enabled: boolean = true) {
     queryKey: queryKeys.connections.all(userId),
     queryFn: () => healthService.getUserConnections(userId),
     enabled: !!userId && enabled,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    // The SSE sync stream already invalidates this query on relevant events, so we don't need
+    // zero-staleness + refetch-on-focus (which re-rendered the whole profile tab on every focus).
+    staleTime: 30 * 1000,
   });
 }
 
@@ -164,13 +189,51 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get menstrual cycle records for a user
+ * Uses GET /api/v1/users/{user_id}/events/menstrual-cycles
+ */
+export function useMenstrualCycles(
+  userId: string,
+  params: MenstrualCyclesParams
+) {
+  return useQuery({
+    queryKey: queryKeys.health.menstrualCycles(userId, params),
+    queryFn: () => healthService.getMenstrualCycles(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Delete a menstrual cycle record
+ */
+export function useDeleteMenstrualCycle(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (cycleId: string) =>
+      healthService.deleteMenstrualCycle(userId, cycleId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'menstrualCycles', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Record deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete record';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get per-user data summary with counts by type and provider
  * Uses GET /api/v1/users/{user_id}/summaries/data
  */
-export function useUserDataSummary(userId: string) {
+export function useUserDataSummary(userId: string, params?: DataSummaryParams) {
   return useQuery({
-    queryKey: queryKeys.health.dataSummary(userId),
-    queryFn: () => healthService.getUserDataSummary(userId),
+    queryKey: queryKeys.health.dataSummary(userId, params),
+    queryFn: () => healthService.getUserDataSummary(userId, params),
     enabled: !!userId,
     staleTime: 2 * 60 * 1000,
   });

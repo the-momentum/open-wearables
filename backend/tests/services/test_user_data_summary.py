@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -136,3 +137,101 @@ class TestGetUserDataSummary:
 
         assert result.by_provider[0].provider == ProviderName.APPLE
         assert result.by_provider[1].provider == ProviderName.OURA
+
+
+class TestGetUserDataSummaryDateFilter:
+    """Tests for date-range scoping of SummariesService.get_user_data_summary."""
+
+    def test_filters_data_points_by_recorded_at(self, db: Session) -> None:
+        """Only data points whose recorded_at falls in [start, end) are counted."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE)
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+
+        before = datetime(2026, 6, 10, 12, 0, tzinfo=timezone.utc)
+        after = datetime(2026, 6, 20, 12, 0, tzinfo=timezone.utc)
+
+        # Distinct timestamps within the day to satisfy the (source, type, recorded_at) unique constraint.
+        for hour in (10, 12, 14):
+            DataPointSeriesFactory(
+                data_source=ds, series_type=hr_type, recorded_at=datetime(2026, 6, 15, hour, 0, tzinfo=timezone.utc)
+            )
+        DataPointSeriesFactory(data_source=ds, series_type=hr_type, recorded_at=before)
+        DataPointSeriesFactory(data_source=ds, series_type=hr_type, recorded_at=after)
+
+        # Single day window covering 2026-06-15.
+        start = datetime(2026, 6, 15, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 16, 0, 0, tzinfo=timezone.utc)
+
+        result = system_info_service.get_user_data_summary(db, user.id, start, end)
+
+        assert result.total_data_points == 3
+        assert result.series_type_counts["heart_rate"] == 3
+        assert result.by_provider[0].provider == ProviderName.APPLE
+        assert result.by_provider[0].data_points == 3
+
+    def test_filters_events_by_start_datetime(self, db: Session) -> None:
+        """Only events whose start_datetime falls in [start, end) are counted."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+
+        after = datetime(2026, 6, 20, 8, 0, tzinfo=timezone.utc)
+
+        # Distinct start times within the day to satisfy the (source, start, end) unique constraint.
+        EventRecordFactory(
+            data_source=ds,
+            category="workout",
+            type="running",
+            start_datetime=datetime(2026, 6, 15, 8, 0, tzinfo=timezone.utc),
+        )
+        EventRecordFactory(
+            data_source=ds,
+            category="sleep",
+            type="sleep_session",
+            start_datetime=datetime(2026, 6, 15, 22, 0, tzinfo=timezone.utc),
+        )
+        EventRecordFactory(data_source=ds, category="workout", type="cycling", start_datetime=after)
+
+        start = datetime(2026, 6, 15, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 16, 0, 0, tzinfo=timezone.utc)
+
+        result = system_info_service.get_user_data_summary(db, user.id, start, end)
+
+        assert result.total_workouts == 1
+        assert result.total_sleep_events == 1
+        assert result.workout_type_counts == {"running": 1}
+
+    def test_no_dates_returns_all_time(self, db: Session) -> None:
+        """Omitting the date range preserves all-time behaviour."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE)
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+
+        DataPointSeriesFactory(
+            data_source=ds, series_type=hr_type, recorded_at=datetime(2020, 1, 1, tzinfo=timezone.utc)
+        )
+        DataPointSeriesFactory(
+            data_source=ds, series_type=hr_type, recorded_at=datetime(2026, 6, 15, tzinfo=timezone.utc)
+        )
+
+        result = system_info_service.get_user_data_summary(db, user.id)
+
+        assert result.total_data_points == 2
+
+    def test_open_ended_start_only(self, db: Session) -> None:
+        """A start-only window counts everything at or after the start."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE)
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+
+        DataPointSeriesFactory(
+            data_source=ds, series_type=hr_type, recorded_at=datetime(2026, 6, 10, tzinfo=timezone.utc)
+        )
+        DataPointSeriesFactory(
+            data_source=ds, series_type=hr_type, recorded_at=datetime(2026, 6, 20, tzinfo=timezone.utc)
+        )
+
+        start = datetime(2026, 6, 15, 0, 0, tzinfo=timezone.utc)
+        result = system_info_service.get_user_data_summary(db, user.id, start, None)
+
+        assert result.total_data_points == 1

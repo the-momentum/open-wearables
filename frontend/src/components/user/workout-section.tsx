@@ -30,7 +30,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
-import { SourceBadge } from '@/components/common/source-badge';
+import { DataSourceInfo } from '@/components/common/data-source-info';
 import { formatDuration, formatCalories } from '@/lib/utils/format';
 import { prepareHrChartData } from '@/lib/utils/timeseries';
 import { HR_CHART_CONFIG } from '@/lib/utils/chart-config';
@@ -92,78 +92,80 @@ function WorkoutRow({
       {/* Main row - always visible */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center gap-4 text-left"
+        className="w-full px-4 py-3 flex flex-col gap-1.5 text-left"
       >
-        {/* Workout type emoji */}
-        <div
-          className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xl ${style.bgColor}`}
-        >
-          {style.emoji}
+        <div className="w-full flex items-center gap-4">
+          {/* Workout type emoji */}
+          <div
+            className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-xl ${style.bgColor}`}
+          >
+            {style.emoji}
+          </div>
+
+          {/* Workout info */}
+          <div className="flex-1 min-w-0 flex items-center">
+            {/* Type & Date */}
+            <div className="w-32 flex-shrink-0">
+              <p className="text-sm font-medium text-foreground">
+                {style.label}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {workoutDate
+                  ? format(new Date(workoutDate), 'MMM d, yyyy')
+                  : '-'}
+              </p>
+            </div>
+
+            {/* Stats - evenly spaced */}
+            <div className="flex-1 flex items-center justify-around">
+              {/* Duration */}
+              <div className="flex items-center gap-2">
+                <Timer className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {formatDuration(workout.duration_seconds)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Duration</p>
+                </div>
+              </div>
+
+              {/* Calories */}
+              <div className="flex items-center gap-2">
+                <Flame className="h-4 w-4 text-orange-400" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {formatCalories(workout.calories_kcal)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Calories</p>
+                </div>
+              </div>
+
+              {/* Avg Heart Rate */}
+              <div className="flex items-center gap-2">
+                <Heart className="h-4 w-4 text-rose-400" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {workout.avg_heart_rate_bpm
+                      ? `${Math.round(Number(workout.avg_heart_rate_bpm))} bpm`
+                      : '-'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Avg HR</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Expand indicator */}
+            <div className="w-8 flex-shrink-0 flex justify-end">
+              {isExpanded ? (
+                <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Workout info */}
-        <div className="flex-1 min-w-0 flex items-center">
-          {/* Type & Date */}
-          <div className="w-32 flex-shrink-0">
-            <p className="text-sm font-medium text-foreground">{style.label}</p>
-            <p className="text-xs text-muted-foreground">
-              {workoutDate ? format(new Date(workoutDate), 'MMM d, yyyy') : '-'}
-            </p>
-            {workout.source?.provider && (
-              <SourceBadge
-                provider={workout.source.provider}
-                className="mt-1"
-              />
-            )}
-          </div>
-
-          {/* Stats - evenly spaced */}
-          <div className="flex-1 flex items-center justify-around">
-            {/* Duration */}
-            <div className="flex items-center gap-2">
-              <Timer className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {formatDuration(workout.duration_seconds)}
-                </p>
-                <p className="text-xs text-muted-foreground">Duration</p>
-              </div>
-            </div>
-
-            {/* Calories */}
-            <div className="flex items-center gap-2">
-              <Flame className="h-4 w-4 text-orange-400" />
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {formatCalories(workout.calories_kcal)}
-                </p>
-                <p className="text-xs text-muted-foreground">Calories</p>
-              </div>
-            </div>
-
-            {/* Avg Heart Rate */}
-            <div className="flex items-center gap-2">
-              <Heart className="h-4 w-4 text-rose-400" />
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {workout.avg_heart_rate_bpm
-                    ? `${Math.round(Number(workout.avg_heart_rate_bpm))} bpm`
-                    : '-'}
-                </p>
-                <p className="text-xs text-muted-foreground">Avg HR</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Expand indicator */}
-          <div className="w-8 flex-shrink-0 flex justify-end">
-            {isExpanded ? (
-              <ChevronUp className="h-5 w-5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
-            )}
-          </div>
-        </div>
+        <DataSourceInfo source={workout.source} />
       </button>
 
       {/* Expanded details */}
@@ -210,6 +212,7 @@ function WorkoutRow({
                     content={<ChartTooltipContent />}
                   />
                   <Line
+                    isAnimationActive={false}
                     dataKey="hr"
                     type="monotone"
                     stroke="var(--color-hr)"
@@ -276,7 +279,7 @@ function WorkoutRow({
           <div className="flex justify-end pt-2 border-t border-border/40">
             <button
               onClick={() => setShowDelete(true)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[hsl(var(--destructive-muted))] transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive-muted transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete workout

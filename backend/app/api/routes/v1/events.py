@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.database import DbSession
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.responses.activity import (
+    MenstrualCycleRecord,
     SleepSession,
     Workout,
 )
@@ -48,6 +49,13 @@ def list_sleep_sessions(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    filter_by_priority: Annotated[
+        bool,
+        Query(
+            description="When true, keep only the highest-priority source's sessions per sleep date "
+            "(provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+        ),
+    ] = False,
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
     params = EventRecordQueryParams(
@@ -56,7 +64,27 @@ def list_sleep_sessions(
         cursor=cursor,
         limit=limit,
     )
-    return event_record_service.get_sleep_sessions(db, user_id, params)
+    return event_record_service.get_sleep_sessions(db, user_id, params, filter_by_priority=filter_by_priority)
+
+
+@router.get("/users/{user_id}/events/menstrual-cycles")
+def list_menstrual_cycles(
+    user_id: UUID,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> PaginatedResponse[MenstrualCycleRecord]:
+    """Returns menstrual cycle records."""
+    params = EventRecordQueryParams(
+        start_datetime=parse_query_datetime(start_date),
+        end_datetime=parse_query_datetime(end_date),
+        cursor=cursor,
+        limit=limit,
+    )
+    return event_record_service.get_menstrual_cycles(db, user_id, params)
 
 
 @router.delete("/users/{user_id}/events/workouts/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -81,3 +109,15 @@ def delete_sleep_session(
     """Delete a sleep session."""
     if not event_record_service.delete_event_record(db, user_id, sleep_id, "sleep"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sleep session not found")
+
+
+@router.delete("/users/{user_id}/events/menstrual-cycles/{cycle_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_menstrual_cycle(
+    user_id: UUID,
+    cycle_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> None:
+    """Delete a menstrual cycle record."""
+    if not event_record_service.delete_event_record(db, user_id, cycle_id, "menstrual_cycle"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menstrual cycle record not found")

@@ -40,6 +40,7 @@ from app.schemas.sync_status import (
     SyncStatusEvent,
 )
 from app.utils.sse import format_comment, format_event
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,43 @@ def emit(event: SyncStatusEvent) -> None:
     Failures are logged but never raised — sync flow must not be blocked
     by Redis problems.
     """
+    # Mirror the SSE event into the structured logs so sync outcome metadata
+    # (status, item counts, inserted/updated split, message) is queryable in the
+    # deployment logs, not only on the frontend stream.
+    match event.status:
+        case SyncStatus.FAILED:
+            level = "error"
+        case SyncStatus.PARTIAL:
+            level = "warning"
+        case _:
+            level = "info"
+    extra = {
+        key: value
+        for key, value in {
+            "items_processed": event.items_processed,
+            "items_total": event.items_total,
+            "inserted": event.metadata.get("inserted"),
+            "updated": event.metadata.get("updated"),
+            "types": event.metadata.get("types"),
+            "detail": event.message,
+            "error": event.error,
+        }.items()
+        if value is not None
+    }
+    log_structured(
+        logger,
+        level,
+        "Sync status",
+        provider=event.provider,
+        action="sync_status",
+        status=str(event.status),
+        source=str(event.source),
+        stage=str(event.stage),
+        run_id=event.run_id,
+        user_id=str(event.user_id),
+        **extra,
+    )
+
     try:
         client = get_redis_client()
         payload = event.model_dump_json()
@@ -168,6 +206,7 @@ def emit_event(
     items_processed: int | None = None,
     items_total: int | None = None,
     error: str | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
     started_at: datetime | None = None,
     ended_at: datetime | None = None,
@@ -185,6 +224,7 @@ def emit_event(
         items_processed=items_processed,
         items_total=items_total,
         error=error,
+        primary_user_id=primary_user_id,
         metadata=metadata or {},
         started_at=started_at,
         ended_at=ended_at,
@@ -197,7 +237,7 @@ def get_recent_events(user_id: str | UUID, limit: int = 50) -> list[SyncStatusEv
     """Return the most recent stored events for a user (newest first)."""
     raw = get_redis_client().lrange(_user_recent_key(user_id), 0, max(0, limit - 1))
     events: list[SyncStatusEvent] = []
-    for item in raw:  # ty:ignore[not-iterable]
+    for item in raw:
         with suppress(ValueError, TypeError):
             events.append(SyncStatusEvent.model_validate_json(item))
     return events
@@ -217,7 +257,7 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
     """
     client = get_redis_client()
 
-    raw_run_ids: set[str | bytes] = client.smembers(_user_runs_key(user_id))  # ty:ignore[invalid-assignment]
+    raw_run_ids: set[str | bytes] = client.smembers(_user_runs_key(user_id))
     if not raw_run_ids:
         return []
 
@@ -256,6 +296,7 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
                     error=event.error,
                     started_at=event.started_at or started_at_by_run.get(event.run_id),
                     ended_at=event.ended_at,
+                    primary_user_id=event.primary_user_id,
                     last_update=event.timestamp,
                 )
             )
@@ -285,7 +326,7 @@ def get_all_run_summaries(
         user_ids = []
         cursor: int = 0
         while True:
-            cursor, keys = client.scan(cursor=cursor, match=pattern, count=200)  # ty:ignore[not-iterable]
+            cursor, keys = client.scan(cursor=cursor, match=pattern, count=200)
             for key in keys:
                 k = key if isinstance(key, str) else key.decode("utf-8")
                 parts = k.split(":")
@@ -376,6 +417,7 @@ def started(
     *,
     run_id: str | None = None,
     message: str | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
     """Emit a STARTED / IN_PROGRESS event."""
@@ -387,6 +429,7 @@ def started(
         status=SyncStatus.IN_PROGRESS,
         run_id=run_id,
         message=message,
+        primary_user_id=primary_user_id,
         metadata=metadata,
         started_at=datetime.now(timezone.utc),
     )
@@ -430,6 +473,7 @@ def completed(
     status: SyncStatus | str = SyncStatus.SUCCESS,
     message: str | None = None,
     items_processed: int | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
     """Emit a COMPLETED terminal event."""
@@ -442,6 +486,7 @@ def completed(
         run_id=run_id,
         message=message,
         items_processed=items_processed,
+        primary_user_id=primary_user_id,
         progress=1.0,
         metadata=metadata,
         ended_at=datetime.now(timezone.utc),
@@ -456,6 +501,7 @@ def failed(
     run_id: str,
     error: str,
     message: str | None = None,
+    primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> SyncStatusEvent:
     """Emit a FAILED terminal event."""
@@ -468,6 +514,7 @@ def failed(
         run_id=run_id,
         error=error,
         message=message,
+        primary_user_id=primary_user_id,
         metadata=metadata,
         ended_at=datetime.now(timezone.utc),
     )
@@ -493,4 +540,42 @@ def cancelled(
         message=message,
         metadata=metadata,
         ended_at=datetime.now(timezone.utc),
+    )
+
+
+def webhook_delivered(
+    user_id: str | UUID,
+    provider: str,
+    *,
+    status: SyncStatus,
+    items_processed: int | None = None,
+    message: str | None = None,
+    error: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> SyncStatusEvent:
+    """Record a single webhook delivery as a self-contained sync run.
+
+    Webhook processing is a one-shot operation (no separate started/progress
+    events), so this emits a single terminal event carrying both
+    ``started_at`` and ``ended_at`` set to now. ``source`` is always
+    :data:`SyncSource.WEBHOOK`.
+
+    ``status`` should be SUCCESS/PARTIAL when data was saved, FAILED on error,
+    or SKIPPED for delivered-but-no-op events (ignored / duplicate).
+    """
+    now = datetime.now(timezone.utc)
+    stage = SyncStage.FAILED if status == SyncStatus.FAILED else SyncStage.COMPLETED
+    return emit_event(
+        user_id=user_id,
+        provider=provider,
+        source=SyncSource.WEBHOOK,
+        stage=stage,
+        status=status,
+        run_id=new_run_id("wh"),
+        message=message,
+        items_processed=items_processed,
+        error=error,
+        metadata=metadata,
+        started_at=now,
+        ended_at=now,
     )

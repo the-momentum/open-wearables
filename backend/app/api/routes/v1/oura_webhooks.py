@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.database import DbSession
 from app.models import Developer
+from app.schemas.responses.incoming_webhooks import WebhookSubscriptionsResponse
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.oura.webhook_service import oura_webhook_service
 from app.utils.auth import get_current_developer
@@ -74,11 +75,11 @@ async def create_webhook_subscriptions(
 @router.get("/subscriptions")
 async def list_webhook_subscriptions(
     current_developer: Annotated[Developer, Depends(get_current_developer)],
-) -> dict:
+) -> WebhookSubscriptionsResponse:
     """List active Oura webhook subscriptions."""
     try:
         subscriptions = await oura_webhook_service.list_subscriptions()
-        return {"subscriptions": subscriptions}
+        return WebhookSubscriptionsResponse(subscriptions=subscriptions)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPError as e:

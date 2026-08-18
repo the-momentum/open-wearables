@@ -1,0 +1,264 @@
+---
+title: "Oura Ring API Integration"
+description: "Connect Oura Ring via OAuth 2.0 to sync sleep with stages, readiness, activity, 24/7 heart rate, SpO2, and workouts. Real-time updates via webhooks. Requires an Oura account."
+keywords: ["oura api integration", "oura ring api", "oura health data", "oura sleep readiness api"]
+"og:title": "Oura Ring API Integration | Open Wearables"
+"og:description": "Connect Oura Ring via OAuth 2.0. Syncs sleep, readiness, activity, heart rate, SpO2, and workouts. Real-time updates via webhooks."
+"og:url": "https://docs.openwearables.io/providers/oura-api-integration"
+"og:type": "article"
+"twitter:title": "Oura Ring API Integration | Open Wearables"
+"twitter:description": "Connect Oura Ring via OAuth 2.0. Syncs sleep, readiness, activity, heart rate, SpO2, and workouts. Real-time updates via webhooks."
+"twitter:card": "summary_large_image"
+---
+
+<Note>
+**Need help with your Oura integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Oura provides access to sleep, readiness, activity, heart rate, and workout data through the Oura API v2. The integration uses OAuth 2.0 for authentication and supports both pull-based syncing and real-time webhooks - **we recommend running Oura in webhook mode** for the freshest data.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Sleep (with stages) | Yes |
+| Readiness (recovery score) | Yes |
+| Activity (daily activity score) | Yes |
+| Heart rate (24/7) | Yes |
+| SpO2 / breathing disturbance | Yes |
+| VO2 max | Yes |
+| Cardiovascular age | Yes |
+| Workouts / Activities | Yes |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Webhooks (push)** - *recommended* | Oura notifies Open Wearables in real time when sleep, readiness, activity, SpO2, or workout data is created or updated. Subscriptions are app-level and are registered automatically when you switch Oura to webhook live-sync mode. |
+| **Polling (pull)** | Open Wearables periodically fetches daily metrics via the Oura API v2 (default: every hour via Celery Beat) |
+
+<Tip>
+**We recommend running Oura in webhook mode.** You get data as soon as Oura finalizes it - typically within seconds instead of up to an hour - with less API traffic and no polling lag. Open Wearables still falls back to periodic pull, so webhooks are purely additive. See **Enable webhooks (recommended)** in the walkthrough below.
+</Tip>
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret from the Oura Developer portal
+- **OAuth scopes** configured
+- **Redirect URI** registered in the Oura Developer portal
+- **Webhook mode** enabled (recommended, for real-time updates) - subscriptions are registered automatically
+
+## Prerequisites
+
+- A personal Oura account (Ring owner)
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Sign in to the Oura Developer portal">
+    Go to the [Oura Developer portal](https://cloud.ouraring.com/) and sign in with your Oura account. Your existing **Applications** are listed on the **Your Applications** page.
+
+    <Note>
+    Login requires a personal Oura account - the same one you use with the Oura app.
+    </Note>
+  </Step>
+
+  <Step title="Create an OAuth application">
+    Click **Create New** and fill in the **New Application** form:
+
+    - **Display Name**: The name shown to users on the consent screen
+    - **Description**: A short description of your application
+    - **Contact Email**: Who Oura can contact about the app
+    - **Website**: Your application or company URL
+    - **Privacy Policy** / **Terms of Service**: URLs to your policy pages
+    - **Redirect URIs**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/oura/callback`, so register that exact URL here. Oura requires a publicly accessible **HTTPS** URL, so plain `http://localhost` is not accepted - for local development, expose your backend with [ngrok](/dev-guides/ngrok-setup) and register e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/oura/callback`. In production use your public domain, e.g. `https://your-domain/api/v1/oauth/oura/callback`.
+    - **Scopes**: Select the data scopes your app needs (see the [OAuth Scopes Reference](#oauth-scopes-reference) below)
+
+    Tick **I agree to the Oura API Agreement**, then click **Create Application**.
+
+    After creating the app, open it via **View Details** to retrieve:
+    - **Client ID**
+    - **Client Secret**
+
+    <Warning>
+    Your Client Secret should never be logged or shared. It should only be used server-side.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/oura/callback. For local dev, use your ngrok URL.
+API_BASE_URL=https://your-subdomain.ngrok-free.app
+
+#--- Oura ---#
+OURA_CLIENT_ID=your-oura-client-id
+OURA_CLIENT_SECRET=your-oura-client-secret
+OURA_DEFAULT_SCOPE=personal daily heartrate workout session spo2 ring_configuration heart_health
+# Token Oura echoes back when verifying your webhook subscription.
+# Set a dedicated random value - do not reuse your app SECRET_KEY.
+OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
+```
+
+    **Configuration details:**
+
+    | Variable | Description |
+    |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/oura/callback`, which must match the redirect URI registered in the Developer portal and must be a public HTTPS URL. For local dev, use your [ngrok](/dev-guides/ngrok-setup) URL |
+    | `OURA_CLIENT_ID` | Client ID from the Developer portal |
+    | `OURA_CLIENT_SECRET` | Client Secret from the Developer portal |
+    | `OURA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Must be a subset of the scopes enabled on your application |
+    | `OURA_WEBHOOK_VERIFICATION_TOKEN` | Token Oura echoes back when verifying your webhook subscriptions. Set a dedicated random value - do not reuse your app `SECRET_KEY` |
+
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow.
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/oura/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://cloud.ouraring.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&scope=personal+daily+heartrate+workout+session+spo2+ring_configuration+heart_health&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Oura and authorize your app.
+
+    **3. Oura redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/oura/callback`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+
+    **4. Verify the connection:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "oura"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/oura/callback`) that Oura sends the authorization code to.
+    </Note>
+  </Step>
+
+  <Step title="Enable webhooks (recommended)">
+    **We recommend webhooks over polling.** They give you real-time updates instead of waiting for the next polling cycle - when Oura records new sleep, readiness, activity, SpO2, or workout data, it immediately notifies Open Wearables, which fetches and saves the record.
+
+    By default Oura runs in **pull** (polling) mode. Switching its live-sync mode to **webhook** registers the subscriptions for you automatically - Open Wearables dispatches a background task that creates a subscription for every supported data type and event type. Make sure `OURA_CLIENT_ID`, `OURA_CLIENT_SECRET`, and a public `API_BASE_URL` are configured first.
+
+    **Switch Oura to webhook mode from the dashboard:**
+
+    In your Open Wearables dashboard, go to **Settings → Providers**, find **Oura**, and switch its live-sync control from **Periodic pull** to **Webhook**. That's it - the subscriptions are registered in the background.
+
+    <Note>
+    Because the callback must be publicly reachable over HTTPS, set `API_BASE_URL` to your public domain (or your [ngrok](/dev-guides/ngrok-setup) URL for local development) before switching to webhook mode.
+    </Note>
+
+    Open Wearables derives the callback URL from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/providers/oura/webhooks`, registers a subscription for each data type / event type, and Oura verifies each one using your `OURA_WEBHOOK_VERIFICATION_TOKEN`. Subscriptions are **app-level** - they cover all authorized users.
+
+    **Subscribed data types:** `sleep`, `daily_sleep`, `daily_readiness`, `daily_activity`, `daily_spo2`, `daily_cardiovascular_age`, `workout` - each for the `create` and `update` events.
+
+    <Note>
+    Oura subscriptions expire after 90 days and are renewed automatically by a scheduled task (monthly). You can also manage them manually via `POST /api/v1/providers/oura/webhooks/subscriptions` (register / re-register with a `callback_url`) and `POST /api/v1/providers/oura/webhooks/subscriptions/renew`.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync is triggered automatically after a successful OAuth connection. To manually sync or fetch historical data:
+
+    ```bash
+    # Sync all data types
+    curl -X POST "http://localhost:8000/api/v1/providers/oura/users/{user_id}/sync?data_type=all" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You can also sync specific data types:
+
+    ```bash
+    # Sync only workouts
+    curl -X POST "http://localhost:8000/api/v1/providers/oura/users/{user_id}/sync?data_type=workouts" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Sync only 24/7 data (sleep, readiness, activity, heart rate, SpO2)
+    curl -X POST "http://localhost:8000/api/v1/providers/oura/users/{user_id}/sync?data_type=247" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch sleep sessions
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch timeseries data (heart rate, SpO2, activity, VO2 max, cardiovascular age)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Oura integration is working end-to-end.
+  </Step>
+</Steps>
+
+## API Details
+
+| Detail | Value |
+|--------|-------|
+| **Auth endpoint** | `https://cloud.ouraring.com/oauth/authorize` |
+| **Token endpoint** | `https://api.ouraring.com/oauth/token` |
+| **Revoke endpoint** | `https://api.ouraring.com/oauth/revoke` |
+| **Data API base** | `https://api.ouraring.com/v2/usercollection` |
+| **Webhook callback** | `POST /api/v1/providers/oura/webhooks` |
+
+## OAuth Scopes Reference
+
+| Scope | Description |
+|-------|-------------|
+| `email` | User's email address |
+| `personal` | Personal information (age, biological sex, height, weight) |
+| `daily` | Daily summaries - sleep, readiness, and activity scores |
+| `heartrate` | 24/7 heart rate data |
+| `workout` | Workout / activity sessions |
+| `tag` | User-entered tags |
+| `session` | Guided and unguided sessions (e.g. moment, breathing) |
+| `spo2` | Blood oxygen (SpO2) and breathing disturbance data |
+| `ring_configuration` | Ring hardware configuration |
+| `stress` | Daily stress data |
+| `heart_health` | Cardiovascular age and VO2 max |
+
+<Note>
+The scopes requested by Open Wearables are controlled by `OURA_DEFAULT_SCOPE` and must be a subset of the scopes enabled on your application in the Developer portal.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Coverage Matrix" icon="table" href="/providers/coverage">
+    See the full data coverage comparison.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Oura API Docs](https://cloud.ouraring.com/v2/docs).
+</Note>

@@ -8,11 +8,9 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
 
-from app.integrations.celery.tasks.sync_vendor_data_task import (
-    _build_sync_params,
-    sync_vendor_data,
-)
+from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.schemas.auth import ConnectionStatus
+from app.utils.sync_params import build_sync_params
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -355,78 +353,25 @@ class TestSyncVendorDataTask:
 
 
 class TestBuildSyncParams:
-    """Test suite for _build_sync_params helper function."""
+    """Test suite for build_sync_params helper function."""
 
-    def test_build_sync_params_suunto(self) -> None:
-        """Test building Suunto-specific parameters."""
-        # Arrange
+    def test_build_sync_params_with_dates(self) -> None:
+        """Both dates are passed through under the canonical keys."""
         start_date = "2025-01-01T00:00:00Z"
         end_date = "2025-12-31T23:59:59Z"
 
-        # Act
-        params = _build_sync_params("suunto", start_date, end_date)
+        params = build_sync_params(start_date, end_date)
 
-        # Assert - Suunto uses generic params (since/until timestamps)
-        assert "since" in params
-        assert "until" in params
-        assert isinstance(params["since"], int)
-        assert isinstance(params["until"], int)
-        assert params["start_date"] == start_date
-        assert params["end_date"] == end_date
-
-    def test_build_sync_params_polar(self) -> None:
-        """Test building Polar-specific parameters."""
-        # Arrange
-        start_date = "2025-01-01T00:00:00Z"
-        end_date = "2025-12-31T23:59:59Z"
-
-        # Act
-        params = _build_sync_params("polar", start_date, end_date)
-
-        # Assert
-        assert params["samples"] is False
-        assert params["zones"] is False
-        assert params["route"] is False
-
-    def test_build_sync_params_garmin(self) -> None:
-        """Test building Garmin-specific parameters."""
-        # Arrange
-        start_date = "2025-01-01T00:00:00Z"
-        end_date = "2025-12-31T23:59:59Z"
-
-        # Act
-        params = _build_sync_params("garmin", start_date, end_date)
-
-        # Assert
-        assert params["summary_start_time"] == start_date
-        assert params["summary_end_time"] == end_date
+        assert params == {"start_date": start_date, "end_date": end_date}
 
     def test_build_sync_params_no_dates(self) -> None:
-        """Test building parameters without date range."""
-        # Act
-        params = _build_sync_params("garmin", None, None)
+        """None in, None out - no provider-specific keys are invented."""
+        params = build_sync_params(None, None)
 
-        # Assert
-        assert "summary_start_time" not in params
-        assert "summary_end_time" not in params
-
-    def test_build_sync_params_suunto_no_start_date(self) -> None:
-        """Test Suunto parameters without start date has no since/until."""
-        # Act
-        params = _build_sync_params("suunto", None, None)
-
-        # Assert - when no dates provided, since/until are not set
-        assert "since" not in params
-        assert "until" not in params
-        assert params["start_date"] is None
-        assert params["end_date"] is None
+        assert params == {"start_date": None, "end_date": None}
 
     def test_build_sync_params_invalid_date_format(self) -> None:
-        """Test handling of invalid date formats."""
-        # Act
-        params = _build_sync_params("garmin", "invalid-date", "2025-12-31T23:59:59Z")
+        """An unparseable date is passed through as-is, not dropped or raised."""
+        params = build_sync_params("invalid-date", "2025-12-31T23:59:59Z")
 
-        # Assert - should not raise error, just skip invalid date
-        assert "summary_end_time" in params
-        # Invalid start date should be skipped
-        assert params.get("summary_start_time") is None or params["summary_start_time"] == "invalid-date"
+        assert params == {"start_date": "invalid-date", "end_date": "2025-12-31T23:59:59Z"}

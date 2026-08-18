@@ -1,24 +1,27 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
   EllipsisVertical,
   History,
-  Info,
   Loader2,
+  Link2,
+  MinusCircle,
   PlayCircle,
   RefreshCw,
   RotateCcw,
   Timer,
+  Trash2,
   TriangleAlert,
   Unlink,
-  Watch,
   XCircle,
   Zap,
 } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
+import { API_CONFIG } from '@/lib/api/config';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,6 +46,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { providerLabel } from '@/components/common/source-badge';
 import { cn } from '@/lib/utils';
 import {
   STAGE_LABELS,
@@ -53,6 +57,7 @@ import {
 } from '@/lib/utils/sync-format';
 import {
   useDisconnectProvider,
+  usePurgeProviderData,
   useSynchronizeDataFromProvider,
   useSyncHistoricalData,
   useGarminBackfillStatus,
@@ -122,6 +127,7 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
   const isPartial = run.status === 'partial';
   const isFailed = run.status === 'failed';
   const isCancelled = run.status === 'cancelled';
+  const isSkipped = run.status === 'skipped';
 
   const Icon = isSuccess
     ? CheckCircle2
@@ -129,7 +135,9 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
       ? AlertTriangle
       : isFailed || isCancelled
         ? XCircle
-        : PlayCircle;
+        : isSkipped
+          ? MinusCircle
+          : PlayCircle;
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border bg-card/40 p-2.5">
@@ -150,6 +158,18 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
         <div className="flex flex-col min-w-0 gap-0.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{sourceLabel}</span>
+            {run.source === 'linked_account' && run.primary_user_id && (
+              <>
+                <span>·</span>
+                <Link
+                  to="/users/$userId"
+                  params={{ userId: run.primary_user_id }}
+                  className="font-mono text-blue-500 hover:text-blue-400 hover:underline transition-colors"
+                >
+                  {run.primary_user_id.slice(0, 8)}…
+                </Link>
+              </>
+            )}
             <span>·</span>
             <span>{formatRelative(run.last_update)}</span>
             {run.started_at && run.ended_at && (
@@ -169,10 +189,16 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
               </>
             )}
           </div>
-          {run.error && (
+          {run.error ? (
             <p className="text-xs text-rose-600 dark:text-rose-400 line-clamp-1">
               {run.error}
             </p>
+          ) : (
+            run.message && (
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                {run.message}
+              </p>
+            )
           )}
         </div>
       </div>
@@ -213,17 +239,36 @@ function parseScopeString(scope: string): string[] {
   return scope.split(/[,\s]+/).filter(Boolean);
 }
 
-export function ConnectionCard({
+// Shorten scope labels for inline display (e.g. ACTIVITY_EXPORT → Activity)
+function formatScopeChip(scope: string): string {
+  return scope
+    .replace(/_(EXPORT|IMPORT|READ|WRITE)$/i, '')
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function ConnectionCardComponent({
   connection,
   className,
   activeSync,
   recentRuns,
 }: ConnectionCardProps) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [showLastSyncs, setShowLastSyncs] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const iconUrl = connection.icon_url
+    ? new URL(connection.icon_url, API_CONFIG.baseUrl).toString()
+    : null;
+  const displayName = providerLabel(connection.provider);
 
   const { mutate: disconnectProvider, isPending: isDisconnecting } =
     useDisconnectProvider(connection.provider, connection.user_id);
+
+  const { mutate: purgeProviderData, isPending: isPurgingData } =
+    usePurgeProviderData(connection.provider, connection.user_id);
 
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
@@ -286,21 +331,21 @@ export function ConnectionCard({
       case 'active':
         return (
           <Badge variant="success" className="flex items-center gap-1">
-            <CheckCircle2 className="h-3 w-3 text-green-400" />
+            <CheckCircle2 className="h-3 w-3" />
             Active
           </Badge>
         );
       case 'revoked':
         return (
           <Badge variant="destructive" className="flex items-center gap-1">
-            <XCircle className="h-3 w-3 text-[hsl(var(--destructive-muted))]" />
+            <XCircle className="h-3 w-3" />
             Revoked
           </Badge>
         );
       case 'expired':
         return (
           <Badge variant="warning" className="flex items-center gap-1">
-            <TriangleAlert className="h-3 w-3 text-orange-400" />
+            <TriangleAlert className="h-3 w-3" />
             Expired
           </Badge>
         );
@@ -314,13 +359,23 @@ export function ConnectionCard({
       <CardHeader className="pb-4">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            {/* Provider Icon - placeholder for now TODO: Implement provider icon */}
-            <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center">
-              <Watch className="h-6 w-6 text-muted-foreground" />
+            <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center overflow-hidden p-2">
+              {iconUrl && !imageError ? (
+                <img
+                  src={iconUrl}
+                  alt={`${displayName} logo`}
+                  className="h-full w-full object-contain"
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <span className="text-lg font-medium text-black">
+                  {displayName.charAt(0).toUpperCase()}
+                </span>
+              )}
             </div>
             <div>
               <h3 className="font-semibold text-card-foreground text-lg">
-                {connection.provider}
+                {displayName}
               </h3>
               <p className="text-sm text-muted-foreground mt-0.5">
                 Last live sync:{' '}
@@ -330,19 +385,87 @@ export function ConnectionCard({
                     })
                   : 'Never'}
               </p>
-              {connection.live_sync_mode && (
-                <div className="mt-1.5">
-                  {connection.live_sync_mode === 'webhook' ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                      <Zap className="h-3 w-3" />
-                      Webhook
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
-                      <Timer className="h-3 w-3" />
-                      Periodic pull
-                    </span>
+              {(connection.live_sync_mode || scopeItems.length > 0) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {connection.live_sync_mode &&
+                    (connection.live_sync_mode === 'webhook' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        <Zap className="h-3 w-3" />
+                        Webhook
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
+                        <Timer className="h-3 w-3" />
+                        Periodic pull
+                      </span>
+                    ))}
+                  {scopeItems.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground border border-border/60 cursor-default hover:bg-muted hover:text-foreground hover:border-border transition-colors">
+                          {scopeItems.length} scope
+                          {scopeItems.length !== 1 ? 's' : ''}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        align="start"
+                        sideOffset={6}
+                        hideArrow
+                        className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                      >
+                        <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                          Granted permissions
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {scopeItems.map((s) => (
+                            <span
+                              key={s}
+                              className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-medium bg-zinc-800 text-zinc-200 border border-zinc-700"
+                            >
+                              {formatScopeChip(s)}
+                            </span>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
+                  {connection.status === 'active' &&
+                    connection.provider_user_id &&
+                    connection.linked_user_ids &&
+                    connection.linked_user_ids.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-default">
+                            <Link2 className="h-3 w-3" />
+                            {connection.linked_user_ids.length} linked
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          align="start"
+                          sideOffset={6}
+                          hideArrow
+                          className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                        >
+                          <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                            Other linked OW accounts
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {connection.linked_user_ids.map((uid) => (
+                              <Link
+                                key={uid}
+                                to="/users/$userId"
+                                params={{ userId: uid }}
+                                className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-colors"
+                              >
+                                {uid.slice(0, 8)}
+                              </Link>
+                            ))}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                 </div>
               )}
             </div>
@@ -366,6 +489,14 @@ export function ConnectionCard({
                     Disconnect
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive cursor-pointer"
+                  disabled={isPurgingData}
+                  onClick={() => setShowDeleteDataDialog(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete all data
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <AlertDialog
@@ -374,12 +505,10 @@ export function ConnectionCard({
             >
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    Disconnect {connection.provider}?
-                  </AlertDialogTitle>
+                  <AlertDialogTitle>Disconnect {displayName}?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This will revoke the connection. The user will need to
-                    reconnect to {connection.provider} to resume data syncing.
+                    reconnect to {displayName} to resume data syncing.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -390,39 +519,38 @@ export function ConnectionCard({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <AlertDialog
+              open={showDeleteDataDialog}
+              onOpenChange={setShowDeleteDataDialog}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete all {displayName} data?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently deletes every record synced from{' '}
+                    {displayName} for this user — activities, sleep, time series
+                    and health scores — and revokes the connection. Data from
+                    other providers is not affected. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => purgeProviderData()}
+                  >
+                    Delete all data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Show data scope */}
-        {scopeItems.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default"
-              >
-                <Info className="h-3.5 w-3.5 shrink-0" />
-                <span>Data scope</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start" className="max-w-sm">
-              <div className="flex flex-wrap gap-1 py-0.5">
-                {scopeItems.map((scopeItem) => (
-                  <Badge
-                    key={scopeItem}
-                    variant="secondary"
-                    className="text-[11px] font-normal px-1.5 py-0"
-                  >
-                    {scopeItem}
-                  </Badge>
-                ))}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        )}
-
         {/* Show backfill progress for Garmin */}
         {isBackfillInProgress && backfillStatus && (
           <div className="space-y-2">
@@ -501,8 +629,8 @@ export function ConnectionCard({
         {timedOutTypes.length > 0 &&
           !isBackfillInProgress &&
           !isPermanentlyFailed && (
-            <div className="space-y-2 p-3 bg-[hsl(var(--warning-muted)/0.1)] rounded-lg border border-[hsl(var(--warning-muted)/0.2)]">
-              <p className="text-sm font-medium text-[hsl(var(--warning-muted))] dark:text-[hsl(var(--warning-muted))]">
+            <div className="space-y-2 p-3 bg-warning-muted/10 rounded-lg border border-warning-muted/20">
+              <p className="text-sm font-medium text-warning-muted dark:text-warning-muted">
                 Some data types timed out:
               </p>
               <div className="space-y-1.5">
@@ -698,3 +826,5 @@ export function ConnectionCard({
     </Card>
   );
 }
+
+export const ConnectionCard = memo(ConnectionCardComponent);

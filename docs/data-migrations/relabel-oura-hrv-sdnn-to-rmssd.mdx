@@ -1,0 +1,71 @@
+---
+title: "Relabel Oura HRV SDNN to RMSSD"
+sidebarTitle: "Oura HRV SDNN → RMSSD"
+description: "Relabels Oura HRV series stored under the SDNN type to RMSSD, correcting rows ingested before the label fix. Scoped to provider='oura'."
+keywords: ["oura", "hrv", "rmssd", "sdnn", "heart rate variability", "data migration", "relabel"]
+"og:title": "Relabel Oura HRV SDNN to RMSSD | Open Wearables"
+"og:description": "Corrects Oura HRV rows stored under the SDNN series type to RMSSD. The values are unchanged — only the metric label is fixed."
+"og:url": "https://docs.openwearables.io/data-migrations/relabel-oura-hrv-sdnn-to-rmssd"
+"og:type": "article"
+---
+
+**Script:** `scripts/data_migrations/relabel_oura_hrv_sdnn_to_rmssd.py`
+
+## Problem
+
+Oura reports RMSSD-based HRV, but the ingestion path historically stored those values under the **SDNN** series type (`id=3`) instead of **RMSSD** (`id=7`). The numeric values are correct — only the metric label (and therefore its unit semantics) was wrong.
+
+The ingestion path was fixed separately in `backend/app/services/providers/oura/data_247.py`, so new Oura HRV samples are now stored as RMSSD. This script corrects pre-existing rows in `data_point_series` and `data_point_series_archive`.
+
+## What it does
+
+For `provider='oura'` rows only, it relabels every HRV series from SDNN (`id=3`) to RMSSD (`id=7`). The scope is strict — other providers' genuine SDNN data (e.g. Apple, Ultrahuman) is left untouched.
+
+Both `data_point_series` and `data_point_series_archive` are updated.
+
+### Conflict handling
+
+After the ingestion fix, a re-sync can write a correct RMSSD row at the same key as an old SDNN row, which would collide with the unique constraint on relabel:
+
+- `data_point_series` — unique on `(data_source_id, series_type_definition_id, recorded_at)`
+- `data_point_series_archive` — unique on `(data_source_id, series_type_definition_id, bucket_start_at, aggregation_type)`
+
+In that case the stale SDNN duplicate is **deleted** (the RMSSD row already holds the same Oura value) rather than relabeled.
+
+### Idempotency
+
+Once relabeled, rows no longer match the SDNN filter, so re-runs are no-ops. The script is wired into container startup (`scripts/start/app.sh`) and runs automatically on every deploy until removed.
+
+<Note>
+This script is scheduled for removal after **2026-09-01**, once all deployments have migrated.
+</Note>
+
+## Usage
+
+```bash
+# Preview affected rows (recommended first step)
+docker compose exec app uv run python scripts/data_migrations/relabel_oura_hrv_sdnn_to_rmssd.py --dry-run
+
+# Apply corrections
+docker compose exec app uv run python scripts/data_migrations/relabel_oura_hrv_sdnn_to_rmssd.py
+```
+
+## Options
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Print how many rows would be relabeled and how many duplicates would be removed. No changes made. |
+
+## Dry run output
+
+```
+data_point_series:         Would relabel 1284, remove 0 duplicate(s)
+data_point_series_archive: Would relabel 96, remove 0 duplicate(s)
+
+Dry run — no changes made.
+```
+
+## Related
+
+- Commit `3bcf2973` — the ingestion fix (`oura/data_247.py`) that stores new Oura HRV as RMSSD.
+- [Coverage Matrix](/providers/coverage) — Oura HRV is listed under `heart_rate_variability_rmssd`.

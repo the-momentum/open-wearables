@@ -84,3 +84,17 @@ class UltrahumanOAuth(BaseOAuthTemplate):
         except Exception as e:
             self.logger.error(f"Unexpected error fetching Ultrahuman user profile for user {user_id}: {e}")
             return {"user_id": None, "username": None}
+
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
+        """Revoke Ultrahuman OAuth access for this user."""
+
+        response = httpx.post(
+            "https://partner.ultrahuman.com/api/partners/oauth/revoke",
+            data={
+                "token": access_token,
+                "client_id": self.credentials.client_id,
+                "client_secret": self.credentials.client_secret,
+            },
+            timeout=30.0,
+        )
+        response.raise_for_status()

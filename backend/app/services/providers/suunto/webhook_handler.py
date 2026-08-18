@@ -53,6 +53,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
     the ``X-HMAC-SHA256-Signature`` request header.
     """
 
+    user_id_field = "username"
+
     def __init__(self, suunto_workouts: SuuntoWorkouts, suunto_247: Suunto247Data) -> None:
         super().__init__("suunto")
         self.suunto_workouts = suunto_workouts
@@ -276,8 +278,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         for sample in samples:
             try:
                 normalized = self.suunto_247.normalize_sleep(sample, user_id)
-                self.suunto_247.save_sleep_data(db, user_id, normalized)
-                saved += 1
+                if self.suunto_247.save_sleep_data(db, user_id, normalized):
+                    saved += 1
             except Exception as exc:
                 log_structured(
                     logger,

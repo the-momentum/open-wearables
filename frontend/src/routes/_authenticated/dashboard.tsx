@@ -42,8 +42,8 @@ function DashboardPage() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        <div className="absolute -left-32 top-0 h-72 w-72 rounded-full bg-[hsl(var(--primary)/0.04)] blur-3xl" />
-        <div className="absolute right-0 bottom-0 h-72 w-72 rounded-full bg-[hsl(var(--accent)/0.03)] blur-3xl" />
+        <div className="absolute -left-32 top-0 h-72 w-72 rounded-full bg-primary/4 blur-3xl" />
+        <div className="absolute right-0 bottom-0 h-72 w-72 rounded-full bg-accent/3 blur-3xl" />
       </div>
 
       <div className="relative space-y-6">
@@ -51,12 +51,12 @@ function DashboardPage() {
           title="Dashboard"
           description="Your platform overview and key metrics"
           badge={
-            <div className="inline-flex items-center gap-2 rounded-full border border-[hsl(var(--success-muted)/0.3)] bg-[hsl(var(--success-muted)/0.08)] px-3 py-1">
+            <div className="inline-flex items-center gap-2 rounded-full border border-success-muted/30 bg-success-muted/8 px-3 py-1">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--success-muted))] opacity-60" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[hsl(var(--success-muted))]" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success-muted opacity-60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success-muted" />
               </span>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--success-muted))]">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-success-muted">
                 Live
               </span>
             </div>
@@ -69,8 +69,6 @@ function DashboardPage() {
         {/* Charts Section */}
         <div className="grid gap-6 lg:grid-cols-7">
           <DataMetricsSection
-            topSeriesTypes={stats.data_points.top_series_types}
-            topWorkoutTypes={stats.data_points.top_workout_types}
             connectionsCoverage={stats.connections_coverage}
             totalUsers={stats.total_users.count}
             className="lg:col-span-4"

@@ -48,7 +48,7 @@ src/
 │   ├── query/keys.ts    # Query key factory
 │   ├── validation/      # Zod schemas
 │   └── errors/          # Error handling
-└── styles.css           # Tailwind + CSS variables
+└── styles.css           # Tailwind theme config (@theme) + CSS variables
 ```
 
 ## Reusable Components
@@ -204,7 +204,7 @@ export const queryKeys = {
 
 ### Route Constants
 
-All frontend route paths are centralized in `src/lib/constants/routes.ts`. **Never hardcode route paths** - always import from this file.
+All frontend route paths are centralized in `src/lib/constants/routes.ts`. **Never hardcode route paths**—always import from this file.
 
 ```typescript
 // src/lib/constants/routes.ts
@@ -418,6 +418,36 @@ onError: (error) => {
 },
 ```
 
+## Styling
+
+Tailwind v4 is configured CSS-first. There is no `tailwind.config.ts` — the
+theme lives in `src/styles.css`:
+
+- `:root` holds the raw design tokens as HSL triplets (`--primary: 185 100% 50%`)
+- `@theme inline` maps them to Tailwind namespaces (`--color-primary: hsl(var(--primary))`).
+  Use `inline` for any token that references another variable, otherwise the
+  `var()` resolves where the theme variable is defined rather than where it is used
+- `@theme` holds static tokens (`--font-sans`, `--ease-*`, `--shadow-*`)
+
+Add a token by declaring it in `:root` and mapping it in `@theme inline`; the
+matching utility (`bg-*`, `text-*`, `rounded-*`, `animate-*`) is generated
+automatically. Do not reintroduce a JS config or `@config` — v4 treats those as
+legacy.
+
+Three things to know:
+
+- `dark:` is driven by a `.dark` ancestor class via `@custom-variant`, not by
+  `prefers-color-scheme`
+- a token declared in `@theme` is only emitted to `:root` if some utility uses
+  it. Unused ones are stripped from the build, so reaching for one directly in a
+  `var()` — in an inline style or a hand-written rule — resolves to nothing.
+  Tokens that need to exist regardless belong in `:root`, like the `--duration-*`
+  values
+- there is no `--duration-*` namespace, so `duration-fast` and similar names do
+  not work. Use `duration-150` or the arbitrary-value form reading the variable
+
+See [Theme variables](https://tailwindcss.com/docs/theme).
+
 ## Adding shadcn/ui Components
 
 ```bash
@@ -444,14 +474,18 @@ import { cn } from '@/lib/utils';
 
 ## Environment Variables
 
-Access via `import.meta.env`:
+The backend API URL comes from `VITE_API_URL`, resolved at runtime by `resolveApiUrl()` in `src/lib/api/runtime-config.ts` (injected into the SSR HTML as `window.__APP_CONFIG__`). Use `API_CONFIG.baseUrl` from `src/lib/api/config.ts`:
 
 ```typescript
 // src/lib/api/config.ts
+import { resolveApiUrl } from './runtime-config';
+
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseUrl: resolveApiUrl(),
 };
 ```
+
+Never read `import.meta.env.VITE_API_URL` directly in application code—Vite inlines it at build time, which breaks runtime configuration of the published Docker image.
 
 ## Testing
 

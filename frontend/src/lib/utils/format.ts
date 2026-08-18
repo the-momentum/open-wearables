@@ -3,6 +3,19 @@
  */
 
 /**
+ * Parse a date-only API string (e.g. "2026-06-09") as a local calendar date.
+ *
+ * `new Date("2026-06-09")` parses date-only strings as UTC midnight, which then
+ * renders as the previous day when formatted in a negative-UTC timezone (e.g. a
+ * US user sees Jun 9 data labelled Jun 8). Building the Date from local
+ * components keeps the calendar day intact in every timezone.
+ */
+export function parseApiDate(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
  * Format a date string to a localized string representation.
  * Returns 'Never' if the date is null or undefined.
  */
@@ -60,6 +73,22 @@ export function formatMinutes(minutes: number | null | undefined): string {
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined) return '-';
   return value.toLocaleString();
+}
+
+const compactNumberFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Format a large aggregate count compactly: 8_432 -> "8.4K", 1_450_000 -> "1.5M",
+ * 2.3e9 -> "2.3B". Values below 1000 are shown in full. Rolls K -> M -> B -> T automatically
+ * (never "1000K"). Use for counts (data points, records, per-type/provider totals); for precise
+ * physical quantities (steps, calories, distance) use formatNumber instead.
+ */
+export function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-';
+  return compactNumberFormatter.format(value);
 }
 
 /**

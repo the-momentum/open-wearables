@@ -2,7 +2,7 @@ import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
 import type { ApiKey, ApiKeyCreate, ApiKeyUpdate } from '../types';
 
-export const credentialsService = {
+export const apiKeysService = {
   async getApiKeys(): Promise<ApiKey[]> {
     return apiClient.get<ApiKey[]>(API_ENDPOINTS.apiKeys);
   },

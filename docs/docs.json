@@ -12,6 +12,10 @@
     {
       "source": "/dev-guides/backend-e2e-integration",
       "destination": "/dev-guides/integration-guide"
+    },
+    {
+      "source": "/deployment/docker-images",
+      "destination": "/deployment/docker"
     }
   ],
   "navigation": {
@@ -32,7 +36,8 @@
             "pages": [
               "architecture/system-overview",
               "architecture/unified-data-model",
-              "architecture/data-types"
+              "architecture/data-types",
+              "architecture/multi-account-sync"
             ]
           },
           {
@@ -48,7 +53,6 @@
             "pages": [
               "providers/supported",
               "providers/coverage",
-              "providers/garmin-api-integration",
               "providers/garmin-data-pipeline"
             ]
           },
@@ -121,7 +125,8 @@
               "data-migrations/index",
               "data-migrations/backfill-garmin-sleep-end-datetime",
               "data-migrations/backfill-sleep-scores",
-              "data-migrations/normalize-body-fat-percentage"
+              "data-migrations/normalize-body-fat-percentage",
+              "data-migrations/relabel-oura-hrv-sdnn-to-rmssd"
             ]
           },
           {
@@ -134,6 +139,7 @@
           {
             "group": "Deployment",
             "pages": [
+              "deployment/docker",
               "deployment/railway"
             ]
           },
@@ -161,6 +167,7 @@
             "pages": [
               "api-reference/guides/quick-integration",
               "api-reference/guides/webhooks",
+              "api-reference/guides/provider-webhook-subscriptions",
               "api-reference/guides/sync-status-stream",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
@@ -188,7 +195,8 @@
             "group": "Connections",
             "pages": [
               "GET /api/v1/users/{user_id}/connections",
-              "DELETE /api/v1/users/{user_id}/connections/{provider}"
+              "DELETE /api/v1/users/{user_id}/connections/{provider}",
+              "DELETE /api/v1/users/{user_id}/connections/{provider}/data"
             ]
           },
           {
@@ -243,6 +251,12 @@
             "group": "Data Sources",
             "pages": [
               "GET /api/v1/users/{user_id}/data-sources"
+            ]
+          },
+          {
+            "group": "Meta",
+            "pages": [
+              "GET /api/v1/meta/coverage"
             ]
           },
           {

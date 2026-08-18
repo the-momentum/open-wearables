@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import DataSource
+from app.models import DataSource, EventRecord
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate, EventRecordQueryParams
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
@@ -308,74 +308,6 @@ class TestEventRecordServiceGetRecordsResponse:
         assert records == []
 
 
-class TestEventRecordServiceGetCountByWorkoutType:
-    """Test counting workouts by type."""
-
-    def test_get_count_by_workout_type_groups_correctly(self, db: Session) -> None:
-        """Should group and count workouts by type."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        # Create multiple workouts of different types
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-        EventRecordFactory(mapping=mapping, category="workout", type_="swimming")
-
-        # Act
-        results = event_record_service.get_count_by_workout_type(db)
-
-        # Assert
-        results_dict = dict(results)
-        assert results_dict.get("running") == 3
-        assert results_dict.get("cycling") == 2
-        assert results_dict.get("swimming") == 1
-
-    def test_get_count_by_workout_type_ordered_by_count(self, db: Session) -> None:
-        """Should order results by count descending."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        # Create workouts with different counts
-        EventRecordFactory(mapping=mapping, type_="running")
-        EventRecordFactory(mapping=mapping, type_="cycling")
-        EventRecordFactory(mapping=mapping, type_="cycling")
-
-        # Act
-        results = event_record_service.get_count_by_workout_type(db)
-
-        # Assert
-        # Results should be ordered by count descending
-        assert results[0][1] >= results[1][1]  # First count >= second count
-
-    def test_get_count_by_workout_type_handles_null_type(self, db: Session) -> None:
-        """Should handle records with null type."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        EventRecordFactory(mapping=mapping, type_=None)
-        EventRecordFactory(mapping=mapping, type_=None)
-        EventRecordFactory(mapping=mapping, type_="running")
-
-        # Act
-        results = event_record_service.get_count_by_workout_type(db)
-
-        # Assert
-        results_dict = dict(results)
-        assert results_dict.get(None) == 2
-        assert results_dict.get("running") == 1
-
-    def test_get_count_by_workout_type_empty_result(self, db: Session) -> None:
-        """Should return empty list when no workout records exist."""
-        # Act
-        results = event_record_service.get_count_by_workout_type(db)
-
-        # Assert
-        assert results == []
-
-
 class TestCreateOrMergeSleep:
     """Test create_or_merge_sleep adjacent session merging."""
 
@@ -500,7 +432,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        d = result.detail
+        d = result.sleep_detail
         assert d.sleep_deep_minutes == 90  # 0 + 90
         assert d.sleep_light_minutes == 208  # 8 + 200
         assert d.sleep_rem_minutes == 80  # 0 + 80
@@ -534,7 +466,7 @@ class TestCreateOrMergeSleep:
         detail = self._detail(record.id, in_bed=430, efficiency="80.00")
         # Existing: 27% efficiency, 30 min in bed
         # existing detail created without efficiency — add manually
-        existing.detail.sleep_efficiency_score = Decimal("27.00")
+        existing.sleep_detail.sleep_efficiency_score = Decimal("27.00")
         db.flush()
 
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
@@ -542,7 +474,7 @@ class TestCreateOrMergeSleep:
         db.refresh(result)
         # (27*30 + 80*430) / 460 = (810 + 34400) / 460 = 35210 / 460 ≈ 76.54
         expected = round((27 * 30 + 80 * 430) / 460, 2)
-        assert result.detail.sleep_efficiency_score == Decimal(str(expected))
+        assert result.sleep_detail.sleep_efficiency_score == Decimal(str(expected))
 
     def test_old_record_deleted_after_merge(self, db: Session) -> None:
         """The adjacent record is deleted after merging."""
@@ -633,7 +565,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        assert result.detail.is_nap is False
+        assert result.sleep_detail.is_nap is False
 
     def test_is_nap_true_when_both_are_naps(self, db: Session) -> None:
         """Merged session is a nap when both sessions are naps."""
@@ -655,7 +587,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        assert result.detail.is_nap is True
+        assert result.sleep_detail.is_nap is True
 
     def test_same_user_different_source_not_merged(self, db: Session) -> None:
         """Sessions from different data sources for the same user are never merged."""
@@ -727,7 +659,7 @@ class TestCreateOrMergeSleep:
         assert result.end_datetime == self._dt(8, 0)
         # Detail must be present — no silent data loss
         db.refresh(result)
-        assert result.detail is not None
+        assert result.sleep_detail is not None
 
     def test_merge_concatenates_sleep_stages(self, db: Session) -> None:
         """Sleep stages from both sessions are concatenated and sorted."""
@@ -763,7 +695,7 @@ class TestCreateOrMergeSleep:
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
-        stages = result.detail.sleep_stages
+        stages = result.sleep_detail.sleep_stages
         assert stages is not None
         assert len(stages) == 2
         # Stages should be sorted by start_time (early first)
@@ -825,3 +757,57 @@ class TestGetSleepSessions:
         session = next(s for s in response.data if s.id == record.id)
         assert session.duration_seconds == 28800
         assert session.sleep_duration_seconds is None
+
+    def _sleep_record(self, mapping: DataSource) -> EventRecord:
+        """Create a sleep session ending 2026-04-11 (UTC) for the given source."""
+        return EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 11, 7, 0, tzinfo=timezone.utc),
+            duration_seconds=28800,
+        )
+
+    def test_returns_all_sources_by_default(self, db: Session) -> None:
+        """Without the flag, sessions from every source are returned (backwards compatible)."""
+        user = UserFactory()
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura_record = self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        ids = {s.id for s in response.data}
+        assert oura_record.id in ids
+        assert garmin_record.id in ids
+
+    def test_filter_by_priority_keeps_only_best_source_per_date(self, db: Session) -> None:
+        """With the flag, only the highest-priority source's sessions survive per date."""
+        from app.schemas.enums import ProviderName
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura_record = self._sleep_record(oura)
+        garmin_record = self._sleep_record(garmin)
+
+        # Garmin ranks above Oura.
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True)
+
+        ids = {s.id for s in response.data}
+        assert garmin_record.id in ids
+        assert oura_record.id not in ids

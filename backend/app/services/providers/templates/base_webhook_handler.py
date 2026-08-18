@@ -41,6 +41,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from app.database import DbSession
+from app.utils.structured_logging import log_structured
 
 
 class BaseWebhookHandler(ABC):
@@ -65,9 +66,20 @@ class BaseWebhookHandler(ABC):
       standard *verify → parse → dispatch* sequence is insufficient.
     """
 
+    #: Top-level webhook-payload key holding the provider-side user id.
+    #: Override extract_user_id() instead when it isn't a flat field (e.g. Garmin).
+    user_id_field: str | None = None
+
     def __init__(self, provider_name: str) -> None:
         self.provider_name = provider_name
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    def extract_user_id(self, payload: dict[str, Any]) -> str | None:
+        """Best-effort provider-side user id from a raw webhook payload (for log correlation)."""
+        if not self.user_id_field:
+            return None
+        value = payload.get(self.user_id_field)
+        return str(value) if value is not None else None
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -195,9 +207,13 @@ class BaseWebhookHandler(ABC):
             ``HTTPException(400)`` if ``parse_payload`` raises a validation error.
         """
         if not self.verify_signature(request, body):
-            self.logger.warning(
+            log_structured(
+                self.logger,
+                "warning",
                 "Webhook signature verification failed",
-                extra={"provider": self.provider_name},
+                provider=self.provider_name,
+                path=request.url.path,
+                client_host=request.client.host if request.client else None,
             )
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 

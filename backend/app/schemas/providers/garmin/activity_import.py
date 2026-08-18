@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ActivityJSON(BaseModel):
@@ -29,8 +31,24 @@ class ActivityJSON(BaseModel):
     activityName: str | None = None
     startTimeOffsetInSeconds: int | None = None
     averageSpeedInMetersPerSecond: float | None = None
+    averageRunCadenceInStepsPerMinute: float | None = None
+    averageBikingCadenceInRevPerMinute: float | None = None
+    averageSwimCadenceInStrokesPerMinute: float | None = None
     isWebUpload: bool | None = None
     manual: bool | None = None
+
+    averageCadence: float | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unify_cadence(cls, data: Any) -> Any:
+        data.setdefault(
+            "averageCadence",
+            data.get("averageRunCadenceInStepsPerMinute")
+            or data.get("averageBikingCadenceInRevPerMinute")
+            or data.get("averageSwimCadenceInStrokesPerMinute"),
+        )
+        return data
 
 
 class RootJSON(BaseModel):

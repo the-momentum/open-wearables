@@ -102,6 +102,44 @@ def on_workout_created(
     )
 
 
+def on_menstrual_cycle_created(
+    *,
+    record_id: UUID,
+    user_id: UUID,
+    provider: str,
+    device: str | None,
+    start_time: str,
+    end_time: str,
+    zone_offset: str | None,
+    current_phase_type: str | None = None,
+    day_in_cycle: int | None = None,
+    cycle_length: int | None = None,
+    is_predicted_cycle: bool | None = None,
+    pregnancy_snapshot: list[dict] | None = None,
+) -> None:
+    _dispatch(
+        WebhookEventType.MENSTRUAL_CYCLE_CREATED,
+        {
+            "type": WebhookEventType.MENSTRUAL_CYCLE_CREATED,
+            "data": {
+                "id": str(record_id),
+                "user_id": str(user_id),
+                "start_time": start_time,
+                "end_time": end_time,
+                "zone_offset": zone_offset,
+                "source": {"provider": provider, "device": device},
+                "current_phase_type": current_phase_type,
+                "day_in_cycle": day_in_cycle,
+                "cycle_length": cycle_length,
+                "is_predicted_cycle": is_predicted_cycle,
+                "pregnancy_snapshot": pregnancy_snapshot,
+            },
+        },
+        idempotency_key=f"menstrual_cycle.created.{record_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
 def on_sleep_created(
     *,
     record_id: UUID,
@@ -239,7 +277,37 @@ def on_connection_created(
                 "connected_at": connected_at,
             },
         },
-        idempotency_key=f"connection.created.{user_id}.{provider}",
+        idempotency_key=_safe_key(f"connection.created.{user_id}.{provider}.{connected_at}"),
+        channels=[f"user.{user_id}"],
+    )
+
+
+def on_connection_revoked(
+    *,
+    user_id: UUID,
+    provider: str,
+    connection_id: UUID,
+    reason: str,
+    revoked_at: str,
+) -> None:
+    """Emit when a connection becomes invalid and the user must re-authorize.
+
+    ``reason`` is a short cause, e.g. ``"refresh_failed"`` or
+    ``"deregistration"``.
+    """
+    _dispatch(
+        WebhookEventType.CONNECTION_REVOKED,
+        {
+            "type": WebhookEventType.CONNECTION_REVOKED,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "connection_id": str(connection_id),
+                "reason": reason,
+                "revoked_at": revoked_at,
+            },
+        },
+        idempotency_key=_safe_key(f"connection.revoked.{user_id}.{provider}.{revoked_at}"),
         channels=[f"user.{user_id}"],
     )
 

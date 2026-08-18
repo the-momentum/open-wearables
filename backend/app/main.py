@@ -5,16 +5,18 @@ from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
 from app.integrations.celery import create_celery
 from app.integrations.sentry import init_sentry
-from app.middlewares import add_cors_middleware
+from app.middlewares import add_access_log_middleware, add_cors_middleware
 from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
@@ -29,15 +31,24 @@ basicConfig(
 )
 
 # Remove uvicorn's default handlers to prevent duplicate logs (uvicorn.error)
-# and ensure access logs (uvicorn.access) also get timestamps via the root logger
-for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+# and route startup/error lines through the root logger for timestamps.
+for _name in ("uvicorn", "uvicorn.error"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
     _logger.propagate = True
 
+# httpx/httpcore log one INFO line per outgoing request; at our request volume that is
+# pure noise (event-type sync, provider calls, webhook delivery). Keep warnings and errors.
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    # Silence uvicorn.access here, not at import: uvicorn's configure_logging() runs a
+    # dictConfig that re-creates the logger and undoes an import-time disable. Lifespan
+    # runs after it, so add_access_log_middleware stays the single access-log source.
+    logging.getLogger("uvicorn.access").disabled = True
     svix_service.register_event_types()
     yield
 
@@ -51,9 +62,11 @@ raw_payload_storage.configure(
     s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
     s3_prefix=settings.raw_payload_s3_prefix,
     s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
+    fit_files_enabled=settings.store_fit_files,
 )
 
 add_cors_middleware(api)
+add_access_log_middleware(api)
 
 # Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"
@@ -66,13 +79,23 @@ async def root() -> dict[str, str]:
     return {"message": "Server is running!"}
 
 
+def _capture_error_body(request: Request, status_code: int, detail: object) -> None:
+    """Stash a 4xx response body on request.state for the access log (flag-gated, byte-capped)."""
+    if settings.log_error_response_body and 400 <= status_code < 500:
+        # truncate on the byte limit; errors="ignore" drops a partial codepoint at the cut
+        truncated = str(detail).encode("utf-8")[: settings.log_error_response_body_max_bytes]
+        request.state.error_response_body = truncated.decode("utf-8", errors="ignore")
+
+
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
     if request.url.path.endswith("/auth/login"):
+        detail = "Incorrect email or password"
+        _capture_error_body(request, status.HTTP_401_UNAUTHORIZED, detail)
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Incorrect email or password"},
+            content={"detail": detail},
             headers={"WWW-Authenticate": "Bearer"},
         )
     raise handle_exception(exc, "")
@@ -81,6 +104,24 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 @api.exception_handler(DatetimeParseError)
 async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
     raise handle_exception(exc, "")
+
+
+@api.exception_handler(StarletteHTTPException)
+async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
+    # request.state survives the middleware boundary, so the access log can read it.
+    _capture_error_body(request, exc.status_code, exc.detail)
+    # real cause behind an opaque HTTPException (e.g. FastAPI's body-parse 400): explicit
+    # `from e`, else the implicitly-chained exception unless suppressed via `from None`.
+    cause = exc.__cause__
+    if cause is None and not exc.__suppress_context__:
+        cause = exc.__context__
+    if cause is not None:
+        request.state.error_cause_type = type(cause).__name__
+        try:
+            request.state.error_cause_msg = str(cause)[:300]
+        except Exception:
+            request.state.error_cause_msg = "<unavailable>"
+    return await http_exception_handler(request, exc)
 
 
 api.include_router(head_router)

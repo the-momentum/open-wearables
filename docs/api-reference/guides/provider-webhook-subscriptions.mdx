@@ -1,0 +1,308 @@
+---
+title: "Provider Webhook Subscriptions"
+sidebarTitle: "Provider Webhook Subscriptions"
+description: "Manage app-level webhook subscriptions with Polar, Oura, and Strava so those providers push events to your Open Wearables instance in real time."
+keywords: ["provider webhooks", "webhook subscriptions", "polar webhook", "oura webhook", "strava webhook", "incoming webhooks"]
+"og:title": "Provider Webhook Subscriptions | Open Wearables"
+"og:description": "Register, inspect, update, and delete app-level webhook subscriptions with Polar, Oura, and Strava."
+"og:url": "https://docs.openwearables.io/api-reference/guides/provider-webhook-subscriptions"
+"og:type": "article"
+---
+
+## Overview
+
+Provider webhook subscriptions tell a wearable provider (Polar, Oura, Strava) where to send event notifications. When an active subscription is in place, the provider pushes a lightweight notification to your Open Wearables instance whenever new data is available. Open Wearables then fetches, normalizes, and stores the data — and can forward it onward via [Outgoing Webhooks](/api-reference/guides/webhooks).
+
+<Note>
+  This page covers **provider → Open Wearables** subscriptions (inbound). For **Open Wearables → your app** event delivery, see the [Outgoing Webhooks guide](/api-reference/guides/webhooks).
+</Note>
+
+All endpoints require a developer Bearer token:
+
+```
+Authorization: Bearer <token>
+```
+
+**Base path**: `/api/v1/providers/{provider}/webhooks/subscriptions`
+
+Supported `{provider}` values: `polar`, `oura`, `strava`
+
+---
+
+## Provider differences
+
+| Provider | Max subscriptions | Verification method | Secret |
+|----------|------------------|---------------------|--------|
+| **Polar** | 1 per app | Polar sends a `PING` event to the URL; must return `200 OK` | `signature_secret_key` returned once on creation — auto-saved to DB |
+| **Oura** | 1 per data type | GET challenge with `verification_token` query param | Client secret used for HMAC verification |
+| **Strava** | 1 per app | GET `hub.challenge` echo | `STRAVA_WEBHOOK_VERIFY_TOKEN` env var |
+
+<Warning>
+  **Polar only**: when you register or update a webhook, Polar immediately sends a `PING` to the configured URL. The request must respond `200 OK` before Polar accepts the subscription. Use a publicly reachable URL (e.g. set up via [ngrok](/dev-guides/ngrok-setup)).
+</Warning>
+
+---
+
+## Endpoints
+
+### List subscriptions
+
+Returns all active subscriptions for a provider.
+
+```bash
+curl "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+
+<Tabs>
+  <Tab title="Polar">
+    ```json
+    {
+      "subscriptions": [
+        {
+          "id": "abc123",
+          "events": ["EXERCISE", "SLEEP", "CONTINUOUS_HEART_RATE", "DAILY_ACTIVITY"],
+          "url": "https://yourapp.com/api/v1/providers/polar/webhooks"
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="Oura">
+    ```json
+    {
+      "subscriptions": [
+        {
+          "id": "sub_01abc",
+          "callback_url": "https://yourapp.com/api/v1/providers/oura/webhooks",
+          "event_type": "create",
+          "data_type": "workout",
+          "expiration_time": "2026-06-28T00:00:00+00:00"
+        },
+        {
+          "id": "sub_01def",
+          "callback_url": "https://yourapp.com/api/v1/providers/oura/webhooks",
+          "event_type": "create",
+          "data_type": "sleep",
+          "expiration_time": "2026-06-28T00:00:00+00:00"
+        }
+      ]
+    }
+    ```
+  </Tab>
+  <Tab title="Strava">
+    ```json
+    {
+      "subscriptions": [
+        {
+          "id": 12345,
+          "application_id": 67890,
+          "callback_url": "https://yourapp.com/api/v1/providers/strava/webhooks",
+          "created_at": "2026-01-01T00:00:00Z",
+          "updated_at": "2026-01-01T00:00:00Z"
+        }
+      ]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+### Register subscriptions
+
+Creates a new subscription (or updates an existing one if the URL changed).
+Pass `callback_url` as a query parameter.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions?callback_url=https://yourapp.com/api/v1/providers/{provider}/webhooks" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Provider-specific behaviour:
+
+| Provider | If no subscription exists | If subscription exists with same URL | If subscription exists with different URL |
+|----------|--------------------------|-------------------------------------|------------------------------------------|
+| **Polar** | Creates webhook; Polar POSTs a `PING` to verify. `signature_secret_key` auto-saved to DB. | Returns `skipped` | Updates URL via `PATCH`; Polar PINGs the new URL |
+| **Oura** | Creates one subscription per data type | Returns `skipped` per already-registered type | Creates new subscriptions for missing types |
+| **Strava** | Registers subscription; Strava sends a GET challenge that must echo back `hub.challenge` | Returns `skipped` | — |
+
+<Note>
+  **Polar**: the `signature_secret_key` is returned by Polar exactly once, on creation. Open Wearables saves it automatically to the `provider_settings` table (`webhook_secret` column). If you need to rotate it, delete and recreate the webhook.
+</Note>
+
+---
+
+### Get a subscription
+
+Fetch a single subscription by ID.
+
+```bash
+curl "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions/{subscription_id}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+
+```json
+{
+  "subscription": {
+    "id": "sub_01abc",
+    "callback_url": "https://yourapp.com/api/v1/providers/oura/webhooks",
+    "event_type": "create",
+    "data_type": "workout",
+    "expiration_time": "2026-06-28T00:00:00+00:00"
+  }
+}
+```
+
+Returns `{ "subscription": null }` when the subscription is not found.
+
+<Note>
+  Get by ID is currently implemented for **Oura** only. Polar and Strava return `501 Not Implemented` — use list subscriptions instead.
+</Note>
+
+---
+
+### Update a subscription
+
+Change the callback URL of an existing subscription.
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions/{subscription_id}?callback_url=https://newurl.com/api/v1/providers/{provider}/webhooks" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+
+```json
+{
+  "updated": {
+    "subscription_id": "abc123",
+    "status": "patched"
+  }
+}
+```
+
+On error:
+
+```json
+{
+  "updated": {
+    "subscription_id": "abc123",
+    "status": "error",
+    "error": "422 Unprocessable Entity ..."
+  }
+}
+```
+
+<Warning>
+  **Polar**: updating the URL triggers a new `PING` from Polar to the new address. If the URL does not respond `200 OK`, the update is rejected by Polar and the endpoint returns `status: "error"`.
+</Warning>
+
+Possible `status` values: `updated`, `patched`, `deleted`, `created`, `skipped`, `error`.
+
+---
+
+### Delete a subscription
+
+Remove a webhook subscription from the provider.
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/providers/{provider}/webhooks/subscriptions/{subscription_id}" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+
+```json
+{
+  "deleted": {
+    "subscription_id": "abc123",
+    "status": "deleted"
+  }
+}
+```
+
+---
+
+### Renew subscriptions (Oura only)
+
+Oura subscriptions have an `expiration_time`. Call this endpoint to extend all active subscriptions before they expire.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/providers/oura/webhooks/subscriptions/renew" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response:**
+
+```json
+{
+  "renewed": [
+    { "id": "sub_01abc", "status": "renewed", ... },
+    { "id": "sub_01def", "status": "renewed", ... }
+  ]
+}
+```
+
+---
+
+## Inbound event endpoints
+
+These endpoints receive the actual event notifications from providers. They are not management operations — you do not call them directly.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/providers/{provider}/webhooks` | Receives incoming event payloads. Verifies the provider signature, parses the event, and dispatches a background sync task. |
+| `GET` | `/api/v1/providers/{provider}/webhooks` | Handles subscription verification challenges (Oura `verification_token`, Strava `hub.challenge`). |
+
+The callback URL you register with a provider must point to `POST /api/v1/providers/{provider}/webhooks`. For local development, use [ngrok](/dev-guides/ngrok-setup) to expose that endpoint publicly.
+
+---
+
+## Response schema reference
+
+### Subscription objects
+
+Each provider returns a different subscription shape:
+
+**Polar**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Webhook ID assigned by Polar |
+| `events` | `string[]` | Subscribed event types (e.g. `EXERCISE`, `SLEEP`) |
+| `url` | `string` | Registered callback URL |
+
+**Oura**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Subscription ID |
+| `callback_url` | `string` | Registered callback URL |
+| `event_type` | `string` | `create` or `update` |
+| `data_type` | `string` | `workout`, `sleep`, `session`, etc. |
+| `expiration_time` | `string \| null` | ISO 8601 expiry datetime |
+
+**Strava**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `integer` | Subscription ID |
+| `application_id` | `integer` | Strava application ID |
+| `callback_url` | `string` | Registered callback URL |
+| `created_at` | `string` | ISO 8601 creation timestamp |
+| `updated_at` | `string` | ISO 8601 last-update timestamp |
+
+### Operation result
+
+Returned by delete and update endpoints.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subscription_id` | `string` | ID of the affected subscription |
+| `status` | `string` | One of: `created`, `updated`, `patched`, `deleted`, `skipped`, `error` |
+| `error` | `string` | Present only when `status` is `error` |

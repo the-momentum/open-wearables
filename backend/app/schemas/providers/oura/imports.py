@@ -65,12 +65,13 @@ class OuraSleepJSON(BaseModel):
     rem_sleep_duration: int | None = None  # seconds
     restless_periods: int | None = None
     sleep_phase_5_min: str | None = None  # 1 - deep, 2 - light, 3 - rem, 4 - awake
+    sleep_phase_30_sec: str | None = None  # same encoding, 30-second epochs
     sleep_score_delta: float | None = None
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
-    type: str | None = None  # deleted / sleep / long_sleep / rest
+    type: str | None = None  # long_sleep / sleep / late_nap / rest / deleted
     heart_rate: OuraIntervalData | None = None  # heart rate values at 5-min intervals
-    hrv: OuraIntervalData | None = None  # SDNN values at 5-min intervals
+    hrv: OuraIntervalData | None = None  # RMSSD values at 5-min intervals
 
 
 class OuraSleepCollectionJSON(BaseModel):

@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+import re
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -23,12 +25,16 @@ from app.services.outgoing_webhooks.events import (
     SVIX_MAX_SAMPLES_PER_EVENT,
     _dispatch,
     on_connection_created,
+    on_connection_revoked,
     on_sleep_created,
     on_timeseries_batch_saved,
     on_workout_created,
 )
 from app.utils.security import create_access_token
 from tests.factories import DeveloperFactory
+
+# Svix eventId charset: colons/plus signs from ISO 8601 timestamps must not survive.
+_SVIX_ID_SAFE_RE = re.compile(r"^[a-zA-Z0-9\-_.]+$")
 
 # ---------------------------------------------------------------------------
 # WebhookEventType enum
@@ -51,6 +57,12 @@ class TestWebhookEventTypes:
 
 
 class TestWebhookEmit:
+    @pytest.fixture(autouse=True)
+    def _webhooks_enabled(self) -> Generator[None, None, None]:
+        # Dispatch only fires when webhooks are enabled; these tests assert it does.
+        with patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True):
+            yield
+
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_workout_created_dispatches(self, mock_task: MagicMock) -> None:
         uid = uuid4()
@@ -234,6 +246,30 @@ class TestWebhookEmit:
         assert args[0][0] == "connection.created"
         assert args[0][1]["data"]["provider"] == "garmin"
         assert args[0][1]["data"]["connection_id"] == str(cid)
+        # connected_at's colons/offset must not leak into the Svix event_id
+        assert _SVIX_ID_SAFE_RE.match(args.kwargs["idempotency_key"])
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_on_connection_revoked_dispatches(self, mock_task: MagicMock) -> None:
+        uid = uuid4()
+        cid = uuid4()
+        on_connection_revoked(
+            user_id=uid,
+            provider="garmin",
+            connection_id=cid,
+            reason="refresh_failed",
+            revoked_at="2026-01-01T12:00:00.123456+00:00",
+        )
+        mock_task.delay.assert_called_once()
+        args = mock_task.delay.call_args
+        assert args[0][0] == "connection.revoked"
+        assert args[0][1]["data"]["provider"] == "garmin"
+        assert args[0][1]["data"]["reason"] == "refresh_failed"
+        # revoked_at is an isoformat() timestamp - colons/offset must be sanitized
+        idempotency_key = args.kwargs["idempotency_key"]
+        assert _SVIX_ID_SAFE_RE.match(idempotency_key)
+        assert ":" not in idempotency_key
+        assert "+" not in idempotency_key
 
     def test_dispatch_swallows_broker_error(self) -> None:
         """_dispatch silently drops the event when Celery is unreachable."""
@@ -244,6 +280,20 @@ class TestWebhookEmit:
             mock_task.delay.side_effect = ConnectionError("Redis not available")
             # Should NOT raise
             _dispatch("workout.created", {"type": "workout.created", "data": {}})
+
+    def test_dispatch_skipped_when_webhooks_disabled(self) -> None:
+        """With OUTGOING_WEBHOOKS_ENABLED off, nothing is enqueued."""
+        with (
+            patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=False),
+            patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event") as mock_task,
+        ):
+            on_connection_created(
+                user_id=uuid4(),
+                provider="garmin",
+                connection_id=uuid4(),
+                connected_at="2026-01-01T12:00:00+00:00",
+            )
+            mock_task.delay.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

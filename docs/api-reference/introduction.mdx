@@ -62,7 +62,11 @@ For production deployments, replace with your server URL.
 | Get recovery summary | GET | `/api/v1/users/{user_id}/summaries/recovery` |
 | Get timeseries | GET | `/api/v1/users/{user_id}/timeseries` |
 | Get workouts | GET | `/api/v1/users/{user_id}/events/workouts` |
+| Delete workout | DELETE | `/api/v1/users/{user_id}/events/workouts/{workout_id}` |
 | Get sleep sessions | GET | `/api/v1/users/{user_id}/events/sleep` |
+| Delete sleep session | DELETE | `/api/v1/users/{user_id}/events/sleep/{sleep_id}` |
+| Get menstrual cycles | GET | `/api/v1/users/{user_id}/events/menstrual-cycles` |
+| Delete menstrual cycle | DELETE | `/api/v1/users/{user_id}/events/menstrual-cycles/{cycle_id}` |
 | Get data sources | GET | `/api/v1/users/{user_id}/data-sources` |
 | Get health scores | GET | `/api/v1/users/{user_id}/health-scores` |
 | List providers | GET | `/api/v1/oauth/providers` |

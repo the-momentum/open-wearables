@@ -23,6 +23,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityBulkUpdate,
 )
 from app.services.priority_service import PriorityService
+from tests.factories import DataSourceFactory, UserFactory
 
 
 @pytest.fixture
@@ -129,6 +130,35 @@ class TestPriorityServiceBulkUpdateProviderPriorities:
         assert result.items[0].priority == 1
         assert result.items[1].provider == ProviderName.APPLE
         assert result.items[1].priority == 2
+
+
+class TestPriorityServiceGetUserDataSources:
+    """Test listing user data sources with display names."""
+
+    def test_get_user_data_sources_after_fresh_load(self, db: Session, priority_service: PriorityService) -> None:
+        """Display name must build from rows reloaded from the database.
+
+        Reloaded rows return provider as a plain str (the column is a String,
+        not a native enum), so the service must not assume an enum instance.
+        """
+        user = UserFactory()
+        DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="Forerunner 955")
+        db.expire_all()
+
+        result = priority_service.get_user_data_sources(db, user.id)
+
+        assert result.total == 1
+        assert result.items[0].display_name == "Garmin - Forerunner 955"
+
+    def test_get_user_data_sources_in_session_objects(self, db: Session, priority_service: PriorityService) -> None:
+        """Same call must also work on identity-mapped objects that still hold enum members."""
+        user = UserFactory()
+        DataSourceFactory(user=user, provider=ProviderName.APPLE, device_model="Watch7,1")
+
+        result = priority_service.get_user_data_sources(db, user.id)
+
+        assert result.total == 1
+        assert result.items[0].display_name == "Apple - Watch7,1"
 
 
 class TestPriorityServiceGetDeviceTypePriorities:

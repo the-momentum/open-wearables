@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useBodySummary } from '@/hooks/api/use-health';
-import { SourceBadge } from '@/components/common/source-badge';
+import { DataSourceInfo } from '@/components/common/data-source-info';
 import {
   formatWeight,
   formatHeight,
@@ -175,9 +175,7 @@ export function BodySection({ userId }: BodySectionProps) {
       <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium text-foreground">Body Metrics</h3>
-          {bodySummary?.source?.provider && (
-            <SourceBadge provider={bodySummary.source.provider} />
-          )}
+          <DataSourceInfo source={bodySummary?.source} />
         </div>
         <Scale className="h-4 w-4 text-muted-foreground" />
       </div>
@@ -220,8 +218,8 @@ export function BodySection({ userId }: BodySectionProps) {
                 />
                 <MetricCard
                   icon={Dumbbell}
-                  iconColor="text-[hsl(var(--success-muted))]"
-                  iconBgColor="bg-[hsl(var(--success-muted)/0.1)]"
+                  iconColor="text-success-muted"
+                  iconBgColor="bg-success-muted/10"
                   value={formatWeight(slowChangingData?.muscle_mass_kg ?? null)}
                   label="Muscle Mass"
                 />
@@ -276,8 +274,8 @@ export function BodySection({ userId }: BodySectionProps) {
               <div className="grid grid-cols-2 gap-4">
                 <MetricCard
                   icon={Thermometer}
-                  iconColor="text-[hsl(var(--warning-muted))]"
-                  iconBgColor="bg-[hsl(var(--warning-muted)/0.1)]"
+                  iconColor="text-warning-muted"
+                  iconBgColor="bg-warning-muted/10"
                   value={formatTemperature(
                     latestData?.body_temperature_celsius ?? null
                   )}
@@ -292,8 +290,8 @@ export function BodySection({ userId }: BodySectionProps) {
                 />
                 <MetricCard
                   icon={Activity}
-                  iconColor="text-[hsl(var(--destructive-muted))]"
-                  iconBgColor="bg-[hsl(var(--destructive-muted)/0.1)]"
+                  iconColor="text-destructive-muted"
+                  iconBgColor="bg-destructive-muted/10"
                   value={formatBloodPressure(latestData?.blood_pressure)}
                   label="Blood Pressure"
                   sublabel={

@@ -16,6 +16,7 @@ from app.schemas.providers.oura import OuraWorkoutCollectionJSON, OuraWorkoutJSO
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
 
@@ -34,7 +35,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         next_token: str | None = None
 
         start_str = start_date.strftime("%Y-%m-%d")
-        end_str = end_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%dT23:59:59")
 
         while True:
             params: dict[str, Any] = {
@@ -104,11 +105,18 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Oura API."""
         return self._make_api_request(db, user_id, f"/v2/usercollection/workout/{workout_id}")
 
-    def save_by_id(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
+    def save_by_id(self, db: DbSession, user_id: UUID, workout_id: str, trace_id: str | None = None) -> int:
         """Fetch a single workout by ID and save it."""
         raw = self.get_workout_detail_from_api(db, user_id, workout_id)
         if not raw or not isinstance(raw, dict):
             return 0
+        store_raw_payload(
+            source="api_response",
+            provider="oura",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=trace_id,
+        )
         count = 0
         for record, details in self._build_bundles([OuraWorkoutJSON(**raw)], user_id):
             created = event_record_service.create(db, record)
@@ -156,8 +164,12 @@ class OuraWorkouts(BaseWorkoutsTemplate):
 
         workout_type = get_unified_workout_type(raw_workout.activity)
 
+        zone_offset = None
         if raw_workout.start_datetime and raw_workout.end_datetime:
             start_date, end_date = self._extract_dates(raw_workout.start_datetime, raw_workout.end_datetime)
+            utcoff = start_date.utcoffset()
+            if utcoff is not None:
+                zone_offset = offset_to_iso(int(utcoff.total_seconds()))
         else:
             start_date = datetime.now(timezone.utc)
             end_date = start_date
@@ -173,6 +185,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=zone_offset,
             id=workout_id,
             external_id=raw_workout.id,
             source=self.provider_name,

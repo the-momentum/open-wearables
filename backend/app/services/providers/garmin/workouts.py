@@ -154,11 +154,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
             return int(dt.timestamp())
         except (ValueError, AttributeError):
-            # If parsing fails, return None or raise error.
-            # For now, let's return None to be safe, or we could raise HTTPException here if we want strict validation.
-            # But since this is a helper, maybe just return None.
-            # Actually, the endpoint was raising HTTPException.
-            # Let's assume the caller handles validation or we just ignore invalid values.
             return None
 
     def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
@@ -187,13 +182,17 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         distance = Decimal(str(raw_workout.distanceInMeters)) if raw_workout.distanceInMeters is not None else None
 
+        average_cadence = Decimal(str(raw_workout.averageCadence)) if raw_workout.averageCadence is not None else None
+
         return {
-            "heart_rate_min": int(heart_rate_avg) if heart_rate_avg is not None else None,
+            # Garmin activity payloads carry only average and max heart rate
+            "heart_rate_min": None,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
             "steps_count": steps_count,
             "energy_burned": energy_burned,
             "distance": distance,
+            "average_cadence": average_cadence,
         }
 
     def _normalize_workout(
@@ -214,7 +213,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         metrics = self._build_metrics(raw_workout)
 
-        # Use device name if available, otherwise fallback to "Garmin"
         device_name = raw_workout.deviceName or "Garmin"
 
         zone_offset = offset_to_iso(raw_workout.startTimeOffsetInSeconds)
@@ -223,7 +221,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             category="workout",
             type=workout_type.value,
             source_name=device_name,
-            device_model=device_name,
+            device_model=raw_workout.deviceName,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,

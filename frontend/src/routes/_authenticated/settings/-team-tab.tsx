@@ -8,6 +8,7 @@ import {
   Clock,
   Copy,
   Check,
+  Link,
 } from 'lucide-react';
 import { useDevelopers, useDeleteDeveloper } from '@/hooks/api/use-developers';
 import {
@@ -16,10 +17,12 @@ import {
   useRevokeInvitation,
   useResendInvitation,
 } from '@/hooks/api/use-invitations';
+import type { Invitation } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/use-auth';
 import { isValidEmail } from '@/lib/utils';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import { ROUTES } from '@/lib/constants/routes';
 import { truncateId } from '@/lib/utils/format';
 import {
   Dialog,
@@ -37,6 +40,7 @@ export function TeamTab() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     email: string;
@@ -113,6 +117,18 @@ export function TeamTab() {
     resendInvitationMutation.mutate(id);
   };
 
+  const handleCopyInviteLink = async (invitation: Invitation) => {
+    const inviteUrl = `${window.location.origin}${ROUTES.acceptInvite}?token=${encodeURIComponent(invitation.token)}`;
+    const success = await copyToClipboard(
+      inviteUrl,
+      'Invite link copied to clipboard'
+    );
+    if (success) {
+      setCopiedInviteId(invitation.id);
+      setTimeout(() => setCopiedInviteId(null), 2000);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -185,7 +201,7 @@ export function TeamTab() {
         <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-border/60">
             <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4 text-[hsl(var(--warning-muted))]" />
+              <Clock className="h-4 w-4 text-warning-muted" />
               Pending Invitations
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
@@ -237,10 +253,10 @@ export function TeamTab() {
                         className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase ${
                           invitation.status === 'sent' ||
                           invitation.status === 'pending'
-                            ? 'bg-[hsl(var(--success-muted)/0.15)] text-[hsl(var(--success-muted))]'
+                            ? 'bg-success-muted/15 text-success-muted'
                             : invitation.status === 'failed'
-                              ? 'bg-[hsl(var(--destructive-muted)/0.15)] text-[hsl(var(--destructive-muted))]'
-                              : 'bg-[hsl(var(--warning-muted)/0.15)] text-[hsl(var(--warning-muted))]'
+                              ? 'bg-destructive-muted/15 text-destructive-muted'
+                              : 'bg-warning-muted/15 text-warning-muted'
                         }`}
                       >
                         {invitation.status}
@@ -248,6 +264,18 @@ export function TeamTab() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopyInviteLink(invitation)}
+                          title="Copy invite link"
+                        >
+                          {copiedInviteId === invitation.id ? (
+                            <Check className="h-4 w-4 text-success-muted" />
+                          ) : (
+                            <Link className="h-4 w-4" />
+                          )}
+                        </Button>
                         <Button
                           variant="outline"
                           size="icon"
@@ -344,7 +372,7 @@ export function TeamTab() {
                           title="Copy ID"
                         >
                           {copiedId === developer.id ? (
-                            <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
+                            <Check className="h-3 w-3 text-success-muted" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
@@ -437,7 +465,8 @@ export function TeamTab() {
               className="bg-muted border-border"
             />
             <p className="text-[10px] text-muted-foreground/70">
-              They will receive an email with instructions to join
+              They will receive an email with instructions to join (or send
+              invite link manually)
             </p>
           </div>
           <DialogFooter className="gap-3">

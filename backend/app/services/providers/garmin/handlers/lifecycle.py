@@ -10,6 +10,7 @@ from typing import Any
 
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
+from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,13 @@ def process_deregistrations(
             continue
 
         connection_repo.mark_as_revoked(db, connection)
+        on_connection_revoked(
+            user_id=connection.user_id,
+            provider="garmin",
+            connection_id=connection.id,
+            reason="deregistration",
+            revoked_at=connection.updated_at.isoformat(),
+        )
 
         log_structured(
             logger,

@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.samsung.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.samsung.workouts import SamsungWorkouts
 
 
@@ -29,3 +30,12 @@ class SamsungStrategy(BaseProviderStrategy):
     def capabilities(self) -> ProviderCapabilities:
         # Samsung Health data arrives exclusively via the mobile SDK (no cloud API).
         return ProviderCapabilities(client_sdk=True)
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )

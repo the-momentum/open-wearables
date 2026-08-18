@@ -1,5 +1,7 @@
+import { resolveApiUrl } from './runtime-config';
+
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseUrl: resolveApiUrl(),
   timeout: 30000, // 30 seconds
   retryAttempts: 3,
   retryDelay: 1000, // 1 second
@@ -21,6 +23,8 @@ export const API_ENDPOINTS = {
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userConnectionDisconnect: (userId: string, provider: string) =>
     `/api/v1/users/${userId}/connections/${provider}`,
+  userConnectionPurgeData: (userId: string, provider: string) =>
+    `/api/v1/users/${userId}/connections/${provider}/data`,
   providerSetting: (provider: string) => `/api/v1/oauth/providers/${provider}`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
   userWorkoutDetail: (userId: string, workoutId: string) =>
@@ -42,6 +46,12 @@ export const API_ENDPOINTS = {
   apiKeys: '/api/v1/developer/api-keys',
   apiKeyDetail: (id: string) => `/api/v1/developer/api-keys/${id}`,
   apiKeyRotate: (id: string) => `/api/v1/developer/api-keys/${id}/rotate`,
+
+  // SDK Applications endpoints (mobile app credentials)
+  applications: '/api/v1/applications',
+  applicationDetail: (appId: string) => `/api/v1/applications/${appId}`,
+  applicationRotateSecret: (appId: string) =>
+    `/api/v1/applications/${appId}/rotate-secret`,
 
   // Provider workouts endpoints
   providerSynchronization: (provider: string, userId: string) =>
@@ -92,6 +102,12 @@ export const API_ENDPOINTS = {
   userSleepSessionDetail: (userId: string, sessionId: string) =>
     `/api/v1/users/${userId}/events/sleep/${sessionId}`,
 
+  // Menstrual cycle endpoints
+  userMenstrualCycles: (userId: string) =>
+    `/api/v1/users/${userId}/events/menstrual-cycles`,
+  userMenstrualCycleDetail: (userId: string, cycleId: string) =>
+    `/api/v1/users/${userId}/events/menstrual-cycles/${cycleId}`,
+
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
 
@@ -110,6 +126,10 @@ export const API_ENDPOINTS = {
   webhookEndpointAttempts: (id: string) =>
     `/api/v1/webhooks/endpoints/${id}/attempts`,
   webhookMessages: '/api/v1/webhooks/messages',
+
+  // Meta endpoints
+  coverage: '/api/v1/meta/coverage',
+  config: '/api/v1/config',
 
   // Sync status / SSE endpoints
   // ApiKeyDep accepts both API keys and developer JWT tokens, so a single

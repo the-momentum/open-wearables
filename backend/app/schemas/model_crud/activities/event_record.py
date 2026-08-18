@@ -22,6 +22,7 @@ class EventRecordMetrics(TypedDict, total=False):
     moving_time_seconds: int | None
     total_elevation_gain: Decimal | None
     average_speed: Decimal | None
+    average_cadence: Decimal | None
     average_watts: Decimal | None
     elev_high: Decimal | None
     elev_low: Decimal | None

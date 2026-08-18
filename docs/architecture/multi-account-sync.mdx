@@ -1,0 +1,127 @@
+---
+title: "Multi-Account Sync"
+description: "How Open Wearables handles one provider account (e.g. Garmin) connected to multiple OW user profiles: webhook fan-out, shared sync locks, and backfill coordination."
+keywords: ["multi-account sync", "shared garmin account", "linked accounts", "webhook fan-out", "sync deduplication"]
+"og:title": "Multi-Account Sync | Open Wearables Architecture"
+"og:description": "One provider account linked to multiple OW profiles: webhook fan-out, shared sync locks, and backfill coordination without duplicate API calls."
+"og:url": "https://docs.openwearables.io/architecture/multi-account-sync"
+"og:type": "article"
+"twitter:title": "Multi-Account Sync | Open Wearables Architecture"
+"twitter:description": "One provider account linked to multiple OW profiles: webhook fan-out, shared sync locks, and backfill coordination without duplicate API calls."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+Some providers (Garmin, Whoop, Oura) identify users by a stable external ID (`provider_user_id`) stored in `user_connection`. This allows one physical provider account to be connected to multiple Open Wearables profiles — a common pattern for testing environments or shared devices.
+
+**Apple Health** is explicitly excluded: it has no cloud `provider_user_id` (data is uploaded directly from the device via SDK) so linking is not possible.
+
+When multiple OW profiles share the same provider account, the platform must avoid:
+
+- **Duplicate API calls** — providers like Garmin rate-limit or prohibit concurrent requests for the same account.
+- **Duplicate data** — saving the same activity twice under two profiles without coordination.
+- **Silent skips** — secondary profiles must still see sync activity in their sync log.
+
+---
+
+## Linked Accounts UI
+
+The Connections page shows an amber **"N linked"** chip on any active connection whose `provider_user_id` is shared with at least one other OW profile. Hovering the chip shows a tooltip with shortened UUIDs linking to the other profiles.
+
+Revoked connections never show the chip — the lookup filters on `status = active` via a partial index (`ix_user_connection_provider_external_id`).
+
+---
+
+## Data Flow by Sync Type
+
+The key distinction between sync types is **who initiates the data transfer**:
+
+- **Webhook** — the provider pushes data to us. The payload arrives once regardless of how many OW profiles share the account, so there is nothing to deduplicate at the API level. We fan out the single payload to all profiles internally.
+- **Pull / Backfill** — we call the provider's API. If N profiles triggered the call concurrently we would make N identical API requests, waste quota, and risk rate-limiting. A distributed lock ensures only one profile makes the call; the others receive the data via fan-out after it completes.
+
+### Webhook push (Garmin live data)
+
+Garmin pushes a single webhook payload for one `userId` (their internal account ID). The platform fans out unconditionally:
+
+1. `get_all_by_provider_user_id("garmin", garmin_user_id)` returns all active OW connections sharing that Garmin account, ordered by `created_at asc` so the oldest profile is always index 0.
+2. The activity or wellness data is **parsed once**, then saved independently for every connected profile within the same DB transaction (each profile's insert is wrapped in a savepoint so a duplicate on one profile does not roll back the others).
+3. The **first** connection (index 0) is treated as *primary* and receives a `WEBHOOK` sync status event. All others receive a `LINKED_ACCOUNT` event with `primary_user_id` pointing at the primary profile.
+
+No distributed lock is needed here — Garmin sends the webhook exactly once and saving the same record under N user IDs is idempotent (duplicate protection is handled at the DB layer via savepoint + `IntegrityError` detection).
+
+### Historical backfill (Garmin webhook-chain)
+
+Garmin backfill works by making one API request per data type per time window, then waiting for Garmin to push the result via webhook. Because Garmin prohibits concurrent backfill requests from the same account, only **one** OW profile may run the backfill chain.
+
+**Primary election** uses a Redis `SET NX` lock keyed by `(provider, provider_user_id, "backfill")`:
+
+```
+linked_sync:garmin:{garmin_user_id}:backfill:primary  →  "{ow_user_id}:{token}"
+```
+
+When `start_full_backfill` is triggered for a profile:
+
+1. Acquires the per-user Garmin backfill lock (existing mechanism).
+2. Calls `try_become_primary("garmin", provider_user_id, user_id, scope="backfill")`.
+   - **Won** → stores the lock token in Redis for later cross-task release; proceeds with the backfill chain normally.
+   - **Lost** → releases the per-user lock, registers as secondary (`SADD` to a Redis set), emits a `LINKED_ACCOUNT / STARTED` event, and returns early.
+3. When the primary's backfill completes (`trigger_next_pending_type` → `complete_backfill`), it calls `release_primary_for_user` and `clear_secondaries` to clean up.
+
+Secondary profiles receive their data through the **webhook fan-out** described above — every Garmin webhook the primary triggers is processed by the platform for all linked profiles automatically.
+
+### REST pull sync (`sync_vendor_data`)
+
+For providers polled periodically (Whoop, Oura, Suunto — those in `PULL` live sync mode), `sync_vendor_data` runs per-user. When a connection has a `provider_user_id`:
+
+1. `try_become_primary(provider, provider_user_id, user_id, scope="pull")` is called.
+   - **Won** → performs the API call normally; after completion triggers `sync_vendor_data` for all other linked profiles with `_skip_linked_fan_out=True` so they receive the same date range without making their own API call; releases the lock.
+   - **Lost** → emits a `LINKED_ACCOUNT / SUCCESS` event, updates `last_synced_at`, and skips the API call for this connection.
+
+The lock TTL is 4 hours. Because `sync_vendor_data` tasks for different profiles may run in any order, the "primary" role is simply the first task to acquire the lock in a given polling cycle. If the primary completes before a competing task runs, that task acquires a fresh lock and does its own pull — which is acceptable (one extra API call per cycle, no data corruption).
+
+---
+
+## Redis Keys
+
+All keys use the `linked_sync:` namespace and expire after 4 hours.
+
+| Key | Type | Purpose |
+|-----|------|---------|
+| `linked_sync:{provider}:{provider_user_id}:{scope}:primary` | String | Primary lock — value is `{user_id}:{token}` |
+| `linked_sync:{provider}:{provider_user_id}:{scope}:secondaries` | Set | Secondary user IDs registered for this run |
+| `linked_sync:{provider}:{provider_user_id}:{scope}:token:{user_id}` | String | Persisted token for cross-task lock release (backfill only) |
+
+`scope` is `"pull"` for REST syncs and `"backfill"` for Garmin historical backfill.
+
+---
+
+## Sync Status Events
+
+Secondary profiles receive `SyncSource.LINKED_ACCOUNT` events in their sync log. These events include `primary_user_id` pointing at the profile that performed the actual sync.
+
+The frontend displays these events with the source label **"Linked Account"** in the Recent Syncs section. The status badge follows the normal colour scheme (green for success, amber for partial, etc.) — the source label is the visual distinguisher.
+
+```
+provider:  garmin
+source:    linked_account
+stage:     completed
+status:    success
+primary_user_id: <uuid of the profile that ran the sync>
+```
+
+---
+
+## Implementation Files
+
+| File | Role |
+|------|------|
+| `app/services/sync_coordination.py` | Redis lock primitives: `try_become_primary`, `release_primary`, `store_primary_token`, `release_primary_for_user`, `register_secondary`, `get_secondary_user_ids`, `clear_secondaries` |
+| `app/schemas/sync_status.py` | `SyncSource.LINKED_ACCOUNT` enum value; `primary_user_id` field on `SyncStatusEvent` and `SyncRunSummary` |
+| `app/repositories/user_connection_repository.py` | `get_all_by_provider_user_id()` — returns all active connections for a (provider, provider_user_id) pair; partial index `ix_user_connection_provider_external_id` |
+| `app/services/providers/garmin/handlers/activities.py` | Webhook fan-out for activity notifications |
+| `app/services/providers/garmin/handlers/wellness.py` | Webhook fan-out for wellness notifications |
+| `app/integrations/celery/tasks/garmin/backfill_task.py` | Primary election and secondary detection in `start_full_backfill`; lock release in `trigger_next_pending_type` |
+| `app/integrations/celery/tasks/sync_vendor_data_task.py` | Shared pull lock per connection with `provider_user_id` |
+| `app/api/routes/v1/connections.py` | Linked user IDs enrichment in `GET /users/{id}/connections` |
+| `frontend/src/components/user/connection-card.tsx` | "N linked" chip in the Connections UI |

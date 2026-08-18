@@ -24,8 +24,10 @@ from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.whoop.coverage import RECOVERY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import to_rfc3339
 from app.utils.structured_logging import log_structured
 
 
@@ -90,8 +92,8 @@ class Whoop247Data(Base247DataTemplate):
         max_limit = 25  # Whoop API limit
 
         # Convert datetimes to ISO 8601 strings
-        start_iso = start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_iso = end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_iso = to_rfc3339(start_time)
+        end_iso = to_rfc3339(end_time)
 
         while True:
             params: dict[str, Any] = {
@@ -453,9 +455,9 @@ class Whoop247Data(Base247DataTemplate):
             end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
 
         if not start_time:
-            start_time = datetime.now() - timedelta(days=30)
+            start_time = datetime.now(timezone.utc) - timedelta(days=30)
         if not end_time:
-            end_time = datetime.now()
+            end_time = datetime.now(timezone.utc)
 
         results = {
             "sleep_sessions_synced": 0,
@@ -634,11 +636,12 @@ class Whoop247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
+        counts: int = 0
         if samples_to_create:
-            timeseries_service.bulk_create_samples(db, samples_to_create)
+            counts = timeseries_service.bulk_create_samples(db, samples_to_create)
             db.commit()
 
-        return len(samples_to_create)
+        return counts
 
     # -------------------------------------------------------------------------
     # Recovery Data
@@ -661,8 +664,8 @@ class Whoop247Data(Base247DataTemplate):
         max_limit = 25  # Whoop API limit
 
         # Convert datetimes to ISO 8601 strings
-        start_iso = start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        end_iso = end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start_iso = to_rfc3339(start_time)
+        end_iso = to_rfc3339(end_time)
 
         while True:
             params: dict[str, Any] = {
@@ -817,16 +820,8 @@ class Whoop247Data(Base247DataTemplate):
         if not timestamp:
             return 0
 
-        # Map WHOOP fields to SeriesType
-        metrics = [
-            ("resting_heart_rate", SeriesType.resting_heart_rate),
-            ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
-            ("spo2_percentage", SeriesType.oxygen_saturation),
-            ("skin_temp_celsius", SeriesType.skin_temperature),
-        ]
-
         samples_to_create: list[TimeSeriesSampleCreate] = []
-        for field_name, series_type in metrics:
+        for field_name, series_type in RECOVERY_SERIES.items():
             value = normalized_recovery.get(field_name)
             if value is not None:
                 try:
@@ -850,11 +845,12 @@ class Whoop247Data(Base247DataTemplate):
                         user_id=str(user_id),
                     )
 
+        counts: int = 0
         if samples_to_create:
-            timeseries_service.bulk_create_samples(db, samples_to_create)
+            counts = timeseries_service.bulk_create_samples(db, samples_to_create)
             db.commit()
 
-        return len(samples_to_create)
+        return counts
 
     def get_recovery_record(
         self,

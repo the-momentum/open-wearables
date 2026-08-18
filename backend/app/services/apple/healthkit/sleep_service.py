@@ -60,11 +60,11 @@ def load_sleep_state(user_id: str) -> SleepState | None:
     try:
         if isinstance(state, bytes):
             state = state.decode("utf-8")
-        return SleepState.model_validate_json(state)  # ty:ignore[invalid-argument-type]
+        return SleepState.model_validate_json(state)
     except Exception as e:
         logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
         try:
-            raw = json.loads(state)  # ty:ignore[invalid-argument-type]
+            raw = json.loads(state)
             return SleepState.model_validate(raw)
         except Exception as fallback_e:
             logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")
@@ -462,8 +462,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         # Deserialise the stored stages back to SleepStateStage so we can feed
         # them into _calculate_final_metrics together with the new stages.
         existing_state_stages: list[SleepStateStage] = []
-        if adjacent.detail and adjacent.detail.sleep_stages:
-            for s in adjacent.detail.sleep_stages:
+        if adjacent.sleep_detail and adjacent.sleep_detail.sleep_stages:
+            for s in adjacent.sleep_detail.sleep_stages:
                 with contextlib.suppress(Exception):
                     existing_state_stages.append(SleepStateStage.model_validate(s))
 
@@ -516,7 +516,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         sleep_light_minutes=int(metrics["light_seconds"] // 60),
         sleep_awake_minutes=int(metrics["awake_seconds"] // 60),
         sleep_efficiency_score=sleep_efficiency,
-        is_nap=False,  # TODO: Infer if nap, maybe from sleep length < 1 hour / 2 hours?
+        is_nap=False,
         sleep_stages=cleaned_stages or None,
     )
 

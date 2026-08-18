@@ -144,6 +144,9 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Local debug artifacts
+.debug/
+
 # Text Editor
 .vscode
 .idea/

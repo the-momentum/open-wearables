@@ -1,36 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { credentialsService } from '@/lib/api/services/credentials.service';
+import { apiKeysService } from '@/lib/api/services/api-keys.service';
 import type { ApiKeyCreate, ApiKeyUpdate } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/errors/handler';
 
-// Get all API keys
 export function useApiKeys() {
   return useQuery({
-    queryKey: queryKeys.credentials.list(),
-    queryFn: () => credentialsService.getApiKeys(),
+    queryKey: queryKeys.apiKeys.list(),
+    queryFn: () => apiKeysService.getApiKeys(),
   });
 }
 
-// Get single API key
 export function useApiKey(id: string) {
   return useQuery({
-    queryKey: queryKeys.credentials.detail(id),
-    queryFn: () => credentialsService.getApiKey(id),
+    queryKey: queryKeys.apiKeys.detail(id),
+    queryFn: () => apiKeysService.getApiKey(id),
     enabled: !!id,
   });
 }
 
-// Update API key (e.g. rename)
 export function useUpdateApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ApiKeyUpdate }) =>
-      credentialsService.updateApiKey(id, data),
+      apiKeysService.updateApiKey(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.lists() });
       toast.success('API key updated successfully');
     },
     onError: (error) => {
@@ -39,14 +36,13 @@ export function useUpdateApiKey() {
   });
 }
 
-// Create API key
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: ApiKeyCreate) => credentialsService.createApiKey(data),
+    mutationFn: (data: ApiKeyCreate) => apiKeysService.createApiKey(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.lists() });
       toast.success('API key created successfully');
     },
     onError: (error) => {
@@ -55,14 +51,13 @@ export function useCreateApiKey() {
   });
 }
 
-// Revoke API key
 export function useRevokeApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => credentialsService.revokeApiKey(id),
+    mutationFn: (id: string) => apiKeysService.revokeApiKey(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.lists() });
       toast.success('API key revoked successfully');
     },
     onError: (error) => {
@@ -71,14 +66,13 @@ export function useRevokeApiKey() {
   });
 }
 
-// Delete API key
 export function useDeleteApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => credentialsService.deleteApiKey(id),
+    mutationFn: (id: string) => apiKeysService.deleteApiKey(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials.list() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.lists() });
       toast.success('API key deleted successfully');
     },
     onError: (error) => {

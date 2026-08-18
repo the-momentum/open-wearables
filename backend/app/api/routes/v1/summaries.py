@@ -103,6 +103,14 @@ def get_data_summary(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
+    start_date: DateTimeQueryParam | None = None,
+    end_date: DateTimeQueryParam | None = None,
 ) -> UserDataSummaryResponse:
-    """Returns per-user data counts grouped by series type, event type, and provider."""
-    return system_info_service.get_user_data_summary(db, user_id)
+    """Returns per-user data counts grouped by series type, event type, and provider.
+
+    Optionally scope the counts to a date window via `start_date` / `end_date` (data points are
+    filtered by `recorded_at`, events by their start time). Omitting both returns all-time counts.
+    """
+    start_datetime = parse_query_datetime(start_date) if start_date is not None else None
+    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
+    return system_info_service.get_user_data_summary(db, user_id, start_datetime, end_datetime)

@@ -1,7 +1,5 @@
-from app.database import SessionLocal
-from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas.enums import ProviderName
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.polar.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.oauth import PolarOAuth
 from app.services.providers.polar.webhook_handler import PolarWebhookHandler
@@ -14,7 +12,6 @@ class PolarStrategy(BaseProviderStrategy):
 
     def __init__(self):
         super().__init__()
-        self.provider_settings_repo = ProviderSettingsRepository()
         self.oauth = PolarOAuth(
             user_repo=self.user_repo,
             connection_repo=self.connection_repo,
@@ -34,6 +31,7 @@ class PolarStrategy(BaseProviderStrategy):
             oauth=self.oauth,
         )
         self.webhooks = PolarWebhookHandler(workouts=self.workouts, data_247=self.data_247)
+        self.webhook_service = polar_webhook_service
 
     @property
     def name(self) -> str:
@@ -49,12 +47,8 @@ class PolarStrategy(BaseProviderStrategy):
             rest_pull=True, webhook_ping=True, webhook_registration_api=True, webhook_inbound_secret=True
         )
 
-    async def register_webhooks(self, callback_url: str) -> list[dict]:
-        result = await polar_webhook_service.register_subscriptions(callback_url)
-        if result.get("status") == "created":
-            secret = result.get("response", {}).get("signature_secret_key")
-            if not secret:
-                raise ValueError("Polar webhook registration succeeded but no signature_secret_key was returned.")
-            with SessionLocal() as db:
-                self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
-        return [result]
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES, workout_fields=WORKOUT_FIELDS, sleep_fields=SLEEP_FIELDS, health_scores=HEALTH_SCORES
+        )

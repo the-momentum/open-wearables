@@ -163,7 +163,6 @@ Get sleep summaries for a user within a date range.
       "start_datetime": "2026-02-03T23:15:00+00:00",
       "end_datetime": "2026-02-04T07:30:00+00:00",
       "duration_minutes": 495,
-      "duration_formatted": "8h 15m",
       "source": "whoop"
     }
   ],
@@ -171,7 +170,6 @@ Get sleep summaries for a user within a date range.
     "total_nights": 7,
     "nights_with_data": 6,
     "avg_duration_minutes": 465,
-    "avg_duration_formatted": "7h 45m",
     "min_duration_minutes": 360,
     "max_duration_minutes": 540
   }
