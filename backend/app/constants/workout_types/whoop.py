@@ -1,6 +1,7 @@
 import logging
 
 from app.schemas.enums import WorkoutType
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -205,9 +206,13 @@ def get_unified_workout_type(whoop_sport_name: str | None, whoop_sport_id: int |
             return unified_type
 
     if whoop_sport_name or whoop_sport_id is not None:
-        logger.warning(
+        log_structured(
+            logger,
+            "warning",
             "Unmapped Whoop sport, falling back to OTHER",
-            extra={"provider": "whoop", "sport_name": whoop_sport_name, "sport_id": whoop_sport_id},
+            provider="whoop",
+            sport_name=whoop_sport_name,
+            sport_id=whoop_sport_id,
         )
 
     return WorkoutType.OTHER
