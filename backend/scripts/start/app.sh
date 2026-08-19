@@ -25,17 +25,6 @@ uv run python scripts/init/seed_admin.py
 echo 'Initializing series type definitions...'
 uv run python scripts/init/seed_series_types.py
 
-# TODO: Remove this after ~2026-06-01 once all deployments have migrated.
-# Drops legacy recovery_score timeseries data; no-op if already cleaned up.
-echo 'Running recovery_score series type cleanup...'
-uv run python scripts/data_migrations/drop_recovery_score_series_type.py \
-    || echo "Warning: recovery_score cleanup failed — will retry on next startup."
-
-# TODO: Remove this after ~2026-06-01 once all deployments have migrated.
-# Divides body_fat_percentage values stored 100x too large (Samsung/Google bug, PR #917); no-op if already corrected.
-echo 'Running body_fat_percentage normalization...'
-uv run python scripts/data_migrations/normalize_body_fat_percentage.py \
-    || echo "Warning: body_fat_percentage normalization failed — will retry on next startup."
 
 # TODO: Remove this after ~2026-09-01 once all deployments have migrated.
 # Relabels Oura HRV stored as SDNN (id=3) to RMSSD (id=7); scoped to provider='oura', no-op once corrected.
@@ -43,17 +32,6 @@ echo 'Running Oura HRV SDNN->RMSSD relabel...'
 uv run python scripts/data_migrations/relabel_oura_hrv_sdnn_to_rmssd.py \
     || echo "Warning: Oura HRV relabel failed — will retry on next startup."
 
-# TODO: Remove this after ~2026-08-01 once all deployments have migrated.
-# Nulls workout heart_rate_min values copied from average HR (Garmin pre-#1121, Polar pre-#1041); no-op once cleaned.
-echo 'Running workout heart_rate_min cleanup...'
-uv run python scripts/data_migrations/null_bogus_workout_heart_rate_min.py \
-    || echo "Warning: workout heart_rate_min cleanup failed - will retry on next startup."
-
-# TODO: Remove this after ~2026-08-01 once all deployments have migrated.
-# Multiplies Apple HealthKit walking metrics stored as fractions/meters (issues #1105, #1106); no-op if already corrected.
-echo 'Running Apple walking metrics normalization...'
-uv run python scripts/data_migrations/normalize_apple_walking_metrics.py \
-    || echo "Warning: Apple walking metrics normalization failed — will retry on next startup."
 
 # TODO: Remove this after ~2026-09-01 once all deployments have migrated.
 # Labels is_daily_total on archival data_point_series (daily totals → TRUE); idempotent,
