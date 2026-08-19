@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from logging import Logger
 from pathlib import Path
@@ -34,6 +34,7 @@ class XMLService:
         self.chunk_size: int = settings.xml_chunk_size
         self.log: Logger = log
         self.stats: XMLParseStats = XMLParseStats()
+        self.activity_summaries: list[dict[str, str | date | Decimal]] = []
 
     DATE_FIELDS: tuple[str, ...] = ("startDate", "endDate", "creationDate")
     RECORD_COLUMNS: tuple[str, ...] = (
@@ -459,8 +460,51 @@ class XMLService:
                     if elem in root:
                         root.remove(elem)
 
+            elif elem.tag == "ActivitySummary":
+                self.stats.activity_summaries.mark_read()
+                try:
+                    attribs = elem.attrib
+                    date_str = attribs.get("dateComponents")
+                    if not date_str:
+                        self.stats.activity_summaries.skip("missing_dateComponents")
+                    else:
+                        try:
+                            summary_date = date.fromisoformat(date_str)
+                        except ValueError:
+                            self.stats.activity_summaries.skip(f"invalid_date:{date_str}")
+                        else:
+                            energy = self._parse_decimal_value(attribs.get("activeEnergyBurned"), "activeEnergyBurned")
+                            if energy is None:
+                                self.stats.activity_summaries.skip("invalid_activeEnergyBurned")
+                            else:
+                                self.activity_summaries.append({
+                                    "date": summary_date,
+                                    "active_energy_burned": energy,
+                                    "active_energy_burned_goal": Decimal(attribs.get("activeEnergyBurnedGoal", "0")),
+                                    "active_energy_burned_unit": attribs.get("activeEnergyBurnedUnit", "Cal"),
+                                    "apple_move_time": Decimal(attribs.get("appleMoveTime", "0")),
+                                    "apple_move_time_goal": Decimal(attribs.get("appleMoveTimeGoal", "0")),
+                                    "apple_exercise_time": Decimal(attribs.get("appleExerciseTime", "0")),
+                                    "apple_exercise_time_goal": Decimal(attribs.get("appleExerciseTimeGoal", "0")),
+                                    "apple_stand_hours": Decimal(attribs.get("appleStandHours", "0")),
+                                    "apple_stand_hours_goal": Decimal(attribs.get("appleStandHoursGoal", "0")),
+                                })
+                                self.stats.activity_summaries.mark_processed()
+                except Exception as e:
+                    self.log.warning(
+                        "Unexpected error parsing ActivitySummary for %s: %s",
+                        elem.attrib.get("dateComponents", "unknown"),
+                        str(e),
+                    )
+                    self.stats.activity_summaries.skip(f"unexpected_error:{type(e).__name__}")
+                finally:
+                    elem.clear()
+                    if elem in root:
+                        root.remove(elem)
+
             else:
-                # Non-Record, non-Workout elements (ExportDate, Me, nested elements, etc.)
+                # Non-Record, non-Workout, non-ActivitySummary elements
+                # (ExportDate, Me, nested elements, etc.)
                 elem.clear()
                 if elem in root:
                     root.remove(elem)
@@ -500,6 +544,9 @@ class XMLService:
             sleep_read=self.stats.sleep.read,
             sleep_processed=self.stats.sleep.processed,
             sleep_skipped=self.stats.sleep.skipped,
+            activity_summaries_read=self.stats.activity_summaries.read,
+            activity_summaries_processed=self.stats.activity_summaries.processed,
+            activity_summaries_skipped=self.stats.activity_summaries.skipped,
         )
 
         # Integrity check: every record seen must be accounted for.
@@ -527,6 +574,20 @@ class XMLService:
                 sleep_processed=self.stats.sleep.processed,
                 sleep_skipped=self.stats.sleep.skipped,
                 unaccounted=self.stats.sleep.read - self.stats.sleep.processed - self.stats.sleep.skipped,
+            )
+        if not self.stats.activity_summaries.is_balanced():
+            log_structured(
+                self.log,
+                "error",
+                "IMPORTER BALANCE FAIL: activity_summaries read != processed + skipped; silent drops detected",
+                provider="apple_xml",
+                task="process_xml_upload",
+                activity_summaries_read=self.stats.activity_summaries.read,
+                activity_summaries_processed=self.stats.activity_summaries.processed,
+                activity_summaries_skipped=self.stats.activity_summaries.skipped,
+                unaccounted=self.stats.activity_summaries.read
+                - self.stats.activity_summaries.processed
+                - self.stats.activity_summaries.skipped,
             )
 
         if self.stats.any_skipped():

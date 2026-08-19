@@ -209,3 +209,161 @@ class TestXMLServiceSkipCounter:
         assert any(r.startswith("unsupported_type:") for r in reasons), (
             f"No 'unsupported_type:*' reason in skip counter; got: {dict(reasons)}"
         )
+
+
+# --- ActivitySummary tests ---
+
+ACTIVITY_SUMMARY_XML = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <HealthData locale="en_US">
+      <ActivitySummary dateComponents="2026-08-13"
+        activeEnergyBurned="90.96" activeEnergyBurnedGoal="740"
+        activeEnergyBurnedUnit="Cal"
+        appleMoveTime="0" appleMoveTimeGoal="0"
+        appleExerciseTime="2" appleExerciseTimeGoal="30"
+        appleStandHours="7" appleStandHoursGoal="12"/>
+      <ActivitySummary dateComponents="2026-08-12"
+        activeEnergyBurned="0" activeEnergyBurnedGoal="740"
+        activeEnergyBurnedUnit="Cal"
+        appleMoveTime="0" appleMoveTimeGoal="0"
+        appleExerciseTime="0" appleExerciseTimeGoal="30"
+        appleStandHours="0" appleStandHoursGoal="12"/>
+    </HealthData>
+""")
+
+ACTIVITY_SUMMARY_PARTIAL_XML = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <HealthData locale="en_US">
+      <ActivitySummary dateComponents="2026-08-13"
+        activeEnergyBurned="90.96" activeEnergyBurnedGoal="740"
+        activeEnergyBurnedUnit="Cal"
+        appleExerciseTime="2" appleExerciseTimeGoal="30"
+        appleStandHours="7" appleStandHoursGoal="12"/>
+    </HealthData>
+""")
+
+ACTIVITY_SUMMARY_DUPLICATE_XML = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <HealthData locale="en_US">
+      <ActivitySummary dateComponents="2026-08-13"
+        activeEnergyBurned="90.96" activeEnergyBurnedGoal="740"
+        activeEnergyBurnedUnit="Cal"
+        appleMoveTime="0" appleMoveTimeGoal="0"
+        appleExerciseTime="2" appleExerciseTimeGoal="30"
+        appleStandHours="7" appleStandHoursGoal="12"/>
+      <ActivitySummary dateComponents="2026-08-13"
+        activeEnergyBurned="100" activeEnergyBurnedGoal="740"
+        activeEnergyBurnedUnit="Cal"
+        appleMoveTime="5" appleMoveTimeGoal="0"
+        appleExerciseTime="10" appleExerciseTimeGoal="30"
+        appleStandHours="9" appleStandHoursGoal="12"/>
+    </HealthData>
+""")
+
+
+class TestActivitySummaryParsing:
+    """ActivitySummary elements must be parsed and counted correctly."""
+
+    def test_full_attribute_element_parsed(self, tmp_path: Path):
+        import logging
+        from decimal import Decimal
+
+        xml_file = tmp_path / "activity.xml"
+        xml_file.write_text(ACTIVITY_SUMMARY_XML, encoding="utf-8")
+        service = XMLService(xml_file, logging.getLogger("test_activity"))
+        for _ in service.parse_xml(USER_ID):
+            pass
+
+        assert len(service.activity_summaries) == 2
+        s = service.activity_summaries[0]
+        assert str(s["date"]) == "2026-08-13"
+        assert s["active_energy_burned"] == Decimal("90.96")
+        assert s["active_energy_burned_goal"] == Decimal("740")
+        assert s["active_energy_burned_unit"] == "Cal"
+        assert s["apple_exercise_time"] == Decimal("2")
+        assert s["apple_exercise_time_goal"] == Decimal("30")
+        assert s["apple_stand_hours"] == Decimal("7")
+        assert s["apple_stand_hours_goal"] == Decimal("12")
+
+    def test_missing_optional_attributes_default_to_zero(self, tmp_path: Path):
+        """Elements missing appleMoveTime/Goal still parse — defaults to 0."""
+        import logging
+        from decimal import Decimal
+
+        xml_file = tmp_path / "activity_partial.xml"
+        xml_file.write_text(ACTIVITY_SUMMARY_PARTIAL_XML, encoding="utf-8")
+        service = XMLService(xml_file, logging.getLogger("test_activity_partial"))
+        for _ in service.parse_xml(USER_ID):
+            pass
+
+        assert len(service.activity_summaries) == 1
+        s = service.activity_summaries[0]
+        assert s["apple_move_time"] == Decimal("0")
+        assert s["apple_move_time_goal"] == Decimal("0")
+
+    def test_duplicate_dates_both_accumulated(self, tmp_path: Path):
+        """Same date appearing twice: both are accumulated (dedup at DB layer)."""
+        import logging
+
+        xml_file = tmp_path / "activity_dup.xml"
+        xml_file.write_text(ACTIVITY_SUMMARY_DUPLICATE_XML, encoding="utf-8")
+        service = XMLService(xml_file, logging.getLogger("test_activity_dup"))
+        for _ in service.parse_xml(USER_ID):
+            pass
+
+        assert len(service.activity_summaries) == 2
+        assert service.stats.activity_summaries.read == 2
+        assert service.stats.activity_summaries.processed == 2
+        assert service.stats.activity_summaries.skipped == 0
+
+    def test_balance_holds(self, tmp_path: Path):
+        """read == processed + skipped for activity_summaries."""
+        import logging
+
+        xml_file = tmp_path / "activity.xml"
+        xml_file.write_text(ACTIVITY_SUMMARY_XML, encoding="utf-8")
+        service = XMLService(xml_file, logging.getLogger("test_balance"))
+        for _ in service.parse_xml(USER_ID):
+            pass
+
+        assert service.stats.activity_summaries.is_balanced()
+        assert service.stats.activity_summaries.read == 2
+        assert service.stats.activity_summaries.processed == 2
+
+    def test_existing_record_and_sleep_counters_unaffected(self, tmp_path: Path):
+        """Adding ActivitySummary must not disturb Record/Sleep counters."""
+        import logging
+
+        # XML with both Records and ActivitySummary
+        mixed_xml = textwrap.dedent("""\
+            <?xml version="1.0" encoding="UTF-8"?>
+            <HealthData locale="en_US">
+              <Record type="HKQuantityTypeIdentifierStepCount"
+                sourceName="iPhone" unit="count"
+                startDate="2026-01-01 08:00:00 +0000"
+                endDate="2026-01-01 08:05:00 +0000" value="120"/>
+              <ActivitySummary dateComponents="2026-08-13"
+                activeEnergyBurned="90.96" activeEnergyBurnedGoal="740"
+                activeEnergyBurnedUnit="Cal"
+                appleMoveTime="0" appleMoveTimeGoal="0"
+                appleExerciseTime="2" appleExerciseTimeGoal="30"
+                appleStandHours="7" appleStandHoursGoal="12"/>
+            </HealthData>
+        """)
+        xml_file = tmp_path / "mixed.xml"
+        xml_file.write_text(mixed_xml, encoding="utf-8")
+        service = XMLService(xml_file, logging.getLogger("test_mixed"))
+        all_records = []
+        for ts_records, _, _ in service.parse_xml(USER_ID):
+            all_records.extend(ts_records)
+
+        # Record counters unchanged
+        assert service.stats.records.read == 1
+        assert service.stats.records.processed == 1
+        assert service.stats.records.is_balanced()
+        assert len(all_records) == 1
+
+        # ActivitySummary counted separately
+        assert service.stats.activity_summaries.read == 1
+        assert service.stats.activity_summaries.processed == 1
+        assert len(service.activity_summaries) == 1

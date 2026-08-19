@@ -31,12 +31,26 @@ class XMLParseStats:
     records: ParseMetric = field(default_factory=ParseMetric)
     workouts: ParseMetric = field(default_factory=ParseMetric)
     sleep: ParseMetric = field(default_factory=ParseMetric)
+    activity_summaries: ParseMetric = field(default_factory=ParseMetric)
 
     def any_skipped(self) -> bool:
-        return self.records.skipped > 0 or self.workouts.skipped > 0 or self.sleep.skipped > 0
+        return (
+            self.records.skipped > 0
+            or self.workouts.skipped > 0
+            or self.sleep.skipped > 0
+            or self.activity_summaries.skipped > 0
+        )
 
     def get_skip_summary(self) -> dict[str, str]:
         record_reasons = ", ".join(f"{reason}: {count}" for reason, count in sorted(self.records.reasons.items()))
         workout_reasons = ", ".join(f"{reason}: {count}" for reason, count in sorted(self.workouts.reasons.items()))
         sleep_reasons = ", ".join(f"{reason}: {count}" for reason, count in sorted(self.sleep.reasons.items()))
-        return {"records": record_reasons, "workouts": workout_reasons, "sleep": sleep_reasons}
+        activity_summary_reasons = ", ".join(
+            f"{reason}: {count}" for reason, count in sorted(self.activity_summaries.reasons.items())
+        )
+        return {
+            "records": record_reasons,
+            "workouts": workout_reasons,
+            "sleep": sleep_reasons,
+            "activity_summaries": activity_summary_reasons,
+        }

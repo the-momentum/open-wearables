@@ -2,12 +2,16 @@ import os
 from logging import getLogger
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from celery import shared_task
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.models.activity_summary import ActivitySummary
+from app.repositories.data_source_repository import DataSourceRepository
+from app.schemas.enums import ProviderName
 from app.schemas.providers.apple.apple_xml import XMLParseStats
 from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services import event_record_service
@@ -77,6 +81,8 @@ def process_xml_upload(file_path: str, filename: str, user_id: str) -> dict[str,
                     "workouts_skipped": stats.workouts.skipped,
                     "sleep_processed": stats.sleep.processed,
                     "sleep_skipped": stats.sleep.skipped,
+                    "activity_summaries_processed": stats.activity_summaries.processed,
+                    "activity_summaries_skipped": stats.activity_summaries.skipped,
                     "skip_reasons": stats.get_skip_summary(),
                 },
             }
@@ -160,4 +166,77 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
         if sync_request and sync_request.data.sleep:
             handle_sleep_data(db, sync_request, user_id)
 
+    # Write ActivitySummary rows after all chunks are consumed
+    if xml_service.activity_summaries:
+        _save_activity_summaries(db, xml_service.activity_summaries, user_id)
+
     return xml_service.stats
+
+
+def _save_activity_summaries(
+    db: Session,
+    summaries: list[dict],
+    user_id: str,
+) -> None:
+    """Bulk-upsert ActivitySummary rows.
+
+    Resolves (or creates) the apple no-device data_source, then inserts
+    all summaries with ON CONFLICT DO UPDATE on (data_source_id, date).
+    """
+    ds_repo = DataSourceRepository()
+    data_source = ds_repo.ensure_data_source(
+        db,
+        user_id=UUID(user_id),
+        provider=ProviderName.APPLE,
+        user_connection_id=None,
+    )
+
+    values_list = []
+    for s in summaries:
+        values_list.append({
+            "id": uuid4(),
+            "data_source_id": data_source.id,
+            "date": s["date"],
+            "active_energy_burned": s["active_energy_burned"],
+            "active_energy_burned_goal": s["active_energy_burned_goal"],
+            "active_energy_burned_unit": s["active_energy_burned_unit"],
+            "apple_move_time": s["apple_move_time"],
+            "apple_move_time_goal": s["apple_move_time_goal"],
+            "apple_exercise_time": s["apple_exercise_time"],
+            "apple_exercise_time_goal": s["apple_exercise_time_goal"],
+            "apple_stand_hours": s["apple_stand_hours"],
+            "apple_stand_hours_goal": s["apple_stand_hours_goal"],
+        })
+
+    # Deduplicate within the batch (keep last value per date)
+    deduped: dict[object, dict] = {}
+    for v in values_list:
+        deduped[(v["data_source_id"], v["date"])] = v
+    values_list = list(deduped.values())
+
+    stmt = insert(ActivitySummary).values(values_list)
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_activity_summary_source_date",
+        set_={
+            "active_energy_burned": stmt.excluded.active_energy_burned,
+            "active_energy_burned_goal": stmt.excluded.active_energy_burned_goal,
+            "active_energy_burned_unit": stmt.excluded.active_energy_burned_unit,
+            "apple_move_time": stmt.excluded.apple_move_time,
+            "apple_move_time_goal": stmt.excluded.apple_move_time_goal,
+            "apple_exercise_time": stmt.excluded.apple_exercise_time,
+            "apple_exercise_time_goal": stmt.excluded.apple_exercise_time_goal,
+            "apple_stand_hours": stmt.excluded.apple_stand_hours,
+            "apple_stand_hours_goal": stmt.excluded.apple_stand_hours_goal,
+        },
+    )
+    db.execute(stmt)
+    db.commit()
+
+    log_structured(
+        log,
+        "info",
+        "ActivitySummary upsert complete",
+        provider="apple_xml",
+        task="process_xml_upload",
+        rows=len(values_list),
+    )

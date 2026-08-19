@@ -1,3 +1,4 @@
+from .activity_summary import ActivitySummary
 from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
@@ -30,6 +31,7 @@ DETAIL_MODELS: dict[DetailType, type[EventRecordDetail]] = {
 }
 
 __all__ = [
+    "ActivitySummary",
     "ApiKey",
     "Application",
     "ArchivalSetting",
