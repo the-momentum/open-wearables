@@ -34,12 +34,12 @@
     "@tanstack/react-devtools": "^0.10.10",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-query-devtools": "^5.101.4",
-    "@tanstack/react-router": "^1.170.27",
+    "@tanstack/react-router": "^1.170.29",
     "@tanstack/react-router-devtools": "^1.167.1",
     "@tanstack/react-router-ssr-query": "^1.167.1",
-    "@tanstack/react-start": "^1.168.44",
+    "@tanstack/react-start": "^1.168.46",
     "@tanstack/react-table": "^9.1.2",
-    "@tanstack/router-plugin": "^1.168.30",
+    "@tanstack/router-plugin": "^1.168.32",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
@@ -70,7 +70,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10",
-    "web-vitals": "^6.1.0"
+    "web-vitals": "^6.1.1"
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "pnpm": {
