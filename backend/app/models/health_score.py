@@ -24,10 +24,10 @@ class HealthScore(BaseDbModel):
         # SQLAlchemy's UniqueConstraint doesn't support postgresql_where, so we
         # use Index(..., unique=True) to express this partial unique constraint.
         Index(
-            "uq_health_score_sleep_record",
-            "sleep_record_id",
+            "uq_health_score_event_record",
+            "event_record_id",
             unique=True,
-            postgresql_where=text("sleep_record_id IS NOT NULL"),
+            postgresql_where=text("event_record_id IS NOT NULL"),
         ),
     )
 
@@ -45,6 +45,6 @@ class HealthScore(BaseDbModel):
 
     components: Mapped[json_binary | None]
 
-    sleep_record_id: Mapped[UUID | None] = mapped_column(
+    event_record_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("event_record.id", ondelete="CASCADE"), nullable=True
     )

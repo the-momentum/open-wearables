@@ -294,7 +294,7 @@ class Polar247Data(Base247DataTemplate):
                     value=parsed.sleep_score,
                     recorded_at=start_dt,
                     components=components or None,
-                    sleep_record_id=sleep_id,
+                    event_record_id=sleep_id,
                 )
 
             hr_samples = (

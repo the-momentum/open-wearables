@@ -13,6 +13,7 @@ from app.schemas.model_crud.activities import (
     HealthScoreCreate,
     ScoreComponent,
 )
+from app.schemas.model_crud.activities.zones import HRZone, HRZones
 from app.schemas.providers.whoop import WhoopWorkoutCollectionJSON, WhoopWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
@@ -178,6 +179,30 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
         return start_date, end_date
 
+    # zone_durations keys in zone order; zone_zero is the time below zone 1.
+    _ZONE_KEYS = (
+        "zone_zero_milli",
+        "zone_one_milli",
+        "zone_two_milli",
+        "zone_three_milli",
+        "zone_four_milli",
+        "zone_five_milli",
+    )
+
+    def _build_hr_zones(self, raw_workout: WhoopWorkoutJSON) -> HRZones | None:
+        """Convert Whoop's per-zone millisecond durations into HRZones."""
+        durations = raw_workout.score.zone_durations if raw_workout.score else None
+        if not durations:
+            return None
+
+        zones = []
+        for zone, key in enumerate(self._ZONE_KEYS):
+            milli = durations.get(key)
+            if milli is not None:
+                zones.append(HRZone(zone=zone, seconds=milli / 1000))
+
+        return HRZones(zones=zones) if zones else None
+
     def _build_metrics(self, raw_workout: WhoopWorkoutJSON) -> EventRecordMetrics:
         """Build metrics from Whoop workout data."""
         score = raw_workout.score
@@ -284,6 +309,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         # Create EventRecordDetailCreate
         workout_detail_create = EventRecordDetailCreate(
             record_id=workout_id,
+            hr_zones=self._build_hr_zones(raw_workout),
             **metrics,
         )
 

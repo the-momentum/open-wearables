@@ -18,7 +18,7 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 # Find all non-nap sleep sessions that have no corresponding OW sleep score.
-# The match is on sleep_record_id (direct FK) so each session gets exactly one
+# The match is on event_record_id (direct FK) so each session gets exactly one
 # score regardless of timezone-induced date collisions. wake_date (local end
 # date) is used as the lookup key for get_sleep_scores_for_records and for
 # result ordering. recorded_at is set to the session's exact local end datetime
@@ -36,7 +36,7 @@ _MISSING_SCORES_QUERY = text("""
     JOIN data_source ds   ON ds.id = er.data_source_id
     JOIN sleep_details sd ON sd.record_id = er.id
     LEFT JOIN health_score hs
-           ON hs.sleep_record_id = er.id
+           ON hs.event_record_id = er.id
           AND hs.category     = 'sleep'
           AND hs.provider     = 'internal'
     WHERE er.category = 'sleep'
@@ -54,7 +54,7 @@ def fill_missing_sleep_scores() -> dict:
     """Find sleep sessions without an OW sleep score and calculate them.
 
     Runs frequently (every few minutes) so scores appear shortly after any sync
-    path (periodic pull, webhook, SDK upload). Uses a LEFT JOIN on sleep_record_id
+    path (periodic pull, webhook, SDK upload). Uses a LEFT JOIN on event_record_id
     to guarantee idempotency — already-scored sessions are never re-processed.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.score_backfill_days)
@@ -110,7 +110,7 @@ def fill_missing_sleep_scores() -> dict:
                     provider=ProviderName.INTERNAL,
                     category=HealthScoreCategory.SLEEP,
                     value=result.overall_score,
-                    sleep_record_id=record_id,
+                    event_record_id=record_id,
                     recorded_at=local_end_by_id[record_id].replace(tzinfo=timezone.utc),
                     components={
                         "duration": ScoreComponent(value=result.breakdown.duration.score),

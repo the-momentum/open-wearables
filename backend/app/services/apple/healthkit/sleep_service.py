@@ -536,6 +536,6 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
             provider=state.provider or "unknown",
             action="sleep_record_save_error",
             user_id=user_id,
-            sleep_record_id=sleep_record.id,
+            event_record_id=sleep_record.id,
             error=str(e),
         )
