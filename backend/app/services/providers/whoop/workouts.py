@@ -153,7 +153,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             detail_for_record = detail.model_copy(update={"record_id": created.id})
             event_record_service.create_detail(db, detail_for_record)
             if health_score:
-                health_score_service.create(db, health_score)
+                health_score_service.create(db, health_score.model_copy(update={"event_record_id": created.id}))
             return 1
         except Exception as e:
             log_structured(
@@ -242,7 +242,12 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         raw_workout: WhoopWorkoutJSON,
         user_id: UUID,
     ) -> HealthScoreCreate | None:
-        """Extract strain health score from a Whoop workout record."""
+        """Extract strain health score from a Whoop workout record.
+
+        Leaves event_record_id unset — the caller fills it in with the id of the
+        event record it created, which is what distinguishes a per-workout strain
+        from the per-day cycle strain in app/services/providers/whoop/data_247.py.
+        """
         if not raw_workout.score or raw_workout.score.strain is None:
             return None
         try:
@@ -441,7 +446,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 event_record_service.create_detail(db, detail_for_record)
                 count += 1
                 if strain_score:
-                    strain_scores.append(strain_score)
+                    strain_scores.append(strain_score.model_copy(update={"event_record_id": created_record.id}))
 
         if strain_scores:
             try:
