@@ -1514,7 +1514,8 @@ class TestRecoverySummaryEndpoint:
         assert response.status_code == 200
         item = response.json()["data"][0]
         assert item["resting_heart_rate_bpm"] == 58
-        assert item["avg_hrv_sdnn_ms"] == 45.5
+        assert item["avg_hrv_rmssd_ms"] == 45.5
+        assert item["avg_hrv_sdnn_ms"] is None
         assert item["avg_spo2_percent"] == 97.0
 
     def test_empty_range_returns_no_data(self, client: TestClient, db: Session) -> None:

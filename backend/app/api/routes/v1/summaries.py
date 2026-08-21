@@ -67,7 +67,17 @@ def get_recovery_summary(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[RecoverySummary]:
-    """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2)."""
+    """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2).
+
+    **Warning - known limitation:** this endpoint currently returns data **only for WHOOP**.
+    Metrics are read from stored recovery-score records, which today are produced solely by
+    WHOOP, so users connected only to other providers (e.g. Apple Health) receive an empty
+    result even when the underlying resting HR, HRV and SpO2 are available. This is a bug.
+
+    These values will soon be computed from the timeseries we already store in the database
+    rather than from what a single provider reports, at which point recovery metrics will be
+    returned for all providers that supply the underlying data.
+    """
     start_datetime = parse_query_datetime(start_date)
     end_datetime = parse_query_datetime(end_date)
     return summaries_service.get_recovery_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)

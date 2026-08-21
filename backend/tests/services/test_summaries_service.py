@@ -268,7 +268,9 @@ class TestGetSleepSummaries:
 
 
 class TestGetRecoverySummaries:
-    def test_whoop_rmssd_is_not_exposed_as_sdnn(self, service: SummariesService, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_rmssd_input_is_exposed_as_rmssd_not_sdnn(
+        self, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         row = {
             "recovery_date": date(2026, 1, 2),
             "provider": "whoop",
