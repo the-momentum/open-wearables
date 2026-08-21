@@ -33,6 +33,10 @@ from app.utils.structured_logging import log_structured
 
 _MAX_PAGE_LIMIT = 25  # Whoop API limit
 
+_SLEEP_ENDPOINT = "/v2/activity/sleep"
+_RECOVERY_ENDPOINT = "/v2/recovery"
+_CYCLE_ENDPOINT = "/v2/cycle"
+
 
 class Whoop247Data(Base247DataTemplate):
     """Whoop implementation for 247 data (sleep, recovery, activity)."""
@@ -90,8 +94,12 @@ class Whoop247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
         label: str,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], bool]:
         """Fetch every page of a paginated Whoop collection endpoint.
+
+        Returns (records, truncated). truncated means a page failed and the range is
+        incomplete — nothing re-fetches it, so callers keep the records they got and
+        report the gap rather than discarding real data.
 
         label names the data for logging; task follows the get_{label}_data convention.
         """
@@ -137,20 +145,21 @@ class Whoop247Data(Base247DataTemplate):
                     task=task,
                     user_id=str(user_id),
                 )
-                # If we got some data, return what we have; otherwise re-raise
-                if all_records:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Returning partial {label} data due to error: {e}",
-                        provider="whoop",
-                        task=task,
-                        user_id=str(user_id),
-                    )
-                    break
-                raise
+                # Page 1 failing means we have nothing to save, so let it propagate.
+                if not all_records:
+                    raise
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Returning partial {label} data due to error: {e}",
+                    provider="whoop",
+                    task=task,
+                    action="whoop_api_partial_data",
+                    user_id=str(user_id),
+                )
+                return all_records, True
 
-        return all_records
+        return all_records, False
 
     def get_sleep_data(
         self,
@@ -159,8 +168,12 @@ class Whoop247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch sleep data from Whoop API via v2 endpoint with pagination."""
-        return self._fetch_paginated(db, user_id, "/v2/activity/sleep", start_time, end_time, "sleep")
+        """Fetch sleep data from Whoop API via v2 endpoint with pagination.
+
+        Drops the truncation flag to keep the Base247DataTemplate contract; callers
+        that need it (load_and_save_sleep) use _fetch_paginated directly.
+        """
+        return self._fetch_paginated(db, user_id, _SLEEP_ENDPOINT, start_time, end_time, "sleep")[0]
 
     def _normalize_sleep_health_score(
         self,
@@ -416,9 +429,9 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
-    ) -> int:
-        """Load sleep data from API and save to database."""
-        raw_data = self.get_sleep_data(db, user_id, start_time, end_time)
+    ) -> tuple[int, bool]:
+        """Load sleep data from API and save to database. Returns (saved, partial)."""
+        raw_data, truncated = self._fetch_paginated(db, user_id, _SLEEP_ENDPOINT, start_time, end_time, "sleep")
         count = 0
         health_scores: list[HealthScoreCreate] = []
         for item in raw_data:
@@ -441,7 +454,7 @@ class Whoop247Data(Base247DataTemplate):
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
             db.commit()
-        return count
+        return count, truncated
 
     def load_and_save_all(
         self,
@@ -479,7 +492,10 @@ class Whoop247Data(Base247DataTemplate):
         }
 
         try:
-            results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
+            saved, sleep_partial = self.load_and_save_sleep(db, user_id, start_time, end_time)
+            results["sleep_sessions_synced"] = saved
+            if sleep_partial:
+                results["sleep_partial"] = 1
         except Exception as e:
             db.rollback()
             log_structured(
@@ -492,7 +508,10 @@ class Whoop247Data(Base247DataTemplate):
             )
 
         try:
-            results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
+            saved, recovery_partial = self.load_and_save_recovery(db, user_id, start_time, end_time)
+            results["recovery_samples_synced"] = saved
+            if recovery_partial:
+                results["recovery_partial"] = 1
         except Exception as e:
             db.rollback()
             log_structured(
@@ -505,7 +524,10 @@ class Whoop247Data(Base247DataTemplate):
             )
 
         try:
-            results["cycles_synced"] = self.load_and_save_cycles(db, user_id, start_time, end_time)
+            saved, cycles_partial = self.load_and_save_cycles(db, user_id, start_time, end_time)
+            results["cycles_synced"] = saved
+            if cycles_partial:
+                results["cycles_partial"] = 1
         except Exception as e:
             db.rollback()
             log_structured(
@@ -684,7 +706,7 @@ class Whoop247Data(Base247DataTemplate):
         Returns list of recovery records containing recovery_score, resting_heart_rate,
         hrv_rmssd_milli, spo2_percentage, and skin_temp_celsius.
         """
-        return self._fetch_paginated(db, user_id, "/v2/recovery", start_time, end_time, "recovery")
+        return self._fetch_paginated(db, user_id, _RECOVERY_ENDPOINT, start_time, end_time, "recovery")[0]
 
     def _normalize_recovery_health_score(
         self,
@@ -867,12 +889,12 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
-    ) -> int:
+    ) -> tuple[int, bool]:
         """Load recovery data from API and save to database.
 
-        Returns the total number of data point samples saved.
+        Returns (data point samples saved, partial).
         """
-        raw_data = self.get_recovery_data(db, user_id, start_time, end_time)
+        raw_data, truncated = self._fetch_paginated(db, user_id, _RECOVERY_ENDPOINT, start_time, end_time, "recovery")
         total_count = 0
         health_scores: list[HealthScoreCreate] = []
 
@@ -898,7 +920,7 @@ class Whoop247Data(Base247DataTemplate):
             health_score_service.bulk_create(db, health_scores)
             db.commit()
 
-        return total_count
+        return total_count, truncated
 
     # -------------------------------------------------------------------------
     # Cycle Data - Whoop /v2/cycle
@@ -912,7 +934,7 @@ class Whoop247Data(Base247DataTemplate):
         end_time: datetime,
     ) -> list[dict[str, Any]]:
         """Fetch physiological cycles from Whoop API via v2 endpoint with pagination."""
-        return self._fetch_paginated(db, user_id, "/v2/cycle", start_time, end_time, "cycle")
+        return self._fetch_paginated(db, user_id, _CYCLE_ENDPOINT, start_time, end_time, "cycle")[0]
 
     def normalize_cycle(
         self,
@@ -981,12 +1003,12 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
-    ) -> int:
+    ) -> tuple[int, bool]:
         """Load cycles from API and save daily energy and strain.
 
-        Returns the number of daily energy samples saved.
+        Returns (daily energy samples saved, partial).
         """
-        raw_data = self.get_cycle_data(db, user_id, start_time, end_time)
+        raw_data, truncated = self._fetch_paginated(db, user_id, _CYCLE_ENDPOINT, start_time, end_time, "cycle")
         samples: list[TimeSeriesSampleCreate] = []
         health_scores: list[HealthScoreCreate] = []
 
@@ -1015,7 +1037,7 @@ class Whoop247Data(Base247DataTemplate):
         if samples or health_scores:
             db.commit()
 
-        return counts
+        return counts, truncated
 
     # -------------------------------------------------------------------------
     # Activity Samples
