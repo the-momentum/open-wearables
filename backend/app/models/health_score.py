@@ -23,9 +23,13 @@ class HealthScore(BaseDbModel):
         ),
         # SQLAlchemy's UniqueConstraint doesn't support postgresql_where, so we
         # use Index(..., unique=True) to express this partial unique constraint.
+        # One score per (event record, provider, category) — a sleep session carries
+        # both the provider's score and the internal OW one.
         Index(
             "uq_health_score_event_record",
             "event_record_id",
+            "provider",
+            "category",
             unique=True,
             postgresql_where=text("event_record_id IS NOT NULL"),
         ),
