@@ -1,6 +1,7 @@
 """MCP tools for querying menstrual cycle records."""
 
 import logging
+from datetime import date, datetime
 
 from fastmcp import FastMCP
 
@@ -10,8 +11,23 @@ from app.utils import normalize_datetime
 
 logger = logging.getLogger(__name__)
 
+# Safety ceiling for cursor pagination: 10 pages x 100 records covers decades of cycles.
+_MAX_PAGES = 10
+
 # Create router for menstrual cycle tools
 menstrual_cycles_router = FastMCP(name="Menstrual Cycle Tools")
+
+
+def _starts_after(start_time: str | None, end_date: str) -> bool:
+    """True when a record's cycle start date falls after the requested end date."""
+    if not start_time:
+        return False
+    try:
+        start = datetime.fromisoformat(start_time.replace("Z", "+00:00")).date()
+        end = date.fromisoformat(end_date)
+    except ValueError:
+        return False
+    return start > end
 
 
 @menstrual_cycles_router.tool
@@ -40,6 +56,8 @@ async def get_menstrual_cycles(
         - period: The date range queried (start, end)
         - records: List of menstrual cycle records
         - summary: Aggregate statistics (avg_cycle_length_days, phase_types, etc.)
+        - truncated: True when the pagination safety ceiling was hit and older
+          records were left out
 
     Example response:
         {
@@ -82,7 +100,8 @@ async def get_menstrual_cycles(
                     "days_until_next_phase": 2,
                     "is_predicted_cycle": false
                 }
-            }
+            },
+            "truncated": false
         }
 
     Notes for LLMs:
@@ -90,10 +109,11 @@ async def get_menstrual_cycles(
         - Calculate dates based on user queries:
           "last month" -> start_date = 30 days ago, end_date = today
           "this year" -> start_date = first of year, end_date = today
-        - Records are filtered by cycle start date only. The backend does not
-          apply end_date as an upper bound, so the cycle currently in progress
-          and predicted future cycles are always included. Filter records by
-          start_datetime yourself when the user asks about a strict window.
+        - Records are filtered by cycle start date. Cycles starting after
+          end_date are excluded, so a historical window does not pick up
+          predicted future cycles. The cycle currently in progress is included
+          when it started inside the window, even though it ends after
+          end_date.
         - summary.latest is the most recent logged cycle when one exists, and
           falls back to the most recent predicted cycle otherwise.
         - day_in_cycle counts from 1 on the first day of the menstrual period.
@@ -123,14 +143,23 @@ async def get_menstrual_cycles(
         except NotFoundError as e:
             return {"error": f"User not found: {user_id}", "details": str(e)}
 
-        # Fetch menstrual cycle data
-        cycles_response = await client.get_menstrual_cycles(
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
-
-        records_data = cycles_response.get("data", [])
+        # Walk cursor pagination until exhausted or the safety ceiling is hit
+        records_data: list[dict] = []
+        cursor: str | None = None
+        truncated = False
+        for _ in range(_MAX_PAGES):
+            cycles_response = await client.get_menstrual_cycles(
+                user_id=user_id,
+                start_date=start_date,
+                end_date=end_date,
+                cursor=cursor,
+            )
+            records_data.extend(cycles_response.get("data", []))
+            cursor = (cycles_response.get("pagination") or {}).get("next_cursor")
+            if not cursor:
+                break
+        else:
+            truncated = True
 
         # Transform records
         records = []
@@ -144,11 +173,17 @@ async def get_menstrual_cycles(
         latest_predicted = False
 
         for record in records_data:
+            start_time = record.get("start_time")
+
+            # The backend leaves end_date unbounded so predicted cycles stay
+            # visible; apply the requested upper bound here.
+            if _starts_after(start_time, end_date):
+                continue
+
             cycle_length = record.get("cycle_length")
             period_length = record.get("period_length")
             phase_type = record.get("current_phase_type")
             pregnancy_snapshot = record.get("pregnancy_snapshot")
-            start_time = record.get("start_time")
 
             if cycle_length is not None:
                 cycle_lengths.append(cycle_length)
@@ -219,6 +254,7 @@ async def get_menstrual_cycles(
             "period": {"start": start_date, "end": end_date},
             "records": records,
             "summary": summary,
+            "truncated": truncated,
         }
 
     except OpenWearablesError as e:

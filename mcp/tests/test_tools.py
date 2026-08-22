@@ -166,6 +166,22 @@ async def test_get_menstrual_cycles_transforms_records_and_summary(httpx_mock: H
                     "period_length": 6,
                     "pregnancy_snapshot": None,
                 },
+                {
+                    # Predicted cycle starting after end_date: must be excluded
+                    "id": "33333333-3333-3333-3333-333333333333",
+                    "start_time": "2026-03-04T00:00:00Z",
+                    "end_time": "2026-04-03T00:00:00Z",
+                    "zone_offset": None,
+                    "source": {"provider": "garmin", "source": "Connect", "device": None, "device_type": None},
+                    "current_phase": None,
+                    "current_phase_type": None,
+                    "day_in_cycle": None,
+                    "cycle_length": None,
+                    "predicted_cycle_length": 30,
+                    "is_predicted_cycle": True,
+                    "period_length": 6,
+                    "pregnancy_snapshot": None,
+                },
             ],
             "pagination": {"next_cursor": None, "previous_cursor": None, "total_count": 2},
             "metadata": {},
@@ -179,9 +195,11 @@ async def test_get_menstrual_cycles_transforms_records_and_summary(httpx_mock: H
     )
 
     assert result["user"]["id"] == USER_ID
+    # The record starting after end_date is dropped
     assert len(result["records"]) == 2
     assert result["records"][0]["source"] == "garmin"
     assert result["records"][0]["start_datetime"] == "2026-01-05T00:00:00+00:00"
+    assert result["truncated"] is False
 
     summary = result["summary"]
     assert summary["total_records"] == 2
@@ -194,6 +212,58 @@ async def test_get_menstrual_cycles_transforms_records_and_summary(httpx_mock: H
     assert summary["latest"]["day_in_cycle"] == 14
     assert summary["latest"]["current_phase_type"] == "ovulation"
     assert summary["latest"]["is_predicted_cycle"] is False
+
+
+async def test_get_menstrual_cycles_walks_pagination(httpx_mock: HTTPXMock) -> None:
+    """`get_menstrual_cycles` follows next_cursor until the last page."""
+    httpx_mock.add_response(
+        method="GET",
+        url=f"https://api.test.com/api/v1/users/{USER_ID}",
+        json=USER_PAYLOAD,
+    )
+    record_template = {
+        "start_time": "2026-01-05T00:00:00Z",
+        "end_time": "2026-02-02T00:00:00Z",
+        "source": {"provider": "garmin"},
+        "cycle_length": 28,
+        "period_length": 5,
+        "current_phase_type": "luteal",
+        "is_predicted_cycle": False,
+    }
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/events/menstrual-cycles"
+            "?start_date=2026-01-01&end_date=2026-02-28&limit=100"
+        ),
+        json={
+            "data": [{"id": "11111111-1111-1111-1111-111111111111", **record_template}],
+            "pagination": {"next_cursor": "page2", "previous_cursor": None, "total_count": 2},
+            "metadata": {},
+        },
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/events/menstrual-cycles"
+            "?start_date=2026-01-01&end_date=2026-02-28&limit=100&cursor=page2"
+        ),
+        json={
+            "data": [{"id": "22222222-2222-2222-2222-222222222222", **record_template}],
+            "pagination": {"next_cursor": None, "previous_cursor": "prev_page1", "total_count": 2},
+            "metadata": {},
+        },
+    )
+
+    result = await get_menstrual_cycles.fn(
+        user_id=USER_ID,
+        start_date="2026-01-01",
+        end_date="2026-02-28",
+    )
+
+    assert len(result["records"]) == 2
+    assert result["summary"]["total_records"] == 2
+    assert result["truncated"] is False
 
 
 async def test_get_menstrual_cycles_handles_empty_data(httpx_mock: HTTPXMock) -> None:
