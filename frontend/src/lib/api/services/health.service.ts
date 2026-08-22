@@ -52,6 +52,31 @@ export interface SummaryParams {
   [key: string]: string | number | undefined;
 }
 
+/**
+ * Fetch every page of a cursor-paginated endpoint.
+ * The API caps a single page (100 items on most endpoints), so date ranges
+ * wider than one page need cursor traversal to be fully covered.
+ */
+async function fetchAllPages<T>(
+  endpoint: string,
+  params: SummaryParams | WorkoutsParams | HealthScoreParams
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  // Safety cap to avoid an unbounded loop on a misbehaving cursor
+  for (let page = 0; page < 50; page++) {
+    const response = await apiClient.get<PaginatedResponse<T>>(endpoint, {
+      params: { ...params, limit: 100, cursor },
+    });
+    items.push(...response.data);
+    if (!response.pagination.has_more || !response.pagination.next_cursor) {
+      break;
+    }
+    cursor = response.pagination.next_cursor;
+  }
+  return items;
+}
+
 export const healthService = {
   /**
    * Synchronize workouts/exercises/activities from fitness provider API for a specific user
@@ -187,6 +212,45 @@ export const healthService = {
     return apiClient.get<PaginatedResponse<SleepSummary>>(
       API_ENDPOINTS.userSleepSummary(userId),
       { params }
+    );
+  },
+
+  /**
+   * Get all sleep summaries for a date range, following pagination cursors
+   */
+  async getAllSleepSummaries(
+    userId: string,
+    params: SummaryParams
+  ): Promise<SleepSummary[]> {
+    return fetchAllPages<SleepSummary>(
+      API_ENDPOINTS.userSleepSummary(userId),
+      params
+    );
+  },
+
+  /**
+   * Get all workouts for a date range, following pagination cursors
+   */
+  async getAllWorkouts(
+    userId: string,
+    params?: WorkoutsParams
+  ): Promise<EventRecordResponse[]> {
+    return fetchAllPages<EventRecordResponse>(
+      API_ENDPOINTS.userWorkouts(userId),
+      params ?? {}
+    );
+  },
+
+  /**
+   * Get all health scores for a date range, following pagination cursors
+   */
+  async getAllHealthScores(
+    userId: string,
+    params?: HealthScoreParams
+  ): Promise<HealthScoreResponse[]> {
+    return fetchAllPages<HealthScoreResponse>(
+      API_ENDPOINTS.userHealthScores(userId),
+      params ?? {}
     );
   },
 

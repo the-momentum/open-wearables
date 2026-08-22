@@ -14,7 +14,7 @@ import {
   ChevronUp,
   type LucideIcon,
 } from 'lucide-react';
-import { useHealthScores } from '@/hooks/api/use-health';
+import { useAllHealthScores } from '@/hooks/api/use-health';
 import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { SourceBadge } from '@/components/common/source-badge';
@@ -425,13 +425,14 @@ export function ScoresSection({
   const { startDate, endDate } = useDateRange(dateRange);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const { data: scoresData, isLoading } = useHealthScores(userId, {
+  // Follows pagination cursors so ranges with more than one API page of
+  // scores are fully covered
+  const { data: scoresData, isLoading } = useAllHealthScores(userId, {
     start_date: startDate,
     end_date: endDate,
-    limit: 1000,
   });
 
-  const scores = useMemo(() => scoresData?.data ?? [], [scoresData?.data]);
+  const scores = useMemo(() => scoresData ?? [], [scoresData]);
 
   // Categories that have data, in defined order
   const availableCategories = useMemo(() => {
