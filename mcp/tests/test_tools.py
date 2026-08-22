@@ -11,6 +11,7 @@ from fastmcp.tools import FunctionTool
 from pytest_httpx import HTTPXMock
 
 from app.tools.activity import get_activity_summary
+from app.tools.menstrual_cycles import get_menstrual_cycles
 from app.tools.sleep import get_sleep_summary
 from app.tools.timeseries import get_timeseries
 from app.tools.users import get_users
@@ -44,6 +45,7 @@ async def test_get_users_returns_empty_envelope_on_auth_error(httpx_mock: HTTPXM
     "tool",
     [
         pytest.param(get_activity_summary, id="activity"),
+        pytest.param(get_menstrual_cycles, id="menstrual_cycles"),
         pytest.param(get_sleep_summary, id="sleep"),
         pytest.param(get_workout_events, id="workouts"),
     ],
@@ -115,3 +117,113 @@ async def test_get_activity_summary_returns_generic_error_envelope_on_downstream
     assert "error" in result
     assert "Invalid API key" in result["error"]
     assert not result["error"].startswith("User not found")
+
+
+async def test_get_menstrual_cycles_transforms_records_and_summary(httpx_mock: HTTPXMock) -> None:
+    """`get_menstrual_cycles` maps backend records and aggregates cycle statistics."""
+    httpx_mock.add_response(
+        method="GET",
+        url=f"https://api.test.com/api/v1/users/{USER_ID}",
+        json=USER_PAYLOAD,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/events/menstrual-cycles"
+            "?start_date=2026-01-01&end_date=2026-02-28&limit=100"
+        ),
+        json={
+            "data": [
+                {
+                    "id": "11111111-1111-1111-1111-111111111111",
+                    "start_time": "2026-01-05T00:00:00Z",
+                    "end_time": "2026-02-02T00:00:00Z",
+                    "zone_offset": None,
+                    "source": {"provider": "garmin", "source": "Connect", "device": None, "device_type": None},
+                    "current_phase": 2,
+                    "current_phase_type": "ovulation",
+                    "day_in_cycle": 14,
+                    "cycle_length": 28,
+                    "predicted_cycle_length": 28,
+                    "is_predicted_cycle": False,
+                    "period_length": 5,
+                    "fertile_window_start": 12,
+                    "length_of_fertile_window": 6,
+                    "pregnancy_snapshot": None,
+                },
+                {
+                    "id": "22222222-2222-2222-2222-222222222222",
+                    "start_time": "2026-02-02T00:00:00Z",
+                    "end_time": "2026-03-04T00:00:00Z",
+                    "zone_offset": None,
+                    "source": {"provider": "garmin", "source": "Connect", "device": None, "device_type": None},
+                    "current_phase": 1,
+                    "current_phase_type": "menstruation",
+                    "day_in_cycle": 3,
+                    "cycle_length": 30,
+                    "predicted_cycle_length": 30,
+                    "is_predicted_cycle": True,
+                    "period_length": 6,
+                    "pregnancy_snapshot": None,
+                },
+            ],
+            "pagination": {"next_cursor": None, "previous_cursor": None, "total_count": 2},
+            "metadata": {},
+        },
+    )
+
+    result = await get_menstrual_cycles.fn(
+        user_id=USER_ID,
+        start_date="2026-01-01",
+        end_date="2026-02-28",
+    )
+
+    assert result["user"]["id"] == USER_ID
+    assert len(result["records"]) == 2
+    assert result["records"][0]["source"] == "garmin"
+    assert result["records"][0]["start_datetime"] == "2026-01-05T00:00:00+00:00"
+
+    summary = result["summary"]
+    assert summary["total_records"] == 2
+    assert summary["predicted_records"] == 1
+    assert summary["avg_cycle_length_days"] == 29.0
+    assert summary["avg_period_length_days"] == 5.5
+    assert summary["phase_types"] == {"ovulation": 1, "menstruation": 1}
+    assert summary["has_pregnancy_data"] is False
+    # The most recent record is predicted, so latest falls back to the logged cycle
+    assert summary["latest"]["day_in_cycle"] == 14
+    assert summary["latest"]["current_phase_type"] == "ovulation"
+    assert summary["latest"]["is_predicted_cycle"] is False
+
+
+async def test_get_menstrual_cycles_handles_empty_data(httpx_mock: HTTPXMock) -> None:
+    """`get_menstrual_cycles` returns an empty records list and null aggregates when there is no data."""
+    httpx_mock.add_response(
+        method="GET",
+        url=f"https://api.test.com/api/v1/users/{USER_ID}",
+        json=USER_PAYLOAD,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/events/menstrual-cycles"
+            "?start_date=2026-01-01&end_date=2026-01-07&limit=100"
+        ),
+        json={
+            "data": [],
+            "pagination": {"next_cursor": None, "previous_cursor": None, "total_count": 0},
+            "metadata": {},
+        },
+    )
+
+    result = await get_menstrual_cycles.fn(
+        user_id=USER_ID,
+        start_date="2026-01-01",
+        end_date="2026-01-07",
+    )
+
+    assert result["records"] == []
+    assert result["summary"]["total_records"] == 0
+    assert result["summary"]["avg_cycle_length_days"] is None
+    assert result["summary"]["phase_types"] is None
+    assert result["summary"]["latest"] is None

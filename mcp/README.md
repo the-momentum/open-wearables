@@ -9,6 +9,7 @@ MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants l
 - **get_sleep_summary**: Get sleep data for a user within a date range
 - **get_workout_events**: Get workout/exercise sessions for a user within a date range
 - **get_timeseries**: Get granular time-series samples (weight, SpO2, HRV, intraday heart rate, etc.)
+- **get_menstrual_cycles**: Get menstrual cycle records (cycle day, phase, period and cycle lengths)
 
 ## Prerequisites
 
@@ -188,7 +189,8 @@ mcp/
 │   │   ├── activity.py   # get_activity_summary tool
 │   │   ├── sleep.py      # get_sleep_summary tool
 │   │   ├── workouts.py   # get_workout_events tool
-│   │   └── timeseries.py # get_timeseries tool
+│   │   ├── timeseries.py # get_timeseries tool
+│   │   └── menstrual_cycles.py # get_menstrual_cycles tool
 │   └── services/
 │       └── api_client.py # HTTP client for backend API
 ├── config/
