@@ -373,8 +373,7 @@ export function WorkoutSection({
   const handleNextPage = () => pagination.goToNextPage(nextCursor);
   const handlePrevPage = pagination.goToPrevPage;
 
-  // Fetch workouts for summary (date filtered, following pagination cursors
-  // so ranges with more than one API page of workouts are fully covered)
+  // Fetch workouts for summary (date range filtered)
   const { data: summaryWorkouts, isLoading: summaryLoading } = useAllWorkouts(
     userId,
     {

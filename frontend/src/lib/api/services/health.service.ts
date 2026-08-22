@@ -53,9 +53,8 @@ export interface SummaryParams {
 }
 
 /**
- * Fetch every page of a cursor-paginated endpoint.
- * The API caps a single page (100 items on most endpoints), so date ranges
- * wider than one page need cursor traversal to be fully covered.
+ * Fetch every page of a cursor-paginated endpoint. Single pages cap at
+ * 100 items on most endpoints, so wide date ranges span several pages.
  */
 async function fetchAllPages<T>(
   endpoint: string,
@@ -216,7 +215,7 @@ export const healthService = {
   },
 
   /**
-   * Get all sleep summaries for a date range, following pagination cursors
+   * Get all pages of sleep summaries for a date range
    */
   async getAllSleepSummaries(
     userId: string,
@@ -229,7 +228,7 @@ export const healthService = {
   },
 
   /**
-   * Get all workouts for a date range, following pagination cursors
+   * Get all pages of workouts for a date range
    */
   async getAllWorkouts(
     userId: string,
@@ -242,7 +241,7 @@ export const healthService = {
   },
 
   /**
-   * Get all health scores for a date range, following pagination cursors
+   * Get all pages of health scores for a date range
    */
   async getAllHealthScores(
     userId: string,

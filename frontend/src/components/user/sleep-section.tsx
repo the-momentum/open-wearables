@@ -518,9 +518,7 @@ export function SleepSection({
   const { startDate, endDate } = useDateRange(dateRange);
   const allTimeRange = useAllTimeRange();
 
-  // Fetch sleep summaries for summary stats (date range filtered).
-  // Follows pagination cursors so ranges wider than one API page (100 days)
-  // are fully covered.
+  // Fetch sleep summaries for summary stats (date range filtered)
   const { data: sleepSummaries, isLoading: summaryLoading } =
     useAllSleepSummaries(userId, {
       start_date: startDate,

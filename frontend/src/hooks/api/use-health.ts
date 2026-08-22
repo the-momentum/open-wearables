@@ -123,8 +123,8 @@ export function useSleepSummaries(userId: string, params: SummaryParams) {
 }
 
 /**
- * Get all sleep summaries for a date range, following pagination cursors
- * so ranges wider than one API page (100 days) are fully covered.
+ * Get all pages of sleep summaries for a date range
+ * Uses GET /api/v1/users/{user_id}/summaries/sleep
  */
 export function useAllSleepSummaries(userId: string, params: SummaryParams) {
   return useQuery({
@@ -135,8 +135,8 @@ export function useAllSleepSummaries(userId: string, params: SummaryParams) {
 }
 
 /**
- * Get all workouts for a date range, following pagination cursors
- * so ranges with more than one API page (100 workouts) are fully covered.
+ * Get all pages of workouts for a date range
+ * Uses GET /api/v1/users/{user_id}/events/workouts
  */
 export function useAllWorkouts(userId: string, params?: WorkoutsParams) {
   return useQuery({
@@ -147,8 +147,8 @@ export function useAllWorkouts(userId: string, params?: WorkoutsParams) {
 }
 
 /**
- * Get all health scores for a date range, following pagination cursors
- * so ranges with more than one API page of scores are fully covered.
+ * Get all pages of health scores for a date range
+ * Uses GET /api/v1/users/{user_id}/health-scores
  */
 export function useAllHealthScores(userId: string, params: HealthScoreParams) {
   return useQuery({

@@ -425,8 +425,6 @@ export function ScoresSection({
   const { startDate, endDate } = useDateRange(dateRange);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  // Follows pagination cursors so ranges with more than one API page of
-  // scores are fully covered
   const { data: scoresData, isLoading } = useAllHealthScores(userId, {
     start_date: startDate,
     end_date: endDate,
