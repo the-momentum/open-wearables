@@ -12,7 +12,7 @@ keywords: ["data migration", "backfill", "database", "open wearables"]
 Data migration scripts live in `backend/scripts/data_migrations/`. They handle one-off corrections, backfills, or clean-ups that cannot be expressed as a zero-downtime Alembic migration.
 
 <Note>
-This page covers **how** to run the scripts. The rationale for each individual migration — the problem it fixes, what it changes, conflict handling, and idempotency — lives in the module docstring at the top of the corresponding script in `backend/scripts/data_migrations/`. Read that before running one.
+This page covers **how** to run the scripts. The rationale for each individual migration — the problem it fixes and what it changes, plus any relevant details such as conflict handling or idempotency — lives in the module docstring at the top of the corresponding script in `backend/scripts/data_migrations/`. Read that before running one.
 </Note>
 
 ## How they run
