@@ -12,6 +12,7 @@ from unittest.mock import patch
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource, EventRecord, SeriesTypeDefinition, SleepDetails
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums.series_types import SeriesType
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
@@ -584,3 +585,97 @@ class TestUltrahumanErrorHandling:
                 assert record.start_datetime <= end_time, (
                     f"Sleep record {record.start_datetime} is after end time {end_time}"
                 )
+
+
+class TestUltrahumanSyncCountContract:
+    """Guards the fix for the "Success but 0 items" sync report.
+
+    The sync orchestrator sums saved rows via ``getattr(_count, "inserted", 0)``
+    over the values of ``load_and_save_all``'s result. Plain ints resolve to 0
+    there, so the saved-row counters must be returned as ``WriteCounts``.
+    """
+
+    def test_saved_counts_are_writecounts_the_orchestrator_can_sum(
+        self, db: Session, sample_ultrahuman_api_response: dict
+    ) -> None:
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
+
+        factory = ProviderFactory()
+        strategy = factory.get_provider("ultrahuman")
+        provider_impl = strategy.data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        # Single-day range: the mock returns the same payload for every day in
+        # the range, so a multi-day range would upsert-update the same rows and
+        # produce updates. One day keeps the first sync deterministically all
+        # inserts.
+        start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+            results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
+            db.commit()
+
+        # Fixture carries both sleep and activity data.
+        assert results["sleep_sessions_synced"] > 0
+        assert results["activity_samples"] > 0
+
+        # Saved-row counters must carry .inserted so the orchestrator counts them.
+        for key in ("sleep_sessions_synced", "activity_samples"):
+            count = results[key]
+            assert isinstance(count, WriteCounts), f"{key} must be WriteCounts, got {type(count)}"
+            assert count.inserted == int(count)
+            assert count.updated == 0
+
+        # Mirror the orchestrator's accumulation: it must no longer report 0.
+        pull_inserted = sum(getattr(v, "inserted", 0) for v in results.values())
+        pull_updated = sum(getattr(v, "updated", 0) for v in results.values())
+        assert pull_inserted == results["sleep_sessions_synced"] + results["activity_samples"]
+        assert pull_updated == 0
+        assert pull_inserted + pull_updated > 0
+
+        # failed_days / errors must not be mistaken for written rows.
+        assert getattr(results["failed_days"], "inserted", 0) == 0
+        assert getattr(results["errors"], "inserted", 0) == 0
+
+    def test_resync_upserts_instead_of_duplicating(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
+        """Re-syncing the same day must upsert (dedupe), not insert duplicate rows."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
+
+        factory = ProviderFactory()
+        strategy = factory.get_provider("ultrahuman")
+        provider_impl = strategy.data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        # Single-day range so the first sync is deterministically all inserts;
+        # the re-sync then exercises the upsert/update path on the same rows.
+        start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+        def _sample_rows() -> int:
+            return (
+                db.query(DataPointSeries)
+                .join(DataSource)
+                .filter(DataSource.user_id == user.id, DataSource.provider == "ultrahuman")
+                .count()
+            )
+
+        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+            first = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
+            db.commit()
+            rows_after_first = _sample_rows()
+
+            second = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
+            db.commit()
+            rows_after_second = _sample_rows()
+
+        # First sync inserts; second sync updates the same rows in place.
+        assert first["activity_samples"].inserted > 0
+        assert first["activity_samples"].updated == 0
+        assert second["activity_samples"].inserted == 0
+        assert second["activity_samples"].updated == first["activity_samples"].inserted
+        assert rows_after_second == rows_after_first, "Re-sync must not duplicate timeseries rows"
