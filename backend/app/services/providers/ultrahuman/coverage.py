@@ -5,7 +5,7 @@ from app.schemas.enums.health_score_category import HealthScoreCategory
 ACTIVITY_SAMPLE_SERIES: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
     "hrv": SeriesType.heart_rate_variability_sdnn,
-    "temperature": SeriesType.body_temperature,
+    "temperature": SeriesType.skin_temperature,
     "steps": SeriesType.steps,
 }
 

@@ -272,7 +272,7 @@ class TestUltrahumanActivitySamplesIntegration:
                     type_id_to_code[sample.series_type_definition_id] = std.code if std else None
 
             synced_codes = set(type_id_to_code.values())
-            expected_codes = {"heart_rate", "heart_rate_variability_sdnn", "body_temperature", "steps"}
+            expected_codes = {"heart_rate", "heart_rate_variability_sdnn", "skin_temperature", "steps"}
 
             for code in expected_codes:
                 assert code in synced_codes, f"{code} missing from synced samples"
@@ -350,7 +350,7 @@ class TestUltrahumanActivitySamplesIntegration:
     def test_temperature_values_are_reasonable_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
     ) -> None:
-        """Verify temperature values are within realistic range (35-42°C)."""
+        """Verify skin temperature values are within realistic range."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
         DataSourceFactory(user_id=user.id, provider="ultrahuman")
@@ -373,7 +373,7 @@ class TestUltrahumanActivitySamplesIntegration:
             .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
-                SeriesTypeDefinition.code == SeriesType.body_temperature.value,
+                SeriesTypeDefinition.code == SeriesType.skin_temperature.value,
             )
             .all()
         )
