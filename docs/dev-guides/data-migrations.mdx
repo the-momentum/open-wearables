@@ -1,15 +1,19 @@
 ---
 title: "Data Migrations"
-sidebarTitle: "Overview"
+sidebarTitle: "Data Migrations"
 description: "One-off scripts for backfilling or correcting data in the database. Some run automatically on startup for a limited time; all can be run manually."
 keywords: ["data migration", "backfill", "database", "open wearables"]
 "og:title": "Data Migrations | Open Wearables"
 "og:description": "One-off scripts for backfilling or correcting data in the database."
-"og:url": "https://docs.openwearables.io/data-migrations"
+"og:url": "https://docs.openwearables.io/dev-guides/data-migrations"
 "og:type": "article"
 ---
 
 Data migration scripts live in `backend/scripts/data_migrations/`. They handle one-off corrections, backfills, or clean-ups that cannot be expressed as a zero-downtime Alembic migration.
+
+<Note>
+This page covers **how** to run the scripts. The rationale for each individual migration — the problem it fixes, what it changes, conflict handling, and idempotency — lives in the module docstring at the top of the corresponding script in `backend/scripts/data_migrations/`. Read that before running one.
+</Note>
 
 ## How they run
 

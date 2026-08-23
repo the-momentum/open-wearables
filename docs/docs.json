@@ -16,6 +16,10 @@
     {
       "source": "/deployment/docker-images",
       "destination": "/deployment/docker"
+    },
+    {
+      "source": "/data-migrations/:slug*",
+      "destination": "/dev-guides/data-migrations"
     }
   ],
   "navigation": {
@@ -115,18 +119,9 @@
             "pages": [
               "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
+              "dev-guides/data-migrations",
               "dev-guides/ngrok-setup",
               "dev-guides/seed-data-generator"
-            ]
-          },
-          {
-            "group": "Data Migrations",
-            "pages": [
-              "data-migrations/index",
-              "data-migrations/backfill-garmin-sleep-end-datetime",
-              "data-migrations/backfill-sleep-scores",
-              "data-migrations/normalize-body-fat-percentage",
-              "data-migrations/relabel-oura-hrv-sdnn-to-rmssd"
             ]
           },
           {
