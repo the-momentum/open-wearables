@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException
 
 from app.config import settings
+from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -17,6 +18,7 @@ from app.schemas.enums.series_types import SeriesType
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
@@ -25,6 +27,14 @@ from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
+
+# Ultrahuman sleep_graph.data stage names → our canonical SleepStageType.
+SLEEP_GRAPH_STAGE_MAP: dict[str, SleepStageType] = {
+    "deep_sleep": SleepStageType.DEEP,
+    "light_sleep": SleepStageType.LIGHT,
+    "rem_sleep": SleepStageType.REM,
+    "awake": SleepStageType.AWAKE,
+}
 
 
 class Ultrahuman247Data(Base247DataTemplate):
@@ -145,6 +155,34 @@ class Ultrahuman247Data(Base247DataTemplate):
     # Sleep Data
     # -------------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_sleep_stages(raw_sleep: dict[str, Any]) -> list[SleepStage]:
+        """Parse the ``sleep_graph.data`` interval timeline into canonical SleepStage objects.
+
+        Ultrahuman returns timestamped stage transitions as
+        ``{"start": <unix>, "end": <unix>, "type": "deep_sleep", ...}``. Unknown stage
+        names fall back to ``SleepStageType.UNKNOWN``; intervals missing start/end are skipped.
+        """
+        graph = raw_sleep.get("sleep_graph") or {}
+        intervals = graph.get("data", []) if isinstance(graph, dict) else []
+
+        stages: list[SleepStage] = []
+        for interval in intervals:
+            start_ts = interval.get("start")
+            end_ts = interval.get("end")
+            if start_ts is None or end_ts is None:
+                continue
+            stages.append(
+                SleepStage(
+                    stage=SLEEP_GRAPH_STAGE_MAP.get(interval.get("type"), SleepStageType.UNKNOWN),
+                    start_time=datetime.fromtimestamp(start_ts, tz=timezone.utc),
+                    end_time=datetime.fromtimestamp(end_ts, tz=timezone.utc),
+                )
+            )
+
+        stages.sort(key=lambda s: s.start_time)
+        return stages
+
     def normalize_sleep(
         self,
         raw_sleep: dict[str, Any],
@@ -201,6 +239,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                 "rem_seconds": int(rem_seconds),
                 "awake_seconds": int(awake_seconds),
             },
+            "stage_timestamps": self._normalize_sleep_stages(raw_sleep),
             "ultrahuman_date": date_str,
             "raw": raw_sleep,
         }
@@ -269,6 +308,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
             is_nap=normalized_sleep.get("is_nap", False),
+            sleep_stages=normalized_sleep.get("stage_timestamps") or None,
         )
 
         try:

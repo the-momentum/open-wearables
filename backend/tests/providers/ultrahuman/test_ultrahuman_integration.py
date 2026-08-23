@@ -202,6 +202,48 @@ class TestUltrahumanSleepDataIntegration:
 
             assert not all_zero, "All sleep stage values are zero - parsing may be broken"
 
+    def test_sleep_graph_stages_persisted_to_jsonb_with_mocked_api(
+        self, db: Session, sample_ultrahuman_api_response: dict
+    ) -> None:
+        """Verify sleep_graph.data intervals are normalized and stored in sleep_details.sleep_stages."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
+
+        factory = ProviderFactory()
+        strategy = factory.get_provider("ultrahuman")
+        provider_impl = strategy.data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+            provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
+            db.commit()
+
+        details = (
+            db.query(SleepDetails)
+            .join(EventRecord, SleepDetails.record_id == EventRecord.id)
+            .join(DataSource)
+            .filter(DataSource.user_id == user.id, EventRecord.category == "sleep")
+            .all()
+        )
+
+        with_stages = [d for d in details if d.sleep_stages]
+        assert with_stages, "Expected at least one sleep record with sleep_stages populated"
+
+        for detail in with_stages:
+            stages = detail.sleep_stages
+            # Stored as a JSONB list of {stage, start_time, end_time} with ISO 8601 strings.
+            assert isinstance(stages, list)
+            assert len(stages) > 0
+            for interval in stages:
+                assert set(interval) >= {"stage", "start_time", "end_time"}
+                assert isinstance(interval["start_time"], str)  # unix ts → ISO 8601 string
+                assert "T" in interval["start_time"]
+            assert {i["stage"] for i in stages} <= {"awake", "light", "deep", "rem", "unknown"}
+
 
 class TestUltrahumanActivitySamplesIntegration:
     """Integration tests for Ultrahuman activity samples synchronization."""
