@@ -207,11 +207,24 @@ class GarminStrategy(BaseProviderStrategy):
 
 ## Database Migrations
 
+Schema changes use Alembic:
+
 ```bash
 make create_migration m="Add user table"  # Create
 make migrate                               # Apply
 make downgrade                             # Rollback
 ```
+
+### Data migrations
+
+One-off data corrections, backfills, or clean-ups that can't be expressed as a
+zero-downtime Alembic migration live in `scripts/data_migrations/`. Each must be
+idempotent and support a `--dry-run` flag, and its **module docstring is the source
+of truth** for the rationale (the problem it fixes, what it changes, and any details
+such as conflict handling) — put it there, not in the docs.
+
+See `docs/dev-guides/data-migrations.mdx` for how to run them and how they're wired
+into startup.
 
 ## Code Style
 - Line length: 120 characters
