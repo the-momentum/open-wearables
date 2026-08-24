@@ -241,7 +241,11 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             case WhoopWebhookNotificationType.WORKOUT_UPDATED:
                 count = self.workouts.load_single_workout(db, user_id, resource_id)
             case WhoopWebhookNotificationType.SLEEP_UPDATED:
-                count = self.data_247.load_single_sleep(db, user_id, resource_id)
+                # Waking closes a cycle, and Whoop emits no cycle event, so this is also
+                # the trigger for refreshing the cycle that just ended.
+                count, cycle_id = self.data_247.load_single_sleep(db, user_id, resource_id)
+                if cycle_id:
+                    self.data_247.load_single_cycle(db, user_id, cycle_id)
             case WhoopWebhookNotificationType.RECOVERY_UPDATED:
                 count = self.data_247.load_single_recovery(db, user_id, resource_id)
             case _:

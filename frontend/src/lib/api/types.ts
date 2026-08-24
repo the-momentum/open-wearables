@@ -748,6 +748,7 @@ export interface HealthScoreResponse {
   recorded_at: string;
   zone_offset: string | null;
   components: Record<string, ScoreComponent> | null;
+  event_record_id: string | null;
 }
 
 export interface HealthScoreParams {

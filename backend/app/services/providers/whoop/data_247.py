@@ -402,17 +402,23 @@ class Whoop247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         sleep_id: str,
-    ) -> int:
-        """Fetch a single sleep record by ID, normalize, and save to database."""
+    ) -> tuple[int, str | None]:
+        """Fetch a single sleep record by ID, normalize, and save to database.
+
+        Returns (saved, cycle_id). The cycle_id rides along so the caller can refresh the
+        cycle this sleep just closed without fetching the same payload twice.
+        """
         raw = self.get_sleep_record(db, user_id, sleep_id)
         if not raw:
-            return 0
+            return 0, None
+        cycle_id = raw.get("cycle_id")
+        cycle_id = str(cycle_id) if cycle_id else None
         try:
             normalized, health_score = self.normalize_sleep(raw, user_id)
             self.save_sleep_data(db, user_id, normalized)
             if health_score:
                 health_score_service.create(db, health_score)
-            return 1
+            return 1, cycle_id
         except Exception as e:
             log_structured(
                 self.logger,
@@ -421,7 +427,7 @@ class Whoop247Data(Base247DataTemplate):
                 provider="whoop",
                 task="load_single_sleep",
             )
-            return 0
+            return 0, cycle_id
 
     def load_and_save_sleep(
         self,
@@ -935,6 +941,63 @@ class Whoop247Data(Base247DataTemplate):
     ) -> list[dict[str, Any]]:
         """Fetch physiological cycles from Whoop API via v2 endpoint with pagination."""
         return self._fetch_paginated(db, user_id, _CYCLE_ENDPOINT, start_time, end_time, "cycle")[0]
+
+    def get_cycle_record(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        cycle_id: str,
+    ) -> dict[str, Any]:
+        """Fetch a single cycle by its Whoop ID from /v2/cycle/{cycleId}."""
+        endpoint = f"{_CYCLE_ENDPOINT}/{cycle_id}"
+        response = self._make_api_request(db, user_id, endpoint)
+        store_raw_payload(
+            source="api_response",
+            provider="whoop",
+            payload=response,
+            user_id=str(user_id),
+            trace_id=endpoint,
+        )
+        return response if isinstance(response, dict) else {}
+
+    def load_single_cycle(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        cycle_id: str,
+    ) -> int:
+        """Fetch one cycle by ID, normalize, and save its energy sample and strain score.
+
+        Driven by sleep.updated: waking is what closes a cycle, so that webhook is the
+        only signal Whoop gives that a cycle is final. Whoop emits no cycle event of its
+        own, and providers in webhook live_sync_mode are excluded from the periodic pull,
+        so without this cycles would only ever land during a historical backfill.
+
+        Returns the number of cycles saved (0 or 1), not the number of rows written.
+        """
+        raw = self.get_cycle_record(db, user_id, cycle_id)
+        if not raw:
+            return 0
+        try:
+            energy_sample, strain_score = self.normalize_cycle(raw, user_id)
+            if not energy_sample and not strain_score:
+                return 0
+            if energy_sample:
+                timeseries_service.bulk_create_samples(db, [energy_sample])
+            if strain_score:
+                health_score_service.bulk_create(db, [strain_score])
+            db.commit()
+            return 1
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                self.logger,
+                "warning",
+                f"Failed to save cycle {cycle_id}: {e}",
+                provider="whoop",
+                task="load_single_cycle",
+            )
+            return 0
 
     def normalize_cycle(
         self,
