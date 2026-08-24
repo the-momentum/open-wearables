@@ -12,8 +12,6 @@ Open Wearables publishes two production images to Docker Hub:
 | [`themomentum/open-wearables-backend`](https://hub.docker.com/r/themomentum/open-wearables-backend) | FastAPI API + Celery worker/beat/flower | `8000` |
 | [`themomentum/open-wearables-frontend`](https://hub.docker.com/r/themomentum/open-wearables-frontend) | React frontend (TanStack Start, served by Nitro) | `3000` |
 
-Images are published manually through a GitHub Actions workflow. Every publish pushes a short commit SHA tag (`sha-<commit>`); runs from `main` also update `latest`. Pin a SHA tag in deployments to get repeatable builds.
-
 The single backend image covers every backend role. The start command selects what the container runs:
 
 | Command | Role |
@@ -22,6 +20,26 @@ The single backend image covers every backend role. The start command selects wh
 | `scripts/start/worker.sh` | Celery worker (data syncs, background jobs) |
 | `scripts/start/beat.sh` | Celery beat (scheduler) |
 | `scripts/start/flower.sh` | Flower (Celery monitoring UI, port `5555`) |
+
+## Image tags
+
+Both images share the same tag scheme. Choose a tag based on how much stability you need:
+
+| Tag | Points to | Use for |
+|-----|-----------|---------|
+| `latest` | The newest stable [release](https://github.com/the-momentum/open-wearables/releases) | Quick trials, and deployments that always want the current stable version |
+| `0.7.0` (exact version) | That release, immutably | **Production** - pin an exact version for repeatable, deliberate upgrades |
+| `0.7` (major.minor) | The latest patch of that minor line | Following patch releases without manually bumping the version |
+| `nightly` | The most recent build of `main` | Testing unreleased changes; **not for production** |
+| `nightly-<sha>` | A specific nightly build, immutably | Reproducing or rolling back to an exact nightly, e.g. `nightly-a0b56b8` |
+
+Tags are produced by [`.github/workflows/publish-images.yml`](https://github.com/the-momentum/open-wearables/blob/main/.github/workflows/publish-images.yml):
+
+- **Nightly** - a scheduled run at `00:00` UTC builds `main` and pushes `nightly` plus an immutable `nightly-<sha>`.
+- **Release** - publishing a [GitHub release](https://github.com/the-momentum/open-wearables/releases) builds its git tag, pushes the version tags (`0.7.0`, `0.7`), and moves `latest`. Pre-releases are published under their version tag but do not move `latest`.
+- **Manual** - the workflow can also be run by hand from the GitHub Actions UI, which behaves like a nightly.
+
+For production, pin an exact version tag (e.g. `0.7.0`) rather than `latest` or `nightly`, so deployments are reproducible and upgrades are intentional.
 
 ## What a deployment runs
 
@@ -44,7 +62,7 @@ The backend reads all of its configuration from environment variables at runtime
 
 ## Example: Compose deployment
 
-A baseline Compose stack using the published images. It uses the `latest` tag to stay copy-pasteable; pin `sha-<commit>` tags for real deployments.
+A baseline Compose stack using the published images. It uses the `latest` tag to stay copy-pasteable; pin an exact version tag like `0.7.0` for real deployments (see [Image tags](#image-tags)).
 
 ```yaml docker-compose.yml
 services:
