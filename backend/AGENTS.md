@@ -178,7 +178,7 @@ try:
     process_item(item)
 except Exception as e:
     log_and_capture_error(
-        e, logger, f"Failed to process item {item.id}: {e}", extra={"item_id": item.id, "user_id": user_id}
+        e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id, "error": str(e)}
     )
     continue
 ```
@@ -215,7 +215,7 @@ log_structured(
 
 - Pass the message as a stable, human-readable string and put the variable parts in `**attributes` (don't f-string them into the message).
 - `trace_id` is injected automatically from context when not supplied.
-- For handled exceptions in background tasks you still want in Sentry, use `log_and_capture_error` (see above) rather than plain `logger.error`.
+- For handled exceptions in background tasks you still want in Sentry, use `log_and_capture_error` (see above) rather than plain `logger.error`. Keep its `message` stable there too and pass variables via `extra` - note that `extra` becomes Sentry event context, not queryable log attributes.
 
 ### Provider Strategy Pattern
 
