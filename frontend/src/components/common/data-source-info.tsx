@@ -23,7 +23,7 @@ export function DataSourceInfo({
   if (!source) return null;
 
   const { label: deviceTypeLabel } = deviceTypeInfo(source.device_type);
-  const deviceName = source.device_name ?? null;
+  const deviceName = source.device_name?.trim() || null;
   // Native API integrations store the provider key as the source ("garmin"/"garmin"),
   // so it only carries information for HealthKit / Health Connect writers.
   const showSource =
