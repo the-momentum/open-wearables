@@ -11,7 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { SourceMetadata } from '@/lib/api/types';
 
-const UNKNOWN_DEVICE = '???';
+const NO_DEVICE_INFO = 'Device info not available';
 
 export function DataSourceInfo({
   source,
@@ -23,7 +23,7 @@ export function DataSourceInfo({
   if (!source) return null;
 
   const { label: deviceTypeLabel } = deviceTypeInfo(source.device_type);
-  const deviceName = source.device_name ?? UNKNOWN_DEVICE;
+  const deviceName = source.device_name ?? null;
   // Native API integrations store the provider key as the source ("garmin"/"garmin"),
   // so it only carries information for HealthKit / Health Connect writers.
   const showSource =
@@ -63,20 +63,24 @@ export function DataSourceInfo({
               deviceType={source.device_type}
               className="h-3 w-3 shrink-0"
             />
-            <span className="truncate">{deviceName}</span>
+            <span className="truncate">{deviceName ?? NO_DEVICE_INFO}</span>
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          <div className="space-y-0.5">
-            <div>
-              {deviceTypeLabel}: {deviceName}
-            </div>
-            {source.device && source.device !== deviceName && (
-              <div className="text-muted-foreground">
-                Model: {source.device}
+          {deviceName ? (
+            <div className="space-y-0.5">
+              <div>
+                {deviceTypeLabel}: {deviceName}
               </div>
-            )}
-          </div>
+              {source.device && source.device !== deviceName && (
+                <div className="text-muted-foreground">
+                  Model: {source.device}
+                </div>
+              )}
+            </div>
+          ) : (
+            NO_DEVICE_INFO
+          )}
         </TooltipContent>
       </Tooltip>
     </div>

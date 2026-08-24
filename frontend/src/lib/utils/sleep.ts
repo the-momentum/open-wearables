@@ -3,6 +3,7 @@ import type {
   SleepSummary,
   SleepStagesSummary,
 } from '@/lib/api/types';
+import { providerLabel } from '@/components/common/source-badge';
 import { formatMinutes } from './format';
 
 /**
@@ -243,7 +244,8 @@ const SLEEP_FIELD_DEFINITIONS: SleepFieldDefinition[] = [
   {
     key: 'source',
     label: 'Source',
-    getValue: (s) => s.source?.provider || null,
+    getValue: (s) =>
+      s.source?.provider ? providerLabel(s.source.provider) : null,
   },
 ];
 
