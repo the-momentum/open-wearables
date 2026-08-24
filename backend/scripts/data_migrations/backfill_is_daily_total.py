@@ -19,18 +19,17 @@ columns of uq_data_point_series_source_type_time — for an index range scan, no
 per-batch JOINs. Work is committed in --batch chunks (no long locks / no single
 giant transaction).
 
-Per-provider rules (only Garmin & Suunto have a daily+intraday overlap):
-    garmin  steps/energy where external_id IS NOT NULL  -> daily total
-            (legacy epochs had NULL external_id, so this cleanly selects dailies)
-    garmin  distance/flights/resting_heart_rate (all)   -> daily (single channel)
-    suunto  steps/energy: per day the max-value row is the daily total; on the
-            first/last day only when max == sum(rest), i.e. value*2 == day_total
-            (avoids labelling a partial boundary day's largest sample as a total)
-    suunto  resting_heart_rate (all)                    -> daily
-    oura    daily_activity/readiness/spo2/personal_info series -> daily
-    polar   activities series (steps/energy/distance)   -> daily
-    whoop   all series (recovery/body, daily cadence)   -> daily
-    apple/google/samsung/ultrahuman: nothing (all intraday -> stay NULL = false)
+Per-provider rules — only summable series (steps/energy/distance/flights) ever
+get is_daily_total; non-summable series (HR, resting_hr, spo2, weight, vo2, ...)
+stay NULL. Providers not listed (apple/google/samsung/ultrahuman/whoop) need no
+backfill — their rows are all intraday or already daily-only.
+    garmin  steps/energy/distance/flights, but only rows with a non-null
+            external_id (the summaryId on daily rows; legacy intraday FIT/activity
+            uploads have NULL external_id, so they correctly stay NULL)
+    oura    steps/energy/distance (daily rows, no external_id)
+    polar   steps/energy/distance (daily rows, no external_id)
+    suunto  steps/energy: the per-day max-value row is the daily total; on the
+            first/last (possibly partial) day only when value*2 == day_total
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/backfill_is_daily_total.py --dry-run
