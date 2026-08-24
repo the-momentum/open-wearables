@@ -62,18 +62,19 @@ async function fetchAllPages<T>(
 ): Promise<T[]> {
   const items: T[] = [];
   let cursor: string | undefined;
-  // Safety cap to avoid an unbounded loop on a misbehaving cursor
+  // Page cap so a misbehaving cursor cannot loop forever
   for (let page = 0; page < 50; page++) {
     const response = await apiClient.get<PaginatedResponse<T>>(endpoint, {
       params: { ...params, limit: 100, cursor },
     });
     items.push(...response.data);
     if (!response.pagination.has_more || !response.pagination.next_cursor) {
-      break;
+      return items;
     }
     cursor = response.pagination.next_cursor;
   }
-  return items;
+  // Failing beats silently rendering partial history as complete
+  throw new Error(`Pagination for ${endpoint} exceeded 50 pages`);
 }
 
 export const healthService = {
