@@ -943,10 +943,13 @@ class Whoop247Data(Base247DataTemplate):
     ) -> tuple[TimeSeriesSampleCreate | None, HealthScoreCreate | None]:
         """Normalize one cycle into a daily energy sample and a daily strain score.
 
-        Returns (None, None) for cycles Whoop has not scored yet — an in-progress
-        cycle has no end and its values still change.
+        Returns (None, None) for cycles Whoop has not scored yet, and for the one still
+        in progress. SCORED does not mean final: Whoop scores the ongoing cycle too, and
+        its strain climbs all day. A missing end is what marks it as still running, so
+        both checks are needed — health scores are written with on_conflict_do_nothing,
+        so an early partial value would win permanently over the real one.
         """
-        if raw_cycle.get("score_state") != "SCORED":
+        if raw_cycle.get("score_state") != "SCORED" or not raw_cycle.get("end"):
             return None, None
 
         score = raw_cycle.get("score") or {}

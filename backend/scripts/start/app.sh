@@ -48,6 +48,13 @@ echo 'Running is_daily_total backfill...'
 uv run python scripts/data_migrations/backfill_is_daily_total.py \
     || echo "Warning: is_daily_total backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2026-12-01 once all deployments have migrated.
+# Links legacy Whoop workout strain scores to their event records; without it they stay
+# indistinguishable from the per-day cycle strain. Idempotent, no-op once linked.
+echo 'Running Whoop strain event_record backfill...'
+uv run python scripts/data_migrations/backfill_whoop_strain_event_record.py \
+    || echo "Warning: Whoop strain backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
