@@ -24,6 +24,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.structured_logging import log_structured
 
 
 class Ultrahuman247Data(Base247DataTemplate):
@@ -102,14 +103,40 @@ class Ultrahuman247Data(Base247DataTemplate):
         except HTTPException as e:
             # Fatal errors - should be raised to trigger token refresh or invalidate connection
             if e.status_code in (401, 403):
-                self.logger.error(f"Authorization failed for {date_str}: {e.detail}")
+                log_structured(
+                    self.logger,
+                    "error",
+                    "Authorization failed while fetching daily metrics",
+                    provider="ultrahuman",
+                    task="fetch_daily_metrics",
+                    date=date_str,
+                    status_code=e.status_code,
+                    error=e.detail,
+                )
                 raise
             # Recoverable errors - log and continue with next day
-            self.logger.warning(f"API error for {date_str}: {e.detail}")
+            log_structured(
+                self.logger,
+                "warning",
+                "API error while fetching daily metrics",
+                provider="ultrahuman",
+                task="fetch_daily_metrics",
+                date=date_str,
+                status_code=e.status_code,
+                error=e.detail,
+            )
             return []
         except Exception as e:
             # Network errors and other unexpected errors - log and continue
-            self.logger.warning(f"Failed to fetch metrics for {date_str}: {e}")
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to fetch daily metrics",
+                provider="ultrahuman",
+                task="fetch_daily_metrics",
+                date=date_str,
+                error=str(e),
+            )
             return []
 
         return []
@@ -193,7 +220,15 @@ class Ultrahuman247Data(Base247DataTemplate):
         end_dt = normalized_sleep.get("end_time")
 
         if not start_dt or not end_dt:
-            self.logger.warning(f"Skipping sleep record {sleep_id}: missing start/end time")
+            log_structured(
+                self.logger,
+                "warning",
+                "Skipping sleep record: missing start/end time",
+                provider="ultrahuman",
+                task="save_sleep_data",
+                sleep_id=str(sleep_id),
+                user_id=str(user_id),
+            )
             return False
 
         # Create EventRecord for sleep
@@ -240,7 +275,16 @@ class Ultrahuman247Data(Base247DataTemplate):
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
             return True
         except Exception as e:
-            self.logger.error(f"Error saving sleep record {sleep_id}: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Error saving sleep record",
+                provider="ultrahuman",
+                task="save_sleep_data",
+                sleep_id=str(sleep_id),
+                user_id=str(user_id),
+                error=str(e),
+            )
             return False
 
     # -------------------------------------------------------------------------
@@ -409,8 +453,16 @@ class Ultrahuman247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    self.logger.warning(
-                        f"Failed to build {key} sample for user {user_id} at {recorded_at_str or 'unknown time'}: {e}"
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to build activity sample",
+                        provider="ultrahuman",
+                        task="build_activity_samples",
+                        series=key,
+                        user_id=str(user_id),
+                        recorded_at=recorded_at_str or "unknown time",
+                        error=str(e),
                     )
 
         return samples
