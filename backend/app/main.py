@@ -59,10 +59,11 @@ init_sentry()
 raw_payload_storage.configure(
     settings.raw_payload_storage,
     settings.raw_payload_max_size_bytes,
-    s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
+    s3_bucket=settings.raw_payload_bucket,
     s3_prefix=settings.raw_payload_s3_prefix,
     s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
     fit_files_enabled=settings.store_fit_files,
+    transport_enabled=settings.sdk_payload_s3_offload,
 )
 
 add_cors_middleware(api)

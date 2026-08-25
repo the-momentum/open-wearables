@@ -38,6 +38,7 @@ def configure(
     s3_prefix: str = "raw-payloads",
     s3_endpoint_url: str | None = None,
     fit_files_enabled: bool = False,
+    transport_enabled: bool = False,
 ) -> None:
     """Called once at startup from settings."""
     global _storage_backend, _max_size_bytes, _s3_bucket, _s3_prefix, _s3_client, _fit_files_enabled
@@ -46,7 +47,7 @@ def configure(
     _s3_prefix = s3_prefix
     _fit_files_enabled = False
 
-    if storage_backend == "s3" or fit_files_enabled:
+    if storage_backend == "s3" or fit_files_enabled or transport_enabled:
         _s3_bucket = s3_bucket
         if not _s3_bucket:
             logger.error("S3 storage requested but no S3 bucket configured")
@@ -58,7 +59,7 @@ def configure(
             _storage_backend = "disabled"
             return
         if storage_backend != "s3":
-            # Client created solely for FIT file storage
+            # Client created solely for FIT file storage / payload transport
             _storage_backend = "disabled"
         _fit_files_enabled = fit_files_enabled
 
@@ -84,15 +85,6 @@ def _create_s3_client(endpoint_url: str | None = None) -> Any:
         return None
 
 
-def s3_enabled() -> bool:
-    """True when the S3 backend is active and usable (client + bucket configured).
-
-    Callers that need a retrievable reference (e.g. async task payloads) check this to
-    decide between passing an S3 key or falling back to inline content.
-    """
-    return _storage_backend == "s3" and _s3_client is not None and _s3_bucket is not None
-
-
 def store_raw_payload(
     *,
     source: str,
@@ -100,8 +92,8 @@ def store_raw_payload(
     payload: Any,
     user_id: str | None = None,
     trace_id: str | None = None,
-) -> str | None:
-    """Store a raw payload. No-op when disabled.
+) -> None:
+    """Store a raw payload for debugging. No-op when disabled.
 
     Args:
         source: Origin type - "sdk", "webhook", or "api_response"
@@ -109,12 +101,9 @@ def store_raw_payload(
         payload: Raw data (dict, list, or pre-serialized string)
         user_id: Optional user identifier for correlation
         trace_id: Optional trace/batch ID for correlation with processed data
-
-    Returns:
-        The S3 object key when stored to S3, else None (disabled/log backend, or skipped).
     """
     if _storage_backend == "disabled":
-        return None
+        return
 
     payload_str = payload if isinstance(payload, str) else json.dumps(payload, default=json_serial)
 
@@ -126,26 +115,26 @@ def store_raw_payload(
             size,
             _max_size_bytes,
         )
-        return None
+        return
 
     if _storage_backend == "log":
         _store_to_log(source, provider, payload_str, size, user_id, trace_id)
-        return None
-    if _storage_backend == "s3":
-        return _store_to_s3(source, provider, payload_str, size, user_id, trace_id)
-    return None
+    elif _storage_backend == "s3":
+        put_payload_to_s3(source=source, provider=provider, payload=payload_str, user_id=user_id, trace_id=trace_id)
 
 
-def load_raw_payload(key: str) -> str:
-    """Read a previously-stored payload back from S3 by key.
+def get_payload_from_s3(ref: str) -> str:
+    """Read a payload back from an ``s3://bucket/key`` reference.
 
-    Used by async tasks that receive an S3 reference instead of the inline payload, so the
-    large body never travels through the Celery/Redis broker. Raises on any read failure;
-    the caller decides whether to retry the task.
+    Raises on any read failure; the caller decides whether to retry the task.
     """
-    if _s3_client is None or _s3_bucket is None:
-        raise RuntimeError("Cannot load raw payload: S3 client or bucket not configured")
-    obj = _s3_client.get_object(Bucket=_s3_bucket, Key=key)
+    if _s3_client is None:
+        raise RuntimeError("Cannot get payload: S3 client not configured")
+    # Bucket travels in the ref: app/worker config drift would otherwise be a silent 404.
+    bucket, _, key = ref.removeprefix("s3://").partition("/")
+    if not bucket or not key:
+        raise ValueError(f"Malformed S3 payload reference: {ref}")
+    obj = _s3_client.get_object(Bucket=bucket, Key=key)
     return obj["Body"].read().decode("utf-8")
 
 
@@ -173,25 +162,26 @@ def _store_to_log(
     print(json.dumps(entry), file=sys.stdout, flush=True)
 
 
-def _store_to_s3(
+def put_payload_to_s3(
+    *,
     source: str,
     provider: str,
-    payload_str: str,
-    size: int,
-    user_id: str | None,
-    trace_id: str | None,
+    payload: str,
+    user_id: str | None = None,
+    trace_id: str | None = None,
 ) -> str | None:
-    """Upload raw payload to S3.
+    """Upload a serialized payload to S3 and return its ``s3://bucket/key`` reference.
 
-    Key format: {prefix}/{provider}/{source}/{YYYY-MM-DD}/{uuid}.json
+    Key format: {prefix}/{provider}/{source}/{YYYY-MM-DD}/{user_id}/{uuid}.json
     Metadata includes user_id, trace_id, and size for easy filtering.
 
-    Returns the object key on success, or None on failure.
+    Returns None on failure - a caller that needs the reference has to handle that.
     """
     if _s3_client is None or _s3_bucket is None:
-        logger.warning("S3 client or bucket not configured - skipping raw payload storage")
+        logger.warning("S3 client or bucket not configured - skipping payload upload")
         return None
 
+    body = payload.encode("utf-8")
     now = datetime.now(UTC)
     date_part = now.strftime("%Y-%m-%d")
     file_id = uuid4().hex[:12]
@@ -201,7 +191,7 @@ def _store_to_s3(
     metadata: dict[str, str] = {
         "source": source,
         "provider": provider,
-        "size_bytes": str(size),
+        "size_bytes": str(len(body)),
         "timestamp": now.isoformat(),
     }
     if user_id:
@@ -213,19 +203,14 @@ def _store_to_s3(
         _s3_client.put_object(
             Bucket=_s3_bucket,
             Key=key,
-            Body=payload_str.encode("utf-8"),
+            Body=body,
             ContentType="application/json",
             Metadata=metadata,
         )
-        logger.debug(
-            "Stored raw payload to S3: s3://%s/%s (%d bytes)",
-            _s3_bucket,
-            key,
-            size,
-        )
-        return key
+        logger.debug("Stored payload to S3: s3://%s/%s (%d bytes)", _s3_bucket, key, len(body))
+        return f"s3://{_s3_bucket}/{key}"
     except Exception:
-        logger.exception("Failed to store raw payload to S3: s3://%s/%s", _s3_bucket, key)
+        logger.exception("Failed to store payload to S3: s3://%s/%s", _s3_bucket, key)
         return None
 
 

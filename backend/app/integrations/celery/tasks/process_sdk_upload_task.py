@@ -16,7 +16,7 @@ from app.services.apple.healthkit.import_service import (
 from app.services.apple.healthkit.import_service import (
     import_service as sdk_import_service,
 )
-from app.services.raw_payload_storage import load_raw_payload
+from app.services.raw_payload_storage import get_payload_from_s3
 from app.services.sync_status_service import completed, failed, started
 from app.utils.structured_logging import log_structured
 
@@ -61,7 +61,7 @@ def process_sdk_upload(
     # Load the payload from S3 when only a reference was enqueued. A read failure raises,
     # letting Celery retry (the S3 object persists) rather than losing the batch.
     if content is None and payload_ref:
-        content = load_raw_payload(payload_ref)
+        content = get_payload_from_s3(payload_ref)
 
     if content is None:
         log_structured(
