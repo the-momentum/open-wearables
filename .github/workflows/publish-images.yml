@@ -52,8 +52,6 @@ jobs:
           # and skips it for pre-releases; nightly builds never touch it.
           flavor: |
             latest=auto
-          # Tag scheme (nightly / nightly-<sha> / release versions / latest) is
-          # documented at the URL in the header comment above.
           tags: |
             type=raw,value=nightly,enable=${{ github.event_name != 'release' }}
             type=sha,prefix=nightly-,enable=${{ github.event_name != 'release' }}
