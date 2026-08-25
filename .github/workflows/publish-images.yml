@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra one-off image tag to push (in addition to `nightly` and `nightly-<sha>`). Leave empty to skip."
+        description: "Extra one-off image tag to push (in addition to `nightly` and `nightly-<sha>`). Reserved names (latest, nightly, nightly-<sha>, release versions) are rejected. Leave empty to skip."
         required: false
         default: ""
 
@@ -33,6 +33,25 @@ jobs:
             image: themomentum/open-wearables-frontend
     steps:
       - uses: actions/checkout@v4
+
+      # A manual run pushes inputs.tag verbatim, so a reserved name would move
+      # `latest`/`nightly` to an unreleased build or overwrite an immutable
+      # release/nightly-<sha> tag. Restrict one-off tags to non-reserved names.
+      # (TAG via env, not inline ${{ }}, to avoid shell injection.)
+      - name: Reject reserved tag names
+        if: inputs.tag != ''
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in
+            latest | nightly | nightly-*)
+              echo "::error::one-off tag '$TAG' is reserved (latest / nightly / nightly-<sha>)"
+              exit 1 ;;
+          esac
+          if printf '%s' "$TAG" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,2}$'; then
+            echo "::error::one-off tag '$TAG' looks like a release version and is reserved"
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
