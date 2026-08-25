@@ -2,8 +2,6 @@ name: Publish Docker images
 
 # Build & push the production images to Docker Hub on three triggers: nightly
 # (schedule), release (release published), and manual (workflow_dispatch).
-# What each trigger tags is the documentation's job, not this file's:
-# https://openwearables.io/docs/deployment/docker#image-tags
 on:
   schedule:
     - cron: "0 0 * * *" # 00:00 UTC daily; scheduled runs use the default branch (main)
