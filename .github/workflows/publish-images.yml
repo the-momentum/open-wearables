@@ -4,7 +4,7 @@ name: Publish Docker images
 # (schedule), release (release published), and manual (workflow_dispatch).
 on:
   schedule:
-    - cron: "0 0 * * *" # 00:00 UTC daily; scheduled runs use the default branch (main)
+    - cron: "0 2 * * *" # 02:00 UTC daily; scheduled runs use the default branch (main)
   release:
     types: [published] # github.ref is then refs/tags/<version>, parsed by the semver tags below
   workflow_dispatch:
