@@ -8,14 +8,15 @@ Tests cover:
 - create_or_merge_sleep: adjacent session merging
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord
+from app.models import DataSource, EventRecord, HealthScore
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate, EventRecordQueryParams
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
@@ -701,6 +702,79 @@ class TestCreateOrMergeSleep:
         # Stages should be sorted by start_time (early first)
         assert stages[0]["stage"] == "light"
         assert stages[1]["stage"] == "deep"
+
+
+class TestRecomputeSleepScores:
+    """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
+
+    def _session(self, data_source: DataSource, start: datetime, end: datetime) -> EventRecord:
+        record = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=start,
+            end_datetime=end,
+        )
+        SleepDetailsFactory(event_record=record, sleep_total_duration_minutes=420, is_nap=False)
+        return record
+
+    def _internal_sleep_scores(self, db: Session, user_id: UUID) -> list[HealthScore]:
+        return (
+            db.query(HealthScore)
+            .filter(
+                HealthScore.user_id == user_id,
+                HealthScore.provider == ProviderName.INTERNAL,
+                HealthScore.category == HealthScoreCategory.SLEEP,
+            )
+            .all()
+        )
+
+    def test_earlier_midnight_spanning_session_keeps_its_score(self, db: Session) -> None:
+        """Recomputing one session must not drop the score of the one that woke that morning.
+
+        Both sessions are scored on the day they wake, so clearing the later session's
+        start date also clears the earlier session's score — it has to be rewritten too.
+        """
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+
+        # Wakes on the 21st, so it is scored on the 21st.
+        earlier = self._session(
+            data_source,
+            datetime(2026, 3, 20, 23, 0, tzinfo=timezone.utc),
+            datetime(2026, 3, 21, 7, 0, tzinfo=timezone.utc),
+        )
+        # Also starts on the 21st, so recomputing it clears the 21st.
+        later = self._session(
+            data_source,
+            datetime(2026, 3, 21, 23, 0, tzinfo=timezone.utc),
+            datetime(2026, 3, 22, 7, 0, tzinfo=timezone.utc),
+        )
+        db.commit()
+
+        event_record_service._recompute_sleep_scores(db, user.id, {date(2026, 3, 21)})
+        db.commit()
+
+        scored = {s.event_record_id for s in self._internal_sleep_scores(db, user.id)}
+        assert earlier.id in scored
+        assert later.id in scored
+
+    def test_repeated_recompute_does_not_duplicate(self, db: Session) -> None:
+        """Running the recompute twice replaces the score rather than adding a second."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        self._session(
+            data_source,
+            datetime(2026, 3, 21, 23, 0, tzinfo=timezone.utc),
+            datetime(2026, 3, 22, 7, 0, tzinfo=timezone.utc),
+        )
+        db.commit()
+
+        for _ in range(2):
+            event_record_service._recompute_sleep_scores(db, user.id, {date(2026, 3, 21)})
+            db.commit()
+
+        assert len(self._internal_sleep_scores(db, user.id)) == 1
 
 
 class TestGetSleepSessions:

@@ -176,21 +176,32 @@ class EventRecordService(
         window_start = datetime.combine(min(sleep_dates), time.min, tzinfo=timezone.utc) - timedelta(days=1)
         window_end = datetime.combine(max(sleep_dates), time.min, tzinfo=timezone.utc) + timedelta(days=2)
 
-        sessions = [
-            (record.id, record.data_source_id, self._to_local(record.end_datetime, record.zone_offset))
+        scorable = [
+            (record, self._to_local(record.end_datetime, record.zone_offset))
             for record, details in self.crud.get_sleep_records_with_details(
                 db_session, user_id, window_start, window_end
             )
-            if details is not None
-            and not details.is_nap
-            and details.sleep_total_duration_minutes
-            and self._local_sleep_date(record.start_datetime, record.zone_offset) in sleep_dates
+            if details is not None and not details.is_nap and details.sleep_total_duration_minutes
         ]
 
-        # A session running past midnight is scored on the day it ends, so the wake dates
-        # have to be cleared as well as the start dates the caller tracks.
-        wake_dates = {local_end.date() for _, _, local_end in sessions}
-        for d in sleep_dates | wake_dates:
+        # A session running past midnight is scored on the day it ends, so clear the wake
+        # dates of the sessions the caller named as well as the start dates themselves.
+        stale_dates = sleep_dates | {
+            local_end.date()
+            for record, local_end in scorable
+            if self._local_sleep_date(record.start_datetime, record.zone_offset) in sleep_dates
+        }
+
+        # Rebuild every session scored on a cleared date, not just the caller's — an
+        # earlier session ending that morning is scored there too and would otherwise
+        # be deleted without being rewritten.
+        sessions = [
+            (record.id, record.data_source_id, local_end)
+            for record, local_end in scorable
+            if local_end.date() in stale_dates
+        ]
+
+        for d in stale_dates:
             self.health_score_repo.delete_for_user_date(db_session, user_id, d, HealthScoreCategory.SLEEP)
 
         creators = sleep_score_service.build_internal_sleep_scores(db_session, user_id, sessions)
