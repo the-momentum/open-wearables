@@ -48,8 +48,8 @@ def process_sdk_upload(
         user_id: User ID to associate with the data
         provider: Import provider - "apple", "samsung", "google"
         batch_id: Unique batch identifier for tracking (optional for backwards compatibility)
-        payload_ref: S3 key of the stored payload. When set (and ``content`` is None) the body
-            is loaded from S3 here, so the large payload never travels through the broker.
+        payload_ref: ``s3://bucket/key`` of the stored payload. When set (and ``content`` is
+            None) the body is loaded from S3 here, so it never travels through the broker.
 
     Returns:
         Dictionary with status_code and response message
@@ -58,10 +58,24 @@ def process_sdk_upload(
     if not batch_id:
         batch_id = str(uuid.uuid4())
 
-    # Load the payload from S3 when only a reference was enqueued. A read failure raises,
-    # letting Celery retry (the S3 object persists) rather than losing the batch.
+    # Payload was offloaded to S3, so the body never travelled through the broker. A read
+    # failure propagates: boto3 has already retried the transient cases, and CeleryIntegration
+    # reports the exception to Sentry.
     if content is None and payload_ref:
-        content = get_payload_from_s3(payload_ref)
+        try:
+            content = get_payload_from_s3(payload_ref)
+        except Exception:
+            log_structured(
+                logger,
+                "error",
+                "Failed to load SDK payload from S3",
+                provider=provider,
+                action="load_payload_ref",
+                batch_id=batch_id,
+                user_id=user_id,
+                payload_ref=payload_ref,
+            )
+            raise
 
     if content is None:
         log_structured(
