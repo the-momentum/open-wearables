@@ -10,9 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra one-off image tag to push (in addition to `nightly` and `nightly-<sha>`). Reserved names (latest, nightly, nightly-<sha>, release versions) are rejected. Leave empty to skip."
-        required: false
-        default: ""
+        description: "Image tag to push. A manual run publishes this tag only - no nightly tags. Reserved names (latest, nightly, nightly-<sha>, release versions) are rejected."
+        required: true
 
 jobs:
   publish:
@@ -34,22 +33,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A manual run pushes inputs.tag verbatim, so a reserved name would move
-      # `latest`/`nightly` to an unreleased build or overwrite an immutable
-      # release/nightly-<sha> tag. Restrict one-off tags to non-reserved names.
-      # (TAG via env, not inline ${{ }}, to avoid shell injection.)
-      - name: Reject reserved tag names
-        if: inputs.tag != ''
+      # A manual run publishes inputs.tag verbatim as its only tag. Require it,
+      # and reject reserved names so a manual run can't move `latest`/`nightly`
+      # to an unreleased build or overwrite an immutable release/nightly-<sha>
+      # tag. (TAG via env, not inline ${{ }}, to avoid shell injection.)
+      - name: Validate manual tag
+        if: github.event_name == 'workflow_dispatch'
         env:
           TAG: ${{ inputs.tag }}
         run: |
+          if [ -z "$TAG" ]; then
+            echo "::error::a manual run requires a tag"
+            exit 1
+          fi
           case "$TAG" in
             latest | nightly | nightly-*)
-              echo "::error::one-off tag '$TAG' is reserved (latest / nightly / nightly-<sha>)"
+              echo "::error::tag '$TAG' is reserved (latest / nightly / nightly-<sha>)"
               exit 1 ;;
           esac
           if printf '%s' "$TAG" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,2}$'; then
-            echo "::error::one-off tag '$TAG' looks like a release version and is reserved"
+            echo "::error::tag '$TAG' looks like a release version and is reserved"
             exit 1
           fi
 
@@ -72,18 +75,17 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=raw,value=nightly,enable=${{ github.event_name != 'release' }}
-            type=sha,prefix=nightly-,enable=${{ github.event_name != 'release' }}
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' }}
+            type=sha,prefix=nightly-,enable=${{ github.event_name == 'schedule' }}
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
 
-      # A scheduled run rebuilds main's current HEAD unconditionally, so a day
-      # with no new commits would re-push nightly-<sha> for an unchanged SHA -
-      # overwriting (mutable registry) or rejecting (immutable registry) a tag
-      # docs promise is immutable. Keyed on the artifact, not the clock: if this
-      # exact nightly-<sha> already exists in the registry, skip the rebuild.
-      # Release/manual runs have no nightly-<sha> tag, so this never fires there.
+      # A scheduled run rebuilds main's current HEAD unconditionally, so an
+      # unchanged SHA would re-push nightly-<sha> - overwriting (mutable registry)
+      # or rejecting (immutable registry) a tag docs promise is immutable. Keyed
+      # on the artifact, not the clock: skip the rebuild if this exact
+      # nightly-<sha> already exists in the registry. Only schedule emits it.
       - name: Skip build if this nightly SHA is already published
         id: nightly_guard
         if: github.event_name == 'schedule'
