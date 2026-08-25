@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.base_strategy import HistoricalSyncResult
+from app.services.providers.templates.sync_247_result import Sync247Result
 from app.utils.exceptions import UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
@@ -28,6 +29,7 @@ class TestSyncDataEndpoint:
         with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
             mock_strategy = MagicMock()
             mock_strategy.workouts.load_data.return_value = True
+            mock_strategy.data_247.load_and_save_all.return_value = Sync247Result(provider="garmin")
             mock_factory.get_provider.return_value = mock_strategy
             yield mock_factory
 

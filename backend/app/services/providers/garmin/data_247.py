@@ -34,6 +34,7 @@ from app.services.providers.api_client import download_binary_content, make_auth
 from app.services.providers.garmin.coverage import ACTIVITY_SAMPLE_SERIES, DAILIES_SERIES, EPOCHS_SERIES
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.raw_payload_storage import store_fit_file
 from app.utils.conversion import seconds_to_minutes
 from app.utils.dates import offset_to_iso
@@ -2174,7 +2175,7 @@ class Garmin247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, Any]:
+    ) -> Sync247Result:
         """No-op: Garmin 247 data arrives via webhooks.
 
         REST/summary endpoints are not used. Historical data is fetched
@@ -2188,11 +2189,10 @@ class Garmin247Data(Base247DataTemplate):
             is_first_sync: Unused (kept for interface compatibility)
 
         Returns:
-            Dict indicating data arrives via webhooks
+            An empty result noting that data arrives by push
         """
         self.logger.info(f"Garmin 247 data for user {user_id} arrives via webhooks (no REST fetch)")
-        return {
-            "sync_complete": True,
-            "total_saved": 0,
-            "message": "Garmin data arrives via webhooks. No REST fetch performed.",
-        }
+        return Sync247Result(
+            provider=self.provider_name,
+            note="Garmin data arrives via webhooks. No REST fetch performed.",
+        )

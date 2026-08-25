@@ -43,6 +43,7 @@ from app.services.providers.oura.coverage import (
 )
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import energy_difference, seconds_to_minutes
@@ -310,7 +311,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized: tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]],
         log_ctx: LogContext | None = None,
-    ) -> int:
+    ) -> WriteCounts:
         """Save daily activity data as DataPointSeries and health scores."""
         provider_user_id, trace_id = log_ctx or LogContext()
         activity_samples, health_scores = normalized
@@ -399,7 +400,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized: list[tuple[datetime, float]],
         log_ctx: LogContext | None = None,
-    ) -> int:
+    ) -> WriteCounts:
         """Save daily cardiovascular age data as DataPointSeries."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
@@ -537,7 +538,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized: tuple[list[dict[str, Any]], list[HealthScoreCreate]],
         log_ctx: LogContext | None = None,
-    ) -> int:
+    ) -> WriteCounts:
         """Save normalized readiness data as DataPointSeries and health scores."""
         provider_user_id, trace_id = log_ctx or LogContext()
         recovery_metrics, health_scores = normalized
@@ -940,12 +941,13 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized: list[HealthScoreCreate],
-    ) -> int:
+    ) -> WriteCounts:
         """Save daily sleep scores via health_score_service."""
+        counts = WriteCounts(0, 0)
         if normalized:
-            health_score_service.bulk_create(db, normalized)
+            counts = health_score_service.bulk_create(db, normalized)
             db.commit()
-        return len(normalized)
+        return counts
 
     # -------------------------------------------------------------------------
     # Daily SpO2 Data
@@ -971,7 +973,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         raw_data: list[dict[str, Any]],
         log_ctx: LogContext | None = None,
-    ) -> int:
+    ) -> WriteCounts:
         """Save SpO2 data as DataPointSeries."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
@@ -1076,7 +1078,7 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_data: list[dict[str, Any]],
-    ) -> int:
+    ) -> WriteCounts:
         """Save heart rate samples as DataPointSeries."""
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
@@ -1153,14 +1155,14 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_data: dict[str, Any],
-    ) -> int:
+    ) -> WriteCounts:
         """Save personal info (weight, height) as DataPointSeries.
 
         Only saves when the value has changed from the most recent stored entry.
         """
         normalized = self.normalize_personal_info(raw_data, user_id)
         if not normalized:
-            return 0
+            return WriteCounts(0, 0)
 
         now = datetime.now(timezone.utc)
         latest = timeseries_service.crud.get_latest_values_for_types(
@@ -1229,7 +1231,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         raw_data: list[dict[str, Any]],
         log_ctx: LogContext | None = None,
-    ) -> int:
+    ) -> WriteCounts:
         """Save Vo2 data as DataPointSeries."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
@@ -1280,7 +1282,7 @@ class Oura247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
+    ) -> Sync247Result:
         """Load and save all 247 data types.
 
         Args:
@@ -1290,17 +1292,9 @@ class Oura247Data(Base247DataTemplate):
             end_time: End of date range (defaults to now)
             is_first_sync: Whether this is the first sync (unused, for API compatibility)
         """
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        start_time, end_time = self.resolve_window(start_time, end_time)
 
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
-
-        tasks: dict[str, Callable[[], int]] = {
+        tasks: dict[str, Callable[[], WriteCounts | int]] = {
             "activity": lambda: self.save_activity_data(
                 db,
                 user_id,
@@ -1336,24 +1330,13 @@ class Oura247Data(Base247DataTemplate):
             "vo2_max": lambda: self.save_vo2_data(db, user_id, self.get_vo2_data(db, user_id, start_time, end_time)),
         }
 
-        results: dict[str, int] = {}
+        run = self.sync_run(db, user_id)
         for data_type, fn in tasks.items():
-            try:
-                results[data_type] = fn()
-            except Exception as e:
-                db.rollback()
-                results[data_type] = 0
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Failed to sync {data_type} data",
-                    action="oura_sync_error",
-                    data_type=data_type,
-                    user_id=str(user_id),
-                    error=str(e),
-                )
+            with run.step(data_type) as step:
+                step.record(fn())
 
-        return results
+        run.log_summary()
+        return run.result
 
     # -------------------------------------------------------------------------
     # Base class stubs — these abstract methods don't map to Oura's API.

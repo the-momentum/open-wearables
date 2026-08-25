@@ -1,7 +1,7 @@
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
 from celery import shared_task
@@ -21,6 +21,8 @@ from app.schemas.sync_status import (
 )
 from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.templates.sync_247_result import DataTypeOutcome as Sync247DataTypeOutcome
+from app.services.providers.templates.sync_247_result import Sync247Status
 from app.services.sync_coordination import (
     bind_primary_lease,
     clear_primary_lease,
@@ -45,9 +47,17 @@ from app.utils.sync_params import build_sync_params
 
 logger = getLogger(__name__)
 
-# Keys of load_and_save_all results that are not record counts, so they are not data
-# types either. Whoop reports a partial sleep fetch this way.
-_NON_COUNT_RESULT_KEYS = frozenset({"sleep_partial"})
+_SYNC_247_STATUS = {
+    Sync247Status.PARTIAL: SyncStatus.PARTIAL,
+    Sync247Status.FAILED: SyncStatus.FAILED,
+    Sync247Status.SKIPPED: SyncStatus.SKIPPED,
+}
+
+
+def _sync_status_of(outcome: Sync247DataTypeOutcome) -> SyncStatus:
+    if outcome.status is Sync247Status.OK:
+        return SyncStatus.SUCCESS if outcome.written else SyncStatus.SKIPPED
+    return _SYNC_247_STATUS[outcome.status]
 
 
 def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
@@ -273,11 +283,12 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
-                    # New-vs-updated split for the sync-log (timeseries upserts report it
-                    # via WriteCounts). items_processed is derived from these so the headline
-                    # count always equals "X new, Y updated".
+                    # New-vs-updated split for the sync-log. Providers report it per data
+                    # type via Sync247Result; pull_written is the headline count, and covers
+                    # the write paths that cannot yet report a split.
                     pull_inserted = 0
                     pull_updated = 0
+                    pull_written = 0
                     data_type_outcomes: list[DataTypeOutcome] = []
                     applied_lookback: timedelta | None = None  # set when the lookback actually widened the window
 
@@ -384,53 +395,43 @@ def sync_vendor_data(
                         )
 
                         try:
-                            # Use load_and_save_all if available (saves data to DB)
-                            # Otherwise fallback to load_all_247_data (just returns data)
-                            provider_any = cast(Any, strategy.data_247)
-                            if hasattr(provider_any, "load_and_save_all"):
-                                results_247 = provider_any.load_and_save_all(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                    is_first_sync=is_first_sync,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
-                                for _task, _count in results_247.items():
-                                    # Some providers put flags in the same dict as counts.
-                                    if _task in _NON_COUNT_RESULT_KEYS:
-                                        continue
-                                    pull_inserted += getattr(_count, "inserted", 0)
-                                    pull_updated += getattr(_count, "updated", 0)
-                                    # Pull reports per fetch task, not per series type: one
-                                    # task can write several types and returns a single count.
-                                    data_type_outcomes.append(
-                                        DataTypeOutcome(
-                                            data_type=_task,
-                                            kind=DataTypeKind.TASK,
-                                            native_type=_task,
-                                            status=SyncStatus.SUCCESS
-                                            if getattr(_count, "inserted", _count) or getattr(_count, "updated", 0)
-                                            else SyncStatus.SKIPPED,
-                                            items_inserted=getattr(_count, "inserted", 0),
-                                            items_updated=getattr(_count, "updated", 0),
-                                            # A plain int only says how many rows the provider
-                                            # saved, with no insert/update split to record.
-                                            reported_records=None if hasattr(_count, "inserted") else int(_count),
-                                            # Span of the rows written, not the window asked
-                                            # for. Absent when the task wrote nothing.
-                                            covered_start=getattr(_count, "covered_start", None),
-                                            covered_end=getattr(_count, "covered_end", None),
-                                        )
+                            results_247 = strategy.data_247.load_and_save_all(
+                                db,
+                                user_uuid,
+                                start_time=start_dt,
+                                end_time=end_dt,
+                                is_first_sync=is_first_sync,
+                            )
+                            # An all-failed run is a failure, not an empty success: every data
+                            # type the provider attempted raised (expired token, unlinked account).
+                            provider_result.params["data_247"] = {
+                                "success": not results_247.all_failed,
+                                "saved": True,
+                                **results_247.as_dict(),
+                            }
+                            pull_inserted += results_247.inserted
+                            pull_updated += results_247.updated
+                            pull_written += results_247.written
+                            # Pull reports per fetch task, not per series type: one
+                            # task can write several types and returns a single count.
+                            for _task, _outcome in results_247.outcomes.items():
+                                _counts = _outcome.counts
+                                data_type_outcomes.append(
+                                    DataTypeOutcome(
+                                        data_type=_task,
+                                        kind=DataTypeKind.TASK,
+                                        native_type=_task,
+                                        status=_sync_status_of(_outcome),
+                                        items_inserted=_counts.inserted if _counts is not None else 0,
+                                        items_updated=_counts.updated if _counts is not None else 0,
+                                        # Without a split, only the provider's row count is known.
+                                        reported_records=None if _counts is not None else _outcome.written,
+                                        # Span of the rows written, not the window asked for.
+                                        covered_start=_counts.covered_start if _counts is not None else None,
+                                        covered_end=_counts.covered_end if _counts is not None else None,
+                                        error=_outcome.error,
                                     )
-                            else:
-                                results_247 = strategy.data_247.load_all_247_data(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
                                 )
-                                provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
                             log_structured(
                                 logger,
                                 "info",
@@ -556,6 +557,9 @@ def sync_vendor_data(
                             completed_metadata["inserted"] = pull_inserted
                             completed_metadata["updated"] = pull_updated
                             completed_message += f" · {pull_inserted} new, {pull_updated} updated"
+                        elif pull_written:
+                            # Rows were written by paths that don't report the split yet.
+                            completed_message += f" · {pull_written} records"
                         if applied_lookback is not None:
                             lookback_label = format_duration(applied_lookback)
                             completed_metadata["lookback"] = lookback_label
@@ -569,7 +573,7 @@ def sync_vendor_data(
                             run_id=run_id,
                             status=final_status,
                             message=completed_message,
-                            items_processed=pull_inserted + pull_updated,
+                            items_processed=pull_written,
                             primary_user_id=primary_uuid,
                             metadata=completed_metadata,
                             window_start=start_dt,

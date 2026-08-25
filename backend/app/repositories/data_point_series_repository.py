@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import LiteralString, NamedTuple
+from typing import LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
 
@@ -106,14 +106,20 @@ class WriteCounts(int):
         obj.covered_end = covered_end
         return obj
 
-    def __add__(self, other: int) -> "WriteCounts":
-        """Merge two results, widening the covered span rather than dropping it.
+    @overload
+    def __add__(self, other: "WriteCounts") -> "WriteCounts": ...
 
-        Plain int.__add__ would return an int and silently lose everything but the
-        total, so any caller accumulating counts across batches keeps the detail.
+    @overload
+    def __add__(self, other: int) -> int: ...
+
+    def __add__(self, other: int) -> int:
+        """Merge two results, keeping the split and widening the covered span.
+
+        Adding a plain int can only produce a plain int — the split of those rows
+        is unknown, and claiming they were all inserts would be a lie.
         """
         if not isinstance(other, WriteCounts):
-            return WriteCounts(self.inserted + int(other), self.updated, self.covered_start, self.covered_end)
+            return int(self) + other
         starts = [d for d in (self.covered_start, other.covered_start) if d is not None]
         ends = [d for d in (self.covered_end, other.covered_end) if d is not None]
         return WriteCounts(
@@ -123,7 +129,14 @@ class WriteCounts(int):
             max(ends) if ends else None,
         )
 
-    __radd__ = __add__
+    def __radd__(self, other: int) -> int:
+        # Makes sum() of WriteCounts work: the 0 start value passes the split through.
+        if other == 0:
+            return self
+        return other + int(self)
+
+    def __repr__(self) -> str:
+        return f"WriteCounts(inserted={self.inserted}, updated={self.updated})"
 
 
 # Sources whose provider or device type is not ranked sort last, in id order.

@@ -445,9 +445,10 @@ class TestGarmin247Data:
 
         results = garmin_247.load_and_save_all(db, user.id)
 
-        assert results["sync_complete"] is True
-        assert results["total_saved"] == 0
-        assert "webhooks" in results["message"].lower()
+        assert results.written == 0
+        assert not results.outcomes  # nothing attempted — data arrives by push
+        assert results.note is not None
+        assert "webhooks" in results.note.lower()
 
     def test_load_and_save_all_with_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with custom dates is still a no-op."""
@@ -458,8 +459,8 @@ class TestGarmin247Data:
 
         results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
 
-        assert results["sync_complete"] is True
-        assert results["total_saved"] == 0
+        assert results.written == 0
+        assert not results.outcomes
 
     def test_load_and_save_all_string_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with ISO string dates is still a no-op."""
@@ -472,7 +473,8 @@ class TestGarmin247Data:
             end_time="2024-01-07T00:00:00Z",
         )
 
-        assert results["sync_complete"] is True
+        assert results.written == 0
+        assert not results.all_failed
 
     # -------------------------------------------------------------------------
     # HRV Data Tests

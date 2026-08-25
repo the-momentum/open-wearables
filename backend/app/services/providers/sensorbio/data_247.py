@@ -11,6 +11,7 @@ from app.constants.series_types.sensorbio import SLEEP_STATUS_STAGE_MAP
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, SleepStage
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
@@ -34,6 +35,7 @@ from app.services.providers.sensorbio.coverage import (
 )
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import energy_difference
@@ -410,15 +412,14 @@ class SensorBio247Data(Base247DataTemplate):
             "raw": raw_recovery,
         }
 
-    def save_recovery_data(self, db: DbSession, user_id: UUID, normalized_recovery: dict[str, Any]) -> dict[str, int]:
+    def save_recovery_data(self, db: DbSession, user_id: UUID, normalized_recovery: dict[str, Any]) -> WriteCounts:
         """Persist normalized recovery data: biometric timeseries + health scores.
 
-        Returns ``{\"metrics_synced\": N, \"scores_synced\": M}`` so callers can
-        log and surface the two categories separately.
+        Returns the rows written across both, split into new vs updated.
         """
         timestamp = normalized_recovery.get("timestamp")
         if not timestamp:
-            return {"metrics_synced": 0, "scores_synced": 0}
+            return WriteCounts(0, 0)
 
         samples: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in RECOVERY_SERIES.items():
@@ -436,10 +437,10 @@ class SensorBio247Data(Base247DataTemplate):
                 )
             )
 
-        metrics_synced = 0
+        written = WriteCounts(0, 0)
         if samples:
             try:
-                metrics_synced = int(timeseries_service.bulk_create_samples(db, samples))
+                written += timeseries_service.bulk_create_samples(db, samples)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -448,7 +449,6 @@ class SensorBio247Data(Base247DataTemplate):
                     provider="sensorbio",
                     task="save_recovery_data",
                 )
-                metrics_synced = 0
 
         health_scores: list[HealthScoreCreate] = []
         recovery_score = normalized_recovery.get("recovery_score")
@@ -489,11 +489,9 @@ class SensorBio247Data(Base247DataTemplate):
                 )
             )
 
-        scores_synced = 0
         if health_scores:
             try:
-                health_score_service.bulk_create(db, health_scores)
-                scores_synced = len(health_scores)
+                written += health_score_service.bulk_create(db, health_scores)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -502,23 +500,20 @@ class SensorBio247Data(Base247DataTemplate):
                     provider="sensorbio",
                     task="save_recovery_data",
                 )
-                scores_synced = 0
 
-        return {"metrics_synced": metrics_synced, "scores_synced": scores_synced}
+        return written
 
     def load_and_save_recovery(
         self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
-    ) -> dict[str, int]:
+    ) -> WriteCounts:
         raw_data = self.get_recovery_data(db, user_id, start_time, end_time)
-        totals = {"metrics_synced": 0, "scores_synced": 0}
+        written = WriteCounts(0, 0)
         for item in raw_data:
             try:
                 normalized = self.normalize_recovery(item, user_id)
                 if normalized is None:
                     continue
-                counts = self.save_recovery_data(db, user_id, normalized)
-                totals["metrics_synced"] += counts["metrics_synced"]
-                totals["scores_synced"] += counts["scores_synced"]
+                written += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -534,10 +529,10 @@ class SensorBio247Data(Base247DataTemplate):
             provider="sensorbio",
             task="load_and_save_recovery",
             user_id=str(user_id),
-            metrics_synced=totals["metrics_synced"],
-            scores_synced=totals["scores_synced"],
+            inserted=written.inserted,
+            updated=written.updated,
         )
-        return totals
+        return written
 
     # -------------------------------------------------------------------------
     # Biometric activity samples — GET /v1/biometrics (cursor-paginated)
@@ -612,7 +607,7 @@ class SensorBio247Data(Base247DataTemplate):
 
     def save_activity_samples(
         self, db: DbSession, user_id: UUID, normalized_samples: dict[str, list[dict[str, Any]]]
-    ) -> int:
+    ) -> WriteCounts:
         """Persist normalized biometric activity samples as timeseries entries."""
         all_samples: list[TimeSeriesSampleCreate] = []
         for key, samples in normalized_samples.items():
@@ -636,7 +631,7 @@ class SensorBio247Data(Base247DataTemplate):
                 )
         if all_samples:
             try:
-                timeseries_service.bulk_create_samples(db, all_samples)
+                return timeseries_service.bulk_create_samples(db, all_samples)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -645,8 +640,7 @@ class SensorBio247Data(Base247DataTemplate):
                     provider="sensorbio",
                     task="save_activity_samples",
                 )
-                return 0
-        return len(all_samples)
+        return WriteCounts(0, 0)
 
     # -------------------------------------------------------------------------
     # Daily activity (steps/energy/distance) — GET /v1/step/details
@@ -743,11 +737,11 @@ class SensorBio247Data(Base247DataTemplate):
             "energy": energy_difference(values.get("Total Calories"), resting),
         }
 
-    def save_daily_activity(self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]) -> int:
+    def save_daily_activity(self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]) -> WriteCounts:
         """Persist steps/energy/distance_walking_running as daily-total timeseries."""
         timestamp = normalized_activity.get("timestamp")
         if not timestamp:
-            return 0
+            return WriteCounts(0, 0)
 
         samples: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in DAILY_ACTIVITY_SERIES.items():
@@ -768,7 +762,7 @@ class SensorBio247Data(Base247DataTemplate):
 
         if samples:
             try:
-                timeseries_service.bulk_create_samples(db, samples)
+                return timeseries_service.bulk_create_samples(db, samples)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -777,20 +771,19 @@ class SensorBio247Data(Base247DataTemplate):
                     provider="sensorbio",
                     task="save_daily_activity",
                 )
-                return 0
 
-        return len(samples)
+        return WriteCounts(0, 0)
 
     def load_and_save_daily_activity(
         self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
-    ) -> int:
+    ) -> WriteCounts:
         """Fetch, normalize, and persist daily step/distance/energy and resting-calorie data."""
         steps = self.get_daily_activity_statistics(db, user_id, start_time, end_time)
         calories = self.get_daily_calorie_details(db, user_id, start_time, end_time)
         work = [(item, self.normalize_daily_activity) for item in steps] + [
             (item, self.normalize_daily_calories) for item in calories
         ]
-        total_count = 0
+        total_count = WriteCounts(0, 0)
         for item, normalize in work:
             try:
                 normalized = normalize(item, user_id)
@@ -818,83 +811,24 @@ class SensorBio247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
+    ) -> Sync247Result:
+        start_time, end_time = self.resolve_window(start_time, end_time)
 
-        results: dict[str, int] = {
-            "sleep_sessions_synced": 0,
-            "recovery_metrics_synced": 0,
-            "recovery_scores_synced": 0,
-            "activity_samples_synced": 0,
-            "daily_activity_synced": 0,
-        }
+        run = self.sync_run(db, user_id)
 
-        try:
-            results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            log_structured(
-                self.logger, "error", f"Failed to sync sleep data: {e}", provider="sensorbio", task="load_and_save_all"
-            )
+        with run.step("sleep", commit=True) as step:
+            step.record(self.load_and_save_sleep(db, user_id, start_time, end_time))
 
-        try:
-            recovery_counts = self.load_and_save_recovery(db, user_id, start_time, end_time)
-            results["recovery_metrics_synced"] = recovery_counts["metrics_synced"]
-            results["recovery_scores_synced"] = recovery_counts["scores_synced"]
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync recovery data: {e}",
-                provider="sensorbio",
-                task="load_and_save_all",
-            )
+        with run.step("recovery", commit=True) as step:
+            step.record(self.load_and_save_recovery(db, user_id, start_time, end_time))
 
-        try:
+        with run.step("activity_samples", commit=True) as step:
             raw_activity = self.get_activity_samples(db, user_id, start_time, end_time)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
-            results["activity_samples_synced"] = self.save_activity_samples(db, user_id, normalized_activity)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync activity samples: {e}",
-                provider="sensorbio",
-                task="load_and_save_all",
-            )
+            step.record(self.save_activity_samples(db, user_id, normalized_activity))
 
-        try:
-            results["daily_activity_synced"] = self.load_and_save_daily_activity(db, user_id, start_time, end_time)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync daily activity data: {e}",
-                provider="sensorbio",
-                task="load_and_save_all",
-            )
+        with run.step("daily_activity", commit=True) as step:
+            step.record(self.load_and_save_daily_activity(db, user_id, start_time, end_time))
 
-        log_structured(
-            self.logger,
-            "info",
-            "Sensor Bio 247 sync complete",
-            provider="sensorbio",
-            task="load_and_save_all",
-            user_id=str(user_id),
-            **results,
-        )
-        return results
+        run.log_summary()
+        return run.result

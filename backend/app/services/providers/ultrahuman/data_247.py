@@ -22,6 +22,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.templates.sync_247_result import Sync247Result, Sync247Run
 from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES, DAILY_SCALAR_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
@@ -517,134 +518,107 @@ class Ultrahuman247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, Any]:
+    ) -> Sync247Result:
         """Load and save all 247 data types by fetching daily metrics.
 
-        Returns:
-            dict[str, Any]: Results containing:
-                - sleep_sessions_synced: WriteCounts - Sleep sessions saved (all inserts)
-                - activity_samples: WriteCounts - Activity samples upserted (inserted + updated)
-                - recovery_days_synced: int - Number of recovery days processed
-                - failed_days: int - Number of days that failed to process
-                - errors: list[dict[str, str]] - List of errors with date and message
-
-            The two saved-row counts are WriteCounts (int subclass) so the sync
-            orchestrator can accumulate them via ``.inserted``/``.updated``.
+        Ultrahuman exposes one metrics endpoint per day, so the window is walked
+        a day at a time and each data type's counts accumulate across days. A
+        fatal auth error (401/403) aborts the whole run; anything else is
+        recorded against the data type it belongs to and the walk continues.
         """
 
         # TODO: Extract default backfill days (30) to an env var / settings constant.
         # Not doing it now - this should be unified across all providers at once,
         # since other providers like Garmin, Oura, Whoop each hardcode their own defaults.
 
-        # Handle date defaults (last 30 days if not specified)
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        start_time, end_time = self.resolve_window(start_time, end_time)
 
-        # Set defaults if None
-        if end_time is None:
-            end_time = datetime.now(timezone.utc)
-        if start_time is None:
-            start_time = end_time - timedelta(days=30)
-
-        results: dict[str, Any] = {
-            "sleep_sessions_synced": 0,
-            "activity_samples": 0,
-            "recovery_days_synced": 0,
-            "failed_days": 0,
-            "errors": [],
-        }
-
-        activity_inserted = 0
-        activity_updated = 0
+        # HTTPException from _fetch_daily_metrics (401/403) invalidates every remaining
+        # day, so it propagates instead of being recorded against one data type.
+        run = self.sync_run(db, user_id, fatal=(HTTPException,))
+        run.expect("sleep", "activity_samples")
 
         current_date = datetime.combine(start_time.date(), datetime.min.time(), tzinfo=timezone.utc)
         end_date = datetime.combine(end_time.date(), datetime.min.time(), tzinfo=timezone.utc)
         while current_date <= end_date:
-            date_str = current_date.strftime("%Y-%m-%d")
-            day_error = None
+            items_by_type = self._fetch_items_by_type(db, user_id, current_date, run)
 
-            try:
-                metrics_list = self._fetch_daily_metrics(db, user_id, current_date)
+            if "Sleep" in items_by_type:
+                with run.step("sleep", accumulate=True, rollback_on_error=False) as step:
+                    normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
+                    step.record(1 if self.save_sleep_data(db, user_id, normalized_sleep) else 0)
 
-                # Group items by type
-                items_by_type = {}
-                for item in metrics_list:
-                    t = item.get("type")
-                    if t and "object" in item:
-                        items_by_type[t] = item["object"]
+            # Recovery is fetched but not persisted: there is no daily-recovery table yet,
+            # and EventRecord has no type that fits generic daily recovery metrics.
 
-                # 1. Process Sleep
-                if "Sleep" in items_by_type:
-                    try:
-                        normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
-                        if self.save_sleep_data(db, user_id, normalized_sleep):
-                            results["sleep_sessions_synced"] += 1
-                    except Exception as e:
-                        day_error = f"Sleep processing failed: {e}"
-
-                # 2. Process Recovery (Not saved to DB yet in this template, but logic is here)
-                # We don't have a generic "save_recovery" in Base247DataTemplate or a table for it yet?
-                # Actually EventRecord doesn't support generic daily recovery metrics easily without a specific type.
-                # But we can normalize it if we add support later.
-
-                # 3. Process Activity Samples
-                try:
-                    daily_samples: list[TimeSeriesSampleCreate] = []
-
-                    sample_inputs = []
-                    for t in ["hr", "hrv", "temp", "steps"]:
-                        if t in items_by_type:
-                            sample_inputs.append({"type": t, "values": items_by_type[t].get("values", [])})
-
-                    if sample_inputs:
-                        normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
-                        daily_samples.extend(self._build_activity_samples(user_id, normalized_samples))
-
-                    for key, series_type in DAILY_SCALAR_SERIES.items():
-                        scalar = items_by_type.get(key) or {}
-                        value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
-                        if value is None or not day_start:
-                            continue
-                        daily_samples.append(
-                            TimeSeriesSampleCreate(
-                                id=uuid4(),
-                                user_id=user_id,
-                                provider=self.provider_name,
-                                recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
-                                value=Decimal(str(value)),
-                                series_type=series_type,
-                                is_daily_total=daily_total_flag(series_type, True),
-                            )
-                        )
-
-                    if daily_samples:
-                        counts = timeseries_service.bulk_create_samples(db, daily_samples)
-                        activity_inserted += counts.inserted
-                        activity_updated += counts.updated
-                except Exception as e:
-                    day_error = f"Activity samples processing failed: {e}"
-
-            except HTTPException:
-                # Fatal errors from _fetch_daily_metrics (401, 403) should be raised
-                raise
-
-            except Exception as e:
-                # Any other error processing this day
-                day_error = f"Unexpected error: {e}"
-
-            # Track errors for this day
-            if day_error:
-                results["failed_days"] += 1
-                results["errors"].append({"date": date_str, "error": day_error})
+            with run.step("activity_samples", accumulate=True, rollback_on_error=False) as step:
+                step.record(self._save_daily_activity(db, user_id, items_by_type))
 
             current_date += timedelta(days=1)
 
-        results["sleep_sessions_synced"] = WriteCounts(results["sleep_sessions_synced"], 0)
-        results["activity_samples"] = WriteCounts(activity_inserted, activity_updated)
+        run.log_summary()
+        return run.result
 
-        return results
+    def _fetch_items_by_type(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        day: datetime,
+        run: Sync247Run,
+    ) -> dict[str, Any]:
+        """Fetch one day of metrics, keyed by Ultrahuman's type name.
+
+        The fetch feeds every data type, so a failure is recorded against the
+        endpoint rather than any one of them, and the day is skipped.
+        """
+        try:
+            metrics_list = self._fetch_daily_metrics(db, user_id, day)
+        except HTTPException:
+            raise
+        except Exception as e:
+            run.fail("daily_metrics", e)
+            return {}
+
+        return {item["type"]: item["object"] for item in metrics_list if item.get("type") and "object" in item}
+
+    def _save_daily_activity(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        items_by_type: dict[str, Any],
+    ) -> WriteCounts:
+        """Persist one day's activity series plus its single-value daily metrics."""
+        sample_inputs = [
+            {"type": t, "values": items_by_type[t].get("values", [])}
+            for t in ("hr", "hrv", "temp", "steps")
+            if t in items_by_type
+        ]
+        samples: list[TimeSeriesSampleCreate] = []
+        if sample_inputs:
+            samples.extend(
+                self._build_activity_samples(user_id, self.normalize_activity_samples(sample_inputs, user_id))
+            )
+
+        for key, series_type in DAILY_SCALAR_SERIES.items():
+            scalar = items_by_type.get(key) or {}
+            value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
+            if value is None or not day_start:
+                continue
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=self.provider_name,
+                    recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
+                    value=Decimal(str(value)),
+                    series_type=series_type,
+                    is_daily_total=daily_total_flag(series_type, True),
+                )
+            )
+
+        if not samples:
+            return WriteCounts(0, 0)
+        return timeseries_service.bulk_create_samples(db, samples)
 
     # -------------------------------------------------------------------------
     # Abstract Method Implementations
