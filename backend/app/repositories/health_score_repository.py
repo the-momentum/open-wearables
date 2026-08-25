@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, cast
 from uuid import UUID
 
@@ -83,16 +83,18 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         """Delete health scores matching user/category/provider/date without loading objects.
 
         Caller is responsible for commit. Returns deleted row count.
-        Sleep scores are stored with recorded_at = midnight UTC of the local sleep date.
+        Matches the whole day rather than an exact timestamp: sleep scores are anchored to
+        the session's local wake time, and older rows sit at midnight of the same date.
         """
-        midnight = datetime(score_date.year, score_date.month, score_date.day, tzinfo=timezone.utc)
+        day_start = datetime(score_date.year, score_date.month, score_date.day, tzinfo=timezone.utc)
         return (
             db_session.query(HealthScore)
             .filter(
                 HealthScore.user_id == user_id,
                 HealthScore.provider == provider,
                 HealthScore.category == category,
-                HealthScore.recorded_at == midnight,
+                HealthScore.recorded_at >= day_start,
+                HealthScore.recorded_at < day_start + timedelta(days=1),
             )
             .delete(synchronize_session=False)
         )
