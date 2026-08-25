@@ -171,9 +171,6 @@ class EventRecordService(
         on, so a second convention here produces a duplicate score instead of
         replacing the existing one.
         """
-        for d in sleep_dates:
-            self.health_score_repo.delete_for_user_date(db_session, user_id, d, HealthScoreCategory.SLEEP)
-
         # Widened by a day either side so a session whose local start lands on a target
         # date is still inside the window whatever its zone offset.
         window_start = datetime.combine(min(sleep_dates), time.min, tzinfo=timezone.utc) - timedelta(days=1)
@@ -189,6 +186,12 @@ class EventRecordService(
             and details.sleep_total_duration_minutes
             and self._local_sleep_date(record.start_datetime, record.zone_offset) in sleep_dates
         ]
+
+        # A session running past midnight is scored on the day it ends, so the wake dates
+        # have to be cleared as well as the start dates the caller tracks.
+        wake_dates = {local_end.date() for _, _, local_end in sessions}
+        for d in sleep_dates | wake_dates:
+            self.health_score_repo.delete_for_user_date(db_session, user_id, d, HealthScoreCategory.SLEEP)
 
         creators = sleep_score_service.build_internal_sleep_scores(db_session, user_id, sessions)
         if creators:
