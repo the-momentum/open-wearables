@@ -244,9 +244,9 @@ class Settings(BaseSettings):
     raw_payload_s3_prefix: str = "raw-payloads"
     raw_payload_s3_endpoint_url: str | None = None  # for S3-compatible storage (e.g. Railway Object Storage)
 
-    # SDK sync enqueues an S3 reference instead of the inline body, so a queued batch is
-    # ~1 KB rather than ~1.5x the payload and a backlog stops eating Redis. Needs a bucket,
-    # not raw_payload_storage=s3 — archival is a debug aid, not a reliability dependency.
+    # SDK sync enqueues an S3 reference instead of the inline body, so a backlog stops eating
+    # broker memory. Needs a bucket, not raw_payload_storage=s3 — archival is a debug aid,
+    # not a reliability dependency.
     sdk_payload_s3_offload: bool = False
 
     # SVIX WEBHOOK SETTINGS
