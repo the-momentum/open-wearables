@@ -37,7 +37,7 @@ Tags are produced by [`.github/workflows/publish-images.yml`](https://github.com
 
 - **Nightly** - a scheduled run at `02:00` UTC builds `main` and pushes `nightly` plus an immutable `nightly-<sha>`.
 - **Release** - publishing a [GitHub release](https://github.com/the-momentum/open-wearables/releases) builds its git tag, pushes the version tags (`0.7.0`, `0.7`), and moves `latest`. Pre-releases are published under their version tag but do not move `latest`.
-- **Manual** - the workflow can also be run by hand from the GitHub Actions UI. It requires a **tag** input and publishes that tag only - no `nightly` tags. Reserved names - `latest`, `nightly`, `nightly-<sha>`, and release versions like `0.7.0`/`0.7` - are rejected, so a manual run can never move or overwrite them.
+- **Manual** - the workflow can also be run by hand from the GitHub Actions UI. It requires a **tag** input and publishes that tag only - no `nightly` tags. Reserved names - `latest`, `nightly`, the whole `nightly-*` namespace, and release versions like `0.7.0`/`0.7` - are rejected, so a manual run can never move or overwrite them.
 
 For production, pin an exact version tag (e.g. `0.7.0`) rather than `latest` or `nightly`, so deployments are reproducible and upgrades are intentional.
 
