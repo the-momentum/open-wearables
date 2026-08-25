@@ -59,7 +59,24 @@ jobs:
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
 
+      # A scheduled run rebuilds main's current HEAD unconditionally, so a day
+      # with no new commits would re-push nightly-<sha> for an unchanged SHA -
+      # overwriting (mutable registry) or rejecting (immutable registry) a tag
+      # docs promise is immutable. Keyed on the artifact, not the clock: if this
+      # exact nightly-<sha> already exists in the registry, skip the rebuild.
+      # Release/manual runs have no nightly-<sha> tag, so this never fires there.
+      - name: Skip build if this nightly SHA is already published
+        id: nightly_guard
+        if: github.event_name == 'schedule'
+        run: |
+          sha_tag=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | grep -m1 ':nightly-' || true)
+          if [ -n "$sha_tag" ] && docker buildx imagetools inspect "$sha_tag" >/dev/null 2>&1; then
+            echo "$sha_tag already published; skipping rebuild"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push ${{ matrix.name }}
+        if: steps.nightly_guard.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
