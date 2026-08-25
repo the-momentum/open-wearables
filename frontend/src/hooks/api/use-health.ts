@@ -147,18 +147,6 @@ export function useAllWorkouts(userId: string, params?: WorkoutsParams) {
 }
 
 /**
- * Get all pages of health scores for a date range
- * Uses GET /api/v1/users/{user_id}/health-scores
- */
-export function useAllHealthScores(userId: string, params: HealthScoreParams) {
-  return useQuery({
-    queryKey: [...queryKeys.health.healthScores(userId, params), 'all-pages'],
-    queryFn: () => healthService.getAllHealthScores(userId, params),
-    enabled: !!userId && !!params.start_date && !!params.end_date,
-  });
-}
-
-/**
  * Delete a workout event
  */
 export function useDeleteWorkout(userId: string) {

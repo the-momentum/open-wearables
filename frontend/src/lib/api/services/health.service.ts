@@ -53,23 +53,27 @@ export interface SummaryParams {
 }
 
 /**
- * Fetch every page of a cursor-paginated endpoint. Single pages cap at
- * 100 items on most endpoints, so wide date ranges span several pages.
+ * Fetch every page of a cursor-paginated endpoint. Callers pass the
+ * endpoint's maximum page size so most date ranges resolve in one request.
  */
 async function fetchAllPages<T>(
   endpoint: string,
-  params: SummaryParams | WorkoutsParams | HealthScoreParams
+  params: SummaryParams | WorkoutsParams,
+  pageSize: number
 ): Promise<T[]> {
   const items: T[] = [];
   let cursor: string | undefined;
   // Page cap so a misbehaving cursor cannot loop forever
   for (let page = 0; page < 50; page++) {
     const response = await apiClient.get<PaginatedResponse<T>>(endpoint, {
-      params: { ...params, limit: 100, cursor },
+      params: { ...params, limit: pageSize, cursor },
     });
     items.push(...response.data);
-    if (!response.pagination.has_more || !response.pagination.next_cursor) {
+    if (!response.pagination.has_more) {
       return items;
+    }
+    if (!response.pagination.next_cursor) {
+      throw new Error(`${endpoint} reported more data without a cursor`);
     }
     cursor = response.pagination.next_cursor;
   }
@@ -224,7 +228,8 @@ export const healthService = {
   ): Promise<SleepSummary[]> {
     return fetchAllPages<SleepSummary>(
       API_ENDPOINTS.userSleepSummary(userId),
-      params
+      params,
+      400
     );
   },
 
@@ -237,20 +242,8 @@ export const healthService = {
   ): Promise<EventRecordResponse[]> {
     return fetchAllPages<EventRecordResponse>(
       API_ENDPOINTS.userWorkouts(userId),
-      params ?? {}
-    );
-  },
-
-  /**
-   * Get all pages of health scores for a date range
-   */
-  async getAllHealthScores(
-    userId: string,
-    params?: HealthScoreParams
-  ): Promise<HealthScoreResponse[]> {
-    return fetchAllPages<HealthScoreResponse>(
-      API_ENDPOINTS.userHealthScores(userId),
-      params ?? {}
+      params ?? {},
+      100
     );
   },
 
