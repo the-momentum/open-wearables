@@ -44,11 +44,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Stored runs come from Postgres, which has no equivalent of the Redis buffer's ceiling,
-# so this is only a page-size guard. The Redis-backed routes cap at MAX_RECENT_EVENTS
-# instead, since the buffer is trimmed to that and cannot return more.
-_MAX_HISTORY_PAGE = 200
-
 _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
     "X-Accel-Buffering": "no",  # disable nginx buffering
@@ -173,7 +168,7 @@ def list_stored_sync_runs(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=_MAX_HISTORY_PAGE)] = 20,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     scope: Annotated[SyncScope | None, Query(description="Filter by historical or live.")] = None,
     since: Annotated[datetime | None, Query(description="Only runs started at or after this time.")] = None,
 ) -> list[SyncRunRecord]:

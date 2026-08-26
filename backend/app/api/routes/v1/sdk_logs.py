@@ -43,27 +43,28 @@ def _event_fields(body: SDKLogRequest) -> dict[str, Any]:
     flatten_outcome = len(body.events) <= _MAX_FLATTENED_EVENTS and outcome_count == 1
 
     for event in body.events:
-        if event.eventType == SDKLogEventType.DEVICE_STATE:
-            fields |= {
-                "task_type": event.taskType,
-                "low_power": event.isLowPowerMode,
-                "thermal_state": event.thermalState,
-            }
-        elif event.eventType == SDKLogEventType.HISTORICAL_SYNC_START:
-            populated = [count for count in event.dataTypeCounts if count.count > 0]
-            fields |= {
-                "types_declared": len(populated),
-                "samples_expected": sum(count.count for count in populated),
-            }
-        elif event.eventType == SDKLogEventType.HISTORICAL_TYPE_SYNC_END and flatten_outcome:
-            # Sleep and workout identifiers have no series type, so they keep the native one.
-            series_type = get_series_type_from_metric_type(event.dataType)
-            fields |= {
-                "data_type": series_type.value if series_type else event.dataType,
-                "native_data_type": event.dataType,
-                "success": event.success,
-                "record_count": event.recordCount,
-            }
+        match event.eventType:
+            case SDKLogEventType.DEVICE_STATE:
+                fields |= {
+                    "task_type": event.taskType,
+                    "low_power": event.isLowPowerMode,
+                    "thermal_state": event.thermalState,
+                }
+            case SDKLogEventType.HISTORICAL_SYNC_START:
+                populated = [count for count in event.dataTypeCounts if count.count > 0]
+                fields |= {
+                    "types_declared": len(populated),
+                    "samples_expected": sum(count.count for count in populated),
+                }
+            case SDKLogEventType.HISTORICAL_TYPE_SYNC_END if flatten_outcome:
+                # Sleep and workout identifiers have no series type, so they keep the native one.
+                series_type = get_series_type_from_metric_type(event.dataType)
+                fields |= {
+                    "data_type": series_type.value if series_type else event.dataType,
+                    "native_data_type": event.dataType,
+                    "success": event.success,
+                    "record_count": event.recordCount,
+                }
 
     return {key: value for key, value in fields.items() if value is not None}
 
