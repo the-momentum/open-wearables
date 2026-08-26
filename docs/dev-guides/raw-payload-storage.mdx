@@ -139,6 +139,8 @@ It needs a bucket (`RAW_PAYLOAD_S3_BUCKET`, or `AWS_BUCKET_NAME`) and startup fa
 
 With `RAW_PAYLOAD_STORAGE=s3` there is still one object, written to the same key with the same metadata, serving as both the queued payload and the archive.
 
+With `RAW_PAYLOAD_STORAGE=disabled` the object only exists to carry the payload, so the worker deletes it once the batch is committed — a failed batch keeps its payload for diagnosis. This needs `s3:DeleteObject` on the bucket, otherwise every batch logs a delete failure.
+
 <Warning>
   S3 is now on the critical path. Keep any lifecycle expiry above your worst queue lag, and expect `503` from the endpoint when the upload fails.
 </Warning>

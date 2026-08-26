@@ -130,12 +130,36 @@ def get_payload_from_s3(ref: str) -> str:
     """
     if _s3_client is None:
         raise RuntimeError("Cannot get payload: S3 client not configured")
-    # Bucket travels in the ref: app/worker config drift would otherwise be a silent 404.
+    bucket, key = _split_ref(ref)
+    obj = _s3_client.get_object(Bucket=bucket, Key=key)
+    return obj["Body"].read().decode("utf-8")
+
+
+def delete_payload_from_s3(ref: str) -> None:
+    """Delete a payload by ``s3://bucket/key`` reference. Best-effort - never raises.
+
+    Drops a transport-only copy once the data is persisted, so a deployment that opted out
+    of payload archival does not accumulate them. Needs ``s3:DeleteObject``.
+    """
+    if _s3_client is None:
+        return
+    try:
+        bucket, key = _split_ref(ref)
+        _s3_client.delete_object(Bucket=bucket, Key=key)
+    except Exception:
+        logger.exception("Failed to delete payload from S3: %s", ref)
+
+
+def _split_ref(ref: str) -> tuple[str, str]:
+    """Split ``s3://bucket/key``.
+
+    The bucket travels in the reference because app/worker config drift would otherwise
+    turn into a silent 404 on a payload that was written just fine.
+    """
     bucket, _, key = ref.removeprefix("s3://").partition("/")
     if not bucket or not key:
         raise ValueError(f"Malformed S3 payload reference: {ref}")
-    obj = _s3_client.get_object(Bucket=bucket, Key=key)
-    return obj["Body"].read().decode("utf-8")
+    return bucket, key
 
 
 def _store_to_log(

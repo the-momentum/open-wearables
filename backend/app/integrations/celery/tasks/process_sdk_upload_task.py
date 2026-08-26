@@ -5,6 +5,7 @@ from uuid import UUID
 
 from celery import shared_task
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -16,7 +17,7 @@ from app.services.apple.healthkit.import_service import (
 from app.services.apple.healthkit.import_service import (
     import_service as sdk_import_service,
 )
-from app.services.raw_payload_storage import get_payload_from_s3
+from app.services.raw_payload_storage import delete_payload_from_s3, get_payload_from_s3
 from app.services.sync_status_service import completed, failed, started
 from app.utils.structured_logging import log_structured
 
@@ -197,6 +198,10 @@ def process_sdk_upload(
                     "dropped_count": dropped_count,
                 },
             )
+            if payload_ref and settings.raw_payload_storage == "disabled":
+                # Transport-only copy and the data is committed, so drop it. A failed batch
+                # keeps its payload for diagnosis.
+                delete_payload_from_s3(payload_ref)
         else:
             failed(
                 user_uuid,
