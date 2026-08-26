@@ -126,6 +126,34 @@ class TestTryPersistRun:
         assert run.started_at == started_at
 
     @patch("app.services.sync_status_service.SessionLocal")
+    def test_batched_run_accumulates_counts_and_keeps_its_end(self, mock_session_local: MagicMock, db: Session) -> None:
+        """A historical SDK export reports per batch, so the run must hold the total."""
+        mock_session_local.return_value.__enter__.return_value = db
+        user = UserFactory()
+        started_at = datetime.now(timezone.utc)
+        run_id = f"sdk_{uuid4().hex[:16]}"
+
+        for batch, inserted in enumerate((100, 40, 7)):
+            offset = timedelta(seconds=batch * 10)
+            try_persist_run(_event(user.id, run_id=run_id, source=SyncSource.SDK, timestamp=started_at + offset))
+            try_persist_run(
+                _event(
+                    user.id,
+                    run_id=run_id,
+                    source=SyncSource.SDK,
+                    stage=SyncStage.COMPLETED,
+                    status=SyncStatus.SUCCESS,
+                    timestamp=started_at + offset + timedelta(seconds=5),
+                    ended_at=started_at + offset + timedelta(seconds=5),
+                    metadata={"inserted": inserted},
+                )
+            )
+
+        run = db.query(SyncRun).filter(SyncRun.run_key == run_id).one()
+        assert run.items_inserted == 147
+        assert run.ended_at is not None
+
+    @patch("app.services.sync_status_service.SessionLocal")
     def test_late_event_cannot_reopen_a_closed_run(self, mock_session_local: MagicMock, db: Session) -> None:
         """A start event arriving after the terminal one must not clear the outcome."""
         mock_session_local.return_value.__enter__.return_value = db

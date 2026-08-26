@@ -32,11 +32,13 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
-from app.database import SessionLocal
+from app.database import DbSession, SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import (
     DataTypeOutcome,
+    SyncRunDetail,
+    SyncRunRecord,
     SyncRunSummary,
     SyncRunWrite,
     SyncScope,
@@ -179,6 +181,28 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
             run_id=run_key,
             error=str(exc),
         )
+
+
+def list_stored_runs(
+    db: DbSession,
+    user_id: UUID,
+    *,
+    limit: int = 20,
+    scope: SyncScope | None = None,
+    since: datetime | None = None,
+) -> list[SyncRunRecord]:
+    """Stored runs for a user, newest first.
+
+    Reads Postgres rather than the Redis buffer, so it is not capped at 24h.
+    """
+    runs = sync_run_repository.list_for_user(db, user_id, limit=limit, scope=scope, since=since)
+    return [SyncRunRecord.model_validate(run) for run in runs]
+
+
+def get_stored_run(db: DbSession, run_key: str) -> SyncRunDetail | None:
+    """One stored run with its per-data-type breakdown, or None when unknown."""
+    run = sync_run_repository.get_with_data_types(db, run_key)
+    return SyncRunDetail.model_validate(run) if run is not None else None
 
 
 def emit(event: SyncStatusEvent) -> None:

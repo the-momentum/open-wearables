@@ -28,19 +28,26 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.database import DbSession
-from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import SyncRunDetail, SyncRunRecord, SyncRunSummary, SyncScope, SyncStatusEvent
 from app.services import ApiKeyDep, user_service
 from app.services.sync_status_service import (
+    MAX_RECENT_EVENTS,
     get_all_run_summaries,
     get_recent_events,
     get_run_summaries,
+    get_stored_run,
+    list_stored_runs,
     stream_user_events,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Stored runs come from Postgres, which has no equivalent of the Redis buffer's ceiling,
+# so this is only a page-size guard. The Redis-backed routes cap at MAX_RECENT_EVENTS
+# instead, since the buffer is trimmed to that and cannot return more.
+_MAX_HISTORY_PAGE = 200
 
 _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
@@ -70,7 +77,7 @@ def stream_user_sync_status(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    replay: Annotated[int, Query(ge=1, le=200, description="Replay last N events on connect.")] = 20,
+    replay: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS, description="Replay last N events on connect.")] = 20,
 ) -> StreamingResponse:
     """Open a Server-Sent Events stream of sync status for a user.
 
@@ -106,7 +113,7 @@ def list_recent_sync_events(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS)] = 50,
 ) -> list[SyncStatusEvent]:
     """Return the most recent stored sync events (newest first).
 
@@ -126,7 +133,7 @@ def list_sync_run_summaries(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    limit: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS)] = 20,
 ) -> list[SyncRunSummary]:
     """Return aggregated per-run summaries for recent sync activity."""
     _ensure_user_exists(db, user_id)
@@ -166,7 +173,7 @@ def list_stored_sync_runs(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    limit: Annotated[int, Query(ge=1, le=_MAX_HISTORY_PAGE)] = 20,
     scope: Annotated[SyncScope | None, Query(description="Filter by historical or live.")] = None,
     since: Annotated[datetime | None, Query(description="Only runs started at or after this time.")] = None,
 ) -> list[SyncRunRecord]:
@@ -177,8 +184,7 @@ def list_stored_sync_runs(
     Use /sync/history/{run_key} for the per-data-type breakdown.
     """
     _ensure_user_exists(db, user_id)
-    runs = sync_run_repository.list_for_user(db, user_id, limit=limit, scope=scope, since=since)
-    return [SyncRunRecord.model_validate(run) for run in runs]
+    return list_stored_runs(db, user_id, limit=limit, scope=scope, since=since)
 
 
 @router.get("/sync/history/{run_key}")
@@ -188,10 +194,10 @@ def get_stored_sync_run(
     _api_key: ApiKeyDep,
 ) -> SyncRunDetail:
     """One stored sync run with its per-data-type breakdown."""
-    run = sync_run_repository.get_with_data_types(db, run_key)
+    run = get_stored_run(db, run_key)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found")
-    return SyncRunDetail.model_validate(run)
+    return run
 
 
 __all__ = ["router"]

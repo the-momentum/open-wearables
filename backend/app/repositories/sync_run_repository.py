@@ -24,6 +24,9 @@ class SyncRunRepository:
         started_at is insert-only; requested_* fill in while empty, since the window is
         often not known until after the run has opened. Events older than the row are
         ignored, so a late start cannot reopen a run that already reported its outcome.
+
+        Item counts add up rather than replace, so a run reporting in several times ends
+        up with its total. Re-delivering the same event therefore counts it twice.
         """
         stmt = insert(SyncRun).values(id=uuid4(), **run.model_dump())
         stmt = stmt.on_conflict_do_update(
@@ -32,9 +35,12 @@ class SyncRunRepository:
                 "status": stmt.excluded.status,
                 "requested_start": func.coalesce(SyncRun.requested_start, stmt.excluded.requested_start),
                 "requested_end": func.coalesce(SyncRun.requested_end, stmt.excluded.requested_end),
-                "ended_at": stmt.excluded.ended_at,
-                "items_inserted": stmt.excluded.items_inserted,
-                "items_updated": stmt.excluded.items_updated,
+                # A later start event carries no end, so it must not clear a recorded one.
+                "ended_at": func.coalesce(stmt.excluded.ended_at, SyncRun.ended_at),
+                # Counts accumulate like the per-type rows do: a historical SDK export
+                # reports once per batch, so overwriting would keep only the last batch.
+                "items_inserted": SyncRun.items_inserted + stmt.excluded.items_inserted,
+                "items_updated": SyncRun.items_updated + stmt.excluded.items_updated,
                 "error": stmt.excluded.error,
                 "meta": stmt.excluded.meta,
                 "updated_at": stmt.excluded.updated_at,
