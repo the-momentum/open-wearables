@@ -152,12 +152,22 @@ class TestStoreRawPayload:
         assert call_kwargs["Body"] == b'{"pre":"serialized"}'
 
 
-def _configure_s3(bucket: str = "test-bucket", **kwargs) -> MagicMock:
+def _configure_s3(
+    bucket: str = "test-bucket",
+    backend: str = "s3",
+    max_size: int = 1024,
+    s3_prefix: str = "raw-payloads",
+    transport_enabled: bool = False,
+) -> MagicMock:
     """Configure the module with a mocked S3 client and return it."""
     mock_client = MagicMock()
     with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
         raw_payload_storage.configure(
-            kwargs.pop("backend", "s3"), kwargs.pop("max_size", 1024), s3_bucket=bucket, **kwargs
+            backend,
+            max_size,
+            s3_bucket=bucket,
+            s3_prefix=s3_prefix,
+            transport_enabled=transport_enabled,
         )
     return mock_client
 
@@ -229,12 +239,22 @@ class TestGetPayloadFromS3:
         with pytest.raises(RuntimeError, match="S3 client not configured"):
             raw_payload_storage.get_payload_from_s3("s3://bucket/key.json")
 
-    @pytest.mark.parametrize("ref", ["s3://bucket", "s3://", "", "bucket-only"])
+    @pytest.mark.parametrize("ref", ["s3://bucket", "s3://"])
     def test_raises_on_a_malformed_reference(self, ref: str) -> None:
         _configure_s3()
 
         with pytest.raises(ValueError, match="Malformed"):
             raw_payload_storage.get_payload_from_s3(ref)
+
+    @pytest.mark.parametrize("ref", ["raw-payloads/apple/sdk/x.json", "bucket-only", ""])
+    def test_rejects_a_reference_without_the_scheme(self, ref: str) -> None:
+        """A bare key would otherwise split into a bucket named after our own prefix."""
+        mock_client = _configure_s3()
+
+        with pytest.raises(ValueError, match="must be an s3:// URI"):
+            raw_payload_storage.get_payload_from_s3(ref)
+
+        mock_client.get_object.assert_not_called()
 
 
 class TestDeletePayloadFromS3:

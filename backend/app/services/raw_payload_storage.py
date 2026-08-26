@@ -156,7 +156,11 @@ def _split_ref(ref: str) -> tuple[str, str]:
     The bucket travels in the reference because app/worker config drift would otherwise
     turn into a silent 404 on a payload that was written just fine.
     """
-    bucket, _, key = ref.removeprefix("s3://").partition("/")
+    if not ref.startswith("s3://"):
+        # A bare key would split into a bucket named after our own prefix, reading from
+        # someone else's bucket without a word of complaint.
+        raise ValueError(f"Payload reference must be an s3:// URI: {ref}")
+    bucket, _, key = ref[len("s3://") :].partition("/")
     if not bucket or not key:
         raise ValueError(f"Malformed S3 payload reference: {ref}")
     return bucket, key
