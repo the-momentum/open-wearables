@@ -155,6 +155,9 @@ def process_webhook_push(
         provider_user_id = handler.extract_user_id(payload)
         with SessionLocal() as db:
             result = handler.process_payload(db, payload, request_trace_id)
+            # Bulk sample/score writes defer their commit to the caller, so closing the
+            # session without this would silently discard them.
+            db.commit()
         _emit_webhook_sync_status(provider_name, result)
         return result
     except ValueError as exc:

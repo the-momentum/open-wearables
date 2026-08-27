@@ -189,6 +189,24 @@ class TestSync247RunStep:
             raise RuntimeError("boom")
         run.db.commit.assert_called_once()  # not called again
 
+    def test_failing_commit_is_contained_and_reported_as_failed(self, run: Sync247Run) -> None:
+        """A commit that raises wrote nothing, so the step must not report rows."""
+        run.db.commit.side_effect = RuntimeError("deferred constraint")
+
+        with run.step("sleep", commit=True) as step:
+            step.record(WriteCounts(5, 0))
+
+        with run.step("recovery") as step:
+            step.record(2)
+
+        outcome = run.result.outcomes["sleep"]
+        assert outcome.status is Sync247Status.FAILED
+        assert outcome.rows_written == 0
+        assert run.result.failures == {"sleep": "deferred constraint"}
+        run.db.rollback.assert_called_once()
+        # the next data type still ran
+        assert run.result.outcomes["recovery"].status is Sync247Status.OK
+
     def test_savepoint_confines_the_write_without_a_full_rollback(self, run: Sync247Run) -> None:
         with run.step("heart_rate", savepoint=True):
             raise RuntimeError("bad write")

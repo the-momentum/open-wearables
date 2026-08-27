@@ -551,7 +551,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             # Recovery is fetched but not persisted: there is no daily-recovery table yet,
             # and EventRecord has no type that fits generic daily recovery metrics.
 
-            with run.step("activity_samples", accumulate=True, rollback_on_error=False) as step:
+            with run.step("activity_samples", accumulate=True, commit=True) as step:
                 step.record(self._save_daily_activity(db, user_id, items_by_type))
 
             current_date += timedelta(days=1)

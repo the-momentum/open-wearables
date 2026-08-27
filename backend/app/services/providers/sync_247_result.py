@@ -298,8 +298,12 @@ class Sync247Run:
                     yield step
             else:
                 yield step
+            # Commit before recording: a failed commit wrote nothing, so the outcome must
+            # come out FAILED rather than a success carrying rows that never landed.
             if commit:
                 self.db.commit()
+            writer = self.result.add if accumulate else self.result.record
+            writer(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
         except self.fatal:
             raise
         except Exception as e:
@@ -309,9 +313,6 @@ class Sync247Run:
                 self.db.rollback()
             self.fail(data_type, e, capture=capture)
             return
-
-        writer = self.result.add if accumulate else self.result.record
-        writer(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
 
     def expect(self, *data_types: str) -> None:
         """Declare the data types this run covers, before any of them is attempted.

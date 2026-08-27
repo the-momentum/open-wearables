@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any
 from uuid import UUID
@@ -187,8 +187,8 @@ def sync_user_data(
 
     if data_type in (SyncDataType.DATA_247, SyncDataType.ALL):
         if strategy.data_247:
-            start_dt = datetime.fromtimestamp(since) if since else datetime.now() - timedelta(days=30)
-            end_dt = datetime.now()
+            end_dt = datetime.now(timezone.utc)
+            start_dt = datetime.fromtimestamp(since, timezone.utc) if since else end_dt - timedelta(days=30)
             result_247 = strategy.data_247.load_and_save_all(db, user_id, start_time=start_dt, end_time=end_dt)
             results["data_247"] = result_247.as_dict()
             succeeded.append(not result_247.all_failed)
