@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import LiteralString, NamedTuple, overload
+from typing import LiteralString, NamedTuple
 from typing import cast as typing_cast
 from uuid import UUID
 
@@ -106,20 +106,15 @@ class WriteCounts(int):
         obj.covered_end = covered_end
         return obj
 
-    @overload
-    def __add__(self, other: "WriteCounts") -> "WriteCounts": ...
-
-    @overload
-    def __add__(self, other: int) -> int: ...
-
-    def __add__(self, other: int) -> int:
-        """Merge two results, keeping the split and widening the covered span.
-
-        Adding a plain int can only produce a plain int — the split of those rows
-        is unknown, and claiming they were all inserts would be a lie.
-        """
+    # ty:ignore[invalid-method-override] — int.__add__ takes an int, so narrowing the
+    # parameter is unsound in principle. Deliberate: only WriteCounts + WriteCounts should
+    # type as WriteCounts. Adding a plain int still works at runtime (NotImplemented hands
+    # over to int.__radd__) and yields a plain int, since the split of those rows is
+    # unknown and claiming they were all inserts would be a lie.
+    def __add__(self, other: "WriteCounts") -> "WriteCounts":
+        """Keep the split and widen the covered span when accumulating counts."""
         if not isinstance(other, WriteCounts):
-            return int(self) + other
+            return NotImplemented
         starts = [d for d in (self.covered_start, other.covered_start) if d is not None]
         ends = [d for d in (self.covered_end, other.covered_end) if d is not None]
         return WriteCounts(
