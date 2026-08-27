@@ -482,7 +482,7 @@ keeps a failure in one data type from aborting the rest of the sync.
 
 ```python
 from app.services.providers.templates.base_247_data import Base247DataTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result
+from app.services.providers.sync_247_result import Sync247Result
 
 
 class SuuntoData247(Base247DataTemplate):
@@ -523,7 +523,7 @@ Rules:
   straight through instead of narrowing it to `int` or reporting `len(samples)`.
   That is what makes the sync log say "12 new, 3 updated" instead of just a total.
 - A plain `int` is accepted where the write path can't report a split (sleep
-  sessions merged one at a time, say). It counts toward `result.written`, just
+  sessions merged one at a time, say). It counts toward `result.rows_written`, just
   not toward `inserted`/`updated`.
 - `step` options: `commit=True` to commit after a successful step, `savepoint=True`
   to confine a failed write to a nested transaction, `capture=True` to also
@@ -537,7 +537,7 @@ Rules:
 - Providers whose 24/7 data only arrives by webhook don't override the method at
   all; the base returns an empty result.
 
-The orchestrator reads `result.written` for the headline item count,
+The orchestrator reads `result.rows_written` for the headline item count,
 `result.inserted` / `result.updated` for the split, `result.all_failed` to decide
 whether the run failed, and `result.as_dict()` for the sync-log payload.
 

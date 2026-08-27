@@ -16,7 +16,7 @@ from app.repositories import (
     EventRecordRepository,
     UserConnectionRepository,
 )
-from app.repositories.data_point_series_repository import DataPointSeriesRepository
+from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -32,9 +32,9 @@ from app.services.fit_parser import parse_fit_file
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import download_binary_content, make_authenticated_request
 from app.services.providers.garmin.coverage import ACTIVITY_SAMPLE_SERIES, DAILIES_SERIES, EPOCHS_SERIES
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.raw_payload_storage import store_fit_file
 from app.utils.conversion import seconds_to_minutes
 from app.utils.dates import offset_to_iso
@@ -571,14 +571,14 @@ class Garmin247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_daily: tuple[dict[str, Any], list[HealthScoreCreate]],
-    ) -> int:
+    ) -> WriteCounts:
         """Save daily data to DataPointSeries and health scores.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         daily_data, health_scores = normalized_daily
         samples = self._build_dailies_samples(user_id, daily_data)
-        counts: int = 0
+        counts = WriteCounts(0, 0)
         if samples:
             counts = self.data_point_repo.bulk_create(db, samples)
         if health_scores:
@@ -1858,7 +1858,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         summary_type: str,
         items: list[dict[str, Any]],
-    ) -> int:
+    ) -> WriteCounts:
         """Process a batch of webhook items with minimal DB round-trips.
 
         Accumulates all samples/records across all items, then performs
@@ -1871,7 +1871,8 @@ class Garmin247Data(Base247DataTemplate):
             items: List of raw items from webhook payload
 
         Returns:
-            Number of data points saved
+            Rows written across samples, event records and health scores, split
+            into new vs updated.
         """
         all_samples: list[TimeSeriesSampleCreate] = []
         all_records: list[EventRecordCreate] = []
@@ -2067,7 +2068,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
 
-        count = 0
+        count = WriteCounts(0, 0)
 
         # Single bulk insert for DataPointSeries
         if all_samples:
@@ -2095,10 +2096,10 @@ class Garmin247Data(Base247DataTemplate):
             if mct_details:
                 event_record_service.bulk_create_details(db, mct_details, detail_type="menstrual_cycle")  # ty:ignore[invalid-argument-type]
 
-            count += len(inserted_ids)
+            count += WriteCounts(len(inserted_ids), 0)
 
         if all_health_scores:
-            health_score_service.bulk_create(db, all_health_scores)
+            count += health_score_service.bulk_create(db, all_health_scores)
             db.commit()
 
         return count

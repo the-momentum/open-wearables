@@ -90,7 +90,7 @@ class TestFailureIsolation:
         ):
             results = data_247.load_and_save_all(db, USER_ID, MagicMock(), MagicMock())
 
-        assert results.written == 0  # nothing had samples, but the run completed
+        assert results.rows_written == 0  # nothing had samples, but the run completed
         assert any("heart-rate/" in c for c in calls)
         # The chain kept going past the malformed metric.
         assert len({c for c in calls}) > 1

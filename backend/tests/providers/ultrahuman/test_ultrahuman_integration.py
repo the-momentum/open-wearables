@@ -728,7 +728,7 @@ class TestUltrahumanErrorHandling:
 class TestUltrahumanSyncCountContract:
     """Guards the fix for the "Success but 0 items" sync report.
 
-    The sync orchestrator takes its headline count from ``Sync247Result.written``
+    The sync orchestrator takes its headline count from ``Sync247Result.rows_written``
     and its new-vs-updated split from ``.inserted`` / ``.updated``, so every
     write path has to report the rows it actually persisted.
     """
@@ -767,7 +767,7 @@ class TestUltrahumanSyncCountContract:
         assert results.outcomes["sleep"].counts is None
 
         # The orchestrator's headline count covers both, split or not.
-        assert results.written == results["sleep"] + results["activity_samples"]
+        assert results.rows_written == results["sleep"] + results["activity_samples"]
         assert results.inserted == results["activity_samples"]
         assert results.updated == 0
         assert not results.split_complete  # sleep has no split to report

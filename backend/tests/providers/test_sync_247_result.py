@@ -15,7 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.repositories.data_point_series_repository import WriteCounts
-from app.services.providers.templates.sync_247_result import (
+from app.services.providers.sync_247_result import (
     Sync247Result,
     Sync247Run,
     Sync247Status,
@@ -54,7 +54,7 @@ class TestSync247Result:
         result.record("heart_rate", WriteCounts(10, 2))
         result.record("sleep", 3)  # no split available from this write path
 
-        assert result.written == 15
+        assert result.rows_written == 15
         assert result.inserted == 10
         assert result.updated == 2
         assert not result.split_complete  # sleep can't report a split
@@ -102,7 +102,7 @@ class TestSync247Result:
         result.add("activity", WriteCounts(3, 0), truncated=True)
 
         outcome = result.outcomes["activity"]
-        assert outcome.written == 6
+        assert outcome.rows_written == 6
         assert outcome.counts is not None
         assert (outcome.counts.inserted, outcome.counts.updated) == (5, 1)
         assert outcome.skipped == 1
@@ -135,19 +135,19 @@ class TestSync247Result:
         payload = result.as_dict()
 
         assert payload["provider"] == "p"
-        assert payload["written"] == 4 + 1
+        assert payload["rows_written"] == 4 + 1
         assert payload["inserted"] == 4
         assert payload["updated"] == 1
         assert payload["truncated"] == ["heart_rate"]
         assert payload["note"] == "partial window"
         assert payload["types"]["heart_rate"] == {
             "status": "ok",
-            "written": 5,
+            "rows_written": 5,
             "inserted": 4,
             "updated": 1,
             "truncated": True,
         }
-        assert payload["types"]["steps"] == {"status": "failed", "written": 0, "error": "boom"}
+        assert payload["types"]["steps"] == {"status": "failed", "rows_written": 0, "error": "boom"}
 
 
 class TestSync247RunStep:
@@ -163,7 +163,7 @@ class TestSync247RunStep:
             pass
 
         assert run.result.outcomes["spo2"].status is Sync247Status.OK
-        assert run.result.written == 0
+        assert run.result.rows_written == 0
 
     def test_failure_is_isolated_to_its_data_type(self, run: Sync247Run) -> None:
         with run.step("sleep") as step:
@@ -176,7 +176,7 @@ class TestSync247RunStep:
             step.record(WriteCounts(1, 0))
 
         assert run.result.failures == {"recovery": "provider 500"}
-        assert run.result.written == 3
+        assert run.result.rows_written == 3
         assert not run.result.all_failed
         run.db.rollback.assert_called_once()
 
@@ -221,5 +221,5 @@ class TestSync247RunStep:
 
         assert run.result.outcomes["sleep"].status is Sync247Status.SKIPPED
         assert run.result.outcomes["activity"].status is Sync247Status.OK
-        assert run.result.written == 2
+        assert run.result.rows_written == 2
         assert not run.result.all_failed

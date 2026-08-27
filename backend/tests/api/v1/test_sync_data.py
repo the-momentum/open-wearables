@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.base_strategy import HistoricalSyncResult
-from app.services.providers.templates.sync_247_result import Sync247Result
+from app.services.providers.sync_247_result import Sync247Result
 from app.utils.exceptions import UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 

@@ -21,8 +21,8 @@ from app.schemas.sync_status import (
 )
 from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
 from app.services.providers.factory import ProviderFactory
-from app.services.providers.templates.sync_247_result import DataTypeOutcome as Sync247DataTypeOutcome
-from app.services.providers.templates.sync_247_result import Sync247Status
+from app.services.providers.sync_247_result import DataTypeOutcome as Sync247DataTypeOutcome
+from app.services.providers.sync_247_result import Sync247Status
 from app.services.sync_coordination import (
     bind_primary_lease,
     clear_primary_lease,
@@ -56,7 +56,7 @@ _SYNC_247_STATUS = {
 
 def _sync_status_of(outcome: Sync247DataTypeOutcome) -> SyncStatus:
     if outcome.status is Sync247Status.OK:
-        return SyncStatus.SUCCESS if outcome.written else SyncStatus.SKIPPED
+        return SyncStatus.SUCCESS if outcome.rows_written else SyncStatus.SKIPPED
     return _SYNC_247_STATUS[outcome.status]
 
 
@@ -411,7 +411,7 @@ def sync_vendor_data(
                             }
                             pull_inserted += results_247.inserted
                             pull_updated += results_247.updated
-                            pull_written += results_247.written
+                            pull_written += results_247.rows_written
                             # Pull reports per fetch task, not per series type: one
                             # task can write several types and returns a single count.
                             for _task, _outcome in results_247.outcomes.items():
@@ -425,7 +425,7 @@ def sync_vendor_data(
                                         items_inserted=_counts.inserted if _counts is not None else 0,
                                         items_updated=_counts.updated if _counts is not None else 0,
                                         # Without a split, only the provider's row count is known.
-                                        reported_records=None if _counts is not None else _outcome.written,
+                                        reported_records=None if _counts is not None else _outcome.rows_written,
                                         # Span of the rows written, not the window asked for.
                                         covered_start=_counts.covered_start if _counts is not None else None,
                                         covered_end=_counts.covered_end if _counts is not None else None,

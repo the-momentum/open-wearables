@@ -43,7 +43,7 @@ class DataTypeOutcome:
     provider only has to report what it did.
     """
 
-    written: int = 0
+    rows_written: int = 0
     counts: WriteCounts | None = None  # new-vs-updated split, when the write path reports one
     skipped: int = 0  # records deliberately not persisted (duplicates, unusable payloads)
     truncated: bool = False  # fetch stopped early (page cap / rate limit) — window is incomplete
@@ -57,7 +57,7 @@ class DataTypeOutcome:
             return Sync247Status.SKIPPED
         if not self.errors:
             return Sync247Status.OK
-        return Sync247Status.PARTIAL if self.written else Sync247Status.FAILED
+        return Sync247Status.PARTIAL if self.rows_written else Sync247Status.FAILED
 
     @property
     def error(self) -> str | None:
@@ -66,7 +66,7 @@ class DataTypeOutcome:
 
     def as_dict(self) -> dict[str, Any]:
         """Compact payload for the sync log — default-valued fields are omitted."""
-        payload: dict[str, Any] = {"status": self.status.value, "written": self.written}
+        payload: dict[str, Any] = {"status": self.status.value, "rows_written": self.rows_written}
         if self.counts is not None:
             payload["inserted"] = self.counts.inserted
             payload["updated"] = self.counts.updated
@@ -102,15 +102,15 @@ class Sync247Result(Mapping[str, int]):
     def record(
         self,
         data_type: str,
-        written: WriteCounts | int = 0,
+        rows_written: WriteCounts | int = 0,
         *,
         skipped: int = 0,
         truncated: bool = False,
     ) -> None:
         """Record a successful write, replacing anything previously recorded for the type."""
         self.outcomes[data_type] = DataTypeOutcome(
-            written=int(written),
-            counts=written if isinstance(written, WriteCounts) else None,
+            rows_written=int(rows_written),
+            counts=rows_written if isinstance(rows_written, WriteCounts) else None,
             skipped=skipped,
             truncated=truncated,
             errors=self.outcomes[data_type].errors if data_type in self.outcomes else (),
@@ -119,19 +119,19 @@ class Sync247Result(Mapping[str, int]):
     def add(
         self,
         data_type: str,
-        written: WriteCounts | int = 0,
+        rows_written: WriteCounts | int = 0,
         *,
         skipped: int = 0,
         truncated: bool = False,
     ) -> None:
         """Accumulate into a data type — for providers that sync one chunk (e.g. day) at a time."""
-        current = self.outcomes.get(data_type, DataTypeOutcome(written=0))
+        current = self.outcomes.get(data_type, DataTypeOutcome(rows_written=0))
         counts = current.counts
-        if isinstance(written, WriteCounts):
-            counts = written if counts is None else counts + written
+        if isinstance(rows_written, WriteCounts):
+            counts = rows_written if counts is None else counts + rows_written
         self.outcomes[data_type] = replace(
             current,
-            written=current.written + int(written),
+            rows_written=current.rows_written + int(rows_written),
             counts=counts,
             skipped=current.skipped + skipped,
             truncated=current.truncated or truncated,
@@ -150,9 +150,9 @@ class Sync247Result(Mapping[str, int]):
     # -- aggregates ------------------------------------------------------------
 
     @property
-    def written(self) -> int:
+    def rows_written(self) -> int:
         """Total rows persisted across all data types."""
-        return sum(o.written for o in self.outcomes.values())
+        return sum(o.rows_written for o in self.outcomes.values())
 
     @property
     def inserted(self) -> int:
@@ -167,7 +167,7 @@ class Sync247Result(Mapping[str, int]):
     @property
     def split_complete(self) -> bool:
         """True when every data type that wrote rows reported its new-vs-updated split."""
-        return all(o.counts is not None for o in self.outcomes.values() if o.written)
+        return all(o.counts is not None for o in self.outcomes.values() if o.rows_written)
 
     @property
     def synced(self) -> tuple[str, ...]:
@@ -201,7 +201,7 @@ class Sync247Result(Mapping[str, int]):
         """Payload for the sync log / API response — flat, JSON-safe, no provider-private keys."""
         payload: dict[str, Any] = {
             "provider": self.provider,
-            "written": self.written,
+            "rows_written": self.rows_written,
             "types": {k: o.as_dict() for k, o in self.outcomes.items()},
         }
         if self.inserted or self.updated:
@@ -216,7 +216,7 @@ class Sync247Result(Mapping[str, int]):
     # -- Mapping ---------------------------------------------------------------
 
     def __getitem__(self, data_type: str) -> int:
-        return self.outcomes[data_type].written
+        return self.outcomes[data_type].rows_written
 
     def __iter__(self) -> Iterator[str]:
         return iter(self.outcomes)
@@ -225,22 +225,22 @@ class Sync247Result(Mapping[str, int]):
         return len(self.outcomes)
 
     def __repr__(self) -> str:
-        body = ", ".join(f"{k}={o.written}({o.status.value})" for k, o in self.outcomes.items())
+        body = ", ".join(f"{k}={o.rows_written}({o.status.value})" for k, o in self.outcomes.items())
         return f"Sync247Result({self.provider}: {body or 'no data types'})"
 
 
 class Sync247Step:
     """Handle passed to a ``Sync247Run.step`` body so it can report what it wrote."""
 
-    __slots__ = ("skipped", "truncated", "written")
+    __slots__ = ("rows_written", "skipped", "truncated")
 
     def __init__(self) -> None:
-        self.written: WriteCounts | int = 0
+        self.rows_written: WriteCounts | int = 0
         self.skipped: int = 0
         self.truncated: bool = False
 
-    def record(self, written: WriteCounts | int, *, skipped: int = 0, truncated: bool = False) -> None:
-        self.written = written
+    def record(self, rows_written: WriteCounts | int, *, skipped: int = 0, truncated: bool = False) -> None:
+        self.rows_written = rows_written
         self.skipped = skipped
         self.truncated = truncated
 
@@ -311,7 +311,7 @@ class Sync247Run:
             return
 
         writer = self.result.add if accumulate else self.result.record
-        writer(data_type, step.written, skipped=step.skipped, truncated=step.truncated)
+        writer(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
 
     def expect(self, *data_types: str) -> None:
         """Declare the data types this run covers, before any of them is attempted.
@@ -347,7 +347,7 @@ class Sync247Run:
             provider=self.result.provider,
             task=self.task,
             user_id=str(self.user_id),
-            written=self.result.written,
+            rows_written=self.result.rows_written,
             inserted=self.result.inserted,
             updated=self.result.updated,
             synced=list(self.result.synced),

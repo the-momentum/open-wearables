@@ -56,9 +56,9 @@ from app.services.providers.google_health.helpers import (
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
 from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
+from app.services.providers.sync_247_result import Sync247Result, Sync247Run
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result, Sync247Run
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error

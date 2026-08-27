@@ -7,8 +7,8 @@ from typing import Any
 from uuid import UUID
 
 from app.database import DbSession
+from app.services.providers.sync_247_result import Sync247Result, Sync247Run
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result, Sync247Run
 from app.utils.dates import parse_datetime_or_default
 
 

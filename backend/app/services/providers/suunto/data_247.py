@@ -30,9 +30,9 @@ from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.suunto.coverage import ACTIVITY_SERIES, DAILY_STAT_SERIES, SLEEP_SERIES
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import align_tz_awareness, parse_iso_datetime
 from app.utils.structured_logging import log_structured

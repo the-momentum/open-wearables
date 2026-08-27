@@ -33,9 +33,9 @@ from app.services.providers.sensorbio.coverage import (
     DAILY_ACTIVITY_SERIES,
     RECOVERY_SERIES,
 )
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import energy_difference

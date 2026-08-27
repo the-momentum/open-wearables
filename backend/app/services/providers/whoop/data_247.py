@@ -23,9 +23,9 @@ from app.schemas.model_crud.activities import (
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.sync_247_result import Sync247Result
 from app.services.providers.whoop.coverage import RECOVERY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
@@ -826,15 +826,15 @@ class Whoop247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         cycle_id: str,
-    ) -> int:
+    ) -> WriteCounts:
         """Fetch a single recovery record by cycle_id, normalize, and save to database."""
         raw = self.get_recovery_record(db, user_id, cycle_id)
         if not raw:
-            return 0
+            return WriteCounts(0, 0)
         try:
             normalized, health_score = self.normalize_recovery(raw, user_id)
             if not normalized:
-                return 0
+                return WriteCounts(0, 0)
             count = self.save_recovery_data(db, user_id, normalized)
             if health_score:
                 health_score_service.create(db, health_score)
@@ -847,7 +847,7 @@ class Whoop247Data(Base247DataTemplate):
                 provider="whoop",
                 task="load_single_recovery",
             )
-            return 0
+            return WriteCounts(0, 0)
 
     def load_and_save_recovery(
         self,
