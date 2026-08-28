@@ -111,9 +111,21 @@ def create_celery() -> Celery:
             "sdk_sync": {},
             "garmin_sync": {},
             "webhook_sync": {},
+            "beat_tasks": {},
         },
         task_routes={
             "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
+            "app.integrations.celery.tasks.periodic_sync_task.sync_all_users": {"queue": "beat_tasks"},
+            "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps": {"queue": "beat_tasks"},
+            "app.integrations.celery.tasks.garmin.gc_task.gc_stuck_backfills": {"queue": "beat_tasks"},
+            "app.integrations.celery.tasks.archival_task.run_daily_archival": {"queue": "beat_tasks"},
+            "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores": {
+                "queue": "beat_tasks"
+            },
+            "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores": {
+                "queue": "beat_tasks"
+            },
+            "app.integrations.celery.tasks.renew_oura_webhooks_task.renew_oura_webhooks": {"queue": "beat_tasks"},
         },
     )
 
