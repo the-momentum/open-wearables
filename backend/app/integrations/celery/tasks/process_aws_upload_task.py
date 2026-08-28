@@ -177,7 +177,6 @@ def _run_import_task(
             SyncSource.XML_IMPORT,
             scope=SyncScope.HISTORICAL,
             run_id=run_id,
-            scope=SyncScope.HISTORICAL,
             message="Importing Apple Health XML file from object storage",
             metadata=metadata,
         )
@@ -199,7 +198,6 @@ def _run_import_task(
                 SyncSource.XML_IMPORT,
                 scope=SyncScope.HISTORICAL,
                 run_id=run_id,
-                scope=SyncScope.HISTORICAL,
                 status=SyncStatus.SKIPPED if result["status"] == "skipped" else SyncStatus.SUCCESS,
                 message=result.get("message") or result.get("reason") or "Apple Health XML import completed",
                 metadata=metadata,
@@ -219,7 +217,6 @@ def _run_import_task(
                 SyncSource.XML_IMPORT,
                 scope=SyncScope.HISTORICAL,
                 run_id=run_id,
-                scope=SyncScope.HISTORICAL,
                 error=str(exc),
                 message="Apple Health XML import failed",
                 metadata=metadata,
