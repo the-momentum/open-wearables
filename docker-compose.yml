@@ -81,11 +81,11 @@ services:
           path: ./backend/scripts
           target: /root_project/scripts
 
-  celery-worker-beat-tasks:
-    container_name: celery-worker-beat-tasks__open-wearables
+  celery-worker-xml-sync:
+    container_name: celery-worker-xml-sync__open-wearables
     image: open-wearables-platform:latest
     pull_policy: never
-    command: scripts/start/beat_worker.sh
+    command: scripts/start/xml_worker.sh
     env_file:
       - ./backend/config/.env
     environment:
