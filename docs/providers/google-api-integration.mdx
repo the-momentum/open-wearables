@@ -19,7 +19,7 @@ keywords: ["google health api integration", "google health oauth", "google healt
 
 Google Health data reaches Open Wearables through two independent paths that share the single `google` provider identity:
 
-- **Health Connect (mobile SDK)** — data pushed from an Android device via the Sync SDK. See the [Android SDK guide](/sdk/android/integration).
+- **Health Connect (mobile SDK)** — data pushed from an Android device via the Mobile SDK. See the [Android SDK guide](/sdk/android/integration).
 - **Google Health API (cloud OAuth)** — this guide. A server-side OAuth 2.0 flow against the [Google Health API](https://developers.google.com/health) that lets you connect a user's Google account and pull their data over REST, plus receive notify-only webhooks.
 
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.

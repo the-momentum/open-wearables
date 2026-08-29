@@ -67,7 +67,7 @@
             ]
           },
           {
-            "group": "Sync SDK",
+            "group": "Mobile SDK",
             "pages": [
               "sdk/index",
               {
