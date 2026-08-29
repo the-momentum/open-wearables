@@ -5,16 +5,29 @@ The /api/v1/providers/garmin/webhooks endpoint immediately returns
 Celery task. Processing logic is tested in tests/tasks/test_garmin_webhook_task.py.
 """
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+
+from app.config import settings
 
 PUSH_ENDPOINT = "/api/v1/providers/garmin/webhooks"
 LEGACY_PUSH_ENDPOINT = "/api/v1/garmin/webhooks/push"
 LEGACY_PING_ENDPOINT = "/api/v1/garmin/webhooks/ping"
 WEBHOOK_HANDLER = "app.services.providers.garmin.webhook_handler"
 PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
+
+VALID_CLIENT_ID = "test-client-id"
+
+
+@pytest.fixture(autouse=True)
+def _configure_garmin_client_id() -> Generator[None, None, None]:
+    """Pin the configured Garmin client id so header comparisons are deterministic."""
+    with patch.object(settings, "garmin_client_id", VALID_CLIENT_ID):
+        yield
 
 
 class TestGarminWebhookAuth:
@@ -25,6 +38,25 @@ class TestGarminWebhookAuth:
         response = client.post(PUSH_ENDPOINT, json={"activities": []})
         assert response.status_code == 401
 
+    def test_wrong_client_id_returns_401(self, client: TestClient, db: Session) -> None:
+        """A garmin-client-id that doesn't match the configured value is rejected."""
+        response = client.post(
+            PUSH_ENDPOINT,
+            headers={"garmin-client-id": "attacker-invented"},
+            json={"activities": []},
+        )
+        assert response.status_code == 401
+
+    def test_unconfigured_client_id_rejects_any_request(self, client: TestClient, db: Session) -> None:
+        """When GARMIN_CLIENT_ID is unset the handler fails closed, even with a header."""
+        with patch.object(settings, "garmin_client_id", None):
+            response = client.post(
+                PUSH_ENDPOINT,
+                headers={"garmin-client-id": VALID_CLIENT_ID},
+                json={"activities": []},
+            )
+        assert response.status_code == 401
+
     def test_valid_client_id_returns_accepted(
         self,
         client: TestClient,
@@ -32,7 +64,7 @@ class TestGarminWebhookAuth:
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
         """Valid request returns 200 with {"status": "accepted"} immediately."""
-        headers = {"garmin-client-id": "test-client-id"}
+        headers = {"garmin-client-id": VALID_CLIENT_ID}
         response = client.post(PUSH_ENDPOINT, headers=headers, json={"activities": []})
 
         assert response.status_code == 200
@@ -43,7 +75,7 @@ class TestGarminWebhookAuth:
         response = client.post(
             PUSH_ENDPOINT,
             content=b"not json",
-            headers={"garmin-client-id": "test-client-id", "Content-Type": "application/json"},
+            headers={"garmin-client-id": VALID_CLIENT_ID, "Content-Type": "application/json"},
         )
         assert response.status_code == 400
 
@@ -68,7 +100,7 @@ class TestGarminWebhookTaskEnqueue:
                 },
             ],
         }
-        headers = {"garmin-client-id": "test-client-id"}
+        headers = {"garmin-client-id": VALID_CLIENT_ID}
 
         with patch(f"{WEBHOOK_HANDLER}.celery_app") as mock_celery:
             mock_celery.send_task.return_value = MagicMock(id="test-task-id")
@@ -87,7 +119,7 @@ class TestGarminWebhookTaskEnqueue:
     ) -> None:
         """The payload passed to send_task matches the incoming webhook body."""
         payload = {"hrv": [{"userId": "u1", "summaryId": "s1"}]}
-        headers = {"garmin-client-id": "test-client-id"}
+        headers = {"garmin-client-id": VALID_CLIENT_ID}
 
         with patch(f"{WEBHOOK_HANDLER}.celery_app") as mock_celery:
             mock_celery.send_task.return_value = MagicMock(id="task-xyz")
@@ -127,7 +159,7 @@ class TestGarminDeprecatedRoutes:
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
         """Deprecated /api/v1/garmin/webhooks/push delegates to the same handler."""
-        headers = {"garmin-client-id": "test-client-id"}
+        headers = {"garmin-client-id": VALID_CLIENT_ID}
         response = client.post(LEGACY_PUSH_ENDPOINT, headers=headers, json={"activities": []})
 
         assert response.status_code == 200
@@ -140,7 +172,7 @@ class TestGarminDeprecatedRoutes:
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
         """Deprecated /api/v1/garmin/webhooks/ping also delegates to the handler."""
-        headers = {"garmin-client-id": "test-client-id"}
+        headers = {"garmin-client-id": VALID_CLIENT_ID}
         response = client.post(LEGACY_PING_ENDPOINT, headers=headers, json={"activities": []})
 
         assert response.status_code == 200
