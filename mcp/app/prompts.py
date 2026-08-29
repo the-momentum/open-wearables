@@ -1,14 +1,14 @@
 """MCP prompts for guiding LLM interactions with health data."""
 
 from fastmcp import FastMCP
-from fastmcp.prompts import Message, PromptMessage
+from fastmcp.prompts import Message
 
 # Create router for prompts
 prompts_router = FastMCP(name="Health Data Prompts")
 
 
 @prompts_router.prompt
-def present_health_data() -> list[PromptMessage]:
+def present_health_data() -> list[Message]:
     """Guidelines for presenting health data to users in a readable format."""
     return [
         Message(
