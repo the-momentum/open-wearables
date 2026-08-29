@@ -46,6 +46,7 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
     ("operations-water", 77, WorkoutType.OPERATIONS),
     # Strength & gym
     ("weightlifting", 45, WorkoutType.STRENGTH_TRAINING),
+    ("weightlifting_msk", 123, WorkoutType.STRENGTH_TRAINING),
     ("powerlifting", 59, WorkoutType.STRENGTH_TRAINING),
     ("strength-trainer", 123, WorkoutType.STRENGTH_TRAINING),
     ("functional-fitness", 48, WorkoutType.CARDIO_TRAINING),
@@ -133,6 +134,7 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
     # Gymnastics
     ("gymnastics", 51, WorkoutType.GYMNASTICS),
     # Recovery & wellness
+    ("foam_rolling", 282, WorkoutType.RECOVERY),
     ("ice-bath", 88, WorkoutType.RECOVERY),
     ("sauna", 233, WorkoutType.RECOVERY),
     ("massage-therapy", 121, WorkoutType.RECOVERY),
