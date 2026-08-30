@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord
+from app.models import DataPointSeries, DataSource, EventRecord, HealthScore
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
@@ -51,6 +51,22 @@ class Whoop247Data(Base247DataTemplate):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
         self.connection_repo = UserConnectionRepository()
+
+    def _replace_health_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> None:
+        """Replace WHOOP scores for the same provider key before inserting refreshed values."""
+        for score in scores:
+            query = db.query(HealthScore).filter(
+                HealthScore.user_id == score.user_id,
+                HealthScore.provider == score.provider,
+                HealthScore.category == score.category,
+                HealthScore.recorded_at == score.recorded_at,
+            )
+            if score.event_record_id is None:
+                query = query.filter(HealthScore.event_record_id.is_(None))
+            else:
+                query = query.filter(HealthScore.event_record_id == score.event_record_id)
+            query.delete(synchronize_session=False)
+        health_score_service.bulk_create(db, scores)
 
     def _make_api_request(
         self,
@@ -441,7 +457,8 @@ class Whoop247Data(Base247DataTemplate):
             normalized, health_score = self.normalize_sleep(raw, user_id)
             self.save_sleep_data(db, user_id, normalized)
             if health_score:
-                health_score_service.create(db, health_score)
+                self._replace_health_scores(db, [health_score])
+                db.commit()
             return 1, cycle_id
         except Exception as e:
             log_structured(
@@ -482,7 +499,7 @@ class Whoop247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            self._replace_health_scores(db, health_scores)
             db.commit()
         return count, truncated
 
@@ -927,7 +944,8 @@ class Whoop247Data(Base247DataTemplate):
                 return 0
             count = self.save_recovery_data(db, user_id, normalized)
             if health_score:
-                health_score_service.create(db, health_score)
+                self._replace_health_scores(db, [health_score])
+                db.commit()
             return count
         except Exception as e:
             log_structured(
@@ -973,7 +991,7 @@ class Whoop247Data(Base247DataTemplate):
                 )
 
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            self._replace_health_scores(db, health_scores)
             db.commit()
 
         return total_count, truncated
@@ -1035,7 +1053,7 @@ class Whoop247Data(Base247DataTemplate):
             if energy_sample:
                 timeseries_service.bulk_create_samples(db, [energy_sample])
             if strain_score:
-                health_score_service.bulk_create(db, [strain_score])
+                self._replace_health_scores(db, [strain_score])
             db.commit()
             return 1
         except Exception as e:
@@ -1056,13 +1074,11 @@ class Whoop247Data(Base247DataTemplate):
     ) -> tuple[TimeSeriesSampleCreate | None, HealthScoreCreate | None]:
         """Normalize one cycle into a daily energy sample and a daily strain score.
 
-        Returns (None, None) for cycles Whoop has not scored yet, and for the one still
-        in progress. SCORED does not mean final: Whoop scores the ongoing cycle too, and
-        its strain climbs all day. A missing end is what marks it as still running, so
-        both checks are needed — health scores are written with on_conflict_do_nothing,
-        so an early partial value would win permanently over the real one.
+        Returns (None, None) for cycles Whoop has not scored yet. Ongoing cycles are
+        marked IN_PROGRESS and replaced on each pull; the closed cycle replaces the same
+        provider score with qualifier FINAL.
         """
-        if raw_cycle.get("score_state") != "SCORED" or not raw_cycle.get("end"):
+        if raw_cycle.get("score_state") != "SCORED":
             return None, None
 
         score = raw_cycle.get("score") or {}
@@ -1106,6 +1122,7 @@ class Whoop247Data(Base247DataTemplate):
                 provider=ProviderName.WHOOP,
                 category=HealthScoreCategory.STRAIN,
                 value=strain,
+                qualifier="FINAL" if raw_cycle.get("end") else "IN_PROGRESS",
                 recorded_at=recorded_at,
                 zone_offset=zone_offset,
                 components=components or None,
@@ -1149,7 +1166,7 @@ class Whoop247Data(Base247DataTemplate):
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            self._replace_health_scores(db, health_scores)
         if samples or health_scores:
             db.commit()
 

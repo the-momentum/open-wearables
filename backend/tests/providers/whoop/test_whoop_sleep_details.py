@@ -85,3 +85,20 @@ def test_body_measurement_preserves_max_heart_rate(data_247: Whoop247Data, monke
     by_type = {sample.series_type: float(sample.value) for sample in samples}
     assert by_type == {SeriesType.height: 155, SeriesType.weight: 54.35, SeriesType.max_heart_rate: 186}
     db.commit.assert_called_once()
+
+
+def test_normalize_cycle_keeps_in_progress_strain(data_247: Whoop247Data) -> None:
+    _, score = data_247.normalize_cycle(
+        {
+            "id": 123,
+            "start": "2026-08-30T09:54:02Z",
+            "end": None,
+            "score_state": "SCORED",
+            "score": {"strain": 7.1, "kilojoule": 3219, "average_heart_rate": 66, "max_heart_rate": 141},
+        },
+        uuid4(),
+    )
+
+    assert score is not None
+    assert score.value == 7.1
+    assert score.qualifier == "IN_PROGRESS"
