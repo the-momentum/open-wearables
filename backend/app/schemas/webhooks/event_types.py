@@ -73,6 +73,7 @@ class WebhookEventType(StrEnum):
     SERIES_RESTING_HEART_RATE = "series.resting_heart_rate.created"
     SERIES_HEART_RATE_RECOVERY_ONE_MINUTE = "series.heart_rate_recovery_one_minute.created"
     SERIES_WALKING_HEART_RATE_AVERAGE = "series.walking_heart_rate_average.created"
+    SERIES_MAX_HEART_RATE = "series.max_heart_rate.created"
     SERIES_ATRIAL_FIBRILLATION_BURDEN = "series.atrial_fibrillation_burden.created"
 
     # HRV
@@ -230,6 +231,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_RESTING_HEART_RATE: "Resting heart-rate samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE: "1-minute heart-rate recovery samples were ingested.",
     WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE: "Walking heart-rate average samples were ingested.",
+    WebhookEventType.SERIES_MAX_HEART_RATE: "Maximum heart-rate settings were ingested.",
     WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN: "Atrial fibrillation burden samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_VARIABILITY_SDNN: "HRV SDNN samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_VARIABILITY_RMSSD: "HRV RMSSD samples were ingested.",
@@ -327,6 +329,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_RESTING_HEART_RATE,
         WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE,
         WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE,
+        WebhookEventType.SERIES_MAX_HEART_RATE,
         WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN,
     ],
     WebhookEventType.HEART_RATE_VARIABILITY_CREATED: [

@@ -26,6 +26,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.heart_rate_variability_sdnn: AggregationMethod.AVG,
     SeriesType.heart_rate_recovery_one_minute: AggregationMethod.AVG,
     SeriesType.walking_heart_rate_average: AggregationMethod.AVG,
+    SeriesType.max_heart_rate: AggregationMethod.MAX,
     SeriesType.heart_rate_variability_rmssd: AggregationMethod.AVG,
     # ── Blood & Respiratory ──
     SeriesType.oxygen_saturation: AggregationMethod.AVG,

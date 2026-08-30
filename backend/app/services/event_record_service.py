@@ -762,6 +762,7 @@ class EventRecordService(
                 elevation_gain_meters=float(details.total_elevation_gain)
                 if details and details.total_elevation_gain
                 else None,
+                hr_zones=details.hr_zones if details else None,
             )
             data.append(workout)
 
@@ -826,6 +827,7 @@ class EventRecordService(
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,
+            hr_zones=details.hr_zones if details else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 
