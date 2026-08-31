@@ -20,6 +20,7 @@ import.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -27,12 +28,15 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.database import DbSession
-from app.schemas.sync_status import SyncRunSummary, SyncStatusEvent
+from app.schemas.sync_status import SyncRunDetail, SyncRunRecord, SyncRunSummary, SyncScope, SyncStatusEvent
 from app.services import ApiKeyDep, user_service
 from app.services.sync_status_service import (
+    MAX_RECENT_EVENTS,
     get_all_run_summaries,
     get_recent_events,
     get_run_summaries,
+    get_stored_run,
+    list_stored_runs,
     stream_user_events,
 )
 
@@ -68,7 +72,7 @@ def stream_user_sync_status(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    replay: Annotated[int, Query(ge=1, le=200, description="Replay last N events on connect.")] = 20,
+    replay: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS, description="Replay last N events on connect.")] = 20,
 ) -> StreamingResponse:
     """Open a Server-Sent Events stream of sync status for a user.
 
@@ -104,7 +108,7 @@ def list_recent_sync_events(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS)] = 50,
 ) -> list[SyncStatusEvent]:
     """Return the most recent stored sync events (newest first).
 
@@ -124,7 +128,7 @@ def list_sync_run_summaries(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    limit: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS)] = 20,
 ) -> list[SyncRunSummary]:
     """Return aggregated per-run summaries for recent sync activity."""
     _ensure_user_exists(db, user_id)
@@ -155,6 +159,40 @@ def list_all_sync_run_summaries(
         status_filter=status,
         source_filter=source,
     )
+
+
+@router.get(
+    "/users/{user_id}/sync/history",
+)
+def list_stored_sync_runs(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    scope: Annotated[SyncScope | None, Query(description="Filter by historical or live.")] = None,
+    since: Annotated[datetime | None, Query(description="Only runs started at or after this time.")] = None,
+) -> list[SyncRunRecord]:
+    """Stored sync runs for a user, newest first.
+
+    Unlike /sync/runs this reads from the database rather than the Redis event buffer,
+    so it is not limited to the last 24 hours. Only historical runs are stored by default.
+    Use /sync/history/{run_key} for the per-data-type breakdown.
+    """
+    _ensure_user_exists(db, user_id)
+    return list_stored_runs(db, user_id, limit=limit, scope=scope, since=since)
+
+
+@router.get("/sync/history/{run_key}")
+def get_stored_sync_run(
+    run_key: str,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> SyncRunDetail:
+    """One stored sync run with its per-data-type breakdown."""
+    run = get_stored_run(db, run_key)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found")
+    return run
 
 
 __all__ = ["router"]

@@ -163,6 +163,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        "close-stale-sync-runs": {
+            "task": "app.integrations.celery.tasks.close_stale_sync_runs_task.close_stale_sync_runs",
+            "schedule": float(settings.sync_run_sweep_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
         "renew-oura-webhooks-monthly": {
             "task": "app.integrations.celery.tasks.renew_oura_webhooks_task.renew_oura_webhooks",
             "schedule": crontab(day_of_month=1, hour=0, minute=0),  # 1st of each month at 00:00 UTC

@@ -36,7 +36,7 @@ def _capture() -> tuple[list[dict], Any]:
 def test_writecounts_split_surfaces_without_explicit_keys(user_id: str) -> None:
     """A WriteCounts count yields the new/updated split centrally (no records_inserted keys)."""
     calls, fake = _capture()
-    with patch.object(task.sync_status_service, "webhook_delivered", side_effect=fake):
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
         task._emit_webhook_sync_status(
             "oura",
             {
@@ -57,7 +57,7 @@ def test_writecounts_split_surfaces_without_explicit_keys(user_id: str) -> None:
 def test_plain_int_count_has_no_breakdown(user_id: str) -> None:
     """Workout-style providers returning a plain int still log a success run, no split."""
     calls, fake = _capture()
-    with patch.object(task.sync_status_service, "webhook_delivered", side_effect=fake):
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
         task._emit_webhook_sync_status("strava", {"status": "processed", "records_saved": 2, "user_id": user_id})
     assert calls[0]["status"] == SyncStatus.SUCCESS
     assert calls[0]["items_processed"] == 2
@@ -74,7 +74,7 @@ def test_plain_int_count_has_no_breakdown(user_id: str) -> None:
 )
 def test_status_mapping(result: dict, expected: SyncStatus, user_id: str) -> None:
     calls, fake = _capture()
-    with patch.object(task.sync_status_service, "webhook_delivered", side_effect=fake):
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
         task._emit_webhook_sync_status("oura", {**result, "user_id": user_id})
     assert calls[0]["status"] == expected
 
@@ -82,7 +82,7 @@ def test_status_mapping(result: dict, expected: SyncStatus, user_id: str) -> Non
 def test_no_user_resolved_is_dropped() -> None:
     """user_not_found / invalid payloads carry no user_id → nothing to attribute."""
     calls, fake = _capture()
-    with patch.object(task.sync_status_service, "webhook_delivered", side_effect=fake):
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
         task._emit_webhook_sync_status("oura", {"status": "user_not_found", "oura_user_id": "x"})
     assert calls == []
 
@@ -90,7 +90,7 @@ def test_no_user_resolved_is_dropped() -> None:
 def test_self_reporting_provider_excluded(user_id: str) -> None:
     """Garmin reports its own sync status; the shared task must not duplicate it."""
     calls, fake = _capture()
-    with patch.object(task.sync_status_service, "webhook_delivered", side_effect=fake):
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
         task._emit_webhook_sync_status("garmin", {"status": "processed", "saved_count": 9, "user_id": user_id})
     assert calls == []
 
@@ -98,7 +98,7 @@ def test_self_reporting_provider_excluded(user_id: str) -> None:
 def test_emission_never_raises() -> None:
     """Sync-log emission must never break webhook processing."""
     calls, fake = _capture()
-    with patch.object(task.sync_status_service, "webhook_delivered", side_effect=fake):
+    with patch.object(task.sync_status_service, "emit_webhook_delivered", side_effect=fake):
         task._emit_webhook_sync_status("oura", None)
         task._emit_webhook_sync_status("oura", {"status": "processed", "records_saved": 1, "user_id": "not-a-uuid"})
     assert calls == []

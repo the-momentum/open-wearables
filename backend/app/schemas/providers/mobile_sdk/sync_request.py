@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.series_types.sdk import SDKMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
+from app.schemas.sync_status import SyncScope
 
 
 class DeviceType(StrEnum):
@@ -163,6 +164,17 @@ class SyncRequest(BaseModel):
     provider: str
     sdkVersion: str
     syncTimestamp: datetime
+    syncSessionId: str | None = Field(
+        None,
+        description=(
+            "Device-generated id, stable for one historical export and shared by every "
+            "batch it produces. Absent on SDK versions that do not send it yet."
+        ),
+    )
+    syncType: SyncScope | None = Field(
+        None,
+        description="Whether this batch belongs to a historical export or to live sync.",
+    )
     data: SyncRequestData = Field(
         default_factory=SyncRequestData,
         description="Container for health data arrays (records, sleep, workouts)",

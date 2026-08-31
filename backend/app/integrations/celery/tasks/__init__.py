@@ -18,6 +18,7 @@ from app.services.providers.garmin.backfill_state import (
 )
 
 from .archival_task import run_daily_archival
+from .close_stale_sync_runs_task import close_stale_sync_runs
 from .emit_webhook_event_task import emit_webhook_event
 from .fill_missing_resilience_scores_task import fill_missing_resilience_scores
 from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
@@ -69,6 +70,7 @@ __all__ = [
     # Resilience score calculation
     "fill_missing_resilience_scores",
     # Other tasks
+    "close_stale_sync_runs",
     "finalize_stale_sleeps",
     "process_sdk_upload",
     "process_aws_upload",

@@ -58,7 +58,47 @@ class SyncStatus(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"  # Delivered but no data saved (ignored/duplicate/no-op webhook)
-    UNKNOWN = "unknown"  # Never reported an outcome — distinct from a reported failure
+    UNFINISHED = "unfinished"  # Ended early with work outstanding, not in error — resumable
+    STALE = "stale"  # Stopped reporting without saying how it ended; we lost track of it
+
+
+class DataTypeKind(StrEnum):
+    """What sort of thing a data type entry describes.
+
+    Providers report at different granularities. SDK uploads report per series type,
+    while REST pulls report per fetch task, and one task can write several series types.
+    The kind records which of those a row represents so the two are not confused.
+    """
+
+    SERIES = "series"
+    SCORE = "score"
+    PROFILE = "profile"
+    EVENT = "event"
+    TASK = "task"
+
+
+class DataTypeOutcome(BaseModel):
+    """Result of one data type within a sync run.
+
+    data_type is the canonical SeriesType slug when the provider's key maps to one,
+    otherwise the provider's own string. reported_records is what the provider claimed
+    it sent, which is not the same as what we wrote.
+    """
+
+    data_type: str
+    kind: DataTypeKind
+    status: SyncStatus
+    native_type: str | None = None
+    reported_records: int | None = None
+    items_inserted: int = 0
+    items_updated: int = 0
+    covered_start: datetime | None = None
+    covered_end: datetime | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    duration_ms: int | None = None
+    error_code: str | None = None
+    error: str | None = None
 
 
 class SyncStatusEvent(BaseModel):
@@ -71,6 +111,7 @@ class SyncStatusEvent(BaseModel):
     user_id: UUID
     provider: str = Field(description="Provider slug (e.g. 'garmin', 'apple', 'whoop').")
     source: SyncSource
+    scope: SyncScope = SyncScope.LIVE
     stage: SyncStage
     status: SyncStatus
     message: str | None = None
@@ -83,6 +124,9 @@ class SyncStatusEvent(BaseModel):
         description="For LINKED_ACCOUNT events: the OW user whose sync run produced this data.",
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # The window the run was asked to cover, as opposed to what it managed to cover.
+    requested_start: datetime | None = None
+    requested_end: datetime | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -106,3 +150,59 @@ class SyncRunSummary(BaseModel):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     last_update: datetime
+
+
+class SyncRunDataTypeRecord(BaseModel):
+    """Stored outcome of one data type within a run."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    data_type: str
+    kind: DataTypeKind
+    status: SyncStatus
+    native_type: str | None = None
+    reported_records: int | None = None
+    items_inserted: int = 0
+    items_updated: int = 0
+    covered_start: datetime | None = None
+    covered_end: datetime | None = None
+    error_code: str | None = None
+    error: str | None = None
+    attempt: int = 0
+
+
+class SyncRunRecord(BaseModel):
+    """A stored sync run. Unlike the Redis-backed summaries this is not time limited."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    run_key: str
+    user_id: UUID
+    provider: str
+    source: SyncSource
+    scope: SyncScope
+    status: SyncStatus
+    trace_id: str | None = None
+    requested_start: datetime | None = None
+    requested_end: datetime | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    items_inserted: int = 0
+    items_updated: int = 0
+    error: str | None = None
+
+
+class SyncRunWrite(SyncRunRecord):
+    """A sync run as it is written. Its fields are the columns, so it is unpacked as-is."""
+
+    meta: dict[str, Any] | None = None
+    updated_at: datetime
+
+
+class SyncRunDetail(SyncRunRecord):
+    """A stored sync run with its per-data-type breakdown.
+
+    Separate from SyncRunRecord so listing runs does not lazy-load the children.
+    """
+
+    data_types: list[SyncRunDataTypeRecord] = Field(default_factory=list)

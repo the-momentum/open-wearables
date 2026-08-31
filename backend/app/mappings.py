@@ -58,3 +58,7 @@ FKSeriesTypeDefinition = Annotated[
     int,
     mapped_column(ForeignKey("series_type_definition.id", ondelete="RESTRICT")),
 ]
+FKSyncRun = Annotated[
+    UUID,
+    mapped_column(ForeignKey("sync_run.id", ondelete="CASCADE"), primary_key=True),
+]

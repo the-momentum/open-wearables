@@ -44,16 +44,49 @@ class WriteCounts(int):
     ``.inserted`` (rows that did not exist) and ``.updated`` (rows refreshed
     in place via ON CONFLICT). Distinguishing the two is what stops a pure
     upsert-in-place from looking like newly arrived data.
+
+    covered_start/covered_end are the oldest and newest ``recorded_at`` actually
+    written. This is the span of the data itself, which is not the window that was
+    requested: asking for 90 days and getting two weight readings covers two days.
     """
 
     inserted: int
     updated: int
+    covered_start: datetime | None
+    covered_end: datetime | None
 
-    def __new__(cls, inserted: int, updated: int) -> "WriteCounts":
+    def __new__(
+        cls,
+        inserted: int,
+        updated: int,
+        covered_start: datetime | None = None,
+        covered_end: datetime | None = None,
+    ) -> "WriteCounts":
         obj = super().__new__(cls, inserted + updated)
         obj.inserted = inserted
         obj.updated = updated
+        obj.covered_start = covered_start
+        obj.covered_end = covered_end
         return obj
+
+    def __add__(self, other: int) -> "WriteCounts":
+        """Merge two results, widening the covered span rather than dropping it.
+
+        Plain int.__add__ would return an int and silently lose everything but the
+        total, so any caller accumulating counts across batches keeps the detail.
+        """
+        if not isinstance(other, WriteCounts):
+            return WriteCounts(self.inserted + int(other), self.updated, self.covered_start, self.covered_end)
+        starts = [d for d in (self.covered_start, other.covered_start) if d is not None]
+        ends = [d for d in (self.covered_end, other.covered_end) if d is not None]
+        return WriteCounts(
+            self.inserted + other.inserted,
+            self.updated + other.updated,
+            min(starts) if starts else None,
+            max(ends) if ends else None,
+        )
+
+    __radd__ = __add__
 
 
 class DataPointSeriesRepository(
@@ -217,8 +250,12 @@ class DataPointSeriesRepository(
                         inserted += 1
                     else:
                         updated += 1
+            # One pass over rows already in memory, so the span costs no extra query.
+            # Every row here is written either way, since the conflict does an update
+            # rather than nothing, so this is the span of what landed.
+            recorded = [v["recorded_at"] for v in values_list if v["recorded_at"] is not None]
             # NOTE: Caller should commit - allows batching multiple operations
-            return WriteCounts(inserted, updated)
+            return WriteCounts(inserted, updated, min(recorded, default=None), max(recorded, default=None))
 
         return WriteCounts(0, 0)
 

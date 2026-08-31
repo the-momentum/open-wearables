@@ -2,6 +2,7 @@ from .sdk_log_events import (
     DeviceStateEvent,
     HistoricalDataSyncStartEvent,
     HistoricalDataTypeSyncEndEvent,
+    SDKLogEventType,
     SDKLogRequest,
 )
 from .sleep_state import (
@@ -24,6 +25,7 @@ __all__ = [
     "DeviceStateEvent",
     "HistoricalDataSyncStartEvent",
     "HistoricalDataTypeSyncEndEvent",
+    "SDKLogEventType",
     # SleepState
     "SleepState",
     "SleepStateStage",
