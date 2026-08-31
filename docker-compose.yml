@@ -81,29 +81,6 @@ services:
           path: ./backend/scripts
           target: /root_project/scripts
 
-  celery-worker-xml-sync:
-    container_name: celery-worker-xml-sync__open-wearables
-    image: open-wearables-platform:latest
-    pull_policy: never
-    command: scripts/start/xml_worker.sh
-    env_file:
-      - ./backend/config/.env
-    environment:
-      - DB_HOST=db
-      - REDIS_HOST=redis
-    depends_on:
-      - redis
-      - db
-      - app
-    develop:
-      watch:
-        - action: sync+restart
-          path: ./backend/app
-          target: /root_project/app
-        - action: sync+restart
-          path: ./backend/scripts
-          target: /root_project/scripts
-
   celery-beat:
     container_name: celery-beat__open-wearables
     image: open-wearables-platform:latest
