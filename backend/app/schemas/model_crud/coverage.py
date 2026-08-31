@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class TimeseriesMetric(BaseModel):
     code: str
     unit: str
+    description: str = ""
     providers: list[str]
 
 
@@ -29,6 +30,7 @@ class MenstrualCycleField(BaseModel):
 
 class HealthScore(BaseModel):
     code: str
+    description: str = ""
     providers: list[str]
 
 

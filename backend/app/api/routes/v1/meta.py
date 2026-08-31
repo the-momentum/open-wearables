@@ -6,7 +6,12 @@ from functools import lru_cache
 from fastapi import APIRouter
 
 from app.schemas.enums import ProviderName, SeriesType
-from app.schemas.enums.series_types import SERIES_TYPE_CATEGORY_BY_ENUM, SERIES_TYPE_UNIT_BY_ENUM
+from app.schemas.enums.health_score_category import HEALTH_SCORE_DESCRIPTION_BY_ENUM, HealthScoreCategory
+from app.schemas.enums.series_types import (
+    SERIES_TYPE_CATEGORY_BY_ENUM,
+    SERIES_TYPE_DESCRIPTION_BY_ENUM,
+    SERIES_TYPE_UNIT_BY_ENUM,
+)
 from app.schemas.model_crud.coverage import (
     CoverageResponse,
     HealthScore,
@@ -57,7 +62,10 @@ def _build_coverage() -> CoverageResponse:
     for st, prov_list in sorted(series_to_providers.items(), key=lambda x: x[0].value):
         cat = SERIES_TYPE_CATEGORY_BY_ENUM.get(st, "Other")
         unit = SERIES_TYPE_UNIT_BY_ENUM.get(st, "")
-        categories.setdefault(cat, []).append(TimeseriesMetric(code=st.value, unit=unit, providers=sorted(prov_list)))
+        description = SERIES_TYPE_DESCRIPTION_BY_ENUM.get(st, "")
+        categories.setdefault(cat, []).append(
+            TimeseriesMetric(code=st.value, unit=unit, description=description, providers=sorted(prov_list))
+        )
 
     timeseries = [TimeseriesCategory(name=cat, metrics=categories[cat]) for cat in _CATEGORY_ORDER if cat in categories]
 
@@ -99,7 +107,12 @@ def _build_coverage() -> CoverageResponse:
             score_to_providers.setdefault(score.value, []).append(provider)
 
     health_scores = [
-        HealthScore(code=score, providers=sorted(prov_list)) for score, prov_list in sorted(score_to_providers.items())
+        HealthScore(
+            code=score,
+            description=HEALTH_SCORE_DESCRIPTION_BY_ENUM.get(HealthScoreCategory(score), ""),
+            providers=sorted(prov_list),
+        )
+        for score, prov_list in sorted(score_to_providers.items())
     ]
 
     return CoverageResponse(
