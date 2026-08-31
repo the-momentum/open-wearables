@@ -188,15 +188,8 @@ class DataPointSeriesRepository(
     ) -> WriteCounts:
         """Batch insert data points via COPY into a staging table + one merge statement.
 
-        Bypasses SQLAlchemy's per-row statement compilation/parameter-binding entirely -
-        see PR #1445 / issue #1453 for the ~10x measured speedup this is based on. Skips
-        no-op updates (WHERE ... IS DISTINCT FROM ...) so unchanged duplicate rows generate
-        no WAL.
-
         Returns the split of rows actually written (inserted vs updated). The split is
-        derived from ``RETURNING (xmax = 0)`` on the merge statement - a freshly inserted
-        row has ``xmax = 0``, an updated (conflicting) row does not - so it costs no extra
-        query or round-trip.
+        derived from ``RETURNING (xmax = 0)`` on the merge statement.
         """
         rows: list[DataPointSeriesRepository._StagingRow] = []
         for creator in creators:
