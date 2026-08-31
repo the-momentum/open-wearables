@@ -228,9 +228,6 @@ class DataPointSeriesRepository(
             deduped[(row.data_source_id, row.series_type_definition_id, row.recorded_at)] = row
         rows = list(deduped.values())
 
-        # Raw psycopg connection sharing this Session's transaction - COPY has no
-        # SQLAlchemy Core equivalent, and using a separate connection would commit
-        # outside this transaction.
         raw_conn: PGConnection | None = db_session.connection().connection.driver_connection
         assert raw_conn is not None, "no DBAPI connection on an active Session"
         with raw_conn.cursor() as cursor:
@@ -246,7 +243,9 @@ class DataPointSeriesRepository(
             staging_ddl = str(CreateTable(staging_table, if_not_exists=True).compile(dialect=postgresql.dialect()))
             cursor.execute(typing_cast(LiteralString, staging_ddl))
             cursor.execute("TRUNCATE data_point_series_staging")
-
+            # Raw psycopg connection sharing this Session's transaction - COPY has no
+            # SQLAlchemy Core equivalent, and using a separate connection would commit
+            # outside this transaction.
             with cursor.copy(f"COPY data_point_series_staging ({self._COPY_COLUMNS_SQL}) FROM STDIN") as copy:
                 for row in rows:
                     copy.write_row(row)
@@ -275,11 +274,6 @@ class DataPointSeriesRepository(
             merge_result = cursor.fetchone()
             assert merge_result is not None, "count(*) always returns exactly one row"
             inserted = merge_result[0]
-
-        # `len(rows) - inserted` folds together real conflicting updates and no-op
-        # duplicates (rows that hit a conflict but changed nothing, so the WHERE clause
-        # above excluded them from RETURNING entirely) - neither is new data, so both
-        # count as `updated`.
         return WriteCounts(inserted, len(rows) - inserted)
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
