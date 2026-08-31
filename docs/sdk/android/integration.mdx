@@ -505,7 +505,7 @@ class MainActivity : AppCompatActivity() {
 
 ## Samsung Health Production Requirements
 
-Samsung Health works on your development build with Developer Mode - **for that you only need a Samsung account, no partnership request**. Production adds a requirement: the same code runs, but the permission flow aborts on release builds until **both** of these are true:
+Samsung Health works on your development build with Developer Mode - **for read access (what Open Wearables needs) you only need a Samsung account, no partnership request**. Production adds a requirement: the same code runs, but the permission flow aborts on release builds until **both** of these are true:
 
 1. **Your partnership request is approved by Samsung.** Submit it through Samsung's [app creation process](https://developer.samsung.com/health/data/process.html), providing your app's package name and release signing key signature.
 2. **Your release signing key is on Samsung's allowlist.** Samsung [matches package name + SHA-256 at runtime](https://developer.samsung.com/health/data/guide/app-verification.html). Get the fingerprint from your release keystore - and if you use Play App Signing, register the Play **app signing key** (Play Console → `Setup → App integrity → App signing`), not your upload key:
@@ -515,7 +515,7 @@ Samsung Health works on your development build with Developer Mode - **for that 
    ```
 
 <Note>
-  `IllegalStateException: Could not get policy for {package}` on a release build means your signing key is not yet allowlisted - the partnership is not approved, or the wrong certificate was registered (a common Play App Signing pitfall). Confirm both, then contact [Samsung Developer Support](https://developer.samsung.com/health/data).
+  `IllegalStateException: Could not get policy for {package}` on a release build means Samsung has not matched your app - the partnership is not approved, or the running build's **package name or signing certificate** does not match what Samsung registered (a common Play App Signing pitfall). Confirm all three, then contact [Samsung Developer Support](https://developer.samsung.com/health/data).
 </Note>
 
 <Tip>
@@ -524,13 +524,7 @@ Samsung Health works on your development build with Developer Mode - **for that 
 
 ### Background sync
 
-Samsung Health does **not** use the `android.permission.health.*` declarations Health Connect relies on. For reliable background sync, though, declare an exact-alarm permission in your `AndroidManifest.xml` - prefer `SCHEDULE_EXACT_ALARM`, since `USE_EXACT_ALARM` attracts extra Google Play review and needs justification:
-
-```xml
-<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-```
-
-See [Troubleshooting](/sdk/android/troubleshooting) for the foreground-service and `POST_NOTIFICATIONS` requirements that also apply to background sync.
+Samsung Health does **not** use the `android.permission.health.*` declarations Health Connect relies on - permissions are granted through Samsung Health's own dialog, so no extra manifest permissions are needed for the Samsung provider. Background sync uses the same WorkManager and foreground-service mechanism as Health Connect; see [Troubleshooting](/sdk/android/troubleshooting) for the battery-optimization and `POST_NOTIFICATIONS` requirements that affect it.
 
 ## Complete Integration Example
 
