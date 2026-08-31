@@ -56,8 +56,7 @@
             "group": "Providers",
             "pages": [
               "providers/supported",
-              "providers/coverage",
-              "providers/garmin-data-pipeline"
+              "providers/coverage"
             ]
           },
           {
