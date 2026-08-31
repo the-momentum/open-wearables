@@ -7,8 +7,26 @@ from uuid import UUID
 
 from psycopg import Connection as PGConnection
 from psycopg.errors import UniqueViolation
-from sqlalchemy import ColumnElement, Date, Interval, String, and_, asc, case, cast, func, literal_column, text, tuple_
+from sqlalchemy import (
+    Column,
+    ColumnElement,
+    Date,
+    Interval,
+    MetaData,
+    String,
+    Table,
+    and_,
+    asc,
+    case,
+    cast,
+    func,
+    literal_column,
+    text,
+    tuple_,
+)
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+from sqlalchemy.schema import CreateTable
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
@@ -216,20 +234,17 @@ class DataPointSeriesRepository(
         raw_conn: PGConnection | None = db_session.connection().connection.driver_connection
         assert raw_conn is not None, "no DBAPI connection on an active Session"
         with raw_conn.cursor() as cursor:
-            cursor.execute(
-                """
-                CREATE TEMP TABLE IF NOT EXISTS data_point_series_staging (
-                    id uuid,
-                    external_id varchar(100),
-                    data_source_id uuid,
-                    recorded_at timestamptz,
-                    zone_offset varchar(10),
-                    value numeric(10, 3),
-                    series_type_definition_id integer,
-                    is_daily_total boolean
-                ) ON COMMIT DROP
-                """
+            # Create the temporary staging table for bulk-importing data points.
+            model_columns = DataPointSeries.__table__.c
+            staging_table = Table(
+                "data_point_series_staging",
+                MetaData(),
+                *(Column(name, model_columns[name].type) for name in self._StagingRow._fields),
+                prefixes=["TEMPORARY"],
+                postgresql_on_commit="DELETE ROWS",
             )
+            staging_ddl = str(CreateTable(staging_table, if_not_exists=True).compile(dialect=postgresql.dialect()))
+            cursor.execute(typing_cast(LiteralString, staging_ddl))
             cursor.execute("TRUNCATE data_point_series_staging")
 
             with cursor.copy(f"COPY data_point_series_staging ({self._COPY_COLUMNS_SQL}) FROM STDIN") as copy:
@@ -238,30 +253,34 @@ class DataPointSeriesRepository(
 
             cursor.execute(
                 f"""
-                    INSERT INTO data_point_series ({self._COPY_COLUMNS_SQL})
-                    SELECT {self._COPY_COLUMNS_SQL} FROM data_point_series_staging
-                    ON CONFLICT (data_source_id, series_type_definition_id, recorded_at)
-                    DO UPDATE SET
-                        external_id = excluded.external_id,
-                        value = excluded.value,
-                        zone_offset = excluded.zone_offset,
-                        is_daily_total = excluded.is_daily_total
-                    WHERE data_point_series.value IS DISTINCT FROM excluded.value
-                       OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
-                       OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
-                       OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
-                    RETURNING (xmax = 0)
+                    WITH merged AS (
+                        INSERT INTO data_point_series ({self._COPY_COLUMNS_SQL})
+                        SELECT {self._COPY_COLUMNS_SQL} FROM data_point_series_staging
+                        ORDER BY data_source_id, series_type_definition_id, recorded_at
+                        ON CONFLICT (data_source_id, series_type_definition_id, recorded_at)
+                        DO UPDATE SET
+                            external_id = excluded.external_id,
+                            value = excluded.value,
+                            zone_offset = excluded.zone_offset,
+                            is_daily_total = excluded.is_daily_total
+                        WHERE data_point_series.value IS DISTINCT FROM excluded.value
+                           OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
+                           OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
+                           OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
+                        RETURNING (xmax = 0) AS was_insert
+                    )
+                    SELECT count(*) FILTER (WHERE was_insert) FROM merged
                 """
             )
-            result_rows = cursor.fetchall()
+            merge_result = cursor.fetchone()
+            assert merge_result is not None, "count(*) always returns exactly one row"
+            inserted = merge_result[0]
 
-        inserted = result_rows.count((True,))
-        updated = len(result_rows) - inserted
-        # Rows that hit a conflict but changed nothing are excluded by the WHERE clause
-        # above - they never reach RETURNING at all. They're not new data, so they count
-        # toward `updated` (a conflict occurred) rather than `inserted`.
-        no_op_duplicates = len(rows) - len(result_rows)
-        return WriteCounts(inserted, updated + no_op_duplicates)
+        # `len(rows) - inserted` folds together real conflicting updates and no-op
+        # duplicates (rows that hit a conflict but changed nothing, so the WHERE clause
+        # above excluded them from RETURNING entirely) - neither is new data, so both
+        # count as `updated`.
+        return WriteCounts(inserted, len(rows) - inserted)
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
         try:
