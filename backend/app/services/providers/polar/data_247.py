@@ -19,6 +19,7 @@ from app.constants.series_types.polar import (
     SLEEP_INERTIA_LABELS,
 )
 from app.database import DbSession
+from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
 from app.schemas.model_crud.activities import (
@@ -55,6 +56,7 @@ from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.polar.coverage import ACTIVITY_SERIES
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
@@ -846,16 +848,16 @@ class Polar247Data(Base247DataTemplate):
     # Persistence helpers
     # -------------------------------------------------------------------------
 
-    def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> int:
-        counts: int = 0
+    def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
+        counts = WriteCounts(0, 0)
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         return counts
 
-    def _save_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> int:
+    def _save_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
         if scores:
-            health_score_service.bulk_create(db, scores)
-        return len(scores)
+            return health_score_service.bulk_create(db, scores)
+        return WriteCounts(0, 0)
 
     def fetch_and_save_from_webhook(
         self,
@@ -915,6 +917,7 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> int:
+        """Returns the number of sleep sessions saved (score and HR rows ride along)."""
         raw_items = self.get_sleep_data(db, user_id, start_time, end_time)
         normalized = self.normalize_sleep(raw_items, user_id)
         count = 0
@@ -951,17 +954,10 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
+    ) -> Sync247Result:
+        start_time, end_time = self.resolve_window(start_time, end_time)
 
-        tasks: dict[str, Callable[[], int]] = {
+        tasks: dict[str, Callable[[], WriteCounts | int]] = {
             "sleep": lambda: self._save_sleep(db, user_id, start_time, end_time),
             "daily_activity": lambda: self._save_timeseries(
                 db,
@@ -1011,27 +1007,13 @@ class Polar247Data(Base247DataTemplate):
             ),
         }
 
-        results: dict[str, int] = {}
+        run = self.sync_run(db, user_id)
         for data_type, fn in tasks.items():
-            try:
-                results[data_type] = fn()
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                results[data_type] = 0
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Failed to sync {data_type} data",
-                    extra={
-                        "provider": "polar",
-                        "task": "load_and_save_all",
-                        "data_type": data_type,
-                        "user_id": str(user_id),
-                    },
-                )
+            with run.step(data_type, commit=True, capture=True) as step:
+                step.record(fn())
 
-        return results
+        run.log_summary()
+        return run.result
 
     # -------------------------------------------------------------------------
     # Not implemented — Polar recovery and activity samples map to other modules

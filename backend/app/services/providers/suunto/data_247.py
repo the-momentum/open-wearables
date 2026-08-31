@@ -7,7 +7,7 @@ Syncs data from three Suunto Cloud API endpoints:
 - /247/daily-activity-statistics → DataPointSeries (aggregated daily steps/energy)
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.repositories.data_point_series_repository import DataPointSeriesRepository
+from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
@@ -30,10 +30,11 @@ from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.suunto.coverage import ACTIVITY_SERIES, DAILY_STAT_SERIES
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import parse_datetime_or_default, parse_iso_datetime
+from app.utils.dates import parse_iso_datetime
 from app.utils.structured_logging import log_structured
 
 # StressState integer → text qualifier (0=Invalid is treated as missing)
@@ -516,7 +517,7 @@ class Suunto247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_samples: dict[str, list[dict[str, Any]]],
-    ) -> int:
+    ) -> WriteCounts:
         """Save normalized activity samples to database using bulk_create for efficiency."""
         all_samples: list[TimeSeriesSampleCreate] = []
 
@@ -554,7 +555,7 @@ class Suunto247Data(Base247DataTemplate):
                     ),
                 )
 
-        counts: int = 0
+        counts = WriteCounts(0, 0)
         if all_samples:
             counts = timeseries_service.bulk_create_samples(db, all_samples)
 
@@ -632,7 +633,7 @@ class Suunto247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_stats: list[dict[str, Any]],
-    ) -> int:
+    ) -> WriteCounts:
         """Save daily activity statistics as DataPointSeries (bulk)."""
         all_samples: list[TimeSeriesSampleCreate] = []
 
@@ -668,7 +669,7 @@ class Suunto247Data(Base247DataTemplate):
                     ),
                 )
 
-        counts: int = 0
+        counts = WriteCounts(0, 0)
         if all_samples:
             counts = timeseries_service.bulk_create_samples(db, all_samples)
 
@@ -719,84 +720,32 @@ class Suunto247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
+    ) -> Sync247Result:
         """Load all 247 data types and save to database."""
-        now = datetime.now(timezone.utc)
-        end_dt = parse_datetime_or_default(end_time, now)
-        start_dt = parse_datetime_or_default(start_time, end_dt - timedelta(days=28))
+        start_dt, end_dt = self.resolve_window(start_time, end_time, default_days=28)
 
-        # Ensure both bounds are timezone-aware so chunk comparisons don't raise
-        # TypeError when mixed naive/aware datetimes end up in _fetch_in_chunks.
-        if start_dt.tzinfo is None:
-            start_dt = start_dt.replace(tzinfo=timezone.utc)
-        if end_dt.tzinfo is None:
-            end_dt = end_dt.replace(tzinfo=timezone.utc)
-
-        results: dict[str, int] = {
-            "sleep_sessions_synced": 0,
-            "sleep_sessions_skipped": 0,
-            "recovery_samples_synced": 0,
-            "activity_samples_synced": 0,
-            "daily_activity_synced": 0,
-        }
+        run = self.sync_run(db, user_id)
 
         # 1. Sleep sessions → EventRecord + SleepDetails
-        try:
+        with run.step("sleep", rollback_on_error=False) as step:
             saved, skipped = self.load_and_save_sleep(db, user_id, start_dt, end_dt)
-            results["sleep_sessions_synced"] = saved
-            results["sleep_sessions_skipped"] = skipped
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync sleep data: {e}",
-                provider="suunto",
-                task="load_and_save_all",
-                user_id=str(user_id),
-            )
+            step.record(saved, skipped=skipped)
 
         # 2. Recovery → HealthScore (RECOVERY category, balance scaled 0-100)
-        try:
-            results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_dt, end_dt)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync recovery data: {e}",
-                provider="suunto",
-                task="load_and_save_all",
-                user_id=str(user_id),
-            )
+        with run.step("recovery", rollback_on_error=False) as step:
+            step.record(self.load_and_save_recovery(db, user_id, start_dt, end_dt))
 
         # 3. Activity samples → DataPointSeries (HR, steps, SpO2, energy, HRV)
-        try:
+        with run.step("activity_samples", rollback_on_error=False) as step:
             raw_activity = self.get_activity_samples(db, user_id, start_dt, end_dt)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
-            results["activity_samples_synced"] = self.save_activity_samples(db, user_id, normalized_activity)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync activity samples: {e}",
-                provider="suunto",
-                task="load_and_save_all",
-                user_id=str(user_id),
-            )
+            step.record(self.save_activity_samples(db, user_id, normalized_activity))
 
         # 4. Daily aggregated statistics → DataPointSeries (steps, energy)
-        try:
+        with run.step("daily_activity", rollback_on_error=False) as step:
             raw_daily = self.get_daily_activity_statistics(db, user_id, start_dt, end_dt)
             normalized_daily = [self.normalize_daily_activity(item, user_id) for item in raw_daily]
-            results["daily_activity_synced"] = self.save_daily_activity_statistics(db, user_id, normalized_daily)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to sync daily activity statistics: {e}",
-                provider="suunto",
-                task="load_and_save_all",
-                user_id=str(user_id),
-            )
+            step.record(self.save_daily_activity_statistics(db, user_id, normalized_daily))
 
         # Commit all pending bulk inserts (activity samples, daily stats) that were
         # not committed within their individual save methods. Sleep and recovery
@@ -804,4 +753,5 @@ class Suunto247Data(Base247DataTemplate):
         # defers commit to the caller intentionally for batching efficiency.
         db.commit()
 
-        return results
+        run.log_summary()
+        return run.result

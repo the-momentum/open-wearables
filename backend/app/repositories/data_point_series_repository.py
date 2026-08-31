@@ -55,6 +55,22 @@ class WriteCounts(int):
         obj.updated = updated
         return obj
 
+    # ty:ignore[invalid-method-override] — narrower than int.__add__ on purpose; a plain int yields an int.
+    def __add__(self, other: "WriteCounts") -> "WriteCounts":
+        """Keep the split when accumulating counts (``total += repo.bulk_create(...)``)."""
+        if not isinstance(other, WriteCounts):
+            return NotImplemented
+        return WriteCounts(self.inserted + other.inserted, self.updated + other.updated)
+
+    def __radd__(self, other: int) -> int:
+        # Makes sum() of WriteCounts work: the 0 start value passes the split through.
+        if other == 0:
+            return self
+        return other + int(self)
+
+    def __repr__(self) -> str:
+        return f"WriteCounts(inserted={self.inserted}, updated={self.updated})"
+
 
 class DataPointSeriesRepository(
     CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],

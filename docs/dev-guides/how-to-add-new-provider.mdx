@@ -469,6 +469,81 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
 <Warning>There are also utils modules, like `app/backend/services/providers/api_client.py`, which provides utilities for making oauth api requests.</Warning>
 
+### 24/7 data handler (`data_247.py`)
+
+Continuous metrics (sleep, recovery, HR, steps) live in a `Base247DataTemplate`
+subclass. The sync orchestrator calls one entry point, `load_and_save_all`, and
+every provider returns the same type from it: a `Sync247Result`.
+
+Build the result with `sync_run()` rather than assembling a dict. Each `step` is
+one data type: it commits or rolls back, logs, records what was written, and
+keeps a failure in one data type from aborting the rest of the sync.
+
+```python
+from datetime import datetime
+from uuid import UUID
+
+from app.database import DbSession
+from app.services.providers.sync_247_result import Sync247Result
+from app.services.providers.templates.base_247_data import Base247DataTemplate
+
+
+class Suunto247Data(Base247DataTemplate):
+    def load_and_save_all(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime | str | None = None,
+        end_time: datetime | str | None = None,
+        is_first_sync: bool = False,
+    ) -> Sync247Result:
+        # Parses ISO strings, applies the default window, forces UTC-aware bounds.
+        start_dt, end_dt = self.resolve_window(start_time, end_time, default_days=28)
+
+        run = self.sync_run(db, user_id)
+
+        with run.step("sleep") as step:
+            saved, skipped = self.load_and_save_sleep(db, user_id, start_dt, end_dt)
+            step.record(saved, skipped=skipped)
+
+        with run.step("activity_samples", commit=True) as step:
+            samples = self.normalize_activity_samples(
+                self.get_activity_samples(db, user_id, start_dt, end_dt), user_id
+            )
+            step.record(self.save_activity_samples(db, user_id, samples))
+
+        run.log_summary()
+        return run.result
+```
+
+Rules:
+
+- **Key each step by data type**, in the provider's own vocabulary (`sleep`,
+  `recovery`, `activity_samples`, `daily_activity`, or a specific metric name).
+  Don't invent per-provider key suffixes like `*_synced`.
+- **Return `WriteCounts` from every save path you can.** `timeseries_service.bulk_create_samples`
+  and `health_score_service.bulk_create` already do, so pass their return value
+  straight through instead of narrowing it to `int` or reporting `len(samples)`.
+  That is what makes the sync log say "12 new, 3 updated" instead of just a total.
+- A plain `int` is accepted where the write path can't report a split (sleep
+  sessions merged one at a time, say). It counts toward `result.rows_written`, just
+  not toward `inserted`/`updated`.
+- `step` options: `commit=True` to commit after a successful step, `savepoint=True`
+  to confine a failed write to a nested transaction, `capture=True` to also
+  report the failure to Sentry, `accumulate=True` when the same data type is
+  written once per chunk of the window (a per-day endpoint, for example).
+- Pass `fatal=(HTTPException,)` to `sync_run()` for errors that invalidate the
+  whole run (an expired token) instead of one data type.
+- Call `run.expect("sleep", ...)` up front if your steps are conditional, so a
+  data type nothing arrived for stays in the result as `skipped` rather than
+  disappearing from it.
+- Providers whose 24/7 data only arrives by webhook don't override the method at
+  all; the base returns an empty result.
+
+The orchestrator reads `result.rows_written` for the headline item count,
+`result.inserted` / `result.updated` for the split, `result.all_failed` to decide
+whether the run failed, and `result.as_dict()` for the sync-log payload.
+
 ---
 
 ## Step 5: Create Workout Type Mapping

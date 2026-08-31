@@ -210,5 +210,5 @@ class TestSuuntoSleepSyncStats:
         ):
             results = data_247.load_and_save_all(MagicMock(), uuid4())
 
-        assert results["sleep_sessions_synced"] == 2
-        assert results["sleep_sessions_skipped"] == 3
+        assert results["sleep"] == 2
+        assert results.outcomes["sleep"].skipped == 3

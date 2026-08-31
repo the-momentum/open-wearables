@@ -1,7 +1,7 @@
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
 from celery import shared_task
@@ -254,11 +254,12 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
-                    # New-vs-updated split for the sync-log (timeseries upserts report it
-                    # via WriteCounts). items_processed is derived from these so the headline
-                    # count always equals "X new, Y updated".
+                    # New-vs-updated split for the sync-log. Providers report it per data
+                    # type via Sync247Result; pull_written is the headline count, and covers
+                    # the write paths that cannot yet report a split.
                     pull_inserted = 0
                     pull_updated = 0
+                    pull_written = 0
                     applied_lookback: timedelta | None = None  # set when the lookback actually widened the window
 
                     # Resolve effective start: explicit arg > last_synced_at > now
@@ -343,29 +344,23 @@ def sync_vendor_data(
                         )
 
                         try:
-                            # Use load_and_save_all if available (saves data to DB)
-                            # Otherwise fallback to load_all_247_data (just returns data)
-                            provider_any = cast(Any, strategy.data_247)
-                            if hasattr(provider_any, "load_and_save_all"):
-                                results_247 = provider_any.load_and_save_all(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                    is_first_sync=is_first_sync,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
-                                for _count in results_247.values():
-                                    pull_inserted += getattr(_count, "inserted", 0)
-                                    pull_updated += getattr(_count, "updated", 0)
-                            else:
-                                results_247 = strategy.data_247.load_all_247_data(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
+                            results_247 = strategy.data_247.load_and_save_all(
+                                db,
+                                user_uuid,
+                                start_time=start_dt,
+                                end_time=end_dt,
+                                is_first_sync=is_first_sync,
+                            )
+                            # An all-failed run is a failure, not an empty success: every data
+                            # type the provider attempted raised (expired token, unlinked account).
+                            provider_result.params["data_247"] = {
+                                "success": not results_247.all_failed,
+                                "saved": True,
+                                **results_247.as_dict(),
+                            }
+                            pull_inserted += results_247.inserted
+                            pull_updated += results_247.updated
+                            pull_written += results_247.rows_written
                             log_structured(
                                 logger,
                                 "info",
@@ -485,6 +480,9 @@ def sync_vendor_data(
                             completed_metadata["inserted"] = pull_inserted
                             completed_metadata["updated"] = pull_updated
                             completed_message += f" · {pull_inserted} new, {pull_updated} updated"
+                        elif pull_written:
+                            # Rows were written by paths that don't report the split yet.
+                            completed_message += f" · {pull_written} records"
                         if applied_lookback is not None:
                             lookback_label = format_duration(applied_lookback)
                             completed_metadata["lookback"] = lookback_label
@@ -497,7 +495,7 @@ def sync_vendor_data(
                             run_id=run_id,
                             status=final_status,
                             message=completed_message,
-                            items_processed=pull_inserted + pull_updated,
+                            items_processed=pull_written,
                             primary_user_id=primary_uuid,
                             metadata=completed_metadata,
                         )
