@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-_DESCRIPTION_DOC = (
+_DESCRIPTION_DOC: str = (
     "Optional human-readable clarification of what this data type represents. Empty when none is defined."
 )
 
