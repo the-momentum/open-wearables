@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 
-_DESCRIPTION_DOC = "Optional human-readable clarification of what this data type represents. Empty when none is defined."
+_DESCRIPTION_DOC = (
+    "Optional human-readable clarification of what this data type represents. Empty when none is defined."
+)
 
 
 class TimeseriesMetric(BaseModel):
