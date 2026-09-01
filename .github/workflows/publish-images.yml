@@ -1,14 +1,17 @@
 name: Publish Docker images
 
-# Manually triggered build & push of the production images to Docker Hub.
-# Run it from the GitHub UI: Actions -> "Publish Docker images" -> Run workflow.
+# Build & push the production images to Docker Hub on three triggers: nightly
+# (schedule), release (release published), and manual (workflow_dispatch).
 on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC daily; scheduled runs use the default branch (main)
+  release:
+    types: [published] # github.ref is then refs/tags/<version>, parsed by the semver tags below
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra image tag to push (in addition to `latest` and the commit SHA). Leave empty to skip."
-        required: false
-        default: ""
+        description: "Image tag to push. A manual run publishes this tag only - no nightly tags. Reserved names (latest, nightly, nightly-<sha>, release versions) are rejected."
+        required: true
 
 jobs:
   publish:
@@ -30,6 +33,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A manual run publishes inputs.tag verbatim as its only tag. Require it,
+      # and reject reserved names so a manual run can't move `latest`/`nightly`
+      # to an unreleased build or overwrite an immutable release/nightly-<sha>
+      # tag. (TAG via env, not inline ${{ }}, to avoid shell injection.)
+      - name: Validate manual tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ -z "$TAG" ]; then
+            echo "::error::a manual run requires a tag"
+            exit 1
+          fi
+          case "$TAG" in
+            latest | nightly | nightly-*)
+              echo "::error::tag '$TAG' is reserved (latest / nightly / nightly-<sha>)"
+              exit 1 ;;
+          esac
+          if printf '%s' "$TAG" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,2}$'; then
+            echo "::error::tag '$TAG' looks like a release version and is reserved"
+            exit 1
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -44,12 +70,34 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ matrix.image }}
+          # latest=auto moves `latest` only for the release semver tags below,
+          # and skips it for pre-releases; nightly builds never touch it.
+          flavor: |
+            latest=auto
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha
-            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' }}
+            type=sha,prefix=nightly-,enable=${{ github.event_name == 'schedule' }}
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
+
+      # A scheduled run rebuilds main's current HEAD unconditionally, so an
+      # unchanged SHA would re-push nightly-<sha> - overwriting (mutable registry)
+      # or rejecting (immutable registry) a tag docs promise is immutable. Keyed
+      # on the artifact, not the clock: skip the rebuild if this exact
+      # nightly-<sha> already exists in the registry. Only schedule emits it.
+      - name: Skip build if this nightly SHA is already published
+        id: nightly_guard
+        if: github.event_name == 'schedule'
+        run: |
+          sha_tag=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | grep -m1 ':nightly-' || true)
+          if [ -n "$sha_tag" ] && docker buildx imagetools inspect "$sha_tag" >/dev/null 2>&1; then
+            echo "$sha_tag already published; skipping rebuild"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push ${{ matrix.name }}
+        if: steps.nightly_guard.outputs.skip != 'true'
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -57,6 +105,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Baked into the backend image as the Sentry release. The frontend
+          # Dockerfile doesn't declare this ARG and simply ignores it.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           # No API URL is baked in: the frontend reads it at runtime from the
           # container's VITE_API_URL env var. See frontend/src/lib/api/runtime-config.ts.
           cache-from: type=gha,scope=${{ matrix.name }}

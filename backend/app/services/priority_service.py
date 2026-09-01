@@ -1,4 +1,4 @@
-from logging import Logger
+from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -156,3 +156,6 @@ class PriorityService:
         elif ds.original_source_name:
             parts.append(ds.original_source_name)
         return " - ".join(parts) if parts else "Unknown Source"
+
+
+priority_service = PriorityService(log=getLogger(__name__))

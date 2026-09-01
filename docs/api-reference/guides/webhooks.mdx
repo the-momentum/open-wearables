@@ -18,6 +18,10 @@ Outgoing webhooks let Open Wearables push events to your backend in real time, s
 
 Webhooks are delivered via [Svix](https://svix.com/), which handles retries, signature signing, and delivery history.
 
+<Note>
+  **Self-hosting:** outgoing webhooks are **disabled by default**. To emit events, set `OUTGOING_WEBHOOKS_ENABLED=true` in the backend `.env` and restart — no command-line flags needed, plain `docker compose up`. The `svix-server` container runs either way, and the app runs fine when it is absent (e.g. a deployment without webhooks). On managed Postgres (AWS RDS / Railway), the app's database user must be allowed to create databases, or create a `svix` database up front — Svix keeps its schema there.
+</Note>
+
 <CardGroup cols={2}>
   <Card title="Things you can do" icon="bolt">
     Trigger downstream processing when a workout is synced, update your UI in real time when sleep data arrives, scope an endpoint to a single user's events, or verify payloads are genuinely from Open Wearables.
@@ -197,7 +201,8 @@ Fired once when a complete session is saved or merged.
 
 | Event | Description |
 |-------|-------------|
-| `connection.created` | A user successfully connected a wearable provider. |
+| `connection.created` | A user successfully connected a wearable provider. For OAuth providers this fires when authorization completes; SDK providers have no OAuth callback, so it fires when the first data upload arrives, and again when a previously revoked SDK connection resumes uploading. |
+| `connection.revoked` | A connection became invalid or was disconnected (refresh token expired/revoked, the user deregistered on the provider side, or the user manually disconnected). OAuth connections require re-authorization to resume syncing; SDK connections resume on the next upload. See the `reason` field. |
 | `workout.created` | A new workout session was saved. |
 | `sleep.created` | A new (or merged) sleep session was saved. |
 | `menstrual_cycle.created` | A new menstrual cycle record was saved. |
@@ -243,6 +248,29 @@ Every payload envelope has `type` (the event name as a string) and `data`.
     "provider": "garmin",
     "connection_id": "7f3d9c2a-1b4e-4f8a-9d6c-8e5f2a0b3c7e",
     "connected_at": "2025-12-19T10:30:00+00:00"
+  }
+}
+```
+
+### `connection.revoked`
+
+`reason` is a short cause:
+
+| Reason | Cause |
+|--------|-------|
+| `user_disconnected` | The connection was disconnected via the API. |
+| `refresh_failed` | The OAuth refresh token was rejected by the provider. |
+| `deregistration` | The user deregistered on the provider side (Garmin). |
+
+```json
+{
+  "type": "connection.revoked",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "provider": "garmin",
+    "connection_id": "7f3d9c2a-1b4e-4f8a-9d6c-8e5f2a0b3c7e",
+    "reason": "refresh_failed",
+    "revoked_at": "2025-12-19T10:30:00+00:00"
   }
 }
 ```
@@ -376,7 +404,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "type": "heart_rate",
         "value": 62,
         "unit": "bpm",
-        "source": { "provider": "garmin", "device": "Forerunner 255" }
+        "source": { "provider": "garmin", "device": "Forerunner 255" },
+        "is_daily_total": null
       },
       {
         "timestamp": "2025-12-19T07:35:00+01:00",
@@ -384,7 +413,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "type": "heart_rate",
         "value": 65,
         "unit": "bpm",
-        "source": { "provider": "garmin", "device": "Forerunner 255" }
+        "source": { "provider": "garmin", "device": "Forerunner 255" },
+        "is_daily_total": null
       },
       {
         "timestamp": "2025-12-19T07:40:00+01:00",
@@ -392,7 +422,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "type": "heart_rate",
         "value": 70,
         "unit": "bpm",
-        "source": { "provider": "garmin", "device": "Forerunner 255" }
+        "source": { "provider": "garmin", "device": "Forerunner 255" },
+        "is_daily_total": null
       }
     ]
   }
@@ -400,6 +431,18 @@ Each timeseries event carries the full sample array so your backend can act on t
 ```
 
 Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_id}/timeseries`, so consumers work with a single schema regardless of whether data comes from a webhook or the pull API.
+
+<Note>
+  **`is_daily_total`** distinguishes pre-aggregated daily totals from intraday samples for additive series (steps, energy, distance, flights):
+
+  | Value | Meaning |
+  |-------|---------|
+  | `true` | Pre-aggregated daily total reported by the device. Use this value directly — do **not** add intraday samples from the same day and source on top of it. |
+  | `false` | Intraday sample (e.g. a 15-minute epoch). Sum these when no daily total is present. |
+  | `null` | Legacy row ingested before this field was introduced, or a series type where daily vs. intraday does not apply (e.g. heart rate). Treat the same as `false`. |
+
+  For non-additive series (heart rate, SpO2, temperature, …) `is_daily_total` is always `null` and can be ignored.
+</Note>
 
 <Note>
   **Large batches** (exceeding 2 500 samples) are automatically split into consecutive chunk events to stay within Svix's 1 MB payload limit.  Each chunk event includes `chunk_index` (0-based) and `total_chunks` so you can detect and reassemble split deliveries.  The `sample_count` field always reflects the total number of samples across all chunks.

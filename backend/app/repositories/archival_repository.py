@@ -184,6 +184,14 @@ class DataPointSeriesArchiveRepository:
                     func.min(DataPointSeries.value).label("min_value"),
                     func.max(DataPointSeries.value).label("max_value"),
                     func.sum(DataPointSeries.value).label("sum_value"),
+                    # Prefer-daily split for SUM series: a daily total must not be added to
+                    # its own intraday samples. NULL is_daily_total counts as a sample.
+                    func.sum(case((DataPointSeries.is_daily_total.is_(True), DataPointSeries.value))).label(
+                        "daily_sum_value"
+                    ),
+                    func.sum(case((DataPointSeries.is_daily_total.isnot(True), DataPointSeries.value))).label(
+                        "sample_sum_value"
+                    ),
                     func.count(DataPointSeries.id).label("sample_count"),
                 )
                 .filter(
@@ -209,7 +217,9 @@ class DataPointSeriesArchiveRepository:
                     method = AGGREGATION_METHOD_BY_TYPE.get(series_type, AggregationMethod.AVG)
 
                     if method == AggregationMethod.SUM:
-                        value = row.sum_value
+                        # Prefer the daily total when present, else sum the samples
+                        # (mirrors get_daily_activity_aggregates — no daily+intraday double-count).
+                        value = row.daily_sum_value if row.daily_sum_value is not None else row.sample_sum_value
                     elif method == AggregationMethod.MAX:
                         value = row.max_value
                     else:  # AVG
@@ -341,6 +351,7 @@ class DataPointSeriesArchiveRepository:
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
+        active_time_id = get_series_type_id(SeriesType.active_time)
 
         # Ensure we filter using UTC datetime range
         start_ts = start_date
@@ -358,6 +369,7 @@ class DataPointSeriesArchiveRepository:
         results = (
             db.query(
                 cast(DataPointSeriesArchive.bucket_start_at, Date).label("activity_date"),
+                DataSource.provider.label("provider"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 func.sum(
@@ -403,6 +415,14 @@ class DataPointSeriesArchiveRepository:
                         ),
                     )
                 ).label("flights_climbed_sum"),
+                func.sum(
+                    case(
+                        (
+                            DataPointSeriesArchive.series_type_definition_id == active_time_id,
+                            DataPointSeriesArchive.value,
+                        ),
+                    )
+                ).label("active_time_sum"),
             )
             .join(DataSource, DataPointSeriesArchive.data_source_id == DataSource.id)
             .filter(
@@ -413,6 +433,7 @@ class DataPointSeriesArchiveRepository:
             )
             .group_by(
                 cast(DataPointSeriesArchive.bucket_start_at, Date),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -424,6 +445,7 @@ class DataPointSeriesArchiveRepository:
             aggregates.append(
                 {
                     "activity_date": row.activity_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
                     "steps_sum": int(row.steps_sum) if row.steps_sum else 0,
@@ -436,6 +458,7 @@ class DataPointSeriesArchiveRepository:
                     "flights_climbed_sum": int(row.flights_climbed_sum)
                     if row.flights_climbed_sum is not None
                     else None,
+                    "active_time_minutes": int(row.active_time_sum) if row.active_time_sum is not None else None,
                 }
             )
         return aggregates

@@ -43,10 +43,12 @@ from app.services import ApiKeyDep, user_service
 
 router = APIRouter()
 
+
 @router.get("/users", response_model=list[UserRead])
 def list_users(db: DbSession, _api_key: ApiKeyDep):
     """List all users."""
     return db.query(user_service.crud.model).all()
+
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserRead)
 def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
@@ -65,6 +67,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas import UserCreate, UserCreateInternal
 from app.services.services import AppService
 
+
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=UserRepository, model=User, log=log, **kwargs)
@@ -73,6 +76,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Create user with server-generated id and created_at."""
         internal_creator = UserCreateInternal(**creator.model_dump())
         return super().create(db_session, internal_creator)
+
 
 # Instantiate as singleton
 user_service = UserService(log=getLogger(__name__))
@@ -87,12 +91,14 @@ from sqlalchemy import func
 from app.database import DbSession
 from app.repositories.repositories import CrudRepository
 
+
 class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal]):
     def get_count_in_range(self, db: DbSession, start: datetime, end: datetime) -> int:
         return (
             db.query(func.count(self.model.id))
             .filter(self.model.created_at >= start, self.model.created_at < end)
-            .scalar() or 0
+            .scalar()
+            or 0
         )
 ```
 
@@ -104,6 +110,7 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped, relationship
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, datetime_tz, str_100
+
 
 class User(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
@@ -120,14 +127,17 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     created_at: datetime
     first_name: str | None = None
 
+
 class UserCreate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
+
 
 class UserCreateInternal(UserCreate):
     id: UUID = Field(default_factory=uuid4)
@@ -168,10 +178,7 @@ try:
     process_item(item)
 except Exception as e:
     log_and_capture_error(
-        e,
-        logger,
-        f"Failed to process item {item.id}: {e}",
-        extra={"item_id": item.id, "user_id": user_id}
+        e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id, "error": str(e)}
     )
     continue
 ```
@@ -181,6 +188,34 @@ except Exception as e:
 - ✅ Batch processing where you want to continue despite errors
 - ✅ Multi-provider sync where one provider failure shouldn't stop others
 - ❌ Don't use if exception is re-raised or allowed to propagate naturally
+
+### Logging
+
+**Default rule:** Use `log_structured` instead of raw `logger.info/warning/error/...`. Structured logs are emitted as single-line JSON, making them queryable by attribute (`@user_id:...`, `@action:...`) in Railway, GCP, Vercel, etc. This is the established standard in the codebase - prefer it even when editing an existing file that still uses the raw logger.
+
+```python
+from app.utils.structured_logging import log_structured
+
+# DON'T - unstructured, not queryable by attribute
+self.logger.warning(f"Failed to save {key} sample for user {user_id} at {recorded_at}: {e}")
+
+# DO - structured, queryable
+log_structured(
+    self.logger,
+    "warning",
+    "Failed to save activity sample",
+    provider=self.provider_name,
+    action="save_activity_sample_failed",
+    user_id=str(user_id),
+    series=key,
+    recorded_at=recorded_at,
+    error=str(e),
+)
+```
+
+- Pass the message as a stable, human-readable string and put the variable parts in `**attributes` (don't f-string them into the message).
+- `trace_id` is injected automatically from context when not supplied.
+- For handled exceptions in background tasks you still want in Sentry, use `log_and_capture_error` (see above) rather than plain `logger.error`. Keep its `message` stable there too and pass variables via `extra` - note that `extra` becomes Sentry event context, not queryable log attributes.
 
 ### Provider Strategy Pattern
 
@@ -200,11 +235,24 @@ class GarminStrategy(BaseProviderStrategy):
 
 ## Database Migrations
 
+Schema changes use Alembic:
+
 ```bash
 make create_migration m="Add user table"  # Create
 make migrate                               # Apply
 make downgrade                             # Rollback
 ```
+
+### Data migrations
+
+One-off data corrections, backfills, or clean-ups that can't be expressed as a
+zero-downtime Alembic migration live in `scripts/data_migrations/`. Each must be
+idempotent and support a `--dry-run` flag, and its **module docstring is the source
+of truth** for the rationale (the problem it fixes, what it changes, and any details
+such as conflict handling) — put it there, not in the docs.
+
+See `docs/dev-guides/data-migrations.mdx` for how to run them and how they're wired
+into startup.
 
 ## Code Style
 - Line length: 120 characters
@@ -247,11 +295,13 @@ from sqlalchemy.orm import Mapped
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, Unique, datetime_tz, email, OneToMany, ManyToOne, FKUser
 
+
 class User(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     email: Mapped[Unique[email]]
     created_at: Mapped[datetime_tz]
     workouts: Mapped[OneToMany["Workout"]]
+
 
 class Workout(BaseDbModel):
     user_id: Mapped[FKUser]
@@ -272,6 +322,7 @@ Repositories handle **ONLY** database operations. Input/output must be SQLAlchem
 **CRUD repository:**
 ```python
 from app.repositories.repositories import CrudRepository
+
 
 class UserRepository(CrudRepository[User, UserCreate, UserUpdate]):
     def __init__(self, model: type[User]):
@@ -302,9 +353,11 @@ Services contain business logic. They **NEVER** perform database operations dire
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
+
 class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
     def __init__(self, crud_model: type[UserRepository], model: type[User], log: Logger, **kwargs):
         super().__init__(crud_model, model, log, **kwargs)
+
 
 # Mixin pattern for additional functionality
 class ActivityMixin:

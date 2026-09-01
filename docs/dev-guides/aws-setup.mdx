@@ -1,19 +1,26 @@
 ---
 title: "AWS S3 Setup for Apple Health XML Imports"
-description: "Configure AWS S3 and SNS for large Apple Health XML uploads. SNS triggers processing when files land in S3. Covers creating the required AWS resources."
+description: "Configure an S3-compatible bucket (AWS S3 or self-hosted) for large Apple Health XML uploads. Client-driven completion by default, with optional SNS-triggered processing. Covers the required resources."
 keywords: ["aws s3 apple health import", "aws sns health data", "open wearables aws setup", "s3 presigned url health xml"]
 "og:title": "AWS S3 Setup for Apple Health XML Imports | Open Wearables"
-"og:description": "Configure AWS S3 and SNS for large Apple Health XML uploads with presigned URLs. Covers creating required AWS resources."
+"og:description": "Configure an S3-compatible bucket for large Apple Health XML uploads. Client-driven completion by default, optional SNS mode. Covers the required resources."
 "og:url": "https://docs.openwearables.io/dev-guides/aws-setup"
 "og:type": "article"
 "twitter:title": "AWS S3 Setup for Apple Health XML Imports | Open Wearables"
-"twitter:description": "Configure AWS S3 and SNS for large Apple Health XML uploads with presigned URLs. Covers creating required AWS resources."
+"twitter:description": "Configure an S3-compatible bucket for large Apple Health XML uploads. Client-driven completion by default, optional SNS mode. Covers the required resources."
 "twitter:card": "summary_large_image"
 ---
 
 ## Overview
 
-To enable large XML file uploads via presigned URLs, you need to configure AWS S3 and SNS. The frontend handles uploads through presigned URLs, and SNS notifications trigger automatic processing when files land in S3. This guide walks through creating and configuring the required AWS resources.
+Large Apple Health XML exports upload directly to object storage (any S3-compatible bucket: AWS S3 or self-hosted) rather than streaming through the API. How a finished upload starts processing is controlled by `APPLE_XML_UPLOAD_COMPLETION_MODE`:
+
+- **`client` (default)** - the portal finalizes the upload and queues processing itself. You only need an S3 bucket, credentials, and a CORS policy. **The SNS steps (2-5) are not required.**
+- **`sns`** - an S3 bucket event notifies the backend through SNS. This is an AWS-only legacy path; complete every step in this guide.
+
+<Note>
+  If you run the default `client` mode - including any non-AWS S3-compatible deployment - do **Step 1** and **Step 6** and skip the SNS-only steps (2-5). See the [Apple XML Import Guide](/api-reference/guides/apple-xml-import) for the upload flow itself.
+</Note>
 
 ## Prerequisites
 
@@ -52,7 +59,57 @@ aws s3api create-bucket \
 ```
 </Accordion>
 
-## Step 2: Create SNS Topic
+## Configure Bucket CORS (required for portal uploads)
+
+The portal uploads files **directly from the browser** to the bucket, which is a cross-origin
+request. Without a CORS policy the browser blocks the upload, and even a successful `PUT`
+hides the `ETag` the client needs to finalize a multipart upload. This applies to **both**
+completion modes and to any S3-compatible bucket.
+
+Apply a CORS policy that allows your portal's origin to `PUT`/`POST` and exposes the `ETag`
+response header:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://your-portal-domain.com"],
+    "AllowedMethods": ["PUT", "POST"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
+
+<Accordion title="Using AWS CLI">
+```bash
+aws s3api put-bucket-cors \
+  --bucket open-wearables-xml \
+  --cors-configuration file://cors.json
+```
+</Accordion>
+
+<Warning>
+  Replace `https://your-portal-domain.com` with your frontend origin (for local development,
+  `http://localhost:3000`). The `ExposeHeaders: ["ETag"]` entry is mandatory for multipart
+  uploads - without it the client cannot read part ETags and completion fails.
+</Warning>
+
+<Note>
+  **CORS is not an access-control mechanism.** It only relaxes the browser's same-origin rule
+  for reading cross-origin responses; it grants no access to the bucket. Every upload still
+  requires a short-lived, backend-issued **presigned URL**, and the bucket keeps **Block
+  Public Access** on. Scope `AllowedOrigins` to your own portal domain (avoid `*`) as
+  defense in depth, and keep `AllowedMethods` to only `PUT`/`POST`.
+</Note>
+
+<Info>
+  **Steps 2-5 apply only to `sns` completion mode.** Running the default `client` mode? Skip
+  ahead to [Step 6](#step-6-update-environment-variables) - you need the bucket above, its CORS
+  policy, and credentials, but no SNS topic, subscription, or S3 event notification.
+</Info>
+
+## Step 2: Create SNS Topic (SNS mode only)
 
 <Steps>
   <Step title="Open SNS Console">
@@ -91,7 +148,7 @@ aws sns create-topic \
 ```
 </Accordion>
 
-## Step 3: Update SNS Topic Access Policy
+## Step 3: Update SNS Topic Access Policy (SNS mode only)
 
 The SNS topic needs permission to receive publish events from S3.
 
@@ -130,7 +187,7 @@ The SNS topic needs permission to receive publish events from S3.
   Replace `123456789012` with your AWS Account ID, `open-wearables-xml` with your bucket name, and `owear` with your topic name.
 </Warning>
 
-## Step 4: Add S3 Event Notification
+## Step 4: Add S3 Event Notification (SNS mode only)
 
 Configure S3 to send notifications to the SNS topic when files are uploaded.
 
@@ -181,7 +238,7 @@ aws s3api put-bucket-notification-configuration \
 ```
 </Accordion>
 
-## Step 5: Create SNS Subscription
+## Step 5: Create SNS Subscription (SNS mode only)
 
 Create an HTTPS subscription so SNS delivers notifications to your backend.
 
@@ -224,9 +281,37 @@ AWS_REGION=eu-north-1
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 
-# SNS Configuration
+# SNS Configuration (SNS completion mode only)
 AWS_SNS_TOPIC_ARN=arn:aws:sns:eu-north-1:123456789012:owear
 ```
+
+<Warning>
+  **The Celery worker also needs these AWS variables.** The import task runs on the worker and
+  downloads the uploaded XML directly from the bucket (`get_object`), so in a multi-service
+  deployment (Docker Compose, Railway, etc.) the worker service needs the same
+  `AWS_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` (plus any
+  `AWS_ENDPOINT_URL`) as the backend. Without them the task fails with
+  `RuntimeError: S3 client not configured`. This applies in **both** completion modes.
+</Warning>
+
+### Optional: S3-compatible storage and upload tuning
+
+These variables are all optional; their defaults target real AWS S3. Set the endpoint
+variables to run the same upload flow against a self-hosted S3-compatible server, and the
+rest to tune upload behavior.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AWS_ENDPOINT_URL` | _(unset - real AWS)_ | Custom S3-compatible endpoint (e.g. `http://storage:9000`). When set, the shared client factory forces **path-style addressing + SigV4** so presigned and multipart uploads behave consistently across any S3-compatible bucket. Used by every backend-side S3 call. |
+| `AWS_PUBLIC_ENDPOINT_URL` | _(falls back to `AWS_ENDPOINT_URL`)_ | Browser-facing endpoint for presigned POST + multipart part URLs. The backend reaches storage at `AWS_ENDPOINT_URL` (e.g. a Docker service name the browser can't resolve); point this at the port-mapped host instead (e.g. `http://localhost:9000`) to avoid editing `/etc/hosts`. Not needed on real AWS. |
+| `APPLE_XML_UPLOAD_COMPLETION_MODE` | `client` | How a finished upload triggers import: `client` dispatches from the `/complete` call (any S3-compatible bucket); `sns` waits for an S3 bucket event via SNS (AWS only, as configured above). Only the selected mode dispatches, so a file is never processed twice. |
+| `APPLE_XML_MAX_FILE_SIZE_BYTES` | `5368709120` (5 GiB) | Product-level upload cap (accepts 5 MiB - 5 TiB). The portal mirrors this default for client-side validation. |
+| `APPLE_XML_MULTIPART_PART_SIZE_BYTES` | `104857600` (100 MiB) | Recommended browser chunk size returned by the multipart `create` call (accepts 5 MiB - 5 GiB). Clients should use the returned `part_size`, not hard-code it. |
+
+<Note>
+  Browser uploads also require the bucket [CORS policy](#configure-bucket-cors-required-for-portal-uploads)
+  configured above.
+</Note>
 
 <Accordion title="How to Get AWS Credentials">
 ### Create IAM User with S3 and SNS Permissions
@@ -238,7 +323,7 @@ AWS_SNS_TOPIC_ARN=arn:aws:sns:eu-north-1:123456789012:owear
 5. Click **Next: Permissions**
 6. Attach policies:
    - `AmazonS3FullAccess` (or create a custom policy with specific bucket access)
-   - `AmazonSNSFullAccess` (or create a custom policy with specific topic access)
+   - `AmazonSNSFullAccess` (SNS mode only, or create a custom policy with specific topic access). A custom SNS policy **must include `SNS:ConfirmSubscription`** - the backend calls it to confirm the HTTPS subscription; without it the subscription stays on "Pending confirmation".
 7. Click through to create the user
 8. **Copy** the **Access key ID** and **Secret access key** immediately (you won't see the secret again)
 
@@ -262,28 +347,22 @@ docker compose up -d
 Test your configuration:
 
 <Steps>
-  <Step title="Check SNS Subscription">
+  <Step title="Check SNS Subscription (SNS mode only)">
     In the SNS console, verify your subscription status is **Confirmed**.
   </Step>
 
   <Step title="Test Upload">
-    Try uploading a small XML file using the presigned URL endpoint. The frontend handles this automatically, or you can use the upload script for manual testing:
-    
-    ```bash
-    python upload_xml.py test-export.xml
-    ```
-    
-    See the [Apple XML Import Guide](/api-reference/guides/apple-xml-import) for details.
+    Upload a small XML file through the portal, or use the multipart upload script for manual testing. See the [Apple XML Import Guide](/api-reference/guides/apple-xml-import) for the flow and example scripts.
   </Step>
 
   <Step title="Check Backend Logs">
-    After uploading, check the backend logs for SNS notification processing:
+    After uploading, check the backend logs for processing:
     
     ```bash
     docker compose logs -f app
     ```
     
-    You should see logs about dispatching `process_aws_upload` tasks.
+    You should see logs about dispatching `process_aws_upload` tasks - in `client` mode these are queued from the `/complete` call, in `sns` mode from the incoming SNS notification.
   </Step>
 </Steps>
 
@@ -294,11 +373,13 @@ Test your configuration:
     **Possible causes:**
     - Backend is not publicly accessible
     - Endpoint URL is incorrect
+    - IAM user is missing `SNS:ConfirmSubscription` (common if the user was set up before the SQS→SNS migration and only has `AmazonSQSFullAccess`)
     - Backend returned an error during confirmation
     
     **Fix:**
     - Verify your backend is reachable from the internet
     - Check the endpoint URL matches `/api/v1/sns/notification`
+    - Ensure the IAM user has `SNS:ConfirmSubscription` (attach `AmazonSNSFullAccess` or add it to your custom policy)
     - Check backend logs for confirmation errors
     - Delete the subscription and create a new one
   </Accordion>
@@ -325,6 +406,22 @@ Test your configuration:
     - Verify IAM user has S3 and SNS permissions
     - Double-check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
     - Ensure `AWS_REGION` matches where your bucket and topic are located
+  </Accordion>
+
+  <Accordion title="Import fails with 'S3 client not configured'">
+    **Cause:** the Celery **worker** service is missing AWS credentials. The import task runs on the worker and reads the file from the bucket, so the worker needs its own AWS configuration - not just the backend/API container.
+
+    **Fix:**
+    - Set `AWS_BUCKET_NAME`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` (plus any `AWS_ENDPOINT_URL`) on the **worker** service, then restart it
+    - In Docker Compose, confirm the worker service loads the same env file as the backend
+  </Accordion>
+
+  <Accordion title="Browser upload fails with 'Load Failed' or a CORS error">
+    **Cause:** the bucket has no CORS policy, or it does not expose the `ETag` header. Direct-from-browser uploads are cross-origin, so the preflight is rejected (or the client cannot read part ETags to complete a multipart upload).
+
+    **Fix:**
+    - Apply the [bucket CORS policy](#configure-bucket-cors-required-for-portal-uploads): allow your portal origin with `PUT`/`POST` and set `ExposeHeaders: ["ETag"]`
+    - Confirm `AllowedOrigins` matches the exact scheme + host + port the portal is served from
   </Accordion>
 </AccordionGroup>
 

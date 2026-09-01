@@ -72,6 +72,32 @@ keywords: ["android health connect troubleshooting", "health connect permissions
        ```
   </Accordion>
 
+  <Accordion title="Samsung Health permissions never appear on a release build (Could not get policy)">
+    **Symptoms:** The Samsung permission dialog shows in development but not on your production/release build. Logs contain:
+
+    ```text
+    java.lang.IllegalStateException: Could not get policy for {your.package.name}
+    ```
+
+    **Cause:** Samsung has not matched your app - either the partnership request is not yet approved, or the running build's package name or signing certificate does not match what Samsung registered.
+
+    **Solutions:**
+
+    1. **Confirm partnership status:**
+       Check your partnership request in the Samsung Developer dashboard. Production access requires explicit approval.
+
+    2. **Verify the signing certificate:**
+       The fingerprint you registered must match the certificate that **actually** signs the build. If you use Play App Signing, that is the Google-held app signing key (Play Console → `Setup → App integrity → App signing`), **not** your upload key.
+
+    3. **Check the package name:**
+       The `applicationId` you shipped must match the package name registered with Samsung exactly.
+
+    4. **Contact Samsung Developer Support:**
+       If everything looks correct, ask them to confirm the allowlist entry is active.
+
+    See [Samsung Health Production Requirements](/sdk/android/integration#samsung-health-production-requirements) for the full production flow.
+  </Accordion>
+
   <Accordion title="Background sync not working">
     **Symptoms:** Data only syncs when the app is in the foreground.
 

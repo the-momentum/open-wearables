@@ -10,9 +10,10 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource
@@ -548,53 +549,14 @@ class TestDataPointSeriesRepository:
         assert result[1] == 2  # Yesterday
         assert result[2] == 3  # Today
 
-    def test_get_count_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test aggregating data point counts by series type."""
-        # Arrange
-        user = UserFactory()
-        mapping = DataSourceFactory(user=user)
-        now = datetime.now(timezone.utc)
-
-        # Create heart rate samples
-        for i in range(3):
-            sample = TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source="apple",
-                device_model="device1",
-                data_source_id=mapping.id,
-                recorded_at=now + timedelta(seconds=i),
-                value=72,
-                series_type=SeriesType.heart_rate,
-            )
-            series_repo.create(db, sample)
-
-        # Create steps samples
-        for i in range(2):
-            sample = TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source="apple",
-                device_model="device1",
-                data_source_id=mapping.id,
-                recorded_at=now + timedelta(seconds=i),
-                value=10000,
-                series_type=SeriesType.steps,
-            )
-            series_repo.create(db, sample)
-
+    def test_get_approximate_total_count(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """The reltuples-based approximate count should return a non-negative integer."""
         # Act
-        results = series_repo.get_count_by_series_type(db)
+        result = series_repo.get_approximate_total_count(db)
 
         # Assert
-        counts_dict = dict(results)
-        from app.schemas.enums import get_series_type_id
-
-        hr_type_id = get_series_type_id(SeriesType.heart_rate)
-        steps_type_id = get_series_type_id(SeriesType.steps)
-
-        assert counts_dict.get(hr_type_id, 0) >= 3
-        assert counts_dict.get(steps_type_id, 0) >= 2
+        assert isinstance(result, int)
+        assert result >= 0
 
     def test_get_count_by_source(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test aggregating data point counts by source."""
@@ -688,3 +650,255 @@ class TestDataPointSeriesRepository:
         assert total_count == 2
         for _, data_source in results:
             assert data_source.user_id == user1.id
+
+    def test_bulk_create_reports_inserted_then_updated(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """bulk_create returns WriteCounts splitting new rows from in-place updates."""
+        user = UserFactory()
+        ts = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+        def sample(value: int) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="oura",
+                recorded_at=ts,
+                value=value,
+                series_type=SeriesType.steps,
+            )
+
+        # First write of this (data_source, series_type, recorded_at) → insert.
+        first = series_repo.bulk_create(db, [sample(1000)])
+        assert (first.inserted, first.updated) == (1, 0)
+        assert int(first) == 1
+
+        # Same key again → ON CONFLICT DO UPDATE → counted as an update, not a new row.
+        second = series_repo.bulk_create(db, [sample(2000)])
+        assert (second.inserted, second.updated) == (0, 1)
+        assert int(second) == 1
+
+    def test_bulk_create_empty_returns_zero_counts(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """An empty batch writes nothing and reports zero inserted/updated."""
+        counts = series_repo.bulk_create(db, [])
+        assert (counts.inserted, counts.updated) == (0, 0)
+        assert int(counts) == 0
+
+    def test_bulk_create_large_batch(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """A large batch inserts every row correctly in one call.
+
+        _insert_data_points writes via COPY, which has no per-statement bind-param
+        limit (unlike the old INSERT ... VALUES (...) it replaced), so this isn't
+        chasing a specific size threshold - just a sanity check that dedup/counting
+        stay correct at a scale well beyond the handful of rows other tests use.
+        """
+        user = UserFactory()
+        base = datetime(2099, 1, 1, tzinfo=timezone.utc)
+        n = 10_000
+        samples = [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                recorded_at=base + timedelta(seconds=15 * i),
+                value=60 + (i % 40),
+                series_type=SeriesType.heart_rate,
+            )
+            for i in range(n)
+        ]
+
+        counts = series_repo.bulk_create(db, samples)
+        assert counts.inserted == n
+
+    def test_bulk_create_skips_rewriting_unchanged_duplicates(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Re-writing an identical row must not physically touch it (verified via xmin)."""
+        # Arrange
+        user = UserFactory()
+        ts = datetime(2099, 1, 1, tzinfo=timezone.utc)
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            recorded_at=ts,
+            value=42,
+            series_type=SeriesType.steps,
+            data_source_id=None,
+        )
+
+        # Act
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+        row_id = db.query(DataPointSeries.id).filter(DataPointSeries.recorded_at == ts).one()[0]
+        xmin_before = db.execute(text("SELECT xmin FROM data_point_series WHERE id = :id"), {"id": row_id}).scalar()
+
+        # Re-send the exact same row: same value, same everything -> conflicts, but
+        # nothing actually differs.
+        counts = series_repo.bulk_create(db, [sample])
+        db.commit()
+        xmin_after = db.execute(text("SELECT xmin FROM data_point_series WHERE id = :id"), {"id": row_id}).scalar()
+
+        # Assert
+        assert counts.updated == 1  # still reported as a conflict, per WriteCounts' contract
+        assert xmin_after == xmin_before  # but Postgres never actually rewrote the row
+
+    def test_bulk_create_still_updates_when_value_actually_changes(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """The no-op skip must not swallow genuine changes - only true duplicates."""
+        # Arrange
+        user = UserFactory()
+        ts = datetime(2099, 1, 2, tzinfo=timezone.utc)
+
+        def sample(value: int) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="oura",
+                recorded_at=ts,
+                value=value,
+                series_type=SeriesType.steps,
+                data_source_id=None,
+            )
+
+        # Act
+        series_repo.bulk_create(db, [sample(1000)])
+        db.commit()
+
+        series_repo.bulk_create(db, [sample(2000)])
+        db.commit()
+
+        # Assert
+        stored = db.query(DataPointSeries.value).filter(DataPointSeries.recorded_at == ts).scalar()
+        assert stored == 2000
+
+    def test_bulk_create_null_fields_round_trip_through_copy(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """external_id/zone_offset/is_daily_total=None must survive COPY, not become
+        placeholder strings or fail to load - COPY has different NULL-encoding rules
+        than a parameterized query, so this is worth checking explicitly.
+        """
+        # Arrange
+        user = UserFactory()
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            recorded_at=datetime(2099, 1, 3, tzinfo=timezone.utc),
+            value=Decimal("1.5"),
+            series_type=SeriesType.steps,
+            external_id=None,
+            zone_offset=None,
+            is_daily_total=None,
+            data_source_id=None,
+        )
+
+        # Act
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        # Assert
+        stored = db.query(DataPointSeries).filter(DataPointSeries.id == sample.id).one()
+        assert stored.external_id is None
+        assert stored.zone_offset is None
+        assert stored.is_daily_total is None
+        assert stored.value == Decimal("1.5")
+
+    # ------------------------------------------------------------------
+    # get_daily_activity_aggregates — prefer-daily-total-else-sum logic
+    # ------------------------------------------------------------------
+
+    def _steps(
+        self,
+        user_id: UUID,
+        source: str,
+        device_model: str | None,
+        recorded_at: datetime,
+        value: int,
+        is_daily_total: bool | None,
+    ) -> TimeSeriesSampleCreate:
+        return TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            source=source,
+            device_model=device_model,
+            recorded_at=recorded_at,
+            zone_offset="+00:00",
+            value=value,
+            series_type=SeriesType.steps,
+            is_daily_total=is_daily_total,
+        )
+
+    def test_aggregate_prefers_daily_total_over_intraday(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """When a daily total exists it wins; its own intraday samples are not added."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [self._steps(user.id, "garmin", "fenix", day, 10000, True)]
+        samples += [
+            self._steps(user.id, "garmin", "fenix", day + timedelta(hours=h), v, False)
+            for h, v in [(1, 4000), (2, 3000), (3, 2500)]
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 10000  # daily total, NOT 10000 + 9500
+
+    def test_aggregate_sums_samples_when_no_daily_total(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """With no daily total, fall back to summing the intraday samples."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=h), v, False)
+            for h, v in [(1, 4000), (2, 3000), (3, 2500)]
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 9500
+
+    def test_aggregate_treats_null_is_daily_total_as_sample(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Legacy rows (is_daily_total=None) are summed like samples."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=h), v, None) for h, v in [(1, 100), (2, 200)]
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        assert result[0]["steps_sum"] == 300
+
+    def test_aggregate_prefers_daily_per_source(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """Prefer-daily is per source: a Garmin daily total and Apple intraday combine across sources."""
+        user = UserFactory()
+        day = datetime(2026, 6, 20, tzinfo=timezone.utc)
+        samples = [
+            self._steps(user.id, "garmin", "fenix", day, 10000, True),
+            self._steps(user.id, "garmin", "fenix", day + timedelta(hours=1), 9000, False),  # ignored (daily wins)
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=2), 3000, False),
+            self._steps(user.id, "apple", "watch", day + timedelta(hours=3), 5000, False),
+        ]
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        result = series_repo.get_daily_activity_aggregates(db, user.id, day, day + timedelta(days=1))
+
+        by_source = {r["source"]: r["steps_sum"] for r in result}
+        assert by_source["garmin"] == 10000
+        assert by_source["apple"] == 8000

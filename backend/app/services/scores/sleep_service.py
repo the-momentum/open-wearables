@@ -10,7 +10,7 @@ four-pillar algorithm (duration, stages, consistency, interruptions):
 
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
@@ -20,7 +20,8 @@ from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_repository import EventRecordRepository
-from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.model_crud.activities import EventRecordQueryParams, HealthScoreCreate, ScoreComponent
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 from app.utils.structured_logging import log_structured
@@ -166,7 +167,7 @@ class SleepScoreService:
             (record, detail)
             for record, _ in records
             if self._apply_zone_offset(record.start_datetime, record.zone_offset).date() == sleep_date
-            and isinstance((detail := record.detail), SleepDetails)
+            and (detail := record.sleep_detail) is not None
             and not detail.is_nap
         ]
 
@@ -203,7 +204,7 @@ class SleepScoreService:
         seen_nights: set[date] = set()
         historical_bedtimes: list[datetime] = []
         for r, _ in hist_records:
-            if isinstance(r.detail, SleepDetails) and not r.detail.is_nap:
+            if r.sleep_detail and not r.sleep_detail.is_nap:
                 local_start = self._apply_zone_offset(r.start_datetime, r.zone_offset)
                 night = local_start.date()
                 if night not in seen_nights:
@@ -225,6 +226,50 @@ class SleepScoreService:
             historical_bedtimes=historical_bedtimes,
             sleep_stages=sleep_stages,
         )
+
+    def build_internal_sleep_scores(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        sessions: list[tuple[UUID, UUID, datetime]],
+    ) -> list[HealthScoreCreate]:
+        """Score sessions given as (record_id, data_source_id, local_end) and build the rows.
+
+        Shared by both writers — fill_missing_sleep_scores and the recompute after a
+        sleep merge — so they cannot drift apart again. recorded_at is the session's
+        local wake time, which is what the unique constraint keys on: a second
+        convention would add a duplicate score rather than replace the existing one.
+        """
+        if not sessions:
+            return []
+
+        session_by_record = {record_id: (ds_id, local_end) for record_id, ds_id, local_end in sessions}
+        scores = self.get_sleep_scores_for_records(
+            db_session, user_id, [(record_id, local_end.date()) for record_id, _, local_end in sessions]
+        )
+
+        creators = []
+        for (record_id, _), result in scores.items():
+            data_source_id, local_end = session_by_record[record_id]
+            creators.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    data_source_id=data_source_id,
+                    provider=ProviderName.INTERNAL,
+                    category=HealthScoreCategory.SLEEP,
+                    value=result.overall_score,
+                    event_record_id=record_id,
+                    recorded_at=local_end.replace(tzinfo=timezone.utc),
+                    components={
+                        "duration": ScoreComponent(value=result.breakdown.duration.score),
+                        "stages": ScoreComponent(value=result.breakdown.stages.score),
+                        "consistency": ScoreComponent(value=result.breakdown.consistency.score),
+                        "interruptions": ScoreComponent(value=result.breakdown.interruptions.score),
+                    },
+                )
+            )
+        return creators
 
     def get_sleep_scores_for_records(
         self,
@@ -277,7 +322,7 @@ class SleepScoreService:
         target_by_id: dict[UUID, tuple[EventRecord, SleepDetails]] = {}
 
         for record, _ in all_records:
-            if isinstance((detail := record.detail), SleepDetails) and not detail.is_nap:
+            if (detail := record.sleep_detail) is not None and not detail.is_nap:
                 local_start = self._apply_zone_offset(record.start_datetime, record.zone_offset)
                 all_sessions_asc.append((local_start.date(), record, detail))
                 if record.id in target_ids:
@@ -386,7 +431,7 @@ class SleepScoreService:
         # Build a per-night index keeping the longest non-nap session per calendar date.
         sessions_by_date: dict[date, tuple[EventRecord, SleepDetails]] = {}
         for record, _ in all_records:
-            if isinstance((detail := record.detail), SleepDetails) and not detail.is_nap:
+            if (detail := record.sleep_detail) is not None and not detail.is_nap:
                 local_start = self._apply_zone_offset(record.start_datetime, record.zone_offset)
                 night = local_start.date()
                 existing = sessions_by_date.get(night)

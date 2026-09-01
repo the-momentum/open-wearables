@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services.exceptions import AuthenticationError, ConfigurationError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class OpenWearablesClient:
             from app.config import Settings
 
             env_file = Settings.model_config.get("env_file")
-            raise ValueError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
+            raise ConfigurationError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
 
     @property
     def headers(self) -> dict[str, str]:
@@ -49,9 +50,9 @@ class OpenWearablesClient:
             )
 
             if response.status_code == 401:
-                raise ValueError("Invalid API key. Check your OPEN_WEARABLES_API_KEY configuration.")
+                raise AuthenticationError("Invalid API key. Check your OPEN_WEARABLES_API_KEY configuration.")
             if response.status_code == 404:
-                raise ValueError(f"Resource not found: {path}")
+                raise NotFoundError(f"Resource not found: {path}")
 
             response.raise_for_status()
             return response.json()
@@ -202,6 +203,36 @@ class OpenWearablesClient:
         if cursor:
             params["cursor"] = cursor
         return await self._request("GET", f"/api/v1/users/{user_id}/timeseries", params=params)
+
+    async def get_menstrual_cycles(
+        self,
+        user_id: str,
+        start_date: str,
+        end_date: str,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get menstrual cycle records for a user within a date range.
+
+        Args:
+            user_id: UUID of the user
+            start_date: Start date (YYYY-MM-DD format)
+            end_date: End date (YYYY-MM-DD format)
+            limit: Page size (1-100)
+            cursor: Opaque pagination cursor returned by a previous call
+
+        Returns:
+            Paginated response with menstrual cycle records
+        """
+        params: dict[str, Any] = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": limit,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        return await self._request("GET", f"/api/v1/users/{user_id}/events/menstrual-cycles", params=params)
 
 
 # Singleton instance

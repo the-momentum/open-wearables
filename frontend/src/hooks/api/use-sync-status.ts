@@ -113,6 +113,7 @@ export function useSyncStatusStream(
       'failed',
       'partial',
       'cancelled',
+      'skipped',
     ]);
 
     const handleEvent = (evt: SyncStatusEvent) => {
@@ -133,6 +134,15 @@ export function useSyncStatusStream(
       // Invalidate sync data queries so UI refreshes after sync completes
       if (isTerminal) {
         queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus.all });
+        if (evt.source === 'xml_import') {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.users.detail(userId),
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.health.all,
+            refetchType: 'active',
+          });
+        }
       }
       // Invalidate connections whenever a sync starts — a new provider may
       // have just been paired, so the connections list should refresh.

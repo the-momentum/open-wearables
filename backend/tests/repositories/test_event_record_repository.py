@@ -394,54 +394,6 @@ class TestEventRecordRepository:
         assert result_events[1].id == event3.id  # 3600
         assert result_events[2].id == event1.id  # 7200
 
-    def test_get_count_by_workout_type(self, db: Session, event_repo: EventRecordRepository) -> None:
-        """Test aggregating workout counts by type."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-        EventRecordFactory(mapping=mapping, category="sleep", type_="deep")  # Should be excluded
-
-        # Act
-        results = event_repo.get_count_by_workout_type(db)
-
-        # Assert
-        # Convert to dict for easier testing
-        counts_dict = dict(results)
-        assert counts_dict.get("running", 0) >= 3
-        assert counts_dict.get("cycling", 0) >= 2
-        # Sleep should not be included
-        assert "deep" not in counts_dict or counts_dict["deep"] == 0
-
-    def test_get_count_by_workout_type_ordered(self, db: Session, event_repo: EventRecordRepository) -> None:
-        """Test that workout type counts are ordered by count descending."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        # Create more running than cycling workouts
-        for _ in range(5):
-            EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        for _ in range(2):
-            EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-
-        # Act
-        results = event_repo.get_count_by_workout_type(db)
-
-        # Assert
-        # Find our test types
-        test_types = [
-            (workout_type, count) for workout_type, count in results if workout_type in ["running", "cycling"]
-        ]
-        assert len(test_types) >= 2
-        # Running should come first (higher count)
-        running_idx = next(i for i, (t, _) in enumerate(test_types) if t == "running")
-        cycling_idx = next(i for i, (t, _) in enumerate(test_types) if t == "cycling")
-        assert running_idx < cycling_idx
-
     def test_get_records_filters_by_user_id(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that records are filtered by user ID."""
         # Arrange

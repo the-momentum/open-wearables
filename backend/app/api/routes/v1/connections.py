@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response, status
 from app.database import DbSession
 from app.models import ProviderSetting
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas.auth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.user_management import UserConnectionWithCapabilities
 from app.services import ApiKeyDep, user_connection_service
@@ -26,17 +26,20 @@ def _with_capabilities(
     with contextlib.suppress(ValueError):
         strategy = factory.get_provider(enriched.provider)
         caps = strategy.capabilities
+        enriched.icon_url = strategy.icon_url
         enriched.max_historical_days = caps.max_historical_days
         enriched.rest_pull = caps.rest_pull
         enriched.webhook_stream = caps.webhook_stream
         enriched.webhook_ping = caps.webhook_ping
         enriched.webhook_callback = caps.webhook_callback
         setting = settings_map.get(enriched.provider)
-        enriched.live_sync_mode = (
+        mode = (
             setting.live_sync_mode
             if (setting and setting.live_sync_mode is not None)
             else strategy.default_live_sync_mode
         )
+        # ORM yields a plain str and attribute assignment skips validation; coerce to the enum
+        enriched.live_sync_mode = LiveSyncMode(mode) if mode is not None else None
     if linked_user_ids:
         enriched.linked_user_ids = linked_user_ids
     return enriched
@@ -77,4 +80,17 @@ def disconnect_provider_endpoint(
     """Disconnect a user from a provider, revoking the connection and clearing tokens."""
     strategy = ProviderFactory().get_provider(provider.value)
     user_connection_service.disconnect(db, user_id, provider.value, oauth=strategy.oauth)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/users/{user_id}/connections/{provider}/data")
+def delete_provider_data_endpoint(
+    user_id: UUID,
+    provider: ProviderName,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> Response:
+    """Delete all of a user's data for a provider and revoke the connection."""
+    strategy = ProviderFactory().get_provider(provider.value)
+    user_connection_service.purge_provider_data(db, user_id, provider.value, oauth=strategy.oauth)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

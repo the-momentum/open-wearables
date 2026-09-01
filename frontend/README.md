@@ -1,11 +1,11 @@
 # Open Wearables Platform - Frontend
 
-Modern web application built with TanStack Start for the Open Wearables Platform - a unified API for health data aggregation and automation.
+Modern web application built with TanStack Start for the Open Wearables Platform—a unified API for health data aggregation and automation.
 
 ## Tech Stack
 
 - **Framework**: TanStack Start (React 19)
-- **Language**: TypeScript 5.7
+- **Language**: TypeScript 7
 - **Styling**: Tailwind CSS 4.0
 - **UI Components**: shadcn/ui
 - **Data Fetching**: TanStack Query
@@ -31,17 +31,18 @@ src/
 ├── components/
 │   ├── ui/              # shadcn/ui components
 │   ├── layout/          # Layout components (Sidebar, etc.)
-│   └── features/        # Feature-specific components
+│   ├── common/          # Shared loading, errors, and pagination
+│   ├── user/            # User detail sections
+│   ├── users/           # User-list components
+│   └── webhooks/        # Outgoing webhook components
 ├── routes/
 │   ├── __root.tsx       # Root layout with providers
 │   ├── index.tsx        # Home (redirects to /login)
 │   ├── login.tsx        # Login page
-│   └── _authenticated/  # Protected routes
-│       ├── dashboard.tsx
-│       └── users.tsx
-├── lib/
-│   └── utils.ts         # Utility functions
-├── hooks/               # Custom React hooks
+│   ├── _authenticated.tsx # Protected layout and route guard
+│   └── _authenticated/  # Dashboard, users, syncs, and settings
+├── lib/                 # API client, auth, query keys, and utilities
+├── hooks/               # React Query and application hooks
 └── styles.css           # Global styles and design tokens
 ```
 
@@ -49,8 +50,8 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or pnpm
+- Node.js 22+
+- pnpm
 
 ### Installation
 
@@ -58,7 +59,7 @@ src/
 2. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 3. Copy environment variables:
@@ -70,17 +71,17 @@ cp .env.example .env
 4. Start the development server:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 The app will be available at http://localhost:3000
 
 ## Available Scripts
 
-- `npm run dev` - Start development server on port 3000
-- `npm run build` - Build for production
-- `npm run serve` - Preview production build
-- `npm test` - Run tests with Vitest
+- `pnpm dev` - Start development server on port 3000
+- `pnpm build` - Build for production
+- `pnpm serve` - Preview production build
+- `pnpm test` - Run tests with Vitest
 
 ## Environment Variables
 
@@ -96,11 +97,12 @@ VITE_API_URL=http://localhost:8000  # Backend API URL
 
 The application uses a custom color palette defined in `src/styles.css`:
 
-- **Primary**: Blue (#3B82F6) - Main brand color
-- **Secondary**: Teal (#14B8A6) - Accent color
-- **Success**: Green - Success states
-- **Warning**: Orange - Warning states
-- **Destructive**: Red - Error states
+- **Primary**: Electric cyan (`#00E5FF`) — Main brand color
+- **Secondary**: Neon magenta (`#FF33AA`) — Secondary actions
+- **Accent**: Electric purple (`#9933FF`) — Highlights
+- **Success**: Neon green — Success states
+- **Warning**: Neon yellow — Warning states
+- **Destructive**: Neon red — Error states
 
 ### Dark Mode
 
@@ -115,8 +117,10 @@ TanStack Start uses file-based routing:
 - `/_authenticated/*` - Protected routes (requires authentication)
   - `/dashboard` - Main dashboard
   - `/users` - User management
-  - `/health-insights` - Health automations
-  - `/credentials` - API credentials
+  - `/webhooks` - Outgoing webhook management
+  - `/syncs` - Synchronization status
+  - `/coverage` - Provider data coverage
+  - `/settings` - Providers, credentials, applications, and account settings
 
 ## Components
 
@@ -128,11 +132,7 @@ Installed components:
 - Card
 - Input
 - Label
-- Form
-- Select
-- Textarea
 - Badge
-- Avatar
 - Separator
 - Sonner (Toast)
 - Table
@@ -144,12 +144,12 @@ Installed components:
 To add more components:
 
 ```bash
-npx shadcn@latest add [component-name]
+pnpm dlx shadcn@latest add [component-name]
 ```
 
 ### Layout Components
 
-- **AppSidebar**: Main navigation sidebar
+- **SimpleSidebar**: Main navigation sidebar
 - **AuthenticatedLayout**: Layout wrapper for protected routes
 
 ## State Management
@@ -160,56 +160,54 @@ npx shadcn@latest add [component-name]
 
 ## API Integration
 
-API calls should be made using TanStack Query for optimal caching and state management:
+API calls go through the service layer in `src/lib/api`, wrapped in TanStack Query hooks:
 
 ```typescript
 import { useQuery } from '@tanstack/react-query';
+import { usersService } from '@/lib/api';
+import { queryKeys } from '@/lib/query/keys';
 
 function useUsers() {
   return useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/users`);
-      return response.json();
-    },
+    queryKey: queryKeys.users.list(),
+    queryFn: () => usersService.getAll(),
   });
 }
 ```
 
+The services use the shared API client (`src/lib/api/client.ts`), which attaches the auth token, retries `5xx` server errors, and resolves the backend URL at runtime via `resolveApiUrl()` (`src/lib/api/runtime-config.ts`) from the `VITE_API_URL` environment variable. Do not read `import.meta.env.VITE_API_URL` directly in application code—that inlines the value at build time and breaks runtime configuration.
+
 ## Authentication
 
-Authentication is scaffolded but needs to be connected to the backend:
-
-1. Update `/src/routes/login.tsx` to call the actual auth API
-2. Implement session management
-3. Add route protection in `/_authenticated` layout
+Authentication is implemented: the login page calls the backend auth API through the `useAuth` hook, sessions use bearer tokens attached by the shared API client, and routes under `/_authenticated` are protected by the layout.
 
 ## Testing
 
 Tests are set up with Vitest and React Testing Library:
 
 ```bash
-npm test
+pnpm test
 ```
 
 ## Building for Production
 
 ```bash
-npm run build
+pnpm build
 ```
 
-This creates an optimized production build in the `dist/` directory.
+This produces a Nitro server build in the `.output/` directory. Run it with:
+
+```bash
+node .output/server/index.mjs
+```
+
+The server listens on port 3000 and serves both the SSR frontend and its static assets.
 
 ## Deployment
 
-The application can be deployed to:
+The frontend is a server-rendered Node.js application, not a static site. Deploy it either as the published Docker image (`themomentum/open-wearables-frontend`) or on any Node.js host running `.output/server/index.mjs`.
 
-- Vercel
-- Netlify
-- Cloudflare Pages
-- Any Node.js hosting platform
-
-Set the build command to `npm run build` and the output directory to `dist`.
+The backend API URL is read from the `VITE_API_URL` environment variable at runtime, so the same build works against any backend. See [Deploying with Docker](https://openwearables.io/docs/deployment/docker) for details.
 
 ## Contributing
 
@@ -221,7 +219,7 @@ Set the build command to `npm run build` and the output directory to `dist`.
 ## Code Style
 
 - Use TypeScript strict mode
-- Follow ESLint rules
+- Follow Oxlint rules
 - Use Prettier for formatting
 - Components should be functional with hooks
 - Prefer composition over inheritance

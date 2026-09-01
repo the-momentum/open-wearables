@@ -1,4 +1,5 @@
 import type { ActivitySummary } from '@/lib/api/types';
+import { providerLabel } from '@/components/common/source-badge';
 import { formatDistance, formatMinutes, formatNumber } from './format';
 
 /**
@@ -195,7 +196,8 @@ const ACTIVITY_FIELD_DEFINITIONS: ActivityFieldDefinition[] = [
   {
     key: 'source',
     label: 'Source',
-    getValue: (s) => s.source?.provider || null,
+    getValue: (s) =>
+      s.source?.provider ? providerLabel(s.source.provider) : null,
   },
 ];
 

@@ -38,6 +38,7 @@ def _ts_payload(event_type: str, series_type: str, provider: str, unit: str, sam
                     "value": sample_value,
                     "unit": unit,
                     "source": source,
+                    "is_daily_total": None,
                 }
             ],
         },
@@ -55,6 +56,16 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "provider": "garmin",
             "connection_id": _CONNECTION_ID,
             "connected_at": "2024-01-01T08:00:00+00:00",
+        },
+    },
+    WebhookEventType.CONNECTION_REVOKED: {
+        "type": WebhookEventType.CONNECTION_REVOKED,
+        "data": {
+            "user_id": _USER_ID,
+            "provider": "garmin",
+            "connection_id": _CONNECTION_ID,
+            "reason": "refresh_failed",
+            "revoked_at": "2024-01-01T08:00:00+00:00",
         },
     },
     # ------------------------------------------------------------------
@@ -285,6 +296,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_ENERGY: _ts_payload(WebhookEventType.SERIES_ENERGY, "energy", "garmin", "kcal", 320.0),
     WebhookEventType.SERIES_BASAL_ENERGY: _ts_payload(
         WebhookEventType.SERIES_BASAL_ENERGY, "basal_energy", "apple", "kcal", 1850.0
+    ),
+    WebhookEventType.SERIES_ACTIVE_TIME: _ts_payload(
+        WebhookEventType.SERIES_ACTIVE_TIME, "active_time", "garmin", "minutes", 312.0
     ),
     # Activity basic
     WebhookEventType.SERIES_STAND_TIME: _ts_payload(

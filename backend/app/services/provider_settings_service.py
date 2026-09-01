@@ -36,6 +36,7 @@ class ProviderSettingsService:
                 else strategy.default_live_sync_mode
             ),
             live_sync_configurable=strategy.live_sync_configurable,
+            data_granularity=setting.data_granularity if setting else None,
         )
 
     def get_all_providers(self, db: DbSession) -> list[ProviderSettingRead]:
@@ -68,7 +69,9 @@ class ProviderSettingsService:
         if effective_live_sync_mode is None and (current is None or current.live_sync_mode is None):
             effective_live_sync_mode = strategy.default_live_sync_mode
 
-        setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode)
+        effective_granularity = update.data_granularity or (current.data_granularity if current else None)
+
+        setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode, effective_granularity)
 
         if update.live_sync_mode == LiveSyncMode.WEBHOOK and strategy.capabilities.webhook_registration_api:
             callback_url = f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
@@ -84,6 +87,7 @@ class ProviderSettingsService:
                 setting.live_sync_mode if setting.live_sync_mode is not None else strategy.default_live_sync_mode
             ),
             live_sync_configurable=strategy.live_sync_configurable,
+            data_granularity=setting.data_granularity,
         )
 
     def bulk_update_providers(self, db: DbSession, updates: dict[str, bool]) -> list[ProviderSettingRead]:

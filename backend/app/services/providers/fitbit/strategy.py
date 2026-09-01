@@ -1,4 +1,5 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
+from app.services.providers.fitbit.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.fitbit.oauth import FitbitOAuth
 from app.services.providers.fitbit.workouts import FitbitWorkouts
 
@@ -32,6 +33,15 @@ class FitbitStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         """Base URL for the Fitbit Web API."""
         return "https://api.fitbit.com"
+
+    @property
+    def coverage(self) -> ProviderCoverage:
+        return ProviderCoverage(
+            timeseries=TIMESERIES,
+            workout_fields=WORKOUT_FIELDS,
+            sleep_fields=SLEEP_FIELDS,
+            health_scores=HEALTH_SCORES,
+        )
 
     @property
     def capabilities(self) -> ProviderCapabilities:

@@ -1,4 +1,5 @@
 from .management import (
+    GoogleWebhookSubscription,
     OuraWebhookSubscription,
     PolarWebhookSubscription,
     ProviderWebhookSubscription,
@@ -12,6 +13,7 @@ from .management import (
 )
 
 __all__ = [
+    "GoogleWebhookSubscription",
     "OuraWebhookSubscription",
     "PolarWebhookSubscription",
     "ProviderWebhookSubscription",

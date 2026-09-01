@@ -6,6 +6,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from app.services.api_client import client
+from app.services.exceptions import NotFoundError, OpenWearablesError
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ async def get_timeseries(
                 "first_name": user_data.get("first_name"),
                 "last_name": user_data.get("last_name"),
             }
-        except ValueError as e:
+        except NotFoundError as e:
             return {"error": f"User not found: {user_id}", "details": str(e)}
 
         # Walk cursor pagination until exhausted or safety ceiling hit.
@@ -185,7 +186,7 @@ async def get_timeseries(
             "truncated": truncated,
         }
 
-    except ValueError as e:
+    except OpenWearablesError as e:
         logger.error(f"API error in get_timeseries: {e}")
         return {"error": str(e)}
     except Exception as e:

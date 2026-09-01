@@ -19,6 +19,12 @@ repos:
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
+      - id: generate-coverage-docs
+        name: regenerate coverage docs
+        entry: sh -c 'cd backend && uv run python scripts/generate_coverage_docs.py'
+        language: system
+        files: ^backend/app/(services/providers/.*/coverage\.py|services/providers/base_strategy\.py|api/routes/v1/meta\.py)$
+        pass_filenames: false
 
       - id: prettier-check
         name: prettier check

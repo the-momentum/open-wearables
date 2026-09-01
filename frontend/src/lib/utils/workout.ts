@@ -1,16 +1,12 @@
 import { format } from 'date-fns';
 import type { EventRecordResponse } from '@/lib/api/types';
+import { providerLabel } from '@/components/common/source-badge';
 
 /**
  * Workout category types for field configuration
  */
 export type WorkoutCategory =
-  | 'running'
-  | 'cycling'
-  | 'swimming'
-  | 'strength'
-  | 'cardio'
-  | 'default';
+  'running' | 'cycling' | 'swimming' | 'strength' | 'cardio' | 'default';
 
 /**
  * Field configuration for workout details
@@ -98,7 +94,7 @@ export const WORKOUT_FIELD_DEFINITIONS: Record<string, WorkoutFieldConfig> = {
     format: (v) => {
       if (!v) return '-';
       const source = v as { provider?: string; device?: string };
-      return source.provider || '-';
+      return source.provider ? providerLabel(source.provider) : '-';
     },
   },
 };

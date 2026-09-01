@@ -26,6 +26,13 @@ reviews:
         the PR to state whether a data migration or backfill is needed for
         historical records, or explicitly note that only new data is affected.
 
+    - path: "backend/app/config.py"
+      instructions: |
+        If settings fields are added, removed, or renamed, or their defaults
+        change, verify that backend/config/.env.example is updated to match.
+        New optional settings may be added commented-out with their default
+        value. Flag any drift between the two files.
+
     - path: "backend/app/schemas/**"
       instructions: |
         If data models or enums change (e.g. new provider, new data type),

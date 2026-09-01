@@ -39,7 +39,7 @@ class GarminOAuth(BaseOAuthTemplate):
     use_pkce = True
     auth_method = AuthenticationMethod.BODY
 
-    def deregister_user(self, access_token: str) -> None:
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Call Garmin's user deregistration endpoint to remove the app association."""
         response = httpx.delete(
             f"{self.api_base_url}/partner-gateway/rest/user/registration",

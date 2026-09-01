@@ -43,7 +43,7 @@ _MISSING_SCORES_QUERY = text("""
     JOIN data_source ds   ON ds.id = er.data_source_id
     JOIN sleep_details sd ON sd.record_id = er.id
     LEFT JOIN health_score hs
-           ON hs.sleep_record_id = er.id
+           ON hs.event_record_id = er.id
           AND hs.category     = 'sleep'
           AND hs.provider     = 'internal'
     WHERE er.category = 'sleep'
@@ -121,7 +121,7 @@ def main() -> None:
                         provider=ProviderName.INTERNAL,
                         category=HealthScoreCategory.SLEEP,
                         value=result.overall_score,
-                        sleep_record_id=record_id,
+                        event_record_id=record_id,
                         recorded_at=local_end_by_id[record_id].replace(tzinfo=timezone.utc),
                         components={
                             "duration": ScoreComponent(value=result.breakdown.duration.score),

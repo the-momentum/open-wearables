@@ -49,6 +49,13 @@ def list_sleep_sessions(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    filter_by_priority: Annotated[
+        bool,
+        Query(
+            description="When true, keep only the highest-priority source's sessions per sleep date "
+            "(provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+        ),
+    ] = False,
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
     params = EventRecordQueryParams(
@@ -57,7 +64,7 @@ def list_sleep_sessions(
         cursor=cursor,
         limit=limit,
     )
-    return event_record_service.get_sleep_sessions(db, user_id, params)
+    return event_record_service.get_sleep_sessions(db, user_id, params, filter_by_priority=filter_by_priority)
 
 
 @router.get("/users/{user_id}/events/menstrual-cycles")

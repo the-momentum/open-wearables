@@ -53,7 +53,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   readiness: {
     label: 'Readiness',
     icon: Zap,
-    color: 'text-[hsl(var(--success-muted))]',
+    color: 'text-success-muted',
     maxScale: 100,
   },
   activity: {
@@ -77,7 +77,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   strain: {
     label: 'Strain',
     icon: Dumbbell,
-    color: 'text-[hsl(var(--destructive-muted))]',
+    color: 'text-destructive-muted',
     maxScale: 21,
   },
   resilience: {
@@ -141,6 +141,27 @@ function groupScoresByDate(
   return groups;
 }
 
+// One score per provider: the whole-day one (event_record_id null) if it exists,
+// otherwise the highest per-event score, so the pick never depends on row order.
+function pickDailyScorePerProvider(
+  scores: HealthScoreResponse[]
+): HealthScoreResponse[] {
+  const best = new Map<string, HealthScoreResponse>();
+  for (const score of scores) {
+    if (!score.provider) continue;
+    const current = best.get(score.provider);
+    if (
+      !current ||
+      (current.event_record_id !== null &&
+        (score.event_record_id === null ||
+          Number(score.value ?? 0) > Number(current.value ?? 0)))
+    ) {
+      best.set(score.provider, score);
+    }
+  }
+  return Array.from(best.values());
+}
+
 function buildChartData(
   scores: HealthScoreResponse[],
   category: string
@@ -154,7 +175,8 @@ function buildChartData(
       const point: Record<string, string | number> = {
         date: format(new Date(date + 'T00:00:00'), 'MMM d'),
       };
-      for (const score of dateScores) {
+      // The chart has one point per provider, so collapse a day's scores down to one.
+      for (const score of pickDailyScorePerProvider(dateScores)) {
         if (score.value !== null && score.provider) {
           point[score.provider] =
             category === 'resilience'
@@ -609,6 +631,7 @@ export function ScoresSection({
                         {providers.map((provider) => (
                           <Line
                             key={provider}
+                            isAnimationActive={false}
                             dataKey={provider}
                             type="monotone"
                             stroke={`var(--color-${provider})`}

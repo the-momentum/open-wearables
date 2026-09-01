@@ -1,0 +1,233 @@
+---
+title: "Deploying with Docker"
+description: "Run Open Wearables in production from the published Docker images"
+---
+
+## Published images
+
+Open Wearables publishes two production images to Docker Hub:
+
+| Image | Service | Port |
+|-------|---------|------|
+| [`themomentum/open-wearables-backend`](https://hub.docker.com/r/themomentum/open-wearables-backend) | FastAPI API + Celery worker/beat/flower | `8000` |
+| [`themomentum/open-wearables-frontend`](https://hub.docker.com/r/themomentum/open-wearables-frontend) | React frontend (TanStack Start, served by Nitro) | `3000` |
+
+The single backend image covers every backend role. The start command selects what the container runs:
+
+| Command | Role |
+|---------|------|
+| `scripts/start/app.sh` | API server. Also applies database migrations and seed scripts on startup |
+| `scripts/start/worker.sh` | Celery worker (data syncs, background jobs) |
+| `scripts/start/beat.sh` | Celery beat (scheduler) |
+| `scripts/start/flower.sh` | Flower (Celery monitoring UI, port `5555`) |
+
+## Image tags
+
+Both images share the same tag scheme. Choose a tag based on how much stability you need:
+
+| Tag | Points to | Use for |
+|-----|-----------|---------|
+| `latest` | The newest stable [release](https://github.com/the-momentum/open-wearables/releases) | Quick trials, and deployments that always want the current stable version |
+| `0.7.0` (exact version) | That release, immutably | **Production** - pin an exact version for repeatable, deliberate upgrades |
+| `0.7` (major.minor) | The latest patch of that minor line | Following patch releases without manually bumping the version |
+| `nightly` | The most recent build of `main` | Testing unreleased changes; **not for production** |
+| `nightly-<sha>` | A specific nightly build, immutably | Reproducing or rolling back to an exact nightly, e.g. `nightly-a0b56b8` |
+
+Tags are produced by [`.github/workflows/publish-images.yml`](https://github.com/the-momentum/open-wearables/blob/main/.github/workflows/publish-images.yml):
+
+- **Nightly** - a scheduled run at `02:00` UTC builds `main` and pushes `nightly` plus an immutable `nightly-<sha>`.
+- **Release** - publishing a [GitHub release](https://github.com/the-momentum/open-wearables/releases) builds its git tag, pushes the version tags (`0.7.0`, `0.7`), and moves `latest`. Pre-releases are published under their version tag but do not move `latest`.
+- **Manual** - the workflow can also be run by hand from the GitHub Actions UI. It requires a **tag** input and publishes that tag only - no `nightly` tags. Reserved names - `latest`, `nightly`, the whole `nightly-*` namespace, and release versions like `0.7.0`/`0.7` - are rejected, so a manual run can never move or overwrite them.
+
+For production, pin an exact version tag (e.g. `0.7.0`) rather than `latest` or `nightly`, so deployments are reproducible and upgrades are intentional.
+
+## What a deployment runs
+
+A typical deployment consists of the application containers plus their backing services:
+
+- `app` - the API, from the backend image
+- `celery-worker` - background jobs, from the backend image
+- `celery-beat` - schedules recurring syncs, from the backend image
+- `frontend` - the web UI, from the frontend image
+- PostgreSQL - primary database
+- Redis - Celery broker and cache
+- `flower` (optional) - Celery monitoring, from the backend image
+- `svix-server` (optional) - only needed when [outgoing webhooks](/api-reference/guides/webhooks) are enabled; requires its own `svix` database
+
+The backend reads all of its configuration from environment variables at runtime; `backend/config/.env.example` documents them. The frontend takes its API URL at runtime as well (see below). Neither image needs a per-environment rebuild.
+
+<Warning>
+  The `docker-compose.yml` in the repository root is a **development** setup: it builds images from local source, hardcodes database credentials, and wires up hot reload via `docker compose watch`. Do not use it as a production template. For deployment, run the published images with your own orchestration—a Compose file you maintain, Kubernetes, or a managed platform such as [Railway](/deployment/railway).
+</Warning>
+
+## Example: Compose deployment
+
+A baseline Compose stack using the published images. It uses the `latest` tag to stay copy-pasteable; pin an exact version tag like `0.7.0` for real deployments (see [Image tags](#image-tags)).
+
+```yaml docker-compose.yml
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${DB_NAME:-open-wearables}
+      POSTGRES_USER: ${DB_USER:-open-wearables}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:8
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  app:
+    image: themomentum/open-wearables-backend:latest
+    command: scripts/start/app.sh
+    env_file:
+      - ./.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-worker:
+    image: themomentum/open-wearables-backend:latest
+    command: scripts/start/worker.sh
+    env_file:
+      - ./.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  celery-beat:
+    image: themomentum/open-wearables-backend:latest
+    command: scripts/start/beat.sh
+    env_file:
+      - ./.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  frontend:
+    image: themomentum/open-wearables-frontend:latest
+    environment:
+      - VITE_API_URL=${VITE_API_URL:?Set VITE_API_URL in .env}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+```
+
+### Configuration
+
+Copy `backend/config/.env.example` from the repository to `.env` next to the compose file. Compose reads the same file for variable interpolation, so `DB_PASSWORD` is defined once and shared by Postgres and the backend.
+
+The defaults in `.env.example` are development values. Override at least these for production:
+
+| Variable | Set to |
+|----------|--------|
+| `ENVIRONMENT` | `production` |
+| `DB_PASSWORD` | a strong database password |
+| `SECRET_KEY` | a long random secret, used to sign tokens |
+| `ADMIN_PASSWORD` | password for the admin account seeded on first start |
+| `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
+| `FRONTEND_URL` | public URL of the frontend |
+| `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
+| `VITE_API_URL` | URL of the API as reached from the browser |
+
+`VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
+
+### Running it
+
+<Steps>
+  <Step title="Pull the images">
+    ```bash
+    docker compose pull
+    ```
+  </Step>
+  <Step title="Start the stack">
+    ```bash
+    docker compose up -d
+    ```
+    The `app` container applies database migrations and seed scripts before the API starts.
+  </Step>
+  <Step title="Check service status">
+    ```bash
+    docker compose ps
+    ```
+    All services should report `Up`, with `db` as `Up (healthy)`.
+  </Step>
+  <Step title="Verify the API and frontend">
+    ```bash
+    curl -fsS http://localhost:8000/openapi.json > /dev/null && echo OK
+    ```
+    Prints `OK` once the API is up (migrations can take a moment on first start). Then open `http://localhost:3000` in a browser—the login page should load.
+  </Step>
+</Steps>
+
+In practice you will put the API and frontend behind a reverse proxy with TLS instead of exposing the container ports directly.
+
+To add Flower, run another backend container with `command: scripts/start/flower.sh` and publish port `5555`. To enable outgoing webhooks, add a `svix-server` service and a `svix` database; the development `docker-compose.yml` shows the wiring.
+
+## Configuring the frontend API URL at runtime
+
+The frontend resolves its API URL at runtime, so the same published image works against any backend without rebuilding. Set `VITE_API_URL` as an environment variable on the frontend container. The Nitro server reads it at request time and injects it into the served HTML before the app loads:
+
+```bash
+docker run -p 3000:3000 \
+  -e VITE_API_URL=https://api.client1.com \
+  themomentum/open-wearables-frontend:latest
+```
+
+The same image with a different value points at a different backend—no rebuild:
+
+```bash
+docker run -p 3000:3000 \
+  -e VITE_API_URL=https://api.client2.com \
+  themomentum/open-wearables-frontend:latest
+```
+
+If `VITE_API_URL` is not set, it falls back to `http://localhost:8000`.
+
+<Note>
+  `VITE_API_URL` is a single variable used for both build-time (Vite inlines `import.meta.env`) and runtime configuration. When the same variable is set both in an `.env` file and via the container's `environment:`, the container environment wins—so runtime always overrides any baked-in value.
+</Note>
+
+### How it works
+
+Because the frontend is server-rendered (TanStack Start on Nitro), the value travels from the container env to the browser like this:
+
+1. The Nitro server reads `process.env.VITE_API_URL` at request time.
+2. It injects `window.__APP_CONFIG__ = { apiUrl: "..." }` into the HTML `<head>` before the app hydrates.
+3. The API client reads that value. (Resolution order: injected runtime value → `VITE_API_URL` baked at build → `http://localhost:8000`.)
+
+The logic lives in `frontend/src/lib/api/runtime-config.ts`.
+
+## Related Guides
+
+- [Deploy to Railway](/deployment/railway) — One-click managed deployment
+- [Raw Payloads Storage](/dev-guides/raw-payload-storage) — Backend runtime configuration example

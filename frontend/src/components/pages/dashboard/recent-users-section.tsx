@@ -23,16 +23,16 @@ function getInitials(name: string): string {
 function syncRecencyColor(syncedAt: string): string {
   const diffMs = Date.now() - new Date(syncedAt).getTime();
   const hours = diffMs / (1000 * 60 * 60);
-  if (hours < 1) return 'text-[hsl(var(--success-muted))]';
-  if (hours < 24) return 'text-[hsl(var(--warning-muted))]';
+  if (hours < 1) return 'text-success-muted';
+  if (hours < 24) return 'text-warning-muted';
   return 'text-muted-foreground/70';
 }
 
 function syncRecencyDot(syncedAt: string): string {
   const diffMs = Date.now() - new Date(syncedAt).getTime();
   const hours = diffMs / (1000 * 60 * 60);
-  if (hours < 1) return 'bg-[hsl(var(--success-muted))]';
-  if (hours < 24) return 'bg-[hsl(var(--warning-muted))]';
+  if (hours < 1) return 'bg-success-muted';
+  if (hours < 24) return 'bg-warning-muted';
   return 'bg-muted-foreground/40';
 }
 
@@ -74,7 +74,7 @@ export function RecentUsersSection({
   isLoadingLastSynced,
   className,
 }: RecentUsersSectionProps) {
-  const [tab, setTab] = useState<'recent' | 'last-synced'>('recent');
+  const [tab, setTab] = useState<'recent' | 'last-synced'>('last-synced');
 
   return (
     <div
@@ -185,8 +185,8 @@ export function RecentUsersSection({
                           className={cn(
                             'h-1.5 w-1.5 rounded-full',
                             user.has_active_connection
-                              ? 'bg-[hsl(var(--success-muted))]'
-                              : 'bg-[hsl(var(--destructive-muted))]'
+                              ? 'bg-success-muted'
+                              : 'bg-destructive-muted'
                           )}
                         />
                         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">

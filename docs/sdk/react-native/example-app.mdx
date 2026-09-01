@@ -37,6 +37,12 @@ The example app demonstrates the complete integration flow:
 7. **Sync Status** - Monitor sync progress and handle interruptions
 8. **Log Viewer** - Browse SDK logs with search
 
+<Note>
+  **Heads-up - this example uses the invitation code flow, which is not the standard way to integrate the SDK.** The example app has no backend of its own, so it redeems a single-use invitation code directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/mobile-sdk/redeem-invitation-code) endpoint to get a session. That is fine for this self-contained demo: you generate the code in your own dashboard and enter it in the app yourself, it is single-use, and the resulting token is write-only to `/sdk/*`, so your `app_secret` never touches the device.
+
+  When you build your own app, use the **backend token flow** instead, where your backend mints and forwards the token. See the [Integration Guide](/sdk/react-native/integration#authentication-architecture) and [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+</Note>
+
 <Card title="See the full flow in action" icon="play" href="/app/introduction#see-it-in-action">
   Watch how data flows from device setup through syncing to the dashboard and API.
 </Card>

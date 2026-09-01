@@ -5,6 +5,7 @@ import logging
 from fastmcp import FastMCP
 
 from app.services.api_client import client
+from app.services.exceptions import OpenWearablesError
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ async def get_users(search: str | None = None, limit: int = 10) -> dict:
             "total": response.get("total", len(users)),
         }
 
-    except ValueError as e:
+    except OpenWearablesError as e:
         logger.error(f"API error in get_users: {e}")
         return {"error": str(e), "users": [], "total": 0}
     except Exception as e:

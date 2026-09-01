@@ -50,6 +50,7 @@ class SyncStatus(StrEnum):
     PARTIAL = "partial"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    SKIPPED = "skipped"  # Delivered but no data saved (ignored/duplicate/no-op webhook)
 
 
 class SyncStatusEvent(BaseModel):

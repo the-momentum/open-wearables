@@ -169,6 +169,30 @@ class TestSuuntoWorkouts:
         # Assert
         assert metrics["steps_count"] is None
 
+    def test_workout_accepts_fractional_total_distance(
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
+    ) -> None:
+        """Suunto reports totalDistance as a float, so fractional meters must parse.
+
+        Regression test: the field was typed ``int``, so a real distance such as
+        21381.4 m raised ``int_from_float`` during ``WorkoutJSON(**w)``. Because
+        load_data parses the whole payload in one list comprehension, a single
+        fractional-distance workout aborted the entire sync with an HTTP 500.
+        """
+        # Arrange
+        workout_data = sample_workout_data.copy()
+        workout_data["totalDistance"] = 21381.4
+
+        # Act
+        workout = SuuntoWorkoutJSON(**workout_data)
+        metrics = suunto_workouts._build_metrics(workout)
+
+        # Assert
+        assert workout.totalDistance == 21381.4
+        assert metrics["distance"] == Decimal("21381.4")
+
     def test_normalize_workout_creates_event_record(
         self,
         suunto_workouts: SuuntoWorkouts,

@@ -14,6 +14,8 @@ export const ROUTES = {
   syncs: '/syncs',
   settings: '/settings',
 
+  coverage: '/coverage',
+
   // Widget routes
   widgetConnect: '/widget/connect',
 } as const;

@@ -75,6 +75,22 @@ export function formatNumber(value: number | null | undefined): string {
   return value.toLocaleString();
 }
 
+const compactNumberFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Format a large aggregate count compactly: 8_432 -> "8.4K", 1_450_000 -> "1.5M",
+ * 2.3e9 -> "2.3B". Values below 1000 are shown in full. Rolls K -> M -> B -> T automatically
+ * (never "1000K"). Use for counts (data points, records, per-type/provider totals); for precise
+ * physical quantities (steps, calories, distance) use formatNumber instead.
+ */
+export function formatCompactNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-';
+  return compactNumberFormatter.format(value);
+}
+
 /**
  * Format distance in meters to a human-readable string.
  * Shows km if >= 1000m, otherwise shows meters.

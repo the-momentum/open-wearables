@@ -25,17 +25,6 @@ uv run python scripts/init/seed_admin.py
 echo 'Initializing series type definitions...'
 uv run python scripts/init/seed_series_types.py
 
-# TODO: Remove this after ~2026-06-01 once all deployments have migrated.
-# Drops legacy recovery_score timeseries data; no-op if already cleaned up.
-echo 'Running recovery_score series type cleanup...'
-uv run python scripts/data_migrations/drop_recovery_score_series_type.py \
-    || echo "Warning: recovery_score cleanup failed — will retry on next startup."
-
-# TODO: Remove this after ~2026-06-01 once all deployments have migrated.
-# Divides body_fat_percentage values stored 100x too large (Samsung/Google bug, PR #917); no-op if already corrected.
-echo 'Running body_fat_percentage normalization...'
-uv run python scripts/data_migrations/normalize_body_fat_percentage.py \
-    || echo "Warning: body_fat_percentage normalization failed — will retry on next startup."
 
 # TODO: Remove this after ~2026-09-01 once all deployments have migrated.
 # Relabels Oura HRV stored as SDNN (id=3) to RMSSD (id=7); scoped to provider='oura', no-op once corrected.
@@ -43,11 +32,28 @@ echo 'Running Oura HRV SDNN->RMSSD relabel...'
 uv run python scripts/data_migrations/relabel_oura_hrv_sdnn_to_rmssd.py \
     || echo "Warning: Oura HRV relabel failed — will retry on next startup."
 
-# TODO: Remove this after ~2026-08-01 once all deployments have migrated.
-# Nulls workout heart_rate_min values copied from average HR (Garmin pre-#1121, Polar pre-#1041); no-op once cleaned.
-echo 'Running workout heart_rate_min cleanup...'
-uv run python scripts/data_migrations/null_bogus_workout_heart_rate_min.py \
-    || echo "Warning: workout heart_rate_min cleanup failed - will retry on next startup."
+
+# TODO: Remove this after ~2026-11-01 once all deployments have migrated.
+# Relabels Ultrahuman temperature stored as body_temperature (id=45) to skin_temperature
+# (id=46); scoped to provider='ultrahuman', no-op once corrected.
+echo 'Running Ultrahuman body_temperature->skin_temperature relabel...'
+uv run python scripts/data_migrations/relabel_ultrahuman_body_temp_to_skin_temp.py \
+    || echo "Warning: Ultrahuman temperature relabel failed — will retry on next startup."
+
+
+# TODO: Remove this after ~2026-09-01 once all deployments have migrated.
+# Labels is_daily_total on archival data_point_series (daily totals → TRUE); idempotent,
+# only flips NULL rows, batched. After the first full pass, re-runs are no-ops.
+echo 'Running is_daily_total backfill...'
+uv run python scripts/data_migrations/backfill_is_daily_total.py \
+    || echo "Warning: is_daily_total backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2026-12-01 once all deployments have migrated.
+# Links legacy Whoop workout strain scores to their event records; without it they stay
+# indistinguishable from the per-day cycle strain. Idempotent, no-op once linked.
+echo 'Running Whoop strain event_record backfill...'
+uv run python scripts/data_migrations/backfill_whoop_strain_event_record.py \
+    || echo "Warning: Whoop strain backfill failed — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'
