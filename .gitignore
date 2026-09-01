@@ -174,3 +174,5 @@ CLAUDE.local.md
 
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
+# Host-only deployment files; credentials are sourced via 0600 protected paths (bead root-Secret-FleetCutover-001.22)
+/docker-compose.override.yml
