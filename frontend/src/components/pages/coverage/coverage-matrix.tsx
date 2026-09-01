@@ -38,10 +38,13 @@ function Matrix({ providers, rows }: MatrixProps) {
                   {row.description ? (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="inline-flex items-center gap-1 cursor-help">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 cursor-help"
+                        >
                           <code className="text-xs text-zinc-300 font-mono">{row.code}</code>
                           <Info aria-hidden="true" className="h-3 w-3 shrink-0 text-zinc-500" />
-                        </span>
+                        </button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">{row.description}</TooltipContent>
                     </Tooltip>

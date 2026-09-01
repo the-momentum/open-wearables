@@ -2,6 +2,7 @@ import { Info } from 'lucide-react';
 import { SourceBadge } from '@/components/common/source-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CoverageResponse } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -31,9 +32,10 @@ interface Chip {
 function ChipItem({ chip }: { chip: Chip }) {
   const body = (
     <span
-      className={`inline-flex items-baseline gap-1 rounded-md bg-zinc-800/70 px-2 py-1${
-        chip.description ? ' cursor-help' : ''
-      }`}
+      className={cn(
+        'inline-flex items-baseline gap-1 rounded-md bg-zinc-800/70 px-2 py-1',
+        chip.description && 'cursor-help'
+      )}
     >
       <code className="font-mono text-xs text-zinc-200">{chip.code}</code>
       {chip.unit && <span className="text-[10px] text-zinc-500">{chip.unit}</span>}
@@ -49,7 +51,11 @@ function ChipItem({ chip }: { chip: Chip }) {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{body}</TooltipTrigger>
+      <TooltipTrigger asChild>
+        <button type="button" className="inline-flex text-left">
+          {body}
+        </button>
+      </TooltipTrigger>
       <TooltipContent className="max-w-xs">{chip.description}</TooltipContent>
     </Tooltip>
   );
