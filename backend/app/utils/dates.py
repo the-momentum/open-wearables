@@ -115,6 +115,20 @@ def parse_webhook_data_timestamp(data_timestamp: str | None) -> datetime:
     return datetime.now(timezone.utc)
 
 
+def align_tz_awareness(start: datetime | None, end: datetime | None) -> tuple[datetime | None, datetime | None]:
+    """Give a naive edge of a time window the sibling edge's offset.
+
+    Two naive or two aware datetimes already compare; only a mixed pair raises
+    TypeError. Both edges come from the same device in the same zone, so the known
+    offset is the right one to borrow — no UTC is assumed and neither wall clock moves.
+    """
+    if start is not None and end is not None and (start.tzinfo is None) != (end.tzinfo is None):
+        if start.tzinfo is None:
+            return start.replace(tzinfo=end.tzinfo), end
+        return start, end.replace(tzinfo=start.tzinfo)
+    return start, end
+
+
 def to_rfc3339(dt: datetime) -> str:
     """Format a datetime as RFC3339 UTC with a 'Z' suffix; naive datetimes are assumed UTC."""
     aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)

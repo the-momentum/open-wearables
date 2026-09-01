@@ -69,20 +69,18 @@ class TestSuuntoSleepNormalization:
 
 class TestSuuntoSleepWindowFallback:
     """Suunto documents an explicit in-bed window (``BedtimeStart``/``BedtimeEnd``).
-    When the API omits them — a regression seen across 2026 REST and webhook
-    payloads — the window safely falls back to ``entryData.DateTime`` plus
-    ``Duration`` seconds, so
-    sessions are not dropped and we recover automatically if the fields return."""
+
+    Devices that omit the pair (e.g. Suunto 5 Peak) report onset only as the wrapper
+    ``timestamp``, so the window falls back to that plus ``Duration`` rather than
+    dropping the session."""
 
     def test_prefers_explicit_bedtime_window_when_present(self, data_247: Suunto247Data) -> None:
-        # In-bed window differs from onset+Duration, so honoring it vs reconstructing
-        # is observable: BedtimeStart precedes onset and BedtimeEnd is the true wake.
+        # Window differs from timestamp+Duration, so preferring it is observable.
         raw = {
             "timestamp": "2025-01-05T23:29:00.000+02:00",
             "entryData": {
                 "BedtimeStart": "2025-01-05T23:20:00.000+02:00",
                 "BedtimeEnd": "2025-01-06T08:30:00.000+02:00",
-                "DateTime": "2025-01-05T23:29:00.000+02:00",
                 "Duration": 23520.0,
             },
         }
@@ -92,11 +90,8 @@ class TestSuuntoSleepWindowFallback:
         assert parse_iso_datetime(result["start_time"]) == parse_iso_datetime("2025-01-05T23:20:00.000+02:00")
         assert parse_iso_datetime(result["end_time"]) == parse_iso_datetime("2025-01-06T08:30:00.000+02:00")
 
-    def test_falls_back_to_datetime_and_duration_when_bedtimes_absent(self, data_247: Suunto247Data) -> None:
-        raw = {
-            "timestamp": "2026-06-06T23:45:00.000+02:00",
-            "entryData": {"DateTime": "2026-06-06T23:40:00.000+02:00", "Duration": 23520.0},
-        }
+    def test_falls_back_to_wrapper_timestamp_when_bedtimes_absent(self, data_247: Suunto247Data) -> None:
+        raw = {"timestamp": "2026-06-06T23:40:00.000+02:00", "entryData": {"Duration": 23520.0}}
 
         result = data_247.normalize_sleep(raw, uuid4())
 
@@ -105,21 +100,21 @@ class TestSuuntoSleepWindowFallback:
         assert start == parse_iso_datetime("2026-06-06T23:40:00.000+02:00")
         assert end - start == timedelta(seconds=23520)
 
-    def test_does_not_use_timestamp_when_bedtime_and_datetime_absent(self, data_247: Suunto247Data) -> None:
-        raw = {"timestamp": "2026-06-06T23:40:00.000+02:00", "entryData": {"Duration": 3600.0}}
+    def test_returns_no_window_when_no_timestamp_at_all(self, data_247: Suunto247Data) -> None:
+        raw = {"entryData": {"Duration": 3600.0, "SleepId": 1}}
 
         result = data_247.normalize_sleep(raw, uuid4())
 
         assert result["start_time"] is None
         assert result["end_time"] is None
 
-    def test_falls_back_to_datetime_when_timestamp_absent(self, data_247: Suunto247Data) -> None:
-        raw = {"entryData": {"DateTime": "2026-06-06T23:40:00.000+02:00", "Duration": 3600.0}}
+    def test_reconstructs_start_when_only_bedtime_end_present(self, data_247: Suunto247Data) -> None:
+        raw = {"entryData": {"BedtimeEnd": "2026-06-09T10:35:00.000+02:00", "Duration": 27120.0}}
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        assert parse_iso_datetime(result["start_time"]) == parse_iso_datetime("2026-06-06T23:40:00.000+02:00")
-        assert parse_iso_datetime(result["end_time"]) == parse_iso_datetime("2026-06-07T00:40:00.000+02:00")
+        assert parse_iso_datetime(result["end_time"]) == parse_iso_datetime("2026-06-09T10:35:00.000+02:00")
+        assert parse_iso_datetime(result["start_time"]) == parse_iso_datetime("2026-06-09T03:03:00.000+02:00")
 
     def test_reconstructs_end_when_only_bedtime_start_present(self, data_247: Suunto247Data) -> None:
         raw = {
@@ -129,7 +124,6 @@ class TestSuuntoSleepWindowFallback:
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        # Start honors the explicit bedtime; end is reconstructed from it + Duration.
         assert parse_iso_datetime(result["start_time"]) == parse_iso_datetime("2025-01-05T23:20:00.000+02:00")
         assert parse_iso_datetime(result["end_time"]) == parse_iso_datetime("2025-01-06T00:20:00.000+02:00")
 
@@ -153,6 +147,31 @@ class TestSuuntoSaveSleepSkipSignal:
 
         assert result is False
         event_record_service_mock.create_or_merge_sleep.assert_not_called()
+
+    def test_saves_window_whose_edges_disagree_on_tz_awareness(
+        self, data_247: Suunto247Data, timeseries_service_mock: MagicMock
+    ) -> None:
+        # A naive start against an offset-aware end must compare, not raise. The naive
+        # edge borrows the sibling's offset rather than being assumed UTC, so the stored
+        # instant stays in the device's zone.
+        normalized = {
+            "id": uuid4(),
+            "start_time": "2026-06-09T03:03:00.000",
+            "end_time": "2026-06-09T10:35:00.000+02:00",
+            "duration_seconds": 27120,
+            "stages": {},
+            "is_nap": True,
+            "suunto_sleep_id": 1780966980,
+            "efficiency_percent": None,
+        }
+
+        with patch("app.services.providers.suunto.data_247.event_record_service") as event_record_service_mock:
+            result = data_247.save_sleep_data(MagicMock(), uuid4(), normalized)
+
+        assert result is True
+        record = event_record_service_mock.create_or_merge_sleep.call_args[0][2]
+        assert record.start_datetime == parse_iso_datetime("2026-06-09T03:03:00.000+02:00")
+        assert record.end_datetime == parse_iso_datetime("2026-06-09T10:35:00.000+02:00")
 
 
 class TestSuuntoRestingHeartRatePersistence:
