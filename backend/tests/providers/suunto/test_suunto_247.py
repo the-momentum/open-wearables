@@ -66,6 +66,16 @@ class TestSuuntoSleepNormalization:
         assert result["min_heart_rate_bpm"] == 52.0
         assert result["is_nap"] is False
 
+    def test_normalize_sleep_converts_spo2_fraction_to_percent(self, data_247: Suunto247Data) -> None:
+        raw = {"entryData": {"BedtimeStart": "2025-01-05T23:00:00.000+01:00", "MaxSpo2": 0.98}}
+
+        assert data_247.normalize_sleep(raw, uuid4())["max_spo2_percent"] == 98.0
+
+    def test_normalize_sleep_leaves_spo2_already_in_percent(self, data_247: Suunto247Data) -> None:
+        raw = {"entryData": {"BedtimeStart": "2025-01-05T23:00:00.000+01:00", "MaxSpo2": 98.0}}
+
+        assert data_247.normalize_sleep(raw, uuid4())["max_spo2_percent"] == 98.0
+
 
 class TestSuuntoSleepAwakeTime:
     """Awake time comes from ``WakeAfterSleepOnsetDuration`` + ``WakeBeforeOffBedDuration``."""
@@ -294,7 +304,7 @@ class TestSuuntoSaveSleepSkipSignal:
         assert record.end_datetime == parse_iso_datetime("2025-01-06T07:00:00.000+01:00")
 
 
-class TestSuuntoRestingHeartRatePersistence:
+class TestSuuntoSleepSeriesPersistence:
     def test_emits_rhr_sample_for_non_nap_sleep_with_hr_min(
         self,
         data_247: Suunto247Data,
@@ -304,7 +314,7 @@ class TestSuuntoRestingHeartRatePersistence:
         db = MagicMock()
         recorded_at = datetime(2026, 5, 17, 9, 19, tzinfo=timezone.utc)
 
-        data_247._persist_resting_heart_rate(db, base_sleep["user_id"], base_sleep, recorded_at)
+        data_247._persist_sleep_series(db, base_sleep["user_id"], base_sleep, recorded_at)
 
         timeseries_service_mock.bulk_create_samples.assert_called_once()
         samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
@@ -316,7 +326,35 @@ class TestSuuntoRestingHeartRatePersistence:
         assert sample.user_id == base_sleep["user_id"]
         assert sample.source == "suunto"
         assert sample.external_id == "12345"
+        assert sample.is_daily_total is True
         db.commit.assert_called_once()
+
+    def test_emits_hrv_and_spo2_alongside_rhr(
+        self,
+        data_247: Suunto247Data,
+        base_sleep: dict,
+        timeseries_service_mock: MagicMock,
+    ) -> None:
+        base_sleep["avg_hrv_ms"] = 49.0
+        base_sleep["max_spo2_percent"] = 98.0
+
+        data_247._persist_sleep_series(
+            MagicMock(),
+            base_sleep["user_id"],
+            base_sleep,
+            datetime(2025, 1, 6, 7, 0, tzinfo=timezone.utc),
+        )
+
+        samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
+        by_type = {s.series_type: s for s in samples}
+        assert by_type.keys() == {
+            SeriesType.resting_heart_rate,
+            SeriesType.heart_rate_variability_rmssd,
+            SeriesType.oxygen_saturation,
+        }
+        assert by_type[SeriesType.heart_rate_variability_rmssd].value == Decimal("49.0")
+        assert by_type[SeriesType.oxygen_saturation].value == Decimal("98.0")
+        assert all(s.is_daily_total is True for s in samples)
 
     def test_skips_nap_sessions(
         self,
@@ -326,7 +364,7 @@ class TestSuuntoRestingHeartRatePersistence:
     ) -> None:
         base_sleep["is_nap"] = True
 
-        data_247._persist_resting_heart_rate(
+        data_247._persist_sleep_series(
             MagicMock(),
             base_sleep["user_id"],
             base_sleep,
@@ -343,7 +381,7 @@ class TestSuuntoRestingHeartRatePersistence:
     ) -> None:
         base_sleep["min_heart_rate_bpm"] = None
 
-        data_247._persist_resting_heart_rate(
+        data_247._persist_sleep_series(
             MagicMock(),
             base_sleep["user_id"],
             base_sleep,
@@ -361,7 +399,7 @@ class TestSuuntoRestingHeartRatePersistence:
         timeseries_service_mock.bulk_create_samples.side_effect = RuntimeError("db down")
         db = MagicMock()
 
-        data_247._persist_resting_heart_rate(
+        data_247._persist_sleep_series(
             db,
             base_sleep["user_id"],
             base_sleep,

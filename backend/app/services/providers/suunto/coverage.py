@@ -14,12 +14,18 @@ DAILY_STAT_SERIES: dict[str, SeriesType] = {
     "stepcount": SeriesType.steps,
     "energyconsumption": SeriesType.energy,
 }
+# Per-night scalars carried inside a sleep entry (normalized key → SeriesType).
+SLEEP_SERIES: dict[str, SeriesType] = {
+    "min_heart_rate_bpm": SeriesType.resting_heart_rate,
+    "avg_hrv_ms": SeriesType.heart_rate_variability_rmssd,
+    "max_spo2_percent": SeriesType.oxygen_saturation,
+}
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *ACTIVITY_SERIES.values(),  # /247samples/activity
         *DAILY_STAT_SERIES.values(),  # /247/daily-activity-statistics
-        SeriesType.resting_heart_rate,  # /247samples/sleep (HRMin, single inline use)
+        *SLEEP_SERIES.values(),  # /247samples/sleep
     }
 )
 
