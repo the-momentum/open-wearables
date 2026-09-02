@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # 09/01/2025) but still sent, so it is kept as a fallback for unlisted slugs.
 # Reference: https://developer.whoop.com/docs/developing/user-data/workout
 # Format: (whoop_sport_name, whoop_sport_id, unified_type)
-WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
+WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int | None, WorkoutType]] = [
     # Generic / catch-all
     ("activity", -1, WorkoutType.GENERIC),
     ("other", 71, WorkoutType.GENERIC),
@@ -46,7 +46,7 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
     ("operations-water", 77, WorkoutType.OPERATIONS),
     # Strength & gym
     ("weightlifting", 45, WorkoutType.STRENGTH_TRAINING),
-    ("weightlifting_msk", 123, WorkoutType.STRENGTH_TRAINING),
+    ("weightlifting_msk", None, WorkoutType.STRENGTH_TRAINING),
     ("powerlifting", 59, WorkoutType.STRENGTH_TRAINING),
     ("strength-trainer", 123, WorkoutType.STRENGTH_TRAINING),
     ("functional-fitness", 48, WorkoutType.CARDIO_TRAINING),
@@ -134,7 +134,7 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
     # Gymnastics
     ("gymnastics", 51, WorkoutType.GYMNASTICS),
     # Recovery & wellness
-    ("foam_rolling", 282, WorkoutType.RECOVERY),
+    ("foam_rolling", None, WorkoutType.RECOVERY),
     ("ice-bath", 88, WorkoutType.RECOVERY),
     ("sauna", 233, WorkoutType.RECOVERY),
     ("massage-therapy", 121, WorkoutType.RECOVERY),
@@ -164,7 +164,7 @@ WHOOP_TO_UNIFIED: dict[str, WorkoutType] = {
 }
 
 WHOOP_ID_TO_UNIFIED: dict[int, WorkoutType] = {
-    sport_id: unified_type for _, sport_id, unified_type in WHOOP_WORKOUT_TYPE_MAPPINGS
+    sport_id: unified_type for _, sport_id, unified_type in WHOOP_WORKOUT_TYPE_MAPPINGS if sport_id is not None
 }
 
 
