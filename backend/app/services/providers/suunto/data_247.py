@@ -193,7 +193,9 @@ class Suunto247Data(Base247DataTemplate):
         deep_sleep = int(entry_data.get("DeepSleepDuration", 0))
         light_sleep = int(entry_data.get("LightSleepDuration", 0))
         rem_sleep = int(entry_data.get("REMSleepDuration", 0))
-        awake_duration = max(0, duration_seconds - deep_sleep - light_sleep - rem_sleep)
+        awake_duration = int(entry_data.get("WakeAfterSleepOnsetDuration", 0)) + int(
+            entry_data.get("WakeBeforeOffBedDuration", 0)
+        )
 
         return {
             "id": uuid4(),

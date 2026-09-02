@@ -67,6 +67,126 @@ class TestSuuntoSleepNormalization:
         assert result["is_nap"] is False
 
 
+class TestSuuntoSleepAwakeTime:
+    """Awake time comes from ``WakeAfterSleepOnsetDuration`` + ``WakeBeforeOffBedDuration``."""
+
+    def test_awake_excludes_onset_latency(self, data_247: Suunto247Data) -> None:
+        # Duration exceeds the stage total by the wake window plus the onset latency.
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T07:00:00.000+01:00",
+                "Duration": 28800.0,
+                "DeepSleepDuration": 7200.0,
+                "LightSleepDuration": 14400.0,
+                "REMSleepDuration": 5400.0,
+                "WakeAfterSleepOnsetDuration": 1200.0,
+                "WakeBeforeOffBedDuration": 0.0,
+                "SleepOnsetLatencyDuration": 600.0,
+                "SleepQualityScore": 70,
+                "IsNap": False,
+                "SleepId": 1,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"]["awake_seconds"] == 1200
+
+    def test_nap_payload_reports_no_awake_time(self, data_247: Suunto247Data) -> None:
+        """Suunto scores neither stages nor quality for a session it calls a nap.
+
+        It can later revise the same SleepId into a full night, so the nap normalizes
+        to the zero awake time it reports rather than to its whole Duration.
+        """
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T00:00:00.000+01:00",
+                "Duration": 3600.0,
+                "DeepSleepDuration": 0.0,
+                "LightSleepDuration": 0.0,
+                "REMSleepDuration": 0.0,
+                "WakeAfterSleepOnsetDuration": 0.0,
+                "WakeBeforeOffBedDuration": 0.0,
+                "IsNap": True,
+                "SleepId": 2,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"]["awake_seconds"] == 0
+        assert result["duration_seconds"] == 3600
+        assert result["is_nap"] is True
+        assert result["efficiency_percent"] is None
+
+    def test_awake_is_zero_when_stages_fill_the_whole_duration(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T07:00:00.000+01:00",
+                "Duration": 28800.0,
+                "DeepSleepDuration": 7200.0,
+                "LightSleepDuration": 14400.0,
+                "REMSleepDuration": 7200.0,
+                "WakeAfterSleepOnsetDuration": 0.0,
+                "WakeBeforeOffBedDuration": 0.0,
+                "SleepQualityScore": 90,
+                "IsNap": False,
+                "SleepId": 3,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"]["awake_seconds"] == 0
+        assert result["efficiency_percent"] == 90
+
+    def test_awake_sums_both_reported_wake_windows(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T07:00:00.000+01:00",
+                "Duration": 28800.0,
+                "DeepSleepDuration": 7200.0,
+                "LightSleepDuration": 14400.0,
+                "REMSleepDuration": 5400.0,
+                "WakeAfterSleepOnsetDuration": 600.0,
+                "WakeBeforeOffBedDuration": 600.0,
+                "SleepQualityScore": 80,
+                "IsNap": False,
+                "SleepId": 4,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"]["awake_seconds"] == 1200
+
+    def test_awake_defaults_to_zero_when_wake_fields_absent(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T07:00:00.000+01:00",
+                "Duration": 28800.0,
+                "DeepSleepDuration": 7200.0,
+                "LightSleepDuration": 14400.0,
+                "REMSleepDuration": 5400.0,
+                "SleepId": 5,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"]["awake_seconds"] == 0
+
+
 class TestSuuntoSleepWindowFallback:
     """Suunto documents an explicit in-bed window (``BedtimeStart``/``BedtimeEnd``).
 
@@ -109,12 +229,12 @@ class TestSuuntoSleepWindowFallback:
         assert result["end_time"] is None
 
     def test_reconstructs_start_when_only_bedtime_end_present(self, data_247: Suunto247Data) -> None:
-        raw = {"entryData": {"BedtimeEnd": "2026-06-09T10:35:00.000+02:00", "Duration": 27120.0}}
+        raw = {"entryData": {"BedtimeEnd": "2025-01-06T07:00:00.000+01:00", "Duration": 28800.0}}
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        assert parse_iso_datetime(result["end_time"]) == parse_iso_datetime("2026-06-09T10:35:00.000+02:00")
-        assert parse_iso_datetime(result["start_time"]) == parse_iso_datetime("2026-06-09T03:03:00.000+02:00")
+        assert parse_iso_datetime(result["end_time"]) == parse_iso_datetime("2025-01-06T07:00:00.000+01:00")
+        assert parse_iso_datetime(result["start_time"]) == parse_iso_datetime("2025-01-05T23:00:00.000+01:00")
 
     def test_reconstructs_end_when_only_bedtime_start_present(self, data_247: Suunto247Data) -> None:
         raw = {
@@ -156,12 +276,12 @@ class TestSuuntoSaveSleepSkipSignal:
         # instant stays in the device's zone.
         normalized = {
             "id": uuid4(),
-            "start_time": "2026-06-09T03:03:00.000",
-            "end_time": "2026-06-09T10:35:00.000+02:00",
-            "duration_seconds": 27120,
+            "start_time": "2025-01-05T23:00:00.000",
+            "end_time": "2025-01-06T07:00:00.000+01:00",
+            "duration_seconds": 28800,
             "stages": {},
             "is_nap": True,
-            "suunto_sleep_id": 1780966980,
+            "suunto_sleep_id": 6,
             "efficiency_percent": None,
         }
 
@@ -170,8 +290,8 @@ class TestSuuntoSaveSleepSkipSignal:
 
         assert result is True
         record = event_record_service_mock.create_or_merge_sleep.call_args[0][2]
-        assert record.start_datetime == parse_iso_datetime("2026-06-09T03:03:00.000+02:00")
-        assert record.end_datetime == parse_iso_datetime("2026-06-09T10:35:00.000+02:00")
+        assert record.start_datetime == parse_iso_datetime("2025-01-05T23:00:00.000+01:00")
+        assert record.end_datetime == parse_iso_datetime("2025-01-06T07:00:00.000+01:00")
 
 
 class TestSuuntoRestingHeartRatePersistence:
