@@ -57,4 +57,4 @@ Link related issues in your PR description:
 
 See [Code Review Process](../CONTRIBUTING.md#code-review-process) in the contributing guide.
 
-*Aim for a description that says something the diff doesn't.** A summary of the changes is the least useful thing you can write, because that's the one part we can already see. Your reasoning, your rejected alternatives and your open questions are what make a review fast. You're welcome to use an AI to help you put it into words - just make sure the substance is yours. See [AI-assisted contributions](../CONTRIBUTING.md#ai-assisted-contributions).
+**Aim for a description that says something the diff doesn't.** A summary of the changes is the least useful thing you can write, because that's the one part we can already see. Your reasoning, your rejected alternatives and your open questions are what make a review fast. You're welcome to use an AI to help you put it into words - just make sure the substance is yours. See [AI-assisted contributions](../CONTRIBUTING.md#ai-assisted-contributions).
