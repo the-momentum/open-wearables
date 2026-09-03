@@ -256,8 +256,9 @@ class EventRecordService(
             )
             device_type = None
             if svix_service.is_enabled() and result.data_source_id is not None:
-                source_data_source = self.data_source_repo.get(db_session, result.data_source_id)
-                device_type = source_data_source.device_type if source_data_source else None
+                if data_source := self.data_source_repo.get(db_session, result.data_source_id):
+                    device_type = data_source.device_type
+
             on_sleep_created(
                 record_id=result.id,
                 user_id=user_id,
