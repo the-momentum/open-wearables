@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, status
 from app.config import settings
 from app.database import DbSession
 from app.schemas.auth import SDKTokenRequest, TokenResponse
-from app.services import application_service, create_sdk_user_token, refresh_token_service
+from app.services import application_service, create_sdk_user_token, refresh_token_service, user_service
 from app.utils.auth import DeveloperOptionalDep
 
 router = APIRouter()
@@ -61,6 +61,11 @@ def create_user_token(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Either app credentials (app_id, app_secret) or admin authentication (Bearer token) is required",
         )
+
+    # Validate the target before minting or persisting any token. Besides
+    # returning the documented 404, this prevents a missing user from leaking
+    # through as a refresh-token foreign-key 500.
+    user_service.get(db, user_id, raise_404=True)
 
     # Generate user-scoped SDK token
     access_token = create_sdk_user_token(

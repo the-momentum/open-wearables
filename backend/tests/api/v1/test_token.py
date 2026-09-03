@@ -6,6 +6,8 @@ Tests cover:
 - DELETE /api/v1/token/refresh - revoke refresh token
 """
 
+from uuid import uuid4
+
 from jose import jwt
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
@@ -253,6 +255,17 @@ class TestSDKTokenReturnsRefreshToken:
         assert data["token_type"] == "bearer"
         assert data["expires_in"] == settings.access_token_expire_minutes * 60
         assert data["refresh_token"].startswith("rt-")
+
+    def test_sdk_token_returns_404_for_missing_user(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        developer = DeveloperFactory()
+        application = ApplicationFactory(developer=developer, app_secret="test_app_secret")
+
+        response = client.post(
+            f"{api_v1_prefix}/users/{uuid4()}/token",
+            json={"app_id": application.app_id, "app_secret": "test_app_secret"},
+        )
+
+        assert response.status_code == 404
 
     def test_admin_sdk_token_returns_refresh_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Admin-generated SDK token should return refresh token."""

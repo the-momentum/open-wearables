@@ -35,6 +35,33 @@ def _sync(client: TestClient, api_v1_prefix: str) -> object:
     )
 
 
+def test_whole_sync_manifest_is_persisted_and_forwarded(
+    client: TestClient,
+    api_v1_prefix: str,
+    mock_task: MagicMock,
+) -> None:
+    api_key = ApiKeyFactory()
+    sync_id = "9d90ae59-9668-47b7-8704-b3aef12528e4"
+    with patch.object(settings, "sdk_payload_s3_offload", False):
+        response = client.post(
+            f"{api_v1_prefix}/sdk/users/{_USER_ID}/sync/",
+            headers={
+                "X-Open-Wearables-API-Key": api_key.id,
+                "X-OW-Client-Sync-ID": sync_id,
+                "X-OW-Client-Sync-Chunk-Index": "0",
+                "X-OW-Client-Sync-Final": "false",
+            },
+            json=_BODY,
+        )
+
+    assert response.status_code == 202
+    kwargs = mock_task.delay.call_args.kwargs
+    assert kwargs["client_sync_id"] == sync_id
+    assert kwargs["client_sync_chunk_index"] == 0
+    assert kwargs["client_sync_final"] is False
+    assert kwargs["client_sync_total_items"] is None
+
+
 class TestOffloadDisabled:
     def test_body_is_enqueued_inline(self, client: TestClient, api_v1_prefix: str, mock_task: MagicMock) -> None:
         with (

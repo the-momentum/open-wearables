@@ -643,6 +643,18 @@ The SDK sends health data to:
 POST {host}/api/v1/sdk/users/{userId}/sync
 ```
 
+The iOS SDK automatically gives every full or incremental sync a durable
+`client_sync_id`, numbers each request, and sends a final empty marker with the
+exact submitted item total. The same ID and request index survive app restarts
+and network retries. Open Wearables emits one `sync.completed` event for that ID
+only after every numbered request has been processed and the submitted,
+received, and processed totals match.
+
+SDK data webhooks include `client_sync_id`, `batch_id`, and
+`client_chunk_index`, which lets consumers correlate individual sleep, workout,
+and timeseries events with the terminal whole-sync event. `chunk_index` and
+`total_chunks` remain reserved for splitting one large outgoing Svix event.
+
 Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
 
 ## Internal Architecture

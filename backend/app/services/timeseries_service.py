@@ -32,6 +32,7 @@ from app.schemas.utils import (
 )
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
+from app.services.sdk_ingestion_context import current_sdk_ingestion_manifest
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -57,6 +58,7 @@ class TimeSeriesService(
     ) -> WriteCounts:
         counts = self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
         samples_copy = list(samples)
+        sync_manifest = current_sdk_ingestion_manifest()
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _start_webhook_thread(session: DbSession) -> None:  # noqa: ARG001
@@ -64,7 +66,7 @@ class TimeSeriesService(
                 return
             threading.Thread(
                 target=self._emit_timeseries_webhooks,
-                args=(samples_copy,),
+                args=(samples_copy, sync_manifest),
                 daemon=True,
             ).start()
 
@@ -73,6 +75,7 @@ class TimeSeriesService(
     @staticmethod
     def _emit_timeseries_webhooks(
         samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+        sync_manifest: dict[str, Any] | None = None,
     ) -> None:
         """Emit one webhook event per (user, provider, series_type) batch."""
         if not samples:
@@ -106,6 +109,7 @@ class TimeSeriesService(
                     start_time=sorted_samples[0].recorded_at.isoformat(),
                     end_time=sorted_samples[-1].recorded_at.isoformat(),
                     samples=webhook_samples,
+                    sync_manifest=sync_manifest,
                 )
         except Exception:
             getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)

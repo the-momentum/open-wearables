@@ -482,3 +482,27 @@ class TestEnsureSdkConnection:
 
         assert emit.call_count == 1
         assert emit.call_args.kwargs["connected_at"] == first.created_at.isoformat()
+
+    def test_conflicting_create_recovers_existing_without_emitting(self, db: Session) -> None:
+        user = UserFactory()
+        existing = UserConnectionFactory(
+            user=user,
+            provider="apple",
+            status=ConnectionStatus.ACTIVE,
+        )
+        repository = user_connection_service.crud
+
+        with (
+            patch.object(
+                repository,
+                "get_by_user_and_provider",
+                side_effect=[None, existing],
+            ),
+            patch.object(db, "execute") as execute,
+            patch("app.services.user_connection_service.on_connection_created") as emit,
+        ):
+            execute.return_value.scalar_one_or_none.return_value = None
+            connection = user_connection_service.ensure_sdk_connection(db, user.id, "apple")
+
+        assert connection.id == existing.id
+        emit.assert_not_called()

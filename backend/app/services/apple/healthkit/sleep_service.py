@@ -82,6 +82,33 @@ def delete_sleep_state(user_id: str) -> None:
     get_redis_client().srem(active_users_key(), user_id)
 
 
+def finalize_pending_sleep(db_session: DbSession, user_id: str) -> None:
+    """Persist a user's pending sleep state before whole-SDK completion.
+
+    The ordinary sleep path waits for a configurable quiet period so adjacent
+    HealthKit stages can be joined. A whole-SDK final marker is stronger evidence:
+    all chunks from this phone run have already been imported, so leaving its
+    pending state in Redis would make ``sync.completed`` claim data that is not yet
+    queryable. The same per-user lock prevents racing another chunk.
+    """
+    redis_client = get_redis_client()
+    lock = redis_client.lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=15)
+
+    try:
+        if not lock.acquire():
+            raise TimeoutError(f"Could not acquire sleep finalization lock for user {user_id}")
+
+        state = load_sleep_state(user_id)
+        if state is None:
+            return
+        finish_sleep(db_session, user_id, state)
+        if load_sleep_state(user_id) is not None:
+            raise RuntimeError(f"Sleep state remained pending after finalization for user {user_id}")
+    finally:
+        with contextlib.suppress(Exception):
+            lock.release()
+
+
 def _create_new_sleep_state(
     start_time: datetime,
     end_time: datetime,

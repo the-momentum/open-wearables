@@ -251,3 +251,61 @@ class TestTransportedPayloadCleanup:
         mock_delete = _run_offloaded_batch(db, UserFactory(), archival="disabled", status_code=500)
 
         mock_delete.assert_not_called()
+
+
+class TestWholeSyncSleepCompletion:
+    @patch(f"{_MODULE}.completed")
+    @patch(f"{_MODULE}.finalize_pending_sleep")
+    @patch(f"{_MODULE}.user_connection_service")
+    @patch(f"{_MODULE}.sdk_import_service")
+    @patch(f"{_MODULE}.sdk_sync_run_service")
+    @patch(f"{_MODULE}.SessionLocal")
+    @patch(f"{_MODULE}.UserRepository")
+    def test_terminal_run_finalizes_sleep_before_completed_event(
+        self,
+        mock_user_repo_class: MagicMock,
+        mock_session_local: MagicMock,
+        mock_run_service: MagicMock,
+        mock_import: MagicMock,
+        mock_connection_service: MagicMock,
+        mock_finalize_sleep: MagicMock,
+        mock_completed: MagicMock,
+    ) -> None:
+        user_id = str(uuid4())
+        db = MagicMock()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_user_repo_class.return_value.get.return_value = MagicMock()
+        response = MagicMock()
+        response.model_dump.return_value = {
+            "status_code": 200,
+            "records_saved": 0,
+            "workouts_saved": 0,
+            "sleep_saved": 2,
+        }
+        mock_import.import_data_from_request.return_value = response
+        run = MagicMock()
+        run.received_sleep_items = 2
+        run.processed_items = 2
+        mock_run_service.mark_started.return_value = (run, False)
+        mock_run_service.mark_processed.return_value = (run, True, False)
+        call_order: list[str] = []
+        mock_finalize_sleep.side_effect = lambda *_: call_order.append("sleep")
+        mock_completed.side_effect = lambda *_args, **_kwargs: call_order.append("completed")
+
+        process_sdk_upload(
+            content='{"provider":"apple","data":{"records":[],"workouts":[],"sleep":[{},{}]}}',
+            content_type="application/json",
+            user_id=user_id,
+            provider="apple",
+            batch_id=str(uuid4()),
+            client_sync_id=str(uuid4()),
+            client_sync_chunk_index=1,
+            client_sync_final=True,
+            client_sync_total_items=2,
+        )
+
+        mock_finalize_sleep.assert_called_once_with(db, user_id)
+        mock_completed.assert_called_once()
+        assert call_order == ["sleep", "completed"]
+        mock_connection_service.ensure_sdk_connection.assert_called_once()

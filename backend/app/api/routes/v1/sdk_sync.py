@@ -1,14 +1,17 @@
 import json
 import uuid
 from logging import getLogger
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from app.config import settings
+from app.database import DbSession
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.raw_payload_storage import put_payload_to_s3, store_raw_payload
+from app.services.sdk_sync_run_service import sdk_sync_run_service
 from app.utils.api_utils import inline_schema_defs
 from app.utils.auth import SDKAuthDep
 from app.utils.sentry_helpers import log_and_capture_error
@@ -33,6 +36,11 @@ def sync_sdk_data(
     user_id: str,
     body: dict,
     auth: SDKAuthDep,
+    db: DbSession,
+    client_sync_id: Annotated[str | None, Header(alias="X-OW-Client-Sync-ID")] = None,
+    client_sync_chunk_index: Annotated[int | None, Header(alias="X-OW-Client-Sync-Chunk-Index")] = None,
+    client_sync_final: Annotated[bool | None, Header(alias="X-OW-Client-Sync-Final")] = None,
+    client_sync_total_items: Annotated[int | None, Header(alias="X-OW-Client-Sync-Total-Items")] = None,
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.
 
@@ -79,7 +87,25 @@ def sync_sdk_data(
             detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",
         )
 
-    # Generate unique batch ID for tracking
+    manifest_header_present = any(
+        value is not None
+        for value in (
+            client_sync_id,
+            client_sync_chunk_index,
+            client_sync_final,
+            client_sync_total_items,
+        )
+    )
+    if manifest_header_present and (
+        client_sync_id is None or client_sync_chunk_index is None or client_sync_final is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Whole-sync uploads require sync id, chunk index, and final headers",
+        )
+
+    # Generate unique batch ID for tracking. Whole-sync retries recover the
+    # original batch ID from the durable manifest row below.
     batch_id = str(uuid.uuid4())
 
     # Extract and count data types from payload (best-effort; structure not yet validated)
@@ -91,6 +117,32 @@ def sync_sdk_data(
     records_count = len(records) if isinstance(records, list) else 0
     workouts_count = len(workouts) if isinstance(workouts, list) else 0
     sleep_count = len(sleep) if isinstance(sleep, list) else 0
+    total_items = records_count + workouts_count + sleep_count
+    content_str = json.dumps(body)
+
+    duplicate_processed = False
+    if client_sync_id is not None and client_sync_chunk_index is not None and client_sync_final is not None:
+        try:
+            accepted = sdk_sync_run_service.accept_chunk(
+                db,
+                user_id=user_id,
+                provider=provider,
+                client_sync_id=client_sync_id,
+                chunk_index=client_sync_chunk_index,
+                is_final=client_sync_final,
+                declared_total_items=client_sync_total_items,
+                item_count=total_items,
+                sleep_item_count=sleep_count,
+                payload=content_str.encode(),
+                batch_id=batch_id,
+            )
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        batch_id = accepted.batch_id
+        duplicate_processed = accepted.duplicate and accepted.status == "processed"
 
     # Log initial batch receipt with counts
     log_structured(
@@ -104,10 +156,19 @@ def sync_sdk_data(
         records_count=records_count,
         workouts_count=workouts_count,
         sleep_count=sleep_count,
-        total_items=records_count + workouts_count + sleep_count,
+        total_items=total_items,
+        client_sync_id=client_sync_id,
+        client_sync_chunk_index=client_sync_chunk_index,
+        client_sync_final=client_sync_final,
+        client_sync_duplicate=duplicate_processed,
     )
 
-    content_str = json.dumps(body)
+    if duplicate_processed:
+        return UploadDataResponse(
+            status_code=202,
+            response="Import task was already processed",
+            user_id=user_id,
+        )
 
     offload = settings.sdk_payload_s3_offload
     payload_ref: str | None = None
@@ -150,6 +211,10 @@ def sync_sdk_data(
         provider=provider,
         batch_id=batch_id,
         payload_ref=payload_ref,
+        client_sync_id=client_sync_id,
+        client_sync_chunk_index=client_sync_chunk_index,
+        client_sync_final=client_sync_final,
+        client_sync_total_items=client_sync_total_items,
     )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)

@@ -4,6 +4,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import CursorResult, and_, func, select, tuple_, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Query
 from sqlalchemy.orm.exc import MultipleResultsFound
 
@@ -419,19 +420,45 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 return existing, SdkConnectionOutcome.REACTIVATED
             return existing, SdkConnectionOutcome.EXISTING
 
-        # Create new SDK connection (no tokens needed)
+        # Create the SDK connection with a database-level conflict guard. SDK
+        # chunks are consumed concurrently, so a read-then-insert sequence can
+        # race even though both callers are implementing "ensure" semantics.
+        connection_id = uuid4()
+        now = datetime.now(timezone.utc)
+        created_id = db_session.execute(
+            insert(UserConnection)
+            .values(
+                id=connection_id,
+                user_id=user_id,
+                provider=provider,
+                access_token=None,
+                refresh_token=None,
+                token_expires_at=None,
+                status=ConnectionStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
+            .on_conflict_do_nothing(index_elements=[UserConnection.user_id, UserConnection.provider])
+            .returning(UserConnection.id)
+        ).scalar_one_or_none()
+        db_session.commit()
+
+        if created_id is None:
+            connection = self.get_by_user_and_provider(db_session, user_id, provider)
+            if connection is None:
+                raise RuntimeError("SDK connection conflict row is unavailable")
+            return connection, SdkConnectionOutcome.EXISTING
+
         connection = UserConnection(
-            id=uuid4(),
+            id=created_id,
             user_id=user_id,
             provider=provider,
             access_token=None,
             refresh_token=None,
             token_expires_at=None,
             status=ConnectionStatus.ACTIVE,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=now,
+            updated_at=now,
         )
-        db_session.add(connection)
-        db_session.commit()
-        db_session.refresh(connection)
+        connection = db_session.merge(connection)
         return connection, SdkConnectionOutcome.CREATED

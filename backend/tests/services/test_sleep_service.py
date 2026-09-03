@@ -28,6 +28,7 @@ from app.schemas.providers.mobile_sdk import (
 )
 from app.services.apple.healthkit.sleep_service import (
     _calculate_final_metrics,
+    finalize_pending_sleep,
     finish_sleep,
     handle_sleep_data,
 )
@@ -524,6 +525,53 @@ class TestFinishSleep:
         assert detail.sleep_rem_minutes == 45
         assert detail.sleep_awake_minutes == 10
         assert detail.sleep_total_duration_minutes == 245  # light+deep+rem (no sleeping)
+
+
+class TestFinalizePendingSleep:
+    @patch("app.services.apple.healthkit.sleep_service.finish_sleep")
+    @patch("app.services.apple.healthkit.sleep_service.load_sleep_state")
+    @patch("app.services.apple.healthkit.sleep_service.get_redis_client")
+    def test_finalizes_under_the_user_lock(
+        self,
+        mock_redis_func: MagicMock,
+        mock_load_state: MagicMock,
+        mock_finish_sleep: MagicMock,
+        db: Session,
+    ) -> None:
+        user_id = str(uuid4())
+        state = MagicMock(spec=SleepState)
+        lock = MagicMock()
+        lock.acquire.return_value = True
+        mock_redis_func.return_value.lock.return_value = lock
+        mock_load_state.side_effect = [state, None]
+
+        finalize_pending_sleep(db, user_id)
+
+        mock_finish_sleep.assert_called_once_with(db, user_id, state)
+        lock.release.assert_called_once()
+
+    @patch("app.services.apple.healthkit.sleep_service.finish_sleep")
+    @patch("app.services.apple.healthkit.sleep_service.load_sleep_state")
+    @patch("app.services.apple.healthkit.sleep_service.get_redis_client")
+    def test_fails_closed_when_state_remains_pending(
+        self,
+        mock_redis_func: MagicMock,
+        mock_load_state: MagicMock,
+        mock_finish_sleep: MagicMock,
+        db: Session,
+    ) -> None:
+        user_id = str(uuid4())
+        state = MagicMock(spec=SleepState)
+        lock = MagicMock()
+        lock.acquire.return_value = True
+        mock_redis_func.return_value.lock.return_value = lock
+        mock_load_state.side_effect = [state, state]
+
+        with pytest.raises(RuntimeError, match="remained pending"):
+            finalize_pending_sleep(db, user_id)
+
+        mock_finish_sleep.assert_called_once_with(db, user_id, state)
+        lock.release.assert_called_once()
 
 
 class TestHandleSleepDataIntegration:

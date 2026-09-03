@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
+from app.services.sdk_ingestion_context import current_sdk_ingestion_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,16 @@ def _safe_key(raw: str) -> str:
     return _SVIX_ID_SAFE.sub("_", raw)
 
 
+def _sync_manifest_fields(manifest: dict[str, Any] | None = None) -> dict[str, Any]:
+    manifest = manifest or current_sdk_ingestion_manifest()
+    if not manifest:
+        return {}
+    fields = {key: manifest[key] for key in ("client_sync_id", "batch_id") if manifest.get(key) is not None}
+    if manifest.get("chunk_index") is not None:
+        fields["client_chunk_index"] = manifest["chunk_index"]
+    return fields
+
+
 def _dispatch(
     event_type: str,
     payload: dict[str, Any],
@@ -50,6 +62,7 @@ def _dispatch(
     """
     if not svix_service.is_enabled():
         return
+    payload.setdefault("event_created_at", datetime.now(timezone.utc).isoformat())
     try:
         from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 
@@ -95,6 +108,7 @@ def on_workout_created(
                 "max_heart_rate_bpm": max_heart_rate_bpm,
                 "avg_pace_sec_per_km": avg_pace_sec_per_km,
                 "elevation_gain_meters": elevation_gain_meters,
+                **_sync_manifest_fields(),
             },
         },
         idempotency_key=f"workout.created.{record_id}",
@@ -133,6 +147,7 @@ def on_menstrual_cycle_created(
                 "cycle_length": cycle_length,
                 "is_predicted_cycle": is_predicted_cycle,
                 "pregnancy_snapshot": pregnancy_snapshot,
+                **_sync_manifest_fields(),
             },
         },
         idempotency_key=f"menstrual_cycle.created.{record_id}",
@@ -169,6 +184,7 @@ def on_sleep_created(
                 "efficiency_percent": efficiency_percent,
                 "stages": stages,
                 "is_nap": is_nap,
+                **_sync_manifest_fields(),
             },
         },
         idempotency_key=f"sleep.created.{record_id}",
@@ -185,6 +201,7 @@ def on_timeseries_batch_saved(
     start_time: str | None = None,
     end_time: str | None = None,
     samples: list[dict[str, Any]] | None = None,
+    sync_manifest: dict[str, Any] | None = None,
 ) -> None:
     """Emit one webhook event per data-type per ingestion batch.
 
@@ -230,6 +247,7 @@ def on_timeseries_batch_saved(
             "start_time": start_time,
             "end_time": end_time,
             "samples": samples,
+            **_sync_manifest_fields(sync_manifest),
         }
         for event_type in event_types_to_emit:
             _emit(event_type, data, base_key)
@@ -254,6 +272,7 @@ def on_timeseries_batch_saved(
                 "samples": chunk,
                 "chunk_index": chunk_index,
                 "total_chunks": total_chunks,
+                **_sync_manifest_fields(sync_manifest),
             }
             for event_type in event_types_to_emit:
                 _emit(event_type, data, base_key)

@@ -172,6 +172,9 @@ services:
       SVIX_QUEUE_TYPE: "redis"
       SVIX_REDIS_DSN: "redis://redis:6379/1"
       SVIX_CACHE_TYPE: "redis"
+      # Keep Svix's SSRF protection on by default. Local cross-stack acceptance
+      # can explicitly whitelist Docker Desktop's host bridge subnet.
+      SVIX_WHITELIST_SUBNETS: "${SVIX_WHITELIST_SUBNETS:-[]}"
     ports:
       - "${SVIX_PORT:-8071}:8071"
     depends_on:

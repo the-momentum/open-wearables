@@ -15,6 +15,7 @@ from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
+from .sdk_sync_run import SDKSyncChunk, SDKSyncRun
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .user import User
@@ -52,6 +53,8 @@ __all__ = [
     "PersonalRecord",
     "DataPointSeries",
     "SeriesTypeDefinition",
+    "SDKSyncChunk",
+    "SDKSyncRun",
     "HealthScore",
     "DetailType",
     "DETAIL_MODELS",
