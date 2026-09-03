@@ -102,6 +102,38 @@ class TestEventRecordRepository:
         assert data_source.source == "garmin"
         assert data_source.device_model == "device456"
 
+    def test_create_auto_creates_mapping_infers_device_type_from_source(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Providers like Oura never report device_model for sleep — device_type must still
+        be inferred from the source string (e.g. "oura" -> ring) when auto-creating the mapping.
+        """
+        user = UserFactory()
+        now = datetime.now(timezone.utc)
+
+        event_data = EventRecordCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            device_model=None,
+            data_source_id=None,
+            category="sleep",
+            type="sleep_session",
+            source_name="Oura",
+            duration_seconds=25000,
+            start_datetime=now,
+            end_datetime=now + timedelta(seconds=25000),
+        )
+
+        result = event_repo.create(db, event_data)
+
+        from app.models import DataSource
+        from app.repositories.data_source_repository import DataSourceRepository
+
+        data_source = DataSourceRepository(DataSource).get(db, result.data_source_id)
+        assert data_source is not None
+        assert data_source.device_type == "ring"
+
     def test_get(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test retrieving an event record by ID."""
         # Arrange

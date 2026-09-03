@@ -773,6 +773,42 @@ class TestCreateOrMergeSleep:
         mock_sleep.assert_called_once()
         assert mock_sleep.call_args.kwargs["device_type"] is None
 
+    def test_resolves_device_type_when_input_record_has_no_data_source_id(self, db: Session) -> None:
+        """Real provider ingestion (e.g. Oura's save_sleep_data) never sets data_source_id on
+        the input EventRecordCreate - it gets resolved/created by the repository during insert.
+        device_type must therefore be looked up from the *persisted* record, not the input.
+        """
+        user = UserFactory()
+        # Pre-existing DataSource matching the identity (user_id, provider, device_model, source)
+        # that the repository's get-or-create will resolve to - with a known device_type, so the
+        # assertion below actually distinguishes "looked up the resolved source" from "always None".
+        DataSourceFactory(user=user, provider=ProviderName.OURA, device_model=None, source="oura", device_type="ring")
+
+        start, end = self._dt(1, 35), self._dt(8, 51)
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="sleep",
+            type="sleep_session",
+            source_name="Oura",
+            source="oura",
+            user_id=user.id,
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=int((end - start).total_seconds()),
+        )
+        assert record.data_source_id is None
+        detail = self._detail(record.id)
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_sleep_created") as mock_sleep,
+        ):
+            result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        assert result.data_source_id is not None
+        mock_sleep.assert_called_once()
+        assert mock_sleep.call_args.kwargs["device_type"] == "ring"
+
 
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
