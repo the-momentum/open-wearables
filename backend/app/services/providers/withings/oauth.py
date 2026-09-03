@@ -4,19 +4,23 @@ import logging
 from uuid import UUID
 
 import httpx
+from celery import current_app as celery_app
 from fastapi import HTTPException
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.config import settings
 from app.database import DbSession, SessionLocal
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import AuthenticationMethod, LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
+    OAuthState,
     OAuthTokenResponse,
     ProviderCredentials,
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.withings.tasks import REGISTER_USER_WEBHOOKS_TASK
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -186,6 +190,41 @@ class WithingsOAuth(BaseOAuthTemplate):
         userid = extra.get("userid")
         return {"user_id": str(userid) if userid is not None else None, "username": None}
 
+    def _save_connection(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        token_response: OAuthTokenResponse,
+        user_info: dict[str, str | None],
+        oauth_state: OAuthState,
+    ) -> None:
+        """Persist the connection, then subscribe this user to notifications.
+
+        Subscribing needs the stored bearer token, so it cannot run any earlier;
+        it is enqueued rather than awaited because it is a list plus one call per
+        appli, which the OAuth callback cannot wait on.
+        """
+        super()._save_connection(db, user_id, token_response, user_info, oauth_state)
+        # Withings defaults to pull, so an unset override means no subscriptions.
+        if ProviderSettingsRepository().get_live_sync_mode(db, self.provider_name) != LiveSyncMode.WEBHOOK:
+            return
+        try:
+            celery_app.send_task(
+                REGISTER_USER_WEBHOOKS_TASK,
+                args=[self.provider_name, str(user_id)],
+                queue="webhook_sync",
+            )
+        except Exception as e:
+            # The account is linked either way; a broker failure must not fail the callback.
+            log_structured(
+                logger,
+                "error",
+                "Withings notify subscription scheduling failed",
+                provider=self.provider_name,
+                user_id=str(user_id),
+                error=str(e),
+            )
+
     def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
         """Revoke this account's notify subscriptions.
 
@@ -202,10 +241,10 @@ class WithingsOAuth(BaseOAuthTemplate):
             linked = self.connection_repo.get_all_by_provider_user_id(db, self.provider_name, provider_user_id)
             if len(linked) != 1:
                 return
-            # Imported here: notify_service imports WithingsTokenError from this module.
-            from app.services.providers.withings.notify_service import WithingsNotifyService
+            # Imported here: webhook_service imports WithingsTokenError from this module.
+            from app.services.providers.withings.webhook_service import WithingsWebhookService
 
-            service = WithingsNotifyService(connection_repo=self.connection_repo, oauth=self)
+            service = WithingsWebhookService(connection_repo=self.connection_repo, oauth=self)
             # Reconciling toward PULL means "no subscriptions desired", which
             # prunes exactly the set this account owns.
             service.sync_user(db, linked[0].user_id, LiveSyncMode.PULL)

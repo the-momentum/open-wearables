@@ -1,4 +1,10 @@
-"""Withings data API request definitions shared by ingestion services."""
+"""Withings data API request definitions.
+
+Withings is RPC-over-POST: the service path is one of a handful of endpoints and
+the operation is named by an ``action`` field, so a request is the pair plus the
+key its rows arrive under. ``data_fields`` is Withings' own opt-in parameter for
+which measures a response should carry.
+"""
 
 from dataclasses import dataclass
 

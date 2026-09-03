@@ -1,10 +1,13 @@
-"""Route Withings notification applis to fetch domains.
+"""Route Withings notification applis to the fetch domain that handles them.
 
 ``appli`` notification categories and ``meastype`` measure codes are distinct
-numeric namespaces.
+numeric namespaces. The domain names are ours, not Withings' — they select which
+ingestion call a notification triggers.
 """
 
 from typing import Literal
+
+from app.schemas.providers.withings import PROFILE_CHANGE_APPLI
 
 Domain = Literal["measures", "sleep", "activity_workouts"]
 
@@ -17,12 +20,5 @@ APPLI_DOMAIN: dict[int, Domain] = {
     58: "measures",  # Glucose
 }
 
-# Profile change (delete / unlink / update) — subscribed like any other appli,
-# but handled inline by `_screen()` before domain routing, never fetched as data.
-PROFILE_CHANGE_APPLI = 46
-
-# Of appli 46's three `action` values, only these mean we lost access upstream
-# and should revoke local connections; `update` is a metadata-only change.
-PROFILE_CHANGE_REVOKING_ACTIONS = frozenset({"delete", "unlink"})
-
+# Appli 46 is subscribed too, but handled before domain routing: it carries no data.
 SUBSCRIBED_APPLIS: list[int] = sorted({*APPLI_DOMAIN, PROFILE_CHANGE_APPLI})

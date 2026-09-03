@@ -1,10 +1,9 @@
 """Authenticate Withings notifications, acknowledge them, and defer ingestion to Celery."""
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from secrets import compare_digest
-from typing import Any, assert_never, final
+from typing import Any, assert_never
 from urllib.parse import parse_qs
 from uuid import UUID, uuid4
 
@@ -22,13 +21,7 @@ from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
 from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.services.providers.withings.applis import (
-    APPLI_DOMAIN,
-    PROFILE_CHANGE_APPLI,
-    PROFILE_CHANGE_REVOKING_ACTIONS,
-    SUBSCRIBED_APPLIS,
-    Domain,
-)
+from app.services.providers.withings.applis import APPLI_DOMAIN, SUBSCRIBED_APPLIS, Domain
 from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.workouts import WithingsWorkouts
 from app.services.raw_payload_storage import store_raw_payload
@@ -38,25 +31,6 @@ logger = logging.getLogger(__name__)
 
 _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 _MAX_NOTIFY_WINDOW = timedelta(days=31)
-
-
-@final
-@dataclass(frozen=True)
-class _ScreenedNotification:
-    """A notification that cleared every inbound guard, with its fetch window resolved."""
-
-    notification: WithingsNotification
-    domain: Domain
-    start: datetime
-    end: datetime
-
-
-@final
-@dataclass(frozen=True)
-class _ProfileChangeNotification:
-    """An appli-46 notification whose action means we lost access upstream (delete/unlink)."""
-
-    notification: WithingsNotification
 
 
 class WithingsWebhookHandler(BaseWebhookHandler):
@@ -109,7 +83,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
 
     @staticmethod
     def _bounded_window(notification: WithingsNotification) -> tuple[datetime, datetime, str | None] | None:
-        window = notification.resolve_window()
+        window = notification.resolve_notify_window()
         if window is None:
             return None
         start, end = window
@@ -119,20 +93,21 @@ class WithingsWebhookHandler(BaseWebhookHandler):
             return start, end, "date_range_too_large"
         return start, end, None
 
-    def _screen(
-        self, db: DbSession, payload: dict[str, Any]
-    ) -> _ScreenedNotification | _ProfileChangeNotification | dict[str, Any]:
-        """Validate a notification and resolve its domain, window, and current live-sync mode."""
+    def _screen(self, payload: dict[str, Any]) -> WithingsNotification | dict[str, Any]:
+        """Validate an inbound notification; a dict is the reason to ignore it."""
         try:
             notification = WithingsNotification.model_validate(payload)
         except ValidationError:
             return {"status": "ignored", "reason": "invalid_payload_fields"}
 
-        if notification.appli == PROFILE_CHANGE_APPLI:
-            if notification.action not in PROFILE_CHANGE_REVOKING_ACTIONS:
-                return {"status": "ignored", "reason": "profile_change", "action": notification.action}
-            return _ProfileChangeNotification(notification=notification)
+        if notification.is_profile_change and not notification.revokes_access:
+            return {"status": "ignored", "reason": "profile_change", "action": notification.action}
+        return notification
 
+    def _fetch_plan(
+        self, db: DbSession, notification: WithingsNotification
+    ) -> tuple[Domain, datetime, datetime] | dict[str, Any]:
+        """Resolve which domain and window a data notification asks us to fetch."""
         domain = APPLI_DOMAIN.get(notification.appli)
         if domain is None:
             return {"status": "ignored", "reason": f"unhandled_appli: {notification.appli}"}
@@ -146,8 +121,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
 
         if not self._live_sync_mode_allows_webhook(db):
             return {"status": "ignored", "reason": "live_sync_mode_not_webhook"}
-
-        return _ScreenedNotification(notification=notification, domain=domain, start=start, end=end)
+        return domain, start, end
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Store the raw payload, then acknowledge fast and enqueue the data fetch
@@ -155,14 +129,18 @@ class WithingsWebhookHandler(BaseWebhookHandler):
         trace_id = str(uuid4())[:8]
         store_raw_payload(source="webhook", provider="withings", payload=payload, trace_id=trace_id)
 
-        screened = self._screen(db, payload)
-        if isinstance(screened, dict):
-            return screened
+        notification = self._screen(payload)
+        if isinstance(notification, dict):
+            return notification
 
-        userid = screened.notification.userid
-        if isinstance(screened, _ProfileChangeNotification):
+        userid = notification.userid
+        if notification.is_profile_change:
+            # One Withings account can back several local profiles; all revoke together.
             known = bool(self.connection_repo.get_all_by_provider_user_id(db, "withings", userid))
         else:
+            plan = self._fetch_plan(db, notification)
+            if isinstance(plan, dict):
+                return plan
             known = self.connection_repo.get_by_provider_user_id(db, "withings", userid) is not None
         if not known:
             return {"status": "ignored", "reason": "user_not_found", "withings_user_id": userid}
@@ -172,7 +150,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
             args=["withings", payload, trace_id],
             queue="webhook_sync",
         )
-        return {"status": "accepted", "appli": screened.notification.appli}
+        return {"status": "accepted", "appli": notification.appli}
 
     # ---------------------- async processing (Celery worker) ----------------------
 
@@ -185,18 +163,22 @@ class WithingsWebhookHandler(BaseWebhookHandler):
         one user action arrives as a small burst over the same window; the writes
         are idempotent upserts, so a repeat costs a refetch and nothing more.
         """
-        screened = self._screen(db, payload)
-        if isinstance(screened, dict):
-            return screened
+        notification = self._screen(payload)
+        if isinstance(notification, dict):
+            return notification
 
-        if isinstance(screened, _ProfileChangeNotification):
-            return self._revoke_local_connections(db, screened.notification, trace_id)
+        if notification.is_profile_change:
+            return self._revoke_local_connections(db, notification, trace_id)
 
-        connections = self.connection_repo.get_all_by_provider_user_id(db, "withings", screened.notification.userid)
+        plan = self._fetch_plan(db, notification)
+        if isinstance(plan, dict):
+            return plan
+        domain, start, end = plan
+
+        connections = self.connection_repo.get_all_by_provider_user_id(db, "withings", notification.userid)
         if not connections:
-            return {"status": "user_not_found", "withings_user_id": screened.notification.userid}
+            return {"status": "user_not_found", "withings_user_id": notification.userid}
 
-        domain, start, end = screened.domain, screened.start, screened.end
         saved = 0
         user_ids: list[str] = []
         per_user: list[tuple[UUID, int]] = []
@@ -224,7 +206,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
             "info",
             "Withings webhook processed",
             provider="withings",
-            appli=screened.notification.appli,
+            appli=notification.appli,
             domain=domain,
             user_ids=user_ids,
             items_processed=saved,

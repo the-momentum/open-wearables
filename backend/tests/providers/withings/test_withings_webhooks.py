@@ -9,10 +9,11 @@ import pytest
 from pydantic import SecretStr
 
 from app.schemas.auth import LiveSyncMode
+from app.services.providers.withings import webhook_service
 from app.services.providers.withings.applis import SUBSCRIBED_APPLIS
-from app.services.providers.withings.notify_service import WithingsNotifyService
 from app.services.providers.withings.oauth import WithingsOAuth
 from app.services.providers.withings.webhook_handler import WithingsWebhookHandler
+from app.services.providers.withings.webhook_service import WithingsWebhookService
 
 CALLBACK_URL = "https://example.com/api/v1/providers/withings/webhooks?token=secret"
 
@@ -58,6 +59,7 @@ def test_probe_rejects_an_unauthenticated_head_request() -> None:
 @pytest.mark.parametrize(
     ("payload", "reason"),
     [
+        ({}, "invalid_payload_fields"),
         ({"userid": "42", "appli": 99}, "unhandled_appli: 99"),
         ({"userid": "42", "appli": 1}, "missing_date_range"),
         ({"userid": "42", "appli": 1, "startdate": 200, "enddate": 100}, "invalid_date_range"),
@@ -65,16 +67,21 @@ def test_probe_rejects_an_unauthenticated_head_request() -> None:
         ({"userid": "42", "appli": 46, "action": "update"}, "profile_change"),
     ],
 )
-def test_screen_ignores_unusable_notifications(payload: dict, reason: str) -> None:
-    assert _handler()._screen(MagicMock(), payload)["reason"] == reason
+@patch("app.services.providers.withings.webhook_handler.store_raw_payload")
+def test_dispatch_ignores_unusable_notifications(mock_store: MagicMock, payload: dict, reason: str) -> None:
+    # Asserted through dispatch rather than the guards themselves: an ignored
+    # notification must never reach the queue.
+    assert _handler().dispatch(MagicMock(), payload)["reason"] == reason
+    mock_store.assert_called_once()
 
 
-def test_screen_ignores_data_notifications_while_in_pull_mode() -> None:
+@patch("app.services.providers.withings.webhook_handler.store_raw_payload")
+def test_dispatch_ignores_data_notifications_while_in_pull_mode(mock_store: MagicMock) -> None:
     payload = {"userid": "42", "appli": 1, "startdate": 100, "enddate": 200}
 
-    screened = _handler(LiveSyncMode.PULL)._screen(MagicMock(), payload)
+    result = _handler(LiveSyncMode.PULL).dispatch(MagicMock(), payload)
 
-    assert screened["reason"] == "live_sync_mode_not_webhook"
+    assert result["reason"] == "live_sync_mode_not_webhook"
 
 
 @patch("app.services.providers.withings.webhook_handler.store_raw_payload")
@@ -112,8 +119,8 @@ def test_profile_delete_revokes_every_local_connection_for_that_account(mock_rev
 # ---------------------------- notify reconciliation ----------------------------
 
 
-def _service() -> WithingsNotifyService:
-    service = WithingsNotifyService(
+def _service() -> WithingsWebhookService:
+    service = WithingsWebhookService(
         connection_repo=MagicMock(), oauth=MagicMock(), default_live_sync_mode=LiveSyncMode.PULL
     )
     service.provider_settings_repo = MagicMock()
@@ -124,12 +131,12 @@ def test_register_user_subscriptions_subscribes_every_missing_appli() -> None:
     service = _service()
     with (
         patch.object(service, "_list_subscriptions", return_value=[]),
-        patch.object(service, "_apply", return_value={"status": "subscribed"}) as mock_apply,
+        patch.object(service, "_change_subscription", return_value={"status": "subscribed"}) as mock_change,
     ):
         results = service.sync_user(MagicMock(), uuid4(), LiveSyncMode.WEBHOOK)
 
     assert len(results) == len(SUBSCRIBED_APPLIS)
-    assert {call.args[0] for call in mock_apply.call_args_list} == {"subscribe"}
+    assert {call.args[2] for call in mock_change.call_args_list} == {"subscribe"}
 
 
 def test_register_user_subscriptions_revokes_our_own_profiles_when_switched_to_pull() -> None:
@@ -137,11 +144,11 @@ def test_register_user_subscriptions_revokes_our_own_profiles_when_switched_to_p
     existing = [SimpleNamespace(appli=1, callbackurl=CALLBACK_URL, comment="open-wearables")]
     with (
         patch.object(service, "_list_subscriptions", return_value=existing),
-        patch.object(service, "_apply", return_value={"status": "revoked"}) as mock_apply,
+        patch.object(service, "_change_subscription", return_value={"status": "revoked"}) as mock_change,
     ):
         service.sync_user(MagicMock(), uuid4(), LiveSyncMode.PULL)
 
-    assert mock_apply.call_args.args[0] == "revoke"
+    assert mock_change.call_args.args[2] == "revoke"
 
 
 def test_register_user_subscriptions_leaves_profiles_registered_by_another_host_alone() -> None:
@@ -149,11 +156,11 @@ def test_register_user_subscriptions_leaves_profiles_registered_by_another_host_
     existing = [SimpleNamespace(appli=1, callbackurl="https://other.example/webhooks?token=x", comment=None)]
     with (
         patch.object(service, "_list_subscriptions", return_value=existing),
-        patch.object(service, "_apply") as mock_apply,
+        patch.object(service, "_change_subscription") as mock_change,
     ):
         service.sync_user(MagicMock(), uuid4(), LiveSyncMode.PULL)
 
-    mock_apply.assert_not_called()
+    mock_change.assert_not_called()
 
 
 def test_register_user_subscriptions_skips_when_the_webhook_token_is_unconfigured(
@@ -166,7 +173,7 @@ def test_register_user_subscriptions_skips_when_the_webhook_token_is_unconfigure
     assert results == [{"status": "skipped", "reason": "webhook_token_unconfigured"}]
 
 
-@patch("app.services.providers.withings.notify_service.WithingsNotifyService.sync_user")
+@patch("app.services.providers.withings.webhook_service.WithingsWebhookService.sync_user")
 @patch("app.services.providers.withings.oauth.SessionLocal")
 def test_deregister_user_revokes_only_when_it_is_the_last_link(mock_session: MagicMock, mock_sync: MagicMock) -> None:
     # Subscriptions belong to the Withings account, so a sibling profile keeps them.
@@ -195,3 +202,16 @@ def test_deregister_user_without_a_provider_user_id_does_nothing() -> None:
     oauth.deregister_user("at", provider_user_id=None)
 
     oauth.connection_repo.get_all_by_provider_user_id.assert_not_called()
+
+
+def test_callback_identity_is_exact_but_ownership_ignores_a_rotated_token() -> None:
+    base = "https://example.com/api/v1/providers/withings/webhooks"
+    assert webhook_service._urls_match(f"{base}?token=a", f"{base}/?token=a")
+    assert not webhook_service._urls_match(f"{base}?token=a", f"{base}?token=b")
+    # A rotated token still identifies the profile as ours; another host's does not.
+    assert webhook_service._endpoints_match(f"{base}?token=old", f"{base}?token=new")
+    assert not webhook_service._endpoints_match("https://other.example/webhooks?token=a", f"{base}?token=a")
+
+
+def test_a_logged_callback_url_never_carries_the_token() -> None:
+    assert "secret" not in webhook_service._redact("https://example.com/webhooks?token=secret")

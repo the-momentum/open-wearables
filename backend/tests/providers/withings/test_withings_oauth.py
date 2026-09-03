@@ -5,7 +5,9 @@ from uuid import uuid4
 
 import pytest
 
+from app.schemas.auth import LiveSyncMode
 from app.schemas.model_crud.credentials import OAuthTokenResponse
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.oauth import WithingsOAuth, WithingsTokenError
 
 
@@ -78,3 +80,46 @@ def test_provider_user_info_reads_userid_from_the_token_body() -> None:
     token = OAuthTokenResponse.model_validate(body)
 
     assert _oauth()._get_provider_user_info(token, "local-user")["user_id"] == "4242"
+
+
+@pytest.mark.parametrize(
+    ("stored_mode", "enqueued"),
+    [(LiveSyncMode.WEBHOOK, True), (LiveSyncMode.PULL, False), (None, False)],
+)
+@patch("app.services.providers.withings.oauth.celery_app.send_task")
+@patch("app.services.providers.withings.oauth.ProviderSettingsRepository")
+@patch.object(BaseOAuthTemplate, "_save_connection")
+def test_save_connection_enqueues_subscriptions_only_in_webhook_mode(
+    mock_super: MagicMock,
+    mock_repo: MagicMock,
+    mock_send: MagicMock,
+    stored_mode: LiveSyncMode | None,
+    enqueued: bool,
+) -> None:
+    mock_repo.return_value.get_live_sync_mode.return_value = stored_mode
+    user_id = uuid4()
+    token = OAuthTokenResponse.model_validate({"access_token": "at", "token_type": "Bearer", "expires_in": 1})
+
+    _oauth()._save_connection(MagicMock(), user_id, token, {}, MagicMock())
+
+    # The connection is always persisted; only the subscribe step is conditional.
+    mock_super.assert_called_once()
+    assert mock_send.called is enqueued
+    if enqueued:
+        assert mock_send.call_args.kwargs["args"] == ["withings", str(user_id)]
+
+
+@patch("app.services.providers.withings.oauth.celery_app.send_task", side_effect=RuntimeError("broker down"))
+@patch("app.services.providers.withings.oauth.ProviderSettingsRepository")
+@patch.object(BaseOAuthTemplate, "_save_connection")
+def test_save_connection_survives_a_broker_failure(
+    mock_super: MagicMock, mock_repo: MagicMock, mock_send: MagicMock
+) -> None:
+    # The account is linked by this point; scheduling must not fail the callback.
+    mock_repo.return_value.get_live_sync_mode.return_value = LiveSyncMode.WEBHOOK
+    token = OAuthTokenResponse.model_validate({"access_token": "at", "token_type": "Bearer", "expires_in": 1})
+
+    _oauth()._save_connection(MagicMock(), uuid4(), token, {}, MagicMock())
+
+    mock_send.assert_called_once()
+    mock_super.assert_called_once()

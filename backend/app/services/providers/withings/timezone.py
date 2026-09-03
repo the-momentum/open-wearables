@@ -1,13 +1,18 @@
-"""Convert Withings local dates and IANA zones to stored UTC instants and offsets."""
+"""Convert Withings local dates and IANA zones to stored UTC instants and offsets.
 
-from datetime import datetime, timedelta, timezone
+Withings is the only provider that sends an IANA zone *name* alongside an epoch
+or a local date, so loading the zone is provider-local; formatting the resulting
+offset is not, and goes through ``app.utils.dates.offset_to_iso``.
+"""
+
+from datetime import date as date_type
+from datetime import datetime, timezone
 from logging import Logger
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
-
-_YMD = "%Y-%m-%d"
 
 
 def _load_zone(
@@ -34,13 +39,10 @@ def _load_zone(
         return None
 
 
-def _format_offset(offset: timedelta | None) -> str | None:
-    if offset is None:
-        return None
-    total_minutes = int(offset.total_seconds() // 60)
-    sign = "+" if total_minutes >= 0 else "-"
-    hours, minutes = divmod(abs(total_minutes), 60)
-    return f"{sign}{hours:02d}:{minutes:02d}"
+def _offset_of(moment: datetime) -> str | None:
+    """Render an aware datetime's UTC offset, the way Oura's workouts do."""
+    offset = moment.utcoffset()
+    return offset_to_iso(int(offset.total_seconds())) if offset is not None else None
 
 
 def zone_offset_at(
@@ -55,24 +57,21 @@ def zone_offset_at(
     zone = _load_zone(timezone_name, logger, action=action, **context)
     if zone is None:
         return None
-    return _format_offset(utc_instant.astimezone(zone).utcoffset())
+    return _offset_of(utc_instant.astimezone(zone))
 
 
 def local_day_start(
-    local_date: str,
+    local_date: date_type,
     timezone_name: str | None,
     logger: Logger,
     *,
     action: str,
     **context: Any,
-) -> tuple[datetime, str | None] | None:
-    """Resolve a local date to its UTC instant and offset, or ``None`` if invalid."""
-    try:
-        midnight = datetime.strptime(local_date, _YMD)
-    except (ValueError, TypeError):
-        return None
+) -> tuple[datetime, str | None]:
+    """Resolve a local calendar day to its UTC instant and offset."""
+    midnight = datetime(local_date.year, local_date.month, local_date.day)
     zone = _load_zone(timezone_name, logger, action=action, **context)
     if zone is None:
         return midnight.replace(tzinfo=timezone.utc), None
     local_midnight = midnight.replace(tzinfo=zone)
-    return local_midnight.astimezone(timezone.utc), _format_offset(local_midnight.utcoffset())
+    return local_midnight.astimezone(timezone.utc), _offset_of(local_midnight)

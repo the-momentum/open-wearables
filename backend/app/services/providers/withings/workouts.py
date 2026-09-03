@@ -9,14 +9,14 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 
 from app.config import settings
+from app.constants.withings_requests import WORKOUTS
 from app.constants.workout_types.withings import OFFICIAL_WITHINGS_CATEGORY_IDS, get_unified_workout_type
 from app.database import DbSession
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.services.providers.withings._client import paginate
-from app.services.providers.withings.data_requests import WORKOUTS
+from app.services.providers.withings.rpc_client import paginate
 from app.services.providers.withings.timezone import zone_offset_at
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured

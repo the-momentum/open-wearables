@@ -805,11 +805,11 @@ Some providers create subscriptions with each user's own bearer token rather tha
 
 1. Make `register_subscriptions(callback_url)` dispatch one `register_user_webhooks` task per active connection (`UserConnectionRepository.get_all_active_by_provider`) instead of registering anything itself. The `callback_url` argument is unused — each per-user task builds its own.
 2. Implement `register_user_subscriptions(db, user_id)` on your own webhook service — it stays provider-local rather than going on `BaseWebhookService`, and the task resolves it dynamically. That is what the per-user task calls; work against the provider's currently configured live-sync mode (`ProviderSettingsRepository.get_live_sync_mode`), listing the provider's existing subscriptions first and changing only the gap, so a redelivered task is safe and a mode of `pull` revokes rather than creates.
-3. Override `BaseProviderStrategy.on_connect` to enqueue that task for a newly linked connection — the OAuth callback calls it once the token is stored. For teardown, use the existing `BaseOAuthTemplate.deregister_user` rather than a new hook: disconnect, data purge and account deletion all already call it while the connection is still active.
+3. Drive both ends from `BaseOAuthTemplate` rather than adding new hooks. Override `_save_connection` to enqueue that task after calling `super()` — the connection and its token are committed by then — and `deregister_user` to revoke, which disconnect, data purge and account deletion all already call while the connection is still active.
 
 Each result entry's `status` drives the task's retry policy: `error` retries with the failures attached, anything else counts as success. Return `skipped` for what retrying cannot fix, such as an unusable callback URL or a revoked grant.
 
-Because each connection holds its own subscription, `register_provider_webhooks` is dispatched on *any* live-sync mode change for these providers, not only the switch to `webhook`, so that switching back to `pull` revokes them. `app/services/providers/withings/notify_service.py` is the reference implementation.
+Because each connection holds its own subscription, `register_provider_webhooks` is dispatched on *any* live-sync mode change for these providers, not only the switch to `webhook`, so that switching back to `pull` revokes them. `app/services/providers/withings/webhook_service.py` is the reference implementation.
 
 ---
 
@@ -853,7 +853,7 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] If `webhook_registration_api=True`: implemented `register_webhooks()` in strategy and verified auto-registration fires on sync mode switch
-- [ ] If `webhook_subscription_per_user=True`: implemented `register_user_subscriptions()` on your webhook service, overrode `on_connect` and `deregister_user`, and verified the fan-out registers one subscription per active connection
+- [ ] If `webhook_subscription_per_user=True`: implemented `register_user_subscriptions()` on your webhook service, overrode `_save_connection` and `deregister_user`, and verified the fan-out registers one subscription per active connection
 - [ ] Added error handling and logging
 - [ ] Updated API documentation
 

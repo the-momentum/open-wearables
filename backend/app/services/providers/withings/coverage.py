@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
@@ -25,6 +27,13 @@ MEASURE_TYPE_MAP: dict[int, SeriesType] = {
     123: SeriesType.vo2_max,
     155: SeriesType.cardiovascular_age,
     227: SeriesType.withings_metabolic_age,
+}
+
+# A few measures arrive in a different unit than the unified SeriesType. After
+# decoding (value × 10^unit), multiply by this factor to match OW units.
+#   meastype 4 (height): Withings reports metres; OW ``height`` is centimetres.
+MEASURE_UNIT_FACTOR: dict[int, Decimal] = {
+    4: Decimal(100),
 }
 
 # Withings ``getmeas`` types intentionally lacking a direct canonical series.

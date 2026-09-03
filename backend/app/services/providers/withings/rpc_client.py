@@ -1,4 +1,10 @@
-"""Handle Withings RPC envelopes, pagination, scaling, and provider errors."""
+"""Withings RPC-over-POST adapter: envelopes, pagination, scaling and provider errors.
+
+Withings exposes one endpoint per service and names the operation in an
+``action`` form field, answering with a ``{status, body}`` envelope where
+``status != 0`` is a failure on HTTP 200. This unwraps that for the four
+callers; the HTTP transport, token refresh and retries stay in ``api_client``.
+"""
 
 import logging
 from dataclasses import dataclass

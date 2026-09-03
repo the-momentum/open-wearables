@@ -74,12 +74,13 @@ class ProviderSettingsService:
         setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode, effective_granularity)
 
         caps = strategy.capabilities
-        # Per-user subscriptions also need reconciling when webhooks are switched *off*,
-        # since each connection holds one that has to be revoked at the provider.
-        registers_on_mode_change = update.live_sync_mode == LiveSyncMode.WEBHOOK or (
-            update.live_sync_mode is not None and caps.webhook_subscription_per_user
-        )
-        if caps.webhook_registration_api and registers_on_mode_change:
+        # Per-connection subscriptions are reconciled on any mode change, because
+        # switching *off* has to revoke the one each connection holds.
+        if (
+            caps.webhook_registration_api
+            and update.live_sync_mode is not None
+            and (caps.webhook_subscription_per_user or update.live_sync_mode == LiveSyncMode.WEBHOOK)
+        ):
             callback_url = f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
             celery_app.send_task(_REGISTER_WEBHOOKS_TASK, args=[provider, callback_url], queue="webhook_sync")
 

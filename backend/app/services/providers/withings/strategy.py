@@ -1,22 +1,15 @@
-from uuid import UUID
-
-from celery import current_app as celery_app
-
-from app.database import DbSession
-from app.schemas.auth import LiveSyncMode
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
 from app.services.providers.withings.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
 from app.services.providers.withings.data_247 import Withings247Data
-from app.services.providers.withings.notify_service import WithingsNotifyService
 from app.services.providers.withings.oauth import WithingsOAuth
-from app.services.providers.withings.tasks import REGISTER_USER_WEBHOOKS_TASK
 from app.services.providers.withings.webhook_handler import WithingsWebhookHandler
+from app.services.providers.withings.webhook_service import WithingsWebhookService
 from app.services.providers.withings.workouts import WithingsWorkouts
 
 
 class WithingsStrategy(BaseProviderStrategy):
     # Narrowed from the base's optional: Withings always manages its own subscriptions.
-    webhook_service: WithingsNotifyService
+    webhook_service: WithingsWebhookService
 
     def __init__(self) -> None:
         super().__init__()
@@ -43,7 +36,7 @@ class WithingsStrategy(BaseProviderStrategy):
             workouts=self.workouts,
             default_live_sync_mode=self.default_live_sync_mode,
         )
-        self.webhook_service = WithingsNotifyService(
+        self.webhook_service = WithingsWebhookService(
             connection_repo=self.connection_repo,
             oauth=self.oauth,
             default_live_sync_mode=self.default_live_sync_mode,
@@ -64,20 +57,6 @@ class WithingsStrategy(BaseProviderStrategy):
             webhook_ping=True,
             webhook_registration_api=True,
             webhook_subscription_per_user=True,
-        )
-
-    def on_connect(self, db: DbSession, user_id: UUID) -> None:
-        """Subscribe this user to notifications, once their bearer token is stored.
-
-        Enqueued rather than run inline: subscribing is a list plus one call per
-        appli, which the OAuth callback cannot wait on.
-        """
-        if self.effective_live_sync_mode(db) != LiveSyncMode.WEBHOOK:
-            return
-        celery_app.send_task(
-            REGISTER_USER_WEBHOOKS_TASK,
-            args=[self.name, str(user_id)],
-            queue="webhook_sync",
         )
 
     @property

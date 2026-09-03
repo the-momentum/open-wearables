@@ -4,16 +4,15 @@ sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 """
 
 import logging
-from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.config import settings
+from app.constants.withings_requests import ACTIVITY, MEASURES, SLEEP_SUMMARY
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -31,41 +30,22 @@ from app.schemas.providers.withings import (
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings._client import paginate, scale_measure
-from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP
-from app.services.providers.withings.data_requests import ACTIVITY, MEASURES, SLEEP_SUMMARY
+from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP, MEASURE_UNIT_FACTOR
+from app.services.providers.withings.rpc_client import paginate, scale_measure
 from app.services.providers.withings.timezone import local_day_start, zone_offset_at
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import parse_datetime_or_default
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
-# All meastypes requested in one getmeas call.
+# Trailing window used when a caller supplies no bounds.
+_DEFAULT_SYNC_WINDOW = timedelta(days=30)
+
+# Every mapped meastype is requested in one getmeas call. Derived from the
+# coverage map, so it lives here rather than with the request definitions.
 _REQUESTED_MEASTYPES = ",".join(str(code) for code in MEASURE_TYPE_MAP)
-
-# A few measures arrive in a different unit than the unified SeriesType. After
-# decoding (value × 10^unit), multiply by this factor to match OW units.
-#   meastype 4 (height): Withings reports metres; OW `height` is centimetres.
-_MEASURE_UNIT_FACTOR: dict[int, Decimal] = {
-    4: Decimal(100),
-}
-
-
-class WithingsDataSyncError(HTTPException):
-    """Aggregate domain failures while preserving their highest HTTP severity."""
-
-    def __init__(self, failures: dict[str, Exception]) -> None:
-        self.failures = failures
-        super().__init__(
-            status_code=self._severity(failures.values()),
-            detail=", ".join(f"{name}: {error}" for name, error in failures.items()),
-        )
-
-    @staticmethod
-    def _severity(errors: Iterable[Exception]) -> int:
-        statuses = [error.status_code if isinstance(error, HTTPException) else 500 for error in errors]
-        return max(statuses, default=500)
 
 
 class Withings247Data(Base247DataTemplate):
@@ -132,7 +112,7 @@ class Withings247Data(Base247DataTemplate):
             if series_type is None:
                 continue
             value = scale_measure(measure)
-            factor = _MEASURE_UNIT_FACTOR.get(measure.type)
+            factor = MEASURE_UNIT_FACTOR.get(measure.type)
             if factor is not None:
                 value = value * factor
             samples.append(
@@ -209,16 +189,13 @@ class Withings247Data(Base247DataTemplate):
             if activity.brand == 18:
                 logger.debug("Skipping externally sourced Withings activity for %s", activity.date)
                 continue
-            day = local_day_start(
+            ts, zone_offset = local_day_start(
                 activity.date,
                 activity.timezone,
                 logger,
                 action="activity_timezone_invalid",
                 user_id=str(user_id),
             )
-            if day is None:
-                continue
-            ts, zone_offset = day
             for field, series_type in ACTIVITY_FIELD_MAP.items():
                 value = getattr(activity, field)
                 if value is None:
@@ -429,19 +406,18 @@ class Withings247Data(Base247DataTemplate):
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
     ) -> dict[str, int]:
-        """Sync-task entry point. Each domain runs independently so one failure
-        doesn't abort the others."""
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
+        """Sync-task entry point.
+
+        Each domain runs independently so one failure doesn't abort the others,
+        and each failure is captured where it happens rather than aggregated into
+        a raise — matching every other provider's 24/7 handler.
+        """
+        # Callers pass the window as datetimes, ISO strings or nothing (Celery task,
+        # sync route, webhook replay); Suunto resolves it the same way.
+        end_time = parse_datetime_or_default(end_time, datetime.now(timezone.utc))
+        start_time = parse_datetime_or_default(start_time, end_time - _DEFAULT_SYNC_WINDOW)
 
         results: dict[str, int] = {}
-        failures: dict[str, Exception] = {}
         for name, fn in (
             ("measures", self.save_measures),
             ("activity", self.save_activity),
@@ -450,7 +426,9 @@ class Withings247Data(Base247DataTemplate):
             try:
                 results[name] = fn(db, user_id, start_time, end_time)
             except Exception as e:
-                failures[name] = e
+                # A failed domain reports zero rows rather than going missing, so a
+                # caller reading the counts sees the gap instead of a short dict.
+                results[name] = 0
                 # Reset the session for the next domain; a failing rollback must
                 # not itself abort the remaining domains.
                 try:
@@ -462,19 +440,12 @@ class Withings247Data(Base247DataTemplate):
                         f"Withings {name} rollback failed",
                         extra={"provider": "withings", "data_type": name, "user_id": str(user_id)},
                     )
-                # Logged with the domain that failed, but not captured: the
-                # aggregate below is raised to the caller, which reports it once
-                # with the severity every child contributed to.
-                log_structured(
+                log_and_capture_error(
+                    e,
                     logger,
-                    "error",
                     f"Withings {name} sync failed: {e}",
-                    provider="withings",
-                    data_type=name,
-                    user_id=str(user_id),
+                    extra={"provider": "withings", "data_type": name, "user_id": str(user_id)},
                 )
-        if failures:
-            raise WithingsDataSyncError(failures)
         return results
 
     # Withings uses load_and_save_all(); inherited single-domain hooks must fail loudly.

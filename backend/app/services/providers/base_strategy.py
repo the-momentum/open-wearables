@@ -6,10 +6,8 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
-from app.database import DbSession
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
-from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LiveSyncMode
@@ -238,15 +236,6 @@ class BaseProviderStrategy(ABC):
         """Returns True if provider uses cloud OAuth API."""
         return self.oauth is not None
 
-    def on_connect(self, db: DbSession, user_id: UUID) -> None:
-        """Provider-side setup to run once OAuth has persisted the connection and its token.
-
-        Called from the OAuth callback, which swallows any failure so a
-        successfully linked account is never reported as a failed connect.
-        Default is a no-op; override for providers that must register
-        per-connection state at the vendor (e.g. Withings notify subscriptions).
-        """
-
     @property
     def live_sync_configurable(self) -> bool:
         """True when the admin can choose between pull and webhook live sync.
@@ -274,13 +263,6 @@ class BaseProviderStrategy(ABC):
         if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
         return None
-
-    def effective_live_sync_mode(self, db: DbSession) -> LiveSyncMode | None:
-        """The admin override from provider settings, else this provider's default.
-
-        ``None`` means this provider has no server-side live-sync mode.
-        """
-        return ProviderSettingsRepository().get_live_sync_mode(db, self.name) or self.default_live_sync_mode
 
     @property
     def icon_url(self) -> str:

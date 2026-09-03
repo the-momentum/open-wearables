@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
@@ -19,10 +18,8 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import ProviderSettingsService
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
-from app.utils.structured_logging import log_structured
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 factory = ProviderFactory()
 settings_service = ProviderSettingsService()
 
@@ -120,20 +117,6 @@ def oauth_callback(
                 providers=[provider.value],
                 is_historical=True,
             )
-
-    # Provider-side setup that needs the persisted connection and its bearer token.
-    # Never fail the callback for it: the account is already linked.
-    try:
-        strategy.on_connect(db, oauth_state.user_id)
-    except Exception as e:
-        log_structured(
-            logger,
-            "error",
-            "Provider on_connect hook failed",
-            provider=provider.value,
-            user_id=str(oauth_state.user_id),
-            error=str(e),
-        )
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

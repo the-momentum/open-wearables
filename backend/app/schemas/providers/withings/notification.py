@@ -2,6 +2,14 @@ from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 
+# Profile change (delete / unlink / update). Subscribed like any other appli, but
+# it carries no data range — only an ``action``.
+PROFILE_CHANGE_APPLI = 46
+
+# Of appli 46's three actions, only these mean access was lost upstream;
+# ``update`` is a metadata-only change.
+_REVOKING_ACTIONS = frozenset({"delete", "unlink"})
+
 
 class WithingsNotification(BaseModel):
     """Inbound Withings notify payload (form-urlencoded, notify-only).
@@ -11,7 +19,9 @@ class WithingsNotification(BaseModel):
     - event-based categories (appli 16 activity): a single ``date`` (YYYY-MM-DD);
     - profile change (appli 46): neither — carries ``action`` instead.
 
-    All optional; the usable window is derived by ``resolve_window``.
+    All optional; the usable window is derived by ``resolve_notify_window``,
+    named for Withings' Notify API and distinct from the *sync* window a caller
+    asks a 24/7 fetch for.
     """
 
     userid: str
@@ -21,7 +31,17 @@ class WithingsNotification(BaseModel):
     date: str | None = None
     action: str | None = None
 
-    def resolve_window(self) -> tuple[datetime, datetime] | None:
+    @property
+    def is_profile_change(self) -> bool:
+        """True for appli 46, which reports an account change rather than data."""
+        return self.appli == PROFILE_CHANGE_APPLI
+
+    @property
+    def revokes_access(self) -> bool:
+        """True when a profile change means we lost access to the account upstream."""
+        return self.is_profile_change and self.action in _REVOKING_ACTIONS
+
+    def resolve_notify_window(self) -> tuple[datetime, datetime] | None:
         """Resolve the [start, end) window to fetch, or ``None`` if absent."""
         if self.startdate is not None and self.enddate is not None:
             try:
