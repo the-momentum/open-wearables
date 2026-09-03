@@ -45,6 +45,12 @@ The CI workflow automatically validates PR titles to ensure they follow this con
 - `refactor(backend): simplify authentication logic`
 
 
+## Filling In the PR Template
+
+Opening a PR gives you a template asking what changed, why, how you tested it, and what AI you used. Please answer it.
+
+**Aim for a description that says something the diff doesn't.** A summary of the changes is the least useful thing you can write, because that's the one part we can already see. Your reasoning, your rejected alternatives and your open questions are what make a review fast. You're welcome to use an AI to help you put it into words - just make sure the substance is yours. See [AI-assisted contributions](../CONTRIBUTING.md#ai-assisted-contributions).
+
 ## Linking Issues
 
 Link related issues in your PR description:
@@ -56,5 +62,3 @@ Link related issues in your PR description:
 ## Code Review Process
 
 See [Code Review Process](../CONTRIBUTING.md#code-review-process) in the contributing guide.
-
-**Aim for a description that says something the diff doesn't.** A summary of the changes is the least useful thing you can write, because that's the one part we can already see. Your reasoning, your rejected alternatives and your open questions are what make a review fast. You're welcome to use an AI to help you put it into words - just make sure the substance is yours. See [AI-assisted contributions](../CONTRIBUTING.md#ai-assisted-contributions).

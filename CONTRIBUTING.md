@@ -30,7 +30,7 @@ See [Reporting Issues](./contributing/issues.md) and the [Pull Request Guideline
 - **Make sure the tests pass locally.** See the [Testing guide](./contributing/testing.md) for how to run them.
 - **Add tests for new behaviour.** If you're changing how something works, something should fail when you break it.
 
-See the [Pull Request Guidelines](./contributing/pull-requests.md) for commit conventions and the checks to run locally.
+See the [Pull Request Guidelines](./contributing/pull-requests.md) for conventions and what the PR template asks for.
 
 ## Code Review Process
 
