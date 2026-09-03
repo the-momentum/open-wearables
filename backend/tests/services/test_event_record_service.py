@@ -745,9 +745,7 @@ class TestCreateOrMergeSleep:
             patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
             patch("app.services.event_record_service.on_sleep_created") as mock_sleep,
         ):
-            result = event_record_service.create_or_merge_sleep(
-                db, data_source.user_id, record, detail, self.THRESHOLD
-            )
+            result = event_record_service.create_or_merge_sleep(db, data_source.user_id, record, detail, self.THRESHOLD)
 
         mock_sleep.assert_called_once()
         kwargs = mock_sleep.call_args.kwargs
