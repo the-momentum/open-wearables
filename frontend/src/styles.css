@@ -448,3 +448,15 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--border-hover));
 }
+
+/* ============================================
+   TANSTACK DEVTOOLS TRIGGER (dev only)
+   ============================================ */
+
+/* The trigger drops to its static position whenever the devtools' persisted
+   settings hold no usable corner, which parks the palm-tree button in the
+   middle of the page. Pin it to the bottom-right corner instead. */
+button[aria-label='Open TanStack Devtools'] {
+  position: fixed !important;
+  inset: auto 0.5rem 0.5rem auto !important;
+}
