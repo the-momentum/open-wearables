@@ -50,6 +50,11 @@ export const API_ENDPOINTS = {
   oauthSuccess: '/api/v1/oauth/success',
   oauthProviders: '/api/v1/oauth/providers',
 
+  // Zepp / Amazfit endpoints
+  zeppVerify: '/api/v1/providers/zepp/verify',
+  zeppConnect: (userId: string) =>
+    `/api/v1/providers/zepp/users/${userId}/connect`,
+
   // API Keys endpoints
   apiKeys: '/api/v1/developer/api-keys',
   apiKeyDetail: (id: string) => `/api/v1/developer/api-keys/${id}`,

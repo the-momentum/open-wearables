@@ -201,6 +201,13 @@
             ]
           },
           {
+            "group": "Zepp / Amazfit",
+            "pages": [
+              "POST /api/v1/providers/zepp/verify",
+              "POST /api/v1/providers/zepp/users/{user_id}/connect"
+            ]
+          },
+          {
             "group": "Data Sync",
             "pages": [
               "POST /api/v1/providers/{provider}/users/{user_id}/sync",

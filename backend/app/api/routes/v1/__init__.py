@@ -33,6 +33,7 @@ from .user_invitation_code import router as user_invitation_code_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 from .webhooks import router as providers_webhooks_router
+from .zepp import router as zepp_router
 
 v1_router = APIRouter()
 
@@ -40,6 +41,7 @@ v1_router = APIRouter()
 v1_router.include_router(meta_router, tags=["External: Meta"])
 v1_router.include_router(users_router, tags=["External: Users"])
 v1_router.include_router(connections_router, tags=["External: Connections"])
+v1_router.include_router(zepp_router, prefix="/providers/zepp", tags=["External: Zepp / Amazfit"])
 v1_router.include_router(summaries_router, tags=["External: Summaries"])
 v1_router.include_router(timeseries_router, tags=["External: Timeseries"])
 v1_router.include_router(events_router, tags=["External: Events"])

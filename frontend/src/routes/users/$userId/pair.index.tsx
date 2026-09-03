@@ -12,9 +12,10 @@ import { Button } from '@/components/ui/button';
 import { useOAuthConnect } from '@/hooks/use-oauth-connect';
 import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
 import { useUserConnections } from '@/hooks/api/use-health';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { API_CONFIG } from '@/lib/api/config';
 import { isAuthenticated } from '@/lib/auth/session';
+import { ZeppConnectDialog } from '@/components/user/zepp-connect-dialog';
 
 export const Route = createFileRoute('/users/$userId/pair/')({
   component: PairWearablePage,
@@ -63,7 +64,13 @@ function PairWearablePage() {
     ? displayProviders.find((p) => p.id === connectingProvider)
     : null;
 
+  const [zeppDialogOpen, setZeppDialogOpen] = useState(false);
+
   const handleConnect = (providerId: string) => {
+    if (providerId === 'zepp') {
+      setZeppDialogOpen(true);
+      return;
+    }
     if (connectingProvider === null) {
       connect(providerId);
     }
@@ -246,6 +253,12 @@ function PairWearablePage() {
         <Lock className="w-4 h-4 stroke-[1.5]" />
         <span>Your data is encrypted and secure</span>
       </motion.div>
+
+      <ZeppConnectDialog
+        open={zeppDialogOpen}
+        onOpenChange={setZeppDialogOpen}
+        userId={userId}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   EllipsisVertical,
   History,
+  KeyRound,
   Loader2,
   Link2,
   MinusCircle,
@@ -22,6 +23,7 @@ import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
 import { API_CONFIG } from '@/lib/api/config';
+import { ZeppConnectDialog } from '@/components/user/zepp-connect-dialog';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -256,6 +258,7 @@ function ConnectionCardComponent({
 }: ConnectionCardProps) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
+  const [showZeppDialog, setShowZeppDialog] = useState(false);
   const [showLastSyncs, setShowLastSyncs] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -472,6 +475,18 @@ function ConnectionCardComponent({
           </div>
           <div className="flex items-center gap-2">
             {renderStatusBadge(connection.status)}
+            {connection.provider === 'zepp' &&
+              connection.status === 'expired' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2.5 text-xs font-medium border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
+                  onClick={() => setShowZeppDialog(true)}
+                >
+                  <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                  Renovar Token
+                </Button>
+              )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="p-0 h-8 w-8">
@@ -479,6 +494,15 @@ function ConnectionCardComponent({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {connection.provider === 'zepp' && (
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => setShowZeppDialog(true)}
+                  >
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Atualizar Token Zepp
+                  </DropdownMenuItem>
+                )}
                 {connection.status !== 'revoked' && (
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive cursor-pointer"
@@ -546,6 +570,15 @@ function ConnectionCardComponent({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            {connection.provider === 'zepp' && (
+              <ZeppConnectDialog
+                open={showZeppDialog}
+                onOpenChange={setShowZeppDialog}
+                userId={connection.user_id}
+                initialUserId={connection.provider_user_id || ''}
+              />
+            )}
           </div>
         </div>
       </CardHeader>

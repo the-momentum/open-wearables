@@ -30,6 +30,11 @@ const PROVIDER_STYLES: Record<
     label: 'Ultrahuman',
   },
   apple: { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: 'Apple' },
+  zepp: {
+    bg: 'bg-rose-500/20',
+    text: 'text-rose-400',
+    label: 'Amazfit / Zepp',
+  },
   internal: {
     bg: 'bg-success-muted/15',
     text: 'text-success-muted',

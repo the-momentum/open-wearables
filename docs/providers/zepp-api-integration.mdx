@@ -1,0 +1,149 @@
+---
+title: "Amazfit / Zepp API Integration"
+description: "Connect Amazfit and Zepp smartwatches via direct session authentication (App Token and User ID). Sync workouts, sleep stages, 24/7 heart rate, SpO2, and health scores."
+keywords: ["amazfit api integration", "zepp api integration", "huami health data", "amazfit smartwatch sync", "zepp app token"]
+"og:title": "Amazfit / Zepp API Integration | Open Wearables"
+"og:description": "Connect Amazfit and Zepp smartwatches via direct session authentication. Sync workouts, sleep stages, 24/7 heart rate, SpO2, and health scores."
+"og:url": "https://docs.openwearables.io/providers/zepp-api-integration"
+"og:type": "article"
+"twitter:title": "Amazfit / Zepp API Integration | Open Wearables"
+"twitter:description": "Connect Amazfit and Zepp smartwatches via direct session authentication. Sync workouts, sleep stages, 24/7 heart rate, SpO2, and health scores."
+"twitter:card": "summary_large_image"
+---
+
+<Note>
+**Need help connecting your Amazfit or Zepp watch?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to learn more about device integration options.
+</Note>
+
+## Overview
+
+Amazfit smartwatches (manufactured by Zepp Health / Huami) sync with the official **Zepp** mobile application (formerly Mi Fit / Amazfit). Because Zepp does not provide a public developer portal with third-party web OAuth2 consent screens, Open Wearables connects directly via authenticated mobile session credentials (`app_token` and `user_id`) using Huami's regional REST API gateway.
+
+### Supported data types
+
+| Data Type | Support | Notes |
+|-----------|:-------:|-------|
+| **Workouts / Activities** | ✅ Yes | Distance, duration, heart rate (avg/max), calories, steps, and device model |
+| **Sleep Sessions** | ✅ Yes | Deep sleep, light sleep, REM, awake time, and time in bed |
+| **24/7 Heart Rate** | ✅ Yes | Minute-by-minute Base64 stream decoding + daily resting HR |
+| **HRV (RMSSD)** | ✅ Yes | Overnight sleep HRV |
+| **Health Scores** | ✅ Yes | Readiness Score, Stress Score, and Body Battery |
+| **Biometrics** | ✅ Yes | VO2 Max, SpO2 (spot checks), Weight, and BMI |
+| **Daily Activity** | ✅ Yes | Daily totals for steps, walking/running distance, and calories |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (REST Pull)** | Open Wearables periodically queries Zepp's REST endpoints using Celery background tasks (historical backfill and hourly synchronization) |
+
+---
+
+## What you need
+
+To connect an Amazfit / Zepp device to Open Wearables, you need:
+
+1. **App Token** — Session authorization token generated when logging into the Zepp mobile app (`com.huami.midong`).
+2. **User ID** — Numeric user identifier assigned to your Huami/Zepp account.
+3. **Regional Gateway Host** — The API server corresponding to your account region (default: `api-mifit-us3.zepp.com`).
+
+---
+
+## Regional Gateway Hosts
+
+Zepp routes accounts through distinct regional cloud clusters:
+
+| Region | Hostname | Description |
+|--------|----------|-------------|
+| **Americas / Global (Default)** | `api-mifit-us3.zepp.com` | Primary cluster for users in North America, Latin America, and rest of world |
+| **Americas 2** | `api-mifit-us2.zepp.com` | Secondary Americas gateway |
+| **Europe** | `api-mifit-de2.zepp.com` | Frankfurt cluster for European Union accounts |
+| **China** | `api-mifit.huami.com` | Mainland China cluster |
+| **Russia** | `api-mifit-ru.zepp.com` | Russian regional gateway |
+| **India** | `api-mifit-in2.zepp.com` | Indian regional gateway |
+
+---
+
+## Extracting Credentials (Step-by-Step)
+
+<Steps>
+  <Step title="Configure a network proxy on your computer or phone">
+    Install an HTTP inspection tool such as **HTTP Toolkit**, **mitmproxy**, **Charles Proxy**, or **Reqable**. Ensure the proxy CA certificate is installed on your mobile device.
+  </Step>
+
+  <Step title="Launch the Zepp application">
+    Open the Zepp app on iOS or Android, pull down on the Home screen to synchronize your watch data with the cloud.
+  </Step>
+
+  <Step title="Filter requests in the proxy">
+    Search for requests directed to `*.zepp.com` or `*.huami.com` (for example, `/huami.health.getUserInfo.json` or `/v1/sport/run/history.json`).
+  </Step>
+
+  <Step title="Copy App Token and User ID">
+    From the request headers and query parameters, locate and copy:
+    - **Header `apptoken`**: The session token string (e.g. `your-app-token-here`)
+    - **Parameter `userid`**: Your numeric user ID (e.g. `your-user-id-here`)
+    - **Host**: The request hostname (e.g. `api-mifit-us3.zepp.com`)
+  </Step>
+</Steps>
+
+---
+
+## Connecting in Open Wearables
+
+### Via the Web UI
+
+1. Navigate to **Users** → Select the user → **Connect Device** (`/users/{user_id}/pair`).
+2. Click the **Amazfit / Zepp** card.
+3. In the **Conectar Relógio Amazfit / Zepp** modal:
+   - Paste your **App Token**, **User ID Zepp**, and choose your **Servidor Regional**.
+   - Or switch to the **Colar JSON / Headers** tab, paste the raw request export or JSON object, and click **Extrair e Aplicar aos Campos**.
+4. Click **Testar Credenciais** to verify the token against Zepp's live servers.
+5. Click **Salvar e Conectar** to establish the active connection and initiate the initial 30-day historical data sync.
+
+### Via the REST API
+
+#### 1. Verify credentials without persisting
+
+```bash
+curl -X POST "https://api.openwearables.io/api/v1/providers/zepp/verify" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_token": "your-app-token-here",
+    "user_id": "your-user-id-here",
+    "host": "api-mifit-us3.zepp.com"
+  }'
+```
+
+Response:
+
+```json
+{
+  "valid": true,
+  "user_id": "your-user-id-here",
+  "message": "Credentials verified successfully"
+}
+```
+
+#### 2. Connect user account
+
+```bash
+curl -X POST "https://api.openwearables.io/api/v1/providers/zepp/users/c1234567-89ab-cdef-0123-456789abcdef/connect" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_token": "your-app-token-here",
+    "provider_user_id": "your-user-id-here",
+    "host": "api-mifit-us3.zepp.com"
+  }'
+```
+
+---
+
+## Token Expiration & Renewal
+
+Zepp app tokens remain valid for several weeks or until you sign out of the Zepp app on your phone. When the Zepp API returns `HTTP 401/403` or a token expiration code (`1004`):
+
+1. Open Wearables automatically marks the user connection status as `ConnectionStatus.EXPIRED`.
+2. Periodic background sync is paused to prevent wasteful error loops.
+3. The user's connection card highlights a **Renovar Token** button.
+4. The user or administrator can update the token directly via the connection card dialog without losing historical data.

@@ -517,7 +517,7 @@ class TestImportXmlData:
         # Assert
         call_args = mock_xml_service_class.call_args[0]
         assert isinstance(call_args[0], Path)
-        assert str(call_args[0]) == xml_path
+        assert call_args[0] == Path(xml_path)
         # Verify parse_xml was called with user_id
         mock_xml_service.parse_xml.assert_called_once_with(str(user.id))
 

@@ -11,7 +11,7 @@ Wired into pre-commit so the docs regenerate whenever a provider's coverage.py
 (or base_strategy.py / meta.py) changes.
 """
 
-import re
+import sys
 from pathlib import Path
 
 from app.api.routes.v1.meta import _build_coverage
@@ -91,9 +91,11 @@ def generate_body(coverage: CoverageResponse) -> str:
 
 
 def main() -> None:
+    import re
+
     coverage = _build_coverage()
     body = generate_body(coverage)
-    text = DOCS_PATH.read_text()
+    text = DOCS_PATH.read_text(encoding="utf-8")
 
     pattern = re.compile(re.escape(START_MARKER) + r".*?" + re.escape(END_MARKER), re.DOTALL)
     if not pattern.search(text):
@@ -101,8 +103,19 @@ def main() -> None:
 
     replacement = f"{START_MARKER}\n\n{body}\n{END_MARKER}"
     new_text = pattern.sub(replacement, text)
+
+    if "--check" in sys.argv:
+        if new_text != text:
+            print(
+                "Docs coverage table is out of date. "
+                "Run `uv run python scripts/generate_coverage_docs.py` to regenerate."
+            )
+            sys.exit(1)
+        sys.exit(0)
+
     if new_text != text:
-        DOCS_PATH.write_text(new_text)
+        DOCS_PATH.write_text(new_text, encoding="utf-8")
+        print("Updated docs/providers/coverage.mdx successfully.")
 
 
 if __name__ == "__main__":
