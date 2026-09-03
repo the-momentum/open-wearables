@@ -18,7 +18,7 @@ A note on our capacity: every pull request is reviewed manually by a core contri
 
 - **Check what's already in flight.** Search [existing PRs](https://github.com/the-momentum/open-wearables/pulls) and [issues](https://github.com/the-momentum/open-wearables/issues), and drop by [Discord](https://discord.gg/qrcfFnNE6H) to see whether someone is already on it and whether the direction fits the roadmap.
 - **Claim the issue first.** If you want to work on an issue, comment on it and wait for a reply from someone on the team before you start. Some issues might be planned for core contributors to pick up, or depend on work that isn't visible from the outside, so a quick check saves you from building something we can't take.
-- **Found a bug, or thinking about a feature? Open an issue** For a bug, describe the problem so we can agree on what is actually broken before talking about a fix. For a feature, describe the use case and wait for a reply - not every idea fits the roadmap, and hearing that before you build it is much cheaper than hearing it after.
+- **Found a bug, or thinking about a feature? Open an issue first.** For a bug, describe the problem so we can agree on what is actually broken before talking about a fix. For a feature, describe the use case and wait for a reply - not every idea fits the roadmap, and hearing that before you build it is much cheaper than hearing it after.
 
 See [Reporting Issues](./contributing/issues.md) and the [Pull Request Guidelines](./contributing/pull-requests.md) for templates and conventions.
 
