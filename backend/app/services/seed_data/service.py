@@ -8,9 +8,8 @@ from datetime import date, datetime, timedelta, timezone
 from faker import Faker
 from sqlalchemy.orm import Session
 
-from app.models import EventRecordDetail, PersonalRecord, UserConnection
+from app.models import PersonalRecord, UserConnection
 from app.repositories import CrudRepository
-from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCreate
 from app.schemas.utils.seed_data import SeedDataRequest
@@ -103,7 +102,6 @@ class SeedDataService:
         now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         personal_record_repo = CrudRepository(PersonalRecord)
-        event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         connection_repo = CrudRepository(UserConnection)
 
         summary = {
@@ -187,7 +185,7 @@ class SeedDataService:
                         user.id, fake, prov, provider_sync_times[prov], profile.sleep_config
                     )
                     event_record_service.create(db, record)
-                    event_detail_repo.create(db, detail, detail_type="sleep")
+                    event_record_service.create_detail(db, detail, detail_type="sleep")
                     summary["sleeps"] += 1
 
             # Continuous time series (independent of workouts)
