@@ -29,15 +29,31 @@ def get_activity_summary(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=400)] = 50,
     sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
+    all_sources: Annotated[
+        bool,
+        Query(
+            description=(
+                "Return every source's row for each day instead of only the one the"
+                " global provider-priority table selects. Off by default. When on, a"
+                " day with two wearables yields TWO rows, so callers must resolve"
+                " which to use themselves."
+            )
+        ),
+    ] = False,
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
 
     Aggregates time-series data (steps, energy, heart rate, etc.) by day.
+
+    By default one row per day is returned, chosen by the GLOBAL provider
+    priority. `all_sources=true` returns every source's row for the day, for
+    callers that need to apply their own per-user preference — something the
+    priority table cannot express, since it has no `user_id` column.
     """
     start_datetime = parse_query_datetime(start_date)
     end_datetime = parse_query_datetime(end_date)
     return summaries_service.get_activity_summaries(
-        db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
+        db, user_id, start_datetime, end_datetime, cursor, limit, sort_order, all_sources
     )
 
 
