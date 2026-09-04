@@ -1,11 +1,24 @@
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import ProviderName
+
 # Allowlist for user sort columns - keep in sync with Literal type below
-USER_SORT_COLUMNS: frozenset[str] = frozenset({"created_at", "email", "first_name", "last_name", "last_synced_at"})
+USER_SORT_COLUMNS: frozenset[str] = frozenset(
+    {"created_at", "email", "first_name", "last_name", "name", "last_synced_at"}
+)
+
+
+class UserInclude(StrEnum):
+    """Optional expansions for user read models, requested via the `include` query parameter."""
+
+    CONNECTIONS = "connections"
+
 
 _EXTERNAL_USER_ID_DEPRECATION = (
     "Deprecated: no data-fetching endpoint (timeseries, workouts, sleep, summaries, health-scores, etc.) "
@@ -26,14 +39,19 @@ class UserQueryParams(BaseModel):
         search: The search term.
         email: Filter by exact email match.
         external_user_id: Filter by external user ID.
+        provider: Filter by connected provider.
+        connection_status: Narrow the provider filter to a single connection status.
+        has_active_connection: Filter by presence of at least one active connection.
+        last_synced_before: Filter by absence of recent syncs.
+        include: Optional expansions to embed in each user.
     """
 
     page: int = Field(1, ge=1, description="Page number (1-based)")
     limit: int = Field(20, ge=1, le=100, description="Number of results per page")
 
-    sort_by: Literal["created_at", "email", "first_name", "last_name", "last_synced_at"] | None = Field(
+    sort_by: Literal["created_at", "email", "first_name", "last_name", "name", "last_synced_at"] | None = Field(
         "created_at",
-        description="Field to sort by",
+        description="Field to sort by. 'name' orders by first name, then last name, with unnamed users last",
     )
     sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order")
 
@@ -49,6 +67,44 @@ class UserQueryParams(BaseModel):
         deprecated=True,
     )
 
+    provider: list[ProviderName] | None = Field(
+        None,
+        description=(
+            "Filter by connected provider; repeat the parameter to match any of several. "
+            "Matches connections in any status unless connection_status is also given"
+        ),
+    )
+    connection_status: ConnectionStatus | None = Field(
+        None,
+        description="Narrow the provider filter to connections in this status",
+    )
+    has_active_connection: bool | None = Field(
+        None,
+        description=(
+            "True: users with at least one active connection. "
+            "False: users with none, including those who never connected a provider"
+        ),
+    )
+    last_synced_before: datetime | None = Field(
+        None,
+        description=(
+            "Users whose connections have all been idle since this timestamp, including those that never synced"
+        ),
+    )
+
+    include: list[UserInclude] = Field(
+        default_factory=list,
+        description="Optional expansions to embed in each user; repeat the parameter for several",
+    )
+
+
+class UserConnectionSummary(BaseModel):
+    """Compact per-provider connection state, embedded in user list rows."""
+
+    provider: str
+    status: ConnectionStatus
+    last_synced_at: datetime | None = None
+
 
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -62,6 +118,10 @@ class UserRead(BaseModel):
     last_synced_at: datetime | None = None
     last_synced_provider: str | None = None
     has_active_connection: bool = False
+    connections: list[UserConnectionSummary] | None = Field(
+        None,
+        description="Connections of every status. Present only when requested via `include=connections`",
+    )
 
 
 class UserCreate(BaseModel):

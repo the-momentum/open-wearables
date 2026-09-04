@@ -7,12 +7,19 @@ Tests cover:
 - POST /api/v1/users - create new user
 - PATCH /api/v1/users/{user_id} - update user
 - DELETE /api/v1/users/{user_id} - delete user
+- Connection expansion, connection filters, and sorting on the list endpoint
 """
 
+from datetime import datetime, timezone
+
+import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy.orm import Session
 
-from tests.factories import ApiKeyFactory, DeveloperFactory, UserFactory
+from app.models import User
+from app.schemas.auth import ConnectionStatus
+from tests.factories import ApiKeyFactory, DeveloperFactory, UserConnectionFactory, UserFactory
 from tests.utils import api_key_headers, developer_auth_headers
 
 
@@ -498,3 +505,186 @@ class TestDeleteUser:
 
         # Assert - API key auth is rejected, requires bearer token
         assert response.status_code == 401
+
+
+class TestListUsersConnections:
+    """Tests for the connections expansion on GET /api/v1/users."""
+
+    @pytest.fixture
+    def headers(self) -> dict[str, str]:
+        developer = DeveloperFactory(email="connections@example.com", password="test123")
+        return api_key_headers(ApiKeyFactory(developer=developer).id)
+
+    def test_connections_absent_by_default(self, client: TestClient, api_v1_prefix: str, headers: dict) -> None:
+        """Test that connections are omitted unless the expansion is requested."""
+        # Arrange
+        user = UserFactory(email="default@example.com")
+        UserConnectionFactory(user=user, provider="garmin")
+
+        # Act
+        response = client.get(f"{api_v1_prefix}/users", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        item = next(u for u in response.json()["items"] if u["id"] == str(user.id))
+        assert item["connections"] is None
+        assert item["has_active_connection"] is True
+
+    def test_include_connections_returns_every_status(
+        self, client: TestClient, api_v1_prefix: str, headers: dict
+    ) -> None:
+        """Test that the expansion lists all connections, not only active ones."""
+        # Arrange
+        synced_at = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        user = UserFactory(email="expanded@example.com")
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.REVOKED)
+        UserConnectionFactory(user=user, provider="garmin", last_synced_at=synced_at)
+
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?include=connections", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        item = next(u for u in response.json()["items"] if u["id"] == str(user.id))
+        assert item["connections"] == [
+            {"provider": "garmin", "status": "active", "last_synced_at": "2026-03-01T12:00:00Z"},
+            {"provider": "whoop", "status": "revoked", "last_synced_at": None},
+        ]
+        assert item["last_synced_provider"] == "garmin"
+
+    def test_include_connections_empty_for_unconnected_user(
+        self, client: TestClient, api_v1_prefix: str, headers: dict
+    ) -> None:
+        """Test that a user without connections gets an empty list, not null."""
+        # Arrange
+        user = UserFactory(email="unconnected@example.com")
+
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?include=connections", headers=headers)
+
+        # Assert
+        item = next(u for u in response.json()["items"] if u["id"] == str(user.id))
+        assert item["connections"] == []
+        assert item["has_active_connection"] is False
+        assert item["last_synced_provider"] is None
+
+    def test_unknown_include_is_rejected(self, client: TestClient, api_v1_prefix: str, headers: dict) -> None:
+        """Test that a typo in the expansion fails loudly instead of being ignored."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?include=connection", headers=headers)
+
+        # Assert
+        assert response.status_code == 400
+
+
+class TestListUsersFilters:
+    """Tests for the connection filters and sorting on GET /api/v1/users."""
+
+    @pytest.fixture
+    def headers(self) -> dict[str, str]:
+        developer = DeveloperFactory(email="filters@example.com", password="test123")
+        return api_key_headers(ApiKeyFactory(developer=developer).id)
+
+    @pytest.fixture
+    def users(self) -> dict[str, User]:
+        """Three users: an active Garmin sync, a revoked Whoop, and no connection at all."""
+        garmin = UserFactory(email="garmin@example.com", first_name="Ada", last_name="Byron")
+        whoop = UserFactory(email="whoop@example.com", first_name="Bob", last_name="Ash")
+        lonely = UserFactory(email="lonely@example.com", first_name=None, last_name=None)
+        UserConnectionFactory(
+            user=garmin,
+            provider="garmin",
+            last_synced_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        )
+        UserConnectionFactory(user=whoop, provider="whoop", status=ConnectionStatus.REVOKED)
+        return {"garmin": garmin, "whoop": whoop, "lonely": lonely}
+
+    def _ids(self, response: Response) -> set[str]:
+        return {item["id"] for item in response.json()["items"]}
+
+    def test_filter_by_provider_matches_any_status(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that the provider filter ignores connection status by default."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?provider=whoop", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        assert self._ids(response) == {str(users["whoop"].id)}
+        assert response.json()["total"] == 1
+
+    def test_filter_by_several_providers(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that repeating the provider parameter matches any of them."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?provider=whoop&provider=garmin", headers=headers)
+
+        # Assert
+        assert self._ids(response) == {str(users["whoop"].id), str(users["garmin"].id)}
+
+    def test_filter_by_provider_and_connection_status(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that connection_status narrows the provider filter."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?provider=whoop&connection_status=active", headers=headers)
+
+        # Assert
+        assert self._ids(response) == set()
+
+    def test_filter_without_active_connection_includes_never_connected(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that has_active_connection=false covers revoked and never-connected users alike."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?has_active_connection=false", headers=headers)
+
+        # Assert
+        found = self._ids(response)
+        assert {str(users["whoop"].id), str(users["lonely"].id)} <= found
+        assert str(users["garmin"].id) not in found
+
+    def test_filter_with_active_connection(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that has_active_connection=true keeps only users with a live connection."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?has_active_connection=true", headers=headers)
+
+        # Assert
+        assert self._ids(response) == {str(users["garmin"].id)}
+
+    def test_filter_last_synced_before_includes_never_synced(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that last_synced_before catches idle users and those that never synced."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?last_synced_before=2026-04-01T00:00:00Z", headers=headers)
+
+        # Assert
+        assert {str(users["whoop"].id), str(users["lonely"].id)} <= self._ids(response)
+
+    def test_filter_last_synced_before_keeps_recently_synced_users_out(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that a user synced after the cutoff is not reported as idle."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?last_synced_before=2026-02-01T00:00:00Z", headers=headers)
+
+        # Assert
+        assert str(users["garmin"].id) not in self._ids(response)
+
+    def test_sort_by_name_puts_unnamed_users_last(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that sorting by name orders on first then last name, with unnamed users at the end."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?sort_by=name&sort_order=asc", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        ordered = [item["id"] for item in response.json()["items"]]
+        assert ordered.index(str(users["garmin"].id)) < ordered.index(str(users["whoop"].id))
+        assert ordered[-1] == str(users["lonely"].id)

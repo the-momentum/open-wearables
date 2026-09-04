@@ -8,8 +8,10 @@ from app.database import DbSession
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.user_management import (
+    UserConnectionSummary,
     UserCreate,
     UserCreateInternal,
+    UserInclude,
     UserQueryParams,
     UserRead,
     UserUpdate,
@@ -115,7 +117,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         rows, total_count = self.crud.get_users_with_filters(db_session, query_params)
 
         items = []
-        for user, last_synced_at, last_synced_provider, has_active_connection in rows:
+        for user, last_synced_at, last_synced_provider, has_active_connection, connections in rows:
             try:
                 user_read = UserRead.model_validate(user)
             except ValidationError as exc:
@@ -128,6 +130,8 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             user_read.last_synced_at = last_synced_at
             user_read.last_synced_provider = last_synced_provider
             user_read.has_active_connection = bool(has_active_connection)
+            if UserInclude.CONNECTIONS in query_params.include:
+                user_read.connections = [UserConnectionSummary.model_validate(c) for c in connections or []]
             items.append(user_read)
 
         return OldPaginatedResponse[UserRead](
