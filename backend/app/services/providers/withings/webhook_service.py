@@ -123,7 +123,7 @@ class WithingsWebhookService(BaseWebhookService):
         """Fan out one reconciliation task per active connection.
 
         ``callback_url`` is ignored: each subscription carries the shared-secret
-        callback built per request by ``withings_callback_url``.
+        callback built per request by ``_callback_url``.
         """
         with SessionLocal() as db:
             connections = self.connection_repo.get_all_active_by_provider(db, "withings")
