@@ -455,17 +455,24 @@ class EventRecordService(
             )
 
             if same_window:
-                # Re-sync of the exact same window: replace sleep stages with the
-                # incoming detail's stages rather than concatenating them, which
-                # would duplicate every interval once per re-sync.
-                merged_detail_fields = {
-                    **merged_detail_fields,
+                # Re-sync of the exact same window: replace the stored detail
+                # with the incoming detail's fields (minute-level aggregates and
+                # stages) instead of merging them with the existing session.
+                replacement_detail_fields = {
+                    "sleep_deep_minutes": detail.sleep_deep_minutes,
+                    "sleep_light_minutes": detail.sleep_light_minutes,
+                    "sleep_rem_minutes": detail.sleep_rem_minutes,
+                    "sleep_awake_minutes": detail.sleep_awake_minutes,
+                    "sleep_total_duration_minutes": detail.sleep_total_duration_minutes,
+                    "sleep_time_in_bed_minutes": detail.sleep_time_in_bed_minutes,
+                    "sleep_efficiency_score": detail.sleep_efficiency_score,
+                    "is_nap": detail.is_nap,
                     "sleep_stages": list(detail.sleep_stages or []),
                 }
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
-                    detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
+                    detail.model_copy(update={"record_id": adjacent.id, **replacement_detail_fields}),
                     detail_type="sleep",
                 )
                 self._recompute_sleep_scores(
@@ -492,7 +499,7 @@ class EventRecordService(
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
-                    detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
+                    detail.model_copy(update={"record_id": adjacent.id, **replacement_detail_fields}),
                     detail_type="sleep",
                 )
                 self._recompute_sleep_scores(

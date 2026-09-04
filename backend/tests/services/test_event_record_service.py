@@ -812,14 +812,14 @@ class TestCreateOrMergeSleep:
 
 
     def test_same_window_re_sync_replaces_sleep_stages(self, db: Session) -> None:
-        """Re-syncing the exact same window must not duplicate stage intervals."""
+        """Re-syncing the exact same window must replace stored detail with the incoming detail."""
         user = UserFactory()
         data_source = DataSourceFactory(user=user)
 
-        stage = {
+        existing_stage = {
             "stage": "light",
             "start_time": self._dt(22, 30).isoformat(),
-            "end_time": self._dt(23, 30).isoformat(),
+            "end_time": self._dt(22, 45).isoformat(),
         }
         existing = EventRecordFactory(
             mapping=data_source,
@@ -828,12 +828,18 @@ class TestCreateOrMergeSleep:
             start_datetime=self._dt(22, 30),
             end_datetime=self._dt(23, 30),
         )
-        SleepDetailsFactory(event_record=existing, sleep_stages=[stage])
+        SleepDetailsFactory(event_record=existing, sleep_stages=[existing_stage])
+
+        incoming_stage = SleepStage(
+            stage="deep",
+            start_time=self._dt(22, 45),
+            end_time=self._dt(23, 30),
+        )
 
         # Same window, same data_source_id -> should hit same_window branch
         record = self._record(data_source, self._dt(22, 30), self._dt(23, 30))
-        detail = self._detail(record.id)
-        detail = detail.model_copy(update={"sleep_stages": [stage]})
+        detail = self._detail(record.id, deep=90, light=30, rem=30, awake=0, in_bed=150, efficiency="95.00")
+        detail = detail.model_copy(update={"sleep_stages": [incoming_stage]})
 
         result = event_record_service.create_or_merge_sleep(
             db, user.id, record, detail, self.THRESHOLD
@@ -843,6 +849,11 @@ class TestCreateOrMergeSleep:
         stages = result.sleep_detail.sleep_stages
         assert stages is not None
         assert len(stages) == 1
+        assert stages[0]["stage"] == "deep"
+        assert stages[0]["start_time"] == incoming_stage.start_time.isoformat()
+        assert stages[0]["end_time"] == incoming_stage.end_time.isoformat()
+        assert result.sleep_detail.sleep_deep_minutes == detail.sleep_deep_minutes
+        assert result.sleep_detail.sleep_efficiency_score == detail.sleep_efficiency_score
 
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
