@@ -26,7 +26,7 @@ See [Reporting Issues](./contributing/issues.md) and the [Pull Request Guideline
 
 > **Please run your change before you submit it.** Untested contributions are by far the most common reason we send a PR back. Code that has never actually been executed - not by the test suite, not by hand - isn't ready for review, however good it looks.
 
-- **Exercise the change by hand.** Call the endpoint, click through the flow, sync against a real provider account - whatever your change touches. A green test suite is not the same thing as a working feature. Where it makes sense, show the proof in the PR description or a comment - a log excerpt, a screenshot, a sample response - **with tokens and anyone's health data stripped out.**
+- **Exercise the change by hand.** Call the endpoint, click through the flow, sync against a real provider account - whatever your change touches. A green test suite is not the same thing as a working feature. Where it makes sense, show the proof in the PR description or a comment - a log excerpt, a screenshot, a sample response - **with all secrets and sensitive personal data stripped out.**
 - **Make sure the tests pass locally.** See the [Testing guide](./contributing/testing.md) for how to run them.
 - **Add tests for new behaviour.** If you're changing how something works, something should fail when you break it.
 

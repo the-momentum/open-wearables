@@ -26,7 +26,7 @@ If your change touches a provider integration, we need to know it was tested aga
 a real account and real API responses.
 
 Paste the proof where you can - a log excerpt, a screenshot, a sample response - with
-tokens and anyone's health data removed.
+all secrets and sensitive personal data removed.
 -->
 
 ## AI usage
