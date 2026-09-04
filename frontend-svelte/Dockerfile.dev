@@ -1,0 +1,18 @@
+# Development image: Vite dev server with hot reload, driven by `docker compose watch`.
+FROM oven/bun:1.4-alpine
+
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+# DOCKER=1 switches Vite's watcher to polling (see vite.config.ts) because
+# inotify is unreliable across the compose sync boundary.
+ENV NODE_ENV=development
+ENV DOCKER=1
+
+EXPOSE 3001
+
+CMD ["bun", "run", "dev"]

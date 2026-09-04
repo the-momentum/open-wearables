@@ -219,6 +219,46 @@ services:
           path: ./frontend/vite.config.ts
     restart: on-failure
 
+  # Svelte rewrite, developed alongside the React frontend until it reaches
+  # parity. Runs on its own port so both can be compared side by side.
+  frontend-svelte:
+    build:
+      context: ./frontend-svelte
+      dockerfile: Dockerfile.dev
+    container_name: frontend-svelte__open-wearables
+    image: open-wearables-frontend-svelte:dev
+    pull_policy: never
+    env_file:
+      # .env.example supplies the defaults; .env overrides it when present.
+      - ./frontend-svelte/.env.example
+      - path: ./frontend-svelte/.env
+        required: false
+    environment:
+      # Inside the network the browser never calls FastAPI directly, so this is
+      # the internal service address, not localhost.
+      - API_URL=http://app:8000
+      - REDIS_URL=redis://redis:6379/2
+    ports:
+      - "${FRONTEND_SVELTE_PORT:-3001}:3001"
+    depends_on:
+      - app
+      - redis
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend-svelte/src
+          target: /app/src
+        - action: sync
+          path: ./frontend-svelte/static
+          target: /app/static
+        - action: rebuild
+          path: ./frontend-svelte/package.json
+        - action: rebuild
+          path: ./frontend-svelte/bun.lock
+        - action: rebuild
+          path: ./frontend-svelte/vite.config.ts
+    restart: on-failure
+
 volumes:
   postgres_data:
   redis_data:
