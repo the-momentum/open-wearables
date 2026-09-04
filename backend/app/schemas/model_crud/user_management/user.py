@@ -57,7 +57,10 @@ class UserQueryParams(BaseModel):
 
     search: str | None = Field(
         None,
-        description="Search across first_name, last_name, and email (partial match)",
+        description=(
+            "Search across first_name, last_name, and email (partial match). "
+            "A term that is a valid UUID also matches that user's id exactly"
+        ),
     )
 
     email: EmailStr | None = Field(None, description="Filter by exact email")
@@ -116,8 +119,12 @@ class UserRead(BaseModel):
     email: EmailStr | None = None
     external_user_id: str | None = Field(None, description=_EXTERNAL_USER_ID_DEPRECATION, deprecated=True)
     last_synced_at: datetime | None = None
-    last_synced_provider: str | None = None
-    has_active_connection: bool = False
+    last_synced_provider: str | None = Field(
+        None, description="Provider that synced most recently, or null if none of them ever synced"
+    )
+    has_active_connection: bool = Field(
+        False, description="Whether any connection is active. Mirrors the has_active_connection filter"
+    )
     connections: list[UserConnectionSummary] | None = Field(
         None,
         description="Connections of every status. Present only when requested via `include=connections`",

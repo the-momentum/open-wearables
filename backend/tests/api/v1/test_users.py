@@ -697,6 +697,14 @@ class TestListUsersFilters:
         # Assert
         assert response.json()["total"] == 0
 
+    def test_search_by_padded_user_id(self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict) -> None:
+        """Test that an id pasted with surrounding whitespace still resolves."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users", params={"search": f"  {users['whoop'].id}  "}, headers=headers)
+
+        # Assert
+        assert self._ids(response) == {str(users["whoop"].id)}
+
     def test_search_by_name_still_matches(
         self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
     ) -> None:

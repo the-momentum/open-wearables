@@ -98,9 +98,9 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
                 self.model.first_name.ilike(search_term, escape="\\"),
                 self.model.last_name.ilike(search_term, escape="\\"),
             ]
-            # Admins paste user ids copied from the UI, logs and Sentry into the same search box.
+            # search by UUID
             with suppress(ValueError):
-                matches.append(self.model.id == UUID(query_params.search))
+                matches.append(self.model.id == UUID(query_params.search.strip()))
             query = query.filter(or_(*matches))
 
         if query_params.email:
