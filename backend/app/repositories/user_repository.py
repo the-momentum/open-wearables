@@ -1,5 +1,7 @@
+from contextlib import suppress
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import ColumnElement, Exists, case, func, literal, null, nullsfirst, nullslast, or_, select, true
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array_agg
@@ -91,13 +93,15 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
             # Escape special LIKE characters
             escaped_search = query_params.search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             search_term = f"%{escaped_search}%"
-            query = query.filter(
-                or_(
-                    self.model.email.ilike(search_term, escape="\\"),
-                    self.model.first_name.ilike(search_term, escape="\\"),
-                    self.model.last_name.ilike(search_term, escape="\\"),
-                ),
-            )
+            matches: list[ColumnElement[bool]] = [
+                self.model.email.ilike(search_term, escape="\\"),
+                self.model.first_name.ilike(search_term, escape="\\"),
+                self.model.last_name.ilike(search_term, escape="\\"),
+            ]
+            # Admins paste user ids copied from the UI, logs and Sentry into the same search box.
+            with suppress(ValueError):
+                matches.append(self.model.id == UUID(query_params.search))
+            query = query.filter(or_(*matches))
 
         if query_params.email:
             query = query.filter(self.model.email == query_params.email)

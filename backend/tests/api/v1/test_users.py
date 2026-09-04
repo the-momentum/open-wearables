@@ -11,6 +11,7 @@ Tests cover:
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -676,6 +677,35 @@ class TestListUsersFilters:
 
         # Assert
         assert str(users["garmin"].id) not in self._ids(response)
+
+    def test_search_by_user_id(self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict) -> None:
+        """Test that pasting a user id into the search box finds that user."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?search={users['whoop'].id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        assert self._ids(response) == {str(users["whoop"].id)}
+
+    def test_search_by_unknown_user_id(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that an id belonging to nobody returns no matches rather than every user."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?search={uuid4()}", headers=headers)
+
+        # Assert
+        assert response.json()["total"] == 0
+
+    def test_search_by_name_still_matches(
+        self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
+    ) -> None:
+        """Test that text search is unaffected by the id lookup."""
+        # Act
+        response = client.get(f"{api_v1_prefix}/users?search=Byron", headers=headers)
+
+        # Assert
+        assert self._ids(response) == {str(users["garmin"].id)}
 
     def test_sort_by_name_puts_unnamed_users_last(
         self, client: TestClient, api_v1_prefix: str, headers: dict, users: dict
