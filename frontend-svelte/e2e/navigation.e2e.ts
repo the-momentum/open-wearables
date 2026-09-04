@@ -1,4 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { signIn } from './support';
+
+// Every destination now sits behind the auth guard.
+test.beforeEach(async ({ page }) => {
+	await signIn(page);
+});
 
 const MOBILE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 800 };

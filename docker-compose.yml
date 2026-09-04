@@ -233,10 +233,16 @@ services:
       - ./frontend-svelte/.env.example
       - path: ./frontend-svelte/.env
         required: false
+    environment:
+      # Inside the network the browser never calls FastAPI directly, so this is
+      # the internal service address, not localhost.
+      - API_URL=http://app:8000
+      - REDIS_URL=redis://redis:6379/2
     ports:
       - "${FRONTEND_SVELTE_PORT:-3001}:3001"
     depends_on:
       - app
+      - redis
     develop:
       watch:
         - action: sync

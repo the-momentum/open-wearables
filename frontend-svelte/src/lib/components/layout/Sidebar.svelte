@@ -7,8 +7,7 @@
 	import Wordmark from './Wordmark.svelte';
 </script>
 
-<!-- Desktop only. Below lg the same destinations are reached through BottomNav
-     and the More sheet, so this stays out of the DOM's tab order entirely. -->
+<!-- Desktop only; below lg the same destinations live in BottomNav. -->
 <aside
 	class="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-surface lg:flex"
 >

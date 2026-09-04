@@ -15,17 +15,14 @@
 	let dialog = $state<HTMLDialogElement>();
 	const headingId = $props.id();
 
-	// showModal() is what buys the focus trap, Esc-to-close and inert background
-	// for free, so the open state is mirrored onto the element rather than the
-	// sheet being rendered conditionally.
+	// showModal() gives the focus trap, Esc and inert background for free.
 	$effect(() => {
 		if (!dialog) return;
 		if (open && !dialog.open) dialog.showModal();
 		if (!open && dialog.open) dialog.close();
 	});
 
-	// showModal() makes the page inert but does not stop it scrolling behind
-	// the sheet.
+	// showModal() leaves the page scrollable behind the sheet.
 	$effect(() => {
 		if (!open) return;
 		const previous = document.body.style.overflow;
@@ -36,14 +33,12 @@
 	});
 </script>
 
-<!-- Pinned with top-auto: setting both top and bottom (i.e. inset-0) stretches
-     the dialog to full height even with h-auto. -->
+<!-- top-auto: setting both insets would stretch it to full height. -->
 <dialog
 	bind:this={dialog}
 	onclose={() => (open = false)}
 	onclick={(event) => {
-		// A click landing on the dialog itself is a click on the backdrop; the
-		// panel below stops its own clicks from reaching here.
+		// A click on the dialog itself is the backdrop; the panel stops its own.
 		if (event.target === dialog) open = false;
 	}}
 	aria-labelledby={headingId}

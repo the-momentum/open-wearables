@@ -51,6 +51,20 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # Sessions live in Redis, and the e2e suite signs in for real against the
+    # stand-in backend in e2e/mock-api.ts, so both tiers need a running server.
+    services:
+      redis:
+        image: redis:8
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379/15
     steps:
       - uses: actions/checkout@v4
       - name: Setup Bun

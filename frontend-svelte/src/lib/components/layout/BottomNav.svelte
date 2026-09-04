@@ -17,9 +17,7 @@
 	class="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/85
 		pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
 >
-	<!-- Column count follows the config: a hardcoded grid-cols-5 would leave a
-	     gap if a primary destination were removed. Inline style rather than a
-	     Tailwind class because Tailwind cannot generate one from a runtime value. -->
+	<!-- Follows the config; Tailwind cannot generate a class from a runtime value. -->
 	<ul
 		class="grid"
 		style="grid-template-columns: repeat({PRIMARY_NAV_ITEMS.length + 1}, minmax(0, 1fr))"
@@ -28,7 +26,6 @@
 			{@const active = isNavItemActive(item, page.url.pathname)}
 			{@const Icon = item.icon}
 			<li>
-				<!-- Hrefs come pre-resolved from $lib/config/nav. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				<a
 					href={item.href}

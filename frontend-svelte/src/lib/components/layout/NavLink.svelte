@@ -16,8 +16,7 @@
 	const Icon = $derived(item.icon);
 </script>
 
-<!-- Internal hrefs are already passed through resolve() in $lib/config/nav; the
-     rule cannot see through a dynamic value. -->
+<!-- Hrefs are pre-resolved in $lib/config/nav; the rule cannot see that. -->
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
 <a
 	href={item.href}

@@ -47,6 +47,7 @@
 	"dependencies": {
 		"@lucide/svelte": "^1.39.0",
 		"clsx": "^2.1.1",
+		"ioredis": "^6.0.0",
 		"tailwind-merge": "^3.6.0"
 	}
 }

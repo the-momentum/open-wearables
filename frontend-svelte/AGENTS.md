@@ -4,9 +4,10 @@ Ground-up rewrite of the React dashboard in SvelteKit. Lives on the
 `feat/svelte-frontend` branch and runs alongside the existing frontend until it
 reaches parity; only then does `frontend/` get deleted.
 
-**Status:** early. Foundations only — container, design tokens, routing shell.
-No auth, no API layer, no real pages yet. Read "Current state" before assuming
-anything exists.
+**Status:** early. Container, design tokens, responsive shell, and
+cookie-backed authentication with a sign-in screen. **No real pages yet** —
+every destination under `(app)` is a placeholder. Read "Current state" before
+assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
 
@@ -162,11 +163,11 @@ opposite of what `frontend/` became (`-seed-data-tab.tsx` is 1335 lines,
 Three tiers, distinguished **by filename**. Getting the suffix wrong sends a
 test to the wrong runner.
 
-| Pattern             | Runner                                            | Use for                                                 |
-| ------------------- | ------------------------------------------------- | ------------------------------------------------------- |
-| `*.spec.ts`         | Vitest, node environment                          | Pure logic: formatters, parsers, API request building   |
-| `*.browser.spec.ts` | Vitest, real Chromium via `vitest-browser-svelte` | Component rendering and interaction                     |
-| `*.e2e.ts`          | Playwright against a production build on :4173    | Full flows: login, navigation, a page loading real data |
+| Pattern             | Runner                                            | Use for                                               |
+| ------------------- | ------------------------------------------------- | ----------------------------------------------------- |
+| `*.spec.ts`         | Vitest, node environment                          | Pure logic: formatters, parsers, API request building |
+| `*.browser.spec.ts` | Vitest, real Chromium via `vitest-browser-svelte` | Component rendering and interaction                   |
+| `*.e2e.ts`          | Playwright against a production build on :4173    | Full flows: sign-in, navigation, a page loading data  |
 
 `*.browser.spec.ts` is a deliberate rename from the scaffold's
 `*.svelte.spec.ts`. The patterns are wired in [vite.config.ts](vite.config.ts)
@@ -209,6 +210,19 @@ await expect.element(page.getByRole('button', { name: 'Save' })).toBeVisible();
 ```
 
 `expect.requireAssertions` is on: a test with no assertion fails.
+
+### End-to-end tests sign in for real
+
+[e2e/mock-api.ts](e2e/mock-api.ts) stands in for FastAPI, started by
+[playwright.config.ts](playwright.config.ts) alongside the app. Tests therefore
+walk the true path — form action, session creation, cookie, guard — without the
+full stack, and without knowing anything about the session's internal shape.
+
+They do need a **running Redis** (`redis://localhost:6379/15`, a throwaway
+database). CI provides one as a service container.
+
+When the config has an array of `webServer` entries, Playwright stops inferring
+`baseURL`, so it is set explicitly in `use`.
 
 ## Design tokens
 
@@ -253,12 +267,16 @@ docker compose build frontend-svelte
 
 ### Environment
 
-`PUBLIC_API_URL` — backend base URL. The `PUBLIC_` prefix is required by
-SvelteKit for anything the browser may read.
+| Variable    | Purpose                                             |
+| ----------- | --------------------------------------------------- |
+| `API_URL`   | Backend base URL, used by the SvelteKit server only |
+| `REDIS_URL` | Session store (database 2; backend uses 0, svix 1)  |
 
-Read it through `$env/dynamic/public`, never `$env/static/public`. Dynamic keeps
-it a **runtime** value, so one prebuilt image can be pointed at any backend
-without a rebuild — a property the React app has and we must not lose.
+Both are **private**, read through `$env/dynamic/private`. Dynamic, never
+`static`, keeps them **runtime** values, so one prebuilt image can be pointed at
+any backend without a rebuild — a property the React app has and we must not
+lose. Private rather than `PUBLIC_` because with cookie sessions the browser
+never calls FastAPI directly; only this server does.
 
 ## Navigation
 
@@ -368,6 +386,68 @@ Not copied: `tanstack-circle-logo.png` and `tanstack-word-logo-white.svg` are
 leftovers from the React scaffold. The provider marks (`garmin.svg`,
 `polar.svg`, `suunto.svg`) stay in `frontend/` until a page here needs them.
 
+## Authentication
+
+Sessions are server-side. The browser holds **only an opaque session id** in an
+`HttpOnly` cookie; the access and refresh tokens never leave this server.
+
+```
+browser --cookie: ow_session=<uuid>--> SvelteKit --Bearer--> FastAPI
+                                           |
+                                         Redis  ow:sess:<uuid>
+```
+
+Why, in short: `localStorage` is readable by any script on the page, so one
+compromised npm dependency exfiltrates a working credential. The refresh token
+matters most here — it is long-lived and, per `RefreshToken` in the backend, has
+no expiry column at all, only `revoked_at`.
+
+### Files
+
+| File                                                                       | Role                            |
+| -------------------------------------------------------------------------- | ------------------------------- |
+| [src/lib/server/redis.ts](src/lib/server/redis.ts)                         | Connection, created lazily      |
+| [src/lib/server/api.ts](src/lib/server/api.ts)                             | Raw calls to FastAPI            |
+| [src/lib/server/session.ts](src/lib/server/session.ts)                     | Cookie + Redis record + refresh |
+| [src/routes/login/+page.server.ts](src/routes/login/+page.server.ts)       | Sign-in form action             |
+| [src/routes/logout/+page.server.ts](src/routes/logout/+page.server.ts)     | Sign-out action                 |
+| [src/routes/(app)/+layout.server.ts](<src/routes/(app)/+layout.server.ts>) | The guard                       |
+
+Anything under `$lib/server` can never be imported into client code — SvelteKit
+fails the build if you try. That is the safety net keeping tokens off the
+browser; do not defeat it by re-exporting from elsewhere.
+
+### Things that will bite
+
+- **The backend rotates refresh tokens.** `/token/refresh` revokes the old one
+  and issues a new one, so the whole response must be persisted, not just the
+  access token. Dropping the new refresh token logs the user out an hour later.
+- **`ioredis`, not Bun's built-in Redis client.** Bun ships one, but the Vite
+  binary carries a `#!/usr/bin/env node` shebang, so dev, preview and build all
+  run server code under **node** — only production `bun ./build/index.js` is
+  Bun. A Bun-only API would work in production and nowhere else.
+- **The guard does not call `/auth/me` per navigation.** The developer profile
+  is captured at sign-in and stored in the session. Revocation is therefore
+  noticed within the access token's 60 minute life rather than instantly, which
+  is the trade a short access token exists to make. A profile edited elsewhere
+  stays stale until the next sign-in.
+- **`readSession` fails closed.** An unreachable Redis returns null — "not
+  signed in" — never a valid session.
+- **The sign-in error message is identical for a wrong email and a wrong
+  password.** Distinguishing them tells an attacker which accounts exist.
+
+### The React app got this wrong — do not copy it
+
+Worth knowing, because the old code looks authoritative:
+
+1. `refresh_token` is never used anywhere in `frontend/src`.
+2. `expires_in` is never passed to `setSession`, so it assumes a 24 hour
+   session while the token dies after 60 minutes. That is the cause of the
+   apparently random logouts.
+3. `setSession(data.access_token, data.developer_id)` reads a field that
+   `TokenResponse` does not have. Harmless only because `getDeveloperId()` is
+   never called.
+
 ## Styling is scoped — do not reach for global CSS
 
 A `<style>` block inside a `.svelte` file is scoped by the compiler. It rewrites
@@ -428,37 +508,31 @@ src/
 │   │   └── ui/Sheet.svelte         # generic bottom sheet, no nav knowledge
 │   ├── config/nav.ts + nav.spec.ts # single source of truth for destinations
 │   └── utils/cn.ts
+├── lib/server/                     # never reaches the browser
+│   └── api.ts  redis.ts  session.ts + session.spec.ts
 ├── routes/
 │   ├── +layout.svelte              # imports app.css
 │   ├── +page.ts                    # redirects / → /dashboard
+│   ├── login/     +page.svelte + +page.server.ts
+│   ├── logout/    +page.server.ts  # action only
 │   └── (app)/
+│       ├── +layout.server.ts       # the auth guard
 │       ├── +layout.svelte          # wraps children in AppShell
 │       └── {dashboard,users,syncs,webhooks,coverage,settings}/+page.svelte
-└── e2e/navigation.e2e.ts
+└── e2e/  auth.e2e.ts  navigation.e2e.ts  mock-api.ts  support.ts  fixtures.ts
 ```
 
-Every page under `(app)` is a `PagePlaceholder`. The shell, routing, theming and
-tests are real; the pages are not.
+Every page under `(app)` is a `PagePlaceholder`. The shell, routing, theming,
+authentication and tests are real; the pages are not.
 
-No auth yet, so `(app)` has no guard and nothing calls the backend.
+No page fetches domain data yet, so there is no browser-facing API proxy. Server
+`load` functions can call FastAPI directly through `apiGet` with the token from
+`validAccessToken`. A `/api/[...path]` proxy becomes necessary only when a
+component needs to call the backend from the browser.
 
 ## Open decisions
 
 Do not settle these unilaterally; they are the owner's calls.
-
-### Auth transport
-
-The React app stores the JWT in `localStorage`. That is readable by any XSS and
-makes SSR useless, since the server never sees the token.
-
-- **A — mirror today:** `localStorage` + `ssr = false`. Zero backend change,
-  simplest, matches the current contract exactly.
-- **B — `httpOnly` cookie:** SvelteKit server route sets the cookie on login and
-  proxies API calls. Token unreachable from JS, SSR becomes viable, faster first
-  paint. Costs a node hop on every request and makes the node server
-  load-bearing.
-
-Whichever wins, keep it contained in one module so the other stays reachable.
 
 ### Data fetching
 
@@ -500,6 +574,11 @@ Choices already made, with reasons, so they are not re-litigated.
   focus trap, Esc, inert background and `::backdrop` with no dependency.
 - **Mobile navigation is a bottom bar, not a hamburger drawer** — thumb-reachable
   and always visible. The overflow sheet holds only secondary destinations.
+- **Server-side sessions in Redis, `HttpOnly` cookie** over `localStorage` —
+  keeps both tokens off the browser, makes SSR viable, and preserves
+  "one image, any backend" by turning the API URL into a server-side variable.
+  The cost accepted: the node server is load-bearing, so the dashboard can no
+  longer be served as static files.
 - **`cn` kept as the helper name** despite being opaque, so `shadcn-svelte` can
   generate components without edits if it is ever added.
 

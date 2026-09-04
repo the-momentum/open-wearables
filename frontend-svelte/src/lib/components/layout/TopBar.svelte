@@ -8,8 +8,7 @@
 	const sectionTitle = $derived(navLabelFor(page.url.pathname) ?? '');
 </script>
 
-<!-- Taller on mobile than on desktop: the logotype stacks "Open / Wearables"
-     on two lines and needs the vertical room to stay legible. -->
+<!-- Taller on mobile: the logotype stacks on two lines and needs the room. -->
 <header
 	class="sticky top-0 z-20 flex h-20 items-center border-b border-border bg-background/85 px-4
 		backdrop-blur-md sm:px-6 lg:h-14"
