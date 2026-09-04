@@ -20,6 +20,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -119,6 +120,41 @@ class TestEventRecordDetailCreateValidation:
             )
 
         assert "record_id" in str(exc_info.value)
+
+    def test_entry_source_intensity_and_label(self) -> None:
+        detail = EventRecordDetailCreate(
+            record_id=uuid4(),
+            entry_source="manual",
+            intensity="high",
+            label="Evening Ride",
+        )
+
+        assert detail.entry_source == EntrySource.MANUAL
+        assert detail.intensity == WorkoutIntensity.HIGH
+        assert detail.label == "Evening Ride"
+
+    def test_entry_source_and_intensity_reject_unmapped_provider_values(self) -> None:
+        """entry_source/intensity are closed vocabularies (EntrySource/WorkoutIntensity) -
+        a provider's raw value (e.g. Oura's "autodetected"/"hard") must be normalized via
+        app.constants.entry_source/app.constants.intensity before reaching this schema, so
+        an unmapped value fails validation here instead of leaking through to the API."""
+        with pytest.raises(ValidationError):
+            EventRecordDetailCreate(record_id=uuid4(), entry_source="autodetected")
+
+        with pytest.raises(ValidationError):
+            EventRecordDetailCreate(record_id=uuid4(), intensity="hard")
+
+        # Unified enum members still pass.
+        EventRecordDetailCreate(record_id=uuid4(), entry_source="unknown", intensity="unknown")
+
+    def test_label_rejects_oversized_value(self) -> None:
+        """max_length mirrors the workout_details.label column width (255) so an
+        oversized provider value fails validation here instead of failing the INSERT."""
+        with pytest.raises(ValidationError):
+            EventRecordDetailCreate(record_id=uuid4(), label="x" * 256)
+
+        # Exactly at the limit should still pass.
+        EventRecordDetailCreate(record_id=uuid4(), label="x" * 255)
 
 
 class TestOAuthTokenResponseValidation:

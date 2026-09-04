@@ -3,7 +3,7 @@ from typing import ClassVar
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
-from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3
+from app.mappings import FKEventRecord, json_binary, numeric_5_2, numeric_10_3, str_10, str_32, str_255
 
 from .event_record_detail import DetailType, EventRecordDetail
 
@@ -57,3 +57,7 @@ class WorkoutDetails(EventRecordDetail):
     segments: Mapped[json_binary | None]
     hr_zones: Mapped[json_binary | None]
     power_zones: Mapped[json_binary | None]
+
+    entry_source: Mapped[str_32 | None]
+    intensity: Mapped[str_10 | None]
+    label: Mapped[str_255 | None]

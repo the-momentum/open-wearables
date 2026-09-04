@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
+from app.constants.entry_source.oura import get_unified_entry_source
+from app.constants.intensity.oura import get_unified_intensity
 from app.constants.workout_types.oura import get_unified_workout_type
 from app.database import DbSession
 from app.schemas.model_crud.activities import (
@@ -151,6 +153,17 @@ class OuraWorkouts(BaseWorkoutsTemplate):
             start_dt, end_dt = self._extract_dates(raw_workout.start_datetime, raw_workout.end_datetime)
             duration_seconds = int((end_dt - start_dt).total_seconds())
             metrics["moving_time_seconds"] = duration_seconds
+
+        entry_source = get_unified_entry_source(raw_workout.source)
+        if entry_source is not None:
+            metrics["entry_source"] = entry_source
+
+        intensity = get_unified_intensity(raw_workout.intensity)
+        if intensity is not None:
+            metrics["intensity"] = intensity
+
+        if raw_workout.label is not None:
+            metrics["label"] = raw_workout.label
 
         return metrics
 

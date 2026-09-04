@@ -1,7 +1,9 @@
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.schemas.enums import EntrySource, WorkoutIntensity
 
 from .sleep import SleepStage
 from .zones import HRZones, PowerZones
@@ -46,6 +48,10 @@ class EventRecordDetailBase(BaseModel):
     segments: list[dict] | None = None
     hr_zones: HRZones | None = None
     power_zones: PowerZones | None = None
+
+    entry_source: EntrySource | None = Field(default=None)
+    intensity: WorkoutIntensity | None = Field(default=None)
+    label: str | None = Field(default=None, max_length=255)
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

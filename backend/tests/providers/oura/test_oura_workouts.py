@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.constants.workout_types.oura import get_unified_workout_type
-from app.schemas.enums import WorkoutType
+from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
 from app.schemas.providers.oura import OuraWorkoutJSON
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.oura.workouts import OuraWorkouts
@@ -61,6 +61,8 @@ class TestOuraWorkoutsNormalization:
             distance=5000.0,
             end_datetime="2024-01-15T09:00:00+00:00",
             intensity="moderate",
+            label="Morning Run",
+            source="autodetected",
             start_datetime="2024-01-15T08:00:00+00:00",
         )
 
@@ -87,6 +89,18 @@ class TestOuraWorkoutsNormalization:
         assert detail.distance is not None
         assert float(detail.distance) == pytest.approx(5000.0)
 
+    def test_normalize_workout_provenance(self, workouts: OuraWorkouts, sample_oura_workout: OuraWorkoutJSON) -> None:
+        """Oura's per-workout source/intensity/label must reach the detail record, not the
+        provider-level EventRecordCreate.source (which stays "oura"), and Oura's raw
+        vocabulary ("autodetected"/"moderate") must be normalized to the unified enums."""
+        user_id = uuid4()
+        record, detail = workouts._normalize_workout(sample_oura_workout, user_id)
+
+        assert record.source == "oura"
+        assert detail.entry_source == EntrySource.AUTOMATIC
+        assert detail.intensity == WorkoutIntensity.MODERATE
+        assert detail.label == "Morning Run"
+
     def test_normalize_workout_no_activity(self, workouts: OuraWorkouts) -> None:
         workout = OuraWorkoutJSON(
             id="oura-workout-no-activity",
@@ -98,6 +112,9 @@ class TestOuraWorkoutsNormalization:
 
         assert record.type == WorkoutType.OTHER.value
         assert record.duration_seconds == 1800
+        assert detail.entry_source is None
+        assert detail.intensity is None
+        assert detail.label is None
 
     def test_build_bundles(self, workouts: OuraWorkouts, sample_oura_workout: OuraWorkoutJSON) -> None:
         user_id = uuid4()

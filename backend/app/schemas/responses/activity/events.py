@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.schemas.model_crud.activities import SleepStage
 from app.schemas.utils import SourceMetadata
 
@@ -20,6 +21,16 @@ class Workout(BaseModel):
     zone_offset: str | None = None
     duration_seconds: int | None = None
     source: SourceMetadata
+    entry_source: EntrySource | None = Field(
+        None,
+        description="How the workout was recorded, normalized across providers.",
+        examples=["automatic"],
+    )
+    intensity: WorkoutIntensity | None = Field(
+        None,
+        description="Subjective intensity of the workout, normalized across providers.",
+        examples=["moderate"],
+    )
     calories_kcal: float | None = None
     distance_meters: float | None = None
     avg_heart_rate_bpm: int | None = None

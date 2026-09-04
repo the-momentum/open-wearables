@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.utils.dates import ZoneOffset
 
 
@@ -33,6 +34,11 @@ class EventRecordMetrics(TypedDict, total=False):
     sleep_rem_minutes: int | None
     sleep_light_minutes: int | None
     sleep_awake_minutes: int | None
+
+    # Per-workout provenance/metadata some providers expose but others don't.
+    entry_source: EntrySource | None
+    intensity: WorkoutIntensity | None
+    label: str | None
 
 
 class EventRecordBase(BaseModel):

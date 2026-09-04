@@ -710,6 +710,8 @@ To page through results, pass `cursor=<next_cursor>` until `has_more` is `false`
       "zone_offset": "+01:00",
       "duration_seconds": 2700,
       "source": { "provider": "garmin", "device": "Garmin Forerunner 255" },
+      "entry_source": "automatic",
+      "intensity": null,
       "calories_kcal": 450.5,
       "distance_meters": 5200.0,
       "avg_heart_rate_bpm": 155,
@@ -718,6 +720,13 @@ To page through results, pass `cursor=<next_cursor>` until `has_more` is `false`
       "elevation_gain_meters": 42.0
     }
     ```
+    `entry_source` and `intensity` are normalized into a closed vocabulary, independent of the
+    reporting provider - `entry_source` is one of `manual` / `automatic` / `unknown` (`manual`
+    only for hand-entered/self-reported data with no device measurements; a file like FIT/GPX
+    uploaded from another device is still real measured data, so it counts as `automatic`),
+    `intensity` is one of `low` / `moderate` / `high` / `unknown`. Both are `null` when the
+    provider doesn't report them at all - see the
+    [coverage matrix](/providers/coverage#workout-data-coverage) for which providers do.
   </Tab>
   <Tab title="HealthScore">
     ```json

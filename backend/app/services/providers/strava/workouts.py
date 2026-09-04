@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.entry_source.strava import get_unified_entry_source
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
 from app.schemas.enums import SeriesType, WorkoutType
@@ -189,6 +190,13 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         # Moving time
         if raw_workout.moving_time is not None:
             metrics["moving_time_seconds"] = raw_workout.moving_time
+
+        entry_source = get_unified_entry_source(raw_workout.manual)
+        if entry_source is not None:
+            metrics["entry_source"] = entry_source
+
+        if raw_workout.name:
+            metrics["label"] = raw_workout.name
 
         return metrics
 
