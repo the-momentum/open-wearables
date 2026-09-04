@@ -455,6 +455,13 @@ class EventRecordService(
             )
 
             if same_window:
+                # Re-sync of the exact same window: replace sleep stages with the
+                # incoming detail's stages rather than concatenating them, which
+                # would duplicate every interval once per re-sync.
+                merged_detail_fields = {
+                    **merged_detail_fields,
+                    "sleep_stages": list(detail.sleep_stages or []),
+                }
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,

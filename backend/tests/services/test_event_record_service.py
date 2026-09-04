@@ -810,6 +810,40 @@ class TestCreateOrMergeSleep:
         assert mock_sleep.call_args.kwargs["device_type"] == "ring"
 
 
+
+    def test_same_window_re_sync_replaces_sleep_stages(self, db: Session) -> None:
+        """Re-syncing the exact same window must not duplicate stage intervals."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+
+        stage = {
+            "stage": "light",
+            "start_time": self._dt(22, 30).isoformat(),
+            "end_time": self._dt(23, 30).isoformat(),
+        }
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(22, 30),
+            end_datetime=self._dt(23, 30),
+        )
+        SleepDetailsFactory(event_record=existing, sleep_stages=[stage])
+
+        # Same window, same data_source_id -> should hit same_window branch
+        record = self._record(data_source, self._dt(22, 30), self._dt(23, 30))
+        detail = self._detail(record.id)
+        detail = detail.model_copy(update={"sleep_stages": [stage]})
+
+        result = event_record_service.create_or_merge_sleep(
+            db, user.id, record, detail, self.THRESHOLD
+        )
+
+        db.refresh(result)
+        stages = result.sleep_detail.sleep_stages
+        assert stages is not None
+        assert len(stages) == 1
+
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
 
