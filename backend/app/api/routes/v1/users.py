@@ -16,7 +16,12 @@ from app.services import ApiKeyDep, DeveloperDep, user_service
 router = APIRouter()
 
 
-@router.get("/users", response_model=OldPaginatedResponse[UserRead])
+@router.get(
+    "/users",
+    response_model=OldPaginatedResponse[UserRead],
+    # Keeps opt-in expansions out of the payload entirely rather than serializing them as null.
+    response_model_exclude_unset=True,
+)
 async def list_users(
     db: DbSession,
     _api_key: ApiKeyDep,

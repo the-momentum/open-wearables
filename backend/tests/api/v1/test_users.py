@@ -527,8 +527,9 @@ class TestListUsersConnections:
         # Assert
         assert response.status_code == 200
         item = next(u for u in response.json()["items"] if u["id"] == str(user.id))
-        assert item["connections"] is None
+        assert "connections" not in item
         assert item["has_active_connection"] is True
+        assert item["external_user_id"] is None
 
     def test_include_connections_returns_every_status(
         self, client: TestClient, api_v1_prefix: str, headers: dict
