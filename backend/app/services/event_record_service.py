@@ -443,6 +443,22 @@ class EventRecordService(
                 "sleep_stages": merged_stages,
             }
 
+            # Fields used when an incoming record exactly matches an existing window.
+            # Computed eagerly because the same-window path can be reached both by
+            # the explicit same_window check and by the unique-constraint fallback
+            # when data_source_id is resolved at insert time.
+            replacement_detail_fields = {
+                "sleep_deep_minutes": detail.sleep_deep_minutes,
+                "sleep_light_minutes": detail.sleep_light_minutes,
+                "sleep_rem_minutes": detail.sleep_rem_minutes,
+                "sleep_awake_minutes": detail.sleep_awake_minutes,
+                "sleep_total_duration_minutes": detail.sleep_total_duration_minutes,
+                "sleep_time_in_bed_minutes": detail.sleep_time_in_bed_minutes,
+                "sleep_efficiency_score": detail.sleep_efficiency_score,
+                "is_nap": detail.is_nap,
+                "sleep_stages": list(detail.sleep_stages or []),
+            }
+
             # When the merged window is identical to the existing record's window
             # (new session fully contained within adjacent), inserting a new record
             # would violate the unique constraint on (data_source_id, start, end).
@@ -458,17 +474,6 @@ class EventRecordService(
                 # Re-sync of the exact same window: replace the stored detail
                 # with the incoming detail's fields (minute-level aggregates and
                 # stages) instead of merging them with the existing session.
-                replacement_detail_fields = {
-                    "sleep_deep_minutes": detail.sleep_deep_minutes,
-                    "sleep_light_minutes": detail.sleep_light_minutes,
-                    "sleep_rem_minutes": detail.sleep_rem_minutes,
-                    "sleep_awake_minutes": detail.sleep_awake_minutes,
-                    "sleep_total_duration_minutes": detail.sleep_total_duration_minutes,
-                    "sleep_time_in_bed_minutes": detail.sleep_time_in_bed_minutes,
-                    "sleep_efficiency_score": detail.sleep_efficiency_score,
-                    "is_nap": detail.is_nap,
-                    "sleep_stages": list(detail.sleep_stages or []),
-                }
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, "sleep")
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
