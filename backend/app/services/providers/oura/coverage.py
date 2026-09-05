@@ -7,7 +7,11 @@ ACTIVITY_SERIES: dict[str, SeriesType] = {
     "energy": SeriesType.energy,
     "distance": SeriesType.distance_walking_running,
     "active_time": SeriesType.active_time,
+    "met": SeriesType.average_met,
 }
+# Keys in ACTIVITY_SERIES that carry intraday samples rather than one value per day —
+# these must not be flagged is_daily_total, unlike the rest of ACTIVITY_SERIES.
+INTRADAY_ACTIVITY_KEYS: frozenset[str] = frozenset({"met"})
 READINESS_SERIES: dict[str, SeriesType] = {
     "temperature_deviation": SeriesType.skin_temperature_deviation,
     "temperature_trend_deviation": SeriesType.skin_temperature_trend_deviation,

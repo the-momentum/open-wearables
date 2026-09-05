@@ -110,6 +110,14 @@ class OuraReadinessCollectionJSON(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class OuraMetJSON(BaseModel):
+    """Intraday MET series embedded in a daily activity record."""
+
+    interval: float | None = None  # seconds between items
+    items: list[float | None] = []
+    timestamp: str | None = None  # ISO 8601, start of the series
+
+
 class OuraDailyActivityJSON(BaseModel):
     """Single daily activity record from Oura API v2 /usercollection/daily_activity."""
 
@@ -136,6 +144,7 @@ class OuraDailyActivityJSON(BaseModel):
     total_calories: int | None = None
     timestamp: str | None = None
     contributors: dict | None = None
+    met: OuraMetJSON | None = None
 
 
 class OuraActivityCollectionJSON(BaseModel):

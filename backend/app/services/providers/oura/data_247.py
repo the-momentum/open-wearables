@@ -30,12 +30,13 @@ from app.schemas.providers.oura import (
     OuraDailySleepJSON,
     OuraSleepJSON,
 )
-from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInfoJSON
+from app.schemas.providers.oura.imports import OuraIntervalData, OuraMetJSON, OuraPersonalInfoJSON
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.oura.coverage import (
     ACTIVITY_SERIES,
+    INTRADAY_ACTIVITY_KEYS,
     PERSONAL_INFO_SERIES,
     READINESS_SERIES,
     SLEEP_INTERVAL_SERIES,
@@ -199,6 +200,27 @@ class Oura247Data(Base247DataTemplate):
             )
         return result
 
+    @staticmethod
+    def _expand_met_series(met: OuraMetJSON | None) -> list[dict[str, Any]]:
+        """Expand an Oura intraday MET series into individual timestamped samples."""
+        if met is None or not met.items or not met.interval or met.interval < 0:
+            return []
+
+        start = parse_iso_datetime(met.timestamp)
+        if start is None:
+            return []
+
+        zone_offset = None
+        utcoff = start.utcoffset()
+        if utcoff is not None:
+            zone_offset = offset_to_iso(int(utcoff.total_seconds()))
+
+        return [
+            {"recorded_at": start + timedelta(seconds=met.interval * i), "value": value, "zone_offset": zone_offset}
+            for i, value in enumerate(met.items)
+            if value is not None
+        ]
+
     def normalize_activity_samples(
         self,
         raw_samples: list[dict[str, Any]],
@@ -213,6 +235,7 @@ class Oura247Data(Base247DataTemplate):
             "energy": [],
             "distance": [],
             "active_time": [],
+            "met": [],
         }
 
         for activity in activity_items:
@@ -260,6 +283,7 @@ class Oura247Data(Base247DataTemplate):
                         "zone_offset": activity_zone_offset,
                     }
                 )
+            result["met"].extend(self._expand_met_series(activity.met))
 
         return result, activity_scores
 
@@ -286,7 +310,7 @@ class Oura247Data(Base247DataTemplate):
                             zone_offset=item.get("zone_offset"),
                             value=Decimal(str(item["value"])),
                             series_type=series_type,
-                            is_daily_total=True,
+                            is_daily_total=key not in INTRADAY_ACTIVITY_KEYS,
                         )
                     )
                 except Exception as e:
