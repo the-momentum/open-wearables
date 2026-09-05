@@ -1,7 +1,7 @@
 ---
 title: "Historical Data Availability"
 sidebarTitle: "Historical Data"
-description: "How far back you can backfill data per provider: Garmin, Oura, Whoop, Ultrahuman, Strava, Fitbit, Polar, Suunto, Google Health Connect, and more."
+description: "How far back you can backfill data per provider: Garmin, Oura, Whoop, Ultrahuman, Strava, Fitbit, Polar, Suunto, Google Health Connect, Google Health API, and more."
 keywords: ["historical data", "backfill window", "how far back sync", "max historical days", "wearable data history"]
 "og:title": "Historical Data Availability | Open Wearables"
 "og:description": "Maximum historical backfill window per wearable provider - how far back you can sync data."
@@ -23,16 +23,19 @@ Use it to compare providers when planning an integration. For the full list of d
 | Provider | Max range | Remarks |
 |---|---|---|
 | Garmin | 30 days | Limited to 30 days before the user's connection (consent) date. Requires the `HISTORICAL_DATA_EXPORT` permission. One backfill request per user per timeframe - reconnect to request again. |
-| Oura | No limit | The API enforces no maximum start date and returns all available history. Bounded only by how far back the user's Oura account has data. |
-| Whoop | No limit | The API enforces no maximum start date and returns all available history, including data recorded before the connection date. Bounded by the user's WHOOP membership. |
-| Ultrahuman | No limit | The API enforces no maximum start date and returns all available history, including data recorded before the connection date. Bounded by device history. |
-| Strava | TBC | |
-| Fitbit | TBC | |
+| Oura | No limit | |
+| Whoop | No limit | |
+| Ultrahuman | No limit | |
+| Strava | No limit | |
+| Fitbit | No limit | |
 | Polar | 365 days | Hard API limit - requests with a `from` date older than 365 days are rejected (`400 "Value for from cannot be older than 365 days"`). Data is also only available from the user's consent date onward. |
-| Suunto | No limit | No maximum lookback. A single request is capped to a 28-day window (handled by chunking), and the workouts endpoint defaults to all history. Bounded by device sync history. |
-| Google Health Connect | 30 days | Health Connect only exposes the last 30 days to apps that lack the `READ_HEALTH_DATA_HISTORY` permission, which the Open Wearables SDK does not currently request. The separate Google Health API (cloud REST) imposes no documented lookback limit. |
-| Apple Health | No limit | SDK-controlled - see note below. |
-| Samsung Health | No limit | SDK-controlled - see note below. |
+| Suunto | No limit | |
+| Google Health Connect | 30 days | Health Connect only exposes the last 30 days to apps that lack the `READ_HEALTH_DATA_HISTORY` permission, which the Open Wearables SDK does not currently request. |
+| Google Health API | No limit | |
+| Apple Health | No limit | |
+| Samsung Health | No limit | |
+
+Several APIs cap how much data a *single request* may cover even when there is no lookback limit - Suunto to a 28-day window, the Google Health API to 14 or 90 days depending on the data type, Fitbit to 24 hours for intraday endpoints. Open Wearables splits historical syncs into compliant chunks automatically, so these caps affect how long a backfill takes, not how far back it reaches.
 
 <Note>
   **Apple Health and Samsung Health** have no backend-enforced historical limit today. How far back to sync is decided on the device by the mobile SDK, and the backend ingests whatever the SDK pushes. Backend-side control over the historical range for these providers will be added in the future.
