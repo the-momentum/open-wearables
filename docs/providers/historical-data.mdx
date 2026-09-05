@@ -35,8 +35,6 @@ Use it to compare providers when planning an integration. For the full list of d
 | Apple Health | No limit | |
 | Samsung Health | No limit | |
 
-Several APIs cap how much data a *single request* may cover even when there is no lookback limit - Suunto to a 28-day window, the Google Health API to 14 or 90 days depending on the data type, Fitbit to 24 hours for intraday endpoints. Open Wearables splits historical syncs into compliant chunks automatically, so these caps affect how long a backfill takes, not how far back it reaches.
-
 <Note>
   **Apple Health and Samsung Health** have no backend-enforced historical limit today. How far back to sync is decided on the device by the mobile SDK, and the backend ingests whatever the SDK pushes. Backend-side control over the historical range for these providers will be added in the future.
 </Note>
