@@ -123,6 +123,30 @@ export function useSleepSummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get all pages of sleep summaries for a date range
+ * Uses GET /api/v1/users/{user_id}/summaries/sleep
+ */
+export function useAllSleepSummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: [...queryKeys.health.sleepSummaries(userId, params), 'all-pages'],
+    queryFn: () => healthService.getAllSleepSummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Get all pages of workouts for a date range
+ * Uses GET /api/v1/users/{user_id}/events/workouts
+ */
+export function useAllWorkouts(userId: string, params?: WorkoutsParams) {
+  return useQuery({
+    queryKey: [...queryKeys.health.workouts(userId, params), 'all-pages'],
+    queryFn: () => healthService.getAllWorkouts(userId, params),
+    enabled: !!userId,
+  });
+}
+
+/**
  * Delete a workout event
  */
 export function useDeleteWorkout(userId: string) {

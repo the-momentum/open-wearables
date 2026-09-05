@@ -52,6 +52,35 @@ export interface SummaryParams {
   [key: string]: string | number | undefined;
 }
 
+/**
+ * Fetch every page of a cursor-paginated endpoint. Callers pass the
+ * endpoint's maximum page size so most date ranges resolve in one request.
+ */
+async function fetchAllPages<T>(
+  endpoint: string,
+  params: SummaryParams | WorkoutsParams,
+  pageSize: number
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  // Page cap so a misbehaving cursor cannot loop forever
+  for (let page = 0; page < 50; page++) {
+    const response = await apiClient.get<PaginatedResponse<T>>(endpoint, {
+      params: { ...params, limit: pageSize, cursor },
+    });
+    items.push(...response.data);
+    if (!response.pagination.has_more) {
+      return items;
+    }
+    if (!response.pagination.next_cursor) {
+      throw new Error(`${endpoint} reported more data without a cursor`);
+    }
+    cursor = response.pagination.next_cursor;
+  }
+  // Failing beats silently rendering partial history as complete
+  throw new Error(`Pagination for ${endpoint} exceeded 50 pages`);
+}
+
 export const healthService = {
   /**
    * Synchronize workouts/exercises/activities from fitness provider API for a specific user
@@ -187,6 +216,34 @@ export const healthService = {
     return apiClient.get<PaginatedResponse<SleepSummary>>(
       API_ENDPOINTS.userSleepSummary(userId),
       { params }
+    );
+  },
+
+  /**
+   * Get all pages of sleep summaries for a date range
+   */
+  async getAllSleepSummaries(
+    userId: string,
+    params: SummaryParams
+  ): Promise<SleepSummary[]> {
+    return fetchAllPages<SleepSummary>(
+      API_ENDPOINTS.userSleepSummary(userId),
+      params,
+      400
+    );
+  },
+
+  /**
+   * Get all pages of workouts for a date range
+   */
+  async getAllWorkouts(
+    userId: string,
+    params?: WorkoutsParams
+  ): Promise<EventRecordResponse[]> {
+    return fetchAllPages<EventRecordResponse>(
+      API_ENDPOINTS.userWorkouts(userId),
+      params ?? {},
+      100
     );
   },
 
