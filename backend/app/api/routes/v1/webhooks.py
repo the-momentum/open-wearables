@@ -8,6 +8,8 @@ provider has a ``BaseWebhookHandler`` wired up, and delegates to:
 
 * ``strategy.webhooks.handle(request, body, db)``   – POST (data events)
 * ``strategy.webhooks.handle_challenge(request)``   – GET (subscription verification)
+* ``strategy.webhooks.handle_probe(request)``       – HEAD (callback reachability
+  probe, only on the handlers of providers whose registration API probes the URL)
 
 The per-provider webhook handlers (to be implemented under
 ``app/services/providers/{provider}/webhook_handler.py``) are responsible for:
@@ -25,7 +27,7 @@ into its strategy, traffic can be cut over to this router.
 from logging import getLogger
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.database import DbSession
 from app.schemas.responses.incoming_webhooks import (
@@ -123,6 +125,19 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     """
     handler = _get_webhook_handler(provider)
     return handler.handle_challenge(request)
+
+
+@router.head("", status_code=status.HTTP_200_OK, response_class=Response)
+def probe_provider_webhook(provider: str, request: Request) -> None:
+    """Handle a callback reachability probe without a response body."""
+    handler = _get_webhook_handler(provider)
+    probe = getattr(handler, "handle_probe", None)
+    if probe is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Provider '{provider}' does not support webhook reachability probes.",
+        )
+    probe(request)
 
 
 # ---------------------------------------------------------------------------

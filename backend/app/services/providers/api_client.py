@@ -104,6 +104,7 @@ def make_authenticated_request(
     endpoint: str,
     method: str = "GET",
     params: dict[str, Any] | None = None,
+    form_data: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     json_data: dict[str, Any] | None = None,
     expect_json: bool = True,
@@ -123,6 +124,8 @@ def make_authenticated_request(
         endpoint: API endpoint path (e.g., "/v3/workouts/")
         method: HTTP method (default: GET)
         params: Query parameters
+        form_data: Form-encoded request body, mutually exclusive with json_data.
+            Used by providers whose API is RPC-over-POST, e.g. Withings.
         headers: Additional headers (Authorization header will be added automatically)
         json_data: JSON body for POST/PUT requests
         expect_json: Whether to parse response as JSON (default True).
@@ -137,6 +140,9 @@ def make_authenticated_request(
     Raises:
         HTTPException: If API request fails
     """
+    if form_data is not None and json_data is not None:
+        raise ValueError("form_data and json_data are mutually exclusive")
+
     # Get valid token (will auto-refresh if needed)
     access_token = _get_valid_token(db, user_id, provider_name, connection_repo, oauth)
 
@@ -159,6 +165,7 @@ def make_authenticated_request(
                     url=url,
                     headers=request_headers,
                     params=params or {},
+                    data=form_data,
                     json=json_data,
                     timeout=30.0,
                 )

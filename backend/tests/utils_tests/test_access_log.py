@@ -91,3 +91,18 @@ class TestAccessLogMiddleware:
         with patch("app.middlewares.log_structured") as mock:
             client.get("/ok?limit=5&sort_by=created_at")
         assert mock.call_args_list[0].kwargs["path"] == "/ok?limit=5&sort_by=created_at"
+
+    @pytest.mark.parametrize(
+        "key",
+        ["token", "verification_token", "hub.verify_token"],
+    )
+    def test_secret_query_values_are_redacted(self, key: str) -> None:
+        # These authenticate unsigned provider webhooks, so a logged value is a
+        # usable credential — Withings' grants a forced disconnect.
+        client = _build_client(AccessLogLevel.ALL)
+        with patch("app.middlewares.log_structured") as mock:
+            client.get(f"/ok?{key}=s3cret&appli=1")
+        path = mock.call_args_list[0].kwargs["path"]
+        assert "s3cret" not in path
+        assert f"{key}=REDACTED" in path
+        assert "appli=1" in path
