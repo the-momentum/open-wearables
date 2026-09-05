@@ -809,8 +809,6 @@ class TestCreateOrMergeSleep:
         mock_sleep.assert_called_once()
         assert mock_sleep.call_args.kwargs["device_type"] == "ring"
 
-
-
     def test_same_window_re_sync_replaces_sleep_stages(self, db: Session) -> None:
         """Re-syncing the exact same window must replace stored detail with the incoming detail."""
         user = UserFactory()
@@ -841,19 +839,19 @@ class TestCreateOrMergeSleep:
         detail = self._detail(record.id, deep=90, light=30, rem=30, awake=0, in_bed=150, efficiency="95.00")
         detail = detail.model_copy(update={"sleep_stages": [incoming_stage]})
 
-        result = event_record_service.create_or_merge_sleep(
-            db, user.id, record, detail, self.THRESHOLD
-        )
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         db.refresh(result)
         stages = result.sleep_detail.sleep_stages
         assert stages is not None
         assert len(stages) == 1
         assert stages[0]["stage"] == "deep"
-        assert stages[0]["start_time"] == incoming_stage.start_time.isoformat()
-        assert stages[0]["end_time"] == incoming_stage.end_time.isoformat()
+        incoming_data = incoming_stage.model_dump(mode="json")
+        assert stages[0]["start_time"] == incoming_data["start_time"]
+        assert stages[0]["end_time"] == incoming_data["end_time"]
         assert result.sleep_detail.sleep_deep_minutes == detail.sleep_deep_minutes
         assert result.sleep_detail.sleep_efficiency_score == detail.sleep_efficiency_score
+
 
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
