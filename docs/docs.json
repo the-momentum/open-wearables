@@ -56,7 +56,8 @@
             "group": "Providers",
             "pages": [
               "providers/supported",
-              "providers/coverage"
+              "providers/coverage",
+              "providers/historical-data"
             ]
           },
           {

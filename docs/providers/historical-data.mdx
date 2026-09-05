@@ -1,0 +1,36 @@
+---
+title: "Historical Data Availability"
+sidebarTitle: "Historical Data"
+description: "How far back you can backfill data per provider: Garmin, Oura, Whoop, Ultrahuman, Strava, Fitbit, Polar, Suunto, Google Health Connect, Google Health API, and more."
+keywords: ["historical data", "backfill window", "how far back sync", "max historical days", "wearable data history"]
+"og:title": "Historical Data Availability | Open Wearables"
+"og:description": "Maximum historical backfill window per wearable provider - how far back you can sync data."
+"og:url": "https://docs.openwearables.io/providers/historical-data"
+"og:type": "article"
+"twitter:title": "Historical Data Availability | Open Wearables"
+"twitter:description": "Maximum historical backfill window per wearable provider - how far back you can sync data."
+"twitter:card": "summary_large_image"
+---
+
+This page documents how far back historical data can be backfilled from each provider - the maximum range a historical sync can request.
+
+Use it to compare providers when planning an integration. For the full list of data types per provider, see the [Coverage Matrix](/providers/coverage).
+
+## Maximum Historical Range
+
+**Max range** is the furthest point in the past from which a provider allows historical data to be backfilled.
+
+| Provider | Max range | Remarks |
+|---|---|---|
+| Garmin | 30 days | Limited to 30 days before the user's connection (consent) date. Requires the `HISTORICAL_DATA_EXPORT` permission. One backfill request per user per timeframe - reconnect to request again. |
+| Oura | No limit | |
+| Whoop | No limit | |
+| Ultrahuman | No limit | |
+| Strava | No limit | |
+| Fitbit | No limit | |
+| Polar | 365 days | Data is only available from the user's consent date onward. |
+| Suunto | No limit | |
+| Google Health API | No limit | |
+| Google Health Connect | 30 days | Health Connect only exposes the last 30 days to apps that lack the `READ_HEALTH_DATA_HISTORY` permission, which the Open Wearables SDK does not currently request. |
+| Apple Health | No limit | |
+| Samsung Health | No limit | |
