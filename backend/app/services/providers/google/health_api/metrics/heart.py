@@ -1,8 +1,10 @@
 """Heart-family metrics.
 
-heart-rate / run-vo2-max support rollUp + list; daily-resting-heart-rate (Daily) and
-heart-rate-variability (Sample) are list only. The HRV sample emits both RMSSD (primary)
-and SDNN (extra) into their own series.
+heart-rate / run-vo2-max support rollUp + list; daily-resting-heart-rate (Daily),
+heart-rate-variability (Sample) and daily-heart-rate-variability (Daily) are list only. The
+HRV sample emits both RMSSD (primary) and SDNN (extra) into their own series; the daily HRV
+summary emits its RMSSD-based average into the RMSSD series as a daily total (the deep-sleep
+RMSSD, non-REM heart rate and entropy fields have no unified series yet).
 
 heart-rate and run-vo2-max rollUp values also carry Min/Max alongside the Avg we take;
 capturing those would use the same `extra` mechanism once dedicated SeriesTypes exist.
@@ -41,5 +43,11 @@ HEART_METRICS: tuple[DataTypeMetric, ...] = (
             TimeShape.SAMPLE,
             extra=(SeriesField(SeriesType.heart_rate_variability_sdnn, "standardDeviationMilliseconds"),),
         ),
+    ),
+    DataTypeMetric(
+        "daily-heart-rate-variability",
+        SeriesType.heart_rate_variability_rmssd,
+        value_key="dailyHeartRateVariability",
+        list_spec=ListSpec("averageHeartRateVariabilityMilliseconds", TimeShape.DATE, is_daily_total=True),
     ),
 )
