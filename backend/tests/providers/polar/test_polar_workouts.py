@@ -4,9 +4,11 @@ Tests for Polar workouts implementation.
 Tests the PolarWorkouts class for fetching and processing workout data from Polar API.
 """
 
+from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.orm import Session
@@ -16,6 +18,7 @@ from app.schemas.enums import WorkoutType
 from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.providers.polar.workouts import PolarWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
+from tests.fixtures.fit_builder import make_running_fit
 
 
 class TestPolarWorkoutsInitialization:
@@ -476,6 +479,7 @@ class TestPolarWorkoutsAPIRequests:
 class TestPolarWorkoutsDataLoading:
     """Tests for loading workout data from Polar API."""
 
+    @patch("app.services.providers.polar.workouts.download_binary_content")
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
@@ -484,6 +488,7 @@ class TestPolarWorkoutsDataLoading:
         mock_create_detail: MagicMock,
         mock_create: MagicMock,
         mock_request: MagicMock,
+        mock_download: MagicMock,
         db: Session,
         sample_polar_exercise: dict,
     ) -> None:
@@ -516,6 +521,8 @@ class TestPolarWorkoutsDataLoading:
         )
 
         mock_request.return_value = [sample_polar_exercise]
+        mock_create.return_value = MagicMock(id=uuid4(), external_id=sample_polar_exercise["id"])
+        mock_download.return_value = b""  # no FIT available — summary ingestion only
 
         # Act
         result = workouts.load_data(db, user.id)
@@ -562,6 +569,407 @@ class TestPolarWorkoutsDataLoading:
 
         # Assert
         assert result == 0
+
+
+@pytest.fixture
+def no_fit_file_storage() -> Generator[MagicMock, None, None]:
+    """Keep FIT ingestion tests off S3 for anyone running with STORE_FIT_FILES enabled."""
+    with patch("app.services.providers.polar.workouts.store_fit_file") as mock_store:
+        yield mock_store
+
+
+@pytest.fixture
+def polar_workouts() -> PolarWorkouts:
+    """PolarWorkouts wired with the real repositories."""
+    from app.models import EventRecord, User
+    from app.repositories.event_record_repository import EventRecordRepository
+    from app.repositories.user_connection_repository import UserConnectionRepository
+    from app.repositories.user_repository import UserRepository
+    from app.services.providers.polar.oauth import PolarOAuth
+
+    connection_repo = UserConnectionRepository()
+    oauth = PolarOAuth(
+        user_repo=UserRepository(User),
+        connection_repo=connection_repo,
+        provider_name="polar",
+        api_base_url="https://www.polaraccesslink.com",
+    )
+    return PolarWorkouts(
+        workout_repo=EventRecordRepository(EventRecord),
+        connection_repo=connection_repo,
+        provider_name="polar",
+        api_base_url="https://www.polaraccesslink.com",
+        oauth=oauth,
+    )
+
+
+@pytest.mark.usefixtures("no_fit_file_storage")
+class TestPolarExerciseFitIngestion:
+    """Tests for the FIT enrichment step itself (_ingest_exercise_fit).
+
+    A Polar exercise JSON is a summary: total duration, distance, avg/max HR. Laps,
+    splits and pool lengths only exist in the FIT file the watch recorded, served at
+    GET /v3/exercises/{id}/fit.
+    """
+
+    @staticmethod
+    def _saved_fields(workouts: PolarWorkouts) -> dict:
+        """The fields dict passed to update_workout_fields(db, record_id, fields)."""
+        return workouts.event_record_detail_repo.update_workout_fields.call_args.args[2]
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_laps_are_saved_as_segments(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Laps parsed out of the FIT file land in workout_details.segments."""
+        # Arrange
+        mock_download.return_value = make_running_fit()
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        polar_workouts.event_record_detail_repo.update_workout_fields.assert_called_once()
+        segments = self._saved_fields(polar_workouts)["segments"]
+        assert len(segments) == 2
+        assert {s["kind"] for s in segments} == {"lap"}
+        assert [s["index"] for s in segments] == [0, 1]
+        assert all(s["avg_heart_rate"] > 0 for s in segments)
+        assert all(s["elapsed_seconds"] > 0 for s in segments)
+        assert all(s["distance_meters"] > 0 for s in segments)
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_fit_pulled_from_exercise_fit_endpoint(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """The FIT is fetched per exercise from AccessLink, keyed by Polar's exercise id."""
+        # Arrange
+        mock_download.return_value = make_running_fit()
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        assert mock_download.call_args.kwargs["url"] == "https://www.polaraccesslink.com/v3/exercises/ABC123/fit"
+        assert mock_download.call_args.kwargs["provider_name"] == "polar"
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_raw_fit_is_offered_to_storage(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+        no_fit_file_storage: MagicMock,
+    ) -> None:
+        """The downloaded FIT is handed to raw storage, which no-ops unless enabled."""
+        # Arrange
+        fit_bytes = make_running_fit()
+        mock_download.return_value = fit_bytes
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        no_fit_file_storage.assert_called_once()
+        assert no_fit_file_storage.call_args.kwargs["fit_bytes"] == fit_bytes
+        assert no_fit_file_storage.call_args.kwargs["activity_id"] == "ABC123"
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_storage_failure_still_saves_laps(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+        no_fit_file_storage: MagicMock,
+    ) -> None:
+        """Archiving the raw file is incidental — a storage failure must not cost the laps."""
+        # Arrange
+        mock_download.return_value = make_running_fit()
+        no_fit_file_storage.side_effect = RuntimeError("S3 unavailable")
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        assert len(self._saved_fields(polar_workouts)["segments"]) == 2
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_download_failure_writes_nothing(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """AccessLink has no FIT for every exercise (manual entries, third-party uploads)."""
+        # Arrange
+        mock_download.side_effect = RuntimeError("404 Not Found")
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        polar_workouts.event_record_detail_repo.update_workout_fields.assert_not_called()
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_unparseable_fit_writes_nothing(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Corrupt FIT bytes are swallowed — the exercise summary is already saved."""
+        # Arrange
+        mock_download.return_value = b"definitely not a FIT file"
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        polar_workouts.event_record_detail_repo.update_workout_fields.assert_not_called()
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_empty_body_writes_nothing(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """An empty response body is 'no FIT', not a parse failure."""
+        # Arrange
+        mock_download.return_value = b""
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        polar_workouts.event_record_detail_repo.update_workout_fields.assert_not_called()
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_already_enriched_exercise_skips_download(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Re-syncs must not re-fetch a FIT whose laps are already stored."""
+        # Arrange
+        from tests.factories import WorkoutDetailsFactory
+
+        details = WorkoutDetailsFactory(segments=[{"kind": "lap", "index": 0, "elapsed_seconds": 60.0}])
+        db.commit()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), details.record_id, "ABC123")
+
+        # Assert
+        mock_download.assert_not_called()
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_missing_exercise_id_skips_download(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Without Polar's exercise id there is no FIT URL to build."""
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), None)
+
+        # Assert
+        mock_download.assert_not_called()
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_samples_skipped_when_flag_disabled(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Segments are always saved; per-second samples stay behind the ingest flag."""
+        # Arrange
+        mock_download.return_value = make_running_fit()
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        with (
+            patch("app.services.providers.polar.workouts.settings", ingest_workout_samples=False),
+            patch("app.services.providers.polar.workouts.timeseries_service") as mock_timeseries,
+        ):
+            polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        mock_timeseries.bulk_create_samples.assert_not_called()
+        assert self._saved_fields(polar_workouts)["segments"]
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_samples_ingested_when_flag_enabled(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """With the flag on, the FIT's per-second samples go to the timeseries service."""
+        # Arrange
+        mock_download.return_value = make_running_fit()
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        with (
+            patch("app.services.providers.polar.workouts.settings", ingest_workout_samples=True),
+            patch("app.services.providers.polar.workouts.timeseries_service") as mock_timeseries,
+        ):
+            polar_workouts._ingest_exercise_fit(db, uuid4(), uuid4(), "ABC123")
+
+        # Assert
+        mock_timeseries.bulk_create_samples.assert_called_once()
+        samples = mock_timeseries.bulk_create_samples.call_args.args[1]
+        assert samples
+        assert {s.source for s in samples} == {"polar"}
+
+
+@pytest.mark.usefixtures("no_fit_file_storage")
+class TestPolarFitPersistence:
+    """The segments write has to survive the transaction, not just reach the repository.
+
+    update_workout_fields leaves the transaction open by contract and the exercise
+    summary is committed before enrichment runs, so nothing downstream would commit
+    these fields on our behalf.
+    """
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_segments_are_committed(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """Laps are readable from the database after ingestion, via the real repository."""
+        # Arrange
+        from app.models import WorkoutDetails
+        from tests.factories import WorkoutDetailsFactory
+
+        details = WorkoutDetailsFactory()
+        record_id = details.record_id
+        db.commit()  # the exercise summary is committed before enrichment runs
+        mock_download.return_value = make_running_fit()
+
+        # Act
+        polar_workouts._ingest_exercise_fit(db, uuid4(), record_id, "ABC123")
+
+        # Assert — re-read rather than trusting the identity map
+        db.expire_all()
+        saved = db.get(WorkoutDetails, record_id)
+        assert saved is not None
+        assert saved.segments is not None
+        assert len(saved.segments) == 2
+        assert {s["kind"] for s in saved.segments} == {"lap"}
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    def test_failed_ingestion_leaves_session_usable(
+        self,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+    ) -> None:
+        """A bad FIT must not poison the transaction for the next exercise in the sync."""
+        # Arrange
+        from app.models import WorkoutDetails
+        from tests.factories import WorkoutDetailsFactory
+
+        broken = WorkoutDetailsFactory()
+        healthy = WorkoutDetailsFactory()
+        db.commit()  # both summaries are committed before enrichment runs
+        mock_download.return_value = b"definitely not a FIT file"
+
+        # Act — first exercise fails, second succeeds on the same session
+        polar_workouts._ingest_exercise_fit(db, uuid4(), broken.record_id, "BROKEN")
+        mock_download.return_value = make_running_fit()
+        polar_workouts._ingest_exercise_fit(db, uuid4(), healthy.record_id, "ABC123")
+
+        # Assert
+        db.expire_all()
+        assert db.get(WorkoutDetails, broken.record_id).segments is None
+        assert len(db.get(WorkoutDetails, healthy.record_id).segments) == 2
+
+
+@pytest.mark.usefixtures("no_fit_file_storage")
+class TestPolarFitIngestionWiring:
+    """Both exercise entry points — the pull sync and the EXERCISE webhook — enrich with FIT."""
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
+    @patch("app.services.event_record_service.event_record_service.create_detail")
+    @patch("app.services.event_record_service.event_record_service.create")
+    def test_load_data_enriches_each_exercise(
+        self,
+        mock_create: MagicMock,
+        mock_create_detail: MagicMock,
+        mock_request: MagicMock,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+        sample_polar_exercise: dict,
+    ) -> None:
+        """The pull sync saves the summary and then the laps from the FIT file."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="polar")
+        mock_request.return_value = [sample_polar_exercise]
+        mock_create.return_value = MagicMock(id=uuid4(), external_id=sample_polar_exercise["id"])
+        mock_download.return_value = make_running_fit()
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        result = polar_workouts.load_data(db, user.id)
+
+        # Assert
+        assert result == 1
+        saved_fields = polar_workouts.event_record_detail_repo.update_workout_fields.call_args.args[2]
+        assert len(saved_fields["segments"]) == 2
+
+    @patch("app.services.providers.polar.workouts.download_binary_content")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
+    @patch("app.services.event_record_service.event_record_service.create_detail")
+    @patch("app.services.event_record_service.event_record_service.create")
+    def test_webhook_exercise_is_enriched(
+        self,
+        mock_create: MagicMock,
+        mock_create_detail: MagicMock,
+        mock_request: MagicMock,
+        mock_download: MagicMock,
+        db: Session,
+        polar_workouts: PolarWorkouts,
+        sample_polar_exercise: dict,
+    ) -> None:
+        """An EXERCISE webhook ping gets the same treatment as the pull sync."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="polar")
+        mock_request.return_value = sample_polar_exercise
+        mock_create.return_value = MagicMock(id=uuid4(), external_id=sample_polar_exercise["id"])
+        mock_download.return_value = make_running_fit()
+        polar_workouts.event_record_detail_repo = MagicMock()
+
+        # Act
+        result = polar_workouts.fetch_and_save_exercise(db, user.id, "/v3/exercises/ABC123")
+
+        # Assert
+        assert result == 1
+        saved_fields = polar_workouts.event_record_detail_repo.update_workout_fields.call_args.args[2]
+        assert len(saved_fields["segments"]) == 2
 
 
 class TestGetUnifiedWorkoutType:
