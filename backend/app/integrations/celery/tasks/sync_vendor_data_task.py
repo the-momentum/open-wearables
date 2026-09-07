@@ -543,11 +543,15 @@ def sync_vendor_data(
                             "is_historical": is_historical,
                             "params": provider_result.params,
                         }
-                        completed_message = (
-                            f"Sync from {provider_name} completed"
-                            if final_status == SyncStatus.SUCCESS
-                            else f"Sync from {provider_name} completed with errors"
-                        )
+                        # SKIPPED means every task found nothing to fetch, which is the
+                        # normal outcome of a live sync and not an error.
+                        match final_status:
+                            case SyncStatus.SUCCESS:
+                                completed_message = f"Sync from {provider_name} completed"
+                            case SyncStatus.SKIPPED:
+                                completed_message = f"Sync from {provider_name} completed, nothing new"
+                            case _:
+                                completed_message = f"Sync from {provider_name} completed with errors"
                         if pull_inserted or pull_updated:
                             completed_metadata["inserted"] = pull_inserted
                             completed_metadata["updated"] = pull_updated
