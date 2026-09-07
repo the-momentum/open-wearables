@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # 09/01/2025) but still sent, so it is kept as a fallback for unlisted slugs.
 # Reference: https://developer.whoop.com/docs/developing/user-data/workout
 # Format: (whoop_sport_name, whoop_sport_id, unified_type)
-WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
+WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int | None, WorkoutType]] = [
     # Generic / catch-all
     ("activity", -1, WorkoutType.GENERIC),
     ("other", 71, WorkoutType.GENERIC),
@@ -155,6 +155,10 @@ WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, int, WorkoutType]] = [
     ("public-speaking", 272, WorkoutType.LIFESTYLE),
     ("musical-performance", 263, WorkoutType.LIFESTYLE),
     ("dedicated-parenting", 251, WorkoutType.LIFESTYLE),
+    # Undocumented sports: missing from the Whoop docs, seen in real payloads, likely more to
+    # come
+    ("weightlifting_msk", None, WorkoutType.STRENGTH_TRAINING),
+    ("foam_rolling", None, WorkoutType.RECOVERY),
 ]
 
 WHOOP_TO_UNIFIED: dict[str, WorkoutType] = {
@@ -162,7 +166,7 @@ WHOOP_TO_UNIFIED: dict[str, WorkoutType] = {
 }
 
 WHOOP_ID_TO_UNIFIED: dict[int, WorkoutType] = {
-    sport_id: unified_type for _, sport_id, unified_type in WHOOP_WORKOUT_TYPE_MAPPINGS
+    sport_id: unified_type for _, sport_id, unified_type in WHOOP_WORKOUT_TYPE_MAPPINGS if sport_id is not None
 }
 
 
