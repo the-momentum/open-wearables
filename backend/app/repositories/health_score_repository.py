@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
 from app.models import DataSource, HealthScore
+from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
@@ -47,16 +48,22 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         results = query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all()
         return results, total_count
 
-    def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> None:
-        """Bulk insert health scores, doing nothing on conflict with the unique constraint."""
+    def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> WriteCounts:
+        """Bulk insert health scores, doing nothing on conflict with the unique constraint.
+
+        Returns the rows actually written. DO NOTHING never refreshes an existing
+        row, so the count is all inserts — RETURNING yields a row only for the
+        ones that were not conflicts.
+        """
         if not creators:
-            return
+            return WriteCounts(0, 0)
 
         values = [c.model_dump() for c in creators]
 
-        stmt = insert(HealthScore).values(values).on_conflict_do_nothing()
-        db_session.execute(stmt)
+        stmt = insert(HealthScore).values(values).on_conflict_do_nothing().returning(HealthScore.id)
+        inserted = len(db_session.execute(stmt).scalars().all())
         # Caller is responsible for commit — allows batching with other operations
+        return WriteCounts(inserted, 0)
 
     def get_latest_by_category(
         self,

@@ -35,12 +35,12 @@ from app.services.providers.google.health_api.helpers import (
 )
 from app.services.providers.google.health_api.metrics import METRICS
 from app.services.providers.google.health_api.sleep import GoogleHealthApiSleep
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
 
 
 class GoogleHealth247Data(Base247DataTemplate):
@@ -62,63 +62,38 @@ class GoogleHealth247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
+        start_time: datetime | str | None = None,
+        end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, WriteCounts]:
+    ) -> Sync247Result:
         """Fetch + persist every registered metric; failures are isolated per metric."""
+        start_time, end_time = self.resolve_window(start_time, end_time)
         granularity = (
             self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
         )
-        results: dict[str, WriteCounts] = {}
-        failures: dict[str, str] = {}
-        succeeded = 0
+        run = self.sync_run(db, user_id)
 
         for metric in METRICS:
             # Confine each metric (fetch + write) to a savepoint so a failed write rolls
             # back only that metric and leaves the transaction usable for the rest.
-            try:
-                with db.begin_nested():
-                    if metric.use_list(granularity):
-                        samples = self._native_samples(db, user_id, metric, start_time, end_time)
-                    else:
-                        samples = self._rollup_samples(db, user_id, metric, start_time, end_time, granularity)
-                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-            except Exception as e:
-                self._log_metric_failure(metric.data_type, user_id, e)
-                failures[metric.data_type] = str(e)
-                continue
-            succeeded += 1
-            if counts is not None:
-                results[metric.data_type] = counts
+            with run.step(metric.data_type, savepoint=True, capture=True) as step:
+                if metric.use_list(granularity):
+                    samples = self._native_samples(db, user_id, metric, start_time, end_time)
+                else:
+                    samples = self._rollup_samples(db, user_id, metric, start_time, end_time, granularity)
+                if samples:
+                    step.record(timeseries_service.bulk_create_samples(db, samples))
 
-        try:
-            sleep_count = self.sleep.load_and_save(db, user_id, start_time, end_time)
-            succeeded += 1
-        except Exception as e:
-            self._log_metric_failure("sleep", user_id, e)
-            failures["sleep"] = str(e)
-            sleep_count = 0
+        with run.step("sleep", capture=True) as step:
+            step.record(self.sleep.load_and_save(db, user_id, start_time, end_time))
 
-        if results or sleep_count:
+        if run.result.rows_written:
             db.commit()
 
-        # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — surface it so the sync
-        # is marked FAILED rather than an empty success. A partial/empty run returns normally.
-        if failures and not succeeded:
-            raise RuntimeError(f"All Google 24/7 data types failed: {failures}")
-        log_structured(
-            self.logger,
-            "info",
-            "Google 24/7 sync complete",
-            provider=self.provider_name,
-            task="load_and_save_all",
-            user_id=str(user_id),
-            granularity=granularity.value,
-            metrics_synced=len(results),
-            sleep_sessions=sleep_count,
-        )
-        return results
+        # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — the caller marks
+        # the sync FAILED off ``all_failed`` rather than treating it as an empty success.
+        run.log_summary(granularity=granularity.value)
+        return run.result
 
     def sync_data_type(
         self,

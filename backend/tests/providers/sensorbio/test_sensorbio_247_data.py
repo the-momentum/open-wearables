@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 
@@ -234,10 +235,12 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 3
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
+            mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 3, "scores_synced": 1}
+        assert counts == 4  # 3 metrics + 1 score
+        assert counts.inserted == 4
         mock_ts.bulk_create_samples.assert_called_once()
         mock_hs.bulk_create.assert_called_once()
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -259,7 +262,7 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 1
+            mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             data_247.save_recovery_data(db, USER_ID, normalized)
 
         mock_hs.bulk_create.assert_not_called()
@@ -272,7 +275,7 @@ class TestSensorBio247SaveRecoveryData:
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
-        assert counts == {"metrics_synced": 0, "scores_synced": 0}
+        assert counts == 0
         mock_ts.bulk_create_samples.assert_not_called()
         mock_hs.bulk_create.assert_not_called()
 
@@ -523,6 +526,7 @@ class TestSensorBio247SaveDailyActivity:
             "energy": 312.0,
         }
         with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
         assert count == 3
@@ -542,6 +546,7 @@ class TestSensorBio247SaveDailyActivity:
             "energy": None,
         }
         with patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts:
+            mock_ts.bulk_create_samples.return_value = WriteCounts(1, 0)
             count = data_247.save_daily_activity(db, USER_ID, normalized)
 
         assert count == 1
@@ -668,9 +673,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 2}
+        assert counts == 2
         mock_hs.bulk_create.assert_called_once()
         from app.schemas.enums import HealthScoreCategory
 
@@ -694,9 +700,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(2, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 2}
+        assert counts == 2
         from app.schemas.enums import HealthScoreCategory
 
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -722,10 +729,11 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service") as mock_ts,
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
-            mock_ts.bulk_create_samples.return_value = 3
+            mock_ts.bulk_create_samples.return_value = WriteCounts(3, 0)
+            mock_hs.bulk_create.return_value = WriteCounts(3, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 3, "scores_synced": 3}
+        assert counts == 6  # 3 metrics + 3 scores
         assert mock_hs.bulk_create.call_count == 1
         from app.schemas.enums import HealthScoreCategory
 
@@ -746,9 +754,10 @@ class TestSensorBio247SaveRecoveryDataScores:
             patch("app.services.providers.sensorbio.data_247.timeseries_service"),
             patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
         ):
+            mock_hs.bulk_create.return_value = WriteCounts(1, 0)
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 1}
+        assert counts == 1
         from app.schemas.enums import HealthScoreCategory
 
         scores = mock_hs.bulk_create.call_args[0][1]
@@ -768,5 +777,5 @@ class TestSensorBio247SaveRecoveryDataScores:
         ):
             counts = data_247.save_recovery_data(db, USER_ID, normalized)
 
-        assert counts == {"metrics_synced": 0, "scores_synced": 0}
+        assert counts == 0
         mock_hs.bulk_create.assert_not_called()
