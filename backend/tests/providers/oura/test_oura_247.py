@@ -389,6 +389,12 @@ class TestOura247MetSeriesExpansion:
         met = OuraMetJSON(interval=60, items=[1.0], timestamp=None)
         assert data_247._expand_met_series(met, None) == []
 
+    def test_expand_met_series_offset_less_timestamp_is_dropped(self, data_247: Oura247Data) -> None:
+        # A timestamp with no UTC offset parses to a naive datetime, which would raise
+        # TypeError when compared against the aware `now` in the no-class_5_min fallback.
+        met = OuraMetJSON(interval=60, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00")
+        assert data_247._expand_met_series(met, None) == []
+
     def test_expand_met_series_full_day(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[1.0] * 1440, timestamp="2024-01-15T00:00:00+00:00")
         samples = data_247._expand_met_series(met, None)

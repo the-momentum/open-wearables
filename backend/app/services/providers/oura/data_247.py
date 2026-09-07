@@ -207,7 +207,7 @@ class Oura247Data(Base247DataTemplate):
             return []
 
         start = parse_iso_datetime(met.timestamp)
-        if start is None:
+        if start is None or start.tzinfo is None:
             return []
 
         zone_offset = None
