@@ -18,15 +18,25 @@ Redis keys (scoped to provider + provider_user_id + scope):
 """
 
 import logging
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from app.integrations.redis_client import get_redis_client
+from app.schemas.sync_status import SyncStatus
+from app.services import sync_status_service
 
 logger = logging.getLogger(__name__)
 
 _PREFIX = "linked_sync"
 _PRIMARY_TTL = 4 * 60 * 60  # 4 h — covers longest Garmin backfill
 _SECONDARY_TTL = 4 * 60 * 60
+
+# A pull primary that has reported no sync activity for this long is treated as orphaned:
+# its worker died mid-run (SIGKILL after the container stop grace period, OOM, host reboot)
+# and never reached release_primary, so the lock would block every periodic pull for the
+# account until the 4 h TTL. Must exceed the longest gap between progress events of a
+# legitimate run.
+PRIMARY_IDLE_SECONDS = 30 * 60
 
 # Atomically delete a key only if its current value matches ARGV[1].
 # Prevents releasing a lock that was already expired and re-acquired by
@@ -199,3 +209,31 @@ def release_stale_primary(
     Returns True when the key was deleted.
     """
     return bool(get_redis_client().delete(_primary_key(provider, provider_user_id, scope)))
+
+
+def primary_is_idle(
+    provider: str,
+    primary_user_id: UUID,
+    *,
+    idle_seconds: int = PRIMARY_IDLE_SECONDS,
+    now: datetime | None = None,
+) -> bool:
+    """Return True when the lock holder shows no live sync run for *provider*.
+
+    The sync-status stream (:mod:`app.services.sync_status_service`, Redis, 24 h TTL) is the
+    only trace of activity a running task leaves. The holder is considered alive when it has
+    an ``in_progress`` run for *provider* whose latest event is younger than *idle_seconds*;
+    anything else — no run recorded at all, only terminal runs, or an in-progress run that
+    stopped reporting — means the primary lock is orphaned and can be stolen.
+
+    Meant for the periodic pull scope; Garmin backfills track their own progress keys and
+    are garbage-collected separately (``garmin/gc_task.py``).
+    """
+    now = now or datetime.now(timezone.utc)
+    for run in sync_status_service.get_run_summaries(primary_user_id, limit=50):
+        if run.provider != provider or run.status != SyncStatus.IN_PROGRESS:
+            continue
+        last = run.last_update if run.last_update.tzinfo else run.last_update.replace(tzinfo=timezone.utc)
+        if (now - last).total_seconds() < idle_seconds:
+            return False
+    return True

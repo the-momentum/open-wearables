@@ -80,6 +80,8 @@ For providers polled periodically (Whoop, Oura, Suunto — those in `PULL` live 
 
 The lock TTL is 4 hours. Because `sync_vendor_data` tasks for different profiles may run in any order, the "primary" role is simply the first task to acquire the lock in a given polling cycle. If the primary completes before a competing task runs, that task acquires a fresh lock and does its own pull — which is acceptable (one extra API call per cycle, no data corruption).
 
+A lock whose holder died mid-run (worker killed after the container stop grace period, OOM, host reboot) is never released by `release_primary`, and without help every periodic pull for that account would be skipped until the TTL. `primary_is_idle` closes that gap: when a task loses the election it checks the holder's sync-status stream, and if the holder has no `in_progress` run for the provider updated within `PRIMARY_IDLE_SECONDS` (30 min) — or no run recorded at all — the lock is treated as orphaned and stolen, exactly like the existing "holder has no active connection" case.
+
 ---
 
 ## Redis Keys
@@ -116,7 +118,7 @@ primary_user_id: <uuid of the profile that ran the sync>
 
 | File | Role |
 |------|------|
-| `app/services/sync_coordination.py` | Redis lock primitives: `try_become_primary`, `release_primary`, `store_primary_token`, `release_primary_for_user`, `register_secondary`, `get_secondary_user_ids`, `clear_secondaries` |
+| `app/services/sync_coordination.py` | Redis lock primitives: `try_become_primary`, `release_primary`, `release_stale_primary`, `primary_is_idle`, `store_primary_token`, `release_primary_for_user`, `register_secondary`, `get_secondary_user_ids`, `clear_secondaries` |
 | `app/schemas/sync_status.py` | `SyncSource.LINKED_ACCOUNT` enum value; `primary_user_id` field on `SyncStatusEvent` and `SyncRunSummary` |
 | `app/repositories/user_connection_repository.py` | `get_all_by_provider_user_id()` — returns all active connections for a (provider, provider_user_id) pair; partial index `ix_user_connection_provider_external_id` |
 | `app/services/providers/garmin/handlers/activities.py` | Webhook fan-out for activity notifications |

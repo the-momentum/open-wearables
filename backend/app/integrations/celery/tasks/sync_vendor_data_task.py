@@ -14,7 +14,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus
 from app.services.providers.factory import ProviderFactory
-from app.services.sync_coordination import release_primary, release_stale_primary, try_become_primary
+from app.services.sync_coordination import primary_is_idle, release_primary, release_stale_primary, try_become_primary
 from app.services.sync_status_service import completed, failed, new_run_id, progress, started
 from app.utils.config_utils import format_duration
 from app.utils.context import trace_id_var
@@ -190,15 +190,22 @@ def sync_vendor_data(
                         provider_name, connection.provider_user_id, user_uuid, scope="pull"
                     )
                     if not is_pull_primary and existing_primary:
-                        # If the lock holder no longer has an active connection (e.g. user
-                        # deleted), the lock is stale and will never be released naturally.
-                        # Steal it so this profile can become primary.
+                        # The lock is stale — it will never be released naturally — when the
+                        # holder no longer has an active connection (e.g. user deleted) or when
+                        # the holder's run died with its worker (no live in-progress run for
+                        # this provider within PRIMARY_IDLE_SECONDS). Steal it so this profile
+                        # can become primary instead of skipping every pull until the TTL.
                         active = user_connection_repo.get_active_connection(db, existing_primary, provider_name)
+                        stale_reason: str | None = None
                         if not active:
+                            stale_reason = "holder has no active connection"
+                        elif primary_is_idle(provider_name, existing_primary):
+                            stale_reason = "holder has no live sync run (worker died mid-run?)"
+                        if stale_reason:
                             log_structured(
                                 logger,
                                 "info",
-                                f"Stealing stale {provider_name} primary lock — holder has no active connection",
+                                f"Stealing stale {provider_name} primary lock — {stale_reason}",
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
