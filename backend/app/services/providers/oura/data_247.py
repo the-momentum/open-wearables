@@ -1,5 +1,6 @@
 """Oura Ring 247 Data implementation for sleep, readiness, heart rate, activity, and SpO2."""
 
+import math
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
@@ -202,7 +203,7 @@ class Oura247Data(Base247DataTemplate):
     @staticmethod
     def _expand_met_series(met: OuraMetJSON | None, class_5_min: str | None) -> list[dict[str, Any]]:
         """Expand an Oura intraday MET series into individual timestamped samples."""
-        if met is None or not met.items or not met.interval or met.interval < 0:
+        if met is None or not met.items or not met.interval or met.interval < 0 or not math.isfinite(met.interval):
             return []
 
         start = parse_iso_datetime(met.timestamp)
@@ -224,7 +225,12 @@ class Oura247Data(Base247DataTemplate):
                 continue
 
             elapsed_seconds = met.interval * i
-            recorded_at = start + timedelta(seconds=elapsed_seconds)
+            try:
+                recorded_at = start + timedelta(seconds=elapsed_seconds)
+            except OverflowError:
+                # interval is finite but too large for timestamp arithmetic to represent
+                # (e.g. a corrupt payload) — the whole series is untrustworthy at that point.
+                return []
 
             if measured_seconds is not None and class_5_min is not None:
                 if elapsed_seconds >= measured_seconds:

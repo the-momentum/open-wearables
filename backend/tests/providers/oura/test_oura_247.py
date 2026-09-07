@@ -367,6 +367,18 @@ class TestOura247MetSeriesExpansion:
         met = OuraMetJSON(interval=-60, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
         assert data_247._expand_met_series(met, None) == []
 
+    def test_expand_met_series_non_finite_interval_is_dropped(self, data_247: Oura247Data) -> None:
+        # interval is a plain float per Oura's schema — inf/nan must not reach timedelta math.
+        for bad_interval in (float("inf"), float("nan")):
+            met = OuraMetJSON(interval=bad_interval, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
+            assert data_247._expand_met_series(met, None) == []
+
+    def test_expand_met_series_unrepresentable_interval_returns_empty(self, data_247: Oura247Data) -> None:
+        # A finite but huge interval overflows `timedelta` once multiplied by the item
+        # index, instead of raising and failing the whole activity import.
+        met = OuraMetJSON(interval=1e20, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
+        assert data_247._expand_met_series(met, None) == []
+
     def test_expand_met_series_unparseable_timestamp_is_dropped(self, data_247: Oura247Data) -> None:
         # No fallback to the daily activity's own timestamp — it can anchor the whole
         # series to the wrong point in the day (mirrors the sleep HR/HRV interval handling).
