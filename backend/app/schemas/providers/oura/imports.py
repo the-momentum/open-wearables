@@ -145,6 +145,7 @@ class OuraDailyActivityJSON(BaseModel):
     timestamp: str | None = None
     contributors: dict | None = None
     met: OuraMetJSON | None = None
+    class_5_min: str | None = None
 
 
 class OuraActivityCollectionJSON(BaseModel):

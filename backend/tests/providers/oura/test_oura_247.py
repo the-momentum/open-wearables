@@ -1,13 +1,14 @@
 """Tests for Oura247Data normalization."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 
 from app.constants.sleep import SleepStageType
+from app.schemas.enums import SeriesType
 from app.schemas.providers.oura.imports import OuraMetJSON
-from app.services.providers.oura.coverage import INTRADAY_ACTIVITY_KEYS
+from app.services.providers.oura.coverage import ACTIVITY_SERIES
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.strategy import OuraStrategy
 
@@ -327,7 +328,7 @@ class TestOura247MetSeriesExpansion:
 
     def test_expand_met_series_basic(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[1.0, 1.1, 1.2], timestamp="2024-01-15T00:00:00+00:00")
-        samples = data_247._expand_met_series(met)
+        samples = data_247._expand_met_series(met, None)
 
         assert [s["value"] for s in samples] == [1.0, 1.1, 1.2]
         assert samples[0]["recorded_at"] == datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
@@ -336,58 +337,105 @@ class TestOura247MetSeriesExpansion:
 
     def test_expand_met_series_skips_null_items(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[1.0, None, 1.2], timestamp="2024-01-15T00:00:00+00:00")
-        samples = data_247._expand_met_series(met)
+        samples = data_247._expand_met_series(met, None)
 
         # A null (unworn/unmeasured) sample must be dropped, never coerced to 0.0.
         assert [s["value"] for s in samples] == [1.0, 1.2]
 
     def test_expand_met_series_all_null(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[None, None], timestamp="2024-01-15T00:00:00+00:00")
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_missing_met(self, data_247: Oura247Data) -> None:
-        assert data_247._expand_met_series(None) == []
+        assert data_247._expand_met_series(None, None) == []
 
     def test_expand_met_series_empty_items(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[], timestamp="2024-01-15T00:00:00+00:00")
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_missing_interval_is_dropped(self, data_247: Oura247Data) -> None:
         # Oura's schema documents `interval` as a plain float, not a fixed 60s cadence —
         # a missing value must not be guessed.
         met = OuraMetJSON(interval=None, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_zero_interval_is_dropped(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=0, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_negative_interval_is_dropped(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=-60, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_unparseable_timestamp_is_dropped(self, data_247: Oura247Data) -> None:
         # No fallback to the daily activity's own timestamp — it can anchor the whole
         # series to the wrong point in the day (mirrors the sleep HR/HRV interval handling).
         met = OuraMetJSON(interval=60, items=[1.0], timestamp="not-a-timestamp")
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_missing_timestamp_is_dropped(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[1.0], timestamp=None)
-        assert data_247._expand_met_series(met) == []
+        assert data_247._expand_met_series(met, None) == []
 
     def test_expand_met_series_full_day(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[1.0] * 1440, timestamp="2024-01-15T00:00:00+00:00")
-        samples = data_247._expand_met_series(met)
+        samples = data_247._expand_met_series(met, None)
 
         assert len(samples) == 1440
         assert samples[-1]["recorded_at"] == datetime(2024, 1, 15, 23, 59, 0, tzinfo=timezone.utc)
 
     def test_expand_met_series_carries_zone_offset(self, data_247: Oura247Data) -> None:
         met = OuraMetJSON(interval=60, items=[1.0], timestamp="2024-01-15T00:00:00+02:00")
-        samples = data_247._expand_met_series(met)
+        samples = data_247._expand_met_series(met, None)
 
         assert samples[0]["zone_offset"] == "+02:00"
 
-    def test_met_is_flagged_as_intraday(self) -> None:
-        assert "met" in INTRADAY_ACTIVITY_KEYS
+    def test_met_maps_to_physical_effort(self) -> None:
+        # average_met means one scalar per workout everywhere else (Apple/Google/Samsung);
+        # Oura's series is continuous per-minute data, so it must not share that series type.
+        assert ACTIVITY_SERIES["met"] == SeriesType.physical_effort
+
+    def test_expand_met_series_drops_unmeasured_tail_using_class_5_min_length(self, data_247: Oura247Data) -> None:
+        # Reproduces real Oura behavior: `met.items` is pre-allocated for the full
+        # 1440-minute day and the not-yet-elapsed tail is padded with 0.9 (a value
+        # that is also a genuine reading elsewhere), not null. `class_5_min` only
+        # covers minutes actually measured so far — its length is the real boundary.
+        items = [1.2] * 10 + [0.9] * 1430
+        class_5_min = "22"  # only the first 10 minutes (2 * 5 min) have been measured
+        met = OuraMetJSON(interval=60, items=items, timestamp="2024-01-15T04:00:00+00:00")
+
+        samples = data_247._expand_met_series(met, class_5_min)
+
+        assert len(samples) == 10
+        assert all(s["value"] == 1.2 for s in samples)
+
+    def test_expand_met_series_keeps_genuine_low_value_within_measured_window(self, data_247: Oura247Data) -> None:
+        # 0.9 within the already-measured window is a real reading and must be kept —
+        # only class_5_min length/classification decides validity, never the value.
+        items = [0.9] * 5
+        class_5_min = "1"  # measured, classified as "rest"
+        met = OuraMetJSON(interval=60, items=items, timestamp="2024-01-15T04:00:00+00:00")
+
+        samples = data_247._expand_met_series(met, class_5_min)
+
+        assert [s["value"] for s in samples] == [0.9] * 5
+
+    def test_expand_met_series_drops_non_wear_bucket(self, data_247: Oura247Data) -> None:
+        # A '0' (non-wear) bucket means the ring wasn't recording, even mid-day —
+        # its minutes must be dropped regardless of whatever value items holds there.
+        items = [1.2, 1.2, 1.2, 1.2, 1.2, 0.1, 0.1, 0.1, 0.1, 0.1]
+        class_5_min = "20"  # minutes 0-4 = inactive, minutes 5-9 = non-wear
+        met = OuraMetJSON(interval=60, items=items, timestamp="2024-01-15T04:00:00+00:00")
+
+        samples = data_247._expand_met_series(met, class_5_min)
+
+        assert len(samples) == 5
+        assert all(s["value"] == 1.2 for s in samples)
+
+    def test_expand_met_series_without_class_5_min_falls_back_to_future_cutoff(self, data_247: Oura247Data) -> None:
+        # No class_5_min available (e.g. older payload shape) — fall back to dropping
+        # samples timestamped in the future, since those can never be real readings.
+        far_future_start = datetime.now(timezone.utc) + timedelta(days=1)
+        met = OuraMetJSON(interval=60, items=[1.0, 1.1], timestamp=far_future_start.isoformat())
+
+        assert data_247._expand_met_series(met, None) == []
