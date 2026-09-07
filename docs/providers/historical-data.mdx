@@ -16,6 +16,12 @@ This page documents how far back historical data can be backfilled from each pro
 
 Use it to compare providers when planning an integration. For the full list of data types per provider, see the [Coverage Matrix](/providers/coverage).
 
+<Info>
+In v0.7 and below, Open Wearables runs a historical sync automatically when a user connects a provider through OAuth (`HISTORICAL_SYNC_ON_CONNECT=true`). If you haven't changed that setting, the range you actually get on connect is **90 days** for pull-based providers, and **30 days** for Garmin, whose webhook-based backfill is capped at 30 days from the user's consent date - no matter how far back the provider itself would let you go. This default is planned to change in a future release.
+
+To control the range yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly, where `days` defaults to 90 and is capped at 365. See [Historical Backfill](/dev-guides/integration-guide#step-3-historical-backfill-automatic) in the Integration Guide for the full flow.
+</Info>
+
 ## Maximum Historical Range
 
 **Max range** is the furthest point in the past from which a provider allows historical data to be backfilled.
