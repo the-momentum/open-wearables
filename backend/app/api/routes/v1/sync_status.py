@@ -30,7 +30,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.database import DbSession, SessionLocal
 from app.schemas.sync_status import SyncRunDetail, SyncRunRecord, SyncRunSummary, SyncScope, SyncStatusEvent
-from app.services import ApiKeyDep, user_service
+from app.services import ApiKeyDep, StreamingApiKeyDep, user_service
 from app.services.sync_status_service import (
     MAX_RECENT_EVENTS,
     get_all_run_summaries,
@@ -81,7 +81,7 @@ def _ensure_user_exists_detached(user_id: UUID) -> None:
 )
 async def stream_user_sync_status(
     user_id: UUID,
-    _api_key: ApiKeyDep,
+    _api_key: StreamingApiKeyDep,
     replay: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS, description="Replay last N events on connect.")] = 20,
 ) -> StreamingResponse:
     """Open a Server-Sent Events stream of sync status for a user.

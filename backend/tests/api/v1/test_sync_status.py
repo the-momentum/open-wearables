@@ -2,19 +2,45 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
+from fastapi.dependencies.models import Dependant
+from fastapi.dependencies.utils import get_dependant
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 import app.services.sync_status_service as sync_status_service
-from app.api.routes.v1.sync_status import _ensure_user_exists_detached
+from app.api.routes.v1.sync_status import (
+    _ensure_user_exists_detached,
+    list_recent_sync_events,
+    stream_user_sync_status,
+)
+from app.database import _get_db_dependency
 from app.schemas.sync_status import SyncScope, SyncSource, SyncStage, SyncStatus, SyncStatusEvent
+from app.services.api_key_service import _require_api_key, _require_api_key_detached
 from tests.factories import UserFactory
+
+
+def _dependency_calls(endpoint: Callable) -> list:
+    """Every dependency an endpoint resolves, nested ones included.
+
+    Built the way FastAPI builds it for the route, so the answer is the one the framework
+    acts on rather than a re-reading of the signature.
+    """
+    calls: list = []
+
+    def walk(dependant: Dependant) -> None:
+        for sub in dependant.dependencies:
+            calls.append(sub.call)
+            walk(sub)
+
+    walk(get_dependant(path="/", call=endpoint))
+    return calls
 
 
 def _emit(user_id: UUID, *, run_id: str | None = None) -> SyncStatusEvent:
@@ -162,8 +188,22 @@ class TestHistoryEndpointFilters:
         assert [r["run_key"] for r in response.json()] == ["garmin_march"]
 
 
-class TestStreamUserExistence:
-    """The stream checks the user on a session of its own, so the pool is free while it runs."""
+class TestStreamHoldsNoDbSession:
+    """A stream must not park a pooled connection for as long as the client stays connected."""
+
+    def test_no_dependency_of_the_stream_declares_the_request_session(self) -> None:
+        """DbSession is a yield dependency, released only once the response completes.
+
+        For an SSE response that is at client disconnect, so ~50 open admin tabs would take
+        the whole pool. The non-streaming sibling is checked too, so a broken walk over the
+        dependency tree cannot make this pass by accident.
+        """
+        stream_deps = _dependency_calls(stream_user_sync_status)
+        assert _get_db_dependency not in stream_deps
+        assert _require_api_key not in stream_deps
+        assert _require_api_key_detached in stream_deps
+
+        assert _get_db_dependency in _dependency_calls(list_recent_sync_events)
 
     def test_checks_the_user_without_the_request_session(self, db: Session) -> None:
         user = UserFactory()
