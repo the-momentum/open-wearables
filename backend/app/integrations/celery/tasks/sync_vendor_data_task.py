@@ -39,6 +39,10 @@ from app.utils.sync_params import build_sync_params
 
 logger = getLogger(__name__)
 
+# Keys of load_and_save_all results that are not record counts, so they are not data
+# types either. Whoop reports a partial sleep fetch this way.
+_NON_COUNT_RESULT_KEYS = frozenset({"sleep_partial"})
+
 
 def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
     """Best-effort sync status emission — never aborts the sync flow."""
@@ -395,6 +399,9 @@ def sync_vendor_data(
                                 )
                                 provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
                                 for _task, _count in results_247.items():
+                                    # Some providers put flags in the same dict as counts.
+                                    if _task in _NON_COUNT_RESULT_KEYS:
+                                        continue
                                     pull_inserted += getattr(_count, "inserted", 0)
                                     pull_updated += getattr(_count, "updated", 0)
                                     # Pull reports per fetch task, not per series type: one
@@ -409,6 +416,9 @@ def sync_vendor_data(
                                             else SyncStatus.SKIPPED,
                                             items_inserted=getattr(_count, "inserted", 0),
                                             items_updated=getattr(_count, "updated", 0),
+                                            # A plain int only says how many rows the provider
+                                            # saved, with no insert/update split to record.
+                                            reported_records=None if hasattr(_count, "inserted") else int(_count),
                                             # Span of the rows written, not the window asked
                                             # for. Absent when the task wrote nothing.
                                             covered_start=getattr(_count, "covered_start", None),
@@ -558,8 +568,8 @@ def sync_vendor_data(
                             items_processed=pull_inserted + pull_updated,
                             primary_user_id=primary_uuid,
                             metadata=completed_metadata,
-                            requested_start=start_dt,
-                            requested_end=end_dt,
+                            window_start=start_dt,
+                            window_end=end_dt,
                         )
                         try_record_data_types(run_id, data_type_outcomes, scope=sync_scope)
 

@@ -124,9 +124,9 @@ class SyncStatusEvent(BaseModel):
         description="For LINKED_ACCOUNT events: the OW user whose sync run produced this data.",
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
-    # The window the run was asked to cover, as opposed to what it managed to cover.
-    requested_start: datetime | None = None
-    requested_end: datetime | None = None
+    # The span of data the run was asked to cover, not when it ran.
+    window_start: datetime | None = None
+    window_end: datetime | None = None
     started_at: datetime | None = None
     ended_at: datetime | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -183,8 +183,8 @@ class SyncRunRecord(BaseModel):
     scope: SyncScope
     status: SyncStatus
     trace_id: str | None = None
-    requested_start: datetime | None = None
-    requested_end: datetime | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
     started_at: datetime
     ended_at: datetime | None = None
     items_inserted: int = 0

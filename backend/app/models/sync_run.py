@@ -23,10 +23,12 @@ class SyncRun(BaseDbModel):
         # Equality on user_id + ORDER BY started_at DESC scans this backwards.
         Index("ix_sync_run_user_started_at", "user_id", "started_at"),
         Index("ix_sync_run_provider_status", "provider", "status"),
-        # Feeds the stale-run sweeper, which only ever looks at unfinished runs.
+        # Feeds the stale-run sweeper, which looks for unfinished runs that stopped
+        # being written to. On updated_at, not started_at, so the cutoff is an index
+        # condition rather than a filter over every unfinished run.
         Index(
             "ix_sync_run_in_progress",
-            "started_at",
+            "updated_at",
             postgresql_where=text("status = 'in_progress'"),
         ),
     )
@@ -45,10 +47,11 @@ class SyncRun(BaseDbModel):
     status: Mapped[SyncStatus]
     trace_id: Mapped[str_32 | None]
 
-    # What we asked the provider for. The range we actually covered is derived
+    # The span of data the run was asked to cover, as opposed to started_at/ended_at
+    # below, which is when the run itself ran. The span actually covered is derived
     # from the per-type rows.
-    requested_start: Mapped[datetime | None]
-    requested_end: Mapped[datetime | None]
+    window_start: Mapped[datetime | None]
+    window_end: Mapped[datetime | None]
 
     started_at: Mapped[datetime]
     ended_at: Mapped[datetime | None]

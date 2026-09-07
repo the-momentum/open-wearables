@@ -1,6 +1,6 @@
-"""sync run tracking
+"""sync_run_tracking
 
-Revision ID: 8b70c02c524c
+Revision ID: cf76dead11f5
 Revises: dc5ac28c4b94
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "8b70c02c524c"
+revision: str = "cf76dead11f5"
 down_revision: Union[str, None] = "dc5ac28c4b94"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,8 +30,8 @@ def upgrade() -> None:
         sa.Column("scope", sa.String(length=32), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
         sa.Column("trace_id", sa.String(length=32), nullable=True),
-        sa.Column("requested_start", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("requested_end", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("window_start", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("window_end", sa.DateTime(timezone=True), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("items_inserted", sa.Integer(), server_default=sa.text("0"), nullable=False),
@@ -47,7 +47,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_sync_run_in_progress",
         "sync_run",
-        ["started_at"],
+        ["updated_at"],
         unique=False,
         postgresql_where=sa.text("status = 'in_progress'"),
     )

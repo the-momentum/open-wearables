@@ -41,23 +41,27 @@ def _get_import_service(provider: str) -> SDKImportService:
     raise ValueError(f"Unsupported provider: {provider}")
 
 
-def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int) -> list[DataTypeOutcome]:
+def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int, scope: SyncScope) -> list[DataTypeOutcome]:
     """What this batch wrote, per data type.
 
     types holds series type slugs only, since the importer collects it from the samples it
     writes. Workouts and sleep are event records counted separately, so they would go
     unrecorded without their own entries.
+
+    A historical export gets each type's verdict from the SDK's own end event, so a batch
+    reports IN_PROGRESS and leaves the outcome to it — the two arrive in either order, and
+    a batch claiming success would otherwise bury a reported failure. A live batch is the
+    only report there will be, so it is its own verdict.
     """
-    outcomes = [
-        DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=SyncStatus.SUCCESS) for data_type in types
-    ]
+    status = SyncStatus.IN_PROGRESS if scope == SyncScope.HISTORICAL else SyncStatus.SUCCESS
+    outcomes = [DataTypeOutcome(data_type=data_type, kind=DataTypeKind.SERIES, status=status) for data_type in types]
     for name, saved in (("workouts", workouts_saved), ("sleep", sleep_saved)):
         if saved:
             outcomes.append(
                 DataTypeOutcome(
                     data_type=name,
                     kind=DataTypeKind.EVENT,
-                    status=SyncStatus.SUCCESS,
+                    status=status,
                     items_inserted=saved,
                 )
             )
@@ -250,7 +254,7 @@ def process_sdk_upload(
                     "dropped_count": dropped_count,
                 },
             )
-            try_record_data_types(run_id, _batch_outcomes(types, workouts_saved, sleep_saved), scope=scope)
+            try_record_data_types(run_id, _batch_outcomes(types, workouts_saved, sleep_saved, scope), scope=scope)
             if payload_ref and settings.raw_payload_storage == "disabled":
                 # Transport-only copy and the data is committed, so drop it. A failed batch
                 # keeps its payload for diagnosis.

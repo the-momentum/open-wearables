@@ -84,6 +84,14 @@ def new_run_id(prefix: str = "run") -> str:
     return f"{prefix}_{uuid4().hex[:16]}"
 
 
+_PERSISTED_STAGES = frozenset(
+    {SyncStage.STARTED, SyncStage.COMPLETED, SyncStage.FAILED, SyncStage.CANCELLED},
+)
+
+# Metadata keys that are only the transport for a column, so they are not stored twice.
+_META_COLUMN_KEYS = frozenset({"inserted", "updated"})
+
+
 def is_persisted_scope(scope: SyncScope | str) -> bool:
     """Whether runs of this scope are stored at all.
 
@@ -111,10 +119,14 @@ def run_status_from(outcomes: list[DataTypeOutcome]) -> SyncStatus:
 def try_persist_run(event: SyncStatusEvent) -> None:
     """Store the event's run in Postgres, best effort.
 
+    Only the opening and closing events are stored. Progress carries nothing durable and
+    would overwrite the run's meta with its own, so it stays in Redis, where the stale
+    sweep reads it back as a liveness signal.
+
     Uses its own session so it never joins the caller's transaction, and swallows
     failures: a sync must not fail because run tracking did.
     """
-    if not is_persisted_scope(event.scope):
+    if SyncStage(event.stage) not in _PERSISTED_STAGES or not is_persisted_scope(event.scope):
         return
 
     try:
@@ -129,14 +141,14 @@ def try_persist_run(event: SyncStatusEvent) -> None:
                     scope=SyncScope(event.scope),
                     status=SyncStatus(event.status),
                     trace_id=trace_id_var.get(),
-                    requested_start=event.requested_start,
-                    requested_end=event.requested_end,
+                    window_start=event.window_start,
+                    window_end=event.window_end,
                     started_at=event.started_at or event.timestamp,
                     ended_at=event.ended_at,
                     items_inserted=event.metadata.get("inserted") or 0,
                     items_updated=event.metadata.get("updated") or 0,
                     error=event.error,
-                    meta=event.metadata or None,
+                    meta={k: v for k, v in event.metadata.items() if k not in _META_COLUMN_KEYS} or None,
                     updated_at=event.timestamp,
                 ),
             )
@@ -342,8 +354,8 @@ def emit_event(
     error: str | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
-    requested_start: datetime | None = None,
-    requested_end: datetime | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
     started_at: datetime | None = None,
     ended_at: datetime | None = None,
 ) -> SyncStatusEvent:
@@ -363,8 +375,8 @@ def emit_event(
         error=error,
         primary_user_id=primary_user_id,
         metadata=metadata or {},
-        requested_start=requested_start,
-        requested_end=requested_end,
+        window_start=window_start,
+        window_end=window_end,
         started_at=started_at,
         ended_at=ended_at,
     )
@@ -593,8 +605,8 @@ def emit_sync_started(
     message: str | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
-    requested_start: datetime | None = None,
-    requested_end: datetime | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> SyncStatusEvent:
     """Open a sync run: emits the first event, stamping started_at as now.
 
@@ -612,8 +624,8 @@ def emit_sync_started(
         message=message,
         primary_user_id=primary_user_id,
         metadata=metadata,
-        requested_start=requested_start,
-        requested_end=requested_end,
+        window_start=window_start,
+        window_end=window_end,
         started_at=datetime.now(timezone.utc),
     )
 
@@ -666,8 +678,8 @@ def emit_sync_completed(
     items_processed: int | None = None,
     primary_user_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
-    requested_start: datetime | None = None,
-    requested_end: datetime | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> SyncStatusEvent:
     """Close a sync run that finished, stamping ended_at as now.
 
@@ -687,8 +699,8 @@ def emit_sync_completed(
         primary_user_id=primary_user_id,
         progress=1.0,
         metadata=metadata,
-        requested_start=requested_start,
-        requested_end=requested_end,
+        window_start=window_start,
+        window_end=window_end,
         ended_at=datetime.now(timezone.utc),
     )
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
 
@@ -21,7 +21,7 @@ class SyncRunRepository:
     def upsert_run(self, db_session: DbSession, run: SyncRunWrite) -> UUID:
         """Insert or update the run, returning its id.
 
-        started_at is insert-only; requested_* fill in while empty, since the window is
+        started_at is insert-only; window_* fill in while empty, since the window is
         often not known until after the run has opened. Events older than the row are
         ignored, so a late start cannot reopen a run that already reported its outcome.
 
@@ -33,8 +33,8 @@ class SyncRunRepository:
             index_elements=["run_key"],
             set_={
                 "status": stmt.excluded.status,
-                "requested_start": func.coalesce(SyncRun.requested_start, stmt.excluded.requested_start),
-                "requested_end": func.coalesce(SyncRun.requested_end, stmt.excluded.requested_end),
+                "window_start": func.coalesce(SyncRun.window_start, stmt.excluded.window_start),
+                "window_end": func.coalesce(SyncRun.window_end, stmt.excluded.window_end),
                 # A later start event carries no end, so it must not clear a recorded one.
                 "ended_at": func.coalesce(stmt.excluded.ended_at, SyncRun.ended_at),
                 # Counts accumulate like the per-type rows do: a historical SDK export
@@ -67,6 +67,9 @@ class SyncRunRepository:
         Covered range widens rather than being replaced, so several batches of the same
         type accumulate into one span. attempt counts how many times the type reported in,
         which for an SDK export is once per batch plus once for its end event.
+
+        Those two report independently and can arrive in either order, so a write only
+        fills in what it knows: a verdict and its timing survive a later batch.
         """
         for outcome in outcomes:
             self._upsert_data_type(db_session, run_id=run_id, outcome=outcome, updated_at=updated_at)
@@ -89,7 +92,12 @@ class SyncRunRepository:
         stmt = stmt.on_conflict_do_update(
             index_elements=["run_id", "data_type"],
             set_={
-                "status": stmt.excluded.status,
+                # IN_PROGRESS means the writer has no verdict of its own, so it must not
+                # replace one that already arrived.
+                "status": case(
+                    (stmt.excluded.status == SyncStatus.IN_PROGRESS, SyncRunDataType.status),
+                    else_=stmt.excluded.status,
+                ),
                 # Only the log end event knows the provider's own name for the type.
                 "native_type": func.coalesce(stmt.excluded.native_type, SyncRunDataType.native_type),
                 "reported_records": func.coalesce(stmt.excluded.reported_records, SyncRunDataType.reported_records),
@@ -97,10 +105,12 @@ class SyncRunRepository:
                 "items_updated": SyncRunDataType.items_updated + stmt.excluded.items_updated,
                 "covered_start": func.least(stmt.excluded.covered_start, SyncRunDataType.covered_start),
                 "covered_end": func.greatest(stmt.excluded.covered_end, SyncRunDataType.covered_end),
-                "ended_at": stmt.excluded.ended_at,
-                "duration_ms": stmt.excluded.duration_ms,
-                "error_code": stmt.excluded.error_code,
-                "error": stmt.excluded.error,
+                # Coalesced like the run's own ended_at: a batch reporting what it wrote
+                # carries none of this, and must not clear what the end event recorded.
+                "ended_at": func.coalesce(stmt.excluded.ended_at, SyncRunDataType.ended_at),
+                "duration_ms": func.coalesce(stmt.excluded.duration_ms, SyncRunDataType.duration_ms),
+                "error_code": func.coalesce(stmt.excluded.error_code, SyncRunDataType.error_code),
+                "error": func.coalesce(stmt.excluded.error, SyncRunDataType.error),
                 "attempt": SyncRunDataType.attempt + 1,
                 "updated_at": stmt.excluded.updated_at,
             },

@@ -256,6 +256,57 @@ class TestTryRecordDataTypes:
         assert row.attempt == 2
 
     @patch("app.services.sync_status_service.SessionLocal")
+    def test_late_batch_cannot_bury_a_reported_failure(self, mock_session_local: MagicMock, db: Session) -> None:
+        """An upload batch reports what it wrote, so it must not overwrite a verdict.
+
+        The SDK's log events and its upload batches write the same row and arrive in either
+        order, the batches having gone through a queue first.
+        """
+        mock_session_local.return_value.__enter__.return_value = db
+        user = UserFactory()
+        event = _event(user.id, provider="apple", source=SyncSource.SDK)
+        try_persist_run(event)
+        ended = datetime(2026, 9, 7, 10, 3, tzinfo=timezone.utc)
+
+        # The end event for the type arrives first, carrying the failure.
+        try_record_data_types(
+            event.run_id,
+            [
+                DataTypeOutcome(
+                    data_type="sleep",
+                    kind=DataTypeKind.EVENT,
+                    status=SyncStatus.FAILED,
+                    ended_at=ended,
+                    duration_ms=8412,
+                    error_code="HKErrorAuthorizationDenied",
+                    error="Authorization denied for sleep analysis",
+                )
+            ],
+            scope=SyncScope.HISTORICAL,
+        )
+        # Then a batch that wrote a few records for it lands.
+        try_record_data_types(
+            event.run_id,
+            [
+                DataTypeOutcome(
+                    data_type="sleep",
+                    kind=DataTypeKind.EVENT,
+                    status=SyncStatus.IN_PROGRESS,
+                    items_inserted=3,
+                )
+            ],
+            scope=SyncScope.HISTORICAL,
+        )
+
+        row = db.query(SyncRunDataType).filter(SyncRunDataType.data_type == "sleep").one()
+        assert row.status == SyncStatus.FAILED
+        assert row.error_code == "HKErrorAuthorizationDenied"
+        assert row.ended_at == ended
+        assert row.duration_ms == 8412
+        # What the batch did write is still recorded against the type.
+        assert row.items_inserted == 3
+
+    @patch("app.services.sync_status_service.SessionLocal")
     def test_no_run_row_means_no_op(self, mock_session_local: MagicMock, db: Session) -> None:
         """A historical run whose parent row is missing must not create orphan rows."""
         mock_session_local.return_value.__enter__.return_value = db
