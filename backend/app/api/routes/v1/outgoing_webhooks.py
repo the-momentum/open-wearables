@@ -15,6 +15,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from svix.api import EndpointOut, MessageAttemptListByEndpointOptions, MessageListOptions, MessageStatus
+from svix.api.errors.http_validation_error import HTTPValidationError
 
 from app.schemas.webhooks.endpoints import (
     EndpointCreateRequest,
@@ -32,6 +33,11 @@ from app.services import DeveloperDep
 from app.services.outgoing_webhooks import svix as svix_service
 
 router = APIRouter()
+
+_ENDPOINT_VALIDATION_DETAIL = (
+    "Webhook endpoint configuration was rejected by Svix. "
+    "Check filter_types against /api/v1/webhooks/event-types and the Svix event registry."
+)
 
 
 def _ep_to_response(ep: EndpointOut) -> EndpointResponse:
@@ -59,13 +65,19 @@ SvixAppId = Annotated[str, Depends(_svix_app_id)]
 
 @router.post("/endpoints", status_code=status.HTTP_201_CREATED)
 def create_endpoint(body: EndpointCreateRequest, app_id: SvixAppId) -> EndpointResponse:
-    ep = svix_service.create_endpoint(
-        app_id,
-        url=body.url,
-        description=body.description,
-        filter_types=body.filter_types,
-        user_id=body.user_id,
-    )
+    try:
+        ep = svix_service.create_endpoint(
+            app_id,
+            url=body.url,
+            description=body.description,
+            filter_types=body.filter_types,
+            user_id=body.user_id,
+        )
+    except HTTPValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=_ENDPOINT_VALIDATION_DETAIL,
+        ) from exc
     return _ep_to_response(ep)
 
 
@@ -84,15 +96,21 @@ def get_endpoint(endpoint_id: str, app_id: SvixAppId) -> EndpointResponse:
 @router.patch("/endpoints/{endpoint_id}")
 def update_endpoint(endpoint_id: str, body: EndpointUpdateRequest, app_id: SvixAppId) -> EndpointResponse:
     clear_user = "user_id" in body.model_fields_set and body.user_id is None
-    ep = svix_service.patch_endpoint(
-        app_id,
-        endpoint_id,
-        url=body.url,
-        description=body.description,
-        filter_types=body.filter_types,
-        user_id=body.user_id,
-        clear_user_id=clear_user,
-    )
+    try:
+        ep = svix_service.patch_endpoint(
+            app_id,
+            endpoint_id,
+            url=body.url,
+            description=body.description,
+            filter_types=body.filter_types,
+            user_id=body.user_id,
+            clear_user_id=clear_user,
+        )
+    except HTTPValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=_ENDPOINT_VALIDATION_DETAIL,
+        ) from exc
     return _ep_to_response(ep)
 
 

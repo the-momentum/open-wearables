@@ -82,6 +82,12 @@ With an invitation code, a single-use code is issued via [`POST /api/v1/users/{u
 
 ## Security Model
 
+`POST /api/v1/users/{user_id}/token` authenticates the application or administrator
+before checking the user. Valid authentication with an unknown user returns
+`404` without issuing or persisting tokens. Invalid app credentials return `401`,
+including for unknown users. Create the user before requesting tokens; server
+errors do not establish that application credentials are invalid.
+
 The SDK uses a secure token-based authentication flow that keeps your App credentials safe:
 
 1. **App credentials stay on your backend** - `app_id` and `app_secret` are never exposed to mobile apps

@@ -33,6 +33,15 @@ Webhooks are delivered via [Svix](https://svix.com/), which handles retries, sig
 
 ---
 
+## Endpoint validation errors
+
+Creating or updating an endpoint with a filter type that is not registered in
+Svix returns HTTP `422`, including when Open Wearables accepts the JSON shape.
+Use `GET /api/v1/webhooks/event-types` for the event names supported by this OW
+version and ensure they are seeded in your Svix instance. Do not retry the same
+invalid subscription unchanged; correct the filter or repair event registration.
+A rejected PATCH leaves the existing endpoint configuration intact.
+
 ## Quickstart
 
 <Steps>

@@ -1,11 +1,16 @@
 """Tests for SDK token exchange endpoint."""
 
+from uuid import uuid4
+
+import pytest
 from jose import jwt
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
 from app.config import settings
+from app.models import RefreshToken
 from tests.factories import ApplicationFactory, DeveloperFactory, UserFactory
+from tests.utils import developer_auth_headers
 
 
 class TestCreateUserToken:
@@ -99,3 +104,38 @@ class TestCreateUserToken:
             json={},
         )
         assert response.status_code in [400, 422]
+
+    @pytest.mark.parametrize("auth_method", ["application", "admin"])
+    def test_missing_user_does_not_issue_tokens(
+        self,
+        client: TestClient,
+        db: Session,
+        api_v1_prefix: str,
+        auth_method: str,
+    ) -> None:
+        developer = DeveloperFactory()
+        application = ApplicationFactory(developer=developer, app_secret="test_secret")
+        missing_user = uuid4()
+        before = db.query(RefreshToken).count()
+        response = client.post(
+            f"{api_v1_prefix}/users/{missing_user}/token",
+            json={"app_id": application.app_id, "app_secret": "test_secret"} if auth_method == "application" else None,
+            headers=developer_auth_headers(developer.id) if auth_method == "admin" else {},
+        )
+        assert response.status_code == 404
+        assert "access_token" not in response.json()
+        assert db.query(RefreshToken).count() == before
+
+    def test_missing_user_with_invalid_credentials_still_returns_401(
+        self,
+        client: TestClient,
+        db: Session,
+        api_v1_prefix: str,
+    ) -> None:
+        application = ApplicationFactory(app_secret="real_secret")
+        response = client.post(
+            f"{api_v1_prefix}/users/{uuid4()}/token",
+            json={"app_id": application.app_id, "app_secret": "wrong_secret"},
+        )
+        assert response.status_code == 401
+        assert db.query(RefreshToken).count() == 0

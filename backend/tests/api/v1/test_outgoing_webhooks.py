@@ -18,6 +18,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from svix.api.errors.http_validation_error import HTTPValidationError
 
 from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
@@ -387,6 +388,68 @@ class TestOutgoingWebhooksAPI:
         data = resp.json()
         assert data["id"] == "ep_123"
         assert data["url"] == "https://example.com/wh"
+
+    @pytest.mark.parametrize("method", ["post", "patch"])
+    def test_invalid_svix_subscription_returns_422(
+        self,
+        client: TestClient,
+        mock_svix: MagicMock,
+        method: str,
+    ) -> None:
+        developer = DeveloperFactory()
+        token = create_access_token(developer.id)
+        operation = mock_svix.create_endpoint if method == "post" else mock_svix.patch_endpoint
+        operation.side_effect = HTTPValidationError(detail=[], status_code=422)
+        url = "/api/v1/webhooks/endpoints" + ("/ep_123" if method == "patch" else "")
+        response = client.request(
+            method,
+            url,
+            json={"url": "https://example.com/wh", "filter_types": ["sleep.batch_created"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"] == (
+            "Webhook endpoint configuration was rejected by Svix. "
+            "Check filter_types against /api/v1/webhooks/event-types and the Svix event registry."
+        )
+        operation.assert_called_once()
+
+    @pytest.mark.parametrize(("body", "clear_user"), [({}, False), ({"user_id": None}, True)])
+    def test_patch_preserves_omitted_vs_null_user_filter(
+        self,
+        client: TestClient,
+        mock_svix: MagicMock,
+        body: dict,
+        clear_user: bool,
+    ) -> None:
+        token = create_access_token(DeveloperFactory().id)
+        mock_svix.patch_endpoint.return_value = MagicMock(
+            id="ep_123",
+            url="https://example.com/wh",
+            description=None,
+            filter_types=None,
+        )
+        response = client.patch(
+            "/api/v1/webhooks/endpoints/ep_123",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        assert mock_svix.patch_endpoint.call_args.kwargs["clear_user_id"] is clear_user
+
+    def test_svix_service_failure_is_not_reported_as_validation(
+        self,
+        client: TestClient,
+        mock_svix: MagicMock,
+    ) -> None:
+        token = create_access_token(DeveloperFactory().id)
+        mock_svix.patch_endpoint.side_effect = RuntimeError("test service unavailable")
+        with pytest.raises(RuntimeError, match="test service unavailable"):
+            client.patch(
+                "/api/v1/webhooks/endpoints/ep_123",
+                json={"filter_types": ["sleep.created"]},
+                headers={"Authorization": f"Bearer {token}"},
+            )
 
     def test_list_endpoints(
         self,
