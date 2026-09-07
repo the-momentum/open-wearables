@@ -25,7 +25,7 @@ into its strategy, traffic can be cut over to this router.
 from logging import getLogger
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.database import DbSession
 from app.schemas.responses.incoming_webhooks import (
@@ -88,13 +88,13 @@ async def _read_body(request: Request) -> bytes:
     return await request.body()
 
 
-@router.post("")
+@router.post("", response_model=None)
 def handle_provider_webhook(
     provider: str,
     request: Request,
     db: DbSession,
     body: Annotated[bytes, Depends(_read_body)],
-) -> dict:
+) -> dict | Response:
     """Receive an incoming webhook event from a provider.
 
     Body bytes are pre-read by the async ``_read_body`` dependency so that
@@ -105,7 +105,13 @@ def handle_provider_webhook(
     Returns whatever dict the provider's ``dispatch()`` method returns.
     """
     handler = _get_webhook_handler(provider)
-    return handler.handle(request, body, db)
+    result = handler.handle(request, body, db)
+    # Providers whose notifications must be acknowledged with an empty 204 (Google Health API:
+    # any other status code is retried with exponential backoff for up to 7 days). The
+    # verification handshake keeps its 2xx JSON body ({"status": "verified"}).
+    if getattr(handler, "ack_no_content", False) and isinstance(result, dict) and result.get("status") == "accepted":
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return result
 
 
 @router.get("")

@@ -60,6 +60,13 @@ _SUPPORTED_OPERATIONS = ["UPSERT", "DELETE"]
 class GoogleWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Google Health API notify-only events."""
 
+    # Google requires ``204 No Content`` as the acknowledgement of a notification batch
+    # (https://developers.google.com/health/webhooks: "Your server must respond to
+    # notifications with an HTTP 204 No Content status code immediately"; anything else is
+    # retried). The unified router honours this flag after ``dispatch()`` returns
+    # ``{"status": "accepted"}``; the verification handshake still answers 200 + JSON.
+    ack_no_content = True
+
     def __init__(self, data_247: GoogleHealth247Data, workouts: GoogleHealthApiWorkouts) -> None:
         super().__init__("google")
         self.data_247 = data_247

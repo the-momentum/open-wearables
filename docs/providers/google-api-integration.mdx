@@ -195,6 +195,10 @@ Two distinct secrets are involved:
 - **`GOOGLE_WEBHOOK_SECRET`** — a bearer token you register with Google that it echoes back in the `Authorization` header of every notification, so Open Wearables can verify the ping is genuine. Defaults to `SECRET_KEY` if unset.
 - **Service-account credentials** — used only to *register* the subscriber (a project-level admin call). Not involved in receiving notifications.
 
+Notifications are acknowledged with an empty `204 No Content`, which is the only status Google accepts (any
+other status, or a timeout, makes Google retry the notification with exponential backoff for up to 7 days). The
+endpoint-verification handshake answers `200` with `{"status": "verified"}`.
+
 <Info>
 Receiving and processing webhooks needs only `GOOGLE_WEBHOOK_SECRET`. The service account is required only to register the subscriber programmatically — you can also register it manually via `gcloud`/the API console.
 </Info>
