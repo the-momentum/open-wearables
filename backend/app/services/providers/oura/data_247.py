@@ -1,6 +1,5 @@
 """Oura Ring 247 Data implementation for sleep, readiness, heart rate, activity, and SpO2."""
 
-import math
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
@@ -203,7 +202,7 @@ class Oura247Data(Base247DataTemplate):
     @staticmethod
     def _expand_met_series(met: OuraMetJSON | None, class_5_min: str | None) -> list[dict[str, Any]]:
         """Expand an Oura intraday MET series into individual timestamped samples."""
-        if met is None or not met.items or not met.interval or met.interval < 0 or not math.isfinite(met.interval):
+        if met is None or not met.items or not met.interval or met.interval < 0 or class_5_min is None:
             return []
 
         start = parse_iso_datetime(met.timestamp)
@@ -211,34 +210,23 @@ class Oura247Data(Base247DataTemplate):
             return []
 
         zone_offset = None
-        utcoff = start.utcoffset()
-        if utcoff is not None:
+        if (utcoff := start.utcoffset()) is not None:
             zone_offset = offset_to_iso(int(utcoff.total_seconds()))
 
-        measured_seconds = len(class_5_min) * 300 if class_5_min else None
-        now = datetime.now(timezone.utc)
-        non_wear_value = "0"  # 0=non-wear 1=rest 2=inactive 3=low 4=medium 5=high activity.
+        measured_seconds = len(class_5_min) * 300
+        measured_items = len(met.items) if measured_seconds == 86_400 else measured_seconds // int(met.interval)
+        non_wear_value = 0.1
 
         samples = []
-        for i, value in enumerate(met.items):
-            if value is None:
+        for i, value in enumerate(met.items[:measured_items]):
+            if value is None or value == non_wear_value:
                 continue
 
             elapsed_seconds = met.interval * i
             try:
                 recorded_at = start + timedelta(seconds=elapsed_seconds)
             except OverflowError:
-                # interval is finite but too large for timestamp arithmetic to represent
-                # (e.g. a corrupt payload) — the whole series is untrustworthy at that point.
                 return []
-
-            if measured_seconds is not None and class_5_min is not None:
-                if elapsed_seconds >= measured_seconds:
-                    continue
-                if class_5_min[int(elapsed_seconds // 300)] == non_wear_value:
-                    continue
-            elif recorded_at > now:
-                continue
 
             samples.append({"recorded_at": recorded_at, "value": value, "zone_offset": zone_offset})
 
