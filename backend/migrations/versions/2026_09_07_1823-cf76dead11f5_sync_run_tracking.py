@@ -1,7 +1,7 @@
 """sync_run_tracking
 
 Revision ID: cf76dead11f5
-Revises: dc5ac28c4b94
+Revises: 9b079dab9585
 
 """
 
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "cf76dead11f5"
-down_revision: Union[str, None] = "dc5ac28c4b94"
+down_revision: Union[str, None] = "9b079dab9585"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
