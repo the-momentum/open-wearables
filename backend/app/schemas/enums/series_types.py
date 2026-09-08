@@ -24,6 +24,7 @@ class SeriesType(str, Enum):
     heart_rate_recovery_one_minute = "heart_rate_recovery_one_minute"
     walking_heart_rate_average = "walking_heart_rate_average"
     heart_rate_variability_rmssd = "heart_rate_variability_rmssd"
+    heart_rate_variability_rmssd_average = "heart_rate_variability_rmssd_average"
 
     # =========================================================================
     # BIOMETRICS - Blood & Respiratory (IDs 20-39)
@@ -185,6 +186,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (4, SeriesType.heart_rate_recovery_one_minute, "bpm"),
     (5, SeriesType.walking_heart_rate_average, "bpm"),
     (7, SeriesType.heart_rate_variability_rmssd, "ms"),
+    (8, SeriesType.heart_rate_variability_rmssd_average, "ms"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Blood & Respiratory (IDs 20-39)
     # -------------------------------------------------------------------------
@@ -323,6 +325,9 @@ SERIES_TYPE_UNIT_BY_ENUM: dict[SeriesType, str] = {enum: unit for _, enum, unit 
 # Only series types that need a meaningful clarification have an entry here;
 SERIES_TYPE_DESCRIPTION_BY_ENUM: dict[SeriesType, str] = {
     SeriesType.garmin_body_battery: "Intraday body battery readings (0-100), one sample per measurement",
+    SeriesType.heart_rate_variability_rmssd_average: (
+        "Provider-reported nightly average HRV (RMSSD), one sample per sleep session"
+    ),
 }
 
 

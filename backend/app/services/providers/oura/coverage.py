@@ -19,6 +19,7 @@ SLEEP_INTERVAL_SERIES: dict[str, SeriesType] = {
 SLEEP_SCALAR_SERIES: dict[str, SeriesType] = {
     "average_breath": SeriesType.respiratory_rate,
     "lowest_heart_rate": SeriesType.resting_heart_rate,
+    "average_hrv": SeriesType.heart_rate_variability_rmssd_average,
 }
 PERSONAL_INFO_SERIES: dict[str, SeriesType] = {
     "weight": SeriesType.weight,
