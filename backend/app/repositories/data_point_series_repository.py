@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import LiteralString, NamedTuple
 from typing import cast as typing_cast
@@ -32,10 +32,12 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import CrudRepository
+from app.repositories.repositories import CrudRepository, utc_bucket_start
 from app.schemas.enums import (
     ProviderName,
     SeriesType,
+    TimelineBucket,
+    TimelineGroupBy,
     get_series_type_from_id,
     get_series_type_id,
 )
@@ -65,16 +67,49 @@ class WriteCounts(int):
     ``.inserted`` (rows that did not exist) and ``.updated`` (rows refreshed
     in place via ON CONFLICT). Distinguishing the two is what stops a pure
     upsert-in-place from looking like newly arrived data.
+
+    covered_start/covered_end are the oldest and newest ``recorded_at`` actually
+    written. This is the span of the data itself, which is not the window that was
+    requested: asking for 90 days and getting two weight readings covers two days.
     """
 
     inserted: int
     updated: int
+    covered_start: datetime | None
+    covered_end: datetime | None
 
-    def __new__(cls, inserted: int, updated: int) -> "WriteCounts":
+    def __new__(
+        cls,
+        inserted: int,
+        updated: int,
+        covered_start: datetime | None = None,
+        covered_end: datetime | None = None,
+    ) -> "WriteCounts":
         obj = super().__new__(cls, inserted + updated)
         obj.inserted = inserted
         obj.updated = updated
+        obj.covered_start = covered_start
+        obj.covered_end = covered_end
         return obj
+
+    def __add__(self, other: int) -> "WriteCounts":
+        """Merge two results, widening the covered span rather than dropping it.
+
+        Plain int.__add__ would return an int and silently lose everything but the
+        total, so any caller accumulating counts across batches keeps the detail.
+        """
+        if not isinstance(other, WriteCounts):
+            return WriteCounts(self.inserted + int(other), self.updated, self.covered_start, self.covered_end)
+        starts = [d for d in (self.covered_start, other.covered_start) if d is not None]
+        ends = [d for d in (self.covered_end, other.covered_end) if d is not None]
+        return WriteCounts(
+            self.inserted + other.inserted,
+            self.updated + other.updated,
+            min(starts) if starts else None,
+            max(ends) if ends else None,
+        )
+
+    __radd__ = __add__
 
 
 class DataPointSeriesRepository(
@@ -267,7 +302,15 @@ class DataPointSeriesRepository(
             merge_result = cursor.fetchone()
             assert merge_result is not None, "count(*) always returns exactly one row"
             inserted = merge_result[0]
-        return WriteCounts(inserted, len(rows) - inserted)
+        # One pass over rows already in memory, so the span costs no extra query. This is
+        # the span of the data staged for the merge, which is what the sync covered.
+        recorded = [row.recorded_at for row in rows if row.recorded_at is not None]
+        return WriteCounts(
+            inserted,
+            len(rows) - inserted,
+            min(recorded, default=None),
+            max(recorded, default=None),
+        )
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
         try:
@@ -477,6 +520,36 @@ class DataPointSeriesRepository(
             .all()
         )
         return [(provider, code, count) for provider, code, count in results]
+
+    def get_user_timeline_counts(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        bucket: TimelineBucket,
+        group_by: TimelineGroupBy,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, date, int]]:
+        """Data point counts for a user, bucketed by time and grouped by provider or series type.
+
+        Returns (key, bucket_start, count) for non-empty buckets only.
+        """
+        bucket_start = utc_bucket_start(bucket, self.model.recorded_at)
+        key_column = DataSource.provider if group_by is TimelineGroupBy.PROVIDER else SeriesTypeDefinition.code
+
+        query = db_session.query(key_column, bucket_start, func.count(self.model.id).label("count")).join(
+            DataSource, self.model.data_source_id == DataSource.id
+        )
+        if group_by is TimelineGroupBy.SERIES_TYPE:
+            query = query.join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
+        query = query.filter(DataSource.user_id == user_id)
+        if start_datetime is not None:
+            query = query.filter(self.model.recorded_at >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.recorded_at < end_datetime)
+
+        results = query.group_by(key_column, bucket_start).order_by(key_column, bucket_start).all()
+        return [(key, bucket_start_value, count) for key, bucket_start_value, count in results]
 
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source.

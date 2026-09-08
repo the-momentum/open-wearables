@@ -1641,3 +1641,54 @@ class TestRecoverySummaryEndpoint:
         assert len(data["data"]) == 3
         assert data["pagination"]["has_more"] is True
         assert data["pagination"]["next_cursor"] is not None
+
+
+class TestDataTimelineEndpoint:
+    """Test suite for GET /users/{user_id}/summaries/data/timeline."""
+
+    def _url(self, user_id: object) -> str:
+        return f"/api/v1/users/{user_id}/summaries/data/timeline"
+
+    def test_returns_sparse_daily_buckets_per_provider(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+
+        for hour in (8, 9):
+            DataPointSeriesFactory(
+                data_source=garmin, series_type=hr_type, recorded_at=datetime(2026, 6, 1, hour, tzinfo=timezone.utc)
+            )
+        DataPointSeriesFactory(
+            data_source=garmin, series_type=hr_type, recorded_at=datetime(2026, 6, 3, 8, tzinfo=timezone.utc)
+        )
+        DataPointSeriesFactory(
+            data_source=oura, series_type=hr_type, recorded_at=datetime(2026, 6, 3, 8, tzinfo=timezone.utc)
+        )
+
+        response = client.get(
+            self._url(user.id),
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"start_date": "2026-06-01", "end_date": "2026-06-08"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["bucket"] == "day"
+        assert body["group_by"] == "provider"
+        series = {s["key"]: s for s in body["series"]}
+        # The gap on 2026-06-02 is absent rather than reported as a zero.
+        assert series["garmin"]["buckets"] == [["2026-06-01", 2], ["2026-06-03", 1]]
+        assert series["garmin"]["metric"] == "data_points"
+        assert series["oura"]["buckets"] == [["2026-06-03", 1]]
+
+    def test_unknown_bucket_is_rejected(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+
+        response = client.get(
+            self._url(user.id),
+            headers=api_key_headers(ApiKeyFactory().id),
+            params={"bucket": "month"},
+        )
+
+        assert response.status_code == 400

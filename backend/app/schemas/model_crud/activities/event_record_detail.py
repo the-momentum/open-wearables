@@ -1,10 +1,15 @@
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.enums import EntrySource, WorkoutIntensity
 
 from .sleep import SleepStage
 from .zones import HRZones, PowerZones
+
+# Mirrors the workout_details.label column width (str_255).
+LABEL_MAX_LENGTH = 255
 
 
 class EventRecordDetailBase(BaseModel):
@@ -46,6 +51,18 @@ class EventRecordDetailBase(BaseModel):
     segments: list[dict] | None = None
     hr_zones: HRZones | None = None
     power_zones: PowerZones | None = None
+
+    entry_source: EntrySource | None = None
+    intensity: WorkoutIntensity | None = None
+    label: str | None = Field(default=None, max_length=LABEL_MAX_LENGTH)
+
+    @field_validator("label", mode="before")
+    @classmethod
+    def _truncate_label(cls, value: str | None) -> str | None:
+        """Labels are provider free text, so truncate rather than fail the whole batch."""
+        if isinstance(value, str) and len(value) > LABEL_MAX_LENGTH:
+            return value[:LABEL_MAX_LENGTH]
+        return value
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

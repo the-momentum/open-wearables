@@ -66,6 +66,7 @@ class EventRecordRepository(
                 device_model=creator.device_model,
                 source=creator.source,
                 software_version=creator.software_version,
+                original_source_name=creator.source,
             )
             data_source_id = data_source.id
 

@@ -17,6 +17,8 @@ from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
+from .sync_run import SyncRun
+from .sync_run_data_type import SyncRunDataType
 from .user import User
 from .user_connection import UserConnection
 from .user_invitation_code import UserInvitationCode
@@ -52,6 +54,8 @@ __all__ = [
     "PersonalRecord",
     "DataPointSeries",
     "SeriesTypeDefinition",
+    "SyncRun",
+    "SyncRunDataType",
     "HealthScore",
     "DetailType",
     "DETAIL_MODELS",

@@ -95,7 +95,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
         breakdown = _extract_breakdown(result, count)
 
         if status_str == "error":
-            sync_status_service.webhook_delivered(
+            sync_status_service.emit_webhook_delivered(
                 user_id,
                 provider_name,
                 status=SyncStatus.FAILED,
@@ -106,7 +106,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
             # Prefer the new/updated split so an upsert-in-place reads as
             # "0 new, 3 updated" rather than looking like freshly arrived data.
             detail = f"{breakdown['inserted']} new, {breakdown['updated']} updated" if breakdown else descriptor
-            sync_status_service.webhook_delivered(
+            sync_status_service.emit_webhook_delivered(
                 user_id,
                 provider_name,
                 status=SyncStatus.SUCCESS,
@@ -117,7 +117,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
         else:
             # processed-but-no-data, ignored, duplicate, unknown_event_type, …
             reason = result.get("reason") or (descriptor if status_str in _SAVED_STATUSES else status_str)
-            sync_status_service.webhook_delivered(
+            sync_status_service.emit_webhook_delivered(
                 user_id,
                 provider_name,
                 status=SyncStatus.SKIPPED,

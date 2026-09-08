@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
@@ -8,8 +9,11 @@ from app.database import DbSession
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.user_management import (
+    UserConnectionSummary,
     UserCreate,
     UserCreateInternal,
+    UserDetailRead,
+    UserInclude,
     UserQueryParams,
     UserRead,
     UserUpdate,
@@ -21,7 +25,7 @@ from app.services.providers.garmin.backfill_state import force_release_backfill_
 from app.services.services import AppService
 from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
-from app.utils.exceptions import ResourceAlreadyExistsError, handle_exceptions
+from app.utils.exceptions import ResourceAlreadyExistsError, ResourceNotFoundError, handle_exceptions
 from app.utils.structured_logging import log_structured
 
 
@@ -107,6 +111,28 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         return self.crud.delete(db_session, user)
 
     @handle_exceptions
+    def get_detail(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        include: Sequence[UserInclude] = (),
+    ) -> UserDetailRead:
+        """One user, with the sync projection the list rows carry and the women's health flag."""
+        row = self.crud.get_with_connection_summary(db_session, user_id, include)
+        if row is None:
+            raise ResourceNotFoundError(self.name, user_id)
+
+        user, last_synced_at, last_synced_provider, has_active_connection, connections, has_womens_health_data = row
+        detail = UserDetailRead.model_validate(user)
+        detail.last_synced_at = last_synced_at
+        detail.last_synced_provider = last_synced_provider
+        detail.has_active_connection = bool(has_active_connection)
+        detail.has_womens_health_data = bool(has_womens_health_data)
+        if UserInclude.CONNECTIONS in include:
+            detail.connections = [UserConnectionSummary.model_validate(c) for c in connections or []]
+        return detail
+
+    @handle_exceptions
     def get_users_paginated(
         self,
         db_session: DbSession,
@@ -115,7 +141,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         rows, total_count = self.crud.get_users_with_filters(db_session, query_params)
 
         items = []
-        for user, last_synced_at, last_synced_provider, has_active_connection in rows:
+        for user, last_synced_at, last_synced_provider, has_active_connection, connections in rows:
             try:
                 user_read = UserRead.model_validate(user)
             except ValidationError as exc:
@@ -128,6 +154,8 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             user_read.last_synced_at = last_synced_at
             user_read.last_synced_provider = last_synced_provider
             user_read.has_active_connection = bool(has_active_connection)
+            if UserInclude.CONNECTIONS in query_params.include:
+                user_read.connections = [UserConnectionSummary.model_validate(c) for c in connections or []]
             items.append(user_read)
 
         return OldPaginatedResponse[UserRead](

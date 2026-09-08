@@ -308,6 +308,8 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 
 ### `sleep.created`
 
+`sleep_stage_intervals` below is shown **abbreviated** — three intervals out of a full night — to keep the example short. A real payload's array covers the entire session end-to-end (typically 15-60+ merged intervals, depending on how fragmented the sleep was).
+
 ```json
 {
   "type": "sleep.created",
@@ -318,9 +320,13 @@ Every payload envelope has `type` (the event name as a string) and `data`.
     "end_time": "2025-12-20T06:45:00+01:00",
     "zone_offset": "+01:00",
     "duration_seconds": 30600.0,
+    "sleep_duration_seconds": 29400.0,
     "source": {
       "provider": "oura",
-      "device": "Oura Ring Gen3"
+      "source": "oura",
+      "device": "Oura Ring Gen3",
+      "device_type": "ring",
+      "device_name": "Oura Ring Gen3"
     },
     "efficiency_percent": 87.0,
     "stages": {
@@ -329,10 +335,31 @@ Every payload envelope has `type` (the event name as a string) and `data`.
       "light_minutes": 215,
       "awake_minutes": 12
     },
+    "sleep_stage_intervals": [
+      {
+        "stage": "light",
+        "start_time": "2025-12-19T22:15:00+01:00",
+        "end_time": "2025-12-19T22:45:00+01:00"
+      },
+      {
+        "stage": "deep",
+        "start_time": "2025-12-19T22:45:00+01:00",
+        "end_time": "2025-12-19T23:30:00+01:00"
+      },
+      {
+        "stage": "rem",
+        "start_time": "2025-12-20T06:15:00+01:00",
+        "end_time": "2025-12-20T06:45:00+01:00"
+      }
+    ],
     "is_nap": false
   }
 }
 ```
+
+<Note>
+  `sleep_duration_seconds` is the time actually asleep (excludes awake periods within the session); `duration_seconds` is the total time-in-bed span. Both `source.source` (the third-party writer app, e.g. HealthKit/Health Connect) and `sleep_stage_intervals` are `null`/omitted when the provider or ingestion path did not report them. Unlike every other field in this example, `sleep_stage_intervals` above is **not** shown in full — see the note before the code block.
+</Note>
 
 ### `menstrual_cycle.created`
 
