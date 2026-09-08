@@ -67,7 +67,9 @@ class InvalidRecord(TypedDict):
 
 class LoadDataResult(TypedDict):
     workouts_saved: int
-    records_saved: int
+    records_saved: int  # samples submitted
+    records_inserted: int  # rows that did not exist
+    records_updated: int  # rows refreshed in place
     types: list[str]  # series types written
     sleep_saved: int
     dropped: list[InvalidRecord]
@@ -357,6 +359,8 @@ class ImportService:
         validation_ms = round((time.perf_counter() - started) * 1000, 1)
         workouts_saved = 0
         records_saved = 0
+        records_inserted = 0
+        records_updated = 0
         sleep_saved = 0
         types: set[str] = set()
 
@@ -382,15 +386,19 @@ class ImportService:
 
             # Bulk create time series samples
             if time_series_samples:
-                self.timeseries_service.bulk_create_samples(db_session, time_series_samples)
+                counts = self.timeseries_service.bulk_create_samples(db_session, time_series_samples)
                 records_saved += len(time_series_samples)
+                records_inserted += counts.inserted
+                records_updated += counts.updated
                 types.update(sample.series_type.value for sample in time_series_samples)
 
         # Process time series samples (records)
         samples = self._build_statistic_bundles(request, user_id)
         if samples:
-            self.timeseries_service.bulk_create_samples(db_session, samples)
+            counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
+            records_inserted += counts.inserted
+            records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
 
         # Commit all workout and timeseries changes in one transaction
@@ -404,6 +412,8 @@ class ImportService:
         return {
             "workouts_saved": workouts_saved,
             "records_saved": records_saved,
+            "records_inserted": records_inserted,
+            "records_updated": records_updated,
             "types": sorted(types),
             "sleep_saved": sleep_saved,
             "dropped": dropped,
@@ -470,6 +480,8 @@ class ImportService:
                 incoming_workouts=incoming_workouts,
                 incoming_sleep=incoming_sleep,
                 records_saved=saved_counts["records_saved"],
+                records_inserted=saved_counts["records_inserted"],
+                records_updated=saved_counts["records_updated"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
                 validation_ms=saved_counts["validation_ms"],
@@ -519,6 +531,8 @@ class ImportService:
                 user_id=user_id,
                 dropped_count=len(dropped),
                 records_saved=saved_counts["records_saved"],
+                records_inserted=saved_counts["records_inserted"],
+                records_updated=saved_counts["records_updated"],
                 types=saved_counts["types"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],

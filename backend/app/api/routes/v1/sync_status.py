@@ -20,19 +20,24 @@ import.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
-from app.database import DbSession
-from app.schemas.sync_status import SyncRunSummary, SyncStatusEvent
-from app.services import ApiKeyDep, user_service
+from app.database import DbSession, SessionLocal
+from app.schemas.sync_status import SyncRunDetail, SyncRunRecord, SyncRunSummary, SyncScope, SyncStatusEvent
+from app.services import ApiKeyDep, StreamingApiKeyDep, user_service
 from app.services.sync_status_service import (
+    MAX_RECENT_EVENTS,
     get_all_run_summaries,
     get_recent_events,
     get_run_summaries,
+    get_stored_run,
+    list_stored_runs,
     stream_user_events,
 )
 
@@ -53,6 +58,16 @@ def _ensure_user_exists(db: DbSession, user_id: UUID) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
+def _ensure_user_exists_detached(user_id: UUID) -> None:
+    """Existence check on a session of its own, released before the caller streams.
+
+    A DbSession dependency would be closed only once the response completes, and an SSE
+    response completes when the client disconnects — one idle pooled connection per stream.
+    """
+    with SessionLocal() as db:
+        _ensure_user_exists(db, user_id)
+
+
 @router.get(
     "/users/{user_id}/sync/stream",
     response_class=StreamingResponse,
@@ -64,11 +79,10 @@ def _ensure_user_exists(db: DbSession, user_id: UUID) -> None:
         },
     },
 )
-def stream_user_sync_status(
+async def stream_user_sync_status(
     user_id: UUID,
-    db: DbSession,
-    _api_key: ApiKeyDep,
-    replay: Annotated[int, Query(ge=1, le=200, description="Replay last N events on connect.")] = 20,
+    _api_key: StreamingApiKeyDep,
+    replay: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS, description="Replay last N events on connect.")] = 20,
 ) -> StreamingResponse:
     """Open a Server-Sent Events stream of sync status for a user.
 
@@ -87,7 +101,7 @@ def stream_user_sync_status(
     The stream remains open until the client disconnects. ``EventSource``
     in browsers reconnects automatically.
     """
-    _ensure_user_exists(db, user_id)
+    await run_in_threadpool(_ensure_user_exists_detached, user_id)
     return StreamingResponse(
         stream_user_events(user_id, replay_last=replay),
         media_type="text/event-stream",
@@ -104,7 +118,7 @@ def list_recent_sync_events(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS)] = 50,
 ) -> list[SyncStatusEvent]:
     """Return the most recent stored sync events (newest first).
 
@@ -124,7 +138,7 @@ def list_sync_run_summaries(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    limit: Annotated[int, Query(ge=1, le=MAX_RECENT_EVENTS)] = 20,
 ) -> list[SyncRunSummary]:
     """Return aggregated per-run summaries for recent sync activity."""
     _ensure_user_exists(db, user_id)
@@ -155,6 +169,64 @@ def list_all_sync_run_summaries(
         status_filter=status,
         source_filter=source,
     )
+
+
+@router.get(
+    "/users/{user_id}/sync/history",
+)
+def list_stored_sync_runs(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    scope: Annotated[SyncScope | None, Query(description="Filter by historical or live.")] = None,
+    since: Annotated[datetime | None, Query(description="Only runs started at or after this time.")] = None,
+    provider: Annotated[str | None, Query(description="Filter by provider name.")] = None,
+    covered_from: Annotated[
+        datetime | None,
+        Query(description="Only runs whose covered data window ends after this time."),
+    ] = None,
+    covered_to: Annotated[
+        datetime | None,
+        Query(description="Only runs whose covered data window starts before this time."),
+    ] = None,
+) -> list[SyncRunRecord]:
+    """Stored sync runs for a user, newest first.
+
+    Unlike /sync/runs this reads from the database rather than the Redis event buffer,
+    so it is not limited to the last 24 hours. Only historical runs are stored by default.
+    Use /sync/history/{run_key} for the per-data-type breakdown.
+
+    `since` filters on when a run executed. `covered_from` / `covered_to` filter on the span
+    of data it was meant to cover, which is what answers "what ran that was supposed to cover
+    March" — a backfill started yesterday covering March matches. A run matches when its own
+    window overlaps the range or when any of its data types covered a span that does; runs
+    with no recorded window on either level are excluded, since overlap is undecidable.
+    """
+    _ensure_user_exists(db, user_id)
+    return list_stored_runs(
+        db,
+        user_id,
+        limit=limit,
+        scope=scope,
+        since=since,
+        provider=provider,
+        covered_from=covered_from,
+        covered_to=covered_to,
+    )
+
+
+@router.get("/sync/history/{run_key}")
+def get_stored_sync_run(
+    run_key: str,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> SyncRunDetail:
+    """One stored sync run with its per-data-type breakdown."""
+    run = get_stored_run(db, run_key)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found")
+    return run
 
 
 __all__ = ["router"]

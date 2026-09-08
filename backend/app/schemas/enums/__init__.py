@@ -19,6 +19,7 @@ from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
     ProviderName,
 )
+from .sdk_connection_outcome import SdkConnectionOutcome
 from .series_types import (
     SERIES_TYPE_DEFINITIONS,
     SERIES_TYPE_ID_BY_ENUM,
@@ -26,6 +27,10 @@ from .series_types import (
     get_series_type_from_id,
     get_series_type_id,
     get_series_type_unit,
+)
+from .timeline import (
+    TimelineBucket,
+    TimelineGroupBy,
 )
 from .workout_intensity import WorkoutIntensity
 from .workout_types import (
@@ -56,4 +61,7 @@ __all__ = [
     "ProviderName",
     "DEFAULT_PROVIDER_PRIORITY",
     "HealthScoreCategory",
+    "SdkConnectionOutcome",
+    "TimelineBucket",
+    "TimelineGroupBy",
 ]

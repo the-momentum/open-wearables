@@ -108,12 +108,23 @@ class TestWebhookEmit:
             efficiency_percent=85.0,
             stages={"deep_minutes": 90, "rem_minutes": 60, "light_minutes": 120, "awake_minutes": 10},
             is_nap=False,
+            source_app="oura",
+            device_type="ring",
+            sleep_duration_seconds=27000,
+            sleep_stage_intervals=[
+                {"stage": "light", "start_time": "2026-01-01T22:00:00", "end_time": "2026-01-01T22:30:00"}
+            ],
         )
         mock_task.delay.assert_called_once()
         args = mock_task.delay.call_args
         assert args[0][0] == "sleep.created"
         assert args[0][1]["data"]["efficiency_percent"] == 85.0
         assert args[0][1]["data"]["stages"]["deep_minutes"] == 90
+        assert args[0][1]["data"]["sleep_duration_seconds"] == 27000
+        assert args[0][1]["data"]["sleep_stage_intervals"][0]["stage"] == "light"
+        assert args[0][1]["data"]["source"]["source"] == "oura"
+        assert args[0][1]["data"]["source"]["device_type"] == "ring"
+        assert args[0][1]["data"]["source"]["device_name"] == "Oura Ring Gen3"
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_batch_saved_dispatches(self, mock_task: MagicMock) -> None:

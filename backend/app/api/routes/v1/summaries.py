@@ -4,13 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
+from app.schemas.enums import TimelineBucket, TimelineGroupBy
 from app.schemas.responses.activity import (
     ActivitySummary,
     BodySummary,
     RecoverySummary,
     SleepSummary,
 )
-from app.schemas.responses.dashboard import UserDataSummaryResponse
+from app.schemas.responses.dashboard import UserDataSummaryResponse, UserDataTimelineResponse
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
@@ -124,3 +125,27 @@ def get_data_summary(
     start_datetime = parse_query_datetime(start_date) if start_date is not None else None
     end_datetime = parse_query_datetime(end_date) if end_date is not None else None
     return system_info_service.get_user_data_summary(db, user_id, start_datetime, end_datetime)
+
+
+@router.get("/users/{user_id}/summaries/data/timeline")
+def get_data_timeline(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    start_date: DateTimeQueryParam | None = None,
+    end_date: DateTimeQueryParam | None = None,
+    bucket: Annotated[TimelineBucket, Query(description="Bucket width.")] = TimelineBucket.DAY,
+    group_by: Annotated[TimelineGroupBy, Query(description="What each series counts.")] = TimelineGroupBy.PROVIDER,
+) -> UserDataTimelineResponse:
+    """Returns when a user has data, as counts per time bucket.
+
+    Buckets are truncated in UTC and only non-empty ones are returned, so the response is
+    sparse: the caller fills the gaps for the window it asked for. Counts cover both the
+    live and the archive table, so archived history does not read as missing data.
+
+    Optionally scope to a window via `start_date` / `end_date` (by `recorded_at`); omitting
+    both returns the user's whole history.
+    """
+    start_datetime = parse_query_datetime(start_date) if start_date is not None else None
+    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
+    return system_info_service.get_user_data_timeline(db, user_id, bucket, group_by, start_datetime, end_datetime)

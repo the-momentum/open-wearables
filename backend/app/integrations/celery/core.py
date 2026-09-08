@@ -111,9 +111,15 @@ def create_celery() -> Celery:
             "sdk_sync": {},
             "garmin_sync": {},
             "webhook_sync": {},
+            "xml_sync": {},
         },
         task_routes={
             "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
+            "app.integrations.celery.tasks.process_aws_upload_task.process_aws_upload": {"queue": "xml_sync"},
+            "app.integrations.celery.tasks.process_aws_upload_task.complete_and_process_aws_upload": {
+                "queue": "xml_sync"
+            },
+            "app.integrations.celery.tasks.process_xml_upload_task.process_xml_upload": {"queue": "xml_sync"},
         },
     )
 
@@ -160,6 +166,12 @@ def create_celery() -> Celery:
         "fill-missing-resilience-scores": {
             "task": "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores",
             "schedule": float(settings.resilience_score_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
+        "close-stale-sync-runs": {
+            "task": "app.integrations.celery.tasks.close_stale_sync_runs_task.close_stale_sync_runs",
+            "schedule": float(settings.sync_run_sweep_interval_seconds),
             "args": (),
             "kwargs": {},
         },

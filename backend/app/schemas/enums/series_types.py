@@ -319,6 +319,12 @@ SERIES_TYPE_ID_BY_ENUM: dict[SeriesType, int] = {enum: type_id for type_id, enum
 SERIES_TYPE_ENUM_BY_ID: dict[int, SeriesType] = {type_id: enum for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_UNIT_BY_ENUM: dict[SeriesType, str] = {enum: unit for _, enum, unit in SERIES_TYPE_DEFINITIONS}
 
+# Optional human-readable descriptions surfaced in the coverage matrix (tooltips).
+# Only series types that need a meaningful clarification have an entry here;
+SERIES_TYPE_DESCRIPTION_BY_ENUM: dict[SeriesType, str] = {
+    SeriesType.garmin_body_battery: "Intraday body battery readings (0-100), one sample per measurement",
+}
+
 
 # =============================================================================
 # HELPER FUNCTIONS

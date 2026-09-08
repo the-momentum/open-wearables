@@ -18,7 +18,7 @@ from app.database import SessionLocal
 from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.sync_status import SyncSource, SyncStatus
+from app.schemas.sync_status import SyncScope, SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_config import (
     BACKFILL_DATA_TYPES,
     BACKFILL_WINDOW_COUNT,
@@ -59,7 +59,12 @@ from app.services.sync_coordination import (
     store_primary_token,
     try_become_primary,
 )
-from app.services.sync_status_service import cancelled, completed, progress, started
+from app.services.sync_status_service import (
+    emit_sync_cancelled,
+    emit_sync_completed,
+    emit_sync_progress,
+    emit_sync_started,
+)
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -83,11 +88,12 @@ def _release_shared_backfill_primary(user_id: str, *, overall_status: SyncStatus
                 if secondary_trace_id
                 else f"garmin_backfill_{secondary_id}"
             )
-            completed(
+            emit_sync_completed(
                 secondary_id,
                 "garmin",
                 SyncSource.LINKED_ACCOUNT,
                 run_id=sec_run_id,
+                scope=SyncScope.HISTORICAL,
                 status=overall_status,
                 message="Garmin backfill complete (data synced via linked profile)",
                 primary_user_id=UUID(user_id),
@@ -200,11 +206,12 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
                 user_id=user_id,
                 primary_user_id=str(existing_primary) if existing_primary else None,
             )
-            started(
+            emit_sync_started(
                 UUID(user_id),
                 "garmin",
                 SyncSource.LINKED_ACCOUNT,
                 run_id=f"garmin_backfill_{user_id}_{trace_id}",
+                scope=SyncScope.HISTORICAL,
                 message="Garmin backfill running via linked OW profile",
                 primary_user_id=existing_primary,
                 metadata={
@@ -218,7 +225,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         store_primary_token("garmin", connection.provider_user_id, UUID(user_id), shared_token, scope="backfill")
         get_redis_client().setex(_get_key(user_id, "shared_provider_user_id"), REDIS_TTL, connection.provider_user_id)
 
-        # Proactively emit started(LINKED_ACCOUNT) for every other OW profile sharing this
+        # Proactively emit emit_sync_started(LINKED_ACCOUNT) for every other OW profile sharing this
         # Garmin account so they show sync activity without needing to trigger manually.
         # Only notify profiles that haven't already self-registered (they'll have a trace_id
         # from their own start_full_backfill call in that case).
@@ -237,11 +244,12 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
                     continue
                 sec_trace_id = set_trace_id(str(conn.user_id))
                 register_secondary("garmin", connection.provider_user_id, conn.user_id, scope="backfill")
-                started(
+                emit_sync_started(
                     conn.user_id,
                     "garmin",
                     SyncSource.LINKED_ACCOUNT,
                     run_id=f"garmin_backfill_{conn.user_id}_{sec_trace_id}",
+                    scope=SyncScope.HISTORICAL,
                     message="Garmin backfill in progress via linked OW profile",
                     primary_user_id=UUID(user_id),
                     metadata={
@@ -286,11 +294,12 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
             pending_types=pending,
         )
 
-        started(
+        emit_sync_started(
             UUID(user_id),
             "garmin",
             SyncSource.BACKFILL,
             run_id=f"garmin_backfill_{user_id}_{trace_id}",
+            scope=SyncScope.HISTORICAL,
             message=f"Resuming Garmin backfill at window {current_window}",
             metadata={
                 "trace_id": trace_id,
@@ -327,11 +336,12 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         target_days=MAX_BACKFILL_DAYS,
     )
 
-    started(
+    emit_sync_started(
         UUID(user_id),
         "garmin",
         SyncSource.BACKFILL,
         run_id=f"garmin_backfill_{user_id}_{trace_id}",
+        scope=SyncScope.HISTORICAL,
         message=f"Starting Garmin {MAX_BACKFILL_DAYS}-day historical backfill",
         metadata={
             "trace_id": trace_id,
@@ -379,11 +389,12 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             user_id=user_id,
         )
         _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
-        cancelled(
+        emit_sync_cancelled(
             UUID(user_id),
             "garmin",
             SyncSource.BACKFILL,
             run_id=_run_id,
+            scope=SyncScope.HISTORICAL,
             message="Garmin backfill cancelled",
             metadata={"trace_id": trace_id, "current_window": current_window},
         )
@@ -438,11 +449,12 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 trace_id=trace_id,
                 user_id=user_id,
             )
-            completed(
+            emit_sync_completed(
                 UUID(user_id),
                 "garmin",
                 SyncSource.BACKFILL,
                 run_id=_run_id,
+                scope=SyncScope.HISTORICAL,
                 status=SyncStatus.SUCCESS,
                 message="Garmin backfill complete (retry phase finalized)",
                 metadata={"trace_id": trace_id, "via": "retry_phase"},
@@ -464,7 +476,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             )
             total_windows = get_total_windows(user_id)
             _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
-            progress(
+            emit_sync_progress(
                 UUID(user_id),
                 "garmin",
                 SyncSource.BACKFILL,
@@ -521,11 +533,12 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             user_id=user_id,
             completed_windows=completed_windows,
         )
-        completed(
+        emit_sync_completed(
             UUID(user_id),
             "garmin",
             SyncSource.BACKFILL,
             run_id=_run_id,
+            scope=SyncScope.HISTORICAL,
             status=SyncStatus.SUCCESS,
             message="Garmin backfill complete",
             items_processed=completed_windows,

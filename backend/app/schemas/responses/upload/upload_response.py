@@ -13,6 +13,8 @@ class UploadDataResponse(BaseModel):
     user_id: str | None = Field(None, description="User ID associated with the import operation")
     dropped_count: int = Field(0, description="Number of individual records dropped by per-record validation")
     records_saved: int = Field(0, description="Time-series samples saved")
+    records_inserted: int = Field(0, description="Time-series rows that did not exist before")
+    records_updated: int = Field(0, description="Time-series rows refreshed in place")
     types: list[str] = Field(
         default_factory=list,
         description=(

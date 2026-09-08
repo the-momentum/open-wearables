@@ -254,6 +254,12 @@ class EventRecordService(
                     final_detail.sleep_rem_minutes,
                 ]
             )
+            device_type = None
+            if svix_service.is_enabled() and result.data_source_id is not None:
+                data_source = self.data_source_repo.get(db_session, result.data_source_id)
+                if data_source is not None:
+                    device_type = data_source.device_type
+
             on_sleep_created(
                 record_id=result.id,
                 user_id=user_id,
@@ -273,6 +279,18 @@ class EventRecordService(
                 if has_stages
                 else None,
                 is_nap=final_detail.is_nap,
+                source_app=record.source,
+                device_type=device_type,
+                sleep_duration_seconds=(
+                    final_detail.sleep_total_duration_minutes * 60
+                    if final_detail.sleep_total_duration_minutes is not None
+                    else None
+                ),
+                sleep_stage_intervals=(
+                    [stage.model_dump(mode="json") for stage in final_detail.sleep_stages]
+                    if final_detail.sleep_stages
+                    else None
+                ),
             )
         return result
 
@@ -550,6 +568,18 @@ class EventRecordService(
                     if has_stages
                     else None,
                     is_nap=detail.is_nap,
+                    source_app=data_source.source,
+                    device_type=data_source.device_type,
+                    sleep_duration_seconds=(
+                        detail.sleep_total_duration_minutes * 60
+                        if detail.sleep_total_duration_minutes is not None
+                        else None
+                    ),
+                    sleep_stage_intervals=(
+                        [stage.model_dump(mode="json") for stage in detail.sleep_stages]
+                        if detail.sleep_stages
+                        else None
+                    ),
                 )
             case "menstrual_cycle":
                 mcd = detail if isinstance(detail, MenstrualCycleDetailCreate) else None
