@@ -192,7 +192,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
         # Emit only after the complete fan-out succeeds. A retry must not leave
         # terminal events for users processed before a later top-level failure.
         for user_id, items in per_user:
-            sync_status_service.webhook_delivered(
+            sync_status_service.emit_webhook_delivered(
                 str(user_id),
                 "withings",
                 status=SyncStatus.SUCCESS if items else SyncStatus.SKIPPED,
