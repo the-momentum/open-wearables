@@ -1,10 +1,16 @@
-import { env } from '$env/dynamic/private';
+import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 
 const DEFAULT_API_URL = 'http://localhost:8000';
 
-/** Read at call time so one image can be pointed at any backend. */
+/**
+ * Read at call time so one image can be pointed at any backend. API_URL is only
+ * a shortcut for the server's own hop (http://app:8000 inside Docker); the
+ * address everyone else uses is VITE_API_URL, which is what a deployment sets.
+ */
 function apiUrl(path: string): string {
-	return `${(env.API_URL || DEFAULT_API_URL).replace(/\/+$/, '')}${path}`;
+	const base = privateEnv.API_URL || publicEnv.VITE_API_URL || DEFAULT_API_URL;
+	return `${base.replace(/\/+$/, '')}${path}`;
 }
 
 export const API = {
@@ -115,7 +121,7 @@ async function apiWrite<T>(
 	return response.status === 204 ? (undefined as T) : response.json();
 }
 
-export const apiPost = <T>(path: string, accessToken: string, body: unknown) =>
+export const apiPost = <T>(path: string, accessToken: string, body?: unknown) =>
 	apiWrite<T>('POST', path, accessToken, body);
 
 export const apiPatch = <T>(path: string, accessToken: string, body: unknown) =>

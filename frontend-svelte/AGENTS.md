@@ -221,9 +221,18 @@ internal shape.
 
 It serves `/auth/login`, `/auth/me`, `/token/refresh`, `/token/revoke`,
 `/oauth/providers` and `/users`, the last honouring `search`, `provider`,
-`sort_by`, `sort_order`, `page`, `limit` and `include`. **It rotates refresh
-tokens like the real backend**, so failing to persist a rotated token turns the
-suite red rather than logging users out an hour later in production.
+`sort_by`, `sort_order`, `page`, `limit` and `include`. Under a user id it also
+serves the detail, `/connections`, `/sync/history` and `/sync/runs`. **It rotates
+refresh tokens like the real backend**, so failing to persist a rotated token
+turns the suite red rather than logging users out an hour later in production.
+
+**The suite runs on one worker, and that is not a performance oversight.**
+Playwright parallelises across _files_ by default, and every file shares one
+mock process whose user list is mutable and reset with `/__reset` in
+`beforeEach`. With two mutating files in flight, one file's reset lands in the
+middle of the other's test and the failure surfaces somewhere unrelated — a
+pagination total reading 46 instead of 47. `workers: 1` in the config is what
+keeps that from coming back.
 
 Fixtures live in [e2e/fixtures.ts](e2e/fixtures.ts) — 47 users, enough for three
 pages at 20 and a memorable one to search for. Add data there, not inline in a
@@ -599,10 +608,14 @@ Anything interactive inside the row needs `relative z-10` to sit above that
 overlay — `UserActions` and `CopyableId` both do, and a test asserts that
 copying the id does **not** navigate.
 
-Row actions are edit, copy pairing link and delete, all `disabled` with a
-`title` saying why. The pairing link is deliberately inert: it would point at
-`/users/{id}/pair`, which does not exist here yet, and a dead link an admin
-sends to an end user is worse than a disabled button.
+Row actions are edit, copy pairing link and delete, and all three work. Edit
+and delete open the page-level dialogs through the `row-actions` context, so
+there is one dialog per page rather than one per row.
+
+**The pairing link is a known live hazard.** `pairingLink()` builds
+`/users/{id}/pair` against this app's origin, and that route does not exist here
+yet — an admin who copies it sends an end user to a 404. Building the public
+pairing page is the outstanding piece, not the button.
 
 ### Shared styling, not copied styling
 
@@ -716,6 +729,313 @@ them. The fixes are worth copying rather than rediscovering:
 | Selected filter | `aria-current="true"`                   | `aria-pressed` |
 | Current page    | `aria-current="page"`                   | —              |
 
+## User detail page
+
+### The layout owns the user; tabs are routes
+
+[`[id]/+layout.server.ts`](<src/routes/(app)/users/[id]/+layout.server.ts>) is the
+only place that fetches the user, so every tab shares one request. Tabs are real
+sub-routes rather than a query parameter, which gives each one its **own loader**
+— and that is the point, not a preference:
+
+Connections loads four cheap indexed calls. Data Summary will load two
+aggregates that scan the user's slice of `data_point_series`. As a section
+inside it,
+that scan would run every time anyone opened a user to check an email. As its own
+route, it runs when someone asks for it.
+
+[`src/lib/users/tabs.ts`](src/lib/users/tabs.ts) is the single source of the tab
+list. [`src/params/usertab.ts`](src/params/usertab.ts) matches against the same
+array, so one `[tab=usertab]` route serves every tab not built yet and an
+invented slug 404s instead of rendering an empty shell. Building a tab for real
+means adding its own directory, which wins over the matcher automatically.
+
+`Women's Health` is gated on `has_womens_health_data`, which the detail endpoint
+now returns directly. **Do not reach for `/summaries/data` to get it** — the
+React app did, which meant the heaviest per-user aggregate in the system ran on
+every page load to decide whether to draw a tab label.
+
+### Capability flags are not the live configuration
+
+`rest_pull`, `webhook_stream`, `webhook_ping` and `webhook_callback` come from
+the **provider strategy** — what that provider can do, identical for every user.
+`live_sync_mode` comes from `ProviderSetting` — how it is wired up **right now**,
+and only ever `pull` or `webhook`.
+
+Rendered as sibling badges they read as one list of equivalent facts, which made
+`REST pull` and `Live: Pull` look like near-duplicates when they answer different
+questions. Suunto's own strategy comment says it plainly: _"Historical sync uses
+REST (rest_pull); live data via webhooks (webhook_stream)."_ — the REST flag is
+about **backfill**, not live sync.
+
+[`src/lib/connections/delivery.ts`](src/lib/connections/delivery.ts) turns them
+into two sentences under two labels, `Live` and `History`. Add a capability flag
+there, not as another badge.
+
+**The wording tracks the API vocabulary, not a plain-language paraphrase.**
+This is an operator's screen: `Pulled on a schedule` maps onto
+`live_sync_mode: pull`, which is the thing the reader configures. A rewrite into
+customer-facing prose ("We collect it from Oura on request") was tried and
+rejected — it obscured the mapping without helping anyone.
+
+The two routes share verbs so the pair reads as one story: `Pulled on a
+schedule` / `Pulled on demand`, `Pushed by the provider` / `Pushed by the
+provider on demand`.
+
+**The control carries the description; there is no separate line of prose.** A
+pane is a centred heading (`LIVE SYNC`, `HISTORICAL BACKFILL`) over exactly one
+thing: either a real button, or a
+[`StatePlate`](src/lib/components/ui/StatePlate.svelte) — button-shaped, dashed,
+and a `<p>` rather than a disabled `<button>`, because a disabled control is
+announced as a control that is broken, when what it actually is is information.
+So a webhook-only live route reads `Pushed by the provider` in place of a button
+instead of leaving half the box empty.
+
+Where a button _does_ exist it says what it does, and the route it belongs to
+moves into a [`Hint`](src/lib/components/ui/Hint.svelte) beside the heading —
+along with any provider limit, which used to be a line of its own and made one
+pane taller than the other. The hint toggles on click as well as hover, because
+`:hover` never fires on a phone.
+
+Two things `Hint` gets wrong if you rebuild it: it must carry **no `title`**, or
+the browser draws its own tooltip with the same text on top of the bubble; and
+it must reset `normal-case font-normal tracking-normal`, because it lives inside
+an uppercase micro-heading and inherits it. It opens **leftwards** (`right-0`) —
+every hint icon here sits in the right half of its pane, so anchoring left spilled
+the bubble across the neighbouring card.
+
+Headings are centred over their control from `sm` up. Left-aligning a heading
+above a centred pair of controls read as two unrelated things. They are **not**
+rotated 90°: vertical text is slow to scan, and it breaks the moment a label
+gets longer.
+
+**On a phone the pane is a row instead** — heading left, control right. Stacked
+full-width panes left the card empty sideways and twice as tall as it needed to
+be. The row carries `flex-wrap`, because it genuinely cannot always hold both:
+the split control needs ~215px and a 390px screen leaves under 200 beside the
+heading, so it drops to its own line rather than overflowing the card.
+
+The same module decides what can be triggered, so the buttons cannot contradict
+the description:
+
+- `canSyncHistory` — either backfill route exists.
+- `canForceLiveSync` — `rest_pull` **and** live sync is not webhook-driven. A
+  webhook connection has nothing to pull; data arrives when the provider sends
+  it. `frontend/` gates `Force Live Sync` the same way, and dropping that gate
+  would offer a button that cannot do anything.
+
+- `historyRanges` — which windows are worth offering. No cap means all of
+  7/30/90/180/365, the set `frontend/` offered. A cap means everything below it
+  plus the cap itself — **except** for a callback backfill, which gets only the
+  cap, because `start_historical_sync` in the Garmin strategy drops `days`
+  entirely and always covers its full 30. Offering 7 there would promise a
+  window the backend throws away. The day that changes, deleting the
+  `webhook_callback` branch is the whole fix.
+
+Every connection gets the same select, even when it holds one option — the
+control staying put is what makes the above a one-line change later.
+
+The range and `Sync history` are **one** control, not two beside each other:
+the wrapper owns the outer border and the children round only their own outer
+corners. Two details matter:
+
+- The separator is an **inset** `<span>` (`my-2 w-px`), not a `border-r`. A rule
+  touching both edges cut the control in half instead of joining its halves.
+- No `overflow-hidden` and no `focus-within` ring. Both were wrong: the ring lit
+  the whole control when only the select had focus, and the clipping would have
+  swallowed a keyboard outline. Each half now shows its own `:focus-visible`
+  outline, and a mouse click on the select shows none, which is what
+  `:focus-visible` is for.
+
+**Each trigger sits under the route it triggers**: `Sync now` in the live pane,
+the range and `Sync history` in the backfill pane. There is no fill behind the
+panes; with controls inside them a tinted box competed with its own contents, so
+a top rule and a divider carry the structure instead.
+
+Buttons only render while the connection is `active`. Syncing stays **on the
+card**: it is routine, and burying it in the menu was wrong. Only the
+destructive pair lives in the menu.
+
+On a phone the panes stack and each keeps its controls underneath. Putting them
+beside the text does not fit: the History pane is a select **and** a button, and
+inlining only the Live one would leave the two panes misaligned.
+
+### One tab strip, with edges that say there is more
+
+Eight tabs do not fit a phone. A plain scrolling strip hides most of them with
+**no signal that they exist**, which is the reason a sheet-based picker was
+tried first; the strip won because it keeps an adjacent section one tap away
+instead of two.
+
+What makes it work is in [`UserTabs`](src/lib/components/users/detail/UserTabs.svelte):
+
+- **Gradient fades** at whichever edge has content past it, driven by a scroll
+  handler rather than a breakpoint — on a desktop both ends are reached, so both
+  fades hide themselves. They stop a pixel short of the bottom rule
+  (`bottom-px`) so the rule stays unbroken.
+- **The active tab is scrolled into view** in an `$effect` keyed on the active
+  slug. Landing on `/users/{id}/scores` with the strip parked at the left would
+  hide the section you just opened.
+- Scrollbar hidden in a scoped `<style>` — Tailwind v4 has no utility, and the
+  bar would sit on top of the rule.
+
+The index tab is **`Connections`**, not `Profile`: the profile is the header,
+which is visible above every tab, so a tab named after it was naming the wrong
+thing.
+
+### A sync row: one colour, the rest glyphs
+
+The status badge is the only coloured thing in a row, and everything competing
+with it was turned into a muted glyph:
+
+- **Source is an icon**, mapped in [`syncs/source.ts`](src/lib/syncs/source.ts) and
+  rendered by [`SourceGlyph`](src/lib/components/syncs/SourceGlyph.svelte)
+  with a fallback for a source the backend adds later. The word cost a whole
+  line on a phone; the icon keeps the row to one, and the accessible name is
+  still the slug's own wording (`sr-only` plus `title`).
+- **Progress is a bar only while the run is moving**, and `max-w-48`. On a
+  finished run it would sit at 100% saying nothing the badge has not; stretched
+  across a desktop row it pulled the eye off the badge.
+
+**The created/updated split is shared, and one source of it is still prose.**
+[`SavedCounts`](src/lib/components/syncs/SavedCounts.svelte) renders
+`+ 8,421 new · ↻ 12 updated` for both the backfill log and a sync row, split
+rather than summed — a run that only refreshed rows it already had is a
+different outcome from one that found data, and a single total hides it. Zero of
+both reads `Nothing saved`, not two zeroes.
+
+The backfill log gets the numbers as columns (`SyncRunRecord.items_inserted` /
+`items_updated`). **Recent sync activity does not, yet.** The emitting task
+writes them to `metadata["inserted"]`/`["updated"]` _and_ appends them to the
+message
+([sync_vendor_data_task.py](../backend/app/integrations/celery/tasks/sync_vendor_data_task.py)),
+but `SyncRunSummary` projects `message` and drops `metadata` — so the only way
+they reach the UI today is inside a sentence.
+
+`SyncRunSummary` in [`syncs/types.ts`](src/lib/syncs/types.ts) therefore declares
+`items_inserted` / `items_updated` as **optional**, and a row shows the counts
+when they are present and the message when they are not. Do not parse the
+message: the numbers are structured one layer up, and the fix belongs in the
+schema. Both paths are covered by e2e, so adding the two fields backend-side
+needs no frontend change at all.
+
+### Numbers are printed plainly
+
+No thousands separator anywhere. `Intl.NumberFormat('en-GB')` renders `19,058`,
+which a reader outside the anglosphere parses as a decimal. The app is
+international, so counts render as bare digits.
+
+### Recent activity filters in the browser, not on the server
+
+The per-user `/sync/runs` endpoint takes no provider filter, so the loader reads
+a window of `RECENT_WINDOW = 100` runs and the whole window goes to the client,
+which narrows it and slices to `RECENT_SHOWN = 20`. Slicing to 20 first would
+let a busy provider crowd a quiet one out entirely, and the filter would then
+report "nothing" for a provider that did run.
+
+**Changing the filter must not re-run the page.** Nothing needs refetching — the
+window is already here — so it uses `pushState`, and that has one trap worth
+knowing:
+
+> `pushState` deliberately does **not** update `page.url`. It writes the address
+> bar and sets `page.state`, but the URL SvelteKit reports stays the one the load
+> was for. A `$derived` reading `page.url.searchParams` therefore never fires.
+
+So the selection lives in `page.state.syncProvider` (declared in
+[`src/app.d.ts`](src/app.d.ts)), which is what back and forward restore. The
+query string is written alongside it for sharing and reload, and read **only**
+on arrival, when `page.state` is empty.
+
+Options come from **this user's connections**, not the full provider list.
+[`FilterSelect`](src/lib/components/ui/FilterSelect.svelte) is the shared
+control and takes an `onselect` callback rather than an href, precisely so one
+caller can navigate (`PageSizeSelect`, whose value changes what the server
+returns) and another can change state in place.
+
+### The header carries the identity, not a copy of it
+
+There is no `User information` card. A panel repeating the name, email and id of
+the person already named at the top of the page was the same duplication the
+React app has, so the header holds one wrapping meta line — email, id with copy,
+created, last sync — and `Edit` is a pencil beside the name rather than a button
+in the action row, because it edits those details.
+
+`external_user_id` is **not displayed**. It is deprecated in the API, it means
+nothing to anyone but the customer's own systems, and it was pushing the meta
+line onto a second row. It lives in the edit form, which is the only place it is
+useful.
+
+The action row is `flex` without `flex-wrap`, and the identity block is
+`min-w-0`: the identity shrinks so the actions stay on the name's row instead of
+dropping to a line of their own. Below `sm` only the menu remains there, and the
+pencil sits **before** the badge so a narrow screen wraps the badge onto its own
+line rather than stranding a lone pencil.
+
+### Actions live where their form action does
+
+A form action resolves against **the route currently showing**, so anything in
+the shared header must exist on every tab. `userActions` in
+[`src/lib/server/user-actions.ts`](src/lib/server/user-actions.ts) is spread into
+both the profile's `+page.server.ts` and the placeholder tab's — one line each.
+The header reads its result through `page.form` from `$app/state`, because a
+layout is not given `form`.
+
+Connection actions (sync, revoke, purge) are profile-only, so they stay in the
+profile's own actions.
+
+**`attempt()` must not wrap anything that redirects.** `redirect()` throws, and
+`attempt`'s catch would turn a successful delete into a 400. `delete` is written
+out longhand for that reason.
+
+### Never invent an environment variable
+
+Customers set these in their own deployments, so a new name is a compatibility
+break. **Check what `frontend/` already uses and reuse it.**
+
+The browser-facing backend address has always been `VITE_API_URL`
+(`frontend/src/lib/api/runtime-config.ts`). SvelteKit only exposes variables
+matching `publicPrefix`, so the kit config sets `env: { publicPrefix: 'VITE_' }`
+and `$env/dynamic/public` serves the customer's existing variable. `API_URL` and
+`REDIS_URL` match neither that nor the empty private prefix, so they stay
+server-only.
+
+`VITE_API_URL` is the only variable a deployment must set — it is what a browser
+or a phone dials, and the server falls back to it. `API_URL` is an optional
+shortcut for the server's own hop, which is the one case where a shorter route
+exists (`http://app:8000` inside Docker). The "Connect mobile app" dialog shows
+`VITE_API_URL`, never `API_URL` — inside Docker that resolves to a hostname no
+device can reach.
+
+### Three sync sources, three questions
+
+They look interchangeable and are not. Merging them into one list would silently
+drop live runs older than a day.
+
+| Question                                   | Source                      | Cost                           |
+| ------------------------------------------ | --------------------------- | ------------------------------ |
+| Does live sync work at all?                | `connection.last_synced_at` | free — connections load anyway |
+| What ran in the last 24 hours?             | `/sync/runs` (Redis)        | one call, buffer expires       |
+| When did we backfill, and did it cover it? | `/sync/history` (Postgres)  | indexed, unbounded in time     |
+
+Only **historical** runs reach Postgres. `persist_live_sync_runs` exists on the
+backend and is off deliberately — one row per webhook and per SDK batch is
+hundreds a day for an active user. So the backfill panel on a provider card and
+the recent-activity list are different data with different retention, and the
+empty states say so rather than implying nothing ever happened.
+
+Sync activity loads through `optional()` in the page's loader: it is reporting,
+not the subject of the page, so Redis being down costs the section rather than
+the whole profile. Connections and the user itself are not wrapped — without
+them there is no page to render.
+
+### No SSE while nothing is running
+
+The stream is not opened on load. Each open stream costs the backend a pooled DB
+connection, an anyio worker thread and a Redis pubsub connection for as long as
+the tab stays open, and the React app held one on every user page regardless of
+which tab was showing. The snapshot from `/sync/runs` covers the resting case;
+the stream is for later, opened only when a run is actually in progress.
+
 ## Styling is scoped — do not reach for global CSS
 
 A `<style>` block inside a `.svelte` file is scoped by the compiler. It rewrites
@@ -776,6 +1096,10 @@ src/
 │   │   │   ├── FilterChip.svelte    # link: navigates
 │   │   │   ├── ToggleChip.svelte    # button: edits a local draft
 │   │   │   └── CopyableId.svelte
+│   │   ├── providers/               # ProviderMark — a letter mark, since the
+│   │   │                            # API's icon_url is unreachable from the browser
+│   │   ├── syncs/                   # provider-agnostic: SyncRunRow, SavedCounts,
+│   │   │                            # SourceGlyph, RecentSyncsCard
 │   │   └── users/                   # UsersList, UsersTable, UserCard,
 │   │                                # UserIdentity, UserAvatar, SyncCell,
 │   │                                # ConnectionBadges, UserActions,
@@ -799,7 +1123,8 @@ src/
 │       ├── +layout.server.ts        # the auth guard
 │       ├── +layout.svelte           # wraps children in AppShell
 │       ├── users/  +page.svelte + +page.server.ts
-│       ├── users/[id]/              # placeholder; rows already link here
+│       ├── users/[id]/              # +layout owns the user; +page is Connections
+│       │   └── [tab=usertab]/       # one placeholder for every unbuilt tab
 │       └── {dashboard,syncs,webhooks,coverage,settings}/+page.svelte
 └── e2e/  auth  navigation  users (.e2e.ts) + mock-api  support  fixtures
 ```
@@ -807,12 +1132,18 @@ src/
 Every `.spec.ts` sits beside what it covers; `*.browser.spec.ts` files aggregate
 a whole component directory.
 
-**Real:** the shell, theming, cookie authentication, and the `/users` list with
-search, provider filters, sorting, pagination and page size.
+**Real:** the shell, theming, cookie authentication, the `/users` list with
+search, provider filters, sorting, pagination and page size, its create / edit /
+delete actions, and the user detail page's Connections tab — identity, connected
+providers with capabilities and backfill history, and the last 24 hours of sync
+activity with a provider filter.
 
-**Not real:** every other page under `(app)` is a `PagePlaceholder`, `/users/[id]`
-shows only the id, and the row actions plus `Add user` are `disabled`
-placeholders.
+**Not real:** every other page under `(app)` is a `PagePlaceholder`; every user
+tab other than Connections renders the shared "not built yet" placeholder; the
+public `/users/[id]/pair` page does not exist, so the pairing link an admin
+copies currently 404s; and the Apple Health XML import is a disabled menu entry
+— it is a multipart S3 upload (presign, sign parts, complete or abort) and needs
+its own increment, not a menu item.
 
 Only `/users` fetches domain data, and it does so from a server `load` via
 `apiGet`. There is still **no browser-facing API proxy** — a `/api/[...path]`

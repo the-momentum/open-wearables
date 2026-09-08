@@ -14,6 +14,8 @@ export type User = {
 	first_name: string | null;
 	last_name: string | null;
 	email: string | null;
+	/** Deprecated in the API but still writable, and customers rely on it. */
+	external_user_id: string | null;
 	last_synced_at: string | null;
 	last_synced_provider: string | null;
 	has_active_connection: boolean;
@@ -22,3 +24,8 @@ export type User = {
 };
 
 export type PaginatedUsers = Paginated<User>;
+
+/** Mirrors backend `UserDetailRead`: the list projection plus the tab-gating flag. */
+export type UserDetail = User & {
+	has_womens_health_data: boolean;
+};

@@ -21,12 +21,14 @@
 	let firstName = $state('');
 	let lastName = $state('');
 	let email = $state('');
+	let externalId = $state('');
 
 	$effect(() => {
 		if (!open) return;
 		firstName = user?.first_name ?? '';
 		lastName = user?.last_name ?? '';
 		email = user?.email ?? '';
+		externalId = user?.external_user_id ?? '';
 	});
 
 	const field =
@@ -64,6 +66,12 @@
 		<label class="flex flex-col gap-1.5">
 			<span class="text-sm font-medium">Email</span>
 			<input name="email" type="email" bind:value={email} class={field} />
+		</label>
+
+		<label class="flex flex-col gap-1.5">
+			<span class="text-sm font-medium">External user ID</span>
+			<input name="external_user_id" maxlength="255" bind:value={externalId} class={field} />
+			<span class="text-xs text-muted-foreground">Your own identifier for this person.</span>
 		</label>
 
 		<div class="mt-1 flex justify-end gap-2">

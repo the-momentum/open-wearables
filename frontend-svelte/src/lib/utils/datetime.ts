@@ -30,3 +30,17 @@ export function formatDate(iso: string | null): string {
 	const date = new Date(iso);
 	return Number.isNaN(date.getTime()) ? '—' : absolute.format(date);
 }
+
+const stamp = new Intl.DateTimeFormat('en-GB', {
+	day: 'numeric',
+	month: 'short',
+	year: 'numeric',
+	hour: '2-digit',
+	minute: '2-digit'
+});
+
+export function formatDateTime(iso: string | null): string {
+	if (!iso) return '—';
+	const date = new Date(iso);
+	return Number.isNaN(date.getTime()) ? '—' : stamp.format(date);
+}

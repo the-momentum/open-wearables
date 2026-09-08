@@ -3,10 +3,20 @@
  * the full stack. Started by playwright.config.ts. Mirrors the contracts in
  * backend/app/api/routes/v1/{auth,token}.py.
  */
-import { CREDENTIALS, DEVELOPER, PROVIDER_SETTINGS, makeUsers } from './fixtures';
+import {
+	CREDENTIALS,
+	DEVELOPER,
+	PROVIDER_SETTINGS,
+	makeConnections,
+	makeRecentRuns,
+	makeSyncHistory,
+	makeUsers
+} from './fixtures';
 
 // Mutable: the write endpoints change it, and /__reset restores it between tests.
 let USERS = makeUsers();
+/** Connections revoked during a test, so the detail endpoints agree with the list. */
+let DISCONNECTED = new Set<string>();
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8787);
 
@@ -33,6 +43,7 @@ const server = Bun.serve({
 
 		if (pathname === '/__reset') {
 			USERS = makeUsers();
+			DISCONNECTED = new Set();
 			return new Response(null, { status: 204 });
 		}
 
@@ -63,6 +74,7 @@ const server = Bun.serve({
 				first_name: body.first_name ?? null,
 				last_name: body.last_name ?? null,
 				email: body.email ?? null,
+				external_user_id: body.external_user_id ?? null,
 				last_synced_at: null,
 				last_synced_provider: null,
 				has_active_connection: false,
@@ -70,6 +82,77 @@ const server = Bun.serve({
 			};
 			USERS.unshift(created);
 			return json(created, 201);
+		}
+
+		const inviteMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)\/invitation-code$/);
+		if (inviteMatch && request.method === 'POST') {
+			return json(
+				{
+					id: 'invite-1',
+					code: 'ABCD-1234',
+					user_id: inviteMatch[1],
+					expires_at: '2026-09-09T12:00:00Z',
+					created_at: '2026-09-08T12:00:00Z'
+				},
+				201
+			);
+		}
+
+		const connectionMatch = pathname.match(
+			/^\/api\/v1\/users\/([^/]+)\/connections\/([^/]+)(\/data)?$/
+		);
+		if (connectionMatch && request.method === 'DELETE') {
+			const user = USERS.find((candidate) => candidate.id === connectionMatch[1]);
+			if (!user) return json({ detail: 'User not found' }, 404);
+			// Both revoke and purge end the connection, which is what the UI reads.
+			user.connections = user.connections.filter((c) => c.provider !== connectionMatch[2]);
+			DISCONNECTED.add(`${connectionMatch[1]}:${connectionMatch[2]}`);
+			return new Response(null, { status: 204 });
+		}
+
+		const syncMatch = pathname.match(
+			/^\/api\/v1\/providers\/([^/]+)\/users\/([^/]+)\/sync(\/historical)?$/
+		);
+		if (syncMatch && request.method === 'POST') {
+			return json({ status: 'queued', provider: syncMatch[1] });
+		}
+
+		const detailMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)(\/.+)?$/);
+		if (detailMatch && request.method === 'GET') {
+			const user = USERS.find((candidate) => candidate.id === detailMatch[1]);
+			if (!user) return json({ detail: 'User not found' }, 404);
+
+			const connected = user.connections.length > 0;
+			switch (detailMatch[2]) {
+				case undefined: {
+					// The backend derives these from the connections, so the mock must
+					// too — otherwise the header contradicts the provider cards.
+					const latest = connected ? makeConnections(user.id)[0] : null;
+					return json({
+						...user,
+						last_synced_at: latest?.last_synced_at ?? null,
+						last_synced_provider: latest?.provider ?? null,
+						has_active_connection: connected,
+						connections: null,
+						// Only one user gates the tab on, so a test can assert both cases.
+						has_womens_health_data: user.first_name === 'Zofia'
+					});
+				}
+				case '/connections':
+					return json(
+						connected
+							? makeConnections(user.id).filter(
+									(c) => !DISCONNECTED.has(`${user.id}:${c.provider}`)
+								)
+							: []
+					);
+				case '/sync/history':
+					return json(connected ? makeSyncHistory(user.id) : []);
+				case '/sync/runs':
+					return json(connected ? makeRecentRuns(user.id) : []);
+				default:
+					return json({ detail: 'Not found' }, 404);
+			}
 		}
 
 		const userMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)$/);
@@ -86,7 +169,8 @@ const server = Bun.serve({
 			Object.assign(USERS[index], {
 				first_name: body.first_name ?? null,
 				last_name: body.last_name ?? null,
-				email: body.email ?? null
+				email: body.email ?? null,
+				external_user_id: body.external_user_id ?? null
 			});
 			return json(USERS[index]);
 		}

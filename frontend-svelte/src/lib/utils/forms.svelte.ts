@@ -1,18 +1,17 @@
 import type { SubmitFunction } from '@sveltejs/kit';
 
 /**
- * Shared submit behaviour for the dialog forms: track submission, close on
- * success, and never reset — the fields are bound to local state, and a failed
- * submit must keep what was typed.
+ * Shared submit behaviour: track submission and never reset — fields are bound
+ * to local state, and a failed submit must keep what was typed.
  */
-export function createDialogSubmit(close: () => void) {
+export function createSubmitFlag(onSuccess?: () => void) {
 	let submitting = $state(false);
 
 	const enhance: SubmitFunction = () => {
 		submitting = true;
 		return async ({ result, update }) => {
 			submitting = false;
-			if (result.type === 'success') close();
+			if (result.type === 'success') onSuccess?.();
 			await update({ reset: false });
 		};
 	};
@@ -24,3 +23,6 @@ export function createDialogSubmit(close: () => void) {
 		enhance
 	};
 }
+
+/** A dialog form is the same thing, plus closing itself once it succeeds. */
+export const createDialogSubmit = (close: () => void) => createSubmitFlag(close);

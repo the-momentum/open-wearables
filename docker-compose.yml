@@ -236,6 +236,8 @@ services:
     environment:
       # Inside the network the browser never calls FastAPI directly, so this is
       # the internal service address, not localhost.
+      # Shortcut for the server's own hop; VITE_API_URL from the env file stays
+      # the address a browser or phone dials.
       - API_URL=http://app:8000
       - REDIS_URL=redis://redis:6379/2
     ports:

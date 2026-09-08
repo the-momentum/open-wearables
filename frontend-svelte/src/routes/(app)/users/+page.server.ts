@@ -1,18 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { resolve } from '$app/paths';
-import { ApiError } from '$lib/server/api';
+import { attempt } from '$lib/server/form';
+import { requireToken } from '$lib/server/guard';
 import { fetchProviders } from '$lib/server/providers';
-import { createUser, deleteUser, fetchUsers, updateUser, type UserInput } from '$lib/server/users';
+import { createUser, deleteUser, fetchUsers, readUserInput, updateUser } from '$lib/server/users';
 import { parseUsersQuery, usersQueryHref, withUsersQuery } from '$lib/users/query';
 import type { Actions, PageServerLoad } from './$types';
-
-/** Loads and actions run concurrently with the layout guard, so neither can
- *  assume it ran. */
-async function requireToken(locals: App.Locals): Promise<string> {
-	const accessToken = await locals.auth.accessToken();
-	if (!accessToken) redirect(303, resolve('/login'));
-	return accessToken;
-}
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	const accessToken = await requireToken(locals);
@@ -32,36 +24,10 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	return { query, users, providers };
 };
 
-function readInput(form: FormData): UserInput {
-	const field = (name: string) => String(form.get(name) ?? '').trim() || undefined;
-	return { first_name: field('first_name'), last_name: field('last_name'), email: field('email') };
-}
-
-/** Echoes the submitted values back so a rejected form keeps what was typed. */
-async function attempt<T extends Record<string, unknown>>(
-	action: string,
-	context: T,
-	work: () => Promise<unknown>
-) {
-	try {
-		await work();
-	} catch (error) {
-		return fail(400, { action, ...context, message: describe(error) });
-	}
-	return { action };
-}
-
-function describe(error: unknown): string {
-	if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
-	if (error.status === 409) return 'A user with that email already exists.';
-	if (error.status === 404) return 'That user no longer exists.';
-	return error.message;
-}
-
 export const actions: Actions = {
 	create: async ({ request, locals }) => {
 		const accessToken = await requireToken(locals);
-		const input = readInput(await request.formData());
+		const input = readUserInput(await request.formData());
 
 		if (!input.first_name && !input.last_name && !input.email) {
 			return fail(400, { action: 'create', ...input, message: 'Enter a name or an email.' });
@@ -73,7 +39,7 @@ export const actions: Actions = {
 		const accessToken = await requireToken(locals);
 		const form = await request.formData();
 		const id = String(form.get('id') ?? '');
-		const input = readInput(form);
+		const input = readUserInput(form);
 
 		return attempt('update', { id, ...input }, () => updateUser(id, input, accessToken));
 	},

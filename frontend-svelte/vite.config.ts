@@ -24,6 +24,12 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 			adapter: adapter(),
+			// The React frontend has always exposed the backend address as
+			// VITE_API_URL, and customers set it in their own deployments. Making
+			// VITE_ the public prefix reuses that variable instead of inventing a
+			// second name for the same value. API_URL and REDIS_URL match neither
+			// this nor a private prefix of "", so they stay server-only.
+			env: { publicPrefix: 'VITE_' },
 			// Makes `version` from $app/environment the package version rather than
 			// SvelteKit's default build timestamp, so the sidebar can show it.
 			version: { name: version }
