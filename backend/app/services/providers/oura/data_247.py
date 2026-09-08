@@ -15,7 +15,7 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -30,7 +30,7 @@ from app.schemas.providers.oura import (
     OuraDailySleepJSON,
     OuraSleepJSON,
 )
-from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInfoJSON
+from app.schemas.providers.oura.imports import OuraIntervalData, OuraMetJSON, OuraPersonalInfoJSON
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
@@ -199,6 +199,39 @@ class Oura247Data(Base247DataTemplate):
             )
         return result
 
+    @staticmethod
+    def _expand_met_series(met: OuraMetJSON | None, class_5_min: str | None) -> list[dict[str, Any]]:
+        """Expand an Oura intraday MET series into individual timestamped samples."""
+        if met is None or not met.items or not met.interval or met.interval < 0 or class_5_min is None:
+            return []
+
+        start = parse_iso_datetime(met.timestamp)
+        if start is None or start.tzinfo is None:
+            return []
+
+        zone_offset = None
+        if (utcoff := start.utcoffset()) is not None:
+            zone_offset = offset_to_iso(int(utcoff.total_seconds()))
+
+        measured_seconds = len(class_5_min) * 300
+        measured_items = len(met.items) if measured_seconds == 86_400 else measured_seconds // int(met.interval)
+        non_wear_value = 0.1
+
+        samples = []
+        for i, value in enumerate(met.items[:measured_items]):
+            if value is None or value == non_wear_value:
+                continue
+
+            elapsed_seconds = met.interval * i
+            try:
+                recorded_at = start + timedelta(seconds=elapsed_seconds)
+            except OverflowError:
+                return []
+
+            samples.append({"recorded_at": recorded_at, "value": value, "zone_offset": zone_offset})
+
+        return samples
+
     def normalize_activity_samples(
         self,
         raw_samples: list[dict[str, Any]],
@@ -213,6 +246,7 @@ class Oura247Data(Base247DataTemplate):
             "energy": [],
             "distance": [],
             "active_time": [],
+            "met": [],
         }
 
         for activity in activity_items:
@@ -260,6 +294,7 @@ class Oura247Data(Base247DataTemplate):
                         "zone_offset": activity_zone_offset,
                     }
                 )
+            result["met"].extend(self._expand_met_series(activity.met, activity.class_5_min))
 
         return result, activity_scores
 
@@ -286,7 +321,7 @@ class Oura247Data(Base247DataTemplate):
                             zone_offset=item.get("zone_offset"),
                             value=Decimal(str(item["value"])),
                             series_type=series_type,
-                            is_daily_total=True,
+                            is_daily_total=daily_total_flag(series_type, is_daily=True),
                         )
                     )
                 except Exception as e:
