@@ -721,12 +721,16 @@ To page through results, pass `cursor=<next_cursor>` until `has_more` is `false`
     }
     ```
     `entry_source` and `intensity` are normalized into a closed vocabulary, independent of the
-    reporting provider - `entry_source` is one of `manual` / `automatic` / `unknown` (`manual`
-    only for hand-entered/self-reported data with no device measurements; a file like FIT/GPX
-    uploaded from another device is still real measured data, so it counts as `automatic`),
+    reporting provider - `entry_source` is one of `manual` / `automatic` / `unknown`,
     `intensity` is one of `low` / `moderate` / `high` / `unknown`. Both are `null` when the
     provider doesn't report them at all - see the
     [coverage matrix](/providers/coverage#workout-data-coverage) for which providers do.
+    `manual` means self-reported with no device measurements behind it; a file recorded on
+    another device and uploaded later still counts as `automatic`.
+
+    `name` carries the provider's own label for the workout - the field listed as `label` in
+    the coverage matrix. It is often provider-generated rather than user-written (Garmin
+    autogenerates names like `"Wroclaw Running"`), so it is not a reliable grouping key.
   </Tab>
   <Tab title="HealthScore">
     ```json

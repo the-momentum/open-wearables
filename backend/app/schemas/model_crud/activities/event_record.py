@@ -35,7 +35,6 @@ class EventRecordMetrics(TypedDict, total=False):
     sleep_light_minutes: int | None
     sleep_awake_minutes: int | None
 
-    # Per-workout provenance/metadata some providers expose but others don't.
     entry_source: EntrySource | None
     intensity: WorkoutIntensity | None
     label: str | None

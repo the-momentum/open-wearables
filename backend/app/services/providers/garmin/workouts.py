@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
-from app.constants.entry_source.garmin import get_unified_entry_source
+from app.constants.entry_source import get_unified_garmin_entry_source
 from app.constants.workout_types.garmin import get_unified_workout_type
 from app.database import DbSession
 from app.schemas.model_crud.activities import (
@@ -196,7 +196,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "average_cadence": average_cadence,
         }
 
-        entry_source = get_unified_entry_source(raw_workout.manual, raw_workout.isWebUpload)
+        entry_source = get_unified_garmin_entry_source(raw_workout.manual, raw_workout.isWebUpload)
         if entry_source is not None:
             metrics["entry_source"] = entry_source
 

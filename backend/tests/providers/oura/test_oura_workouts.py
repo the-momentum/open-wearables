@@ -90,9 +90,8 @@ class TestOuraWorkoutsNormalization:
         assert float(detail.distance) == pytest.approx(5000.0)
 
     def test_normalize_workout_provenance(self, workouts: OuraWorkouts, sample_oura_workout: OuraWorkoutJSON) -> None:
-        """Oura's per-workout source/intensity/label must reach the detail record, not the
-        provider-level EventRecordCreate.source (which stays "oura"), and Oura's raw
-        vocabulary ("autodetected"/"moderate") must be normalized to the unified enums."""
+        """Oura's per-workout `source` must not be confused with EventRecordCreate.source,
+        which stays the provider identifier."""
         user_id = uuid4()
         record, detail = workouts._normalize_workout(sample_oura_workout, user_id)
 

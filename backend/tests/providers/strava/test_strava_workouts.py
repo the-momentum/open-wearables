@@ -44,7 +44,7 @@ class TestStravaWorkoutsNormalization:
     def test_normalize_workout_manual_entry(self, workouts: StravaWorkouts) -> None:
         record, detail = workouts._normalize_workout(self._activity(manual=True), uuid4())
 
-        assert record.source == "strava"  # provider identifier, unrelated to entry_source
+        assert record.source == "strava"
         assert detail.entry_source == EntrySource.MANUAL
         assert detail.label == "Evening Ride"
 
@@ -57,3 +57,25 @@ class TestStravaWorkoutsNormalization:
         _, detail = workouts._normalize_workout(self._activity(), uuid4())
 
         assert detail.entry_source is None
+
+    def test_oversized_name_does_not_abort_the_batch(self, workouts: StravaWorkouts) -> None:
+        """An overlong name is truncated so the surrounding activities still import."""
+        activities = [
+            self._activity(manual=False),
+            StravaActivityJSON(
+                id=999,
+                name="x" * 400,
+                type="Ride",
+                sport_type="Ride",
+                start_date="2024-01-15T18:00:00Z",
+                elapsed_time=3600,
+                manual=False,
+            ),
+            self._activity(manual=True),
+        ]
+
+        details = [workouts._normalize_workout(a, uuid4())[1] for a in activities]
+
+        assert len(details) == 3
+        assert details[1].label == "x" * 255
+        assert details[2].entry_source == EntrySource.MANUAL

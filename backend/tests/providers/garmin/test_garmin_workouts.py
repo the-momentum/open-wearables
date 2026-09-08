@@ -151,9 +151,8 @@ class TestGarminWorkouts:
         assert metrics["steps_count"] == 0
 
     def test_build_metrics_entry_source_and_label(self, garmin_workouts: GarminWorkouts) -> None:
-        """manual=True is self-reported data -> MANUAL. isWebUpload=True is a real FIT/GPX
-        file from another device (e.g. Wahoo/Coros) uploaded to Garmin Connect - it's still
-        measured data, not self-reported, so it must map to AUTOMATIC, not MANUAL."""
+        """manual=True is a hand-typed Connect entry -> MANUAL; isWebUpload=True is a real
+        file from another device, still measured data -> AUTOMATIC."""
         base = {
             "userId": "user_123",
             "activityId": "act_manual",
@@ -175,8 +174,12 @@ class TestGarminWorkouts:
         auto = GarminActivityJSON(**base, manual=False, isWebUpload=False)
         assert garmin_workouts._build_metrics(auto)["entry_source"] == EntrySource.AUTOMATIC
 
-        unknown = GarminActivityJSON(**base)
-        assert "entry_source" not in garmin_workouts._build_metrics(unknown)
+        # The shape every real `activities` push has.
+        real_push = GarminActivityJSON(**base, isWebUpload=False)
+        assert garmin_workouts._build_metrics(real_push)["entry_source"] == EntrySource.AUTOMATIC
+
+        no_flags = GarminActivityJSON(**base)
+        assert "entry_source" not in garmin_workouts._build_metrics(no_flags)
 
         assert garmin_workouts._build_metrics(manual)["label"] == "Trail Run"
 
