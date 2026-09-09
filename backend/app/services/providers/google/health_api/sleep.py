@@ -117,6 +117,7 @@ class GoogleHealthApiSleep:
         record = EventRecordCreate(
             id=record_id,
             category="sleep",
+            type="sleep_session",
             provider=ProviderName.GOOGLE.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
