@@ -12,6 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
+  useAllWorkouts,
   useWorkouts,
   useTimeSeries,
   useDeleteWorkout,
@@ -372,20 +373,19 @@ export function WorkoutSection({
   const handleNextPage = () => pagination.goToNextPage(nextCursor);
   const handlePrevPage = pagination.goToPrevPage;
 
-  // Fetch workouts for summary (with date filter, larger limit)
-  const { data: summaryWorkouts, isLoading: summaryLoading } = useWorkouts(
+  // Fetch workouts for summary (date range filtered)
+  const { data: summaryWorkouts, isLoading: summaryLoading } = useAllWorkouts(
     userId,
     {
       start_date: dateToTimestamp(startDate),
       end_date: dateToTimestamp(endDate),
-      limit: 100,
       sort_order: 'desc',
     }
   );
 
   // Calculate summary stats from date-filtered workouts
   const stats = useMemo(
-    () => calculateWorkoutStats(summaryWorkouts?.data || []),
+    () => calculateWorkoutStats(summaryWorkouts || []),
     [summaryWorkouts]
   );
 
