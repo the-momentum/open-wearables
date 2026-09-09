@@ -117,6 +117,16 @@ class GoogleHealthApiSleep:
         record = EventRecordCreate(
             id=record_id,
             category="sleep",
+            # Parche local (health-stack D77): sin `type` la sesion queda invisible para
+            # find_adjacent_sleep_record, que filtra por type == "sleep_session"
+            # (event_record_repository.py). Google era el UNICO proveedor que no lo ponia
+            # -whoop, suunto, oura, garmin, sensorbio y ultrahuman si-, asi que sus sesiones
+            # nunca entraban en la rama que REESCRIBE el detalle: la reinsercion chocaba con
+            # el indice unico, devolvia la fila vieja, y el detalle se quedaba como estaba.
+            # Consecuencia real: la noche del 8 al 9 de septiembre de 2026 se publico sin
+            # clasificar a las 07:59:22 y clasificada un segundo despues; las fases llevaban
+            # cinco horas en la API de Google y no entraron nunca.
+            type="sleep_session",
             provider=ProviderName.GOOGLE.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,

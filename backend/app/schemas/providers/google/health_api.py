@@ -37,6 +37,14 @@ class SeriesField:
     field: str
     subfield: str | None = None
     scale: Decimal = Decimal(1)
+    zero_is_absent: bool = False
+    """Treat an exact ``0`` as "not measured" rather than as a measurement.
+
+    Off by default, because zero is a real reading for most metrics (no steps, no active
+    energy). It is not for a dispersion statistic: a standard deviation of exactly 0 over a
+    sampling window would mean every interbeat interval was identical, which no wearable
+    reports. Devices that do not compute the metric send 0 instead of omitting the field.
+    """
 
 
 @dataclass(frozen=True)

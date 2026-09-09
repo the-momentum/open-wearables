@@ -189,8 +189,10 @@ class GoogleHealth247Data(Base247DataTemplate):
                 recorded_at = parse_rfc3339(point.get("startTime"))
                 if not isinstance(value_obj, dict) or recorded_at is None:
                     continue
-                for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
+                for series_type, field, subfield, scale, zero_is_absent in self._bindings(metric.series_type, spec):
                     value = read_number(value_obj, field, subfield, scale)
+                    if zero_is_absent and value == 0:
+                        continue
                     if value is not None:
                         samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
         return samples
@@ -290,8 +292,13 @@ class GoogleHealth247Data(Base247DataTemplate):
                 continue
             # Only list points carry a dataSource; reconciled points are already merged.
             device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
-            for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
+            for series_type, field, subfield, scale, zero_is_absent in self._bindings(metric.series_type, spec):
                 value = read_number(value_obj, field, subfield, scale)
+                # A field flagged ``zero_is_absent`` reports 0 when the device did not compute
+                # the metric. Storing that as a sample is worse than storing nothing: it reads
+                # as a measurement and silently drags every average that uses the series.
+                if zero_is_absent and value == 0:
+                    continue
                 if value is not None:
                     samples.append(
                         self._sample(
@@ -304,11 +311,11 @@ class GoogleHealth247Data(Base247DataTemplate):
     def _bindings(
         primary: SeriesType,
         spec: RollupSpec | ListSpec,
-    ) -> Iterator[tuple[SeriesType, str, str | None, Decimal]]:
-        """Yield (series, field, subfield, scale) for the spec's primary + extra series."""
-        yield primary, spec.field, spec.subfield, spec.scale
+    ) -> Iterator[tuple[SeriesType, str, str | None, Decimal, bool]]:
+        """Yield (series, field, subfield, scale, zero_is_absent) for primary + extra series."""
+        yield primary, spec.field, spec.subfield, spec.scale, False
         for sf in spec.extra or ():
-            yield sf.series_type, sf.field, sf.subfield, sf.scale
+            yield sf.series_type, sf.field, sf.subfield, sf.scale, sf.zero_is_absent
 
     @staticmethod
     def _point_time(point: dict[str, Any], shape: TimeShape) -> tuple[datetime | None, str | None]:

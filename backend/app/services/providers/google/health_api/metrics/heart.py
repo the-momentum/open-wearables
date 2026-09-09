@@ -39,7 +39,13 @@ HEART_METRICS: tuple[DataTypeMetric, ...] = (
         list_spec=ListSpec(
             "rootMeanSquareOfSuccessiveDifferencesMilliseconds",
             TimeShape.SAMPLE,
-            extra=(SeriesField(SeriesType.heart_rate_variability_sdnn, "standardDeviationMilliseconds"),),
+            extra=(
+                SeriesField(
+                    SeriesType.heart_rate_variability_sdnn,
+                    "standardDeviationMilliseconds",
+                    zero_is_absent=True,
+                ),
+            ),
         ),
     ),
 )
