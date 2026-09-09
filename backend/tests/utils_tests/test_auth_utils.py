@@ -275,9 +275,9 @@ class TestRequireApiKeyDetached:
 
         with patch("app.services.api_key_service.SessionLocal") as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
-            result = await _require_api_key_detached(token=None, x_open_wearables_api_key=api_key.id)
+            result = await _require_api_key_detached(token=None, x_open_wearables_api_key=api_key.plain_key)
 
-        assert result == api_key.id
+        assert result == str(api_key.id)
 
     @pytest.mark.asyncio
     async def test_rejects_a_request_with_neither(self, db: Session) -> None:

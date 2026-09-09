@@ -131,7 +131,7 @@ async def get_sdk_auth(
     # Fall back to API key (backwards compatibility)
     if x_open_wearables_api_key:
         api_key = api_key_service.validate_api_key(db, x_open_wearables_api_key)
-        return SDKAuthContext(auth_type="api_key", api_key_id=api_key.id)
+        return SDKAuthContext(auth_type="api_key", api_key_id=str(api_key.id))
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

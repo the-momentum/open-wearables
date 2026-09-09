@@ -48,7 +48,7 @@ class TestConnectionsEndpoints:
             status=ConnectionStatus.ACTIVE,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -65,7 +65,7 @@ class TestConnectionsEndpoints:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -82,7 +82,7 @@ class TestConnectionsEndpoints:
         providers = ["garmin", "polar", "suunto", "apple"]
         [UserConnectionFactory(user=user, provider=provider) for provider in providers]
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -114,7 +114,7 @@ class TestConnectionsEndpoints:
             status=ConnectionStatus.EXPIRED,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -136,7 +136,7 @@ class TestConnectionsEndpoints:
         connection1 = UserConnectionFactory(user=user1, provider="garmin")
         UserConnectionFactory(user=user2, provider="polar")
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - get user1's connections
         response = client.get(f"/api/v1/users/{user1.id}/connections", headers=headers)
@@ -160,7 +160,7 @@ class TestConnectionsEndpoints:
             status=ConnectionStatus.ACTIVE,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -216,7 +216,7 @@ class TestConnectionsEndpoints:
         """Test handling of invalid user ID format returns 400."""
         # Arrange
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - FastAPI/Starlette validates UUID path params and returns 400 Bad Request
         response = client.get("/api/v1/users/not-a-uuid/connections", headers=headers)
@@ -230,7 +230,7 @@ class TestConnectionsEndpoints:
         from uuid import uuid4
 
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         nonexistent_user_id = uuid4()
 
         # Act
@@ -255,7 +255,7 @@ class TestConnectionsEndpoints:
             last_synced_at=last_synced,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -280,7 +280,7 @@ class TestConnectionsEndpoints:
             refresh_token="secret_refresh_token",
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"/api/v1/users/{user.id}/connections", headers=headers)
@@ -309,7 +309,7 @@ class TestDisconnectEndpoint:
             status=ConnectionStatus.ACTIVE,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
@@ -332,7 +332,7 @@ class TestDisconnectEndpoint:
             token_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
@@ -353,7 +353,7 @@ class TestDisconnectEndpoint:
             status=ConnectionStatus.REVOKED,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
@@ -366,7 +366,7 @@ class TestDisconnectEndpoint:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
@@ -384,7 +384,7 @@ class TestDisconnectEndpoint:
             status=ConnectionStatus.EXPIRED,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/polar", headers=headers)
@@ -399,7 +399,7 @@ class TestDisconnectEndpoint:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/not_a_provider", headers=headers)
@@ -443,7 +443,7 @@ class TestDisconnectEndpoint:
             token_expires_at=None,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/apple", headers=headers)
@@ -461,7 +461,7 @@ class TestDisconnectEndpoint:
         UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user2, provider="garmin", status=ConnectionStatus.ACTIVE)
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - disconnect user1's garmin
         response = client.delete(f"/api/v1/users/{user1.id}/connections/garmin", headers=headers)
@@ -494,7 +494,7 @@ class TestDeleteProviderDataEndpoint:
         ds = self._seed_provider_data(user, "apple")
         ds_id = ds.id
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data", headers=headers)
@@ -520,7 +520,7 @@ class TestDeleteProviderDataEndpoint:
         suunto_ds = self._seed_provider_data(user, "suunto")
         suunto_ds_id = suunto_ds.id
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data", headers=headers)
@@ -544,7 +544,7 @@ class TestDeleteProviderDataEndpoint:
         self._seed_provider_data(user1, "apple")
         self._seed_provider_data(user2, "apple")
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user1.id}/connections/apple/data", headers=headers)
@@ -562,7 +562,7 @@ class TestDeleteProviderDataEndpoint:
         UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.REVOKED)
         self._seed_provider_data(user, "apple")
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/apple/data", headers=headers)
@@ -577,7 +577,7 @@ class TestDeleteProviderDataEndpoint:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin/data", headers=headers)
@@ -618,7 +618,7 @@ class TestDisconnectDeregistration:
             access_token="garmin_access_token",
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
@@ -650,7 +650,7 @@ class TestDisconnectDeregistration:
             access_token="garmin_access_token",
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
@@ -674,7 +674,7 @@ class TestDisconnectDeregistration:
             access_token=None,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)

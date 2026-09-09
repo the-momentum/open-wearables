@@ -517,10 +517,16 @@ export interface ActivitySummary {
 }
 
 export interface ApiKey {
-  id: string; // This is the actual API key value (sk-...)
+  id: string;
   name: string;
-  created_by: string;
+  key_prefix: string; // First characters of the key (sk-xxxxxxx) - the full value is never stored
+  created_by: string | null;
   created_at: string;
+}
+
+/** Returned only on create / rotate - the full key cannot be retrieved again. */
+export interface ApiKeyWithSecret extends ApiKey {
+  key: string;
 }
 
 export interface ApiKeyCreate {

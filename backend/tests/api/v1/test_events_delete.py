@@ -38,7 +38,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
@@ -54,7 +54,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
@@ -68,7 +68,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{uuid4()}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -82,7 +82,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{other_user.id}/events/workouts/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -98,7 +98,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -117,7 +117,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
@@ -133,7 +133,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
@@ -145,7 +145,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{uuid4()}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -159,7 +159,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{other_user.id}/events/sleep/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -174,7 +174,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
