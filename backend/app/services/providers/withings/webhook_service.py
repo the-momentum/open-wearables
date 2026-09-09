@@ -26,10 +26,10 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.auth import LiveSyncMode
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
-from app.services.providers.withings.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.oauth import WithingsTokenError
-from app.services.providers.withings.rpc_client import withings_request
-from app.services.providers.withings.tasks import REGISTER_USER_WEBHOOKS_TASK
+from app.services.providers.withings.utils.applis import SUBSCRIBED_APPLIS
+from app.services.providers.withings.utils.rpc_client import withings_request
+from app.services.providers.withings.utils.tasks import REGISTER_USER_WEBHOOKS_TASK
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 

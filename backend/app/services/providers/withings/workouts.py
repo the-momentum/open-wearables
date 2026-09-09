@@ -16,8 +16,8 @@ from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDeta
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.services.providers.withings.rpc_client import paginate
-from app.services.providers.withings.timezone import zone_offset_at
+from app.services.providers.withings.utils.rpc_client import paginate
+from app.services.providers.withings.utils.timezone import zone_offset_at
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 

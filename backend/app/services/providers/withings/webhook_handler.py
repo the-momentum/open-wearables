@@ -21,8 +21,8 @@ from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
 from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
-from app.services.providers.withings.applis import APPLI_DOMAIN, SUBSCRIBED_APPLIS, Domain
 from app.services.providers.withings.data_247 import Withings247Data
+from app.services.providers.withings.utils.applis import APPLI_DOMAIN, SUBSCRIBED_APPLIS, Domain
 from app.services.providers.withings.workouts import WithingsWorkouts
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured

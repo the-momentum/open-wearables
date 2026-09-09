@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.schemas.providers.withings import WithingsMeasure
-from app.services.providers.withings import rpc_client
+from app.services.providers.withings.utils import rpc_client
 
 
 def _request(**overrides: Any) -> Any:
@@ -30,7 +30,7 @@ def test_scale_measure_applies_power_of_ten() -> None:
     assert rpc_client.scale_measure(WithingsMeasure(value=65, type=11, unit=0)) == Decimal("65")
 
 
-@patch("app.services.providers.withings.rpc_client.make_authenticated_request")
+@patch("app.services.providers.withings.utils.rpc_client.make_authenticated_request")
 def test_request_posts_form_data_and_unwraps_body(mock_req: MagicMock) -> None:
     mock_req.return_value = {"status": 0, "body": {"measuregrps": [1, 2]}}
 
@@ -46,7 +46,7 @@ def test_request_posts_form_data_and_unwraps_body(mock_req: MagicMock) -> None:
     ("withings_status", "http_status"),
     [(100, 401), (601, 429), (503, 502)],
 )
-@patch("app.services.providers.withings.rpc_client.make_authenticated_request")
+@patch("app.services.providers.withings.utils.rpc_client.make_authenticated_request")
 def test_nonzero_status_is_an_error_even_on_http_200(
     mock_req: MagicMock, withings_status: int, http_status: int
 ) -> None:
@@ -59,7 +59,7 @@ def test_nonzero_status_is_an_error_even_on_http_200(
     assert exc_info.value.status_code == http_status
 
 
-@patch("app.services.providers.withings.rpc_client.make_authenticated_request")
+@patch("app.services.providers.withings.utils.rpc_client.make_authenticated_request")
 def test_paginate_follows_more_and_keeps_first_page_envelope(mock_req: MagicMock) -> None:
     mock_req.side_effect = [
         {"status": 0, "body": {"timezone": "Europe/Paris", "measuregrps": [1], "more": 1, "offset": 1}},
@@ -73,7 +73,7 @@ def test_paginate_follows_more_and_keeps_first_page_envelope(mock_req: MagicMock
     assert mock_req.call_args_list[1].kwargs["form_data"]["offset"] == 1
 
 
-@patch("app.services.providers.withings.rpc_client.make_authenticated_request")
+@patch("app.services.providers.withings.utils.rpc_client.make_authenticated_request")
 def test_paginate_rejects_non_advancing_offset(mock_req: MagicMock) -> None:
     mock_req.return_value = {"status": 0, "body": {"measuregrps": [1], "more": 1, "offset": 0}}
 
