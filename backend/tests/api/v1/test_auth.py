@@ -557,3 +557,69 @@ class TestDeleteDeveloperById:
 
         # Assert
         assert response.status_code in [400, 422]
+
+
+class TestPasswordChangeRevokesRefreshTokens:
+    """Changing a developer's password must invalidate refresh tokens issued before the change."""
+
+    @staticmethod
+    def _login(client: TestClient, api_v1_prefix: str, email: str, password: str) -> str:
+        response = client.post(f"{api_v1_prefix}/auth/login", data={"username": email, "password": password})
+        assert response.status_code == 200
+        return response.json()["refresh_token"]
+
+    def test_change_password_revokes_existing_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        developer = DeveloperFactory(email="victim@example.com", password="OldPassword123")
+        old_refresh_token = self._login(client, api_v1_prefix, "victim@example.com", "OldPassword123")
+        headers = developer_auth_headers(developer.id)
+
+        response = client.post(
+            f"{api_v1_prefix}/auth/change-password",
+            json={
+                "current_password": "OldPassword123",
+                "new_password": "NewPassword456",
+                "confirm_password": "NewPassword456",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Invalid or revoked refresh token"
+
+    def test_cross_developer_password_update_revokes_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        victim = DeveloperFactory(email="victim@example.com", password="OldPassword123")
+        attacker = DeveloperFactory(email="other@example.com", password="Whatever123")
+        victim_refresh_token = self._login(client, api_v1_prefix, "victim@example.com", "OldPassword123")
+
+        response = client.patch(
+            f"{api_v1_prefix}/developers/{victim.id}",
+            json={"password": "NewPassword456"},
+            headers=developer_auth_headers(attacker.id),
+        )
+        assert response.status_code == 200
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": victim_refresh_token})
+        assert response.status_code == 401
+
+    def test_update_without_password_keeps_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        developer = DeveloperFactory(email="dev@example.com", password="OldPassword123")
+        refresh_token = self._login(client, api_v1_prefix, "dev@example.com", "OldPassword123")
+
+        response = client.patch(
+            f"{api_v1_prefix}/auth/me",
+            json={"first_name": "Renamed"},
+            headers=developer_auth_headers(developer.id),
+        )
+        assert response.status_code == 200
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": refresh_token})
+        assert response.status_code == 200
+        assert "access_token" in response.json()
