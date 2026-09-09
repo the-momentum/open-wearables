@@ -20,7 +20,7 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.utils.tasks import REGISTER_USER_WEBHOOKS_TASK
+from app.services.providers.withings.handlers.tasks import REGISTER_USER_WEBHOOKS_TASK
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)

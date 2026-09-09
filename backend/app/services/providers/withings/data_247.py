@@ -31,8 +31,8 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP, MEASURE_UNIT_FACTOR
-from app.services.providers.withings.utils.rpc_client import paginate, scale_measure
-from app.services.providers.withings.utils.timezone import local_day_start, zone_offset_at
+from app.services.providers.withings.handlers.rpc_client import paginate, scale_measure
+from app.services.providers.withings.handlers.timezone import local_day_start, zone_offset_at
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import parse_datetime_or_default
 from app.utils.sentry_helpers import log_and_capture_error

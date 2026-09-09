@@ -10,8 +10,8 @@ from pydantic import SecretStr
 
 from app.schemas.auth import LiveSyncMode
 from app.services.providers.withings import webhook_service
+from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.oauth import WithingsOAuth
-from app.services.providers.withings.utils.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.webhook_handler import WithingsWebhookHandler
 from app.services.providers.withings.webhook_service import WithingsWebhookService
 
