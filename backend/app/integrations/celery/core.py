@@ -145,12 +145,6 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
-        "gc-stuck-garmin-backfills": {
-            "task": "app.integrations.celery.tasks.garmin.gc_task.gc_stuck_backfills",
-            "schedule": 180.0,  # Every 3 minutes
-            "args": (),
-            "kwargs": {},
-        },
         "run-daily-archival": {
             "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
             "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC

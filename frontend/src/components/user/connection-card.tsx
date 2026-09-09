@@ -10,7 +10,6 @@ import {
   MinusCircle,
   PlayCircle,
   RefreshCw,
-  RotateCcw,
   Timer,
   Trash2,
   TriangleAlert,
@@ -61,8 +60,6 @@ import {
   useSynchronizeDataFromProvider,
   useSyncHistoricalData,
   useGarminBackfillStatus,
-  useGarminCancelBackfill,
-  useRetryGarminBackfill,
 } from '@/hooks/api/use-health';
 import type { SyncStatusEvent, SyncRunSummary } from '@/lib/api';
 
@@ -279,12 +276,6 @@ function ConnectionCardComponent({
     connection.provider === 'garmin'
   );
 
-  const { mutate: cancelBackfill, isPending: isCancelling } =
-    useGarminCancelBackfill(connection.user_id);
-
-  const { mutate: retryBackfill, isPending: isRetrying } =
-    useRetryGarminBackfill(connection.user_id);
-
   const { mutate: syncHistorical, isPending: isSyncingHistorical } =
     useSyncHistoricalData(connection.provider, connection.user_id);
 
@@ -298,16 +289,6 @@ function ConnectionCardComponent({
   const isRetryPhase =
     connection.provider === 'garmin' &&
     backfillStatus?.overall_status === 'retry_in_progress';
-
-  // Check if backfill was cancelled
-  const isBackfillCancelled =
-    connection.provider === 'garmin' &&
-    backfillStatus?.overall_status === 'cancelled';
-
-  // Check if permanently failed
-  const isPermanentlyFailed =
-    connection.provider === 'garmin' &&
-    backfillStatus?.permanently_failed === true;
 
   // Get timed-out types from summary
   const timedOutTypes = backfillStatus?.summary
@@ -554,36 +535,24 @@ function ConnectionCardComponent({
         {/* Show backfill progress for Garmin */}
         {isBackfillInProgress && backfillStatus && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                {isRetryPhase && backfillStatus.retry_type ? (
-                  <span className="text-sm text-muted-foreground">
-                    Retrying {formatTypeName(backfillStatus.retry_type)}{' '}
-                    {backfillStatus.retry_window !== null && (
-                      <span>(window {backfillStatus.retry_window + 1})...</span>
-                    )}
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              {isRetryPhase && backfillStatus.retry_type ? (
+                <span className="text-sm text-muted-foreground">
+                  Retrying {formatTypeName(backfillStatus.retry_type)}{' '}
+                  {backfillStatus.retry_window !== null && (
+                    <span>(window {backfillStatus.retry_window + 1})...</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  Fetching historical data...{' '}
+                  <span className="font-medium">
+                    {backfillStatus.current_window} of{' '}
+                    {backfillStatus.total_windows} windows complete
                   </span>
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    Fetching historical data...{' '}
-                    <span className="font-medium">
-                      {backfillStatus.current_window} of{' '}
-                      {backfillStatus.total_windows} windows complete
-                    </span>
-                  </span>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs"
-                onClick={() => cancelBackfill()}
-                disabled={isCancelling}
-              >
-                <XCircle className="h-3 w-3 mr-1" />
-                Cancel
-              </Button>
+                </span>
+              )}
             </div>
             {/* Progress bar */}
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -594,98 +563,49 @@ function ConnectionCardComponent({
                 }}
               />
             </div>
-            {/* Attempt counter */}
-            {backfillStatus.attempt_count > 0 && (
-              <span className="text-xs text-muted-foreground">
-                Attempt {backfillStatus.attempt_count} of{' '}
-                {backfillStatus.max_attempts}
-              </span>
-            )}
           </div>
         )}
 
-        {/* Show cancelled backfill status */}
-        {isBackfillCancelled && (
-          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border">
-            <XCircle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">
-              Backfill cancelled
-            </span>
-          </div>
-        )}
-
-        {/* Show permanently failed state */}
-        {isPermanentlyFailed && (
-          <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
-            <XCircle className="h-4 w-4 text-destructive" />
-            <span className="text-sm text-destructive">
-              Backfill failed after {backfillStatus?.max_attempts} attempts.
-              Please disconnect and reconnect your Garmin.
-            </span>
-          </div>
-        )}
-
-        {/* Show timed-out backfill types with retry buttons (warning/amber styling) */}
-        {timedOutTypes.length > 0 &&
-          !isBackfillInProgress &&
-          !isPermanentlyFailed && (
-            <div className="space-y-2 p-3 bg-warning-muted/10 rounded-lg border border-warning-muted/20">
-              <p className="text-sm font-medium text-warning-muted dark:text-warning-muted">
-                Some data types timed out:
-              </p>
-              <div className="space-y-1.5">
-                {timedOutTypes.map(({ type, timedOutCount }) => (
-                  <div
-                    key={type}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium">
-                        {formatTypeName(type)}
-                      </span>
-                      <p className="text-xs text-muted-foreground">
-                        Timed out in {timedOutCount} window
-                        {timedOutCount > 1 ? 's' : ''}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs ml-2"
-                      onClick={() => retryBackfill(type)}
-                      disabled={isRetrying}
-                    >
-                      <RotateCcw className="h-3 w-3 mr-1" />
-                      Retry
-                    </Button>
-                  </div>
-                ))}
-              </div>
+        {/* Show timed-out backfill types (warning/amber styling) */}
+        {timedOutTypes.length > 0 && !isBackfillInProgress && (
+          <div className="space-y-2 p-3 bg-warning-muted/10 rounded-lg border border-warning-muted/20">
+            <p className="text-sm font-medium text-warning-muted dark:text-warning-muted">
+              Some data types timed out:
+            </p>
+            <div className="space-y-1.5">
+              {timedOutTypes.map(({ type, timedOutCount }) => (
+                <div key={type} className="flex items-center text-sm">
+                  <span className="font-medium">{formatTypeName(type)}</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    Timed out in {timedOutCount} window
+                    {timedOutCount > 1 ? 's' : ''}
+                  </span>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )}
 
-        {/* Show failed types (error/destructive styling, no retry) */}
-        {failedTypes.length > 0 &&
-          !isBackfillInProgress &&
-          !isPermanentlyFailed && (
-            <div className="space-y-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
-              <p className="text-sm font-medium text-destructive">
-                Some data types failed:
-              </p>
-              <div className="space-y-1.5">
-                {failedTypes.map(({ type, failedCount }) => (
-                  <div key={type} className="flex items-center text-sm">
-                    <XCircle className="h-3 w-3 text-destructive mr-2" />
-                    <span className="font-medium">{formatTypeName(type)}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      Failed in {failedCount} window
-                      {failedCount > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
+        {/* Show failed types (error/destructive styling) */}
+        {failedTypes.length > 0 && !isBackfillInProgress && (
+          <div className="space-y-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+            <p className="text-sm font-medium text-destructive">
+              Some data types failed:
+            </p>
+            <div className="space-y-1.5">
+              {failedTypes.map(({ type, failedCount }) => (
+                <div key={type} className="flex items-center text-sm">
+                  <XCircle className="h-3 w-3 text-destructive mr-2" />
+                  <span className="font-medium">{formatTypeName(type)}</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    Failed in {failedCount} window
+                    {failedCount > 1 ? 's' : ''}
+                  </span>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        )}
 
         {/* Action buttons */}
         {connection.status === 'active' && (
@@ -693,8 +613,7 @@ function ConnectionCardComponent({
             {/* Provider with a hard history cap: single constrained button */}
             {connection.max_historical_days !== null &&
               connection.max_historical_days !== undefined &&
-              !isBackfillInProgress &&
-              !isPermanentlyFailed && (
+              !isBackfillInProgress && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -721,8 +640,7 @@ function ConnectionCardComponent({
             {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
             {(connection.max_historical_days === null ||
               connection.max_historical_days === undefined) &&
-              connection.rest_pull &&
-              !isPermanentlyFailed && (
+              connection.rest_pull && (
                 <>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

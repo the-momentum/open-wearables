@@ -8,12 +8,8 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
 from app.integrations.celery.tasks import (
-    GARMIN_BACKFILL_DATA_TYPES,
     get_garmin_backfill_status,
-    reset_garmin_type_status,
-    set_garmin_cancel_flag,
     sync_vendor_data,
-    trigger_garmin_backfill_for_type,
 )
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
@@ -218,7 +214,7 @@ def sync_user_data(
 # =============================================================================
 
 
-@router.get("/garmin/users/{user_id}/backfill/status")
+@router.get("/garmin/users/{user_id}/backfill/status", deprecated=True)
 def get_garmin_backfill_status_endpoint(
     user_id: UUID,
     _api_key: ApiKeyDep,
@@ -226,22 +222,25 @@ def get_garmin_backfill_status_endpoint(
     """
     Get Garmin backfill status for backfill data types.
 
+    **Deprecated.** Backfill progress is reported through the provider-agnostic
+    sync run endpoints (`/users/{user_id}/sync/runs`, `/users/{user_id}/sync/stream`)
+    and the `sync.started` / `sync.completed` / `sync.failed` outgoing webhooks.
+    Per-type detail will move there as well; this endpoint will be removed once
+    that lands.
+
     The backfill is webhook-based and auto-triggered after OAuth connection.
     Returns status for each data type independently. Max 30 days of history.
 
     **Response Fields:**
-    - `overall_status`: pending | in_progress | complete | cancelled | retry_in_progress | permanently_failed
+    - `overall_status`: pending | in_progress | complete | retry_in_progress
     - `current_window`: Current window index (0-based)
-    - `total_windows`: Total number of 30-day windows (12)
+    - `total_windows`: Total number of 30-day windows (1)
     - `windows`: Per-window-per-type matrix with done/pending/timed_out/failed states
     - `summary`: Per-type aggregated counts (done, timed_out, failed)
     - `in_progress`: Whether backfill is currently running (true for in_progress or retry_in_progress)
     - `retry_phase`: Whether the retry phase is currently active
     - `retry_type`: Data type currently being retried (null if not retrying)
     - `retry_window`: Window index being retried (null if not retrying)
-    - `attempt_count`: Number of GC-and-retry cycles completed
-    - `max_attempts`: Maximum GC-and-retry cycles before permanently failed (3)
-    - `permanently_failed`: Whether backfill has exhausted all retry attempts
 
     **Window Cell States:**
     - `done`: Data received via webhook or Garmin API error (treated as done)
@@ -254,73 +253,6 @@ def get_garmin_backfill_status_endpoint(
         "user_id": str(user_id),
         "provider": "garmin",
         **backfill_status,
-    }
-
-
-@router.post("/garmin/users/{user_id}/backfill/cancel")
-def cancel_garmin_backfill(
-    user_id: UUID,
-    _api_key: ApiKeyDep,
-) -> dict[str, Any]:
-    """
-    Cancel an in-progress Garmin backfill for a user.
-
-    Sets a cancellation flag in Redis. The backfill will stop after the
-    current data type completes processing.
-
-    Returns 409 if no backfill is currently in progress.
-    """
-    backfill_status = get_garmin_backfill_status(str(user_id))
-    if backfill_status["overall_status"] not in ("in_progress", "retry_in_progress"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="No backfill in progress for this user",
-        )
-
-    set_garmin_cancel_flag(str(user_id))
-
-    return {
-        "success": True,
-        "user_id": str(user_id),
-        "message": "Cancel requested. Backfill will stop after current type completes.",
-    }
-
-
-@router.post("/garmin/users/{user_id}/backfill/{type_name}/retry")
-def retry_garmin_backfill_type(
-    user_id: UUID,
-    type_name: str,
-    _api_key: ApiKeyDep,
-) -> dict[str, Any]:
-    """
-    Retry backfill for a specific data type in the current window.
-
-    Resets the type status to pending and triggers a new backfill attempt
-    for the current window context. Use when a type has timed out or
-    needs re-processing.
-
-    **Valid Type Names:**
-    sleeps, dailies, activities, activityDetails, hrv
-
-    Returns:
-        Dict with retry status
-    """
-    if type_name not in GARMIN_BACKFILL_DATA_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid type: {type_name}. Valid types: {', '.join(GARMIN_BACKFILL_DATA_TYPES)}",
-        )
-
-    # Reset the type status to pending and trigger backfill
-    reset_garmin_type_status(str(user_id), type_name)
-    trigger_garmin_backfill_for_type.delay(str(user_id), type_name)
-
-    return {
-        "success": True,
-        "user_id": str(user_id),
-        "type": type_name,
-        "status": "triggered",
-        "message": f"Retry triggered for {type_name}. Data will arrive via webhook.",
     }
 
 

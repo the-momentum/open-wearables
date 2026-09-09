@@ -22,7 +22,6 @@ from app.services.providers.garmin.backfill_state import (
     get_current_window,
     get_trace_id,
     get_type_skip_count,
-    is_cancelled,
     is_retry_phase,
     mark_type_failed,
     mark_type_timed_out,
@@ -90,21 +89,6 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     user_id_str = str(user_id)
     trace_id = get_trace_id(user_id_str)
     type_trace_id = get_trace_id(user_id_str, data_type)
-
-    if is_cancelled(user_id_str):
-        current_window = get_current_window(user_id_str)
-        persist_window_results(user_id_str, current_window)
-        log_structured(
-            logger,
-            "info",
-            "Timeout check: backfill cancelled, stopping",
-            provider="garmin",
-            trace_id=trace_id,
-            type_trace_id=type_trace_id,
-            data_type=data_type,
-            user_id=user_id_str,
-        )
-        return {"status": "cancelled"}
 
     status = get_redis_client().get(_get_key(user_id_str, "types", data_type, "status"))
 

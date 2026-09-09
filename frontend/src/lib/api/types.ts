@@ -33,7 +33,11 @@ export interface UserQueryParams {
   page?: number;
   limit?: number;
   sort_by?:
-    'created_at' | 'email' | 'first_name' | 'last_name' | 'last_synced_at';
+    | 'created_at'
+    | 'email'
+    | 'first_name'
+    | 'last_name'
+    | 'last_synced_at';
   sort_order?: 'asc' | 'desc';
   search?: string;
   email?: string;
@@ -309,7 +313,13 @@ export interface Provider {
 }
 
 export type WearableProvider =
-  'fitbit' | 'garmin' | 'oura' | 'whoop' | 'strava' | 'google-fit' | 'withings';
+  | 'fitbit'
+  | 'garmin'
+  | 'oura'
+  | 'whoop'
+  | 'strava'
+  | 'google-fit'
+  | 'withings';
 
 export interface UserConnection {
   user_id: string;
@@ -351,7 +361,13 @@ export interface SleepStage {
 }
 
 export type DeviceType =
-  'watch' | 'band' | 'ring' | 'phone' | 'scale' | 'other' | 'unknown';
+  | 'watch'
+  | 'band'
+  | 'ring'
+  | 'phone'
+  | 'scale'
+  | 'other'
+  | 'unknown';
 
 export interface SourceMetadata {
   provider: string;
@@ -787,25 +803,15 @@ export interface BackfillTypeSummary {
 }
 
 export interface GarminBackfillStatus {
-  overall_status:
-    | 'pending'
-    | 'in_progress'
-    | 'complete'
-    | 'cancelled'
-    | 'retry_in_progress'
-    | 'permanently_failed';
+  overall_status: 'pending' | 'in_progress' | 'complete' | 'retry_in_progress';
   current_window: number;
   total_windows: number;
   windows: Record<string, BackfillWindowStatus>;
   summary: Record<string, BackfillTypeSummary>;
   in_progress: boolean;
-  // Phase 3: retry and GC state
   retry_phase: boolean;
   retry_type: string | null;
   retry_window: number | null;
-  attempt_count: number;
-  max_attempts: number;
-  permanently_failed: boolean;
 }
 
 export interface WebhookEventType {
