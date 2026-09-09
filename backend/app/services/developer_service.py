@@ -50,15 +50,13 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
 
         if updater.password:
             internal_updater.hashed_password = get_password_hash(updater.password)
-
-        updated = self.crud.update(db_session, developer, internal_updater)
-
-        if updater.password:
-            # Sessions issued before the password change must not survive it.
+            # Sessions issued before the password change must not survive it. Revoke before
+            # persisting the new hash: if the update fails, the old password still works and
+            # the user simply logs in again, which is safer than the reverse order.
             revoked = refresh_token_repository.revoke_all_for_developer(db_session, developer.id)
-            self.logger.info(f"Password changed for developer {developer.id}, revoked {revoked} refresh token(s)")
+            self.logger.info(f"Password change for developer {developer.id}, revoked {revoked} refresh token(s)")
 
-        return updated
+        return self.crud.update(db_session, developer, internal_updater)
 
 
 developer_service = DeveloperService(log=getLogger(__name__))

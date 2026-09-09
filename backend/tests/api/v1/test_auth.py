@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.schemas.model_crud.user_management import DeveloperUpdate
+from app.services import developer_service
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -590,21 +592,32 @@ class TestPasswordChangeRevokesRefreshTokens:
         assert response.status_code == 401
         assert response.json()["detail"] == "Invalid or revoked refresh token"
 
-    def test_cross_developer_password_update_revokes_refresh_tokens(
+    def test_update_me_with_password_revokes_refresh_tokens(
         self, client: TestClient, db: Session, api_v1_prefix: str
     ) -> None:
-        victim = DeveloperFactory(email="victim@example.com", password="OldPassword123")
-        attacker = DeveloperFactory(email="other@example.com", password="Whatever123")
-        victim_refresh_token = self._login(client, api_v1_prefix, "victim@example.com", "OldPassword123")
+        developer = DeveloperFactory(email="dev@example.com", password="OldPassword123")
+        old_refresh_token = self._login(client, api_v1_prefix, "dev@example.com", "OldPassword123")
 
         response = client.patch(
-            f"{api_v1_prefix}/developers/{victim.id}",
+            f"{api_v1_prefix}/auth/me",
             json={"password": "NewPassword456"},
-            headers=developer_auth_headers(attacker.id),
+            headers=developer_auth_headers(developer.id),
         )
         assert response.status_code == 200
 
-        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": victim_refresh_token})
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
+        assert response.status_code == 401
+
+    def test_service_level_password_update_revokes_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Any caller of update_developer_info (e.g. an administrative reset) must revoke tokens too."""
+        developer = DeveloperFactory(email="dev@example.com", password="OldPassword123")
+        old_refresh_token = self._login(client, api_v1_prefix, "dev@example.com", "OldPassword123")
+
+        developer_service.update_developer_info(db, developer.id, DeveloperUpdate(password="NewPassword456"))
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
         assert response.status_code == 401
 
     def test_update_without_password_keeps_refresh_tokens(
