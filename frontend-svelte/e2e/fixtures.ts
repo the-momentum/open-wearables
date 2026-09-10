@@ -114,7 +114,7 @@ export const makeConnections = (userId: string): MockConnection[] => [
 		provider: 'oura',
 		provider_user_id: 'oura-7',
 		provider_username: null,
-		scope: 'daily',
+		scope: 'personal daily heartrate workout',
 		status: 'active',
 		last_synced_at: '2026-09-03T22:05:00Z',
 		created_at: '2026-03-11T09:00:00Z',
@@ -134,6 +134,7 @@ export const makeConnections = (userId: string): MockConnection[] => [
 		provider: 'suunto',
 		provider_user_id: 'suunto-3',
 		provider_username: null,
+		// Garmin and Suunto configure an empty scope, so there is no badge at all.
 		scope: null,
 		status: 'expired',
 		last_synced_at: '2026-07-19T22:05:00Z',

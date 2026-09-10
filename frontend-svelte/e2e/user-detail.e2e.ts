@@ -31,6 +31,17 @@ test('shows the stored record and the connection state together', async ({ page 
 	);
 	await expect(garmin.getByRole('tooltip').first()).toContainText('at most 30 days');
 
+	// Scopes are a count beside the name; the list is behind it, not a row.
+	await garmin.getByRole('button', { name: '2 granted scopes' }).click();
+	const scopes = garmin.getByRole('tooltip').filter({ hasText: 'activity' });
+	await expect(scopes).toContainText('activity');
+	await expect(scopes).toContainText('sleep');
+
+	// Pinned by tap, so any tap elsewhere has to dismiss it: hunting for the
+	// same small target again is not a way out.
+	await page.getByRole('heading', { name: 'Connected providers' }).click();
+	await expect(scopes).toBeHidden();
+
 	// Same page, a provider configured to pull: the wording must differ, and the
 	// two routes share verbs so the pair reads as one story.
 	const oura = page.getByRole('article').filter({ hasText: 'Oura' });
@@ -67,6 +78,8 @@ test('offers only the sync actions a connection can actually perform', async ({ 
 	await expect(suunto.getByRole('button', { name: /^Sync/ })).toHaveCount(0);
 	await expect(suunto.getByText('Pushed by the provider', { exact: true })).toBeVisible();
 	await expect(suunto.getByText('Pulled on demand')).toBeVisible();
+	// Nothing reported, so no badge to open rather than an empty one.
+	await expect(suunto.getByRole('button', { name: /granted scopes/ })).toHaveCount(0);
 });
 
 test('filters recent activity to one provider without losing the window', async ({ page }) => {

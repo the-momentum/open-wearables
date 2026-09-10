@@ -1,14 +1,9 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import Badge from '$lib/components/ui/Badge.svelte';
-	import ProviderMark from '$lib/components/providers/ProviderMark.svelte';
-	import { connectionTone } from '$lib/connections/status';
 	import type { Connection } from '$lib/connections/types';
 	import type { SyncRun } from '$lib/syncs/types';
-	import { formatRelativeTime } from '$lib/utils/datetime';
-	import { humanise } from '$lib/utils/text';
 	import BackfillList from './BackfillList.svelte';
-	import ConnectionMenu from './ConnectionMenu.svelte';
+	import ConnectionHeader from './ConnectionHeader.svelte';
 	import ConnectionRoutes from './ConnectionRoutes.svelte';
 
 	let {
@@ -29,21 +24,7 @@
 </script>
 
 <article class="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
-	<div class="flex items-start justify-between gap-3">
-		<div class="flex min-w-0 items-center gap-3">
-			<ProviderMark provider={connection.provider} {label} />
-			<div class="min-w-0">
-				<p class="truncate text-sm font-medium text-foreground">{label}</p>
-				<p class="text-xs text-muted-foreground">
-					Synced {formatRelativeTime(connection.last_synced_at)}
-				</p>
-			</div>
-		</div>
-		<div class="flex shrink-0 items-center gap-2">
-			<Badge tone={connectionTone(connection.status)}>{humanise(connection.status)}</Badge>
-			<ConnectionMenu {label} {onrevoke} {onpurge} />
-		</div>
-	</div>
+	<ConnectionHeader {connection} {label} {onrevoke} {onpurge} />
 
 	<ConnectionRoutes {connection} />
 

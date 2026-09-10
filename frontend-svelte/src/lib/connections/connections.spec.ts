@@ -7,6 +7,7 @@ import {
 	historyRanges,
 	liveDelivery
 } from './delivery';
+import { parseScopes, scopeLabel } from './scopes';
 import type { Connection } from './types';
 
 const connection = (overrides: Partial<Connection>): Connection =>
@@ -91,6 +92,34 @@ describe('what can be triggered', () => {
 		// Garmin has no REST path at all.
 		expect(canForceLiveSync(connection({ webhook_stream: true, live_sync_mode: 'webhook' }))).toBe(
 			false
+		);
+	});
+});
+
+describe('parseScopes', () => {
+	it('handles every shape a provider reports', () => {
+		expect(parseScopes('activity heartrate sleep')).toEqual(['activity', 'heartrate', 'sleep']);
+		expect(parseScopes('activity:read_all,profile:read_all')).toEqual([
+			'activity:read_all',
+			'profile:read_all'
+		]);
+	});
+
+	it('is empty when the provider reports nothing', () => {
+		expect(parseScopes(null)).toEqual([]);
+		expect(parseScopes('  ')).toEqual([]);
+	});
+});
+
+describe('scopeLabel', () => {
+	it('keeps a plain scope as it is', () => {
+		expect(scopeLabel('read:cycles')).toBe('read:cycles');
+	});
+
+	// Google's scopes are URLs; the whole thing would not fit a card.
+	it('reduces a scope URL to the part that names it', () => {
+		expect(scopeLabel('https://www.googleapis.com/auth/googlehealth.sleep.readonly')).toBe(
+			'googlehealth.sleep.readonly'
 		);
 	});
 });

@@ -211,6 +211,23 @@ await expect.element(page.getByRole('button', { name: 'Save' })).toBeVisible();
 
 `expect.requireAssertions` is on: a test with no assertion fails.
 
+### Invalid HTML nesting is not caught by anything here
+
+Svelte reports it as `node_invalid_placement_ssr`, at **runtime and only in
+dev**. A `<ul>` inside a `<p>` shipped once — the scope bubble inside the
+provider name — and nothing caught it:
+
+- `svelte-check` does not look at nesting.
+- The browser component tests render on the client only, so an **SSR** warning
+  cannot fire, and there is no hydration to mismatch.
+- `svelte/server`'s `render()` in the node project emits nothing either.
+- The e2e suite runs a **production build**, where the warning is stripped.
+
+So `bun run dev` and the browser console are the only detector. Green does not
+mean the markup is valid. When a component can hold caller-supplied content,
+check what element it sits in: `Hint`'s bubble takes a snippet, so a `<p>`
+wrapper around it is a trap.
+
 ### End-to-end tests sign in for real
 
 [e2e/mock-api.ts](e2e/mock-api.ts) stands in for FastAPI, started by
@@ -622,6 +639,9 @@ Two extractions exist because the same classes had been pasted more than once:
 - **`ui/chip.ts`** — `FilterChip` (a link, `aria-current`) and `ToggleChip` (a
   button, `aria-pressed`) differ only in element and ARIA. The class string
   lives in `chipClass()` so they cannot drift.
+- **`ui/Badge.svelte`** — reach for it for any small pill. Two count pills had
+  been hand-rolled instead (the provider filter's, and the scope count), which is
+  how they ended up with different padding and opacity for the same thing.
 - **`ui/button.ts`** — `buttonClass()`, shared by `Button.svelte` (a button) and
   `LinkButton.svelte` (an anchor). The pairing success page needs button-shaped
   links, and hand-rolling them re-declared the variant classes a third time.
@@ -866,17 +886,18 @@ Eight tabs do not fit a phone. A plain scrolling strip hides most of them with
 tried first; the strip won because it keeps an adjacent section one tap away
 instead of two.
 
-What makes it work is in [`UserTabs`](src/lib/components/users/detail/UserTabs.svelte):
+The scrolling half is [`ui/ScrollFade`](src/lib/components/ui/ScrollFade.svelte),
+generic because a wide table or the Data Summary calendar will want the same:
 
 - **Gradient fades** at whichever edge has content past it, driven by a scroll
-  handler rather than a breakpoint — on a desktop both ends are reached, so both
-  fades hide themselves. They stop a pixel short of the bottom rule
-  (`bottom-px`) so the rule stays unbroken.
-- **The active tab is scrolled into view** in an `$effect` keyed on the active
-  slug. Landing on `/users/{id}/scores` with the strip parked at the left would
-  hide the section you just opened.
+  handler rather than a breakpoint — when everything fits, both ends are reached
+  and both fades hide themselves. They stop a pixel short of the bottom
+  (`bottom-px`) so a rule on the scroller stays unbroken.
 - Scrollbar hidden in a scoped `<style>` — Tailwind v4 has no utility, and the
-  bar would sit on top of the rule.
+  bar would sit on top of that rule.
+- `scroller` is `$bindable`, which is how `UserTabs` **scrolls the active tab
+  into view**: landing on `/users/{id}/scores` with the strip parked at the left
+  would hide the section you just opened.
 
 The index tab is **`Connections`**, not `Profile`: the profile is the header,
 which is visible above every tab, so a tab named after it was naming the wrong
@@ -1026,6 +1047,42 @@ Sync activity loads through `optional()` in the page's loader: it is reporting,
 not the subject of the page, so Redis being down costs the section rather than
 the whole profile. Connections and the user itself are not wrapped — without
 them there is no page to render.
+
+### Granted scopes come as one string in three shapes
+
+`connection.scope` is whatever the provider reported, and the shapes do not
+agree: space separated (`activity heartrate sleep`), comma separated (Strava's
+`activity:read_all,profile:read_all`), or full URLs (Google's
+`https://www.googleapis.com/auth/googlehealth.sleep.readonly`).
+[`connections/scopes.ts`](src/lib/connections/scopes.ts) splits on both
+separators and reduces a URL to its last path segment, which is where an OAuth
+scope carries its meaning.
+
+Rendered as small mono tags, **not** through `chipClass`: that capitalises, and
+`Read:cycles` is wrong. Garmin and Suunto configure an empty scope, so an empty
+list says "Not reported by the provider" rather than leaving a blank row —
+nothing granted and nothing told apart.
+
+### Granted scopes are a count, not a row
+
+`connection.scope` is one string, and the shapes do not agree: space separated
+(`activity heartrate sleep`), comma separated (Strava's
+`activity:read_all,profile:read_all`), or full URLs (Google's
+`https://www.googleapis.com/auth/googlehealth.sleep.readonly`).
+[`connections/scopes.ts`](src/lib/connections/scopes.ts) splits on both
+separators and reduces a URL to its last path segment, where an OAuth scope
+carries its meaning.
+
+It renders as a **count beside the provider name**, with the list behind a
+hover-or-tap bubble. A row under the name cost every card its height for
+something only read when data is missing. `Hint` grew a `trigger` snippet and an
+`align` prop for this rather than the bubble mechanics being written twice, and
+it dismisses on a `pointerdown` anywhere outside itself or on Escape — pinned by
+touch, the only way out was otherwise finding the same small target again.
+
+Garmin and Suunto configure an empty scope, so there is **no badge at all** —
+`0` next to a name would read as "nothing granted" when it means "nothing
+reported".
 
 ### No SSE while nothing is running
 

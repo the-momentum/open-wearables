@@ -1,6 +1,7 @@
 <script lang="ts">
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import { goto } from '$app/navigation';
+	import Badge from '$lib/components/ui/Badge.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import ToggleChip from '$lib/components/ui/ToggleChip.svelte';
@@ -42,9 +43,7 @@
 	<SlidersHorizontal size={15} aria-hidden="true" />
 	Provider
 	{#if query.providers.length > 0}
-		<span class="rounded-full bg-primary/15 px-1.5 text-xs font-medium text-primary tabular-nums">
-			{query.providers.length}
-		</span>
+		<Badge tone="info" class="px-1.5 tabular-nums">{query.providers.length}</Badge>
 	{/if}
 </Button>
 
