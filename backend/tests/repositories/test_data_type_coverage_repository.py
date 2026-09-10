@@ -8,12 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataTypeCoverage, EventRecord
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.repositories.data_type_coverage_repository import (
-    CoverageSpan,
-    _discard_pending,
-    data_type_coverage_repository,
-)
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.event_record_repository import EventRecordRepository
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.sync_status import DataTypeKind
@@ -155,15 +152,11 @@ class TestEventCoverage:
         assert sleep.coverage_start == NOW - timedelta(hours=9)
         assert sleep.coverage_end == NOW - timedelta(hours=1)
 
-    def test_create_and_flush_records_coverage_on_the_callers_commit(
+    def test_create_and_flush_records_coverage_without_committing(
         self, db: Session, event_repo: EventRecordRepository
     ) -> None:
         user = UserFactory()
         event_repo.create_and_flush(db, _event(user.id, NOW, NOW + timedelta(hours=1), "workout"))
-
-        assert data_type_coverage_repository.get(db, user.id, "oura", "workout") is None
-
-        db.commit()
 
         coverage = data_type_coverage_repository.get(db, user.id, "oura", "workout")
         assert coverage is not None
@@ -185,15 +178,15 @@ class TestEventCoverage:
         }
 
 
-def test_rollback_discards_queued_spans(db: Session) -> None:
+def test_rollback_takes_coverage_with_it(db: Session) -> None:
     """A transaction that never landed must not leave coverage claiming its data."""
     user = UserFactory()
+    db.commit()
+
     data_type_coverage_repository.record(
         db,
         [CoverageSpan(user.id, "oura", "heart_rate", DataTypeKind.SERIES, NOW, NOW)],
     )
-
-    _discard_pending(db)
-    db.commit()
+    db.rollback()
 
     assert db.query(DataTypeCoverage).filter_by(user_id=user.id).count() == 0

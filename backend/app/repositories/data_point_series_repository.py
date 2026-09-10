@@ -32,8 +32,9 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.data_type_coverage_repository import CoverageSpan, data_type_coverage_repository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.repositories import CrudRepository, utc_bucket_start
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     ProviderName,
     SeriesType,
