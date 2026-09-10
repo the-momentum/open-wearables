@@ -1,7 +1,8 @@
 """Activity-family metrics (steps, distance, calories, hydration).
 
 Value fields confirmed against the live API. Distance is reported in millimeters
-(scaled to meters).
+(scaled to meters). Energy is split active/basal; total-calories mixes the two into one
+sum and has no list form, so it is not ingested.
 """
 
 from decimal import Decimal
@@ -27,10 +28,17 @@ ACTIVITY_METRICS: tuple[DataTypeMetric, ...] = (
         list_spec=ListSpec("millimeters", TimeShape.INTERVAL, scale=_MM_TO_M),
     ),
     DataTypeMetric(
-        "total-calories",
+        "active-energy-burned",
         SeriesType.energy,
-        value_key="totalCalories",
-        rollup_spec=RollupSpec("kcalSum", max_range_days=14),  # rollUp-only
+        value_key="activeEnergyBurned",
+        rollup_spec=RollupSpec("kcalSum"),
+        list_spec=ListSpec("kcal", TimeShape.INTERVAL),
+    ),
+    DataTypeMetric(
+        "basal-energy-burned",
+        SeriesType.basal_energy,
+        value_key="basalEnergyBurned",
+        list_spec=ListSpec("kcal", TimeShape.INTERVAL),
     ),
     DataTypeMetric(
         "hydration-log",

@@ -409,6 +409,9 @@ class GoogleHealth247Data(Base247DataTemplate):
             value=value,
             series_type=series_type,
             is_daily_total=is_daily_total,
+            external_id=(
+                f"{series_type.value}:{recorded_at.isoformat()}" if series_type is SeriesType.energy else None
+            ),
         )
 
     # -- unused Base247DataTemplate hooks --------------------------------------
