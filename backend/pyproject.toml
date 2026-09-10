@@ -7,7 +7,7 @@ dependencies = [
     "cryptography>=50.0.1",
     "pydantic-settings>=2.15.0",
     "email-validator>=2.2.0",
-    "psycopg>=3.3.4",
+    "psycopg>=3.3.5",
     "sqlalchemy>=2.0.51",
     "fastapi>=0.139.2",
     "fastapi-cli>=0.0.32",
@@ -18,25 +18,25 @@ dependencies = [
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
-    "alembic>=1.18.5",
-    "boto3>=1.43.83",
+    "alembic>=1.19.2",
+    "boto3>=1.43.89",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
     "resend>=2.42.0",
     "pyyaml>=6.0.3",
     "svix>=1.99.1",
-    "numpy>=2.5.1",
-    "faker>=40.37.0",
+    "numpy>=2.5.3",
+    "faker>=40.38.0",
     "fitdecode>=0.11.0",
-    "google-auth>=2.57.0",
+    "google-auth>=2.57.1",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.6.1",
-    "ruff>=0.16.5",
-    "ty>=0.0.75",
+    "ruff>=0.16.6",
+    "ty>=0.0.78",
 ]
 dev = [
     "pytest>=9.1.1",
@@ -44,7 +44,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "freezegun>=1.5.0",
     "factory-boy>=3.3.0",
-    "psycopg-binary>=3.3.4",
+    "psycopg-binary>=3.3.5",
     "testcontainers[postgres,redis]>=4.14.2",
 ]
 
