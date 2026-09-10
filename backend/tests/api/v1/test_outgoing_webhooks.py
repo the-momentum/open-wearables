@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Generator
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -20,6 +21,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import TimeSeriesSampleCreate
+from app.schemas.sync_status import SyncScope, SyncSource
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import (
@@ -31,8 +35,10 @@ from app.services.outgoing_webhooks.events import (
     on_timeseries_batch_saved,
     on_workout_created,
 )
+from app.services.timeseries_service import timeseries_service
+from app.utils.context import sync_run_context
 from app.utils.security import create_access_token
-from tests.factories import DeveloperFactory
+from tests.factories import DeveloperFactory, UserFactory
 
 # Svix eventId charset: colons/plus signs from ISO 8601 timestamps must not survive.
 _SVIX_ID_SAFE_RE = re.compile(r"^[a-zA-Z0-9\-_.]+$")
@@ -621,3 +627,107 @@ class TestUpdateEndpointClearingContract:
         self._patch(client, {"description": "only the label"})
 
         assert mock_svix.patch_endpoint.call_args.kwargs["clear_user_id"] is False
+
+
+# ---------------------------------------------------------------------------
+# Run provenance on data events (issue #1495)
+# ---------------------------------------------------------------------------
+
+
+class TestDataEventSyncProvenance:
+    """Data events carry the run that produced them, so a backfill is distinguishable."""
+
+    @pytest.fixture(autouse=True)
+    def _webhooks_enabled(self) -> Generator[None, None, None]:
+        with patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True):
+            yield
+
+    @staticmethod
+    def _sample(timestamp: str) -> dict:
+        return {
+            "timestamp": timestamp,
+            "zone_offset": "+00:00",
+            "type": "heart_rate",
+            "value": 62.0,
+            "unit": "bpm",
+            "source": {"provider": "garmin", "device": "Forerunner 255"},
+        }
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_timeseries_payload_carries_the_run(self, mock_task: MagicMock) -> None:
+        on_timeseries_batch_saved(
+            user_id=uuid4(),
+            provider="garmin",
+            series_type="heart_rate",
+            sample_count=1,
+            samples=[self._sample("2026-04-16T06:00:00+00:00")],
+            sync={"run_id": "pull_abc", "source": "backfill", "scope": "historical"},
+        )
+
+        data = mock_task.delay.call_args_list[0][0][1]["data"]
+        assert data["sync"] == {"run_id": "pull_abc", "source": "backfill", "scope": "historical"}
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_every_chunk_of_a_split_batch_carries_the_run(self, mock_task: MagicMock) -> None:
+        sync = {"run_id": "sdk_abc", "source": "sdk", "scope": "historical"}
+        on_timeseries_batch_saved(
+            user_id=uuid4(),
+            provider="apple",
+            series_type="heart_rate",
+            sample_count=SVIX_MAX_SAMPLES_PER_EVENT + 1,
+            samples=[self._sample("2026-04-16T06:00:00+00:00")] * (SVIX_MAX_SAMPLES_PER_EVENT + 1),
+            sync=sync,
+        )
+
+        payloads = [c[0][1]["data"] for c in mock_task.delay.call_args_list]
+        assert len(payloads) > 2  # split into chunks, two events each
+        assert all(p["sync"] == sync for p in payloads)
+        assert {p["chunk_index"] for p in payloads} == {0, 1}
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_payload_says_null_when_no_run_owns_the_write(self, mock_task: MagicMock) -> None:
+        """Seed data and linked-account fan-out write without a run of their own."""
+        on_timeseries_batch_saved(
+            user_id=uuid4(),
+            provider="garmin",
+            series_type="heart_rate",
+            sample_count=1,
+            samples=[self._sample("2026-04-16T06:00:00+00:00")],
+        )
+
+        assert mock_task.delay.call_args_list[0][0][1]["data"]["sync"] is None
+
+    def test_bulk_create_samples_captures_the_context_for_the_emit_thread(self, db: Session) -> None:
+        """The emit runs in a thread, which a ContextVar does not reach on its own."""
+        user = UserFactory()
+        db.commit()
+        captured: list[tuple] = []
+
+        with (
+            patch("app.services.timeseries_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.timeseries_service.threading.Thread") as thread,
+        ):
+            thread.side_effect = lambda target, args, daemon: captured.append(args) or MagicMock()
+            with sync_run_context(run_id="pull_abc", source=SyncSource.BACKFILL, scope=SyncScope.HISTORICAL):
+                timeseries_service.bulk_create_samples(
+                    db,
+                    [
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user.id,
+                            source="garmin",
+                            provider="garmin",
+                            recorded_at=datetime(2026, 4, 16, 6, 0, tzinfo=timezone.utc),
+                            value=62,
+                            series_type=SeriesType.heart_rate,
+                        )
+                    ],
+                )
+                db.commit()
+
+        assert captured, "webhook thread was never started"
+        assert captured[0][1].as_payload() == {
+            "run_id": "pull_abc",
+            "source": "backfill",
+            "scope": "historical",
+        }

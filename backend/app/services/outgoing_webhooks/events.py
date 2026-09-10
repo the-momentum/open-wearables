@@ -76,6 +76,7 @@ def on_workout_created(
     max_heart_rate_bpm: int | None = None,
     elevation_gain_meters: float | None = None,
     avg_pace_sec_per_km: int | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.WORKOUT_CREATED,
@@ -96,6 +97,7 @@ def on_workout_created(
                 "max_heart_rate_bpm": max_heart_rate_bpm,
                 "avg_pace_sec_per_km": avg_pace_sec_per_km,
                 "elevation_gain_meters": elevation_gain_meters,
+                "sync": sync,
             },
         },
         idempotency_key=f"workout.created.{record_id}",
@@ -117,6 +119,7 @@ def on_menstrual_cycle_created(
     cycle_length: int | None = None,
     is_predicted_cycle: bool | None = None,
     pregnancy_snapshot: list[dict] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.MENSTRUAL_CYCLE_CREATED,
@@ -134,6 +137,7 @@ def on_menstrual_cycle_created(
                 "cycle_length": cycle_length,
                 "is_predicted_cycle": is_predicted_cycle,
                 "pregnancy_snapshot": pregnancy_snapshot,
+                "sync": sync,
             },
         },
         idempotency_key=f"menstrual_cycle.created.{record_id}",
@@ -158,6 +162,7 @@ def on_sleep_created(
     device_type: str | None = None,
     sleep_duration_seconds: float | None = None,
     sleep_stage_intervals: list[dict[str, Any]] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.SLEEP_CREATED,
@@ -182,6 +187,7 @@ def on_sleep_created(
                 "stages": stages,
                 "sleep_stage_intervals": sleep_stage_intervals,
                 "is_nap": is_nap,
+                "sync": sync,
             },
         },
         idempotency_key=f"sleep.created.{record_id}",
@@ -198,6 +204,7 @@ def on_timeseries_batch_saved(
     start_time: str | None = None,
     end_time: str | None = None,
     samples: list[dict[str, Any]] | None = None,
+    sync: dict[str, str] | None = None,
 ) -> None:
     """Emit one webhook event per data-type per ingestion batch.
 
@@ -214,6 +221,10 @@ def on_timeseries_batch_saved(
     - a *group* event (e.g. ``heart_rate.created``) for broad subscriptions
     - a *granular* event (e.g. ``series.resting_heart_rate.created``) for
       narrow subscriptions to a specific metric
+
+    ``sync`` identifies the run that produced the batch, so a consumer can tell a
+    historical backfill from a live reading. It is None where no run owns the write
+    (seed data, linked-account fan-out).
     """
     group_event = SERIES_TYPE_TO_GROUP_EVENT.get(series_type)
     if group_event is None:
@@ -243,6 +254,7 @@ def on_timeseries_batch_saved(
             "start_time": start_time,
             "end_time": end_time,
             "samples": samples,
+            "sync": sync,
         }
         for event_type in event_types_to_emit:
             _emit(event_type, data, base_key)
@@ -267,6 +279,7 @@ def on_timeseries_batch_saved(
                 "samples": chunk,
                 "chunk_index": chunk_index,
                 "total_chunks": total_chunks,
+                "sync": sync,
             }
             for event_type in event_types_to_emit:
                 _emit(event_type, data, base_key)
