@@ -45,6 +45,7 @@ from app.schemas.responses.activity import (
     SleepStagesSummary,
     Workout,
 )
+from app.schemas.sync_status import SyncRunContext
 from app.schemas.utils import (
     PaginatedResponse,
     Pagination,
@@ -58,6 +59,7 @@ from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on
 from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
+from app.utils.context import sync_run_var
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -149,7 +151,7 @@ class EventRecordService(
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                self._emit_event_record_webhook(record, data_source, detail)
+                self._emit_event_record_webhook(record, data_source, detail, sync_run_var.get())
 
         return result
 
@@ -306,6 +308,7 @@ class EventRecordService(
                     if final_detail.sleep_stages
                     else None
                 ),
+                sync=sync_run.as_payload() if (sync_run := sync_run_var.get()) else None,
             )
         return result
 
@@ -545,10 +548,12 @@ class EventRecordService(
         record: EventRecord,
         data_source: DataSource,
         detail: EventRecordDetailCreate,
+        sync_run: SyncRunContext | None = None,
     ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
         if not svix_service.is_enabled():
             return
+        sync = sync_run.as_payload() if sync_run else None
         category = (record.category or "").lower()
         provider = str(data_source.provider)
         device = data_source.device_model
@@ -595,6 +600,7 @@ class EventRecordService(
                         if detail.sleep_stages
                         else None
                     ),
+                    sync=sync,
                 )
             case "menstrual_cycle":
                 mcd = detail if isinstance(detail, MenstrualCycleDetailCreate) else None
@@ -611,6 +617,7 @@ class EventRecordService(
                     cycle_length=mcd.cycle_length if mcd else None,
                     is_predicted_cycle=mcd.is_predicted_cycle if mcd else None,
                     pregnancy_snapshot=mcd.pregnancy_snapshot if mcd else None,
+                    sync=sync,
                 )
             case "workout":
                 avg_pace = pace_sec_per_km(
@@ -635,6 +642,7 @@ class EventRecordService(
                     if detail.total_elevation_gain is not None
                     else None,
                     avg_pace_sec_per_km=round(avg_pace) if avg_pace is not None else None,
+                    sync=sync,
                 )
 
     def bulk_create(
@@ -693,10 +701,12 @@ class EventRecordService(
         for data_source in data_sources:
             db_session.expunge(data_source)
 
+        sync_run = sync_run_var.get()
+
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
             for record, data_source, detail in dispatches:
-                self._emit_event_record_webhook(record, data_source, detail)
+                self._emit_event_record_webhook(record, data_source, detail, sync_run)
 
     @handle_exceptions
     def _get_records_with_filters(

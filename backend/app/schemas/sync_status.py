@@ -132,6 +132,25 @@ class SyncStatusEvent(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class SyncRunContext(BaseModel):
+    """The run that the code currently executing is ingesting data for.
+
+    Carried on a ContextVar rather than passed down, because the data events are emitted
+    from the shared write paths, which are several provider-specific layers below the
+    task that knows the run. Stamped onto every outgoing data event so a consumer can
+    tell a months-long backfill apart from a live reading.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    source: SyncSource
+    scope: SyncScope
+
+    def as_payload(self) -> dict[str, str]:
+        return {"run_id": self.run_id, "source": str(self.source), "scope": str(self.scope)}
+
+
 class SyncRunSummary(BaseModel):
     """Latest known status for a sync run, derived from the event stream."""
 
