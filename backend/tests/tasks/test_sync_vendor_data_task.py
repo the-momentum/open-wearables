@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.schemas.auth import ConnectionStatus
+from app.schemas.sync_status import SyncStatus
+from app.services.sync_coordination import try_become_primary
 from app.utils.sync_params import build_sync_params
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -375,3 +377,55 @@ class TestBuildSyncParams:
         params = build_sync_params("invalid-date", "2025-12-31T23:59:59Z")
 
         assert params == {"start_date": "invalid-date", "end_date": "2025-12-31T23:59:59Z"}
+
+
+class TestSyncVendorDataLinkedSkip:
+    """A profile that loses the linked-account lock must not look like it synced."""
+
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
+    @patch("app.services.providers.factory.ProviderFactory.get_provider")
+    def test_skip_reports_skipped_and_leaves_the_cursor_alone(
+        self,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        user = UserFactory()
+        holder = UserFactory()
+        provider_user_id = "shared-account-1"
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            provider_user_id=provider_user_id,
+        )
+        # The holder keeps an active connection, so the stale-lock steal path must not fire.
+        UserConnectionFactory(
+            user=holder,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            provider_user_id=provider_user_id,
+        )
+        try_become_primary("garmin", provider_user_id, holder.id, scope="pull")
+
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
+        mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_get_provider.return_value = mock_strategy
+
+        before = connection.last_synced_at
+        with patch("app.integrations.celery.tasks.sync_vendor_data_task.emit_sync_completed") as emit_completed:
+            result = sync_vendor_data(str(user.id))
+
+        assert result["providers_synced"]["garmin"]["params"]["skipped"] is True
+        assert result["errors"] == {}
+        mock_strategy.workouts.load_data.assert_not_called()
+
+        emit_completed.assert_called_once()
+        assert emit_completed.call_args.kwargs["status"] == SyncStatus.SKIPPED
+        assert emit_completed.call_args.kwargs["items_processed"] == 0
+
+        db.refresh(connection)
+        assert connection.last_synced_at == before

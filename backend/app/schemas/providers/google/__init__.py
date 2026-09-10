@@ -1,6 +1,7 @@
 # Google Health API schemas
 
 from .health_api import (
+    DataPointsPage,
     DataTypeMetric,
     ListSpec,
     RollupSpec,
@@ -15,6 +16,7 @@ from .webhooks import (
 )
 
 __all__ = [
+    "DataPointsPage",
     "DataTypeMetric",
     "GooglePhysicalTimeInterval",
     "GoogleWebhookData",

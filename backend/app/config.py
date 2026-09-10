@@ -107,6 +107,19 @@ class Settings(BaseSettings):
     # Will default to false in a future release.
     historical_sync_on_connect: bool = True
 
+    # PROVIDER HTTP CLIENT
+    provider_request_timeout_seconds: float = Field(30.0, gt=0, le=300)
+    provider_max_retries: int = Field(3, ge=0, le=10)
+    provider_retry_base_delay_seconds: float = Field(15.0, gt=0, le=300)
+
+    # LINKED SYNC COORDINATION
+    # A daemon thread renews the pull primary's lease every interval for as long as the run
+    # lasts, so the lock outlives nothing but the worker process itself.
+    linked_sync_pull_lease_seconds: int = Field(120, ge=30, le=3600)
+    linked_sync_renew_interval_seconds: int = Field(30, ge=5, le=1800)
+    # Garmin backfill holds its lock across tasks with no renewer; gc_stuck_backfills recovers it.
+    linked_sync_backfill_lease_seconds: int = Field(4 * 60 * 60, ge=60, le=24 * 60 * 60)
+
     # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
     # data_point_series on workout webhook arrival. Significantly increases DB storage.
     # Per-provider granularity will be added via ProviderSetting in a future release.
@@ -297,6 +310,20 @@ class Settings(BaseSettings):
         if self.access_log_level is None:
             self.access_log_level = (
                 AccessLogLevel.ERRORS if self.environment == EnvironmentType.PRODUCTION else AccessLogLevel.ALL
+            )
+        return self
+
+    @model_validator(mode="after")
+    def check_linked_sync_lease(self) -> "Settings":
+        """Fail at startup rather than losing a lock mid-sync.
+
+        The lease must survive a missed renewal, so it has to outlast the interval by a
+        clear margin — the renewer waits on a Redis round trip it cannot bound.
+        """
+        if self.linked_sync_renew_interval_seconds * 2 > self.linked_sync_pull_lease_seconds:
+            raise ValueError(
+                f"LINKED_SYNC_PULL_LEASE_SECONDS ({self.linked_sync_pull_lease_seconds}s) must be at least twice "
+                f"LINKED_SYNC_RENEW_INTERVAL_SECONDS ({self.linked_sync_renew_interval_seconds}s)."
             )
         return self
 

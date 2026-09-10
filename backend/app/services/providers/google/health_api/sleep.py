@@ -50,7 +50,11 @@ class GoogleHealthApiSleep:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
-        """Fetch sleep sessions starting in the window and merge-save each."""
+        """Fetch sleep sessions ending in the window and merge-save each.
+
+        Keyed on the end, like the fetch filter: an overnight session starts before any
+        morning window and would never be kept if the start were tested.
+        """
         count = 0
         for point in self._fetch(db, user_id, start_time, end_time):
             sleep = point.get("sleep")
@@ -58,7 +62,7 @@ class GoogleHealthApiSleep:
                 continue
             interval = sleep.get("interval") or {}
             start, end = parse_interval(interval)
-            if start is None or end is None or not (start_time <= start < end_time):
+            if start is None or end is None or not (start_time <= end < end_time):
                 continue
             record, detail = self._normalize(point, sleep, interval, start, end, user_id)
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)

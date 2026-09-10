@@ -48,9 +48,14 @@ class ProviderSettingsRepository:
         return setting
 
     def get_data_granularity(self, db: DbSession, provider: str) -> DataGranularity | None:
-        """Return the configured granularity for a provider, or None if unset."""
+        """Return the configured granularity for a provider, or None if unset.
+
+        The column is a plain String (see ``type_annotation_map``), so the value comes back
+        as ``str`` and has to be coerced to match the annotation callers rely on.
+        """
         stmt = select(ProviderSetting.data_granularity).where(ProviderSetting.provider == provider)
-        return db.execute(stmt).scalar_one_or_none()
+        value = db.execute(stmt).scalar_one_or_none()
+        return DataGranularity(value) if value else None
 
     def get_live_sync_mode(self, db: DbSession, provider: str) -> LiveSyncMode | None:
         """Return the configured live-sync mode for a provider, or None if unset."""

@@ -8,8 +8,26 @@ data points), or both; the handler picks the operation per the configured granul
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.enums import DataGranularity, SeriesType
+
+
+class DataPointsPage(BaseModel):
+    """One page of a dataPoints, dataPoints:reconcile or dataPoints:rollUp response.
+
+    All three share the envelope and differ only in which list they fill; every field is
+    optional because Google omits empty ones (an exhausted window returns ``{}``, and a
+    page can carry a token with no points).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    data_points: list[dict[str, Any]] = Field(default_factory=list, alias="dataPoints")
+    rollup_data_points: list[dict[str, Any]] = Field(default_factory=list, alias="rollupDataPoints")
+    next_page_token: str | None = Field(None, alias="nextPageToken")
 
 
 class TimeShape(Enum):

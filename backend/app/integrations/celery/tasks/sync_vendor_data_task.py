@@ -21,7 +21,14 @@ from app.schemas.sync_status import (
     SyncStatus,
 )
 from app.services.providers.factory import ProviderFactory
-from app.services.sync_coordination import release_primary, release_stale_primary, try_become_primary
+from app.services.sync_coordination import (
+    bind_primary_lease,
+    clear_primary_lease,
+    lease_lost,
+    release_primary,
+    release_stale_primary,
+    try_become_primary,
+)
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,
@@ -233,20 +240,29 @@ def sync_vendor_data(
                         log_structured(
                             logger,
                             "info",
-                            f"Skipping {provider_name} pull — another linked profile is syncing",
+                            f"Skipping {provider_name} pull — this provider account is already syncing",
                             provider=provider_name,
                             task="sync_vendor_data",
                             user_id=user_id,
                             primary_user_id=str(existing_primary) if existing_primary else None,
                         )
-                        # No sync status event here — the primary will trigger a fan-out
-                        # task for this profile that emits a LINKED_ACCOUNT completed event
-                        # once the actual data delivery is done.  A pre-emptive event here
-                        # would show up as a duplicate in the sync log.
-                        if not is_historical:
-                            user_connection_repo.update_last_synced_at(db, connection)
+                        # last_synced_at stays put: nothing was fetched, and the primary's
+                        # fan-out resolves its window from this cursor.
+                        _emit_sync_status(
+                            emit_sync_completed,
+                            user_uuid,
+                            provider_name,
+                            sync_source,
+                            scope=sync_scope,
+                            run_id=run_id,
+                            status=SyncStatus.SKIPPED,
+                            message=f"Skipped {provider_name} pull — another profile is syncing this account",
+                            items_processed=0,
+                            primary_user_id=existing_primary,
+                            metadata={"is_historical": is_historical, "linked_account": True, "skipped": True},
+                        )
                         result.providers_synced[provider_name] = ProviderSyncResult(
-                            success=True, params={"linked_account": True}
+                            success=True, params={"linked_account": True, "skipped": True}
                         )
                         continue
 
@@ -272,6 +288,9 @@ def sync_vendor_data(
                 )
 
                 try:
+                    # Inside the try: the finally below is what stops the renewal thread.
+                    bind_primary_lease(provider_name, connection.provider_user_id, user_uuid, shared_token)
+
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
@@ -475,7 +494,9 @@ def sync_vendor_data(
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
 
-                    if shared_token and connection.provider_user_id:
+                    if shared_token and connection.provider_user_id and not lease_lost():
+                        # Stop renewing first, or the renewer can retake the lock we just released.
+                        clear_primary_lease()
                         release_primary(
                             provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
                         )
@@ -579,6 +600,7 @@ def sync_vendor_data(
 
                 except Exception as e:
                     if shared_token and connection.provider_user_id:
+                        clear_primary_lease()
                         release_primary(
                             provider_name, connection.provider_user_id, user_uuid, shared_token, scope="pull"
                         )
@@ -606,6 +628,8 @@ def sync_vendor_data(
                     )
                     result.errors[provider_name] = str(e)
                     continue
+                finally:
+                    clear_primary_lease()
 
             return result.model_dump()
 
