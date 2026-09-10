@@ -39,7 +39,7 @@ FRONTEND_URL=https://portal.yourdomain.com
 Delivery is handled by a Celery task, so the worker must be running. Failed sends are retried up to `EMAIL_MAX_RETRIES` times (default 5), after which the invitation is marked **failed** and can be re-sent from the developer portal.
 
 <Note>
-If `RESEND_API_KEY` or `EMAIL_FROM_ADDRESS` is missing, the invitation stays **pending** and the backend logs a warning instead of sending. Use **Copy invite link** on the pending invitation and share the link manually.
+If `RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, or `EMAIL_FROM_NAME` is missing, the invitation stays **pending** and the backend logs a warning instead of sending. `EMAIL_FROM_NAME` defaults to "Open Wearables", so in practice only the first two need to be set. Use **Copy invite link** on the pending invitation and share the link manually.
 </Note>
 
 ## Pending Invitations
