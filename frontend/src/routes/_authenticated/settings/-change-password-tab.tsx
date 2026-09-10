@@ -1,10 +1,10 @@
-import { SecuritySettings } from '@/components/settings/security/security-settings';
+import { ChangePasswordSettings } from '@/components/settings/change-password/change-password-settings';
 
-export function SecurityTab() {
+export function ChangePasswordTab() {
   return (
     <div className="space-y-6">
       <div className="max-w-2xl">
-        <SecuritySettings />
+        <ChangePasswordSettings />
       </div>
     </div>
   );
