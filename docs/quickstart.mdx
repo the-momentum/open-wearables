@@ -90,7 +90,7 @@ Get Open Wearables running locally and start integrating wearable device data.
     Once started, access:
     - 🌐 **API**: http://localhost:8000
     - 📚 **Swagger UI**: http://localhost:8000/docs
-    - 🔐 **Developer Panel**: http://localhost:3000
+    - 🔐 **Developer Portal**: http://localhost:3000
     
     <Tip>Use `docker compose logs -f` to view logs from all services.</Tip>
   </Accordion>
@@ -146,9 +146,9 @@ Get Open Wearables running locally and start integrating wearable device data.
      Should return: `{"message": "Server is running!"}`
 
   2. **Create an API key**:
-     An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. To add further accounts, invite them from the developer portal.
+     An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. To add further accounts, invite them from **Settings → Team**. All developer accounts have the same permissions, see [Team](/developer-portal/settings/team#access-model).
 
-     Use the admin panel at http://localhost:3000/ to log in and generate API keys.
+     Use the [developer portal](/developer-portal) at http://localhost:3000/ to log in and generate API keys.
 
   3. **Seed sample data** (optional):
      If you want test users and sample activity data:

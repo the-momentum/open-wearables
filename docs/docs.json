@@ -20,6 +20,10 @@
     {
       "source": "/data-migrations/:slug*",
       "destination": "/dev-guides/data-migrations"
+    },
+    {
+      "source": "/dev-guides/seed-data-generator",
+      "destination": "/developer-portal/settings/seed-data-generator"
     }
   ],
   "navigation": {
@@ -115,13 +119,30 @@
             ]
           },
           {
+            "group": "Developer Portal",
+            "pages": [
+              "developer-portal/index",
+              {
+                "group": "Settings",
+                "pages": [
+                  "developer-portal/settings/credentials",
+                  "developer-portal/settings/providers",
+                  "developer-portal/settings/priorities",
+                  "developer-portal/settings/data-lifecycle",
+                  "developer-portal/settings/team",
+                  "developer-portal/settings/change-password",
+                  "developer-portal/settings/seed-data-generator"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Developer Guides",
             "pages": [
               "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
               "dev-guides/data-migrations",
-              "dev-guides/ngrok-setup",
-              "dev-guides/seed-data-generator"
+              "dev-guides/ngrok-setup"
             ]
           },
           {
