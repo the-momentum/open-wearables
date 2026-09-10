@@ -93,9 +93,10 @@ export async function revokeToken(refreshToken: string): Promise<void> {
 	}
 }
 
-export async function apiGet<T>(path: string, accessToken: string): Promise<T> {
+/** The token is optional: a few endpoints, and the pairing page, have no session. */
+export async function apiGet<T>(path: string, accessToken?: string): Promise<T> {
 	const response = await fetch(apiUrl(path), {
-		headers: { Authorization: `Bearer ${accessToken}` }
+		headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
 	});
 
 	if (!response.ok) await raiseFor(response);

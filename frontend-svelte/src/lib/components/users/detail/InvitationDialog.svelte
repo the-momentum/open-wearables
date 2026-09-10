@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { env } from '$env/dynamic/public';
+	import { publicApiUrl } from '$lib/config/public-api';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import CopyField from '$lib/components/ui/CopyField.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
@@ -10,6 +10,8 @@
 		open = $bindable(false),
 		invitation
 	}: { open?: boolean; invitation: InvitationCode | null } = $props();
+
+	const apiUrl = publicApiUrl();
 </script>
 
 <Sheet bind:open title="Connect mobile app">
@@ -19,8 +21,8 @@
 			earlier one.
 		</p>
 
-		{#if env.VITE_API_URL}
-			<CopyField label="API URL" value={env.VITE_API_URL} />
+		{#if apiUrl}
+			<CopyField label="API URL" value={apiUrl} />
 		{:else}
 			<Alert>No VITE_API_URL is configured, so the address a device should dial is unknown.</Alert>
 		{/if}

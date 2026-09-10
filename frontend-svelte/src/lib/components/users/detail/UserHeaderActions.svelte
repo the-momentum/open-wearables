@@ -9,7 +9,7 @@
 	import ActionMenu from '$lib/components/ui/ActionMenu.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { menuItemClass } from '$lib/components/ui/menu';
-	import { pairingLink } from '$lib/users/pairing';
+	import { pairingLink } from '$lib/pairing/links';
 	import type { UserDetail } from '$lib/users/types';
 	import { createCopier } from '$lib/utils/clipboard.svelte';
 

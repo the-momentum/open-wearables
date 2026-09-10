@@ -5,7 +5,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { page } from '$app/state';
 	import { fullName } from '$lib/users/avatar';
-	import { pairingLink } from '$lib/users/pairing';
+	import { pairingLink } from '$lib/pairing/links';
 	import { getRowActions } from '$lib/users/row-actions';
 	import type { User } from '$lib/users/types';
 	import { createCopier } from '$lib/utils/clipboard.svelte';

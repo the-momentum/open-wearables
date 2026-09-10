@@ -10,33 +10,36 @@ export type Provider = {
 	icon_url: string;
 };
 
-const CACHE_KEY = 'ow:providers:enabled';
 const TTL_SECONDS = 60;
 
-/**
- * Enabled only: a filter chip for a provider nobody can connect is noise.
- *
- * Cached because the list is near-static but the call is not rare — every
- * search keystroke, sort, page and mutation re-runs the loader. Unlike the
- * session store this fails **open**: an unreachable Redis costs an API call,
- * not a login.
- */
-export async function fetchProviders(accessToken: string): Promise<Provider[]> {
+/** Fails open, unlike the session store: no Redis costs a call, not a login. */
+async function cached(key: string, load: () => Promise<Provider[]>): Promise<Provider[]> {
 	try {
-		const cached = await redis().get(CACHE_KEY);
-		if (cached) return JSON.parse(cached) as Provider[];
+		const hit = await redis().get(key);
+		if (hit) return byName(JSON.parse(hit) as Provider[]);
 	} catch {
 		// Fall through to the API.
 	}
 
-	const providers = await apiGet<Provider[]>(
-		'/api/v1/oauth/providers?enabled_only=true',
-		accessToken
+	const providers = await load();
+	redis()
+		.set(key, JSON.stringify(providers), 'EX', TTL_SECONDS)
+		.catch(() => {});
+	return byName(providers);
+}
+
+/** The API orders them by when they were added to its enum, which says nothing. */
+const byName = (providers: Provider[]) =>
+	[...providers].sort((a, b) => a.name.localeCompare(b.name));
+
+/** Enabled only: a filter chip for a provider nobody can connect is noise. */
+export const fetchProviders = (accessToken: string) =>
+	cached('ow:providers:enabled', () =>
+		apiGet<Provider[]>('/api/v1/oauth/providers?enabled_only=true', accessToken)
 	);
 
-	redis()
-		.set(CACHE_KEY, JSON.stringify(providers), 'EX', TTL_SECONDS)
-		.catch(() => {});
-
-	return providers;
-}
+/** Public: the pairing page has no session. */
+export const fetchCloudProviders = () =>
+	cached('ow:providers:cloud', () =>
+		apiGet<Provider[]>('/api/v1/oauth/providers?enabled_only=true&cloud_only=true')
+	);

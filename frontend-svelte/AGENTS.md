@@ -612,10 +612,8 @@ Row actions are edit, copy pairing link and delete, and all three work. Edit
 and delete open the page-level dialogs through the `row-actions` context, so
 there is one dialog per page rather than one per row.
 
-**The pairing link is a known live hazard.** `pairingLink()` builds
-`/users/{id}/pair` against this app's origin, and that route does not exist here
-yet — an admin who copies it sends an end user to a 404. Building the public
-pairing page is the outstanding piece, not the button.
+`pairingLink()` builds `/users/{id}/pair` against this app's origin, which is a
+real page — see "The pairing pages are public".
 
 ### Shared styling, not copied styling
 
@@ -624,11 +622,12 @@ Two extractions exist because the same classes had been pasted more than once:
 - **`ui/chip.ts`** — `FilterChip` (a link, `aria-current`) and `ToggleChip` (a
   button, `aria-pressed`) differ only in element and ARIA. The class string
   lives in `chipClass()` so they cannot drift.
-- **`ui/Button.svelte`** — `primary` and `outline` variants, used by the sign-in
-  form, `Add user` and both provider-panel buttons. It **spreads `...rest`**, and
-  that is not cosmetic: the first version took a fixed prop list and silently
-  dropped `aria-haspopup` and `aria-expanded` from the provider trigger. An e2e
-  test now asserts both.
+- **`ui/button.ts`** — `buttonClass()`, shared by `Button.svelte` (a button) and
+  `LinkButton.svelte` (an anchor). The pairing success page needs button-shaped
+  links, and hand-rolling them re-declared the variant classes a third time.
+  Both components **spread `...rest`**, and that is not cosmetic: the first
+  `Button` took a fixed prop list and silently dropped `aria-haspopup` and
+  `aria-expanded` from the provider trigger. An e2e test now asserts both.
 
 ### Mutations go through form actions
 
@@ -1036,6 +1035,72 @@ the tab stays open, and the React app held one on every user page regardless of
 which tab was showing. The snapshot from `/sync/runs` covers the resting case;
 the stream is for later, opened only when a run is actually in progress.
 
+## The pairing pages are public
+
+`/users/[id]/pair` lives **outside the `(app)` group**, so the auth guard never
+runs on it. That is the point: whoever opens a pairing link has no account here.
+Both endpoints it needs are unauthenticated backend-side —
+`GET /oauth/providers` and `GET /oauth/{provider}/authorize` take no API key —
+so `apiGet`'s token argument is optional and these calls pass none.
+
+The flow, all server-side:
+
+1. The page lists `enabled_only=true&cloud_only=true` providers.
+2. A choice posts to `?/connect`, which asks the backend for an authorization
+   URL and `redirect(303)`s the browser to the provider.
+3. The provider returns to the backend callback, which exchanges tokens, stamps
+   `last_synced_at`, kicks off a backfill, and redirects to the `redirect_uri`
+   we supplied: `/users/{id}/pair/success?provider=…`.
+
+No `fetch` from the browser and no CORS, unlike `frontend/`, which called the
+API directly from the client.
+
+### Providers are sorted here, not by the API
+
+`GET /oauth/providers` returns them in `ProviderName` enum order — the order
+they were added to the codebase (`apple, samsung, garmin, google, polar, …`),
+which means nothing to a reader picking their device. `cached()` in
+[`server/providers.ts`](src/lib/server/providers.ts) sorts by display name on
+the way out, so every consumer — pairing list, admin filter — gets the same
+order without remembering to ask.
+
+### Two traps in this flow
+
+**`?/connect` replaces the whole query string.** A form action is a URL, so
+posting to `?/connect` from `/pair?redirect_url=…` loses `redirect_url`
+entirely. It travels as a hidden field instead. This cost a failing test to
+find, and it applies to every action on a page whose query string matters.
+
+**`redirect_url` is attacker-controlled.** The pairing link is public, so anyone
+can craft one, and the success page renders that value as a `Continue` link.
+`safeReturnUrl` in [`users/pairing.ts`](src/lib/users/pairing.ts) admits only
+`http:`/`https:` — `javascript:` would otherwise be a one-click XSS on a page
+end users are told to open. It is applied **twice**: in the loader, so the page
+never holds a value it could render, and again when building the success URL,
+because by then it has been through a form post. It is never a redirect, always
+a link the reader chooses.
+
+### Provider logos work here, and only here
+
+The admin pages use letter marks because the API's `icon_url` is relative to a
+base the browser cannot reach under cookie sessions. This page is public and the
+browser talks to the address `publicApiUrl()` returns
+([`config/public-api.ts`](src/lib/config/public-api.ts) — the one place
+`VITE_API_URL` is read on the client), so
+[`ProviderLogo`](src/lib/components/pairing/ProviderLogo.svelte) uses the real
+file — falling back to the letter mark on an `onerror` or when `VITE_API_URL` is
+unset.
+
+### What the backend still owns
+
+- **A denied consent shows raw JSON.** The callback redirects OAuth errors to
+  `/api/v1/oauth/error?message=…`, which is a JSON endpoint, not a page. The
+  frontend cannot intercept it; the backend would have to accept an error URL
+  the way it already accepts `redirect_uri`.
+- **`authorize` does not check that the user exists**, so any UUID in a pairing
+  link starts a real OAuth flow. Nothing here can validate it either: reading
+  the user requires a developer token this page does not have.
+
 ## Styling is scoped — do not reach for global CSS
 
 A `<style>` block inside a `.svelte` file is scoped by the compiler. It rewrites
@@ -1119,6 +1184,8 @@ src/
 │   ├── +page.ts                     # redirects / → /dashboard
 │   ├── login/    +page.svelte + +page.server.ts
 │   ├── logout/   +page.server.ts    # action only
+│   ├── users/[id]/pair/             # public: no session, outside (app)
+│   │   └── success/
 │   └── (app)/
 │       ├── +layout.server.ts        # the auth guard
 │       ├── +layout.svelte           # wraps children in AppShell
@@ -1134,16 +1201,15 @@ a whole component directory.
 
 **Real:** the shell, theming, cookie authentication, the `/users` list with
 search, provider filters, sorting, pagination and page size, its create / edit /
-delete actions, and the user detail page's Connections tab — identity, connected
+delete actions, the user detail page's Connections tab — identity, connected
 providers with capabilities and backfill history, and the last 24 hours of sync
-activity with a provider filter.
+activity with a provider filter — and the public pairing pages.
 
 **Not real:** every other page under `(app)` is a `PagePlaceholder`; every user
-tab other than Connections renders the shared "not built yet" placeholder; the
-public `/users/[id]/pair` page does not exist, so the pairing link an admin
-copies currently 404s; and the Apple Health XML import is a disabled menu entry
-— it is a multipart S3 upload (presign, sign parts, complete or abort) and needs
-its own increment, not a menu item.
+tab other than Connections renders the shared "not built yet" placeholder; and
+the Apple Health XML import is a disabled menu entry — it is a multipart S3
+upload (presign, sign parts, complete or abort) and needs its own increment, not
+a menu item.
 
 Only `/users` fetches domain data, and it does so from a server `load` via
 `apiGet`. There is still **no browser-facing API proxy** — a `/api/[...path]`

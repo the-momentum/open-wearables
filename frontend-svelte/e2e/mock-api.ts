@@ -59,6 +59,18 @@ const server = Bun.serve({
 			return validAccessTokens.has(token) ? json(DEVELOPER) : json({ detail: 'Unauthorized' }, 401);
 		}
 
+		const authorizeMatch = pathname.match(/^\/api\/v1\/oauth\/([^/]+)\/authorize$/);
+		if (authorizeMatch) {
+			const provider = authorizeMatch[1];
+			if (provider === 'whoop') {
+				return json({ detail: 'Provider credentials are not configured.' }, 400);
+			}
+			// A real provider sends the browser to redirect_uri once the person
+			// consents, so handing it straight back walks the same path.
+			const redirectUri = new URL(request.url).searchParams.get('redirect_uri') ?? '/';
+			return json({ authorization_url: redirectUri, state: 'state-1' });
+		}
+
 		if (pathname === '/api/v1/oauth/providers') {
 			return json(PROVIDER_SETTINGS);
 		}
