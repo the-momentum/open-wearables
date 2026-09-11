@@ -12,7 +12,7 @@ from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 from app.services.services import AppService
 from app.utils.auth import get_current_developer_optional, oauth2_scheme
-from app.utils.exceptions import ResourceNotFoundError
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 from app.utils.security import hash_api_key
 
 # Number of leading characters of the raw key kept in clear for display ("sk-" + 7 hex chars).
@@ -32,6 +32,7 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         """Generate random API key with sk- prefix and 32 hex characters."""
         return f"sk-{secrets.token_hex(16)}"
 
+    @handle_exceptions
     def create_api_key(self, db: DbSession, created_by: UUID | None, name: str = "Default") -> tuple[ApiKey, str]:
         """Create an API key.
 
@@ -56,8 +57,12 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         self.logger.debug(f"Listed {len(keys)} API keys")
         return keys
 
+    @handle_exceptions
     def rotate_api_key(self, db: DbSession, key_id: UUID, created_by: UUID | None) -> tuple[ApiKey, str]:
         """Rotate API key - delete the old one and create a new one with the same name.
+
+        The delete is only flushed, so the commit issued when the replacement is created
+        covers both steps. If creating the replacement fails, the old key stays valid.
 
         Returns:
             Tuple of (new ApiKey, raw_key). The raw key is shown to the caller exactly once.
@@ -65,11 +70,16 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         if not (old_key := self.get(db, key_id, raise_404=True)):
             raise ResourceNotFoundError(self.name, key_id)
         name = old_key.name
-        self.crud.delete(db, old_key)
-        new_key, raw_key = self.create_api_key(db, created_by, name)
+        self.crud.delete_flush(db, old_key)
+        try:
+            new_key, raw_key = self.create_api_key(db, created_by, name)
+        except Exception:
+            db.rollback()
+            raise
         self.logger.debug(f"Rotated API key {key_id} to {new_key.id}")
         return new_key, raw_key
 
+    @handle_exceptions
     def validate_api_key(self, db: DbSession, key: str) -> ApiKey:
         """Validate the raw API key against stored hashes. Raises 401 if invalid."""
         if not key or not (api_key := self.crud.get_by_hash(db, hash_api_key(key))):

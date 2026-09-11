@@ -10,6 +10,7 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import NoReturn
 from uuid import uuid4
 
 import pytest
@@ -226,6 +227,32 @@ class TestApiKeyServiceRotateApiKey:
         # Assert
         assert new_key.id != old_key_id
         assert new_key.created_by is None
+
+    def test_rotate_api_key_keeps_old_key_when_replacement_fails(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should leave the old key intact and valid if creating the replacement fails."""
+        # Arrange
+        developer = DeveloperFactory()
+        old_key = ApiKeyFactory(developer=developer, name="Production Key")
+        old_key_id = old_key.id
+        old_raw_key = old_key.plain_key
+        # The factory only flushes; commit so the rollback inside rotate cannot undo the arrange step
+        db.commit()
+
+        def _fail(*_args: object, **_kwargs: object) -> NoReturn:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(api_key_service, "create_api_key", _fail)
+
+        # Act
+        with pytest.raises(RuntimeError):
+            api_key_service.rotate_api_key(db, old_key_id, developer.id)
+
+        # Assert - the delete was rolled back together with the failed create
+        assert api_key_service.get(db, old_key_id) is not None
+        assert api_key_service.validate_api_key(db, old_raw_key).id == old_key_id
+        assert len(api_key_service.list_api_keys(db)) == 1
 
     def test_rotate_nonexistent_key_raises_404(self, db: Session) -> None:
         """Should raise HTTPException(404) when rotating non-existent key."""
