@@ -13,9 +13,10 @@ uv run alembic upgrade head
 echo 'Initializing provider settings...'
 uv run python scripts/init_provider_settings.py
 
-# Initialize device priority table
+# Initialize priority tables
 echo 'Initializing priorities...'
 uv run python scripts/init_device_priorities.py
+uv run python scripts/init_provider_priorities.py
 
 # Seed admin account (uses ADMIN_EMAIL/ADMIN_PASSWORD env vars, or defaults)
 echo 'Seeding admin account...'

@@ -44,10 +44,20 @@ class ProviderName(str, Enum):
         return cls.UNKNOWN
 
 
+# Default order for a fresh deployment. Covers every provider a user can connect;
+# UNKNOWN and INTERNAL are deliberately absent because they are not configurable.
 DEFAULT_PROVIDER_PRIORITY: dict[ProviderName, int] = {
     ProviderName.APPLE: 1,
     ProviderName.GARMIN: 2,
     ProviderName.POLAR: 3,
     ProviderName.SUUNTO: 4,
     ProviderName.WHOOP: 5,
+    ProviderName.FITBIT: 6,
+    ProviderName.GOOGLE: 7,
+    ProviderName.OURA: 8,
+    ProviderName.SAMSUNG: 9,
+    ProviderName.SENSORBIO: 10,
+    ProviderName.STRAVA: 11,
+    ProviderName.ULTRAHUMAN: 12,
+    ProviderName.WITHINGS: 13,
 }
