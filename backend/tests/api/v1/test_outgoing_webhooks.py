@@ -14,7 +14,7 @@ from collections.abc import Generator
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -731,3 +731,55 @@ class TestDataEventSyncProvenance:
             "source": "backfill",
             "scope": "historical",
         }
+
+
+class TestTimeseriesIdempotencyKey:
+    """Two runs writing the same window must not collapse into one delivered event."""
+
+    @pytest.fixture(autouse=True)
+    def _webhooks_enabled(self) -> Generator[None, None, None]:
+        with patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True):
+            yield
+
+    @staticmethod
+    def _keys(mock_task: MagicMock) -> list[str]:
+        return [c[1]["idempotency_key"] for c in mock_task.delay.call_args_list]
+
+    def _emit(self, mock_task: MagicMock, uid: UUID, sync: dict | None) -> list[str]:
+        mock_task.delay.reset_mock()
+        on_timeseries_batch_saved(
+            user_id=uid,
+            provider="garmin",
+            series_type="heart_rate",
+            sample_count=1,
+            start_time="2019-03-14T06:00:00+00:00",
+            end_time="2019-03-14T06:05:00+00:00",
+            samples=[],
+            sync=sync,
+        )
+        return self._keys(mock_task)
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_separate_runs_over_the_same_window_get_distinct_keys(self, mock_task: MagicMock) -> None:
+        uid = uuid4()
+        backfill = self._emit(mock_task, uid, {"run_id": "backfill_1", "source": "backfill", "scope": "historical"})
+        live = self._emit(mock_task, uid, {"run_id": "pull_2", "source": "pull", "scope": "live"})
+
+        assert set(backfill).isdisjoint(live)
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_the_same_run_re_emitting_still_dedupes(self, mock_task: MagicMock) -> None:
+        """A retried task must not deliver the batch twice."""
+        uid = uuid4()
+        sync = {"run_id": "backfill_1", "source": "backfill", "scope": "historical"}
+
+        assert self._emit(mock_task, uid, sync) == self._emit(mock_task, uid, sync)
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_writes_without_a_run_keep_the_original_key_format(self, mock_task: MagicMock) -> None:
+        uid = uuid4()
+
+        keys = self._emit(mock_task, uid, None)
+
+        expected = f"timeseries.{uid}.garmin.heart_rate.2019-03-14T06_00_00_00_00.2019-03-14T06_05_00_00_00"
+        assert keys == [f"{expected}.heart_rate.created", f"{expected}.series.heart_rate.created"]

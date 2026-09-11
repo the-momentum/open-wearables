@@ -11,10 +11,10 @@ from app.repositories.data_point_series_repository import DataPointSeriesReposit
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.data_type_coverage import CoverageSpan
-from app.schemas.enums import SeriesType
+from app.schemas.enums import ProviderName, SeriesType
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.sync_status import DataTypeKind
-from tests.factories import UserFactory
+from tests.factories import DataSourceFactory, UserFactory
 
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -190,3 +190,42 @@ def test_rollback_takes_coverage_with_it(db: Session) -> None:
     db.rollback()
 
     assert db.query(DataTypeCoverage).filter_by(user_id=user.id).count() == 0
+
+
+def test_event_categories_do_not_collide_with_series_slugs() -> None:
+    """Coverage is keyed by data_type alone, so the two vocabularies must stay disjoint.
+
+    A category that is also a SeriesType slug would merge a series and an event into one
+    row, widening the span across both and flip-flopping kind between writers.
+    """
+    categories = {"activity", "menstrual_cycle", "sleep", "workout"}
+
+    assert categories & {series.value for series in SeriesType} == set()
+
+
+def test_coverage_follows_the_referenced_data_source_not_the_payload(db: Session) -> None:
+    """A creator carrying data_source_id has already chosen its source; its provider wins.
+
+    Otherwise coverage files under whatever the payload happens to say — "unknown" when it
+    says nothing — while the record itself files under the source's real provider.
+    """
+    user = UserFactory()
+    data_source = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin_connect")
+    db.commit()
+
+    record = EventRecordCreate(
+        id=uuid4(),
+        user_id=user.id,
+        data_source_id=data_source.id,
+        source_name="Garmin",
+        category="workout",
+        start_datetime=NOW,
+        end_datetime=NOW + timedelta(hours=1),
+    )
+    EventRecordRepository(EventRecord).create_and_flush(db, record)
+    db.commit()
+
+    assert data_type_coverage_repository.get(db, user.id, "unknown", "workout") is None
+    coverage = data_type_coverage_repository.get(db, user.id, "garmin", "workout")
+    assert coverage is not None
+    assert coverage.coverage_end == NOW + timedelta(hours=1)

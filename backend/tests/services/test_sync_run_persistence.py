@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.close_stale_sync_runs_task import close_stale_sync_runs
 from app.models import SyncRun, SyncRunDataType
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import SeriesType
 from app.schemas.sync_status import (
     DataTypeKind,
@@ -454,3 +456,112 @@ class TestListStoredRunsFilters:
             r.run_key for r in list_stored_runs(db, user.id, covered_from=self.MARCH[0], covered_to=self.MARCH[1])
         ] == ["sdk_batch"]
         assert list_stored_runs(db, user.id, covered_to=datetime(2026, 3, 1, tzinfo=timezone.utc)) == []
+
+
+class TestDataTypeWebhooks:
+    """Per-type terminal outcomes are forwarded so a consumer learns a type's history is in."""
+
+    @staticmethod
+    def _outcome(**overrides: Any) -> DataTypeOutcome:
+        defaults = {
+            "data_type": "heart_rate",
+            "kind": DataTypeKind.SERIES,
+            "status": SyncStatus.SUCCESS,
+        }
+        return DataTypeOutcome(**{**defaults, **overrides})
+
+    def _record(self, db: Session, user_id: UUID, outcomes: list[DataTypeOutcome], run_id: str) -> MagicMock:
+        with (
+            patch("app.services.sync_status_service.SessionLocal") as session_local,
+            patch("app.services.sync_status_service.outgoing_events.on_sync_data_type_finished") as emit,
+        ):
+            session_local.return_value.__enter__.return_value = db
+            try_persist_run(_event(user_id, run_id=run_id))
+            try_record_data_types(run_id, outcomes, scope=SyncScope.HISTORICAL)
+        return emit
+
+    def test_terminal_outcome_is_forwarded_with_the_runs_identity(self, db: Session) -> None:
+        user = UserFactory()
+
+        emit = self._record(
+            db,
+            user.id,
+            [self._outcome(native_type="dailies", items_inserted=41230, reported_records=41230)],
+            "pull_done",
+        )
+
+        emit.assert_called_once()
+        sent = emit.call_args.kwargs
+        assert sent["run_id"] == "pull_done"
+        assert sent["provider"] == "oura"
+        assert sent["scope"] == SyncScope.HISTORICAL
+        assert sent["data_type"] == "heart_rate"
+        assert sent["native_data_type"] == "dailies"
+        assert sent["items_inserted"] == 41230
+        assert sent["succeeded"] is True
+
+    def test_failed_outcome_is_forwarded_as_a_failure(self, db: Session) -> None:
+        user = UserFactory()
+
+        emit = self._record(
+            db,
+            user.id,
+            [self._outcome(status=SyncStatus.FAILED, error_code="authorization_denied", error="denied")],
+            "pull_failed",
+        )
+
+        sent = emit.call_args.kwargs
+        assert sent["succeeded"] is False
+        assert sent["error_code"] == "authorization_denied"
+
+    def test_lost_type_counts_as_a_failure_not_a_completion(self, db: Session) -> None:
+        """STALE means we lost track of it: the history promised to the consumer is not there."""
+        user = UserFactory()
+
+        emit = self._record(db, user.id, [self._outcome(status=SyncStatus.STALE)], "pull_stale")
+
+        assert emit.call_args.kwargs["succeeded"] is False
+
+    def test_in_progress_outcome_is_not_forwarded(self, db: Session) -> None:
+        """An SDK export reports its types once per batch, long before any of them is done."""
+        user = UserFactory()
+
+        emit = self._record(db, user.id, [self._outcome(status=SyncStatus.IN_PROGRESS)], "sdk_batch_1")
+
+        emit.assert_not_called()
+
+    def test_payload_carries_the_total_span_now_held_for_the_type(self, db: Session) -> None:
+        """coverage answers "is the history complete", which the run's own span cannot."""
+        user = UserFactory()
+        data_type_coverage_repository.record(
+            db,
+            [
+                CoverageSpan(
+                    user_id=user.id,
+                    provider="oura",
+                    data_type="heart_rate",
+                    kind=DataTypeKind.SERIES,
+                    start=datetime(2019, 3, 14, tzinfo=timezone.utc),
+                    end=datetime(2026, 3, 9, tzinfo=timezone.utc),
+                )
+            ],
+        )
+        db.commit()
+
+        emit = self._record(
+            db,
+            user.id,
+            [
+                self._outcome(
+                    covered_start=datetime(2026, 3, 5, tzinfo=timezone.utc),
+                    covered_end=datetime(2026, 3, 9, tzinfo=timezone.utc),
+                )
+            ],
+            "pull_coverage",
+        )
+
+        sent = emit.call_args.kwargs
+        # What this run wrote, versus everything we now hold.
+        assert sent["covered_start"] == "2026-03-05T00:00:00+00:00"
+        assert sent["coverage_start"] == "2019-03-14T00:00:00+00:00"
+        assert sent["coverage_end"] == "2026-03-09T00:00:00+00:00"

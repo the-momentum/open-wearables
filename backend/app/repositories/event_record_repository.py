@@ -62,6 +62,13 @@ class EventRecordRepository(
                 provider = ProviderName(creator.provider)
         if creator.data_source_id:
             data_source_id = creator.data_source_id
+            # The referenced source decides the provider, whatever the payload claims:
+            # it is what the record is filed under, so coverage must agree with it.
+            existing = db_session.get(DataSource, data_source_id)
+            if existing is not None:
+                # Loaded as a plain str: the column is String, not an enum type.
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(existing.provider)
         else:
             data_source = self.data_source_repo.ensure_data_source(
                 db_session,

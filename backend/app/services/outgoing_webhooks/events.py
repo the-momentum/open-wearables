@@ -244,8 +244,12 @@ def on_timeseries_batch_saved(
             channels=[f"user.{user_id}"],
         )
 
+    # Two runs can write the same window with different provenance. Without the run in
+    # the key they share an event id, and Svix drops the second as a duplicate.
+    run_segment = f".{sync['run_id']}" if sync and sync.get("run_id") else ""
+
     if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
-        base_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        base_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}{run_segment}"
         data: dict[str, Any] = {
             "user_id": str(user_id),
             "provider": provider,
@@ -267,7 +271,8 @@ def on_timeseries_batch_saved(
             chunk_start = chunk[0]["timestamp"] if chunk else start_time
             chunk_end = chunk[-1]["timestamp"] if chunk else end_time
             base_key = (
-                f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
+                f"timeseries.{user_id}.{provider}.{series_type}."
+                f"{start_time or ''}.{end_time or ''}{run_segment}.chunk{chunk_index}"
             )
             data = {
                 "user_id": str(user_id),
@@ -421,5 +426,66 @@ def on_sync_failed(
             },
         },
         idempotency_key=f"sync.failed.{run_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
+def on_sync_data_type_finished(
+    *,
+    user_id: UUID,
+    provider: str,
+    source: str,
+    scope: str,
+    run_id: str,
+    data_type: str,
+    kind: str,
+    status: str,
+    succeeded: bool,
+    native_data_type: str | None = None,
+    reported_records: int | None = None,
+    items_inserted: int = 0,
+    items_updated: int = 0,
+    covered_start: str | None = None,
+    covered_end: str | None = None,
+    coverage_start: str | None = None,
+    coverage_end: str | None = None,
+    error_code: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Emit the terminal outcome of one data type within a run.
+
+    On a historical run this is the per-type "done" signal: the run-level ``sync.completed``
+    only says the whole run finished, which for a months-long backfill arrives long after
+    an individual type is fully in.
+
+    ``covered_*`` is what this run wrote, ``coverage_*`` the total span now held for the
+    type. They differ, and the second is the one that answers "is the history complete".
+    """
+    event_type = WebhookEventType.SYNC_DATA_TYPE_COMPLETED if succeeded else WebhookEventType.SYNC_DATA_TYPE_FAILED
+    _dispatch(
+        event_type,
+        {
+            "type": event_type,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "source": source,
+                "scope": scope,
+                "run_id": run_id,
+                "data_type": data_type,
+                "native_data_type": native_data_type,
+                "kind": kind,
+                "status": status,
+                "reported_records": reported_records,
+                "items_inserted": items_inserted,
+                "items_updated": items_updated,
+                "covered_start": covered_start,
+                "covered_end": covered_end,
+                "coverage": {"start": coverage_start, "end": coverage_end} if coverage_end else None,
+                "error_code": error_code,
+                "error": error,
+            },
+        },
+        idempotency_key=_safe_key(f"{event_type}.{run_id}.{data_type}"),
         channels=[f"user.{user_id}"],
     )
