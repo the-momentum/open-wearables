@@ -1,7 +1,7 @@
 """data type coverage
 
 Revision ID: 47040682b5b4
-Revises: cf76dead11f5
+Revises: a7c3e9f1b2d4
 
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "47040682b5b4"
-down_revision: Union[str, None] = "cf76dead11f5"
+down_revision: Union[str, None] = "a7c3e9f1b2d4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
