@@ -507,6 +507,13 @@ curl -X PATCH "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpL
   -d '{ "filter_types": [] }'
 ```
 
+<Note>
+  The empty list is what clears the filter. Sending `"filter_types": null` — or leaving the field
+  out — keeps the current filter, so a client that serialises unset fields as `null` will not wipe
+  an endpoint's event types by accident. Note that `user_id` works the other way round: there
+  `null` is what removes the filter.
+</Note>
+
 ### Filter by user
 
 Pass `user_id` to scope an endpoint to events for a single user. All other users' events are silently dropped before delivery.

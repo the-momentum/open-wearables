@@ -173,7 +173,7 @@ function WebhookDetailPage() {
                   data: {
                     url: data.url,
                     description: data.description ?? null,
-                    filter_types: data.filter_types ?? null,
+                    filter_types: data.filter_types,
                     user_id: data.user_id ?? null,
                   },
                 })
