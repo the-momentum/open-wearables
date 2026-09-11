@@ -11,8 +11,9 @@ Two checks:
 
 The correct way to resolve a two-head conflict is to re-point the migration that is *not* on the
 base branch yet, so it becomes the new head: set its ``down_revision`` to the head from the base
-branch and rename the file so its date is later than the last migration there. Keep the ``rev`` id,
-so databases that already ran it are unaffected.
+branch and rename the file so its date is later than the last migration there. Keep the ``rev`` id.
+A dev database that already ran it must be downgraded first and upgraded again afterwards, or it
+never applies the migration from the base branch.
 
 Usage (from ``backend/``)::
 
