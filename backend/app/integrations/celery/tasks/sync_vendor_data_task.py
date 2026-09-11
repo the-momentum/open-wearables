@@ -206,11 +206,6 @@ def sync_vendor_data(
                     else (SyncSource.BACKFILL if is_historical else SyncSource.PULL)
                 )
                 sync_scope = SyncScope.HISTORICAL if is_historical else SyncScope.LIVE
-                # Stamps every data event written below with the run that produced it.
-                sync_run_token = sync_run_var.set(
-                    SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope)
-                )
-
                 # If this provider account is shared across OW profiles, only one
                 # should make the API call at a time.  The first to acquire the lock
                 # is primary; concurrent duplicates skip and wait for the fan-out.
@@ -291,6 +286,10 @@ def sync_vendor_data(
                     },
                 )
 
+                # Stamps every data event written below with the run that produced it.
+                # Set here rather than earlier so the paths that skip the sync entirely
+                # never leave it set; the matching reset is this block's finally.
+                sync_run_token = sync_run_var.set(SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope))
                 try:
                     # Inside the try: the finally below is what stops the renewal thread.
                     bind_primary_lease(provider_name, connection.provider_user_id, user_uuid, shared_token)
