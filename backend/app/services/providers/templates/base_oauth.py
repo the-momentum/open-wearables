@@ -26,6 +26,7 @@ from app.schemas.model_crud.credentials import (
 )
 from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.services.outgoing_webhooks.events import on_connection_created, on_connection_revoked
+from app.utils.exceptions import handle_exceptions
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,11 @@ class BaseOAuthTemplate(ABC):
 
     use_pkce: bool = False
     auth_method: AuthenticationMethod = AuthenticationMethod.BASIC_AUTH
+    use_http2: bool = False
+
+    def _http_client(self) -> httpx.Client:
+        """Build an HTTP client configured for this provider's OAuth endpoints."""
+        return httpx.Client(http2=self.use_http2, timeout=30.0)
 
     def get_authorization_url(self, user_id: UUID, redirect_uri: str | None = None) -> tuple[str, str]:
         """Generates the provider's authorization URL.
@@ -133,17 +139,18 @@ class BaseOAuthTemplate(ABC):
 
         return oauth_state
 
+    @handle_exceptions
     def refresh_access_token(self, db: DbSession, user_id: UUID, refresh_token: str) -> OAuthTokenResponse:
         """Refreshes the access token using the refresh token."""
         data, headers = self._prepare_refresh_request(refresh_token)
 
         try:
-            response = httpx.post(
-                self.endpoints.token_url,
-                data=data,
-                headers=headers,
-                timeout=30.0,
-            )
+            with self._http_client() as client:
+                response = client.post(
+                    self.endpoints.token_url,
+                    data=data,
+                    headers=headers,
+                )
             response.raise_for_status()
             token_response = OAuthTokenResponse.model_validate(response.json())
 
@@ -271,17 +278,18 @@ class BaseOAuthTemplate(ABC):
         # code_verifier will be None for non-PKCE providers
         return oauth_state, code_verifier
 
+    @handle_exceptions
     def _exchange_token(self, code: str, code_verifier: str | None) -> OAuthTokenResponse:
         """Exchanges authorization code for tokens."""
         data, headers = self._prepare_token_request(code, code_verifier)
 
         try:
-            response = httpx.post(
-                self.endpoints.token_url,
-                data=data,
-                headers=headers,
-                timeout=30.0,
-            )
+            with self._http_client() as client:
+                response = client.post(
+                    self.endpoints.token_url,
+                    data=data,
+                    headers=headers,
+                )
             response.raise_for_status()
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:
