@@ -21,7 +21,16 @@ def get_developer(developer_id: UUID, db: DbSession, _auth: DeveloperDep):
     return developer_service.get(db, developer_id, raise_404=True)
 
 
-@router.patch("/{developer_id}", response_model=DeveloperRead)
+@router.patch(
+    "/{developer_id}",
+    response_model=DeveloperRead,
+    responses={
+        403: {
+            "description": "The ID is not the authenticated developer's own",
+            "content": {"application/json": {"example": {"detail": "You can only update your own developer account"}}},
+        },
+    },
+)
 def update_developer(
     developer_id: UUID,
     payload: DeveloperUpdate,
