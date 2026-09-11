@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.database import DbSession
 from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate
@@ -26,9 +26,18 @@ def update_developer(
     developer_id: UUID,
     payload: DeveloperUpdate,
     db: DbSession,
-    _auth: DeveloperDep,
+    developer: DeveloperDep,
 ):
-    """Update developer by ID."""
+    """Update the authenticated developer's own profile.
+
+    Developers have no roles, so there is no one entitled to edit another developer's
+    email or password. Allowing it would let any team member take over another account.
+    """
+    if developer_id != developer.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own developer account",
+        )
     return developer_service.update_developer_info(db, developer_id, payload, raise_404=True)
 
 
