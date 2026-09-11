@@ -265,7 +265,7 @@ class EventRecordRepository(
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
 
-        self._record_coverage(db_session, covered)
+        self._record_coverage(db_session, [(c, p) for c, p in covered if c.id in inserted_ids])
         # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
