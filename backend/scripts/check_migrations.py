@@ -10,7 +10,9 @@ Two checks:
    the merged revision treats the new migration as an ancestor and never runs it.
 
 The correct way to resolve a two-head conflict is to re-point the migration that is *not* on the
-base branch yet, so it becomes the new head.
+base branch yet, so it becomes the new head: set its ``down_revision`` to the head from the base
+branch and rename the file so its date is later than the last migration there. Keep the ``rev`` id,
+so databases that already ran it are unaffected.
 
 Usage (from ``backend/``)::
 
