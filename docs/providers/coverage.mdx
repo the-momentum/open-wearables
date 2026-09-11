@@ -16,21 +16,42 @@ This guide gives an overview of data type support across the integrated wearable
 
 ## Quick Overview
 
-| Capability | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
-|------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
-| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| **Sleep** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
-| **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | 🔜 | ✅ |
-| **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ◐ | 🔜 | ✅ |
-| **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Women's Health** | 🔜 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
+<div className="ow-cov">
+<table className="ow-cov-table">
+<thead>
+<tr>
+<th className="ow-cov-sticky ow-cov-corner">Capability</th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Apple</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Garmin</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Polar</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Suunto</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Oura</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Whoop</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Health Connect</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><td className="ow-cov-sticky ow-cov-label">OAuth</td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-label">Workouts</td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-label">Sleep</td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="s"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-label">24/7 Data</td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="p"></td><td className="y"></td><td className="n"></td><td className="s"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-label">Timeseries</td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="p"></td><td className="s"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-label">Health Scores</td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-label">Women's Health</td><td className="s"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="s"></td></tr>
+</tbody>
+</table>
+</div>
 
 <Accordion title="Legend">
-  - ✅ **Full support** — Fully implemented and collecting data
-  - ◐ **Partial** — Limited data or only during certain contexts (e.g., workouts only)
-  - 🔜 **Coming soon** — Provider API supports this, processing not yet implemented
-  - ❌ **Not available** — Provider doesn't support this or not applicable
+  <div className="ow-cov-legend ow-cov-legend-col">
+    <span><i className="ow-cov-dot y"></i> <b>Full support</b> - fully implemented and collecting data</span>
+    <span><i className="ow-cov-dot p"></i> <b>Partial</b> - limited data or only during certain contexts (e.g. workouts only)</span>
+    <span><i className="ow-cov-dot s"></i> <b>Coming soon</b> - provider API supports this, processing not yet implemented</span>
+    <span><i className="ow-cov-dot n"></i> <b>Not available</b> - provider does not support this or not applicable</span>
+  </div>
 </Accordion>
 
 <Note>
@@ -47,239 +68,294 @@ This guide gives an overview of data type support across the integrated wearable
 
 ## Detailed Coverage Matrix
 
-### Heart & Cardiovascular
+<Tabs>
+<Tab title="Timeseries">
+<div className="ow-cov">
+<table className="ow-cov-table">
+<thead>
+<tr>
+<th className="ow-cov-sticky ow-cov-corner">92 rows</th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Apple</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Garmin</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Google</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Oura</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Polar</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Samsung</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Sensorbio</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Suunto</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Whoop</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Withings</span></th>
+</tr>
+</thead>
+<tbody>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Heart & Cardiovascular</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate</code> <span className="ow-cov-unit">bpm</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate_<wbr />recovery_<wbr />one_<wbr />minute</code> <span className="ow-cov-unit">bpm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate_<wbr />variability_<wbr />rmssd</code> <span className="ow-cov-unit">ms</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate_<wbr />variability_<wbr />sdnn</code> <span className="ow-cov-unit">ms</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>resting_<wbr />heart_<wbr />rate</code> <span className="ow-cov-unit">bpm</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>walking_<wbr />heart_<wbr />rate_<wbr />average</code> <span className="ow-cov-unit">bpm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Blood & Respiratory</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>blood_<wbr />alcohol_<wbr />content</code> <span className="ow-cov-unit">mg_dl</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>blood_<wbr />glucose</code> <span className="ow-cov-unit">mg_dl</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>blood_<wbr />pressure_<wbr />diastolic</code> <span className="ow-cov-unit">mmHg</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>blood_<wbr />pressure_<wbr />systolic</code> <span className="ow-cov-unit">mmHg</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>breathing_<wbr />disturbance_<wbr />index</code> <span className="ow-cov-unit">score</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>forced_<wbr />expiratory_<wbr />volume_<wbr />1</code> <span className="ow-cov-unit">liters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>forced_<wbr />vital_<wbr />capacity</code> <span className="ow-cov-unit">liters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>oxygen_<wbr />saturation</code> <span className="ow-cov-unit">percent</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>peak_<wbr />expiratory_<wbr />flow_<wbr />rate</code> <span className="ow-cov-unit">L/min</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>peripheral_<wbr />perfusion_<wbr />index</code> <span className="ow-cov-unit">score</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>respiratory_<wbr />rate</code> <span className="ow-cov-unit">brpm</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleeping_<wbr />breathing_<wbr />disturbances</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Body Composition</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>body_<wbr />fat_<wbr />mass</code> <span className="ow-cov-unit">kg</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>body_<wbr />fat_<wbr />percentage</code> <span className="ow-cov-unit">percent</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>body_<wbr />mass_<wbr />index</code> <span className="ow-cov-unit">kg_m2</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>body_<wbr />temperature</code> <span className="ow-cov-unit">celsius</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>body_<wbr />water_<wbr />mass</code> <span className="ow-cov-unit">kg</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>bone_<wbr />mass</code> <span className="ow-cov-unit">kg</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>height</code> <span className="ow-cov-unit">cm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>lean_<wbr />body_<wbr />mass</code> <span className="ow-cov-unit">kg</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>skeletal_<wbr />muscle_<wbr />mass</code> <span className="ow-cov-unit">kg</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>skin_<wbr />temperature</code> <span className="ow-cov-unit">celsius</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>skin_<wbr />temperature_<wbr />deviation</code> <span className="ow-cov-unit">celsius</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>skin_<wbr />temperature_<wbr />trend_<wbr />deviation</code> <span className="ow-cov-unit">celsius</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>waist_<wbr />circumference</code> <span className="ow-cov-unit">cm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>weight</code> <span className="ow-cov-unit">kg</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Fitness Metrics</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>cardiovascular_<wbr />age</code> <span className="ow-cov-unit">years</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>six_<wbr />minute_<wbr />walk_<wbr />test_<wbr />distance</code> <span className="ow-cov-unit">meters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>vo2_<wbr />max</code> <span className="ow-cov-unit">ml_kg_min</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Activity - Basic</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>active_<wbr />time</code> <span className="ow-cov-unit">minutes</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>average_<wbr />met</code> <span className="ow-cov-unit">met</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>basal_<wbr />energy</code> <span className="ow-cov-unit">kcal</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>energy</code> <span className="ow-cov-unit">kcal</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>exercise_<wbr />time</code> <span className="ow-cov-unit">minutes</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>flights_<wbr />climbed</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>physical_<wbr />effort</code> <span className="ow-cov-unit">score</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>stand_<wbr />time</code> <span className="ow-cov-unit">minutes</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>steps</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Activity - Distance</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>distance_<wbr />cycling</code> <span className="ow-cov-unit">meters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>distance_<wbr />downhill_<wbr />snow_<wbr />sports</code> <span className="ow-cov-unit">meters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>distance_<wbr />other</code> <span className="ow-cov-unit">meters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>distance_<wbr />swimming</code> <span className="ow-cov-unit">meters</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>distance_<wbr />walking_<wbr />running</code> <span className="ow-cov-unit">meters</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Activity - Walking</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>stair_<wbr />ascent_<wbr />speed</code> <span className="ow-cov-unit">m_per_s</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>stair_<wbr />descent_<wbr />speed</code> <span className="ow-cov-unit">m_per_s</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>walking_<wbr />asymmetry_<wbr />percentage</code> <span className="ow-cov-unit">percent</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>walking_<wbr />double_<wbr />support_<wbr />percentage</code> <span className="ow-cov-unit">percent</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>walking_<wbr />speed</code> <span className="ow-cov-unit">m_per_s</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>walking_<wbr />steadiness</code> <span className="ow-cov-unit">percent</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>walking_<wbr />step_<wbr />length</code> <span className="ow-cov-unit">cm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Activity - Running</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>running_<wbr />ground_<wbr />contact_<wbr />time</code> <span className="ow-cov-unit">ms</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>running_<wbr />power</code> <span className="ow-cov-unit">watts</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>running_<wbr />speed</code> <span className="ow-cov-unit">m_per_s</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>running_<wbr />stride_<wbr />length</code> <span className="ow-cov-unit">cm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>running_<wbr />vertical_<wbr />oscillation</code> <span className="ow-cov-unit">cm</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Activity - Swimming</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>swimming_<wbr />stroke_<wbr />count</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Activity - Generic</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>cadence</code> <span className="ow-cov-unit">rpm</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>estimated_<wbr />workout_<wbr />effort_<wbr />score</code> <span className="ow-cov-unit">score</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>power</code> <span className="ow-cov-unit">watts</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>speed</code> <span className="ow-cov-unit">m_per_s</span></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>workout_<wbr />effort_<wbr />score</code> <span className="ow-cov-unit">score</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Environmental</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>air_<wbr />temperature</code> <span className="ow-cov-unit">celsius</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>elevation</code> <span className="ow-cov-unit">meters</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>environmental_<wbr />audio_<wbr />exposure</code> <span className="ow-cov-unit">dB</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>environmental_<wbr />sound_<wbr />reduction</code> <span className="ow-cov-unit">dB</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>headphone_<wbr />audio_<wbr />exposure</code> <span className="ow-cov-unit">dB</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>inhaler_<wbr />usage</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>latitude</code> <span className="ow-cov-unit">degrees</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>longitude</code> <span className="ow-cov-unit">degrees</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>time_<wbr />in_<wbr />daylight</code> <span className="ow-cov-unit">minutes</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>uv_<wbr />exposure</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>water_<wbr />temperature</code> <span className="ow-cov-unit">celsius</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>weather_<wbr />humidity</code> <span className="ow-cov-unit">percent</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>weather_<wbr />temperature</code> <span className="ow-cov-unit">celsius</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Provider-Specific</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>garmin_<wbr />body_<wbr />battery</code> <span className="ow-cov-unit">percent</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>garmin_<wbr />fitness_<wbr />age</code> <span className="ow-cov-unit">years</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>garmin_<wbr />stress_<wbr />level</code> <span className="ow-cov-unit">score</span></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>withings_<wbr />metabolic_<wbr />age</code> <span className="ow-cov-unit">years</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>withings_<wbr />pulse_<wbr />wave_<wbr />velocity</code> <span className="ow-cov-unit">m_per_s</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr className="ow-cov-cat"><td className="ow-cov-sticky">Other</td><td colSpan={13}></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>atrial_<wbr />fibrillation_<wbr />burden</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>electrodermal_<wbr />activity</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>hydration</code> <span className="ow-cov-unit">mL</span></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>insulin_<wbr />delivery</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>number_<wbr />of_<wbr />alcoholic_<wbr />beverages</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>number_<wbr />of_<wbr />times_<wbr />fallen</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>push_<wbr />count</code> <span className="ow-cov-unit">count</span></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+</tbody>
+</table>
+</div>
+</Tab>
+<Tab title="Workout">
+<div className="ow-cov">
+<table className="ow-cov-table">
+<thead>
+<tr>
+<th className="ow-cov-sticky ow-cov-corner">18 rows</th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Apple</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Garmin</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Google</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Oura</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Polar</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Samsung</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Sensorbio</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Suunto</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Whoop</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Withings</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>average_<wbr />cadence</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>average_<wbr />speed</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>average_<wbr />watts</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>distance</code></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>elev_<wbr />high</code></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>elev_<wbr />low</code></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>energy_<wbr />burned</code></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>entry_<wbr />source</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate_<wbr />avg</code></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate_<wbr />max</code></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>heart_<wbr />rate_<wbr />min</code></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>intensity</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>label</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>max_<wbr />speed</code></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>max_<wbr />watts</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>moving_<wbr />time_<wbr />seconds</code></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>steps_<wbr />count</code></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>total_<wbr />elevation_<wbr />gain</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+</tbody>
+</table>
+</div>
+</Tab>
+<Tab title="Sleep">
+<div className="ow-cov">
+<table className="ow-cov-table">
+<thead>
+<tr>
+<th className="ow-cov-sticky ow-cov-corner">9 rows</th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Apple</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Garmin</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Google</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Oura</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Polar</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Samsung</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Sensorbio</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Suunto</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Whoop</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Withings</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>is_<wbr />nap</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />awake_<wbr />minutes</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />deep_<wbr />minutes</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />efficiency_<wbr />score</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />light_<wbr />minutes</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />rem_<wbr />minutes</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />stages</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />time_<wbr />in_<wbr />bed_<wbr />minutes</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep_<wbr />total_<wbr />duration_<wbr />minutes</code></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="y"></td><td className="y"></td></tr>
+</tbody>
+</table>
+</div>
+</Tab>
+<Tab title="Women's Health">
+<div className="ow-cov">
+<table className="ow-cov-table">
+<thead>
+<tr>
+<th className="ow-cov-sticky ow-cov-corner">15 rows</th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Apple</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Garmin</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Google</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Oura</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Polar</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Samsung</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Sensorbio</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Suunto</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Whoop</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Withings</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>current_<wbr />phase</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>current_<wbr />phase_<wbr />type</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>cycle_<wbr />length</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>day_<wbr />in_<wbr />cycle</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>days_<wbr />until_<wbr />next_<wbr />phase</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>fertile_<wbr />window_<wbr />start</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>has_<wbr />specified_<wbr />cycle_<wbr />length</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>has_<wbr />specified_<wbr />period_<wbr />length</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>is_<wbr />predicted_<wbr />cycle</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>last_<wbr />updated_<wbr />at</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>length_<wbr />of_<wbr />current_<wbr />phase</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>length_<wbr />of_<wbr />fertile_<wbr />window</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>period_<wbr />length</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>predicted_<wbr />cycle_<wbr />length</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>pregnancy_<wbr />snapshot</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+</tbody>
+</table>
+</div>
+</Tab>
+<Tab title="Health Scores">
+<div className="ow-cov">
+<table className="ow-cov-table">
+<thead>
+<tr>
+<th className="ow-cov-sticky ow-cov-corner">7 rows</th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Apple</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Garmin</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Google</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Oura</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Polar</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Samsung</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Sensorbio</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Suunto</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Whoop</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Withings</span></th>
+</tr>
+</thead>
+<tbody>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>activity</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>body_<wbr />battery</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>readiness</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>recovery</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>sleep</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="y"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>strain</code></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td></tr>
+<tr><td className="ow-cov-sticky ow-cov-metric"><code>stress</code></td><td className="n"></td><td className="n"></td><td className="y"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td><td className="n"></td></tr>
+</tbody>
+</table>
+</div>
+</Tab>
+</Tabs>
 
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `heart_rate` | bpm | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| `resting_heart_rate` | bpm | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
-| `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Blood & Respiratory
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `blood_alcohol_content` | mg_dl | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `blood_glucose` | mg_dl | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `blood_pressure_diastolic` | mmHg | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `blood_pressure_systolic` | mmHg | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `breathing_disturbance_index` | score | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `forced_expiratory_volume_1` | liters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `forced_vital_capacity` | liters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `oxygen_saturation` | percent | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
-| `peak_expiratory_flow_rate` | L/min | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `peripheral_perfusion_index` | score | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `respiratory_rate` | brpm | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `sleeping_breathing_disturbances` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Body Composition
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `body_fat_mass` | kg | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `body_fat_percentage` | percent | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `body_mass_index` | kg_m2 | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `body_temperature` | celsius | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `body_water_mass` | kg | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `bone_mass` | kg | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `height` | cm | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| `lean_body_mass` | kg | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `skeletal_muscle_mass` | kg | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `skin_temperature` | celsius | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| `skin_temperature_deviation` | celsius | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `skin_temperature_trend_deviation` | celsius | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `waist_circumference` | cm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `weight` | kg | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-
-### Fitness Metrics
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `cardiovascular_age` | years | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `six_minute_walk_test_distance` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `vo2_max` | ml_kg_min | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
-
-### Activity - Basic
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `active_time` | minutes | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| `average_met` | met | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `basal_energy` | kcal | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `energy` | kcal | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
-| `exercise_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `flights_climbed` | count | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `physical_effort` | score | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `stand_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `steps` | count | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ |
-
-### Activity - Distance
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `distance_cycling` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `distance_downhill_snow_sports` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `distance_other` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `distance_swimming` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `distance_walking_running` | meters | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
-
-### Activity - Walking
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `stair_ascent_speed` | m_per_s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `stair_descent_speed` | m_per_s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_asymmetry_percentage` | percent | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_double_support_percentage` | percent | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_speed` | m_per_s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_steadiness` | percent | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_step_length` | cm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Activity - Running
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `running_ground_contact_time` | ms | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `running_power` | watts | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `running_speed` | m_per_s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `running_stride_length` | cm | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `running_vertical_oscillation` | cm | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Activity - Swimming
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `swimming_stroke_count` | count | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Activity - Generic
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `cadence` | rpm | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `estimated_workout_effort_score` | score | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `power` | watts | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `speed` | m_per_s | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `workout_effort_score` | score | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Environmental
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `air_temperature` | celsius | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `elevation` | meters | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `environmental_audio_exposure` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `environmental_sound_reduction` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `headphone_audio_exposure` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `inhaler_usage` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `latitude` | degrees | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `longitude` | degrees | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `time_in_daylight` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `uv_exposure` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `water_temperature` | celsius | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `weather_humidity` | percent | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `weather_temperature` | celsius | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-### Provider-Specific
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `garmin_body_battery` | percent | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `garmin_fitness_age` | years | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `garmin_stress_level` | score | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `withings_metabolic_age` | years | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `withings_pulse_wave_velocity` | m_per_s | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-
-### Other
-
-| Metric | Unit | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `atrial_fibrillation_burden` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `electrodermal_activity` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `hydration` | mL | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `insulin_delivery` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `number_of_alcoholic_beverages` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `number_of_times_fallen` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `push_count` | count | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
----
-
-## Workout Data Coverage
-
-| Field | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `average_cadence` | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `average_speed` | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `average_watts` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `distance` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| `elev_high` | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `elev_low` | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `energy_burned` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| `entry_source` | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `heart_rate_avg` | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| `heart_rate_max` | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| `heart_rate_min` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| `intensity` | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `label` | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `max_speed` | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `max_watts` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| `moving_time_seconds` | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| `steps_count` | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| `total_elevation_gain` | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
-
----
-
-## Sleep Data Coverage
-
-| Field | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `is_nap` | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_awake_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_deep_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_efficiency_score` | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_light_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_rem_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_stages` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| `sleep_time_in_bed_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_total_duration_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-
----
-
-## Women's Health Coverage
-
-| Field | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `current_phase` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `current_phase_type` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `cycle_length` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `day_in_cycle` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `days_until_next_phase` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `fertile_window_start` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `has_specified_cycle_length` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `has_specified_period_length` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `is_predicted_cycle` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `last_updated_at` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `length_of_current_phase` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `length_of_fertile_window` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `period_length` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `predicted_cycle_length` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `pregnancy_snapshot` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
----
-
-## Health Scores Coverage
-
-| Score | Apple | Fitbit | Garmin | Google | Oura | Polar | Samsung | Sensorbio | Strava | Suunto | Ultrahuman | Whoop | Withings |
-|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-| `activity` | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `body_battery` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `readiness` | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `recovery` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
-| `sleep` | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| `strain` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| `stress` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+<div className="ow-cov-legend"><span><i className="ow-cov-dot y"></i> supported</span><span><i className="ow-cov-dot n"></i> not available</span></div>
 
 {/* GENERATED:COVERAGE:END */}
 

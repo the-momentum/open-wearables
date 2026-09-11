@@ -31,63 +31,88 @@ START_MARKER = "{/* GENERATED:COVERAGE:START */}"
 END_MARKER = "{/* GENERATED:COVERAGE:END */}"
 
 
-def _mark(supported: bool) -> str:
-    return "✅" if supported else "❌"
-
-
 def _provider_headers(providers: list[str]) -> list[str]:
     # Provider slugs (from ProviderName) are single lowercase words — capitalize
     # is a faithful display form, no separate name map to keep in sync.
     return [p.capitalize() for p in providers]
 
 
-def _render_timeseries_section(coverage: CoverageResponse) -> str:
-    lines = ["## Detailed Coverage Matrix", ""]
+def _breakable(code: str) -> str:
+    # Long snake_case codes may wrap in the pinned column, but only after an underscore.
+    return code.replace("_", "_<wbr />")
+
+
+def _render_table(
+    rows: list[tuple[str, str, list[str]]],
+    providers: list[str],
+    groups: list[tuple[str, int]] | None = None,
+) -> list[str]:
+    """Static HTML matrix styled by docs/coverage.css: pinned header + first column,
+    rotated provider names, dots instead of emoji. Plain markup keeps the content in
+    the page source (SSR, site search, llms.txt) — no client-side component."""
+    lines = ['<div className="ow-cov">', '<table className="ow-cov-table">', "<thead>", "<tr>"]
+    lines.append(f'<th className="ow-cov-sticky ow-cov-corner">{len(rows)} rows</th>')
+    for name in _provider_headers(providers):
+        lines.append(f'<th className="ow-cov-provider"><span className="ow-cov-vlabel">{name}</span></th>')
+    lines += ["</tr>", "</thead>", "<tbody>"]
+    group_starts = {index: name for name, index in (groups or [])}
+    for i, (code, unit, supported) in enumerate(rows):
+        if i in group_starts:
+            lines.append(
+                f'<tr className="ow-cov-cat"><td className="ow-cov-sticky">{group_starts[i]}</td>'
+                f"<td colSpan={{{len(providers)}}}></td></tr>"
+            )
+        unit_html = f' <span className="ow-cov-unit">{unit}</span>' if unit else ""
+        cells = "".join(f'<td className="{"y" if p in supported else "n"}"></td>' for p in providers)
+        metric = f'<td className="ow-cov-sticky ow-cov-metric"><code>{_breakable(code)}</code>{unit_html}</td>'
+        lines.append(f"<tr>{metric}{cells}</tr>")
+    lines += ["</tbody>", "</table>", "</div>"]
+    return lines
+
+
+def _render_timeseries_tab(coverage: CoverageResponse) -> list[str]:
+    rows: list[tuple[str, str, list[str]]] = []
+    groups: list[tuple[str, int]] = []
     for cat in coverage.timeseries:
-        lines.append(f"### {cat.name}")
-        lines.append("")
-        headers = ["Metric", "Unit", *_provider_headers(coverage.providers)]
-        lines.append("| " + " | ".join(headers) + " |")
-        lines.append("|------|------|" + "|".join(":----:" for _ in coverage.providers) + "|")
-        for m in cat.metrics:
-            row = [f"`{m.code}`", m.unit, *(_mark(p in m.providers) for p in coverage.providers)]
-            lines.append("| " + " | ".join(row) + " |")
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+        groups.append((cat.name, len(rows)))
+        rows.extend((m.code, m.unit, m.providers) for m in cat.metrics)
+    return _render_table(rows, coverage.providers, groups)
 
 
-def _render_field_section(
-    title: str,
-    code_header: str,
+def _render_field_tab(
     fields: list[WorkoutField] | list[SleepField] | list[MenstrualCycleField] | list[HealthScore],
     providers: list[str],
-) -> str:
-    lines = [f"## {title}", ""]
-    headers = [code_header, *_provider_headers(providers)]
-    lines.append("| " + " | ".join(headers) + " |")
-    lines.append("|------|" + "|".join(":----:" for _ in providers) + "|")
-    for f in fields:
-        row = [f"`{f.code}`", *(_mark(p in f.providers) for p in providers)]
-        lines.append("| " + " | ".join(row) + " |")
-    lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+) -> list[str]:
+    return _render_table([(f.code, "", f.providers) for f in fields], providers)
 
 
 def generate_body(coverage: CoverageResponse) -> str:
-    sections = [
-        _render_timeseries_section(coverage),
-        _render_field_section("Workout Data Coverage", "Field", coverage.workout_fields, coverage.providers),
-        _render_field_section("Sleep Data Coverage", "Field", coverage.sleep_fields, coverage.providers),
-        _render_field_section("Women's Health Coverage", "Field", coverage.menstrual_cycle_fields, coverage.providers),
-        _render_field_section("Health Scores Coverage", "Score", coverage.health_scores, coverage.providers),
+    tabs = [
+        ("Timeseries", _render_timeseries_tab(coverage)),
+        ("Workout", _render_field_tab(coverage.workout_fields, coverage.providers)),
+        ("Sleep", _render_field_tab(coverage.sleep_fields, coverage.providers)),
+        ("Women's Health", _render_field_tab(coverage.menstrual_cycle_fields, coverage.providers)),
+        ("Health Scores", _render_field_tab(coverage.health_scores, coverage.providers)),
     ]
-    # Dev-facing note, invisible in the rendered page (reader-facing content has no
-    # reason to mention this section is auto-generated). No divider after it — the
-    # static template already places a "---" right before the START marker.
-    dev_note = (
-        "{/* Auto-generated from ProviderCoverage by scripts/generate_coverage_docs.py — do not edit by hand. */}\n"
-    )
-    return dev_note + "\n" + "\n---\n\n".join(sections)
+    lines = [
+        # Dev-facing note, invisible in the rendered page.
+        "{/* Auto-generated from ProviderCoverage by scripts/generate_coverage_docs.py — do not edit by hand. */}",
+        "",
+        "## Detailed Coverage Matrix",
+        "",
+        "<Tabs>",
+    ]
+    for title, table_lines in tabs:
+        lines.append(f'<Tab title="{title}">')
+        lines.extend(table_lines)
+        lines.append("</Tab>")
+    lines += [
+        "</Tabs>",
+        "",
+        '<div className="ow-cov-legend"><span><i className="ow-cov-dot y"></i> supported</span>'
+        '<span><i className="ow-cov-dot n"></i> not available</span></div>',
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
