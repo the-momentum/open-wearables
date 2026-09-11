@@ -30,6 +30,7 @@ from app.services.sync_status_service import (
     try_record_data_types,
 )
 from app.services.user_connection_service import user_connection_service
+from app.utils.context import sync_run_context
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -189,7 +190,10 @@ def process_sdk_upload(
         metadata={"batch_id": batch_id},
     )
 
-    with SessionLocal() as db:
+    with (
+        sync_run_context(run_id=run_id, source=SyncSource.SDK, scope=scope),
+        SessionLocal() as db,
+    ):
         # Ensure SDK connection exists for this user (SDK-based, no OAuth tokens).
         # Goes through the service so a new/reactivated connection emits connection.created.
         user_connection_service.ensure_sdk_connection(db, user_uuid, provider)

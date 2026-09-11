@@ -32,7 +32,9 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.repositories import CrudRepository, utc_bucket_start
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     ProviderName,
     SeriesType,
@@ -51,6 +53,7 @@ from app.schemas.responses.activity import (
     ActivityAggregateResult,
     IntensityMinutesResult,
 )
+from app.schemas.sync_status import DataTypeKind
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -168,14 +171,33 @@ class DataPointSeriesRepository(
             return WriteCounts(0, 0)
 
         # 1. Resolve all data sources in batch
-        identity_to_source_id = self._resolve_data_sources(db_session, creators)
+        identity_to_source_id, by_provider = self._resolve_data_sources(db_session, creators)
 
         # 2. Build and execute data point batch insert
-        return self._insert_data_points(db_session, creators, identity_to_source_id)
+        counts = self._insert_data_points(db_session, creators, identity_to_source_id)
+
+        # 3. Widen what we hold per type, under the same provider the sources resolved to
+        data_type_coverage_repository.record(
+            db_session,
+            (
+                CoverageSpan(
+                    user_id=sample.user_id,
+                    provider=provider.value,
+                    data_type=sample.series_type.value,
+                    kind=DataTypeKind.SERIES,
+                    start=sample.recorded_at,
+                    end=sample.recorded_at,
+                )
+                for provider, samples in by_provider.items()
+                for sample in samples
+            ),
+        )
+        return counts
 
     def _resolve_data_sources(
         self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]
-    ) -> dict[DataSourceIdentity, UUID]:
+    ) -> tuple[dict[DataSourceIdentity, UUID], dict[ProviderName, list[TimeSeriesSampleCreate]]]:
+        """Resolve every sample's data source, returning the provider grouping it used."""
         by_provider: dict[ProviderName, list[TimeSeriesSampleCreate]] = {}
         for c in creators:
             provider = self.data_source_repo.infer_provider_from_source(c.source)
@@ -197,7 +219,7 @@ class DataPointSeriesRepository(
             )
             identity_to_source_id.update(batch_result)
 
-        return identity_to_source_id
+        return identity_to_source_id, by_provider
 
     class _StagingRow(NamedTuple):
         """One row as loaded into data_point_series_staging via COPY, in column order."""

@@ -24,6 +24,7 @@ from app.schemas.model_crud.activities import (
     TimeSeriesSampleUpdate,
 )
 from app.schemas.responses.activity import TimeSeriesSample
+from app.schemas.sync_status import SyncRunContext
 from app.schemas.utils import (
     PaginatedResponse,
     Pagination,
@@ -33,6 +34,7 @@ from app.schemas.utils import (
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
+from app.utils.context import sync_run_var
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
@@ -57,6 +59,8 @@ class TimeSeriesService(
     ) -> WriteCounts:
         counts = self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
         samples_copy = list(samples)
+        # Read here, not in the thread: a ContextVar does not cross into one.
+        sync_run = sync_run_var.get()
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _start_webhook_thread(session: DbSession) -> None:  # noqa: ARG001
@@ -64,7 +68,7 @@ class TimeSeriesService(
                 return
             threading.Thread(
                 target=self._emit_timeseries_webhooks,
-                args=(samples_copy,),
+                args=(samples_copy, sync_run),
                 daemon=True,
             ).start()
 
@@ -73,6 +77,7 @@ class TimeSeriesService(
     @staticmethod
     def _emit_timeseries_webhooks(
         samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+        sync_run: SyncRunContext | None = None,
     ) -> None:
         """Emit one webhook event per (user, provider, series_type) batch."""
         if not samples:
@@ -106,6 +111,7 @@ class TimeSeriesService(
                     start_time=sorted_samples[0].recorded_at.isoformat(),
                     end_time=sorted_samples[-1].recorded_at.isoformat(),
                     samples=webhook_samples,
+                    sync=sync_run.as_payload() if sync_run else None,
                 )
         except Exception:
             getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)

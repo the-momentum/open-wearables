@@ -12,6 +12,7 @@ from app.schemas.webhooks.event_types import WebhookEventType
 _USER_ID = "00000000-0000-0000-0000-000000000002"
 _RECORD_ID = "00000000-0000-0000-0000-000000000001"
 _CONNECTION_ID = "00000000-0000-0000-0000-000000000003"
+_RUN_ID = "backfill_9f3c8ea41b2d5c07"
 
 _SOURCE_GARMIN = {"provider": "garmin", "device": "Garmin Fenix 7"}
 _SOURCE_OURA = {
@@ -72,6 +73,53 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "connection_id": _CONNECTION_ID,
             "reason": "refresh_failed",
             "revoked_at": "2024-01-01T08:00:00+00:00",
+        },
+    },
+    # ------------------------------------------------------------------
+    # Per-data-type sync outcomes
+    # ------------------------------------------------------------------
+    WebhookEventType.SYNC_DATA_TYPE_COMPLETED: {
+        "type": WebhookEventType.SYNC_DATA_TYPE_COMPLETED,
+        "data": {
+            "user_id": _USER_ID,
+            "provider": "garmin",
+            "source": "backfill",
+            "scope": "historical",
+            "run_id": _RUN_ID,
+            "data_type": "heart_rate",
+            "native_data_type": "dailies",
+            "kind": "series",
+            "status": "success",
+            "reported_records": 41230,
+            "items_inserted": 41230,
+            "items_updated": 0,
+            "covered_start": "2024-01-01T00:00:00+00:00",
+            "covered_end": "2024-03-31T23:59:00+00:00",
+            "coverage": {"start": "2019-03-14T06:00:00+00:00", "end": "2024-03-31T23:59:00+00:00"},
+            "error_code": None,
+            "error": None,
+        },
+    },
+    WebhookEventType.SYNC_DATA_TYPE_FAILED: {
+        "type": WebhookEventType.SYNC_DATA_TYPE_FAILED,
+        "data": {
+            "user_id": _USER_ID,
+            "provider": "garmin",
+            "source": "backfill",
+            "scope": "historical",
+            "run_id": _RUN_ID,
+            "data_type": "sleep",
+            "native_data_type": "sleeps",
+            "kind": "series",
+            "status": "failed",
+            "reported_records": None,
+            "items_inserted": 0,
+            "items_updated": 0,
+            "covered_start": None,
+            "covered_end": None,
+            "coverage": None,
+            "error_code": "authorization_denied",
+            "error": "User has not granted access to sleep data",
         },
     },
     # ------------------------------------------------------------------
