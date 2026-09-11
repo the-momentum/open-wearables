@@ -1,6 +1,6 @@
 # Open Wearables MCP Server
 
-MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants like Claude Desktop and Cursor to query wearable health data through natural language.
+MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants like Claude Desktop, Cursor, and claude.ai to query wearable health data through natural language. Runs locally over stdio, or as a remote HTTP server - see [HTTP Mode](#http-mode-remote-clients).
 
 ## Features
 
@@ -88,6 +88,38 @@ Add to Cursor MCP settings:
   }
 }
 ```
+
+## HTTP Mode (remote clients)
+
+By default the server runs over stdio, launched as a local subprocess by Claude Desktop/Cursor. For remote clients (e.g. claude.ai custom connectors), run it as a standalone HTTP server instead:
+
+```bash
+MCP_TRANSPORT=http
+MCP_HOST=127.0.0.1
+MCP_PORT=8100
+```
+
+Bind to `127.0.0.1` and put a reverse proxy (TLS) in front - don't expose the port directly. `docker compose up -d mcp` builds and runs it as part of the main stack - transport/host/port are fixed to `http`/`0.0.0.0`/`8100` in that case (see `docker-compose.yml`), so `MCP_TRANSPORT`/`MCP_HOST`/`MCP_PORT` in `.env` only apply when running the server directly (`uv run start`).
+
+### Authentication
+
+HTTP mode requires one of the following (the server refuses to start without either):
+
+- **`MCP_BEARER_TOKEN`** - a static shared secret sent as `Authorization: Bearer <token>`. Simplest option, works with clients that let you paste in a token (MCPJam, most HTTP MCP clients). Generate with `openssl rand -hex 32`.
+- **`MCP_OAUTH_PASSWORD`** - a self-contained OAuth 2.1 flow (dynamic client registration + a password-gated login page). Required for clients that only support remote OAuth connectors, such as claude.ai custom connectors. Also set `MCP_PUBLIC_URL` to the server's public HTTPS URL, used for the OAuth issuer/redirect URLs. Generate the password with `openssl rand -hex 24`.
+
+If both are set, `MCP_OAUTH_PASSWORD` takes priority.
+
+### Connecting from claude.ai
+
+claude.ai's custom connectors only support the OAuth flow, not a bearer token, so run the server with `MCP_OAUTH_PASSWORD` and `MCP_PUBLIC_URL` set.
+
+1. In claude.ai, go to **Settings → Connectors → Add custom connector**.
+2. Enter the server URL: `https://your-domain.example.com/mcp`.
+3. claude.ai registers itself as a client and redirects you to the server's login page - enter the `MCP_OAUTH_PASSWORD` you configured. That's the only credential involved: there's no separate token to generate or copy, the OAuth exchange issues the access/refresh tokens behind the scenes.
+4. Once authorized, the connector is available in your conversations.
+
+For clients that take a manual bearer token instead (e.g. MCPJam), skip the login page entirely and paste the `MCP_BEARER_TOKEN` value as the Authorization header.
 
 ## Example Interactions
 
@@ -183,7 +215,9 @@ Get sleep summaries for a user within a date range.
 mcp/
 ├── app/
 │   ├── main.py           # FastMCP entry point
-│   ├── config.py         # Settings (API URL, API key)
+│   ├── config.py         # Settings (API URL, API key, transport, auth)
+│   ├── auth.py           # Bearer token verifier (HTTP mode)
+│   ├── oauth.py          # OAuth 2.1 provider (HTTP mode)
 │   ├── tools/
 │   │   ├── users.py      # get_users tool
 │   │   ├── activity.py   # get_activity_summary tool

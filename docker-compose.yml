@@ -219,6 +219,36 @@ services:
           path: ./frontend/vite.config.ts
     restart: on-failure
 
+  mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    container_name: mcp__open-wearables
+    image: open-wearables-mcp:latest
+    pull_policy: never
+    env_file:
+      - path: ./mcp/config/.env
+        required: false
+    environment:
+      # Fixed for the containerized deployment - override any conflicting
+      # values from mcp/config/.env, which `environment:` always wins over.
+      - OPEN_WEARABLES_API_URL=http://app:8000
+      - MCP_TRANSPORT=http
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8100
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8100}:8100"
+    depends_on:
+      - app
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./mcp/app
+          target: /root_project/app
+        - action: rebuild
+          path: ./mcp/uv.lock
+    restart: on-failure
+
 volumes:
   postgres_data:
   redis_data:
