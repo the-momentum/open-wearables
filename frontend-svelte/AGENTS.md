@@ -939,6 +939,19 @@ message: the numbers are structured one layer up, and the fix belongs in the
 schema. Both paths are covered by e2e, so adding the two fields backend-side
 needs no frontend change at all.
 
+### Chart rows share one set of column widths
+
+[`ui/ChartRow`](src/lib/components/ui/ChartRow.svelte) owns the
+label / track / value widths, and every chart row goes through it — the heatmap
+rows, the ranking bars, **and the month axis**, which is a `ChartRow` with an
+empty label and value. That is not tidiness: the axis has to line up with the
+rows beneath it, and keeping the three widths written out in both places drifted
+once already and put the month labels over the wrong columns.
+
+Alongside it, [`ui/typography.ts`](src/lib/components/ui/typography.ts) holds
+`CAPTION` (the uppercase micro heading, in four places before this) and `NOTE`
+(the one-line stand-in for absent content, in three).
+
 ### Numbers are printed plainly
 
 No thousands separator anywhere. `Intl.NumberFormat('en-GB')` renders `19,058`,
@@ -1062,6 +1075,145 @@ Rendered as small mono tags, **not** through `chipClass`: that capitalises, and
 `Read:cycles` is wrong. Garmin and Suunto configure an empty scope, so an empty
 list says "Not reported by the provider" rather than leaving a blank row —
 nothing granted and nothing told apart.
+
+## Data Summary
+
+Its own route (`/users/[id]/data`) because both aggregates it needs scan this
+user's slice of `data_point_series`. It fetches **two** timelines — grouped by
+`series_type` and by `provider` — so switching what the rows mean costs no round
+trip.
+
+### Two heatmaps, no toggle, no ranking repeating them
+
+`Series types` plots the types over time — `sleep stopped arriving in July while
+heart rate kept coming` is the question this page answers. Providers over time
+sit inside `Data collected`, beside the share bar they explain.
+
+There is **no rows toggle**: it made one card show either dimension while a
+ranking below listed the very same series types again. Each dimension has its
+own section and appears once.
+
+`Workout types` is still a ranking, because it has to be — see below.
+
+Three things it took a rewrite to get right:
+
+- **Cells flex; they do not scroll.** A fixed 12px cell means 90 columns always
+  overflow a phone, and the first attempt did — silently, because the scroller's
+  child shrank while its own children overflowed a descendant, so `scrollWidth`
+  never grew and the strip was simply clipped.
+- **No gaps between cells.** 90 columns of 2px gaps come to 178px, most of a
+  phone's width, and the strip slid under the totals column. Contiguous bands
+  read fine — the ramp separates them.
+- **The ramp is square-rooted.** Linear intensity let one busy day flatten every
+  other into the palest step. Step 0 is the border colour, not the surface, so an
+  empty bucket reads as a bucket with nothing in it rather than a hole.
+
+### Only the period touches the server
+
+The period changes what the API aggregates, so it navigates — with
+`noScroll`/`data-sveltekit-noscroll`, because throwing the reader back to the
+header on a date change is not a page load anyone asked for.
+
+**Everything else is a view over data already here.** Both timeline groupings
+are fetched up front, and the provider filter is computed from `by_provider`, so
+the row toggle and the provider filter use
+[`shallowParam`](src/lib/utils/shallow.svelte.ts) — the extracted form of the
+`pushState` pattern, now used three times. An e2e test asserts no `__data.json`
+request follows the toggle, which is what "no round trip" actually means.
+
+Both are [`Segmented`](src/lib/components/ui/Segmented.svelte) controls — one
+recessed track with a raised active segment — not rows of loose chips, which is
+what they were and what made them read as noise. It takes links (the period,
+which navigates) or buttons (the provider, which does not), so the heatmap's row
+toggle uses the same component. The two date inputs share one bordered box with
+no borders of their own, so the pair reads as a single field.
+
+Both filters sit **outside the cards** in
+[`SummaryFilters`](src/lib/components/summary/SummaryFilters.svelte): they govern
+every card, and a control tucked inside one is a control nobody finds. The
+provider filter started life as the share-bar legend on the argument that a
+second list of the same names would be duplication — it was, but it was also
+undiscoverable, which is worse. The legend is a legend again.
+
+### Period is All time / Day / Range, like `frontend/`
+
+`?from=…&to=…` inclusive; both absent is all time, equal is a day. `parsePeriod`
+sorts an inverted pair and ignores anything that is not a date, so a hand-edited
+URL cannot ask for nothing. `periodBucket` switches to weeks past 120 days.
+
+A single day has one column, which is not a timeline, so `plottable()` sends
+those panels to `CountRanking` instead — bars, no month axis, no colour ramp.
+The summary is already scoped to the period, so the bars need no extra fetch.
+
+### The provider filter lists connections, not the period's providers
+
+Deriving it from `summary.by_provider` made it **vanish and reappear** as the
+period changed: a single day with one provider's data has one entry, so the
+control disappeared. It reads `fetchConnections` instead, which is stable
+whatever the period holds — and a connected provider with nothing this month is
+exactly what an admin wants to be able to select. With one connection there is
+nothing to choose, so the group is not rendered at all.
+
+### What the workout heatmap needs from the backend
+
+There is no workout-type timeline to draw. `TimelineGroupBy` is
+`provider | series_type`, and `TimelineMetric` has one member, `data_points` —
+its own docstring says "Event records (workouts, sleep) join as their own
+metric", which is a plan, not an endpoint. `event_record` has the same shape
+(`data_source_id` to join, `start_datetime` to bucket on), so the ask is a
+`workout_type` grouping and an events metric. Until then `Workout types` is a
+ranking and says why.
+
+### Every panel is narrowed or labelled — never silently neither
+
+With a provider chosen:
+
+| Panel             | Behaviour                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| Totals            | narrowed from `by_provider`                                                         |
+| Share bar         | keeps both segments, **dims the others** — it still answers "how big is this slice" |
+| Provider timeline | filtered to that one row                                                            |
+| Series types      | drops to totals from `series_counts` — the timeline takes no provider **yet**       |
+| Workout types     | unchanged, and says "Across every provider"                                         |
+
+The first version narrowed only the totals, so three panels showed every
+provider's data under a heading naming one. If a panel cannot follow the filter,
+its description has to say so.
+
+The heatmaps also state **what they count**: the timeline endpoint counts
+`data_point_series` rows only, so workouts and sleep are in the totals above and
+not in any band.
+
+### The one backend change worth asking for first
+
+Series types **should** stay a heatmap when a provider is chosen. It cannot,
+because the timeline endpoint has no `provider` parameter — and that gap is far
+smaller than it sounds. `get_user_timeline_counts`
+([data_point_series_repository.py:524](../backend/app/repositories/data_point_series_repository.py#L524))
+already joins `DataSource` and filters `DataSource.user_id`; a provider filter is
+one more `filter(DataSource.provider == provider)` on the same query — no new
+join, no new index, no change to the response shape.
+
+`/users/{id}/timeseries` is not an alternative: raw samples, cursor paged at 100
+a time, and no provider filter either.
+
+When that parameter lands, the fallback comes out and `Series types` plots the
+chosen provider directly. The workout-type metric is the larger ask; this one is
+a line.
+
+### Month labels thin themselves out
+
+A year of weekly columns has twelve month starts, which on a phone collide into
+one smear. `MonthAxis` keeps every third start at any width and reveals the rest
+from `sm` up, unless there are four or fewer, in which case they all stay.
+
+### A derived span must keep the API's own bucket dates
+
+`toRows` aligns a week grid to Monday only for a window the **caller** chose.
+Dates that came back from the API are already on the backend's boundary, and
+snapping them again shifts every key so nothing matches — which is exactly what
+happened: the all-time view rendered every count as zero, and it took a mobile
+screenshot to notice, because the layout was perfect. A unit test now covers it.
 
 ### Granted scopes are a count, not a row
 

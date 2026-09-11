@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Component, Snippet } from 'svelte';
 	import Hint from '$lib/components/ui/Hint.svelte';
+	import { CAPTION } from '$lib/components/ui/typography';
 
 	let {
 		icon: Icon,
@@ -22,9 +23,9 @@
 	class="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5
 		sm:flex-col sm:justify-center sm:py-3"
 >
-	<p class="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold tracking-wider uppercase">
+	<p class="flex min-w-0 items-center gap-1.5">
 		<Icon size={12} aria-hidden="true" class="shrink-0 text-muted-foreground/50" />
-		<span class="text-muted-foreground/70">{heading}</span>
+		<span class={CAPTION}>{heading}</span>
 		{#if hint}
 			<Hint label="{heading} details" text={hint} />
 		{/if}

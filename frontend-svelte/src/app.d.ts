@@ -6,9 +6,10 @@ declare global {
 			auth: AuthContext;
 		}
 
+		/** Filters that are URL-visible but must not re-run a load. */
 		interface PageState {
-			/** Which provider the recent-sync list is narrowed to; '' means all. */
 			syncProvider?: string;
+			summaryProvider?: string;
 		}
 	}
 }

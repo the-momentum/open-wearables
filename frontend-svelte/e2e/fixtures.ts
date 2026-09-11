@@ -226,3 +226,97 @@ export const makeRecentRuns = (userId: string) => [
 		items_updated: 10223
 	}
 ];
+
+const isoDay = (offset: number, weekAligned = false) => {
+	const date = new Date();
+	date.setUTCHours(0, 0, 0, 0);
+	date.setUTCDate(date.getUTCDate() - offset);
+	// date_trunc('week') is Monday-based; unaligned dates would match no cell.
+	if (weekAligned) date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+	return date.toISOString().slice(0, 10);
+};
+
+export const makeDataSummary = () => ({
+	total_data_points: 51420,
+	total_workouts: 63,
+	total_sleep_events: 88,
+	series_type_counts: {
+		heart_rate: 38110,
+		steps: 6400,
+		oxygen_saturation: 3120,
+		respiratory_rate: 1900,
+		body_temperature: 980,
+		stress_level: 640,
+		vo2_max: 210,
+		hydration: 40,
+		uv_exposure: 20
+	},
+	workout_type_counts: { running: 31, cycling: 18, swimming: 9, strength_training: 5 },
+	by_provider: [
+		{
+			provider: 'garmin',
+			data_points: 44000,
+			series_counts: { heart_rate: 38110, steps: 5890 },
+			workout_count: 51,
+			sleep_count: 60
+		},
+		{
+			provider: 'oura',
+			data_points: 7420,
+			series_counts: { oxygen_saturation: 3120, respiratory_rate: 1900 },
+			workout_count: 12,
+			sleep_count: 28
+		}
+	],
+	has_womens_health_data: true
+});
+
+/**
+ * Relative to today, so the cells land inside the grid the page computes, and
+ * covering the whole default window rather than a corner of it. Garmin has a
+ * deliberate week-long gap: the thing the heatmap exists to show.
+ */
+export const makeDataTimeline = (bucket: string, groupBy: string) => {
+	const weekly = bucket === 'week';
+	const stride = bucket === 'week' ? 7 : 1;
+	const count = bucket === 'week' ? 52 : 90;
+
+	const garmin: [string, number][] = [];
+	const oura: [string, number][] = [];
+	for (let index = 0; index < count; index += 1) {
+		const offset = index * stride;
+		// A wave, so intensity varies instead of every cell landing on one shade.
+		const wave = 0.35 + 0.65 * Math.abs(Math.sin(index / 6));
+		if (index < 10 || index > 16) garmin.push([isoDay(offset, weekly), Math.round(2100 * wave)]);
+		if (index % 3 === 0) oura.push([isoDay(offset, weekly), Math.round(420 * wave)]);
+	}
+
+	if (groupBy === 'series_type') {
+		// Sleep stops arriving partway through: the pattern a per-type heatmap is
+		// for, and invisible in a per-provider one.
+		const types = ['heart_rate', 'steps', 'oxygen_saturation', 'sleep_duration', 'vo2_max'];
+		return {
+			bucket,
+			group_by: groupBy,
+			series: types.map((key, rank) => {
+				const buckets: [string, number][] = [];
+				for (let index = 0; index < count; index += 1) {
+					if (key === 'sleep_duration' && index < 20) continue;
+					if (key === 'vo2_max' && index % 7 !== 0) continue;
+					const wave = 0.35 + 0.65 * Math.abs(Math.sin(index / 6));
+					buckets.push([isoDay(index * stride, weekly), Math.round((2400 / (rank + 1)) * wave)]);
+				}
+				return { key, metric: 'data_points', buckets: buckets.reverse() };
+			})
+		};
+	}
+
+	return {
+		bucket,
+		group_by: groupBy,
+		series: [
+			{ key: 'garmin', metric: 'data_points', buckets: garmin.reverse() },
+			{ key: 'oura', metric: 'data_points', buckets: oura.reverse() }
+		]
+	};
+};

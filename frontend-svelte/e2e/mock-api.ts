@@ -8,6 +8,8 @@ import {
 	DEVELOPER,
 	PROVIDER_SETTINGS,
 	makeConnections,
+	makeDataSummary,
+	makeDataTimeline,
 	makeRecentRuns,
 	makeSyncHistory,
 	makeUsers
@@ -160,6 +162,14 @@ const server = Bun.serve({
 					);
 				case '/sync/history':
 					return json(connected ? makeSyncHistory(user.id) : []);
+				case '/summaries/data':
+					return json(makeDataSummary());
+				case '/summaries/data/timeline': {
+					const query = new URL(request.url).searchParams;
+					return json(
+						makeDataTimeline(query.get('bucket') ?? 'day', query.get('group_by') ?? 'provider')
+					);
+				}
 				case '/sync/runs':
 					return json(connected ? makeRecentRuns(user.id) : []);
 				default:
