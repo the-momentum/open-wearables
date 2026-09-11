@@ -350,3 +350,32 @@ class TestIngestionWiring:
 
         mock_ts.bulk_create_samples.assert_not_called()
         assert count == 0
+
+
+class TestManualActivityWithoutStreams:
+    """Strava answers /streams with 404 for manual entries — they have no streams."""
+
+    def _ingest(self, sw: StravaWorkouts, exc: Exception) -> tuple[int, MagicMock]:
+        record, _ = sw._normalize_workout(_SAMPLE_ACTIVITY, uuid4())
+        with (
+            patch.object(sw, "_build_workout_samples", side_effect=exc),
+            patch("app.services.providers.strava.workouts.settings") as mock_settings,
+            patch("app.services.providers.strava.workouts.log_and_capture_error") as mock_report,
+        ):
+            mock_settings.ingest_workout_samples = True
+            result = sw._ingest_workout_streams(MagicMock(), _SAMPLE_ACTIVITY, uuid4(), record)
+        return result, mock_report
+
+    def test_404_is_not_reported_as_an_error(self, strava_workouts: StravaWorkouts) -> None:
+        from fastapi import HTTPException
+
+        result, mock_report = self._ingest(strava_workouts, HTTPException(status_code=404, detail="Record Not Found"))
+        assert result == 0
+        mock_report.assert_not_called()
+
+    def test_other_http_errors_are_still_reported(self, strava_workouts: StravaWorkouts) -> None:
+        from fastapi import HTTPException
+
+        result, mock_report = self._ingest(strava_workouts, HTTPException(status_code=500, detail="boom"))
+        assert result == 0
+        mock_report.assert_called_once()

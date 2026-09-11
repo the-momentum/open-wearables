@@ -3,6 +3,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from fastapi import HTTPException, status
+
 from app.config import settings
 from app.constants.entry_source import get_unified_strava_entry_source
 from app.constants.workout_types import get_unified_strava_workout_type
@@ -327,6 +329,28 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 record.zone_offset,
                 activity.device_name or "",
             )
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                # Manual activities carry no streams; Strava answers /streams with 404.
+                # Not a failure, so don't report it — otherwise every sync pass that
+                # re-covers the activity raises it again, for as long as it exists.
+                log_structured(
+                    self.logger,
+                    "info",
+                    "Strava activity has no streams (manual entry); skipping samples",
+                    provider="strava",
+                    action="strava_streams_absent",
+                    activity_id=str(activity.id),
+                    user_id=str(user_id),
+                )
+                return 0
+            log_and_capture_error(
+                exc,
+                self.logger,
+                "Failed to fetch Strava workout streams, skipping samples",
+                extra={"activity_id": activity.id},
+            )
+            return 0
         except Exception as exc:
             log_and_capture_error(
                 exc,
