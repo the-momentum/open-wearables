@@ -809,6 +809,102 @@ class TestCreateOrMergeSleep:
         mock_sleep.assert_called_once()
         assert mock_sleep.call_args.kwargs["device_type"] == "ring"
 
+    def test_same_window_re_sync_replaces_sleep_stages(self, db: Session) -> None:
+        """Re-syncing the exact same window must replace stored detail with the incoming detail."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+
+        existing_stage = {
+            "stage": "light",
+            "start_time": self._dt(22, 30).isoformat(),
+            "end_time": self._dt(22, 45).isoformat(),
+        }
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(22, 30),
+            end_datetime=self._dt(23, 30),
+        )
+        SleepDetailsFactory(event_record=existing, sleep_stages=[existing_stage])
+
+        incoming_stage = SleepStage(
+            stage="deep",
+            start_time=self._dt(22, 45),
+            end_time=self._dt(23, 30),
+        )
+
+        # Same window, same data_source_id -> should hit same_window branch
+        record = self._record(data_source, self._dt(22, 30), self._dt(23, 30))
+        detail = self._detail(record.id, deep=90, light=30, rem=30, awake=0, in_bed=150, efficiency="95.00")
+        detail = detail.model_copy(update={"sleep_stages": [incoming_stage]})
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        stages = result.sleep_detail.sleep_stages
+        assert stages is not None
+        assert len(stages) == 1
+        assert stages[0]["stage"] == "deep"
+        incoming_data = incoming_stage.model_dump(mode="json")
+        assert stages[0]["start_time"] == incoming_data["start_time"]
+        assert stages[0]["end_time"] == incoming_data["end_time"]
+        assert result.sleep_detail.sleep_deep_minutes == detail.sleep_deep_minutes
+        assert result.sleep_detail.sleep_efficiency_score == detail.sleep_efficiency_score
+
+
+    def test_same_window_fallback_with_none_data_source_id(self, db: Session) -> None:
+        """When data_source_id is None on input, the unique-constraint fallback still
+        replaces the stored detail without raising UnboundLocalError.
+        """
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura", device_type="ring")
+
+        existing_stage = {
+            "stage": "light",
+            "start_time": self._dt(22, 30).isoformat(),
+            "end_time": self._dt(22, 45).isoformat(),
+        }
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(22, 30),
+            end_datetime=self._dt(23, 30),
+        )
+        SleepDetailsFactory(event_record=existing, sleep_stages=[existing_stage])
+
+        incoming_stage = SleepStage(
+            stage="deep",
+            start_time=self._dt(22, 45),
+            end_time=self._dt(23, 30),
+        )
+
+        # Same window as existing, but data_source_id is resolved at insert time.
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="sleep",
+            type="sleep_session",
+            source_name="Oura",
+            source="oura",
+            user_id=user.id,
+            start_datetime=self._dt(22, 30),
+            end_datetime=self._dt(23, 30),
+            duration_seconds=3600,
+        )
+        assert record.data_source_id is None
+        detail = self._detail(record.id, deep=90, light=30, rem=30, awake=0, in_bed=150, efficiency="95.00")
+        detail = detail.model_copy(update={"sleep_stages": [incoming_stage]})
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        stages = result.sleep_detail.sleep_stages
+        assert stages is not None
+        assert len(stages) == 1
+        assert stages[0]["stage"] == "deep"
+        assert result.sleep_detail.sleep_deep_minutes == detail.sleep_deep_minutes
+        assert result.data_source_id == data_source.id
 
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
