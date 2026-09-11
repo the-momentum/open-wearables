@@ -31,7 +31,7 @@ def update_developer(
     """Update the authenticated developer's own profile.
 
     Developers have no roles, so there is no one entitled to edit another developer's
-    email or password. Allowing it would let any team member take over another account.
+    email or password.
     """
     if developer_id != developer.id:
         raise HTTPException(
