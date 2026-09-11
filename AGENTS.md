@@ -68,7 +68,6 @@ make stop
 | `make test` | Run backend tests |
 | `make migrate` | Apply database migrations |
 | `make create_migration m="..."` | Create new migration |
-| `make check_migrations` | Verify the migration chain before opening a PR |
 | `make seed` | Seed sample data |
 
 ### Code Quality
@@ -89,7 +88,7 @@ When you rebase and `main` gained a migration in the meantime, `alembic heads` s
 
 1. Set `down_revision` of your migration to the head from `main`.
 2. Rename your file so its date is later than the last migration on `main` (keep the `rev` id; a dev database that already ran it is unaffected).
-3. Run `make check_migrations`. CI runs the same check and fails on a second head or on any change to a migration already on `main`.
+3. CI checks the chain and fails on a second head or on any change to a migration already on `main`.
 
 ## Guidelines for AI Agents
 

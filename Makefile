@@ -44,10 +44,6 @@ create_migration:  ## Create a new migration. Use 'make create_migration m="Desc
 	fi
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) revision --autogenerate -m "$(m)"
 
-check_migrations:  ## Verify the migration chain (single head, no re-pointed migrations)
-	# Runs on the host like `make test`: it diffs against origin/main, and the app container has no .git
-	cd backend && uv run python scripts/check_migrations.py
-
 downgrade:  ## Revert the last migration
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) downgrade -1
 

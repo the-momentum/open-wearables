@@ -241,7 +241,6 @@ Schema changes use Alembic:
 make create_migration m="Add user table"  # Create
 make migrate                               # Apply
 make downgrade                             # Rollback
-make check_migrations                      # Verify the chain before opening a PR
 ```
 
 ### Resolving migration conflicts
@@ -250,7 +249,7 @@ When you rebase and `main` gained a migration in the meantime, `alembic heads` s
 
 1. Set `down_revision` of your migration to the head from `main`.
 2. Rename your file so its date is later than the last migration on `main` (keep the `rev` id; a dev database that already ran it is unaffected).
-3. Run `make check_migrations`. CI runs the same check and fails on a second head or on any change to a migration already on `main`.
+3. CI checks the chain and fails on a second head or on any change to a migration already on `main`.
 
 ### Data migrations
 

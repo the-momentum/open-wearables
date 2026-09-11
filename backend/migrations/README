@@ -5,7 +5,6 @@ Create, apply and roll back with the Makefile targets:
     make create_migration m="Description"
     make migrate
     make downgrade
-    make check_migrations
 
 Alembic builds the migration graph only from `revision` and `down_revision` inside
 the files. The date in the file name is a label for humans and does not affect
@@ -24,7 +23,7 @@ migration to the end of the chain:
 1. Set `down_revision` of your migration to the head from `main`.
 2. Rename your file so its date is later than the last migration on `main`.
    Keep the `rev` id; a dev database that already ran it is unaffected.
-3. Run `make check_migrations`.
+3. Let CI verify the chain.
 
 Never change `down_revision` of a migration that is already on `main`. It makes
 the chain look linear, but every database that already applied it will skip the
