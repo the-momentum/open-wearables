@@ -11,23 +11,26 @@ Tests the /api/v1/users/{user_id}/connections endpoint including:
 
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource, EventRecord, HealthScore, User, UserConnection, WorkoutDetails
 from app.schemas.auth import ConnectionStatus
+from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
     DataSourceFactory,
+    DeveloperFactory,
     EventRecordFactory,
     HealthScoreFactory,
     UserConnectionFactory,
     UserFactory,
     WorkoutDetailsFactory,
 )
-from tests.utils import api_key_headers
+from tests.utils import api_key_headers, developer_auth_headers
 
 
 class TestConnectionsEndpoints:
@@ -472,6 +475,180 @@ class TestDisconnectEndpoint:
         conn2 = db.query(UserConnection).filter_by(user_id=user2.id, provider="garmin").one()
         assert conn1.status == ConnectionStatus.REVOKED
         assert conn2.status == ConnectionStatus.ACTIVE
+
+
+def sdk_token_headers(user_id: UUID, app_id: str = "app_123") -> dict[str, str]:
+    """Bearer headers for an SDK user token scoped to user_id."""
+    return {"Authorization": f"Bearer {create_sdk_user_token(app_id, str(user_id))}"}
+
+
+class TestDisconnectWithSDKToken:
+    """SDK sign-out: DELETE /users/{user_id}/connections/{provider} with an SDK user token."""
+
+    def test_sdk_token_disconnects_own_sdk_connection(self, client: TestClient, db: Session) -> None:
+        """An SDK token revokes its own user's SDK-fed connection."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="apple",
+            status=ConnectionStatus.ACTIVE,
+            access_token=None,
+            refresh_token=None,
+        )
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple", headers=sdk_token_headers(user.id))
+
+        # Assert
+        assert response.status_code == 204
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="apple").one()
+        assert conn.status == ConnectionStatus.REVOKED
+
+    def test_sdk_token_cannot_disconnect_another_user(self, client: TestClient, db: Session) -> None:
+        """An SDK token scoped to user1 cannot revoke user2's connection."""
+        # Arrange
+        user1 = UserFactory()
+        user2 = UserFactory()
+        UserConnectionFactory(
+            user=user2,
+            provider="apple",
+            status=ConnectionStatus.ACTIVE,
+            access_token=None,
+            refresh_token=None,
+        )
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user2.id}/connections/apple", headers=sdk_token_headers(user1.id))
+
+        # Assert
+        assert response.status_code == 403
+        conn = db.query(UserConnection).filter_by(user_id=user2.id, provider="apple").one()
+        assert conn.status == ConnectionStatus.ACTIVE
+
+    def test_sdk_token_cannot_disconnect_oauth_only_provider(self, client: TestClient, db: Session) -> None:
+        """An SDK token cannot revoke a provider that never arrives over the SDK."""
+        # Arrange - tokens are already cleared, so only the capability check can catch this
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            access_token=None,
+            refresh_token=None,
+        )
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=sdk_token_headers(user.id))
+
+        # Assert
+        assert response.status_code == 403
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="garmin").one()
+        assert conn.status == ConnectionStatus.ACTIVE
+
+    def test_sdk_token_cannot_disconnect_oauth_fed_hybrid_connection(self, client: TestClient, db: Session) -> None:
+        """Google is hybrid: an OAuth-fed row stays out of the SDK's reach."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="google",
+            status=ConnectionStatus.ACTIVE,
+            access_token="secret_access",
+            refresh_token="secret_refresh",
+        )
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/google", headers=sdk_token_headers(user.id))
+
+        # Assert
+        assert response.status_code == 403
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="google").one()
+        assert conn.status == ConnectionStatus.ACTIVE
+        assert conn.access_token == "secret_access"
+
+    def test_sdk_token_disconnects_sdk_fed_hybrid_connection(self, client: TestClient, db: Session) -> None:
+        """The same provider without OAuth tokens is SDK-fed and may be revoked."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="google",
+            status=ConnectionStatus.ACTIVE,
+            access_token=None,
+            refresh_token=None,
+        )
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/google", headers=sdk_token_headers(user.id))
+
+        # Assert
+        assert response.status_code == 204
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="google").one()
+        assert conn.status == ConnectionStatus.REVOKED
+
+    def test_sdk_token_on_nonexistent_connection_returns_404(self, client: TestClient, db: Session) -> None:
+        """Nothing to revoke is still a 404, not a 403."""
+        # Arrange
+        user = UserFactory()
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple", headers=sdk_token_headers(user.id))
+
+        # Assert
+        assert response.status_code == 404
+
+    @patch("app.api.routes.v1.connections.user_connection_service.disconnect")
+    def test_sdk_path_skips_provider_deregistration(
+        self, mock_disconnect: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """Signing out of an app must not deregister the user from the provider's API."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="google",
+            status=ConnectionStatus.ACTIVE,
+            access_token=None,
+            refresh_token=None,
+        )
+
+        # Act
+        client.delete(f"/api/v1/users/{user.id}/connections/google", headers=sdk_token_headers(user.id))
+
+        # Assert
+        assert mock_disconnect.call_args.kwargs["oauth"] is None
+        assert mock_disconnect.call_args.kwargs["reason"] == "sdk_sign_out"
+
+    def test_developer_jwt_still_disconnects(self, client: TestClient, db: Session) -> None:
+        """The dashboard's developer JWT keeps working after the auth was widened."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="polar", status=ConnectionStatus.ACTIVE)
+        developer = DeveloperFactory()
+
+        # Act
+        response = client.delete(
+            f"/api/v1/users/{user.id}/connections/polar",
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 204
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="polar").one()
+        assert conn.status == ConnectionStatus.REVOKED
+
+    def test_no_credentials_returns_401(self, client: TestClient, db: Session) -> None:
+        """Widening the auth did not make the endpoint public."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/apple")
+
+        # Assert
+        assert response.status_code == 401
 
 
 class TestDeleteProviderDataEndpoint:

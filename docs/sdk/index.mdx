@@ -94,6 +94,33 @@ The SDK uses a secure token-based authentication flow that keeps your App creden
   **Never embed your `app_id` / `app_secret` in your mobile app.** Always generate access tokens on your backend and pass only the tokens to the mobile SDK.
 </Warning>
 
+## Disconnecting
+
+`signOut()` only clears the credentials stored on the device. It makes no network call, so on its own the backend never learns the user left: the connection stays `active` behind a plausible `last_synced_at` and is indistinguishable from a healthy one.
+
+To report the disconnect, call [`DELETE /api/v1/users/{user_id}/connections/{provider}`](/api-reference/connections/disconnect-provider-endpoint) with the SDK access token **before** signing out locally:
+
+```bash
+curl -X DELETE "https://api.openwearables.io/api/v1/users/$USER_ID/connections/apple" \
+  -H "Authorization: Bearer $SDK_ACCESS_TOKEN"
+```
+
+A `204` means the connection is revoked. The endpoint is idempotent, so a retry after a failed sign-out is safe, and a `404` means there was no connection to revoke.
+
+An SDK token is deliberately narrower here than a developer JWT or an API key:
+
+| Rule | Response when violated |
+|------|------------------------|
+| The token's user must be the `user_id` in the path | `403` |
+| The provider must be one that can be fed by the SDK (Apple Health, Google Health Connect, Samsung Health) | `403` |
+| The connection must not hold OAuth tokens - Google Health is hybrid, and its OAuth-fed connections are out of the app's reach | `403` |
+
+No provider deregistration runs on this path: signing out of an app is not a reason to unregister the user from the provider's API. The resulting `connection.revoked` webhook carries `reason: "sdk_sign_out"`, which distinguishes it from a disconnect made in the dashboard.
+
+<Note>
+  Revoking permissions in the iOS Settings app and deleting the app cannot be reported - the SDK never runs again to make the call. Treat a connection that stops uploading as a separate signal from one that was explicitly revoked.
+</Note>
+
 ## Next Steps
 
 <CardGroup cols={3}>

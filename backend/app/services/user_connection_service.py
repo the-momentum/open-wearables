@@ -49,6 +49,11 @@ class UserConnectionService(
         """Get all connections for a user."""
         return self.crud.get_by_user_id(db_session, user_id)
 
+    @handle_exceptions
+    def get_connection(self, db_session: DbSession, user_id: UUID, provider: str) -> UserConnection | None:
+        """Get a user's connection for one provider, or None if there is none."""
+        return self.crud.get_by_user_and_provider(db_session, user_id, provider)
+
     def get_linked_user_ids(
         self,
         db_session: DbSession,
@@ -95,12 +100,19 @@ class UserConnectionService(
 
     @handle_exceptions
     def disconnect(
-        self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate | None = None
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        provider: str,
+        oauth: BaseOAuthTemplate | None = None,
+        reason: str = "user_disconnected",
     ) -> None:
         """Disconnect a user from a provider. Raises 404 if connection not found.
 
         If oauth is provided, calls the provider's deregistration API before clearing tokens.
         Deregistration failures are logged but do not block the disconnect.
+
+        ``reason`` reaches the log line and the ``connection.revoked`` webhook.
         """
         if oauth:
             self._deregister_from_provider(db_session, user_id, provider, oauth)
@@ -113,7 +125,7 @@ class UserConnectionService(
                 "info",
                 "Connection revoked",
                 action="connection_revoked",
-                reason="user_disconnected",
+                reason=reason,
                 provider=provider,
                 user_id=str(user_id),
                 connection_id=str(connection.id) if connection else None,
@@ -123,7 +135,7 @@ class UserConnectionService(
                     user_id=user_id,
                     provider=provider,
                     connection_id=connection.id,
-                    reason="user_disconnected",
+                    reason=reason,
                     revoked_at=connection.updated_at.isoformat(),
                 )
             return

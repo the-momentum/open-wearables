@@ -140,3 +140,24 @@ async def get_sdk_auth(
 
 
 SDKAuthDep = Annotated[SDKAuthContext, Depends(get_sdk_auth)]
+
+
+async def get_combined_auth(
+    db: DbSession,
+    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
+    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
+) -> SDKAuthContext:
+    """Accept a developer JWT, an API key, or an SDK user token.
+
+    For endpoints both the dashboard and the mobile SDK call.
+    ``get_current_developer_optional`` returns None for SDK-scoped tokens, so they fall
+    through to ``get_sdk_auth``. An ``sdk_token`` caller speaks only for its own user, so
+    endpoints branching on ``auth_type`` have to scope it themselves.
+    """
+    if developer := await get_current_developer_optional(db, token):
+        return SDKAuthContext(auth_type="developer", developer_id=str(developer.id))
+
+    return await get_sdk_auth(db, token, x_open_wearables_api_key)
+
+
+CombinedAuthDep = Annotated[SDKAuthContext, Depends(get_combined_auth)]
