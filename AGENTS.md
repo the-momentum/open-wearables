@@ -68,6 +68,7 @@ make stop
 | `make test` | Run backend tests |
 | `make migrate` | Apply database migrations |
 | `make create_migration m="..."` | Create new migration |
+| `make check_migrations` | Verify the migration chain before opening a PR |
 | `make seed` | Seed sample data |
 
 ### Code Quality
