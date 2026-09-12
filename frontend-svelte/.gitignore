@@ -1,0 +1,43 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+# Playwright
+test-results
+playwright-report
+
+# The repo root .gitignore blanket-ignores *.json to keep provider data dumps
+# (whoop.json, apple_sleep.json, ...) out of the tree. That silently swallows
+# this project's config too, so re-include it here — a deeper .gitignore wins.
+# Add any new tracked .json file to this list.
+!package.json
+!tsconfig.json
+!components.json
+!static/manifest.json
+
+# The root also ignores the .vscode directory outright. Git will not descend
+# into an excluded directory, so the directory has to be re-included before any
+# file inside it can be — then narrow it back down to the two we want.
+!.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

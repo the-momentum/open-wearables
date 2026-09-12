@@ -1,0 +1,8 @@
+{
+	"files.associations": {
+		"*.css": "tailwindcss"
+	},
+	// Tailwind v4 at-rules (@theme, @custom-variant, @apply) are unknown to the
+	// built-in CSS validator; the Tailwind extension handles them instead.
+	"css.lint.unknownAtRules": "ignore"
+}
