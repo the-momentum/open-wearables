@@ -98,7 +98,7 @@ class TestActivityBucketingWithZoneOffset:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-03T00:00:00Z",
                 "end_date": "2026-05-04T00:00:00Z",
@@ -130,7 +130,7 @@ class TestActivityBucketingWithZoneOffset:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-02T00:00:00Z",
                 "end_date": "2026-05-03T00:00:00Z",
@@ -169,7 +169,7 @@ class TestActivityBucketingWithUserTimezone:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-03T00:00:00Z",
                 "end_date": "2026-05-04T00:00:00Z",
@@ -201,7 +201,7 @@ class TestActivityBucketingWithUserTimezone:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-02T00:00:00Z",
                 "end_date": "2026-05-03T00:00:00Z",
@@ -233,7 +233,7 @@ class TestActivityBucketingWithUserTimezone:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-02T00:00:00Z",
                 "end_date": "2026-05-03T00:00:00Z",
@@ -266,7 +266,7 @@ class TestActivityBucketingUtcFallback:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-02T00:00:00Z",
                 "end_date": "2026-05-03T00:00:00Z",
@@ -307,7 +307,7 @@ class TestSleepBucketingWithZoneOffset:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/sleep",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-04T00:00:00Z",
                 "end_date": "2026-05-05T00:00:00Z",
@@ -339,7 +339,7 @@ class TestSleepBucketingWithZoneOffset:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/sleep",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-03T00:00:00Z",
                 "end_date": "2026-05-04T00:00:00Z",
@@ -374,7 +374,7 @@ class TestSleepBucketingWithUserTimezone:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/sleep",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-04T00:00:00Z",
                 "end_date": "2026-05-05T00:00:00Z",
@@ -407,7 +407,7 @@ class TestSleepBucketingWithUserTimezone:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/sleep",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-03T00:00:00Z",
                 "end_date": "2026-05-04T00:00:00Z",
@@ -435,7 +435,7 @@ class TestSleepBucketingWithUserTimezone:
         # Should appear on UTC date 2026-05-03 since zone_offset=+00:00
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/sleep",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-03T00:00:00Z",
                 "end_date": "2026-05-04T00:00:00Z",
@@ -468,7 +468,7 @@ class TestSleepBucketingUtcFallback:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/sleep",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-03T00:00:00Z",
                 "end_date": "2026-05-04T00:00:00Z",
@@ -509,7 +509,7 @@ class TestBucketingCrossUserIsolation:
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{utc_user.id}/summaries/activity",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": "2026-05-02T00:00:00Z",
                 "end_date": "2026-05-03T00:00:00Z",

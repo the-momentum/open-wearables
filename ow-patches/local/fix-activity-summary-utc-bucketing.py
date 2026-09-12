@@ -3,9 +3,12 @@
 # upstream_symbol: DataPointSeriesRepository.get_daily_activity_aggregates + .get_daily_active_minutes + .get_daily_intensity_minutes
 # retire_when:     DataPointSeriesRepository buckets daily aggregates by the user's IANA
 #                  timezone (not by per-row zone_offset with a UTC fallback).
-#                  Marker: presence of `user.timezone` / `func.timezone(user_tz, ...)` in the
-#                  local_date expression in data_point_series_repository.py. Upstream currently
-#                  buckets by `cast(recorded_at + coalesce(zone_offset, "+00:00"), Date)`.
+#                  Marker (same as PATCHES.md): `_local_date_bucket_expr` or any
+#                  `AT TIME ZONE user.timezone` bucketing in data_point_series_repository.py.
+#                  NOT a bare `func.timezone` grep — upstream c8409b55 added
+#                  `func.timezone("UTC", ...)` (utc_bucket_start) to repositories.py, which is
+#                  unrelated. Upstream currently buckets by
+#                  `cast(recorded_at + coalesce(zone_offset, "+00:00"), Date)`.
 
 """Bucket the three daily activity aggregates by the user's local date.
 

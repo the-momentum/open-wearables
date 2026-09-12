@@ -94,15 +94,20 @@ def get_workouts(
         # dedicated workout_detail relationship — mirror upstream's own access.
         details: WorkoutDetails | None = record.workout_detail
 
+        # Constructor mirrors upstream/main (#1510 added name / entry_source /
+        # intensity from WorkoutDetails) with ONE fork difference: the
+        # avg_pace_sec_per_km kwarg below. Re-diff on every reconcile.
         workout = Workout(
             id=record.id,
             type=record.type or "unknown",
-            name=None,
+            name=details.label if details else None,
             start_time=record.start_datetime,
             end_time=record.end_datetime,
             zone_offset=record.zone_offset,
             duration_seconds=record.duration_seconds,
             source=self._map_source(data_source),
+            entry_source=details.entry_source if details else None,
+            intensity=details.intensity if details else None,
             calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
             distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=computed_hr.get(record.id),
