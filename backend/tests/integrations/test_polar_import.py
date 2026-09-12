@@ -55,7 +55,7 @@ class TestPolarOAuthFlow:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         mock_redis = MagicMock()
         mock_redis.setex.return_value = True
@@ -145,7 +145,7 @@ class TestPolarWorkoutsAPI:
         UserConnectionFactory(user=user, provider="polar")
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         mock_request.return_value = [sample_polar_exercise]
 
@@ -172,7 +172,7 @@ class TestPolarWorkoutsAPI:
         UserConnectionFactory(user=user, provider="polar")
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         mock_request.return_value = sample_polar_exercise
         workout_id = "ABC123"
@@ -194,7 +194,7 @@ class TestPolarWorkoutsAPI:
         UserConnectionFactory(user=user, provider="polar")
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         mock_request.return_value = []
 
@@ -214,7 +214,7 @@ class TestPolarWorkoutsAPI:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(
@@ -247,7 +247,7 @@ class TestPolarDataSync:
         UserConnectionFactory(user=user, provider="polar")
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         mock_request.return_value = [sample_polar_exercise]
 
@@ -268,7 +268,7 @@ class TestPolarDataSync:
         UserConnectionFactory(user=user, provider="polar")
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         mock_request.return_value = []
 
@@ -291,7 +291,7 @@ class TestPolarDataSync:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.post(

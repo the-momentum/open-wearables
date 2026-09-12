@@ -7,17 +7,9 @@ from app.services.providers.garmin.backfill_state import (
 from app.services.providers.garmin.backfill_state import (
     get_pending_types as get_garmin_pending_types,
 )
-from app.services.providers.garmin.backfill_state import (
-    is_cancelled as is_garmin_backfill_cancelled,
-)
-from app.services.providers.garmin.backfill_state import (
-    reset_type_status as reset_garmin_type_status,
-)
-from app.services.providers.garmin.backfill_state import (
-    set_cancel_flag as set_garmin_cancel_flag,
-)
 
 from .archival_task import run_daily_archival
+from .close_stale_sync_runs_task import close_stale_sync_runs
 from .emit_webhook_event_task import emit_webhook_event
 from .fill_missing_resilience_scores_task import fill_missing_resilience_scores
 from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
@@ -34,13 +26,12 @@ from .garmin.backfill_timeout import (
 from .garmin.backfill_trigger import (
     trigger_backfill_for_type as trigger_garmin_backfill_for_type,
 )
-from .garmin.gc_task import gc_stuck_backfills
 from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import complete_and_process_aws_upload, process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
 from .refresh_dashboard_stats_task import refresh_dashboard_total_data_points
-from .register_provider_webhooks_task import register_provider_webhooks
+from .register_provider_webhooks_task import register_provider_webhooks, register_user_webhooks
 from .renew_oura_webhooks_task import renew_oura_webhooks
 from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
@@ -53,13 +44,9 @@ __all__ = [
     "check_garmin_triggered_timeout",
     "get_garmin_backfill_status",
     "get_garmin_pending_types",
-    "reset_garmin_type_status",
     "start_garmin_full_backfill",
     "trigger_garmin_backfill_for_type",
     "trigger_garmin_next_pending_type",
-    "set_garmin_cancel_flag",
-    "is_garmin_backfill_cancelled",
-    "gc_stuck_backfills",
     # Archival
     "run_daily_archival",
     # Apple XML multipart uploads
@@ -69,6 +56,7 @@ __all__ = [
     # Resilience score calculation
     "fill_missing_resilience_scores",
     # Other tasks
+    "close_stale_sync_runs",
     "finalize_stale_sleeps",
     "process_sdk_upload",
     "process_aws_upload",
@@ -80,6 +68,7 @@ __all__ = [
     "send_invitation_email_task",
     "process_webhook_push",
     "register_provider_webhooks",
+    "register_user_webhooks",
     "renew_oura_webhooks",
     # Outgoing webhooks
     "emit_webhook_event",

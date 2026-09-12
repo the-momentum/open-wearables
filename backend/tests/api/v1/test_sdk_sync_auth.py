@@ -55,7 +55,7 @@ class TestSDKSyncWithSDKToken:
 
         response = client.post(
             f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             json={
                 "data": {
                     "provider": "apple",

@@ -355,9 +355,6 @@ export function PrioritiesTab() {
           <li>
             • Within the same provider, watch data is preferred over phone data
           </li>
-          <li>
-            • Users can still disable specific data sources from their profile
-          </li>
         </ul>
       </div>
 

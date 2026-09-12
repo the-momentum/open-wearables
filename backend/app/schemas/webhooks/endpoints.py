@@ -21,11 +21,11 @@ class EndpointCreateRequest(BaseModel):
     description: str | None = Field(None, description="Human-readable label for this endpoint.")
     filter_types: list[str] | None = Field(
         None,
-        description="Only deliver events of these types. Empty / None = all types.",
+        description="Only deliver events of these types. Omit, or pass an empty list, to receive all event types.",
     )
     user_id: UUID | None = Field(
         None,
-        description="Subscribe only to events for this user. Empty / None = all users.",
+        description="Subscribe only to events for this user. Omit, or pass null, to receive events for all users.",
     )
 
     @field_validator("url")
@@ -37,10 +37,21 @@ class EndpointCreateRequest(BaseModel):
 class EndpointUpdateRequest(BaseModel):
     url: str | None = None
     description: str | None = None
-    filter_types: list[str] | None = None
+    filter_types: list[str] | None = Field(
+        None,
+        description=(
+            "Only deliver events of these types. Pass an empty list to remove the filter and "
+            "receive all event types again. Omitting the field — or sending null — leaves the "
+            "current filter unchanged."
+        ),
+    )
     user_id: UUID | None = Field(
         None,
-        description="Subscribe only to events for this user. Pass null to remove the filter.",
+        description=(
+            "Subscribe only to events for this user. Pass null to remove the filter and receive "
+            "events for all users again. Omitting the field leaves the current scope unchanged. "
+            "Note the asymmetry with `filter_types`, where null is a no-op and an empty list clears."
+        ),
     )
 
     @field_validator("url")

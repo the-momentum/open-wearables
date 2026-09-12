@@ -7,6 +7,7 @@ ACTIVITY_SERIES: dict[str, SeriesType] = {
     "energy": SeriesType.energy,
     "distance": SeriesType.distance_walking_running,
     "active_time": SeriesType.active_time,
+    "met": SeriesType.physical_effort,
 }
 READINESS_SERIES: dict[str, SeriesType] = {
     "temperature_deviation": SeriesType.skin_temperature_deviation,
@@ -45,6 +46,9 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "energy_burned",
         "distance",
         "moving_time_seconds",
+        "entry_source",
+        "intensity",
+        "label",
     }
 )
 

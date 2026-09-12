@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -33,3 +34,13 @@ def get_password_hash(password: str) -> str:
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password_bytes, salt)
     return hashed.decode("utf-8")
+
+
+def hash_api_key(api_key: str) -> str:
+    """Return the SHA-256 hex digest of a raw API key.
+
+    A plain (unsalted) hash is enough here: keys are generated with 128 bits of entropy,
+    so they cannot be brute-forced the way user-chosen passwords can, and a deterministic
+    digest lets us look the key up with a single indexed query.
+    """
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()

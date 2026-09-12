@@ -1,0 +1,38 @@
+name: Nightly guard
+description: >-
+  Skip a scheduled run if this commit's nightly-<sha> tag is already in the
+  registry. Only the schedule trigger emits that tag, so any other event
+  passes through with skip=false.
+
+inputs:
+  image:
+    description: Image name without tag, e.g. themomentum/open-wearables-backend
+    required: true
+
+outputs:
+  skip:
+    description: "'true' when the nightly-<sha> tag already exists"
+    value: ${{ steps.check.outputs.skip }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      if: github.event_name == 'schedule'
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        # Same 7-char short SHA that docker/metadata-action's type=sha emits.
+        sha_tag="$IMAGE:nightly-${GITHUB_SHA::7}"
+        if err=$(docker buildx imagetools inspect "$sha_tag" 2>&1 >/dev/null); then
+          echo "$sha_tag already published; skipping"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+        elif printf '%s' "$err" | grep -Eqi 'not found|MANIFEST_UNKNOWN|NAME_UNKNOWN'; then
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        else
+          # Auth, rate limit, or network: fail instead of re-pushing a tag
+          # that may already exist.
+          echo "::error::could not inspect $sha_tag: $err"
+          exit 1
+        fi

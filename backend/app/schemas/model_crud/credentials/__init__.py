@@ -1,6 +1,7 @@
 from .api_key import (
     ApiKeyCreate,
     ApiKeyRead,
+    ApiKeyReadWithSecret,
     ApiKeyUpdate,
 )
 from .application import (
@@ -27,6 +28,7 @@ from .user_invitation_code import (
 __all__ = [
     # ApiKey
     "ApiKeyRead",
+    "ApiKeyReadWithSecret",
     "ApiKeyCreate",
     "ApiKeyUpdate",
     # Application

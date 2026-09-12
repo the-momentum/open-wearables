@@ -26,7 +26,7 @@ class TestAppleXMLImport:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.post(
@@ -49,7 +49,7 @@ class TestAppleXMLImport:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Configure mock S3
         mock_s3 = MagicMock()

@@ -51,6 +51,21 @@ export function useCreateApiKey() {
   });
 }
 
+export function useRotateApiKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => apiKeysService.rotateApiKey(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.lists() });
+      toast.success('API key rotated successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to rotate API key: ${getErrorMessage(error)}`);
+    },
+  });
+}
+
 export function useRevokeApiKey() {
   const queryClient = useQueryClient();
 

@@ -191,10 +191,13 @@ class WebhookEventType(StrEnum):
 # Human-readable descriptions shown in the Svix dashboard and event-types endpoint
 EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     # Session events
-    WebhookEventType.CONNECTION_CREATED: "A user successfully connected a wearable provider.",
+    WebhookEventType.CONNECTION_CREATED: (
+        "A user successfully connected a wearable provider. SDK providers fire on the first upload, "
+        "including when a revoked connection resumes uploading."
+    ),
     WebhookEventType.CONNECTION_REVOKED: (
-        "A provider connection became invalid (refresh token expired/revoked, or the user "
-        "deregistered on the provider side). The user must re-authorize to resume syncing."
+        "A provider connection became invalid or was disconnected (see reason). "
+        "OAuth connections need re-authorization; SDK connections resume on the next upload."
     ),
     WebhookEventType.SYNC_STARTED: "A sync run started for a user (live, historical, backfill, SDK or XML).",
     WebhookEventType.SYNC_COMPLETED: "A sync run completed successfully (terminal state).",

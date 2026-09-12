@@ -34,6 +34,8 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "elev_low",
         "energy_burned",
         "moving_time_seconds",
+        "entry_source",
+        "label",
     }
 )
 

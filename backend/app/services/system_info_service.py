@@ -1,10 +1,17 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.schemas.responses.dashboard import ProviderDataCount, UserDataSummaryResponse
+from app.repositories.archival_repository import DataPointSeriesArchiveRepository
+from app.schemas.enums import TimelineBucket, TimelineGroupBy
+from app.schemas.responses.dashboard import (
+    ProviderDataCount,
+    TimelineSeries,
+    UserDataSummaryResponse,
+    UserDataTimelineResponse,
+)
 from app.schemas.responses.upload import (
     DataPointsInfo,
     EventRecordsInfo,
@@ -34,6 +41,7 @@ class SystemInfoService:
         self.user_connection_service = user_connection_service
         self.timeseries_service = timeseries_service
         self.event_record_service = event_record_service
+        self.archive_repo = DataPointSeriesArchiveRepository()
 
     def get_system_info(self, db_session: DbSession) -> SystemInfoResponse:
         """Get system dashboard information.
@@ -73,11 +81,17 @@ class SystemInfoService:
         When ``start_datetime`` and/or ``end_datetime`` are provided, counts are scoped to that
         window (data points by ``recorded_at``, events by ``start_datetime``). Omitting both
         returns all-time counts. The per-provider breakdown is derived from the scoped rows.
+
+        Data point counts cover the live and the archive table; event records have no archive.
         """
-        # Query time-series counts grouped by provider + series type
-        series_rows = self.timeseries_service.crud.get_user_counts_by_provider_and_type(
-            db_session, user_id, start_datetime, end_datetime
-        )
+        series_rows = [
+            *self.timeseries_service.crud.get_user_counts_by_provider_and_type(
+                db_session, user_id, start_datetime, end_datetime
+            ),
+            *self.archive_repo.get_user_counts_by_provider_and_type_from_archive(
+                db_session, user_id, start_datetime, end_datetime
+            ),
+        ]
 
         # Query event counts grouped by provider + category + type
         event_rows = self.event_record_service.crud.get_user_event_counts_by_provider(
@@ -134,6 +148,37 @@ class SystemInfoService:
             by_provider=by_provider,
             has_womens_health_data=has_womens_health_data,
         )
+
+    def get_user_data_timeline(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        bucket: TimelineBucket = TimelineBucket.DAY,
+        group_by: TimelineGroupBy = TimelineGroupBy.PROVIDER,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> UserDataTimelineResponse:
+        """Per-user data density over time: which days the user actually has data for.
+
+        Live and archived counts are merged per bucket, so archived history reads as data
+        rather than as a gap. Empty buckets are omitted.
+        """
+        counts: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
+        live = self.timeseries_service.crud.get_user_timeline_counts(
+            db_session, user_id, bucket, group_by, start_datetime, end_datetime
+        )
+        archived = self.archive_repo.get_user_timeline_counts_from_archive(
+            db_session, user_id, bucket, group_by, start_datetime, end_datetime
+        )
+        for key, bucket_start, count in [*live, *archived]:
+            counts[key][bucket_start] += count
+
+        # Heaviest series first, then by key, so the response order is stable across calls.
+        series = [
+            TimelineSeries(key=key, buckets=sorted(buckets.items()))
+            for key, buckets in sorted(counts.items(), key=lambda item: (-sum(item[1].values()), item[0]))
+        ]
+        return UserDataTimelineResponse(bucket=bucket, group_by=group_by, series=series)
 
 
 system_info_service = SystemInfoService(

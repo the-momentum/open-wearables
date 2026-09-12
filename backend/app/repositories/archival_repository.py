@@ -5,16 +5,20 @@ import uuid
 from datetime import date, datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import Date, case, cast, func, text
+from sqlalchemy import ColumnElement, Date, Subquery, case, cast, func, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource
 from app.models.archival_setting import ArchivalSetting
+from app.models.series_type_definition import SeriesTypeDefinition
+from app.repositories.repositories import utc_bucket_start
 from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
     SeriesType,
+    TimelineBucket,
+    TimelineGroupBy,
     get_series_type_from_id,
     get_series_type_id,
 )
@@ -332,6 +336,90 @@ class DataPointSeriesArchiveRepository:
 
         return total_deleted
 
+    def get_user_counts_by_provider_and_type_from_archive(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, str, int]]:
+        """Archived data point counts for a user, grouped by provider and series type.
+
+        The counterpart of ``get_user_counts_by_provider_and_type`` on the live table, which
+        once archival is enabled no longer holds anything older than the cutoff.
+
+        Returns (provider, series_type_code, count) tuples.
+        """
+        days = self._deduped_archive_days(db, user_id, _archive_range_filters(start_datetime, end_datetime))
+        rows = (
+            db.query(DataSource.provider, SeriesTypeDefinition.code, func.sum(days.c.sample_count).label("total"))
+            .select_from(days)
+            .join(DataSource, days.c.data_source_id == DataSource.id)
+            .join(SeriesTypeDefinition, days.c.series_type_definition_id == SeriesTypeDefinition.id)
+            .group_by(DataSource.provider, SeriesTypeDefinition.code)
+            .all()
+        )
+        return [(provider, code, int(total)) for provider, code, total in rows]
+
+    def get_user_timeline_counts_from_archive(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        bucket: TimelineBucket,
+        group_by: TimelineGroupBy,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> list[tuple[str, date, int]]:
+        """Archived data point counts for a user, bucketed by time like the live timeline.
+
+        Without this an archived stretch of history renders as an empty gap, which is exactly
+        what the timeline exists to make visible.
+
+        Returns (key, bucket_start, count) for non-empty buckets only.
+        """
+        days = self._deduped_archive_days(db, user_id, _archive_range_filters(start_datetime, end_datetime))
+        bucket_start = utc_bucket_start(bucket, days.c.bucket_start_at)
+        key_column = DataSource.provider if group_by is TimelineGroupBy.PROVIDER else SeriesTypeDefinition.code
+
+        query = (
+            db.query(key_column, bucket_start, func.sum(days.c.sample_count).label("total"))
+            .select_from(days)
+            .join(DataSource, days.c.data_source_id == DataSource.id)
+        )
+        if group_by is TimelineGroupBy.SERIES_TYPE:
+            query = query.join(SeriesTypeDefinition, days.c.series_type_definition_id == SeriesTypeDefinition.id)
+
+        rows = query.group_by(key_column, bucket_start).order_by(key_column, bucket_start).all()
+        return [(key, bucket_start_value, int(total)) for key, bucket_start_value, total in rows]
+
+    def _deduped_archive_days(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        range_filters: list[ColumnElement[bool]],
+    ) -> Subquery:
+        """One row per archived day of one user, so each day's samples are counted once.
+
+        ``aggregation_type`` is part of the archive's unique key, so a day whose series type
+        changed aggregation method has more than one row for the same samples.
+        """
+        return (
+            db.query(
+                DataPointSeriesArchive.data_source_id.label("data_source_id"),
+                DataPointSeriesArchive.series_type_definition_id.label("series_type_definition_id"),
+                DataPointSeriesArchive.bucket_start_at.label("bucket_start_at"),
+                func.max(DataPointSeriesArchive.sample_count).label("sample_count"),
+            )
+            .join(DataSource, DataPointSeriesArchive.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, *range_filters)
+            .group_by(
+                DataPointSeriesArchive.data_source_id,
+                DataPointSeriesArchive.series_type_definition_id,
+                DataPointSeriesArchive.bucket_start_at,
+            )
+            .subquery()
+        )
+
     def get_daily_activity_aggregates_from_archive(
         self,
         db: DbSession,
@@ -467,6 +555,32 @@ class DataPointSeriesArchiveRepository:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _archive_range_filters(
+    start_datetime: datetime | None,
+    end_datetime: datetime | None,
+) -> list[ColumnElement[bool]]:
+    """Range filters for archive rows, whose bucket_start_at is always a UTC midnight.
+
+    The start is rounded down to its UTC day: an archived day is a single aggregated row
+    that cannot be split, so a window opening mid-day counts that whole day rather than
+    dropping it entirely.
+    """
+    filters: list[ColumnElement[bool]] = []
+    if start_datetime is not None:
+        filters.append(
+            DataPointSeriesArchive.bucket_start_at
+            >= _as_utc(start_datetime).replace(hour=0, minute=0, second=0, microsecond=0)
+        )
+    if end_datetime is not None:
+        filters.append(DataPointSeriesArchive.bucket_start_at < _as_utc(end_datetime))
+    return filters
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Read a naive datetime as UTC rather than as the server's local time."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _pretty_bytes(n: int) -> str:

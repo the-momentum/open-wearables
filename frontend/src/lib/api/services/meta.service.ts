@@ -4,6 +4,7 @@ import { API_ENDPOINTS } from '../config';
 export interface TimeseriesMetric {
   code: string;
   unit: string;
+  description?: string;
   providers: string[];
 }
 
@@ -29,6 +30,7 @@ export interface MenstrualCycleField {
 
 export interface HealthScore {
   code: string;
+  description?: string;
   providers: string[];
 }
 

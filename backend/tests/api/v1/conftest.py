@@ -37,4 +37,4 @@ def auth_headers(developer: Developer) -> dict[str, str]:
 @pytest.fixture
 def api_key_header(api_key: ApiKey) -> dict[str, str]:
     """Get API key headers."""
-    return api_key_headers(api_key.id)
+    return api_key_headers(api_key.plain_key)

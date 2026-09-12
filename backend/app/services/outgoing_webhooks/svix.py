@@ -249,7 +249,7 @@ def create_endpoint(
         "url": url,
         "description": description or "",
     }
-    if filter_types is not None:
+    if filter_types:
         endpoint_data["filter_types"] = filter_types
     channels = _user_channels(user_id)
     if channels is not None:
@@ -297,7 +297,11 @@ def patch_endpoint(
     if description is not None:
         patch_data["description"] = description
     if filter_types is not None:
-        patch_data["filter_types"] = filter_types
+        # [] is the public "remove the filter" signal (Svix rejects an empty list,
+        # so it goes out as an explicit null).  None stays a no-op: it is what an
+        # omitted field deserialises to and external clients already rely on that,
+        # so it must not be repurposed into a second clearing signal.
+        patch_data["filter_types"] = filter_types or None
     if user_id is not None:
         patch_data["channels"] = _user_channels(user_id)
     elif clear_user_id:

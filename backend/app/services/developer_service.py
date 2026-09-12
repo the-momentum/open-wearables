@@ -4,6 +4,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import Developer
 from app.repositories.developer_repository import DeveloperRepository
+from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.model_crud.user_management import (
     DeveloperCreate,
     DeveloperCreateInternal,
@@ -49,6 +50,11 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
 
         if updater.password:
             internal_updater.hashed_password = get_password_hash(updater.password)
+            # Sessions issued before the password change must not survive it. Revoke before
+            # persisting the new hash: if the update fails, the old password still works and
+            # the user simply logs in again, which is safer than the reverse order.
+            revoked = refresh_token_repository.revoke_all_for_developer(db_session, developer.id)
+            self.logger.info(f"Password change for developer {developer.id}, revoked {revoked} refresh token(s)")
 
         return self.crud.update(db_session, developer, internal_updater)
 

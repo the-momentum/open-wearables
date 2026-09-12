@@ -26,7 +26,7 @@ class TestXMLImportEndpoint:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {
             "filename": "export.xml",
         }
@@ -77,7 +77,7 @@ class TestXMLImportEndpoint:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {
             "expiration_seconds": 30,  # Less than minimum (60)
         }

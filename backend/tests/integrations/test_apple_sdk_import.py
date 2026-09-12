@@ -359,6 +359,42 @@ class TestAppleSDKImport:
         assert response.types == [SeriesType.steps.value]
         assert response.model_dump()["types"] == [SeriesType.steps.value]
 
+    def test_insert_update_split_reaches_the_response(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        """One new + one re-sent sample must surface as 1 inserted / 1 updated.
+
+        process_sdk_upload_task reads these off UploadDataResponse, so a value that stops
+        at load_data would silently report "0 new, 0 updated" on every sync.
+        """
+        user = UserFactory()
+        record = sample_sdk_payload["data"]["records"][0]
+        second = {
+            **record,
+            "id": "11112222-3333-4444-5555-666677778888",
+            "startDate": "2022-05-29T01:00:00Z",
+            "endDate": "2022-05-29T01:05:00Z",
+        }
+        payload = {**SDK_ENVELOPE, "data": {"records": [record]}}
+
+        first = import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+        assert (first.records_inserted, first.records_updated) == (1, 0)
+
+        # re-send the first sample (upsert in place) alongside a genuinely new one
+        payload["data"]["records"] = [record, second]
+        again = import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+
+        assert again.records_saved == 2
+        assert again.records_inserted == 1
+        assert again.records_updated == 1
+        # and it survives the model_dump() the Celery task consumes
+        dumped = again.model_dump()
+        assert dumped["records_inserted"] == 1
+        assert dumped["records_updated"] == 1
+
     def test_import_empty_payload(
         self,
         db: Session,

@@ -37,7 +37,7 @@ class TestWorkoutsEndpoints:
             duration_seconds=1800,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         # Provide required start_date and end_date
@@ -63,7 +63,7 @@ class TestWorkoutsEndpoints:
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         now = datetime.now(timezone.utc)
@@ -89,7 +89,7 @@ class TestWorkoutsEndpoints:
         workout = EventRecordFactory(mapping=mapping, category="workout")
         EventRecordFactory(mapping=mapping, category="sleep", type="sleep")
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         now = datetime.now(timezone.utc)
@@ -117,7 +117,7 @@ class TestWorkoutsEndpoints:
         running = EventRecordFactory(mapping=mapping, category="workout", type_="running")
         EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - note: API uses 'record_type' parameter (not 'type') and does ILIKE substring matching
         now = datetime.now(timezone.utc)
@@ -156,7 +156,7 @@ class TestWorkoutsEndpoints:
             end_datetime=now - timedelta(days=2, hours=-1),
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - filter for last 5 days (note: API uses 'start_date' parameter, not 'start_datetime')
         start_date = (now - timedelta(days=5)).isoformat()
@@ -180,7 +180,7 @@ class TestWorkoutsEndpoints:
         # Create 5 workouts
         [EventRecordFactory(mapping=mapping, category="workout") for _ in range(5)]
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - get page 2 with 2 items per page
         now = datetime.now(timezone.utc)
@@ -220,7 +220,7 @@ class TestWorkoutsEndpoints:
             start_datetime=now,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - sort by start_datetime ascending
         now = datetime.now(timezone.utc)
@@ -253,7 +253,7 @@ class TestWorkoutsEndpoints:
         workout1 = EventRecordFactory(mapping=mapping1, category="workout")
         EventRecordFactory(mapping=mapping2, category="workout")
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act - get user1's workouts
         now = datetime.now(timezone.utc)
@@ -313,7 +313,7 @@ class TestWorkoutsEndpoints:
         """Test handling of invalid user ID format."""
         # Arrange
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act & Assert - Invalid UUID causes 400 Bad Request (or 422 depending on config, but here 400)
         now = datetime.now(timezone.utc)
@@ -333,7 +333,7 @@ class TestWorkoutsEndpoints:
         from uuid import uuid4
 
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         nonexistent_user_id = uuid4()
 
         # Act
@@ -366,7 +366,7 @@ class TestWorkoutsEndpoints:
             duration_seconds=3600,
         )
         api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         now = datetime.now(timezone.utc)

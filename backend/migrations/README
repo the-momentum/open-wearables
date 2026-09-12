@@ -1,1 +1,34 @@
-Generic single-database configuration.
+Alembic migrations for the backend database.
+
+Create, apply and roll back with the Makefile targets:
+
+    make create_migration m="Description"
+    make migrate
+    make downgrade
+
+Alembic builds the migration graph only from `revision` and `down_revision` inside
+the files. The date in the file name is a label for humans and does not affect
+ordering.
+
+Resolving a two-head conflict after a rebase
+--------------------------------------------
+
+A database records only its current revision. On `upgrade head`, Alembic runs the
+revisions that are ancestors of the head but not ancestors of the recorded one.
+Anything behind the recorded revision is assumed to be applied and is never run.
+
+So when `main` gained a migration while yours was in review, move **your**
+migration to the end of the chain:
+
+1. Set `down_revision` of your migration to the head from `main`.
+2. Rename your file so its date is later than the last migration on `main`.
+   Keep the `rev` id. If your dev database already ran this migration, run
+   `make downgrade` before re-pointing and `make migrate` after. Otherwise the
+   database keeps your revision as current and never applies the migration
+   from `main`.
+3. Let CI verify the chain.
+
+Never change `down_revision` of a migration that is already on `main`. It makes
+the chain look linear, but every database that already applied it will skip the
+migration inserted before it. `scripts/check_migrations.py` fails CI on that
+change, on a deleted or renamed migration, and on a second head.

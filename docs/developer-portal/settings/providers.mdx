@@ -1,0 +1,32 @@
+---
+title: "Providers"
+sidebarTitle: "Providers"
+description: "Enable or disable OAuth providers and choose between periodic pull and webhook live sync from Settings → Providers in the Open Wearables developer portal."
+keywords: ["enable oauth provider", "garmin oura whoop polar", "live sync mode", "periodic pull", "webhook sync"]
+"og:title": "Providers | Open Wearables"
+"og:description": "Enable or disable OAuth providers and choose between periodic pull and webhook live sync from Settings → Providers in the Open Wearables developer portal."
+"og:url": "https://docs.openwearables.io/developer-portal/settings/providers"
+"og:type": "article"
+"twitter:title": "Providers | Open Wearables"
+"twitter:description": "Enable or disable OAuth providers and choose between periodic pull and webhook live sync from Settings → Providers in the Open Wearables developer portal."
+"twitter:card": "summary_large_image"
+---
+
+**Settings → Providers** controls which OAuth providers your end users can connect and how live data is pulled from each of them.
+
+## Enabling a provider
+
+Each provider row shows its current state (**Enabled** or **Disabled**) and a toggle. Flip the toggles you want to change, then confirm with **Save Changes** in the bar that appears at the bottom of the page. Nothing is saved until you click it.
+
+A provider still needs its OAuth client credentials configured in the backend environment before users can connect it. See [Supported Providers](/providers/supported) for the per-provider setup guides.
+
+## Live sync mode
+
+Providers that support both delivery methods show a two-option control:
+
+- **Periodic pull** - Open Wearables polls the provider API on a schedule.
+- **Webhook** - the provider pushes new data to your deployment as it arrives. Requires a publicly reachable backend and, for some providers, a registered webhook subscription. See [Provider webhook subscriptions](/api-reference/guides/provider-webhook-subscriptions).
+
+Changing the mode is saved immediately, independently of the enable toggles.
+
+Providers that support only one method show a static badge instead (**Webhook only** or **Periodic pull only**).

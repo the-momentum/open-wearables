@@ -1,52 +1,34 @@
-## Description
+<!--
 
-<!-- Provide a brief summary of your changes. What problem does this solve? -->
+Don't describe the diff - we can read that. Tell us what we can't read: why this
+approach, what you ruled out, what you checked, what you're still unsure about.
 
-## Checklist
+Use whatever tools help you write it, but do the editing yourself. AI writes far more
+than it needs to - cut it down to the few sentences that actually say something.
+-->
 
-### General
+## What does this change?
 
-- [ ] My code follows the project's code style
-- [ ] I have performed a self-review of my code
-- [ ] I have added tests that prove my fix/feature works (if applicable)
-- [ ] New and existing tests pass locally
-- [ ] I have updated relevant documentation in `docs/` (or no docs update needed)
+<!-- A sentence or two. -->
 
-### Backend Changes
+## Why?
 
-<!-- If your PR includes backend changes, please verify: -->
-You have to be in `backend` directory to make it work:
-- [ ] `uv run pre-commit run --all-files` passes
+<!-- What problem does this solve, and for whom? If you considered another approach, tell us why you didn't take it. -->
 
-### Frontend Changes
+Related issue: #
 
-<!-- If your PR includes frontend changes, please verify: -->
+## How did you test this?
 
-- [ ] `pnpm run lint` passes
-- [ ] `pnpm run format:check` passes
-- [ ] `pnpm run build` succeeds
+<!--
+Be concrete: the commands you ran, the flow you clicked through, the data you looked at.
 
-## Testing Instructions
+If your change touches a provider integration, we need to know it was tested against
+a real account and real API responses.
 
-<!-- Describe how reviewers can test your changes -->
+Paste the proof where you can - a log excerpt, a screenshot, a sample response - with
+all secrets and sensitive personal data removed.
+-->
 
-**Steps to test:**
-1.
-2.
-3.
+## AI usage
 
-**Expected behavior:**
-
-
-
-## Screenshots
-
-<!-- If applicable, add screenshots to help explain your changes -->
-
-
-
-## Additional Notes
-
-<!-- Any additional context or information reviewers should know -->
-
-
+<!-- Which tools and models you used, and roughly what for. "None" is a perfectly good answer. -->

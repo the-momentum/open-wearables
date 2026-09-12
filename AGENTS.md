@@ -82,6 +82,14 @@ cd backend && uv run pre-commit run --all-files
 cd frontend && pnpm run lint:fix && pnpm run format
 ```
 
+### Database Migrations
+
+When you rebase and `main` gained a migration in the meantime, `alembic heads` shows two heads. Resolve it by moving **your** migration to the end of the chain. Never touch a migration that is already on `main`: databases that applied it treat everything inserted before it as already done and skip it silently.
+
+1. Set `down_revision` of your migration to the head from `main`.
+2. Rename your file so its date is later than the last migration on `main`. Keep the `rev` id. If your dev database already ran this migration, run `make downgrade` before re-pointing and `make migrate` after; otherwise the database keeps your revision as current and never applies the migration from `main`.
+3. CI checks the chain and fails on a second head, on a changed `down_revision` in a migration already on `main`, and on a deleted or renamed migration.
+
 ## Guidelines for AI Agents
 
 1. **Read specialized docs** - See `backend/AGENTS.md` and `frontend/AGENTS.md` for patterns

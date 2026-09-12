@@ -41,7 +41,7 @@ class TestSyncDataEndpoint:
         # Act - use async=false to test synchronous path
         response = client.post(
             f"/api/v1/providers/garmin/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"async": "false"},
         )
 
@@ -73,7 +73,7 @@ class TestSyncDataEndpoint:
         # Act - async=true is default
         response = client.post(
             f"/api/v1/providers/garmin/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -118,7 +118,7 @@ class TestSyncDataEndpoint:
         # Act - use async=false to test synchronous path
         response = client.post(
             f"/api/v1/providers/garmin/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"async": "false"},
         )
 
@@ -135,7 +135,7 @@ class TestSyncDataEndpoint:
         # Act - use async=false to test synchronous path
         response = client.post(
             f"/api/v1/providers/polar/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"async": "false"},
         )
 
@@ -155,7 +155,7 @@ class TestSyncDataEndpoint:
         # Act - use async=false to test synchronous path with params
         response = client.post(
             f"/api/v1/providers/suunto/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"since": 1609459200, "limit": 25, "offset": 10, "async": "false"},
         )
 
@@ -179,7 +179,7 @@ class TestSyncDataEndpoint:
         # Act
         response = client.post(
             f"/api/v1/providers/invalid_provider/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -205,7 +205,7 @@ class TestSyncDataEndpoint:
         # Act - explicitly request only workouts to trigger 501 (use async=false)
         response = client.post(
             f"/api/v1/providers/apple/users/{user.id}/sync",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"data_type": "workouts", "async": "false"},
         )
 
@@ -243,7 +243,7 @@ class TestSyncHistoricalEndpoint:
 
         response = client.post(
             f"/api/v1/providers/oura/users/{user.id}/sync/historical",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         assert response.status_code == 200
@@ -272,7 +272,7 @@ class TestSyncHistoricalEndpoint:
 
         response = client.post(
             f"/api/v1/providers/oura/users/{user.id}/sync/historical",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"days": 30},
         )
 
@@ -292,7 +292,7 @@ class TestSyncHistoricalEndpoint:
 
         response = client.post(
             f"/api/v1/providers/apple/users/{user.id}/sync/historical",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         assert response.status_code == 400

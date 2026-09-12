@@ -13,6 +13,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource
@@ -683,15 +684,17 @@ class TestDataPointSeriesRepository:
         assert (counts.inserted, counts.updated) == (0, 0)
         assert int(counts) == 0
 
-    def test_bulk_create_batch_exceeding_one_chunk(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """A batch larger than one chunk must stay under Postgres' 65535-param cap.
+    def test_bulk_create_large_batch(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """A large batch inserts every row correctly in one call.
 
-        Regression: a full chunk * columns-per-row once overflowed 65535 bind
-        params (e.g. 9000 rows * 8 cols), failing the whole insert.
+        _insert_data_points writes via COPY, which has no per-statement bind-param
+        limit (unlike the old INSERT ... VALUES (...) it replaced), so this isn't
+        chasing a specific size threshold - just a sanity check that dedup/counting
+        stay correct at a scale well beyond the handful of rows other tests use.
         """
         user = UserFactory()
         base = datetime(2099, 1, 1, tzinfo=timezone.utc)
-        n = series_repo.BATCH_INSERT_CHUNK_SIZE + 500
+        n = 10_000
         samples = [
             TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -706,6 +709,102 @@ class TestDataPointSeriesRepository:
 
         counts = series_repo.bulk_create(db, samples)
         assert counts.inserted == n
+
+    def test_bulk_create_skips_rewriting_unchanged_duplicates(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Re-writing an identical row must not physically touch it (verified via xmin)."""
+        # Arrange
+        user = UserFactory()
+        ts = datetime(2099, 1, 1, tzinfo=timezone.utc)
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            recorded_at=ts,
+            value=42,
+            series_type=SeriesType.steps,
+            data_source_id=None,
+        )
+
+        # Act
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+        row_id = db.query(DataPointSeries.id).filter(DataPointSeries.recorded_at == ts).one()[0]
+        xmin_before = db.execute(text("SELECT xmin FROM data_point_series WHERE id = :id"), {"id": row_id}).scalar()
+
+        # Re-send the exact same row: same value, same everything -> conflicts, but
+        # nothing actually differs.
+        counts = series_repo.bulk_create(db, [sample])
+        db.commit()
+        xmin_after = db.execute(text("SELECT xmin FROM data_point_series WHERE id = :id"), {"id": row_id}).scalar()
+
+        # Assert
+        assert counts.updated == 1  # still reported as a conflict, per WriteCounts' contract
+        assert xmin_after == xmin_before  # but Postgres never actually rewrote the row
+
+    def test_bulk_create_still_updates_when_value_actually_changes(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """The no-op skip must not swallow genuine changes - only true duplicates."""
+        # Arrange
+        user = UserFactory()
+        ts = datetime(2099, 1, 2, tzinfo=timezone.utc)
+
+        def sample(value: int) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="oura",
+                recorded_at=ts,
+                value=value,
+                series_type=SeriesType.steps,
+                data_source_id=None,
+            )
+
+        # Act
+        series_repo.bulk_create(db, [sample(1000)])
+        db.commit()
+
+        series_repo.bulk_create(db, [sample(2000)])
+        db.commit()
+
+        # Assert
+        stored = db.query(DataPointSeries.value).filter(DataPointSeries.recorded_at == ts).scalar()
+        assert stored == 2000
+
+    def test_bulk_create_null_fields_round_trip_through_copy(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """external_id/zone_offset/is_daily_total=None must survive COPY, not become
+        placeholder strings or fail to load - COPY has different NULL-encoding rules
+        than a parameterized query, so this is worth checking explicitly.
+        """
+        # Arrange
+        user = UserFactory()
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            recorded_at=datetime(2099, 1, 3, tzinfo=timezone.utc),
+            value=Decimal("1.5"),
+            series_type=SeriesType.steps,
+            external_id=None,
+            zone_offset=None,
+            is_daily_total=None,
+            data_source_id=None,
+        )
+
+        # Act
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        # Assert
+        stored = db.query(DataPointSeries).filter(DataPointSeries.id == sample.id).one()
+        assert stored.external_id is None
+        assert stored.zone_offset is None
+        assert stored.is_daily_total is None
+        assert stored.value == Decimal("1.5")
 
     # ------------------------------------------------------------------
     # get_daily_activity_aggregates — prefer-daily-total-else-sum logic

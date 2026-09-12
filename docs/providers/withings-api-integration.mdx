@@ -1,0 +1,263 @@
+---
+title: "Withings API Integration"
+description: "Connect Withings via OAuth 2.0 to sync body measurements, activity, sleep, and workouts. Per-user webhook subscriptions or REST polling. Free Withings account required."
+keywords: ["withings api integration", "withings oauth", "withings health data", "withings api"]
+"og:title": "Withings API Integration | Open Wearables"
+"og:description": "Connect Withings via OAuth 2.0. Syncs body measurements, activity, sleep, and workouts. Per-user webhooks or REST polling."
+"og:url": "https://docs.openwearables.io/providers/withings-api-integration"
+"og:type": "article"
+"twitter:title": "Withings API Integration | Open Wearables"
+"twitter:description": "Connect Withings via OAuth 2.0. Syncs body measurements, activity, sleep, and workouts. Per-user webhooks or REST polling."
+"twitter:card": "summary_large_image"
+---
+
+<Note>
+**Need help with your Withings integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Withings provides access to body composition, blood pressure, activity, sleep, and workout data from Withings scales, blood pressure monitors, and watches through the [Withings Public API](https://developer.withings.com/api-reference/). The integration uses OAuth 2.0 for authentication and supports both pull-based REST syncing and push notifications.
+
+Withings deviates from every other provider here in one important way: notification subscriptions are created **per user**, with that user's own access token, rather than once for the whole application. There is no application-level webhook registration step to run before users connect.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Body composition (weight, body fat %, lean/skeletal muscle mass) | Yes |
+| Blood pressure & heart rate (spot measurements) | Yes |
+| Blood oxygen (SpO2), body & skin temperature | Yes |
+| Blood glucose | Yes |
+| VO2 max, cardiovascular age, metabolic age | Yes |
+| Daily activity (steps, distance, calories) | Yes |
+| Sleep (duration, efficiency, deep/light/REM/awake totals) | Yes |
+| Sleep stage timeline (hypnogram) | No |
+| Workouts / Exercises | Yes |
+| ECG, HRV | No |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** - *default* | Open Wearables fetches body measures, daily activity, sleep, and workouts via the Withings Measure and Sleep APIs. This is the default live-sync mode and needs no extra setup beyond OAuth. |
+| **Webhooks (push)** - *opt-in* | Withings notifies Open Wearables when new data is available for a user. Subscriptions are per-user (see below), so enabling webhooks requires a publicly reachable callback before any subscription can be created. |
+
+<Note>
+Withings defaults to **pull** rather than webhooks, unlike Oura. Enabling webhooks (**Enable webhooks (optional)** below) requires a publicly reachable HTTPS callback URL up front - there's no way to defer that requirement the way polling lets you.
+</Note>
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret from a Withings **Public API integration** application
+- **Redirect URI** registered with your Withings application
+- **Webhook token** set (only if enabling webhooks) - a secret value Withings echoes back on your callback URL
+
+## Prerequisites
+
+- A [Withings account](https://www.withings.com) - the same one used by device owners. Withings recommends creating a dedicated account for your organization if you're integrating on behalf of others, but a personal account works too.
+- No partner approval process: Withings Public API access is free and self-serve.
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Create a Withings application">
+    Sign in to the [Withings Developer Dashboard](https://developer.withings.com/) with your Withings account and select **Create an application**. Under application type, choose **Public API integration**, accept the terms, and continue.
+
+    Fill in the application form:
+    - **Application Name**: The name shown to users on the consent screen (e.g. "Open Wearables")
+    - **Description**: A short description of your application
+    - **Registered URLs** (Callback URI): Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/withings/callback`, so register that exact URL here. Withings rejects `localhost` and bare IP addresses in this field too - for local development, expose your backend with [ngrok](/dev-guides/ngrok-setup) and register e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/withings/callback`. In production use your public domain.
+
+    Save the application to reveal your **Client ID** and **Client Secret**.
+
+    <Warning>
+    Keep your Client Secret server-side only - never log or expose it in client code.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/withings/callback. For local dev, use your ngrok URL.
+API_BASE_URL=https://your-subdomain.ngrok-free.app
+
+#--- Withings ---#
+WITHINGS_CLIENT_ID=your-withings-client-id
+WITHINGS_CLIENT_SECRET=your-withings-client-secret
+WITHINGS_DEFAULT_SCOPE=user.info,user.metrics,user.activity
+# Required only if enabling webhooks. Generate with: openssl rand -hex 32
+WITHINGS_WEBHOOK_TOKEN=replace-with-a-random-secret
+```
+
+    **Configuration details:**
+
+    | Variable | Description |
+    |----------|--------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/withings/callback`, which must match the Callback URI registered in your Withings application. For local dev, use your [ngrok](/dev-guides/ngrok-setup) URL |
+    | `WITHINGS_CLIENT_ID` | Client ID from the Withings Developer Dashboard |
+    | `WITHINGS_CLIENT_SECRET` | Client Secret from the Withings Developer Dashboard |
+    | `WITHINGS_DEFAULT_SCOPE` | OAuth scopes requested during authorization. See the [OAuth Scopes Reference](#oauth-scopes-reference) below |
+    | `WITHINGS_WEBHOOK_TOKEN` | Shared secret appended to your webhook callback URL as a `token` query parameter. Required only if you plan to enable webhooks - see that step below |
+
+    <Warning>
+    **Withings scopes are comma-separated, not space-separated.** `WITHINGS_DEFAULT_SCOPE=user.info,user.metrics,user.activity` is correct; a space-separated value (the convention Oura and Google use) is a different string with a different meaning to Withings and will be rejected by the authorize endpoint.
+    </Warning>
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow.
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/withings/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://account.withings.com/oauth2_user/authorize2?client_id=...&redirect_uri=...&response_type=code&scope=user.info%2Cuser.metrics%2Cuser.activity&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Withings and authorize your app.
+
+    **3. Withings redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/withings/callback`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+
+    **4. Verify the connection:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "withings"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/withings/callback`) that Withings sends the authorization code to.
+    </Note>
+  </Step>
+
+  <Step title="Enable webhooks (optional)">
+    Withings subscriptions are **per user**: each one is created with that user's own bearer token, so there's nothing to register at the application level. Instead, you switch Withings' live-sync mode to **Webhook**, and Open Wearables subscribes every active Withings connection using its own token; any user who connects afterward is subscribed automatically at connect time.
+
+    **Switch Withings to webhook mode from the dashboard:**
+
+    In your Open Wearables dashboard, go to **Settings → Providers**, find **Withings**, and switch its live-sync control from **Periodic pull** to **Webhook**.
+
+    Open Wearables derives the callback URL from your `API_BASE_URL` and `WITHINGS_WEBHOOK_TOKEN` as `{API_BASE_URL}/api/v1/providers/withings/webhooks?token={WITHINGS_WEBHOOK_TOKEN}`, and subscribes each user's connection to it via Withings' Notify API.
+
+    <Warning>
+    **This is the single most likely thing to waste your afternoon in local development.** Withings enforces hard constraints on the callback URL and refuses to create a subscription otherwise:
+
+    - **HTTPS only** - plain HTTP is rejected
+    - **Public hostname** - no `localhost` and no IP literals, only a resolvable domain
+    - **Port 80 or 443 only** - no arbitrary ports
+    - **255 characters max**
+
+    Withings also sends a **HEAD request to the callback URL at subscribe time** to confirm it's reachable, *before* the subscription is created. That means the callback must already be publicly reachable - over HTTPS, on port 443 - **before** you switch Withings to webhook mode or a user connects, not just before you test it. `localhost` and non-standard ports are always rejected, so you cannot test Withings webhooks against a local dev server without first exposing it through a public HTTPS tunnel such as [ngrok](/dev-guides/ngrok-setup) on port 443. An app that never registers a compliant callback URL is capped by Withings at 10 linked users.
+    </Warning>
+
+    <Note>
+    Switching back to **Periodic pull** revokes the per-user subscriptions Open Wearables created; polling keeps working regardless of webhook state.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial 90-day historical sync is triggered automatically after a successful OAuth connection. To manually sync or fetch historical data:
+
+    ```bash
+    # Sync all data types
+    curl -X POST "http://localhost:8000/api/v1/providers/withings/users/{user_id}/sync?data_type=all" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You can also sync specific data types:
+
+    ```bash
+    # Sync only workouts
+    curl -X POST "http://localhost:8000/api/v1/providers/withings/users/{user_id}/sync?data_type=workouts" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Sync only 24/7 data (body measures, activity, sleep)
+    curl -X POST "http://localhost:8000/api/v1/providers/withings/users/{user_id}/sync?data_type=247" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch workouts
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/workouts?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch sleep records
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch timeseries data (body composition, blood pressure, heart rate, activity)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Withings integration is working end-to-end.
+  </Step>
+</Steps>
+
+## API Details
+
+| Detail | Value |
+|--------|-------|
+| **Auth endpoint** | `https://account.withings.com/oauth2_user/authorize2` |
+| **Token endpoint** | `https://wbsapi.withings.net/v2/oauth2` |
+| **Data API base** | `https://wbsapi.withings.net` |
+| **Webhook callback** | `POST /api/v1/providers/withings/webhooks?token={WITHINGS_WEBHOOK_TOKEN}` |
+| **Webhook subscription** | Per user, via Withings' Notify API, using that user's own bearer token - not an application-level registration |
+
+## OAuth Scopes Reference
+
+| Scope | Description |
+|-------|-------------|
+| `user.info` | Account information, linked devices, and goals |
+| `user.metrics` | Body measurements (weight, body composition, blood pressure, heart rate, etc.) |
+| `user.activity` | Physical activity and sleep data, including Sleep v2 - Getsummary |
+| `user.sleepevents` | Bed-sensor event notifications (bed in/out, inflate completion) - not requested by default; Open Wearables doesn't subscribe to those notification categories |
+
+<Note>
+The scopes requested by Open Wearables are controlled by `WITHINGS_DEFAULT_SCOPE`, a **comma-separated** list - see the warning in the configuration step above.
+</Note>
+
+## Rate Limits
+
+| Limit | Value |
+|-------|-------|
+| Per minute (application-wide) | 120 requests |
+
+Withings enforces this limit once per registered application, not per user - calling an endpoint for two users counts as two requests against the same allowance. Open Wearables does not pace calls against it, so a deployment with many connected users should keep the pull interval conservative.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Coverage Matrix" icon="table" href="/providers/coverage">
+    See the full data coverage comparison.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Withings Developer Documentation](https://developer.withings.com/api-reference/).
+</Note>

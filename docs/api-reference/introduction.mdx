@@ -95,11 +95,17 @@ X-Open-Wearables-API-Key: YOUR_API_KEY
 
 ### Getting an API Key
 
-1. Access the Open Wearables Platform at `http://localhost:3000`
+1. Open the [developer portal](/developer-portal) at `http://localhost:3000`
 2. Log in
-3. Navigate to the API Keys section in the Settings tab
+3. Navigate to **Settings → Credentials → API Keys**
 4. Generate a new API key
-5. Copy and securely store the key
+5. Copy and securely store the key - it is shown only once
+
+<Warning>
+  The full key is displayed only once, right after you create or rotate it. Open Wearables stores a hash of the key, so it cannot be retrieved later - the portal shows just a short prefix (for example `sk-a1b2c3d`) to help you tell keys apart. If you lose a key, rotate it from the same section to get a new one.
+</Warning>
+
+API keys are shared across the whole deployment. Every developer account can see, rotate, and delete every key, see [Credentials](/developer-portal/settings/credentials#keys-are-shared-across-the-deployment).
 
 <Warning>
   Keep your API keys secure. Never commit them to version control or expose them in client-side code.

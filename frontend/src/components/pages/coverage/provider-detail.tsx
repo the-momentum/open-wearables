@@ -1,5 +1,8 @@
+import { Info } from 'lucide-react';
 import { SourceBadge } from '@/components/common/source-badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CoverageResponse } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -23,6 +26,39 @@ function Stat({ label, value }: { label: string; value: number }) {
 interface Chip {
   code: string;
   unit?: string;
+  description?: string;
+}
+
+function ChipItem({ chip }: { chip: Chip }) {
+  const body = (
+    <span
+      className={cn(
+        'inline-flex items-baseline gap-1 rounded-md bg-zinc-800/70 px-2 py-1',
+        chip.description && 'cursor-help'
+      )}
+    >
+      <code className="font-mono text-xs text-zinc-200">{chip.code}</code>
+      {chip.unit && <span className="text-[10px] text-zinc-500">{chip.unit}</span>}
+      {chip.description && (
+        <Info aria-hidden="true" className="h-3 w-3 shrink-0 self-center text-zinc-500" />
+      )}
+    </span>
+  );
+
+  if (!chip.description) {
+    return body;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="inline-flex text-left">
+          {body}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{chip.description}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function GroupCard({ title, chips }: { title: string; chips: Chip[] }) {
@@ -38,13 +74,7 @@ function GroupCard({ title, chips }: { title: string; chips: Chip[] }) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {chips.map((c) => (
-          <span
-            key={c.code}
-            className="inline-flex items-baseline gap-1 rounded-md bg-zinc-800/70 px-2 py-1"
-          >
-            <code className="font-mono text-xs text-zinc-200">{c.code}</code>
-            {c.unit && <span className="text-[10px] text-zinc-500">{c.unit}</span>}
-          </span>
+          <ChipItem key={c.code} chip={c} />
         ))}
       </div>
     </div>
@@ -76,13 +106,13 @@ export function ProviderDetail({ data, provider }: Props) {
     .map((f) => ({ code: f.code }));
   const scores = data.health_scores
     .filter((s) => s.providers.includes(provider))
-    .map((s) => ({ code: s.code }));
+    .map((s) => ({ code: s.code, description: s.description }));
 
   // One card per non-empty group, rendered in a uniform responsive grid.
   const cards: { title: string; chips: Chip[] }[] = [
     ...timeseries.map((cat) => ({
       title: cat.name,
-      chips: cat.metrics.map((m) => ({ code: m.code, unit: m.unit })),
+      chips: cat.metrics.map((m) => ({ code: m.code, unit: m.unit, description: m.description })),
     })),
     { title: 'Workout fields', chips: workout },
     { title: 'Sleep fields', chips: sleep },
