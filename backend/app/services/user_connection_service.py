@@ -147,8 +147,14 @@ class UserConnectionService(
 
     @handle_exceptions
     def ensure_credential_connection(self, db_session: DbSession, user_id: UUID, provider: str) -> UserConnection:
-        """Create or reactivate a connection for a credential-based (non-OAuth) provider."""
-        return self.crud.ensure_sdk_connection(db_session, user_id, provider)
+        """Create or reactivate a connection for a credential-based (non-OAuth) provider.
+
+        FORK: shares the SDK path. Neither has an OAuth callback, so the connection is born
+        here, and upstream's ``connection.created`` webhook fires on the same state changes.
+        The repository method now returns ``(connection, outcome)``; going through the
+        service-level wrapper keeps that unpacking in one place.
+        """
+        return self.ensure_sdk_connection(db_session, user_id, provider)
 
     def purge_provider_data(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate | None = None
