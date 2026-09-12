@@ -37,7 +37,7 @@ anything.** Installation is driven by three separate mechanisms:
 **Adding a flag without wiring it produces a patch that reports as enabled
 everywhere and never runs.** That has happened twice — see §3.
 
-Current state: 15 registered, 13 enabled, 2 retired, 9 standalone, 3 composed.
+Current state (2026-09-13): 15 backend patches registered, 12 enabled, 3 retired, 8 standalone, 3 composed (plus 3 `structural` entries: celery-late-acks, historical-sync-chunking, frontend-display-timezone).
 
 ### `replacement_kind` and why it matters
 
@@ -59,7 +59,10 @@ Applying one to fork-owned source buys every shadowing hazard and none of the
 benefit. `fix-calories-total-mislabelled` monkey-patched
 `GarminConnect247Data.save_daily_stats_for_date` — a fork-only file — and silently
 shadowed later edits to that same method. New fields simply never ran, with no
-error and no failing test. Fork-owned code is edited directly.
+error and no failing test. It happened a second time:
+`fix-garmin-connect-rate-limit-backoff` replaced `load_and_save_all` in the same
+file and hid the VO2max sync added on 2026-08-29 until the 2026-09-13 reconcile
+audit noticed (retired into source that day). Fork-owned code is edited directly.
 
 **`garmin_connect/` is fork-only.** It does not exist upstream. Edit it directly;
 it will never conflict.
@@ -177,10 +180,9 @@ python ow-patches/check_upstream.py --update-baseline   # ONLY after re-verifyin
 
 `ow-patches/.upstream-baseline` records the last fully-reconciled upstream commit.
 
-> **Currently stale.** The baseline still reads `06a6435` although upstream
-> `d9a64bf` has been merged. It was deliberately not refreshed because the
-> flagged `wholesale-replace` patches had not all been re-verified at merge time.
-> Several have been since; refresh it once the remainder are confirmed.
+> The baseline is refreshed only at the END of a reconcile, after every flagged
+> `wholesale-replace` patch has been body-diffed. A refreshed baseline on
+> unverified patches hides the drift from the next reconcile.
 
 ### `check_upstream.py` blind spots
 

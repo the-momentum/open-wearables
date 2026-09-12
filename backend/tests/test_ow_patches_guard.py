@@ -74,4 +74,4 @@ class TestOwPatchesPresentInCheckout:
         apply_module = sys.modules.get("_ow_patches_apply")
         assert apply_module is not None, "ow-patches should have loaded at import time"
         enabled = apply_module.apply_patches()
-        assert enabled.get("fix-garmin-connect-rate-limit-backoff") is True
+        assert enabled.get("fix-provider-prefix-shadowing") is True

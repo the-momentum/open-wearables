@@ -1,4 +1,8 @@
 # patch_id:        fix-garmin-connect-rate-limit-backoff
+# status:          RETIRED 2026-09-13 — moved into backend/app/services/providers/garmin_connect/
+#                  {client.py,data_247.py}. Not loaded by apply.py. Kept for history only.
+#                  Reason: both targets are fork-owned, and this copy shadowed the VO2max
+#                  sync added to load_and_save_all on 2026-08-29 (FORK.md §2).
 # upstream_file:   backend/app/services/providers/garmin_connect/client.py, backend/app/services/providers/garmin_connect/data_247.py
 # upstream_symbol: GarminConnectClient._login + ._get_api + ._call_with_reauth, GarminConnect247Data.load_and_save_all
 # retire_when:     GarminConnectClient distinguishes rate-limit/Cloudflare rejections from ordinary auth failures and stops re-attempting login once blocked, AND load_and_save_all aborts the run instead of continuing through every remaining (date, data_type) pair. Marker: presence of `GarminConnectRateLimitError` (or equivalent 429-specific exception) in backend/app/services/providers/garmin_connect/.

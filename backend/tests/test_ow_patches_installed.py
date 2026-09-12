@@ -59,21 +59,12 @@ _EXPECTED_PATCHED: list[tuple[str, str, str]] = [
     # data_247.py directly. The patch shadowed later edits to the same file,
     # silently dropping newly-added fields. Asserting it is patched would now
     # be asserting the bug.
-    (
-        "app.services.providers.garmin_connect.data_247",
-        "GarminConnect247Data.load_and_save_all",
-        "fix-garmin-connect-rate-limit-backoff",
-    ),
-    (
-        "app.services.providers.garmin_connect.client",
-        "GarminConnectClient._call_with_reauth",
-        "fix-garmin-connect-rate-limit-backoff",
-    ),
-    (
-        "app.services.providers.garmin_connect.client",
-        "GarminConnectClient._login",
-        "fix-garmin-connect-rate-limit-backoff",
-    ),
+    # NOTE: load_and_save_all / _login / _get_api / _call_with_reauth are likewise
+    # NOT listed. fix-garmin-connect-rate-limit-backoff replaced them until
+    # 2026-09-13, when it was retired into client.py / data_247.py for the same
+    # reason: it shadowed the fork's own later edit (the VO2max sync added to
+    # load_and_save_all on 2026-08-29 never ran in production). Asserting these
+    # are patched would enshrine that hazard.
     (
         "app.services.providers.garmin_connect.workouts",
         "GarminConnectWorkouts.load_data",

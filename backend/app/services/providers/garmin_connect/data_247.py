@@ -20,7 +20,12 @@ from app.schemas.model_crud.activities import (
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
-from app.services.providers.garmin_connect.client import GarminConnectClient
+from app.services.providers.garmin_connect import client as garmin_client
+from app.services.providers.garmin_connect.client import (
+    GarminConnectClient,
+    GarminConnectClientError,
+    GarminConnectRateLimitError,
+)
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
@@ -717,13 +722,36 @@ class GarminConnect247Data(Base247DataTemplate):
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
     ) -> dict[str, int]:
-        """Load and save all 24/7 data types for the given date range."""
+        """Load and save all 24/7 data types for the given date range.
+
+        Aborts the whole run on the first ``GarminConnectClientError`` instead of
+        grinding through every remaining (date, data_type) pair: a rate limit, a
+        locked account or wrong credentials will all still be true on the next
+        pair, and each retry is one more login storm against the endpoint Garmin
+        rate-limits. Only genuinely per-day errors (a day with no stress data, a
+        malformed payload) are swallowed. Formerly the ow-patch
+        fix-garmin-connect-rate-limit-backoff; retired into source 2026-09-13.
+        """
+        # Module attribute (not a from-import) so the cooldown check can be
+        # monkeypatched in one place.
+        blocked = garmin_client.cooldown_remaining()
+        if blocked > 0:
+            log_structured(
+                self.logger,
+                "warning",
+                "Skipping Garmin Connect 24/7 sync: rate-limit cooldown active",
+                action="garmin_connect_sync_skipped_cooldown",
+                cooldown_remaining_seconds=blocked,
+                user_id=str(user_id),
+            )
+            raise GarminConnectRateLimitError(
+                f"Garmin Connect is in rate-limit cooldown for another {blocked}s; sync skipped"
+            )
+
         if isinstance(start_time, str):
             start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
         if isinstance(end_time, str):
             end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-
-        from datetime import timedelta  # noqa: PLC0415
 
         if not start_time:
             start_time = datetime.now(timezone.utc) - timedelta(days=30)
@@ -750,10 +778,32 @@ class GarminConnect247Data(Base247DataTemplate):
             "hrv": lambda d: self.save_hrv_for_date(db, user_id, d),
         }
 
+        fatal_exc: Exception | None = None
+
         for cdate in self.client.iter_dates(start_date, end_date):
+            if fatal_exc is not None:
+                break
             for data_type, fn in per_day_tasks.items():
                 try:
                     results[data_type] += fn(cdate)
+                except GarminConnectClientError as exc:
+                    fatal_exc = exc
+                    rate_limited = isinstance(exc, GarminConnectRateLimitError)
+                    log_structured(
+                        self.logger,
+                        "error",
+                        "Aborting Garmin Connect 24/7 sync: "
+                        + ("rate limited" if rate_limited else "authentication failed"),
+                        action="garmin_connect_sync_aborted_rate_limit"
+                        if rate_limited
+                        else "garmin_connect_sync_aborted_auth",
+                        data_type=data_type,
+                        date=str(cdate),
+                        error=str(exc),
+                        partial_results=dict(results),
+                        user_id=str(user_id),
+                    )
+                    break
                 except Exception as exc:
                     log_structured(
                         self.logger,
@@ -766,9 +816,17 @@ class GarminConnect247Data(Base247DataTemplate):
                         user_id=str(user_id),
                     )
 
+        if fatal_exc is not None:
+            # Surface as a failure so the sync run is recorded failed rather than
+            # a successful no-op. Records already persisted stay persisted.
+            raise fatal_exc
+
         # Body composition fetched once for the full range
         try:
             results["body_composition"] = self.save_body_composition(db, user_id, start_date, end_date)
+        except GarminConnectClientError:
+            results["body_composition"] = 0
+            raise
         except Exception as exc:
             results["body_composition"] = 0
             log_structured(
@@ -783,6 +841,9 @@ class GarminConnect247Data(Base247DataTemplate):
         # VO2max likewise fetched once, not per-day — see save_vo2max_for_range.
         try:
             results["vo2_max"] = self.save_vo2max_for_range(db, user_id, end_date)
+        except GarminConnectClientError:
+            results["vo2_max"] = 0
+            raise
         except Exception as exc:
             results["vo2_max"] = 0
             log_structured(

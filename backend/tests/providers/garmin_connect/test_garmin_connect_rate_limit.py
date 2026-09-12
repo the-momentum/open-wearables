@@ -1,4 +1,4 @@
-"""Tests for the fix-garmin-connect-rate-limit-backoff fork patch.
+"""Tests for the Garmin Connect rate-limit backoff (formerly the fix-garmin-connect-rate-limit-backoff ow-patch).
 
 Regression cover for the bug where a Garmin 429 / Cloudflare rejection was
 treated as a recoverable per-(date, data_type) error, causing ~150 full login
@@ -7,54 +7,35 @@ attempts per sync run and escalating a soft rate-limit into an IP-level block.
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 import pytest
 
+from app.services.providers.garmin_connect import client as garmin_client
 from app.services.providers.garmin_connect.client import (
     GarminConnectClient,
     GarminConnectClientError,
 )
 from app.services.providers.garmin_connect.data_247 import GarminConnect247Data
 
-_PATCH_PATH = (
-    Path(__file__).resolve().parents[3].parent / "ow-patches" / "local" / "fix-garmin-connect-rate-limit-backoff.py"
-)
-
-# apply.py loads each patch as `_ow_patches_<id with dashes as underscores>`.
-_PATCH_MODULE_NAME = "_ow_patches_fix_garmin_connect_rate_limit_backoff"
-
-
-def _load_patch() -> Any:
-    """Fallback loader for running this file against an unpatched checkout."""
-    spec = importlib.util.spec_from_file_location(_PATCH_MODULE_NAME, _PATCH_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_PATCH_MODULE_NAME] = module
-    spec.loader.exec_module(module)
-    module.install()
-    return module
-
 
 @pytest.fixture(scope="module")
 def patch_module() -> Any:
-    """Return the ALREADY-INSTALLED patch module.
+    """The module that owns the rate-limit machinery.
 
-    Deliberately does not load a second copy. Doing so registered the patch
-    under a different module name and re-installed it over the real one, which
-    (a) polluted `GarminConnectClient.__module__` for the whole session and broke
-    tests/test_ow_patches_installed.py, and (b) meant these tests passed even
-    when apply.py never installed the patch at all — which is exactly how it
-    shipped inert.
+    Until 2026-09-13 this was the ow-patch
+    ``_ow_patches_fix_garmin_connect_rate_limit_backoff``; the behaviour now lives
+    in ``garmin_connect/client.py`` directly (the patch shadowed the fork's own
+    later edits to ``load_and_save_all``). The fixture name is kept so the tests
+    below read unchanged — they monkeypatch ``_redis`` / ``_sleep`` /
+    ``cooldown_remaining`` on whichever module owns them.
     """
-    return sys.modules.get(_PATCH_MODULE_NAME) or _load_patch()
+    assert sys.modules["app.services.providers.garmin_connect.client"] is garmin_client
+    return garmin_client
 
 
 @pytest.fixture
@@ -258,6 +239,7 @@ class TestLoadAndSaveAllAborts:
         ):
             setattr(handler, name, bump)
         handler.save_body_composition = lambda *_a, **_k: 0  # type: ignore[method-assign]
+        handler.save_vo2max_for_range = lambda *_a, **_k: 0  # type: ignore[method-assign]
 
         return handler, counters
 
@@ -346,7 +328,7 @@ class TestCooldownEscalation:
 
         monkeypatch.setattr(patch_module, "_redis", lambda: FakeRedis())
 
-        seen = [patch_module._record_rate_limit(patch_module._module_logger()) for _ in range(6)]
+        seen = [patch_module._record_rate_limit(patch_module.logger) for _ in range(6)]
 
         assert seen[0] == patch_module._BASE_COOLDOWN_SECONDS
         assert seen[1] == patch_module._BASE_COOLDOWN_SECONDS * 2
@@ -427,6 +409,7 @@ class TestAccountLockedAndAuthAbort:
         ):
             setattr(handler, name, bad_creds)
         handler.save_body_composition = lambda *_a, **_k: 0  # type: ignore[method-assign]
+        handler.save_vo2max_for_range = lambda *_a, **_k: 0  # type: ignore[method-assign]
 
         with pytest.raises(GarminConnectClientError):
             handler.load_and_save_all(

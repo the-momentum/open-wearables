@@ -50,7 +50,11 @@ PATCHES_ENABLED: dict[str, bool] = {
     "fix-summary-timezone-echo": True,
     "fix-sleep-summary-utc-bucketing": True,
     "fix-health-score-source-priority": True,
-    "fix-garmin-connect-rate-limit-backoff": True,
+    # Retired 2026-09-13: moved into source (garmin_connect/client.py +
+    # data_247.py). Both files are fork-only, so the patch shadowed the fork's own
+    # later edits — it hid the VO2max sync added to load_and_save_all on
+    # 2026-08-29 for two weeks. See PATCHES.md retirement_note.
+    "fix-garmin-connect-rate-limit-backoff": False,
     "fix-provider-prefix-shadowing": True,
 }
 
@@ -125,8 +129,9 @@ def _compose_sleep_summaries() -> None:
 
     if enabled_stages:
         # fix-sleep-stages-missing has TWO halves: the ensure_stages_object
-        # decorator applied below, and a wholesale replacement of
-        # Ultrahuman247Data.normalize_sleep (capitalisation / key-name tolerance).
+        # decorator applied below, and a wrapper around
+        # Ultrahuman247Data.normalize_sleep (capitalisation / key-name tolerance;
+        # a wholesale replacement until 2026-08-29, now delegates to upstream).
         # Loading the module via _patch() does not install the latter — install()
         # must be called explicitly, exactly as _compose_activity_summaries does
         # for fix-calories-total-mislabelled. Without this the Ultrahuman half was
@@ -224,7 +229,7 @@ _STANDALONE_PATCHES = (
     "fix-garmin-connect-activity-hr-samples",
     "fix-sleep-summary-utc-bucketing",
     "fix-health-score-source-priority",
-    "fix-garmin-connect-rate-limit-backoff",
+    # fix-garmin-connect-rate-limit-backoff is retired into source — see PATCHES.md.
     "fix-provider-prefix-shadowing",
 )
 
