@@ -9,7 +9,6 @@ from app.schemas.model_crud.activities import SleepStage
 from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.utils import SourceMetadata
 
-from .data_point_responses import TimeSeriesSample
 from .summaries import SleepStagesSummary
 
 
@@ -50,10 +49,6 @@ class Workout(BaseModel):
     elev_low: float | None = None
     hr_zones: HRZones | None = None
     power_zones: PowerZones | None = None
-
-
-class WorkoutDetailed(Workout):
-    heart_rate_samples: list[TimeSeriesSample] | None = None
 
 
 class Macros(BaseModel):
