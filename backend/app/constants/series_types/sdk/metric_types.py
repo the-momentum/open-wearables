@@ -129,6 +129,11 @@ class SDKMetricType(StrEnum):
     INHALER_USAGE = "HKQuantityTypeIdentifierInhalerUsage"
     NUMBER_OF_ALCOHOLIC_BEVERAGES = "HKQuantityTypeIdentifierNumberOfAlcoholicBeverages"
     ANDROID_HYDRATION = "HYDRATION"
+    APPLE_DIETARY_WATER = "HKQuantityTypeIdentifierDietaryWater"
+    APPLE_DIETARY_ENERGY = "HKQuantityTypeIdentifierDietaryEnergyConsumed"
+    APPLE_DIETARY_PROTEIN = "HKQuantityTypeIdentifierDietaryProtein"
+    APPLE_DIETARY_FAT = "HKQuantityTypeIdentifierDietaryFatTotal"
+    APPLE_DIETARY_CARBOHYDRATES = "HKQuantityTypeIdentifierDietaryCarbohydrates"
 
     # Electrodermal
     ELECTRODERMAL_ACTIVITY = "HKQuantityTypeIdentifierElectrodermalActivity"
@@ -287,6 +292,11 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.INHALER_USAGE: SeriesType.inhaler_usage,
     SDKMetricType.NUMBER_OF_ALCOHOLIC_BEVERAGES: SeriesType.number_of_alcoholic_beverages,
     SDKMetricType.ANDROID_HYDRATION: SeriesType.hydration,
+    SDKMetricType.APPLE_DIETARY_WATER: SeriesType.hydration,
+    SDKMetricType.APPLE_DIETARY_ENERGY: SeriesType.dietary_energy,
+    SDKMetricType.APPLE_DIETARY_PROTEIN: SeriesType.dietary_protein,
+    SDKMetricType.APPLE_DIETARY_FAT: SeriesType.dietary_fat,
+    SDKMetricType.APPLE_DIETARY_CARBOHYDRATES: SeriesType.dietary_carbohydrates,
     # Electrodermal
     SDKMetricType.ELECTRODERMAL_ACTIVITY: SeriesType.electrodermal_activity,
     # Ultraviolet Exposure

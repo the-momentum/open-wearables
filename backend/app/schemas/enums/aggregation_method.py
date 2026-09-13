@@ -107,6 +107,11 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.garmin_fitness_age: AggregationMethod.AVG,
     SeriesType.garmin_body_battery: AggregationMethod.AVG,
     # ── Other ──
+    SeriesType.hydration: AggregationMethod.SUM,
+    SeriesType.dietary_energy: AggregationMethod.SUM,
+    SeriesType.dietary_protein: AggregationMethod.SUM,
+    SeriesType.dietary_fat: AggregationMethod.SUM,
+    SeriesType.dietary_carbohydrates: AggregationMethod.SUM,
     SeriesType.electrodermal_activity: AggregationMethod.AVG,
     SeriesType.push_count: AggregationMethod.SUM,
     SeriesType.atrial_fibrillation_burden: AggregationMethod.SUM,
