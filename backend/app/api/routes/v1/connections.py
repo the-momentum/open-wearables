@@ -97,7 +97,7 @@ def _assert_sdk_token_may_disconnect(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "SDK tokens cannot disconnect an OAuth connection")
 
 
-@router.delete("/users/{user_id}/connections/{provider}")
+@router.delete("/users/{user_id}/connections/{provider}", status_code=status.HTTP_204_NO_CONTENT)
 def disconnect_provider_endpoint(
     user_id: UUID,
     provider: ProviderName,
@@ -121,7 +121,7 @@ def disconnect_provider_endpoint(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/users/{user_id}/connections/{provider}/data")
+@router.delete("/users/{user_id}/connections/{provider}/data", status_code=status.HTTP_204_NO_CONTENT)
 def delete_provider_data_endpoint(
     user_id: UUID,
     provider: ProviderName,
