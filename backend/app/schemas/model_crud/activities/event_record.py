@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Literal, TypedDict
 from uuid import UUID
 
@@ -7,6 +8,12 @@ from pydantic import BaseModel, Field
 
 from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.utils.dates import ZoneOffset
+
+
+class WorkoutInclude(StrEnum):
+    """Optional expansions for workout read models, requested via the `include` query parameter."""
+
+    ZONES = "zones"
 
 
 class EventRecordMetrics(TypedDict, total=False):

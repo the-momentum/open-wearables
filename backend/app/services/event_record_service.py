@@ -1,6 +1,8 @@
+from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from logging import Logger, getLogger
+from typing import TypeVar
 from uuid import UUID, uuid4
 
 from sqlalchemy import event as sa_event
@@ -33,8 +35,10 @@ from app.schemas.model_crud.activities import (
     EventRecordResponse,
     EventRecordUpdate,
     MenstrualCycleDetailCreate,
+    WorkoutInclude,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
+from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.responses.activity import (
     MenstrualCycleRecord,
     SleepSession,
@@ -57,6 +61,17 @@ from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+
+ZonesT = TypeVar("ZonesT", HRZones, PowerZones)
+
+
+def _validate_zones(model: type[ZonesT], raw: object | None) -> ZonesT | None:
+    """Coerce a raw JSONB zones blob into its schema.
+
+    The hr_zones / power_zones columns are json_binary, so the ORM hands back plain
+    dicts that Pydantic would otherwise carry through unvalidated.
+    """
+    return model.model_validate(raw) if raw else None
 
 
 class EventRecordService(
@@ -729,8 +744,10 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
+        include: Sequence[WorkoutInclude] = (),
     ) -> PaginatedResponse[Workout]:
         params.category = "workout"
+        with_zones = WorkoutInclude.ZONES in include
         records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
         # Ensure total_count is always an int (not None)
         total_count = total_count if total_count is not None else 0
@@ -794,6 +811,8 @@ class EventRecordService(
                 elevation_gain_meters=float(details.total_elevation_gain)
                 if details and details.total_elevation_gain
                 else None,
+                hr_zones=_validate_zones(HRZones, details.hr_zones if details and with_zones else None),
+                power_zones=_validate_zones(PowerZones, details.power_zones if details and with_zones else None),
             )
             data.append(workout)
 
@@ -860,6 +879,8 @@ class EventRecordService(
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,
+            hr_zones=_validate_zones(HRZones, details.hr_zones if details else None),
+            power_zones=_validate_zones(PowerZones, details.power_zones if details else None),
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
-from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.model_crud.activities import EventRecordQueryParams, WorkoutInclude
 from app.schemas.responses.activity import (
     MenstrualCycleRecord,
     SleepSession,
@@ -25,6 +25,7 @@ def list_workouts(
     end_date: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
+    include: Annotated[list[WorkoutInclude], Query(default_factory=list)],
     record_type: str | None = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -37,7 +38,7 @@ def list_workouts(
         limit=limit,
         record_type=record_type,
     )
-    return event_record_service.get_workouts(db, user_id, params)
+    return event_record_service.get_workouts(db, user_id, params, include=include)
 
 
 @router.get("/users/{user_id}/events/sleep")

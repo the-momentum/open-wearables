@@ -9,10 +9,17 @@ Tests the /api/v1/users/{user_id}/workouts endpoint including:
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.factories import ApiKeyFactory, DataSourceFactory, EventRecordFactory, UserFactory
+from tests.factories import (
+    ApiKeyFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    UserFactory,
+    WorkoutDetailsFactory,
+)
 from tests.utils import api_key_headers
 
 
@@ -392,3 +399,108 @@ class TestWorkoutsEndpoints:
         assert "start_time" in workout_data
         assert "end_time" in workout_data
         assert "duration_seconds" in workout_data
+
+
+_FIT_HR = {
+    "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": 130}, {"zone": 1, "seconds": 240.5, "max_bpm": 150}],
+    "max_hr": 189,
+    "threshold_hr": 165,
+}
+_FIT_POWER = {"zones": [{"zone": 0, "seconds": 900.0, "max_watts": 150}], "ftp_watts": 250}
+# Whoop reports durations only: no per-zone boundary, no max/threshold HR.
+_WHOOP_HR = {"zones": [{"zone": 0, "seconds": 812.0}, {"zone": 1, "seconds": 120.5}]}
+_WHOOP_HR_OUT = {
+    "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": None}, {"zone": 1, "seconds": 120.5, "max_bpm": None}],
+    "max_hr": None,
+    "threshold_hr": None,
+}
+
+
+class TestWorkoutZones:
+    """Zones ride behind `include=zones` and are surfaced exactly as stored."""
+
+    @staticmethod
+    def _make_workout(user: object, hr: dict | None = None, power: dict | None = None, details: bool = True) -> None:
+        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="cycling")
+        if details:
+            WorkoutDetailsFactory(event_record=record, hr_zones=hr, power_zones=power)
+
+    @staticmethod
+    def _fetch_one(client: TestClient, user_id: object, **extra: object) -> dict:
+        now = datetime.now(timezone.utc)
+        response = client.get(
+            f"/api/v1/users/{user_id}/events/workouts",
+            headers=api_key_headers(ApiKeyFactory().plain_key),
+            params={
+                "start_date": (now - timedelta(days=30)).isoformat(),
+                "end_date": (now + timedelta(days=1)).isoformat(),
+                **extra,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        return data[0]
+
+    @pytest.mark.parametrize(
+        ("stored_hr", "stored_power", "expected_hr", "expected_power", "details"),
+        [
+            pytest.param(_FIT_HR, _FIT_POWER, _FIT_HR, _FIT_POWER, True, id="fit-full-boundaries"),
+            pytest.param(_WHOOP_HR, None, _WHOOP_HR_OUT, None, True, id="whoop-durations-only"),
+            pytest.param(None, None, None, None, True, id="details-without-zones"),
+            pytest.param(None, None, None, None, False, id="no-details-row"),
+        ],
+    )
+    def test_zones_surface_as_stored(
+        self,
+        client: TestClient,
+        db: Session,
+        stored_hr: dict | None,
+        stored_power: dict | None,
+        expected_hr: dict | None,
+        expected_power: dict | None,
+        details: bool,
+    ) -> None:
+        """Boundaries missing at the source stay null - never zero-filled or derived from max_hr."""
+        # Arrange
+        user = UserFactory()
+        self._make_workout(user, stored_hr, stored_power, details)
+
+        # Act
+        workout = self._fetch_one(client, user.id, include="zones")
+
+        # Assert
+        assert workout["hr_zones"] == expected_hr
+        assert workout["power_zones"] == expected_power
+
+    def test_zones_omitted_unless_requested(self, client: TestClient, db: Session) -> None:
+        """Zones are an opt-in expansion: they roughly double the list payload."""
+        # Arrange
+        user = UserFactory()
+        self._make_workout(user, _FIT_HR, _FIT_POWER)
+
+        # Act & Assert
+        omitted = self._fetch_one(client, user.id)
+        assert omitted["hr_zones"] is None
+        assert omitted["power_zones"] is None
+        assert self._fetch_one(client, user.id, include="zones")["hr_zones"] == _FIT_HR
+
+    def test_unknown_expansion_is_rejected(self, client: TestClient, db: Session) -> None:
+        """The enum rejects typos instead of silently ignoring them."""
+        # Arrange
+        user = UserFactory()
+        now = datetime.now(timezone.utc)
+
+        # Act
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=api_key_headers(ApiKeyFactory().plain_key),
+            params={
+                "start_date": (now - timedelta(days=30)).isoformat(),
+                "end_date": (now + timedelta(days=1)).isoformat(),
+                "include": "segments",
+            },
+        )
+
+        # Assert
+        assert response.status_code == 400
