@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy.inspection import inspect
 
 from app.database import BaseDbModel
@@ -25,6 +26,28 @@ def as_int(value: Any) -> int | None:
         return int(value)
     except (ValueError, TypeError, OverflowError):
         return None
+
+
+def as_float(value: Any) -> float | None:
+    """Coerce a value to float; None if missing or not convertible.
+
+    Zero is a real reading (0 W of power, 0 m of elevation), so only None maps to None.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | None:
+    """Validate a raw mapping into a Pydantic model; None if empty.
+
+    json_binary columns hand back plain dicts, which Pydantic would otherwise carry
+    through unvalidated.
+    """
+    return model.model_validate(value) if value else None
 
 
 _KCAL_PER_KJ = Decimal("0.239006")  # 1 kcal = 4.184 kJ

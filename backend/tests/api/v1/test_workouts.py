@@ -22,6 +22,52 @@ from tests.factories import (
 )
 from tests.utils import api_key_headers
 
+# Every workout_details metric the Workout schema exposes, with a plausible value.
+_METRICS = {
+    "heart_rate_min": 95,
+    "steps_count": 8500,
+    "average_speed": 5.61,
+    "max_speed": 13.32,
+    "average_cadence": 82.5,
+    "average_watts": 211.0,
+    "max_watts": 604.0,
+    "moving_time_seconds": 2100,
+    "elev_high": 312.5,
+    "elev_low": 118.25,
+}
+
+_FIT_HR = {
+    "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": 130}, {"zone": 1, "seconds": 240.5, "max_bpm": 150}],
+    "max_hr": 189,
+    "threshold_hr": 165,
+}
+_FIT_POWER = {"zones": [{"zone": 0, "seconds": 900.0, "max_watts": 150}], "ftp_watts": 250}
+# Whoop reports durations only: no per-zone boundary, no max/threshold HR.
+_WHOOP_HR = {"zones": [{"zone": 0, "seconds": 812.0}, {"zone": 1, "seconds": 120.5}]}
+_WHOOP_HR_OUT = {
+    "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": None}, {"zone": 1, "seconds": 120.5, "max_bpm": None}],
+    "max_hr": None,
+    "threshold_hr": None,
+}
+
+
+def _fetch_one(client: TestClient, user_id: object, **extra: object) -> dict:
+    """GET the workout list over a window wide enough to catch the factory defaults."""
+    now = datetime.now(timezone.utc)
+    response = client.get(
+        f"/api/v1/users/{user_id}/events/workouts",
+        headers=api_key_headers(ApiKeyFactory().plain_key),
+        params={
+            "start_date": (now - timedelta(days=30)).isoformat(),
+            "end_date": (now + timedelta(days=1)).isoformat(),
+            **extra,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data) == 1
+    return data[0]
+
 
 class TestWorkoutsEndpoints:
     """Test suite for workout endpoints."""
@@ -360,95 +406,63 @@ class TestWorkoutsEndpoints:
         assert len(data) == 0
 
     # test_get_workouts_filters_by_provider removed as provider filtering is not exposed in API
-
     def test_get_workouts_response_structure(self, client: TestClient, db: Session) -> None:
-        """Test that response contains all expected fields."""
+        """Every field the schema promises is present, and detail metrics carry their stored value."""
         # Arrange
         user = UserFactory()
-        mapping = DataSourceFactory(user=user)
-        EventRecordFactory(
-            mapping=mapping,
+        record = EventRecordFactory(
+            mapping=DataSourceFactory(user=user),
             category="workout",
             type_="running",
             duration_seconds=3600,
         )
-        api_key = ApiKeyFactory()
-        headers = api_key_headers(api_key.plain_key)
+        WorkoutDetailsFactory(event_record=record, **_METRICS)
 
         # Act
-        now = datetime.now(timezone.utc)
-        start_date = (now - timedelta(days=30)).isoformat()
-        end_date = (now + timedelta(days=1)).isoformat()
+        workout = _fetch_one(client, user.id)
 
-        response = client.get(
-            f"/api/v1/users/{user.id}/events/workouts",
-            headers=headers,
-            params={"start_date": start_date, "end_date": end_date},
-        )
+        # Assert - record-level fields (category is not in the response model)
+        for field in ("id", "type", "start_time", "end_time", "duration_seconds", "source"):
+            assert field in workout
+        # detail metrics, in the units the column stores
+        assert {k: workout[k] for k in _METRICS} == _METRICS
+        # zones stay behind include=zones
+        assert workout["hr_zones"] is None
+        assert workout["power_zones"] is None
+
+    def test_zero_metrics_are_not_reported_as_missing(self, client: TestClient, db: Session) -> None:
+        """0 W or 0 m is a reading, not an absence - only NULL becomes null."""
+        # Arrange
+        user = UserFactory()
+        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="cycling")
+        WorkoutDetailsFactory(event_record=record, **dict.fromkeys(_METRICS, 0))
+
+        # Act
+        workout = _fetch_one(client, user.id)
 
         # Assert
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert len(data) == 1
-        workout_data = data[0]
+        assert {k: workout[k] for k in _METRICS} == dict.fromkeys(_METRICS, 0)
 
-        # Verify essential fields are present
-        assert "id" in workout_data
-        # category is not in the response model
-        assert "type" in workout_data
-        assert "start_time" in workout_data
-        assert "end_time" in workout_data
-        assert "duration_seconds" in workout_data
+    def test_workout_without_details_serializes_with_nulls(self, client: TestClient, db: Session) -> None:
+        """A workout with no details row still renders, metrics and zones alike."""
+        # Arrange
+        user = UserFactory()
+        EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout")
 
+        # Act
+        workout = _fetch_one(client, user.id, include="zones")
 
-_FIT_HR = {
-    "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": 130}, {"zone": 1, "seconds": 240.5, "max_bpm": 150}],
-    "max_hr": 189,
-    "threshold_hr": 165,
-}
-_FIT_POWER = {"zones": [{"zone": 0, "seconds": 900.0, "max_watts": 150}], "ftp_watts": 250}
-# Whoop reports durations only: no per-zone boundary, no max/threshold HR.
-_WHOOP_HR = {"zones": [{"zone": 0, "seconds": 812.0}, {"zone": 1, "seconds": 120.5}]}
-_WHOOP_HR_OUT = {
-    "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": None}, {"zone": 1, "seconds": 120.5, "max_bpm": None}],
-    "max_hr": None,
-    "threshold_hr": None,
-}
-
-
-class TestWorkoutZones:
-    """Zones ride behind `include=zones` and are surfaced exactly as stored."""
-
-    @staticmethod
-    def _make_workout(user: object, hr: dict | None = None, power: dict | None = None, details: bool = True) -> None:
-        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="cycling")
-        if details:
-            WorkoutDetailsFactory(event_record=record, hr_zones=hr, power_zones=power)
-
-    @staticmethod
-    def _fetch_one(client: TestClient, user_id: object, **extra: object) -> dict:
-        now = datetime.now(timezone.utc)
-        response = client.get(
-            f"/api/v1/users/{user_id}/events/workouts",
-            headers=api_key_headers(ApiKeyFactory().plain_key),
-            params={
-                "start_date": (now - timedelta(days=30)).isoformat(),
-                "end_date": (now + timedelta(days=1)).isoformat(),
-                **extra,
-            },
-        )
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert len(data) == 1
-        return data[0]
+        # Assert
+        assert all(workout[k] is None for k in _METRICS)
+        assert workout["hr_zones"] is None
+        assert workout["power_zones"] is None
 
     @pytest.mark.parametrize(
-        ("stored_hr", "stored_power", "expected_hr", "expected_power", "details"),
+        ("stored_hr", "stored_power", "expected_hr", "expected_power"),
         [
-            pytest.param(_FIT_HR, _FIT_POWER, _FIT_HR, _FIT_POWER, True, id="fit-full-boundaries"),
-            pytest.param(_WHOOP_HR, None, _WHOOP_HR_OUT, None, True, id="whoop-durations-only"),
-            pytest.param(None, None, None, None, True, id="details-without-zones"),
-            pytest.param(None, None, None, None, False, id="no-details-row"),
+            pytest.param(_FIT_HR, _FIT_POWER, _FIT_HR, _FIT_POWER, id="fit-full-boundaries"),
+            pytest.param(_WHOOP_HR, None, _WHOOP_HR_OUT, None, id="whoop-durations-only"),
+            pytest.param(None, None, None, None, id="details-without-zones"),
         ],
     )
     def test_zones_surface_as_stored(
@@ -459,39 +473,32 @@ class TestWorkoutZones:
         stored_power: dict | None,
         expected_hr: dict | None,
         expected_power: dict | None,
-        details: bool,
     ) -> None:
         """Boundaries missing at the source stay null - never zero-filled or derived from max_hr."""
         # Arrange
         user = UserFactory()
-        self._make_workout(user, stored_hr, stored_power, details)
+        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="cycling")
+        WorkoutDetailsFactory(event_record=record, hr_zones=stored_hr, power_zones=stored_power)
 
         # Act
-        workout = self._fetch_one(client, user.id, include="zones")
+        workout = _fetch_one(client, user.id, include="zones")
 
         # Assert
         assert workout["hr_zones"] == expected_hr
         assert workout["power_zones"] == expected_power
 
-    def test_zones_omitted_unless_requested(self, client: TestClient, db: Session) -> None:
-        """Zones are an opt-in expansion: they roughly double the list payload."""
+    def test_zones_are_opt_in_and_the_expansion_is_validated(self, client: TestClient, db: Session) -> None:
+        """Zones roughly double the payload, so they ship only on request; typos are rejected."""
         # Arrange
         user = UserFactory()
-        self._make_workout(user, _FIT_HR, _FIT_POWER)
-
-        # Act & Assert
-        omitted = self._fetch_one(client, user.id)
-        assert omitted["hr_zones"] is None
-        assert omitted["power_zones"] is None
-        assert self._fetch_one(client, user.id, include="zones")["hr_zones"] == _FIT_HR
-
-    def test_unknown_expansion_is_rejected(self, client: TestClient, db: Session) -> None:
-        """The enum rejects typos instead of silently ignoring them."""
-        # Arrange
-        user = UserFactory()
+        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="cycling")
+        WorkoutDetailsFactory(event_record=record, hr_zones=_FIT_HR, power_zones=_FIT_POWER)
         now = datetime.now(timezone.utc)
 
-        # Act
+        # Act & Assert
+        assert _fetch_one(client, user.id)["hr_zones"] is None
+        assert _fetch_one(client, user.id, include="zones")["hr_zones"] == _FIT_HR
+
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
             headers=api_key_headers(ApiKeyFactory().plain_key),
@@ -501,6 +508,4 @@ class TestWorkoutZones:
                 "include": "segments",
             },
         )
-
-        # Assert
         assert response.status_code == 400

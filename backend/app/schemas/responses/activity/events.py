@@ -38,6 +38,16 @@ class Workout(BaseModel):
     max_heart_rate_bpm: int | None = None
     avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
+    heart_rate_min: int | None = None
+    steps_count: int | None = None
+    average_speed: float | None = None
+    max_speed: float | None = None
+    average_cadence: float | None = None
+    average_watts: float | None = None
+    max_watts: float | None = None
+    moving_time_seconds: int | None = None
+    elev_high: float | None = None
+    elev_low: float | None = None
     hr_zones: HRZones | None = None
     power_zones: PowerZones | None = None
 

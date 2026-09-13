@@ -2,7 +2,6 @@ from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from logging import Logger, getLogger
-from typing import TypeVar
 from uuid import UUID, uuid4
 
 from sqlalchemy import event as sa_event
@@ -59,19 +58,9 @@ from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on
 from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
+from app.utils.conversion import as_float, as_model
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
-
-ZonesT = TypeVar("ZonesT", HRZones, PowerZones)
-
-
-def _validate_zones(model: type[ZonesT], raw: object | None) -> ZonesT | None:
-    """Coerce a raw JSONB zones blob into its schema.
-
-    The hr_zones / power_zones columns are json_binary, so the ORM hands back plain
-    dicts that Pydantic would otherwise carry through unvalidated.
-    """
-    return model.model_validate(raw) if raw else None
 
 
 class EventRecordService(
@@ -791,7 +780,6 @@ class EventRecordService(
         data = []
         for record, data_source in records:
             details: WorkoutDetails | None = record.workout_detail
-
             workout = Workout(
                 id=record.id,
                 type=record.type or "unknown",
@@ -811,8 +799,18 @@ class EventRecordService(
                 elevation_gain_meters=float(details.total_elevation_gain)
                 if details and details.total_elevation_gain
                 else None,
-                hr_zones=_validate_zones(HRZones, details.hr_zones if details and with_zones else None),
-                power_zones=_validate_zones(PowerZones, details.power_zones if details and with_zones else None),
+                heart_rate_min=details.heart_rate_min if details else None,
+                steps_count=details.steps_count if details else None,
+                average_speed=as_float(details.average_speed) if details else None,
+                max_speed=as_float(details.max_speed) if details else None,
+                average_cadence=as_float(details.average_cadence) if details else None,
+                average_watts=as_float(details.average_watts) if details else None,
+                max_watts=as_float(details.max_watts) if details else None,
+                moving_time_seconds=details.moving_time_seconds if details else None,
+                elev_high=as_float(details.elev_high) if details else None,
+                elev_low=as_float(details.elev_low) if details else None,
+                hr_zones=as_model(HRZones, details.hr_zones) if details and with_zones else None,
+                power_zones=as_model(PowerZones, details.power_zones) if details and with_zones else None,
             )
             data.append(workout)
 
@@ -850,7 +848,6 @@ class EventRecordService(
             return None
 
         details: WorkoutDetails | None = record.workout_detail
-
         if details and record.type in WORKOUTS_WITH_PACE:
             # Seconds per kilometer - speed is in meters per second
             if details.average_speed and details.average_speed > 0:
@@ -879,8 +876,18 @@ class EventRecordService(
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,
-            hr_zones=_validate_zones(HRZones, details.hr_zones if details else None),
-            power_zones=_validate_zones(PowerZones, details.power_zones if details else None),
+            heart_rate_min=details.heart_rate_min if details else None,
+            steps_count=details.steps_count if details else None,
+            average_speed=as_float(details.average_speed) if details else None,
+            max_speed=as_float(details.max_speed) if details else None,
+            average_cadence=as_float(details.average_cadence) if details else None,
+            average_watts=as_float(details.average_watts) if details else None,
+            max_watts=as_float(details.max_watts) if details else None,
+            moving_time_seconds=details.moving_time_seconds if details else None,
+            elev_high=as_float(details.elev_high) if details else None,
+            elev_low=as_float(details.elev_low) if details else None,
+            hr_zones=as_model(HRZones, details.hr_zones) if details else None,
+            power_zones=as_model(PowerZones, details.power_zones) if details else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 
