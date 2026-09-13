@@ -22,7 +22,6 @@ from tests.factories import (
 )
 from tests.utils import api_key_headers
 
-# Every workout_details metric the Workout schema exposes, with a plausible value.
 _METRICS = {
     "heart_rate_min": 95,
     "steps_count": 8500,
@@ -42,7 +41,6 @@ _FIT_HR = {
     "threshold_hr": 165,
 }
 _FIT_POWER = {"zones": [{"zone": 0, "seconds": 900.0, "max_watts": 150}], "ftp_watts": 250}
-# Whoop reports durations only: no per-zone boundary, no max/threshold HR.
 _WHOOP_HR = {"zones": [{"zone": 0, "seconds": 812.0}, {"zone": 1, "seconds": 120.5}]}
 _WHOOP_HR_OUT = {
     "zones": [{"zone": 0, "seconds": 812.0, "max_bpm": None}, {"zone": 1, "seconds": 120.5, "max_bpm": None}],
@@ -421,12 +419,10 @@ class TestWorkoutsEndpoints:
         # Act
         workout = _fetch_one(client, user.id)
 
-        # Assert - record-level fields (category is not in the response model)
+        # Assert
         for field in ("id", "type", "start_time", "end_time", "duration_seconds", "source"):
             assert field in workout
-        # detail metrics, in the units the column stores
         assert {k: workout[k] for k in _METRICS} == _METRICS
-        # zones stay behind include=zones
         assert workout["hr_zones"] is None
         assert workout["power_zones"] is None
 
@@ -463,6 +459,7 @@ class TestWorkoutsEndpoints:
             pytest.param(_FIT_HR, _FIT_POWER, _FIT_HR, _FIT_POWER, id="fit-full-boundaries"),
             pytest.param(_WHOOP_HR, None, _WHOOP_HR_OUT, None, id="whoop-durations-only"),
             pytest.param(None, None, None, None, id="details-without-zones"),
+            pytest.param({"garbage": True}, {"zones": "not-a-list"}, None, None, id="malformed-blob"),
         ],
     )
     def test_zones_surface_as_stored(

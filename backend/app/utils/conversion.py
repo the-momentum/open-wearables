@@ -1,11 +1,14 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from logging import getLogger
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.inspection import inspect
 
 from app.database import BaseDbModel
+
+logger = getLogger(__name__)
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -29,10 +32,7 @@ def as_int(value: Any) -> int | None:
 
 
 def as_float(value: Any) -> float | None:
-    """Coerce a value to float; None if missing or not convertible.
-
-    Zero is a real reading (0 W of power, 0 m of elevation), so only None maps to None.
-    """
+    """Coerce a value to float; None if missing or not convertible. Zero is kept."""
     if value is None:
         return None
     try:
@@ -42,12 +42,14 @@ def as_float(value: Any) -> float | None:
 
 
 def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | None:
-    """Validate a raw mapping into a Pydantic model; None if empty.
-
-    json_binary columns hand back plain dicts, which Pydantic would otherwise carry
-    through unvalidated.
-    """
-    return model.model_validate(value) if value else None
+    """Validate a raw mapping (e.g. a json_binary column) into a model; None if empty or malformed."""
+    if not value:
+        return None
+    try:
+        return model.model_validate(value)
+    except ValidationError:
+        logger.warning("Discarding malformed %s payload: %r", model.__name__, value, exc_info=True)
+        return None
 
 
 _KCAL_PER_KJ = Decimal("0.239006")  # 1 kcal = 4.184 kJ
