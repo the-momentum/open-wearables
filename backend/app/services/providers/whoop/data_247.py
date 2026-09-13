@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord
+from app.models import DataPointSeries, DataSource, EventRecord, HealthScore
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
@@ -51,6 +51,22 @@ class Whoop247Data(Base247DataTemplate):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
         self.connection_repo = UserConnectionRepository()
+
+    def _replace_health_scores(self, db: DbSession, scores: list[HealthScoreCreate]) -> None:
+        """Replace WHOOP scores for the same provider key before inserting refreshed values."""
+        for score in scores:
+            query = db.query(HealthScore).filter(
+                HealthScore.user_id == score.user_id,
+                HealthScore.provider == score.provider,
+                HealthScore.category == score.category,
+                HealthScore.recorded_at == score.recorded_at,
+            )
+            if score.event_record_id is None:
+                query = query.filter(HealthScore.event_record_id.is_(None))
+            else:
+                query = query.filter(HealthScore.event_record_id == score.event_record_id)
+            query.delete(synchronize_session=False)
+        health_score_service.bulk_create(db, scores)
 
     def _make_api_request(
         self,
@@ -198,6 +214,13 @@ class Whoop247Data(Base247DataTemplate):
                 "sleep_consistency_percentage": normalized.get("sleep_consistency_percentage"),
                 "sleep_efficiency_percentage": normalized.get("sleep_efficiency_percentage"),
                 "respiratory_rate": normalized.get("respiratory_rate"),
+                "sleep_cycle_count": normalized.get("sleep_cycle_count"),
+                "disturbance_count": normalized.get("disturbance_count"),
+                "total_no_data_minutes": normalized.get("total_no_data_minutes"),
+                "sleep_need_baseline_minutes": normalized.get("sleep_need_baseline_minutes"),
+                "sleep_need_from_debt_minutes": normalized.get("sleep_need_from_debt_minutes"),
+                "sleep_need_from_recent_strain_minutes": normalized.get("sleep_need_from_recent_strain_minutes"),
+                "sleep_need_from_recent_nap_minutes": normalized.get("sleep_need_from_recent_nap_minutes"),
             }.items()
             if v is not None
         }
@@ -228,6 +251,7 @@ class Whoop247Data(Base247DataTemplate):
         # Extract score data (may be None if not scored yet)
         score = raw_sleep.get("score", {}) or {}
         stage_summary = score.get("stage_summary", {}) or {}
+        sleep_needed = score.get("sleep_needed", {}) or {}
 
         # Time conversions: Whoop provides durations in milliseconds
         # Convert to seconds for our schema
@@ -243,6 +267,11 @@ class Whoop247Data(Base247DataTemplate):
         light_seconds = int(total_light_ms / 1000) if total_light_ms else 0
         rem_seconds = int(total_rem_ms / 1000) if total_rem_ms else 0
         awake_seconds = int(total_awake_ms / 1000) if total_awake_ms else 0
+
+        def milliseconds_to_minutes(value: Any) -> float | None:
+            if not isinstance(value, (int, float)):
+                return None
+            return value / 60_000
 
         # If duration is 0 but we have start/end times, calculate from timestamps
         if duration_seconds == 0 and start_time and end_time:
@@ -286,6 +315,17 @@ class Whoop247Data(Base247DataTemplate):
             "sleep_consistency_percentage": score.get("sleep_consistency_percentage"),
             "sleep_efficiency_percentage": efficiency,
             "respiratory_rate": score.get("respiratory_rate"),
+            "sleep_cycle_count": stage_summary.get("sleep_cycle_count"),
+            "disturbance_count": stage_summary.get("disturbance_count"),
+            "total_no_data_minutes": milliseconds_to_minutes(stage_summary.get("total_no_data_time_milli")),
+            "sleep_need_baseline_minutes": milliseconds_to_minutes(sleep_needed.get("baseline_milli")),
+            "sleep_need_from_debt_minutes": milliseconds_to_minutes(sleep_needed.get("need_from_sleep_debt_milli")),
+            "sleep_need_from_recent_strain_minutes": milliseconds_to_minutes(
+                sleep_needed.get("need_from_recent_strain_milli")
+            ),
+            "sleep_need_from_recent_nap_minutes": milliseconds_to_minutes(
+                sleep_needed.get("need_from_recent_nap_milli")
+            ),
             "raw": raw_sleep,  # Keep raw for debugging
         }
         return normalized, self._normalize_sleep_health_score(normalized, user_id)
@@ -417,7 +457,8 @@ class Whoop247Data(Base247DataTemplate):
             normalized, health_score = self.normalize_sleep(raw, user_id)
             self.save_sleep_data(db, user_id, normalized)
             if health_score:
-                health_score_service.create(db, health_score)
+                self._replace_health_scores(db, [health_score])
+                db.commit()
             return 1, cycle_id
         except Exception as e:
             log_structured(
@@ -458,7 +499,7 @@ class Whoop247Data(Base247DataTemplate):
                     user_id=str(user_id),
                 )
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            self._replace_health_scores(db, health_scores)
             db.commit()
         return count, truncated
 
@@ -621,7 +662,7 @@ class Whoop247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
     ) -> int:
-        """Fetch body measurements and save height/weight to data_point_series.
+        """Fetch body measurements and save height, weight, and max HR to data_point_series.
 
         Only saves if the value has changed from the most recent entry.
         Returns the number of samples saved.
@@ -684,6 +725,32 @@ class Whoop247Data(Base247DataTemplate):
                     self.logger,
                     "warning",
                     f"Failed to build weight sample: {e}",
+                    provider="whoop",
+                    task="load_and_save_body_measurement",
+                    user_id=str(user_id),
+                )
+
+        max_heart_rate = body.get("max_heart_rate")
+        if max_heart_rate is not None:
+            try:
+                max_hr = Decimal(str(max_heart_rate))
+                latest_max_hr = self._get_latest_value(db, user_id, SeriesType.max_heart_rate)
+                if latest_max_hr is None or latest_max_hr != max_hr:
+                    samples_to_create.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=recorded_at,
+                            value=max_hr,
+                            series_type=SeriesType.max_heart_rate,
+                        )
+                    )
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to build max heart rate sample: {e}",
                     provider="whoop",
                     task="load_and_save_body_measurement",
                     user_id=str(user_id),
@@ -877,7 +944,8 @@ class Whoop247Data(Base247DataTemplate):
                 return 0
             count = self.save_recovery_data(db, user_id, normalized)
             if health_score:
-                health_score_service.create(db, health_score)
+                self._replace_health_scores(db, [health_score])
+                db.commit()
             return count
         except Exception as e:
             log_structured(
@@ -923,7 +991,7 @@ class Whoop247Data(Base247DataTemplate):
                 )
 
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            self._replace_health_scores(db, health_scores)
             db.commit()
 
         return total_count, truncated
@@ -985,7 +1053,7 @@ class Whoop247Data(Base247DataTemplate):
             if energy_sample:
                 timeseries_service.bulk_create_samples(db, [energy_sample])
             if strain_score:
-                health_score_service.bulk_create(db, [strain_score])
+                self._replace_health_scores(db, [strain_score])
             db.commit()
             return 1
         except Exception as e:
@@ -1006,13 +1074,11 @@ class Whoop247Data(Base247DataTemplate):
     ) -> tuple[TimeSeriesSampleCreate | None, HealthScoreCreate | None]:
         """Normalize one cycle into a daily energy sample and a daily strain score.
 
-        Returns (None, None) for cycles Whoop has not scored yet, and for the one still
-        in progress. SCORED does not mean final: Whoop scores the ongoing cycle too, and
-        its strain climbs all day. A missing end is what marks it as still running, so
-        both checks are needed — health scores are written with on_conflict_do_nothing,
-        so an early partial value would win permanently over the real one.
+        Returns (None, None) for cycles Whoop has not scored yet. Ongoing cycles are
+        marked IN_PROGRESS and replaced on each pull; the closed cycle replaces the same
+        provider score with qualifier FINAL.
         """
-        if raw_cycle.get("score_state") != "SCORED" or not raw_cycle.get("end"):
+        if raw_cycle.get("score_state") != "SCORED":
             return None, None
 
         score = raw_cycle.get("score") or {}
@@ -1056,6 +1122,7 @@ class Whoop247Data(Base247DataTemplate):
                 provider=ProviderName.WHOOP,
                 category=HealthScoreCategory.STRAIN,
                 value=strain,
+                qualifier="FINAL" if raw_cycle.get("end") else "IN_PROGRESS",
                 recorded_at=recorded_at,
                 zone_offset=zone_offset,
                 components=components or None,
@@ -1099,7 +1166,7 @@ class Whoop247Data(Base247DataTemplate):
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            self._replace_health_scores(db, health_scores)
         if samples or health_scores:
             db.commit()
 

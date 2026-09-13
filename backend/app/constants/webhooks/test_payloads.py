@@ -179,6 +179,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE: _ts_payload(
         WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE, "walking_heart_rate_average", "apple", "bpm", 98.0
     ),
+    WebhookEventType.SERIES_MAX_HEART_RATE: _ts_payload(
+        WebhookEventType.SERIES_MAX_HEART_RATE, "max_heart_rate", "whoop", "bpm", 186.0
+    ),
     WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN: _ts_payload(
         WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN, "atrial_fibrillation_burden", "apple", "%", 0.0
     ),

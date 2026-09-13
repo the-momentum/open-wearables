@@ -264,13 +264,27 @@ sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { grante
   </Accordion>
 
   <Accordion title="Nutrition">
-    | Enum Case | Description |
-    |-----------|-------------|
-    | `.dietaryEnergyConsumed` | Calories consumed |
-    | `.dietaryCarbohydrates` | Carbs |
-    | `.dietaryProtein` | Protein |
-    | `.dietaryFatTotal` | Total fat |
-    | `.dietaryWater` | Water intake |
+    | Enum Case | Time-series type | Stored unit |
+    |-----------|------------------|-------------|
+    | `.dietaryEnergyConsumed` | `dietary_energy` | kcal |
+    | `.dietaryCarbohydrates` | `dietary_carbohydrates` | g |
+    | `.dietaryProtein` | `dietary_protein` | g |
+    | `.dietaryFatTotal` | `dietary_fat` | g |
+    | `.dietaryWater` | `hydration` | mL |
+
+    The backend retains the source app and original sample timestamps. The SDK's
+    water values in litres are converted to millilitres; macronutrients in kilograms
+    and energy in kilojoules are converted to grams and kilocalories respectively.
+    These are cumulative metrics: aggregate them with SUM, not AVG. Individual SDK
+    samples are marked as intraday values rather than daily totals.
+
+    <Note>
+      Older backend versions skipped these Apple dietary identifiers. After upgrading,
+      run the series-type seed (automatically run by the Docker startup script) and
+      request a full re-export from the device for previously skipped records. An
+      incremental sync only uploads changes since the device's last sync anchor.
+      The user must grant HealthKit read access to the corresponding dietary types.
+    </Note>
   </Accordion>
 
   <Accordion title="Workouts">

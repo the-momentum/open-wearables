@@ -26,11 +26,16 @@ Whoop provides access to workout, sleep, recovery, and body measurement data thr
 | Workouts / Activities | Yes |
 | Sleep (with stage durations) | Yes — aggregate totals only, no per-stage timestamps |
 | Recovery (score, resting HR, HRV, SpO2, skin temp) | Yes |
-| Body measurements (height, weight) | Yes |
-| Cycle aggregates (daily strain, energy) | Yes — scored cycles only; energy stored as a daily total in kcal |
+| Body measurements (height, weight, max heart rate) | Yes |
+| Cycle aggregates (daily strain, energy) | Yes — scored cycles, including in-progress cycles; energy stored as a daily total in kcal |
 | Continuous heart rate / activity samples | No (not available via API) |
 
 ### Workout field availability
+
+The `weightlifting_msk` sport name is mapped to strength training and `foam_rolling`
+to recovery, including when Whoop omits the deprecated numeric sport ID. Repeated
+pulls and single-workout imports reuse existing workout details instead of inserting
+a second detail row for the same event.
 
 Several workout fields are conditional in the Whoop API and are `null` for most workouts. This is expected upstream behaviour, not a gap in Open Wearables' mapping — the values never arrive in the payload.
 
@@ -57,6 +62,11 @@ Several workout fields are conditional in the Whoop API and are `null` for most 
 </Note>
 
 ### Sleep stage detail
+
+Sleep health-score components also retain cycle and disturbance counts, no-data
+minutes, and sleep-need contributions from baseline, debt, recent strain and naps.
+Missing fields remain absent rather than becoming zero. Subsequent syncs refresh
+existing WHOOP sleep and cycle scores, including changes to the current day's strain.
 
 Whoop reports sleep stages as **aggregate durations for the whole sleep**, not as a timed sequence. The `sleep_stages` field on sleep records is therefore always `null` for Whoop, while providers whose APIs expose per-stage intervals (Apple Health, Garmin, Oura, Samsung) populate it.
 

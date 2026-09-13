@@ -26,6 +26,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.heart_rate_variability_sdnn: AggregationMethod.AVG,
     SeriesType.heart_rate_recovery_one_minute: AggregationMethod.AVG,
     SeriesType.walking_heart_rate_average: AggregationMethod.AVG,
+    SeriesType.max_heart_rate: AggregationMethod.MAX,
     SeriesType.heart_rate_variability_rmssd: AggregationMethod.AVG,
     # ── Blood & Respiratory ──
     SeriesType.oxygen_saturation: AggregationMethod.AVG,
@@ -111,6 +112,11 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.withings_pulse_wave_velocity: AggregationMethod.AVG,
     SeriesType.withings_metabolic_age: AggregationMethod.AVG,
     # ── Other ──
+    SeriesType.hydration: AggregationMethod.SUM,
+    SeriesType.dietary_energy: AggregationMethod.SUM,
+    SeriesType.dietary_protein: AggregationMethod.SUM,
+    SeriesType.dietary_fat: AggregationMethod.SUM,
+    SeriesType.dietary_carbohydrates: AggregationMethod.SUM,
     SeriesType.electrodermal_activity: AggregationMethod.AVG,
     SeriesType.push_count: AggregationMethod.SUM,
     SeriesType.atrial_fibrillation_burden: AggregationMethod.SUM,

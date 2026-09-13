@@ -20,7 +20,13 @@ from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate, EventRecordQueryParams
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
-from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
+from tests.factories import (
+    DataSourceFactory,
+    EventRecordFactory,
+    SleepDetailsFactory,
+    UserFactory,
+    WorkoutDetailsFactory,
+)
 
 
 class TestEventRecordServiceCreateDetail:
@@ -336,6 +342,37 @@ class TestEventRecordServiceGetRecordsResponse:
 
         # Assert
         assert records == []
+
+
+class TestEventRecordServiceGetWorkouts:
+    def test_includes_stored_heart_rate_zones(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user, source="whoop")
+        start = datetime(2026, 8, 30, 7, tzinfo=timezone.utc)
+        record = EventRecordFactory(
+            mapping=data_source,
+            category="workout",
+            type_="running",
+            start_datetime=start,
+            end_datetime=datetime(2026, 8, 30, 8, tzinfo=timezone.utc),
+        )
+        WorkoutDetailsFactory(
+            event_record=record,
+            hr_zones={"zones": [{"zone": 0, "seconds": 300}, {"zone": 1, "seconds": 900}]},
+        )
+
+        response = event_record_service.get_workouts(
+            db,
+            user.id,
+            EventRecordQueryParams(
+                start_datetime=datetime(2026, 8, 30, tzinfo=timezone.utc),
+                end_datetime=datetime(2026, 8, 31, tzinfo=timezone.utc),
+            ),
+        )
+
+        workout = next(item for item in response.data if item.id == record.id)
+        assert workout.hr_zones is not None
+        assert [zone.seconds for zone in workout.hr_zones.zones] == [300, 900]
 
 
 class TestCreateOrMergeSleep:

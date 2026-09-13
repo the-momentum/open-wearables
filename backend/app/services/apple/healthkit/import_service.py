@@ -237,6 +237,17 @@ class ImportService:
                 continue
             value = self._normalize_unit(series_type, value, provider)
 
+            # Apple SDK exports dietary water in litres; storage uses millilitres.
+            if series_type == SeriesType.hydration and (rjson.unit or "").lower() in ("l", "liter", "litre"):
+                value *= 1000
+            if (
+                series_type in (SeriesType.dietary_protein, SeriesType.dietary_fat, SeriesType.dietary_carbohydrates)
+                and (rjson.unit or "").lower() == "kg"
+            ):
+                value *= 1000
+            if series_type == SeriesType.dietary_energy and (rjson.unit or "").lower() == "kj":
+                value /= Decimal("4.184")
+
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
             if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
                 value = value * MMOL_L_TO_MG_DL
