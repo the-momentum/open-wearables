@@ -127,7 +127,7 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     return handler.handle_challenge(request)
 
 
-@router.head("", status_code=status.HTTP_200_OK, response_class=Response)
+@router.head("", response_class=Response)
 def probe_provider_webhook(provider: str, request: Request) -> None:
     """Handle a callback reachability probe without a response body."""
     handler = _get_webhook_handler(provider)
