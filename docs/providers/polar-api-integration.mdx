@@ -50,6 +50,22 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_SIGNATURE_SECRET` set in your environment. See the configuration step below.
 </Note>
 
+### Reading workout detail
+
+`GET /api/v1/users/{user_id}/events/workouts?include=zones&include=segments` returns
+stored FIT detail as nullable `segments`, `hr_zones`, and `power_zones` fields. This
+works for Polar and other providers, including Garmin. `segments` contains the recorded
+lap, split, or pool-length objects; `hr_zones` contains `zones` and optional
+`max_hr` / `threshold_hr`; `power_zones` contains `zones` and optional `ftp_watts`.
+Unavailable fields are `null`; no per-second sample ingestion is required.
+
+Polar's `TREADMILL_RUNNING`, `POOL_SWIMMING`, and `STRENGTH_TRAINING` sport details
+map to `treadmill`, `pool_swimming`, and `strength_training`. `HIIT` maps to the
+shared `cardio_training` category. `OTHER_INDOOR` remains `generic` because Polar
+does not identify a more specific activity. Heart-rate summaries retain Polar's
+reported values. Existing records retain their original classification until
+explicitly reprocessed; duplicate sync does not replace stored workout types.
+
 ## What you need by the end
 
 - **App credentials**: Client ID + Client Secret from the Polar AccessLink admin panel

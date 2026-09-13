@@ -972,6 +972,20 @@ class TestPolarFitIngestionWiring:
         assert len(saved_fields["segments"]) == 2
 
 
+@pytest.mark.parametrize(
+    ("sport", "detailed", "expected"),
+    [
+        ("RUNNING", "TREADMILL_RUNNING", WorkoutType.TREADMILL),
+        ("SWIMMING", "POOL_SWIMMING", WorkoutType.POOL_SWIMMING),
+        ("OTHER", "STRENGTH_TRAINING", WorkoutType.STRENGTH_TRAINING),
+        ("OTHER", "HIIT", WorkoutType.CARDIO_TRAINING),
+        ("OTHER", "OTHER_INDOOR", WorkoutType.GENERIC),
+    ],
+)
+def test_accesslink_sport_labels(sport: str, detailed: str, expected: WorkoutType) -> None:
+    assert get_unified_workout_type(sport, detailed) == expected
+
+
 class TestGetUnifiedWorkoutType:
     @pytest.mark.parametrize(
         ("sport", "detailed", "expected"),
