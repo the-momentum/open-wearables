@@ -5,8 +5,11 @@ from uuid import UUID, uuid4
 
 import isodate
 
+from app.config import settings
 from app.constants.workout_types.polar import get_unified_workout_type
 from app.database import DbSession
+from app.models import EventRecordDetail, WorkoutDetails
+from app.repositories import EventRecordDetailRepository
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -14,12 +17,26 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.event_record_service import event_record_service
+from app.services.fit_parser import parse_fit_file
+from app.services.providers.api_client import download_binary_content
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_fit_file
+from app.services.timeseries_service import timeseries_service
 from app.utils.dates import offset_to_iso
+from app.utils.structured_logging import log_structured
+
+# AccessLink exposes the device's own FIT recording per exercise. No partner
+# programme and no callback-URL expiry window (unlike Garmin) — a plain REST pull.
+# See https://www.polar.com/accesslink-api/#get-exercise-fit
+_FIT_ENDPOINT = "/v3/exercises/{exercise_id}/fit"
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
     """Polar implementation of workouts template."""
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
 
     def get_workouts(
         self,
@@ -164,9 +181,154 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            self._ingest_exercise_fit(db, user_id, created_record.id, created_record.external_id)
             count += 1
 
         return count
+
+    def _ingest_exercise_fit(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        record_id: UUID,
+        exercise_id: str | None,
+    ) -> None:
+        """Enrich a saved exercise with the detail only its FIT recording carries.
+
+        The exercise JSON is a summary: total duration, distance, avg/max HR. The FIT
+        file the watch recorded is a superset — laps, splits and pool lengths, plus
+        time-in-zone — so it is the only route to per-lap data for Polar.
+
+        Deliberately best-effort: the summary row is already committed by the caller,
+        and AccessLink has no FIT for every exercise (manual entries, third-party
+        uploads), so a miss here is logged and the workout is kept as-is.
+
+        Skips exercises already carrying segments. /v3/exercises returns a 30-day
+        window and event_record_repo.create returns the existing row on a duplicate,
+        so without this every sync would re-download every FIT in that window.
+        """
+        if not exercise_id:
+            return
+
+        try:
+            existing = db.get(WorkoutDetails, record_id)
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to check for existing FIT segments",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+            return
+        if existing is not None and existing.segments:
+            return
+
+        try:
+            fit_bytes = download_binary_content(
+                db=db,
+                user_id=user_id,
+                connection_repo=self.connection_repo,
+                oauth=self.oauth,
+                provider_name=self.provider_name,
+                url=f"{self.api_base_url}{_FIT_ENDPOINT.format(exercise_id=exercise_id)}",
+            )
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to download FIT file",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+            return
+
+        if not fit_bytes:
+            return
+
+        try:
+            store_fit_file(
+                provider=self.provider_name,
+                fit_bytes=fit_bytes,
+                user_id=str(user_id),
+                activity_id=exercise_id,
+            )
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to store FIT file",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+
+        try:
+            fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to parse FIT file",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+            return
+
+        fields: dict[str, Any] = {}
+        if fit_result.segments:
+            fields["segments"] = fit_result.segments
+        if fit_result.hr_zones:
+            fields["hr_zones"] = fit_result.hr_zones.model_dump()
+        if fit_result.power_zones:
+            fields["power_zones"] = fit_result.power_zones.model_dump()
+
+        samples_saved = 0
+        try:
+            if fields:
+                self.event_record_detail_repo.update_workout_fields(db, record_id, fields)
+            if settings.ingest_workout_samples and fit_result.samples:
+                samples_saved = int(timeseries_service.bulk_create_samples(db, fit_result.samples))
+            # Both writes leave the transaction open by contract, and the exercise summary
+            # is already committed, so this method commits its own work.
+            if fields or samples_saved:
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to save FIT workout fields",
+                provider=self.provider_name,
+                task="_ingest_exercise_fit",
+                user_id=str(user_id),
+                exercise_id=exercise_id,
+                error=str(e),
+            )
+            return
+
+        log_structured(
+            self.logger,
+            "info",
+            "Parsed FIT file",
+            provider=self.provider_name,
+            task="_ingest_exercise_fit",
+            user_id=str(user_id),
+            exercise_id=exercise_id,
+            segments=len(fit_result.segments),
+            samples=samples_saved,
+        )
 
     def fetch_and_save_exercise(self, db: DbSession, user_id: UUID, path: str) -> int:
         """Fetch a single exercise by URL path and save it. Used by webhook handler."""
@@ -177,6 +339,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         for record, detail in self._build_bundles([PolarExerciseJSON(**raw)], user_id):
             created = event_record_service.create(db, record)
             event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+            self._ingest_exercise_fit(db, user_id, created.id, created.external_id)
             count += 1
         return count
 

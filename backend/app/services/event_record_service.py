@@ -35,6 +35,7 @@ from app.schemas.model_crud.activities import (
     MenstrualCycleDetailCreate,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
+from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.responses.activity import (
     MenstrualCycleRecord,
     SleepSession,
@@ -791,6 +792,11 @@ class EventRecordService(
                 avg_heart_rate_bpm=computed_hr.get(record.id),
                 max_heart_rate_bpm=details.heart_rate_max if details else None,
                 avg_pace_sec_per_km=None,  # Derived or in details?
+                segments=details.segments if details else None,
+                hr_zones=HRZones.model_validate(details.hr_zones) if details and details.hr_zones is not None else None,
+                power_zones=PowerZones.model_validate(details.power_zones)
+                if details and details.power_zones is not None
+                else None,
                 elevation_gain_meters=float(details.total_elevation_gain)
                 if details and details.total_elevation_gain
                 else None,
@@ -859,6 +865,11 @@ class EventRecordService(
             avg_pace_sec_per_km=avg_pace_sec_per_km,
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
+            else None,
+            segments=details.segments if details else None,
+            hr_zones=HRZones.model_validate(details.hr_zones) if details and details.hr_zones is not None else None,
+            power_zones=PowerZones.model_validate(details.power_zones)
+            if details and details.power_zones is not None
             else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )

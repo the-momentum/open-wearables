@@ -44,9 +44,8 @@ SDK_SHARED_FILES = (
     Path("app/services/apple/apple_xml/xml_service.py"),
 )
 
-# EventRecordDetail fields that are NOT part of the coverage matrix (structural
-# or composite objects rather than scalar metric coverage).
-STRUCTURAL_DETAIL_FIELDS = {"record_id", "segments", "hr_zones", "power_zones"}
+# Record identity is structural; composite workout data belongs in coverage too.
+STRUCTURAL_DETAIL_FIELDS = {"record_id"}
 
 
 def _all_detail_fields() -> set[str]:

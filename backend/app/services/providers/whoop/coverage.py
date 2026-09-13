@@ -21,6 +21,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
 # EventRecordDetail fields populated by workouts.py (workout records)
 WORKOUT_FIELDS: frozenset[str] = frozenset(
     {
+        "hr_zones",
         "heart_rate_avg",
         "heart_rate_max",
         "energy_burned",
