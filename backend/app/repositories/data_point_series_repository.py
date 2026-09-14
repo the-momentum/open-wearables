@@ -57,7 +57,7 @@ from app.schemas.responses.activity import (
     IntensityMinutesResult,
 )
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import decode_cursor
+from app.utils.pagination import decode_bucket_cursor, decode_cursor
 
 # Identity tuple: (user_id, device_model, source)
 DataSourceIdentity = tuple[UUID, str | None, str | None]
@@ -455,11 +455,9 @@ class DataPointSeriesRepository(
     ) -> tuple[list[AggregatedSample], bool]:
         """Bucket samples into fixed-width windows, one row per (bucket, source, series type).
 
-        Returns the rows and whether the scanned window stopped short of the requested range.
-
-        The scanned window is capped at ``limit + 1`` buckets rather than the requested range:
-        LIMIT cannot be pushed through a GROUP BY, so without the cap a wide range sorts every
-        matching row (a month of 1 Hz data spills ~50 MB to disk) just to return one page.
+        Scans at most ``limit + 1`` buckets rather than the requested range: LIMIT cannot be
+        pushed through a GROUP BY, so without the cap a month of 1 Hz data sorts every matching
+        row (~50 MB to disk) just to return one page. Returns the rows and whether more follow.
         """
         bucket_size = BUCKET_SIZES[params.resolution]
         limit = params.limit or 50
@@ -467,6 +465,7 @@ class DataPointSeriesRepository(
         start, end, backward = self._resolve_window(params, bucket_size)
         if start is not None and end is not None and start >= end:
             return [], False
+        requested_start, requested_end = start, end
 
         if not backward:
             start = self._first_sample_at_or_after(db_session, params, types, user_id, start, end) or start
@@ -485,8 +484,8 @@ class DataPointSeriesRepository(
             literal(datetime(1970, 1, 1, tzinfo=timezone.utc)),
         ).label("bucket")
 
-        # DataSource is joined for the ownership filter but never selected: its columns would
-        # ride through the pre-aggregation sort and roughly double what spills to disk.
+        # DataSource is joined to filter by owner, never selected: its columns would ride
+        # through the pre-aggregation sort and double what spills to disk.
         query = self._apply_sample_filters(
             db_session.query(
                 bucket,
@@ -497,12 +496,14 @@ class DataPointSeriesRepository(
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(DataSource.user_id == user_id)
-            # A provider-reported daily total is not a point in an intraday chart: bucketing it
-            # would report a whole day's steps inside one minute, and summing it alongside the
-            # intraday samples would double-count the day. Same rule as the minute-bucket reads.
+            # A day's own total would land inside one bucket and double-count the day.
             .filter(self.model.is_daily_total.isnot(True))
             .group_by(bucket, self.model.series_type_definition_id, self.model.data_source_id)
-            .order_by(bucket, self.model.data_source_id, self.model.series_type_definition_id),
+            .order_by(
+                bucket.desc() if backward else bucket,
+                self.model.data_source_id,
+                self.model.series_type_definition_id,
+            ),
             params,
             types,
             start,
@@ -522,7 +523,13 @@ class DataPointSeriesRepository(
             )
             for r in rows
         ]
-        return samples, end is not None and end != _inclusive_end(params.end_datetime)
+        # A capped window is not a next page on its own: hand out a cursor only if the slice of
+        # the requested range we skipped actually holds data.
+        skipped = (requested_start, start) if backward else (end, requested_end)
+        has_more = skipped[0] != skipped[1] and (
+            self._first_sample_at_or_after(db_session, params, types, user_id, *skipped) is not None
+        )
+        return samples, has_more
 
     @staticmethod
     def _sources_by_id(db_session: DbSession, source_ids: set[UUID]) -> dict[UUID, DataSource]:
@@ -582,7 +589,7 @@ class DataPointSeriesRepository(
 
         backward = False
         if params.cursor:
-            cursor_ts, _, direction = decode_cursor(params.cursor)
+            cursor_ts, direction = decode_bucket_cursor(params.cursor)
             backward = direction == "prev"
             if backward:
                 end = cursor_ts

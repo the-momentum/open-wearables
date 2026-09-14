@@ -36,7 +36,7 @@ from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import encode_cursor
+from app.utils.pagination import encode_bucket_cursor, encode_cursor
 
 
 def _trim_to_whole_buckets(
@@ -225,6 +225,9 @@ class TimeSeriesService(
         """
         rows, truncated = self.crud.get_aggregated_samples(db_session, params, types, user_id)
         samples, has_more = _trim_to_whole_buckets(rows, params.limit or 50, truncated)
+        if params.cursor and params.cursor.startswith("prev_"):
+            # Paging back reads newest-first; responses are always ascending.
+            samples = list(reversed(samples))
 
         return _page(
             data=[
@@ -235,8 +238,8 @@ class TimeSeriesService(
             ],
             params=params,
             has_more=has_more,
-            next_cursor=encode_cursor(samples[-1].bucket, direction="next") if samples and has_more else None,
-            previous_cursor=encode_cursor(samples[0].bucket, direction="prev") if samples and params.cursor else None,
+            next_cursor=encode_bucket_cursor(samples[-1].bucket) if samples and has_more else None,
+            previous_cursor=encode_bucket_cursor(samples[0].bucket, "prev") if samples and params.cursor else None,
         )
 
     @handle_exceptions

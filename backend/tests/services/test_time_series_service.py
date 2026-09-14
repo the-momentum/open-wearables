@@ -22,6 +22,7 @@ from app.schemas.model_crud.activities import (
     TimeSeriesSampleCreate,
 )
 from app.services.timeseries_service import timeseries_service
+from app.utils.pagination import encode_bucket_cursor
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -517,3 +518,56 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Assert - the minute reports the 30 steps actually taken, not 12030
         assert [s.value for s in result.data] == [30]
+
+    def test_paging_backward_returns_buckets_adjacent_to_the_cursor(self, db: Session) -> None:
+        """Paging back must land on the buckets just before the cursor, not the oldest in range."""
+        # Arrange
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        for minute in range(6):
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=series_type,
+                recorded_at=self._START + timedelta(minutes=minute),
+                value=100 + minute,
+            )
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            self._params(
+                resolution=Resolution.ONE_MIN,
+                limit=2,
+                cursor=encode_bucket_cursor(self._START + timedelta(minutes=5), "prev"),
+            ),
+        )
+
+        # Assert
+        assert [s.timestamp for s in result.data] == [self._START + timedelta(minutes=m) for m in (3, 4)]
+
+    def test_last_page_hands_out_no_cursor(self, db: Session) -> None:
+        """A capped scan window is not a next page: the cursor must lead somewhere."""
+        # Arrange - exactly `limit` buckets exist
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        for minute in range(2):
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=series_type,
+                recorded_at=self._START + timedelta(minutes=minute),
+                value=100,
+            )
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate], self._params(resolution=Resolution.ONE_MIN, limit=2)
+        )
+
+        # Assert
+        assert len(result.data) == 2
+        assert result.pagination.has_more is False
+        assert result.pagination.next_cursor is None

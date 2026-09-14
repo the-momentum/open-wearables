@@ -190,9 +190,15 @@ GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `cursor` | null | Cursor from previous response |
-| `limit` | 50 | Items per page (max: 100) |
+| `limit` | 50 | Items per page (max: 1000 for timeseries, 100 for workouts and sleep) |
 
 Use the `next_cursor` from the response to fetch the next page.
+
+<Note>
+  A timeseries request with a `resolution` other than `raw` pages by bucket, and `total_count` is
+  `null` — counting buckets would require scanning the whole requested range. Cursors are not
+  interchangeable between resolutions or endpoints.
+</Note>
 
 ## Date & Time Parameters
 

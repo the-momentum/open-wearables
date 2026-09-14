@@ -67,21 +67,21 @@ def _decode_cursor_fields(cursor: str) -> tuple[list[str], str]:
 # -----------------------------------------------------------------------------
 
 
-def encode_cursor(timestamp: datetime, item_id: UUID | None = None, direction: str = "next") -> str:
+def encode_cursor(timestamp: datetime, item_id: UUID, direction: str = "next") -> str:
     """Encode a cursor from timestamp and ID.
 
     Args:
         timestamp: The timestamp of the item
-        item_id: The UUID of the item, or None where the timestamp alone is the key
+        item_id: The UUID of the item
         direction: Either 'next' or 'prev' to indicate pagination direction
 
     Returns:
         Base64 encoded cursor, prefixed with 'prev_' if direction is 'prev'
     """
-    return _encode_cursor_fields([timestamp.isoformat(), str(item_id) if item_id else ""], direction)
+    return _encode_cursor_fields([timestamp.isoformat(), str(item_id)], direction)
 
 
-def decode_cursor(cursor: str) -> tuple[datetime, UUID | None, str]:
+def decode_cursor(cursor: str) -> tuple[datetime, UUID, str]:
     """Decode a cursor to timestamp, ID, and direction.
 
     Args:
@@ -99,7 +99,7 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID | None, str]:
 
     try:
         cursor_ts = parse_query_datetime(fields[0])
-        cursor_id = UUID(fields[1]) if fields[1] else None
+        cursor_id = UUID(fields[1])
         return cursor_ts, cursor_id, direction
     except (ValueError, TypeError):
         raise InvalidCursorError(cursor=cursor)
@@ -172,6 +172,25 @@ def process_paginated_results(
         previous_cursor=previous_cursor,
         has_more=has_more,
     )
+
+
+def encode_bucket_cursor(bucket_start: datetime, direction: str = "next") -> str:
+    """Cursor for aggregated reads, keyed on the bucket start.
+
+    Single-field on purpose, so UUID-keyed cursors and bucket cursors reject each other.
+    """
+    return _encode_cursor_fields([bucket_start.isoformat()], direction)
+
+
+def decode_bucket_cursor(cursor: str) -> tuple[datetime, str]:
+    """Decode a bucket cursor to (bucket_start, direction)."""
+    fields, direction = _decode_cursor_fields(cursor)
+    if len(fields) != 1:
+        raise InvalidCursorError(cursor=cursor)
+    try:
+        return parse_query_datetime(fields[0]), direction
+    except (ValueError, TypeError):
+        raise InvalidCursorError(cursor=cursor) from None
 
 
 def encode_date_cursor(cursor_date: date, direction: str = "next") -> str:
