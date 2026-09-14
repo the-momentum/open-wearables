@@ -29,6 +29,7 @@ def get_timeseries(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
+    filter_by_priority: bool = False,
 ) -> PaginatedResponse[TimeSeriesSample]:
     """Returns granular time series data (biometrics or activity)."""
     params = TimeSeriesQueryParams(
@@ -42,4 +43,4 @@ def get_timeseries(
         device_model=device_model,
         data_source_id=data_source_id,
     )
-    return timeseries_service.get_timeseries(db, user_id, types, params)
+    return timeseries_service.get_timeseries(db, user_id, types, params, filter_by_priority=filter_by_priority)
