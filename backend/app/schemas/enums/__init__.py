@@ -4,8 +4,10 @@ from .aggregation_method import (
     daily_total_flag,
 )
 from .data_granularity import (
+    BUCKET_SIZES,
     GRANULARITY_WINDOW_SECONDS,
     DataGranularity,
+    Resolution,
 )
 from .device_type import (
     DEFAULT_DEVICE_TYPE_PRIORITY,
@@ -47,6 +49,8 @@ __all__ = [
     "AGGREGATION_METHOD_BY_TYPE",
     "daily_total_flag",
     "DataGranularity",
+    "Resolution",
+    "BUCKET_SIZES",
     "GRANULARITY_WINDOW_SECONDS",
     "EntrySource",
     "SeriesType",

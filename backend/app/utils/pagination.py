@@ -67,21 +67,21 @@ def _decode_cursor_fields(cursor: str) -> tuple[list[str], str]:
 # -----------------------------------------------------------------------------
 
 
-def encode_cursor(timestamp: datetime, item_id: UUID, direction: str = "next") -> str:
+def encode_cursor(timestamp: datetime, item_id: UUID | None = None, direction: str = "next") -> str:
     """Encode a cursor from timestamp and ID.
 
     Args:
         timestamp: The timestamp of the item
-        item_id: The UUID of the item
+        item_id: The UUID of the item, or None where the timestamp alone is the key
         direction: Either 'next' or 'prev' to indicate pagination direction
 
     Returns:
         Base64 encoded cursor, prefixed with 'prev_' if direction is 'prev'
     """
-    return _encode_cursor_fields([timestamp.isoformat(), str(item_id)], direction)
+    return _encode_cursor_fields([timestamp.isoformat(), str(item_id) if item_id else ""], direction)
 
 
-def decode_cursor(cursor: str) -> tuple[datetime, UUID, str]:
+def decode_cursor(cursor: str) -> tuple[datetime, UUID | None, str]:
     """Decode a cursor to timestamp, ID, and direction.
 
     Args:
@@ -99,7 +99,7 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID, str]:
 
     try:
         cursor_ts = parse_query_datetime(fields[0])
-        cursor_id = UUID(fields[1])
+        cursor_id = UUID(fields[1]) if fields[1] else None
         return cursor_ts, cursor_id, direction
     except (ValueError, TypeError):
         raise InvalidCursorError(cursor=cursor)

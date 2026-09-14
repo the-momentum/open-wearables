@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import SeriesType
+from app.schemas.enums import Resolution, SeriesType
 from app.utils.dates import ZoneOffset
 
 
@@ -76,3 +76,4 @@ class TimeSeriesQueryParams(BaseModel):
         None,
         description="Pagination cursor (use next_cursor for forward, previous_cursor for backward)",
     )
+    resolution: Resolution = Resolution.RAW
