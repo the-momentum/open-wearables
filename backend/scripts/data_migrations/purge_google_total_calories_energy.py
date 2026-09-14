@@ -65,7 +65,7 @@ def run(db: Session, dry_run: bool) -> int:
     if dry_run:
         print(f"[dry-run] would delete {stale} untagged Google Health API energy row(s).")
         return stale
-    deleted = db.execute(_DELETE, _PARAMS).rowcount
+    deleted = db.execute(_DELETE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
     db.commit()
     print(f"Deleted {deleted} untagged Google Health API energy row(s) written from total-calories.")
     return deleted
