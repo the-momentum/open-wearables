@@ -1,6 +1,6 @@
 """Shared value/timestamp helpers for the Google Health API handlers."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -13,6 +13,18 @@ GOOGLE_HEALTH_API_SOURCE = "google_health_api"
 def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
     """Build a google.type.Interval; ``start`` is inclusive, ``end`` is exclusive."""
     return {"startTime": to_rfc3339(start), "endTime": to_rfc3339(end)}
+
+
+def civil_interval(start: date, end: date) -> dict[str, Any]:
+    """Build a CivilTimeInterval; ``start`` is inclusive, ``end`` is exclusive.
+
+    CivilDateTime carries no offset, so dailyRollUp buckets on the user's civil days
+    regardless of the range the request asks for.
+    """
+    return {
+        "start": {"date": {"year": start.year, "month": start.month, "day": start.day}},
+        "end": {"date": {"year": end.year, "month": end.month, "day": end.day}},
+    }
 
 
 def read_number(

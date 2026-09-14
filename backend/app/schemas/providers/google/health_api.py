@@ -5,6 +5,7 @@ support the ``rollUp`` operation (windowed aggregates), the ``list`` operation (
 data points), or both; the handler picks the operation per the configured granularity.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
@@ -77,6 +78,39 @@ class ListSpec:
     is_daily_total: bool = False
     session_interval: bool = False
     extra: tuple[SeriesField, ...] | None = None
+
+
+@dataclass(frozen=True)
+class DailyRollupSpec:
+    """How to read one data type's civil-day total from a dataPoints:dailyRollUp response.
+
+    data_type/value_key: the type to request and the union key its value lands under.
+    field:               key of the scalar within the ``*RollupValue`` object (e.g. ``kcalSum``).
+    scale:               unit factor applied to the value.
+    max_range_days:      dailyRollUp's per-request range cap (14 for total-calories, else 90).
+    """
+
+    data_type: str
+    value_key: str
+    field: str
+    scale: Decimal = Decimal(1)
+    max_range_days: int = 90
+
+
+@dataclass(frozen=True)
+class DerivedDailyMetric:
+    """A civil-day total computed as ``operation(left, right)`` — ``operator.add`` or ``operator.sub``.
+
+    Both operands are fetched independently from dailyRollUp and matched on civil date, so
+    the metric owns its inputs and never depends on another metric having run first. A day
+    is emitted only when both operands returned a value for it.
+    """
+
+    name: str
+    series_type: SeriesType
+    left: DailyRollupSpec
+    right: DailyRollupSpec
+    operation: Callable[[Decimal, Decimal], Decimal]
 
 
 @dataclass(frozen=True)

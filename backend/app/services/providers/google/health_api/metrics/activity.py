@@ -31,7 +31,6 @@ ACTIVITY_METRICS: tuple[DataTypeMetric, ...] = (
         "active-energy-burned",
         SeriesType.energy,
         value_key="activeEnergyBurned",
-        rollup_spec=RollupSpec("kcalSum"),
         list_spec=ListSpec("kcal", TimeShape.INTERVAL),
     ),
     DataTypeMetric(
