@@ -45,6 +45,7 @@ from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
     ProviderName,
+    Resolution,
     SeriesType,
     TimelineBucket,
     TimelineGroupBy,
@@ -611,16 +612,23 @@ class DataPointSeriesRepository(
             column("source_id", PGUUID(as_uuid=True)),
             name="candidates",
         ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
-        window = [self.model.recorded_at >= start] if start is not None else []
+        available = [self.model.recorded_at >= start] if start is not None else []
         if end is not None:
-            window.append(self.model.recorded_at < end)
+            available.append(self.model.recorded_at < end)
+        if params.resolution is not Resolution.RAW:
+            # Bucketed reads drop daily totals, so a source holding only those has nothing to
+            # offer here and must not outrank one with real intraday samples.
+            available.append(self.model.is_daily_total.isnot(True))
         probe = (
             select(literal_column("1"))
             .where(
                 self.model.data_source_id == candidates.c.source_id,
                 self.model.series_type_definition_id == candidates.c.type_id,
-                *window,
+                *available,
             )
+            # Ordering on the index's trailing column lets the planner stop at the first match
+            # instead of costing this as a full scan once a non-indexed filter is present.
+            .order_by(self.model.recorded_at)
             .limit(1)
             .lateral("probe")
         )

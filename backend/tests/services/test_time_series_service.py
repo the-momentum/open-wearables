@@ -708,3 +708,30 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Assert - without this the two filters intersect to nothing
         assert {(s.value, s.source.provider) for s in result.data} == {(200, "whoop")}
+
+    def test_priority_skips_a_source_holding_only_daily_totals(self, db: Session) -> None:
+        """Bucketed reads drop daily totals, so a source with nothing else must not win."""
+        # Arrange - the watch outranks the band but only reported the day's own step total
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        DataPointSeriesFactory(
+            mapping=watch, series_type=steps, recorded_at=self._START, value=9000, is_daily_total=True
+        )
+        for second in range(3):
+            DataPointSeriesFactory(
+                mapping=band,
+                series_type=steps,
+                recorded_at=self._START + timedelta(seconds=second),
+                value=10,
+                is_daily_total=False,
+            )
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], self._params(resolution=Resolution.ONE_MIN), filter_by_priority=True
+        )
+
+        # Assert - without this the watch wins and the bucket it would fill is then discarded
+        assert [(s.value, s.source.provider) for s in result.data] == [(30, "whoop")]
