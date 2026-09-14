@@ -735,3 +735,30 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Assert - without this the watch wins and the bucket it would fill is then discarded
         assert [(s.value, s.source.provider) for s in result.data] == [(30, "whoop")]
+
+    def test_date_only_bounds_are_accepted_by_bucketed_reads(self, db: Session) -> None:
+        """A date-only query parameter parses without a timezone and must still compare."""
+        # Arrange
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            recorded_at=self._START,
+            value=128,
+        )
+
+        # Act - both bounds naive, as parse_query_datetime returns them for "YYYY-MM-DD"
+        result = timeseries_service.get_timeseries(
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            TimeSeriesQueryParams(
+                start_datetime=self._START.replace(tzinfo=None, hour=0, minute=0),
+                end_datetime=self._START.replace(tzinfo=None, hour=0, minute=0),
+                resolution=Resolution.ONE_MIN,
+            ),
+        )
+
+        # Assert
+        assert [s.value for s in result.data] == [128]

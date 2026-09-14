@@ -63,6 +63,7 @@ from app.schemas.responses.activity import (
     ActivityAggregateResult,
     IntensityMinutesResult,
 )
+from app.utils.dates import as_utc
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
 
@@ -711,7 +712,7 @@ class DataPointSeriesRepository(
             else:
                 start = cursor_ts + bucket_size
 
-        return start, end, backward
+        return as_utc(start), as_utc(end), backward
 
     def _aggregated_value(self, types: list[SeriesType]) -> ColumnElement:
         """Pick avg/sum/max per series type from the shared coverage map, defaulting to avg."""

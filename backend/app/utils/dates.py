@@ -129,6 +129,15 @@ def align_tz_awareness(start: datetime | None, end: datetime | None) -> tuple[da
     return start, end
 
 
+def as_utc(moment: datetime | None) -> datetime | None:
+    """Return the same instant as a UTC-aware datetime; a naive input is read as UTC."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
 def to_rfc3339(dt: datetime) -> str:
     """Format a datetime as RFC3339 UTC with a 'Z' suffix; naive datetimes are assumed UTC."""
     aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
