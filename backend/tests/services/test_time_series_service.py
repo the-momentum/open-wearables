@@ -606,3 +606,50 @@ class TestTimeSeriesServiceGetTimeseries:
         assert [s.timestamp for s in back.data] == [s.timestamp for s in page_one.data]
         assert back.pagination.has_more is False
         assert back.pagination.previous_cursor is None
+
+    def _two_sources(self, db: Session) -> tuple[object, object, object]:
+        """One user wearing a Garmin watch and a Whoop band, both logging heart rate."""
+        user = UserFactory()
+        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_model="FR965")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_model="Whoop 4.0")
+        for mapping, value in ((watch, 100), (band, 200)):
+            for second in range(3):
+                DataPointSeriesFactory(
+                    mapping=mapping,
+                    series_type=series_type,
+                    recorded_at=self._START + timedelta(seconds=second),
+                    value=value,
+                )
+        return user, watch, band
+
+    def test_source_filters_narrow_to_one_device(self, db: Session) -> None:
+        """Every declared source filter reaches the query; data_source_id used to be ignored."""
+        # Arrange
+        user, watch, _ = self._two_sources(db)
+
+        # Act & Assert - unfiltered sees both devices
+        assert {s.value for s in self._fetch(db, user).data} == {100, 200}
+        for filters in (
+            {"provider": "garmin"},
+            {"source": "garmin"},
+            {"device_model": "FR965"},
+            {"data_source_id": watch.id},
+        ):
+            result = self._fetch(db, user, **filters)
+            assert {s.value for s in result.data} == {100}, filters
+            assert {s.source.provider for s in result.data} == {"garmin"}, filters
+
+    def test_source_filters_apply_to_aggregated_reads(self, db: Session) -> None:
+        """The filters sit in the shared clause, so bucketed reads honour them too."""
+        # Arrange
+        user, _, band = self._two_sources(db)
+
+        # Act
+        result = self._fetch(db, user, resolution=Resolution.ONE_MIN, provider="whoop")
+
+        # Assert
+        assert [(s.timestamp, s.value) for s in result.data] == [(self._START, 200)]
+
+    def _fetch(self, db: Session, user: object, **filters) -> object:
+        return timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], self._params(**filters))

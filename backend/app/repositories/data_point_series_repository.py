@@ -552,6 +552,10 @@ class DataPointSeriesRepository(
             query = query.filter(DataSource.device_model == params.device_model)
         if params.source:
             query = query.filter(DataSource.source == params.source)
+        if params.provider:
+            query = query.filter(DataSource.provider == params.provider)
+        if params.data_source_id:
+            query = query.filter(self.model.data_source_id == params.data_source_id)
         if start is not None:
             query = query.filter(self.model.recorded_at >= start)
         if end is not None:
