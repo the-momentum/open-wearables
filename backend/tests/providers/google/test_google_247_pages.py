@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.providers.google import DataPointsPage
 from app.services.providers.google.health_api.data_247 import GoogleHealth247Data
@@ -50,6 +51,14 @@ class TestDataPointsPage:
     @pytest.mark.parametrize("payload", [None, [], "oops", 42])
     def test_rejects_a_non_object_body(self, payload: object) -> None:
         with pytest.raises(Exception, match="validation error|Input should be"):
+            DataPointsPage.model_validate(payload)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [{"error": {"code": 500, "status": "INTERNAL"}}, {"unexpected": 1}],
+    )
+    def test_rejects_an_envelope_with_no_page_field(self, payload: dict) -> None:
+        with pytest.raises(ValidationError, match="no page field"):
             DataPointsPage.model_validate(payload)
 
 

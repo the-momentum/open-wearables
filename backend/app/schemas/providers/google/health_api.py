@@ -10,7 +10,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.enums import DataGranularity, SeriesType
 
@@ -28,6 +28,17 @@ class DataPointsPage(BaseModel):
     data_points: list[dict[str, Any]] = Field(default_factory=list, alias="dataPoints")
     rollup_data_points: list[dict[str, Any]] = Field(default_factory=list, alias="rollupDataPoints")
     next_page_token: str | None = Field(None, alias="nextPageToken")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_envelope_without_page_fields(cls, data: Any) -> Any:
+        """A non-empty body carrying no page field is a failed fetch, not an exhausted window."""
+        if not isinstance(data, dict) or not data:
+            return data
+        known = set(cls.model_fields) | {f.alias for f in cls.model_fields.values() if f.alias}
+        if known.isdisjoint(data):
+            raise ValueError(f"no page field in envelope: {sorted(data)}")
+        return data
 
 
 class TimeShape(Enum):
