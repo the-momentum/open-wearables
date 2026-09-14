@@ -1,23 +1,117 @@
 ---
 title: "Open Wearables Roadmap"
 sidebarTitle: "Roadmap"
-description: "Track what's coming next in Open Wearables."
+description: "What we're working on now, what's next, and the bigger picture for Open Wearables."
 keywords: ["open wearables roadmap", "wearable platform updates", "open source health api", "open wearables"]
 "og:title": "Open Wearables Roadmap"
-"og:description": "Track what's coming next in Open Wearables."
+"og:description": "What we're working on now, what's next, and the bigger picture for Open Wearables."
 "og:url": "https://docs.openwearables.io/roadmap"
 "og:type": "article"
 "twitter:title": "Open Wearables Roadmap"
-"twitter:description": "Track what's coming next in Open Wearables."
+"twitter:description": "What we're working on now, what's next, and the bigger picture for Open Wearables."
 "twitter:card": "summary_large_image"
 ---
 
 ## Overview
 
-<Callout icon="sparkles" color="#7C3AED" iconType="regular">
-Our roadmap is getting a refresh and will be back shortly, updated with what's coming next. Stay tuned!
-</Callout>
+Over the last few months we've had a lot of emails, LinkedIn messages, and Discord questions about the roadmap, and we feel we owe you one. So here it is.
+
+Usual disclaimer: this is our current plan, and it may change as we learn from teams running Open Wearables in production.
 
 <Note>
-**Can't wait for the updated roadmap?** If there's a specific feature or plan you're curious about in the meantime, join our [Discord community](https://discord.gg/qrcfFnNE6H) and ask us directly - we're happy to share more details.
+**Have questions or want to influence priorities?** Join our [Discord community](https://discord.gg/qrcfFnNE6H) or start a thread in [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions). Open issues are the source of truth for the status of any single item.
+</Note>
+
+## Core platform
+
+The core platform keeps growing: new data types, a faster mobile SDK, and hardening informed by instances that now handle far more users than a year ago. This is a dedicated part of the team's work. At the same time, we're building a few things on top of the core that we're just as excited about, see [Beyond the core](#beyond-the-core).
+
+### The road to 1.0
+
+<Info>
+We expect to release **Open Wearables 1.0** at the end of October 2026 ✨ and everything below is part of getting there.
+</Info>
+
+**Performance and scale.** Early on, most of our effort went into getting the data model right. The scale of current deployments means performance now gets the same attention. We're in the middle of stress testing the platform and working through what it surfaces: faster parsing and writing of incoming data, a leaner way of storing it, and tuning the infrastructure around it - Celery, Redis, and Postgres.
+
+**Compliance.** Open Wearables is getting a lot of traction in products where data sovereignty matters, and those tend to be heavily regulated: healthcare, clinical research, anything covered by frameworks such as HIPAA in the US or GDPR in the EU. Self-hosting is a big part of why these teams pick us, and we want the rest to work out of the box too: deleting a user really deletes everything, data retention is configurable, and access is auditable. These teams should be able to pass a compliance review without patching the platform first.
+
+**Data model hardening.** Fixing identity and idempotency issues found in production (duplicate events, data source identity, device inference), closing gaps in the unified data model, and filling in data that existing providers expose but we don't store yet.
+
+**Nutrition data.** Calorie intake and macronutrients as first-class data types, for the providers that expose them (Apple Health, Google Health Connect, and others as their APIs allow). Concretely that means energy (kcal), carbohydrates, protein, and total fat, and because popular tracking apps like MyFitnessPal, Cronometer, Lose It!, Yazio, and Lifesum write their food logs straight into Apple Health, a single integration surfaces nutrition data that millions of users already log in those apps.
+
+**Women's health for Apple Health and Health Connect.** Menstrual cycle tracking already works for Garmin. We are extending it to the mobile SDK path so the same data model is populated from HealthKit and Health Connect. Since Apple Health and Health Connect aggregate cycle data from apps like Clue, Flo, and Ovia, integrators get that data through a single connection instead of integrating each app separately.
+
+**Mobile SDK improvements.** The biggest one is optional on-device aggregation, which makes syncing months of historical data dramatically faster and cheaper on both the phone and the backend. Next to it, reliability hardening of the whole sync path and support for many new HealthKit and Health Connect data types. A year in, we have learned a lot about how tricky background sync on iOS can be, and we intend to make sure it never becomes your headache in your own product.
+
+## Beyond the core
+
+Open Wearables is built by [Momentum](https://www.themomentum.ai/), and the platform started as a data integration layer. On top of it, we have built a lot of custom work for our clients: health scores, insights, AI agents, and other features that turn normalized data into something a product can use directly. The same problems kept coming back, so we're turning that experience into ready-made modules you can drop into your own product and skip building from scratch.
+
+Custom work stays at the heart of what Momentum does. Many of the teams running Open Wearables in production got there with the Momentum team: designing the integration, building the features around the data, and deploying it on their infrastructure. Sometimes it was the whole product built end to end, with wearable data as just one piece of it. The modules change where such a project starts. With the common ground already covered, a custom engagement goes straight into the parts that are unique to your product and take it to the next level. If you're building on Open Wearables and want the team that knows the platform inside out, [talk to Momentum](https://www.themomentum.ai/lets-talk).
+
+### Later this year
+
+<CardGroup cols={1}>
+  <Card title="Health Scores" icon="chart-line" horizontal>
+    The existing **Sleep** and **Resilience** scores get a refresh and move into this module, joined by two new ones: **Recovery** and **Activity**. All four are built on the same unified data model, so a score works the same whether the data comes from Garmin, Oura, or Apple Health. Every score is science-backed, with the methodology documented and reviewed by our science team. Anna, who leads our science work, writes about the research behind wearable data in [The Science Behind Wearables](https://thesciencebehindwearables.substack.com/) newsletter, worth a subscribe if that side of things interests you.
+  </Card>
+  <Card title="AI intelligence layer" icon="brain" horizontal>
+    An AI layer on top of the unified data model that turns raw wearable data into insights your product can act on: trend and anomaly detection, personalized summaries, and answers to questions like "how did my sleep change since I started running?" grounded in the user's own data. It will ship as building blocks you can use in your own flows as well as ready-made pieces such as an embeddable chat agent.
+  </Card>
+  <Card title="End-user extraction app" icon="mobile" horizontal>
+    A ready-made mobile app, published under the Open Wearables brand, that your users install to connect Apple Health or Health Connect, with the data landing in your Open Wearables instance like any other provider. Apple Health and Health Connect have no REST API, so the only way to get their data is through a mobile app on the user's phone. That makes this a great fit for startups that need this data from day one but do not have the budget for their own mobile app yet, and for web-first products, research studies, and clinics without a mobile team. If you need it under your own brand, a white-label version is available as a custom option, at a fraction of what a mobile app build usually costs.
+  </Card>
+  <Card title="Productized services" icon="briefcase" horizontal>
+    Two things we already do for clients on a regular basis, and are now turning into standard, fixed-price offers. The first is **deployment**: running Open Wearables properly on AWS, Azure, or GCP takes real infrastructure skills, and after doing it many times for clients with very different requirements we know exactly what a production-grade setup needs and how long it takes, which is what makes a fixed price possible. The second is **app integration**: if you want Open Wearables in your existing mobile or web app but have no dev team, or your team is busy with other priorities, we do the integration for you. We're currently running both as a pilot with a few companies before the offers go live on our website at the beginning of October 2026. If you need either of them and want to be part of the pilot, [let us know](https://openwearables.io/custom-deployment)!
+  </Card>
+</CardGroup>
+
+### Exploring
+
+Things on our radar with no timeline yet. Listed so you know where our thinking is heading.
+
+- **Real-time data access** - ANT+ and BLE streaming for live metrics like heart rate and steps.
+- **Workout planner** - create and push structured workouts to devices via provider APIs (Garmin, Polar, Coros).
+- **Lab results and blood reports** - OCR and standardization of lab reports into the same data model as wearable data.
+- **Custom device integrations** - niche and medical-grade wearables that do not fit the standard provider model.
+- **Raw signal processing** - working directly with raw biosignals such as PPG and IMU from devices that expose them, and deriving metrics like sleep detection and heart rate from the signal itself. Relevant for hardware teams building their own wearable.
+- **Observability stack** - monitoring for both the infrastructure Open Wearables runs on and the provider connections themselves: whether data is flowing for each user, whether syncs are failing, and whether a provider's API is having problems on its end.
+
+<Tip>
+If one of these matters to your product today, tell us on [Discord](https://discord.gg/qrcfFnNE6H). Real use cases are the main input into what gets built first.
+</Tip>
+
+## New provider integrations
+
+New providers are the most common request we get, so here is where things stand. The core team's capacity is limited, and with the work above already committed, **we cannot promise new integrations on a timeline**. Open [provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) are tracked and prioritized by demand, but a request being open does not mean it is scheduled.
+
+There are two ways to get an integration built sooner.
+
+### Contribute one
+
+Provider integrations are a great contribution, and the architecture is designed for it. [Adding a new provider](/dev-guides/how-to-add-new-provider) walks through the whole process. That said, before you start, please read the [contribution guidelines](https://github.com/the-momentum/open-wearables/blob/main/CONTRIBUTING.md) and open an issue or ask on Discord to get a go-ahead, so we can agree on the scope and make sure nobody else is already on it.
+
+For this kind of contribution specifically, we ask that you have solid backend development experience. An integration touches OAuth, background sync, webhooks, and the mapping of a provider's data onto the unified data model, and a mistake there corrupts data for every user of that provider. Every pull request is reviewed manually by a core contributor, and review time is our main bottleneck. A partial integration that needs to be rewritten during review costs more than building it in-house, which is why we ask for the go-ahead first and for the change to be tested against a real provider account before it is submitted.
+
+### Prioritize it with us
+
+If you need a specific provider for a commercial product, it is possible to prioritize it as part of the Open Wearables commercial offering, including splitting the development cost between parties that need the same integration. The result is released as part of the core platform. [Get in touch](https://openwearables.io/custom-deployment) if that is an option for you.
+
+## Contributing to the roadmap
+
+<CardGroup cols={3}>
+  <Card title="GitHub Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">
+    Share ideas and feedback on priorities.
+  </Card>
+  <Card title="GitHub Issues" icon="bug" href="https://github.com/the-momentum/open-wearables/issues">
+    Report bugs or request features.
+  </Card>
+  <Card title="Discord" icon="discord" href="https://discord.gg/qrcfFnNE6H">
+    Talk to the team directly.
+  </Card>
+</CardGroup>
+
+<Note>
+This roadmap is subject to change based on community feedback and development priorities. Items are not release commitments and have no fixed dates unless linked to a milestone.
 </Note>
