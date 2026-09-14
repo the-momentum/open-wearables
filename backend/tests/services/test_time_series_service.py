@@ -571,3 +571,38 @@ class TestTimeSeriesServiceGetTimeseries:
         assert len(result.data) == 2
         assert result.pagination.has_more is False
         assert result.pagination.next_cursor is None
+
+    def test_first_page_reached_backwards_hands_out_no_previous_cursor(self, db: Session) -> None:
+        """Paging back to the oldest bucket must end the walk, not offer an empty page."""
+        # Arrange
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        for minute in range(4):
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=series_type,
+                recorded_at=self._START + timedelta(minutes=minute),
+                value=100 + minute,
+            )
+        params = self._params(resolution=Resolution.ONE_MIN, limit=2)
+        page_one = timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], params)
+        page_two = timeseries_service.get_timeseries(
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            self._params(resolution=Resolution.ONE_MIN, limit=2, cursor=page_one.pagination.next_cursor),
+        )
+
+        # Act - walk back to where we started
+        back = timeseries_service.get_timeseries(
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            self._params(resolution=Resolution.ONE_MIN, limit=2, cursor=page_two.pagination.previous_cursor),
+        )
+
+        # Assert
+        assert [s.timestamp for s in back.data] == [s.timestamp for s in page_one.data]
+        assert back.pagination.has_more is False
+        assert back.pagination.previous_cursor is None

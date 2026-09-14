@@ -225,9 +225,13 @@ class TimeSeriesService(
         """
         rows, truncated = self.crud.get_aggregated_samples(db_session, params, types, user_id)
         samples, has_more = _trim_to_whole_buckets(rows, params.limit or 50, truncated)
-        if params.cursor and params.cursor.startswith("prev_"):
+        is_backward = bool(params.cursor and params.cursor.startswith("prev_"))
+        if is_backward:
             # Paging back reads newest-first; responses are always ascending.
             samples = list(reversed(samples))
+        # Paging back, has_more means older buckets exist, so it gates previous_cursor too.
+        has_next = bool(samples) and has_more
+        has_previous = bool(samples) and bool(params.cursor) and (has_more or not is_backward)
 
         return _page(
             data=[
@@ -238,8 +242,8 @@ class TimeSeriesService(
             ],
             params=params,
             has_more=has_more,
-            next_cursor=encode_bucket_cursor(samples[-1].bucket) if samples and has_more else None,
-            previous_cursor=encode_bucket_cursor(samples[0].bucket, "prev") if samples and params.cursor else None,
+            next_cursor=encode_bucket_cursor(samples[-1].bucket) if has_next else None,
+            previous_cursor=encode_bucket_cursor(samples[0].bucket, "prev") if has_previous else None,
         )
 
     @handle_exceptions
