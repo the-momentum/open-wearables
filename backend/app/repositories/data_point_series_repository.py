@@ -45,7 +45,7 @@ from app.schemas.enums import (
     get_series_type_from_id,
     get_series_type_id,
 )
-from app.schemas.enums.aggregation_method import AGGREGATION_METHOD_BY_TYPE
+from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
@@ -122,10 +122,10 @@ _AGGREGATE_FUNCS = {
     AggregationMethod.SUM: func.sum,
     AggregationMethod.MAX: func.max,
 }
-# Series type ids per non-default aggregation, resolved once: the map is static and the
-# lookup runs per request. Types absent from the coverage map fall back to AVG.
+# Series type ids per non-default aggregation, resolved once: the mapping is static and the
+# lookup would otherwise run per request. AVG is the else branch, so it needs no entry.
 _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
-    method: frozenset(get_series_type_id(t) for t, m in AGGREGATION_METHOD_BY_TYPE.items() if m is method)
+    method: frozenset(get_series_type_id(t) for t in SeriesType if get_aggregation_method(t) is method)
     for method in _AGGREGATE_FUNCS
     if method is not AggregationMethod.AVG
 }
