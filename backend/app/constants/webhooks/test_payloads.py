@@ -14,7 +14,13 @@ _RECORD_ID = "00000000-0000-0000-0000-000000000001"
 _CONNECTION_ID = "00000000-0000-0000-0000-000000000003"
 
 _SOURCE_GARMIN = {"provider": "garmin", "device": "Garmin Fenix 7"}
-_SOURCE_OURA = {"provider": "oura", "device": "Oura Ring Gen3"}
+_SOURCE_OURA = {
+    "provider": "oura",
+    "source": "oura",
+    "device": "Oura Ring Gen3",
+    "device_type": "ring",
+    "device_name": "Oura Ring Gen3",
+}
 _SOURCE_APPLE = {"provider": "apple", "device": "Apple Watch Series 9"}
 
 

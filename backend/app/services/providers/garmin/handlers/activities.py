@@ -17,7 +17,7 @@ from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.workouts import GarminWorkouts
-from app.services.sync_status_service import completed, new_run_id
+from app.services.sync_status_service import emit_sync_completed, new_run_id
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ def process_activity_notification(
             user_id=str(internal_user_id),
             record_ids=[str(rid) for rid in created_ids],
         )
-        completed(
+        emit_sync_completed(
             internal_user_id,
             "garmin",
             sync_source,

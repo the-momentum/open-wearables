@@ -31,22 +31,25 @@ const PROVIDER_STYLES: Record<
   },
   apple: { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: 'Apple' },
   internal: {
-    bg: 'bg-[hsl(var(--success-muted)/0.15)]',
-    text: 'text-[hsl(var(--success-muted))]',
+    bg: 'bg-success-muted/15',
+    text: 'text-success-muted',
     label: 'OW',
   },
 };
 
 const DEFAULT_STYLE = { bg: 'bg-muted/40', text: 'text-muted-foreground' };
 
-/** Human-readable label for a provider key (falls back to the raw key). */
+/** Human-readable label for a provider key (falls back to a capitalized key). */
 export function providerLabel(provider: string): string {
-  return PROVIDER_STYLES[provider]?.label ?? provider;
+  return (
+    PROVIDER_STYLES[provider]?.label ??
+    (provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : provider)
+  );
 }
 
 export function SourceBadge({ provider, className = '' }: SourceBadgeProps) {
   const style = PROVIDER_STYLES[provider] ?? DEFAULT_STYLE;
-  const label = PROVIDER_STYLES[provider]?.label ?? provider;
+  const label = providerLabel(provider);
 
   return (
     <span

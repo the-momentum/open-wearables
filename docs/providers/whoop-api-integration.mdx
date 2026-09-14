@@ -24,10 +24,53 @@ Whoop provides access to workout, sleep, recovery, and body measurement data thr
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Activities | Yes |
-| Sleep (with stages) | Yes |
+| Sleep (with stage durations) | Yes — aggregate totals only, no per-stage timestamps |
 | Recovery (score, resting HR, HRV, SpO2, skin temp) | Yes |
 | Body measurements (height, weight) | Yes |
+| Cycle aggregates (daily strain, energy) | Yes — scored cycles only; energy stored as a daily total in kcal |
 | Continuous heart rate / activity samples | No (not available via API) |
+
+### Workout field availability
+
+Several workout fields are conditional in the Whoop API and are `null` for most workouts. This is expected upstream behaviour, not a gap in Open Wearables' mapping — the values never arrive in the payload.
+
+| Field (`/workouts` response) | From Whoop | Availability |
+|------|------|------|
+| `avg_heart_rate_bpm`, `max_heart_rate_bpm` | `score.average_heart_rate`, `score.max_heart_rate` | Always present on scored workouts |
+| `calories_kcal` | `score.kilojoule`, converted to kcal | Always present on scored workouts |
+| `distance_meters` | `score.distance_meter` | **Rare.** Only when the workout was recorded in the Whoop app with location data |
+| `elevation_gain_meters` | `score.altitude_gain_meter` | **Rare.** Only when altitude data was included in the workout |
+| `avg_pace_sec_per_km` | Derived from distance | Always `null` — see below |
+| `name` | Not provided by Whoop | Always `null` |
+| `source.device` | Not provided by Whoop | Always `null` — workout payloads carry no device identity |
+
+<Note>
+  **`distance_meter` and `altitude_gain_meter` are present-but-`null`, not omitted.**
+
+  The Whoop OpenAPI spec describes these as *"Only present if distance data sent to WHOOP"*, which suggests the keys are absent. In practice Whoop includes both keys on every scored workout and sets them to `null`. Check for a `null` value rather than key presence — `"distance_meter" in score` is always true.
+
+  Whoop is worn as a passive strap, so most users' GPS is recorded by a separate watch or phone app rather than by Whoop itself. Distance is therefore missing even for sports where you would expect it: across all workouts stored in our reference deployment, exactly 1 of 123 runs and 0 of 49 rides carried a distance value.
+</Note>
+
+<Note>
+  `avg_pace_sec_per_km` and `name` are currently hardcoded to `null` in the `/workouts` endpoint for **all** providers, not just Whoop. `name` has no corresponding column on the event record. Pace would additionally be unavailable for Whoop regardless, since it derives from distance.
+</Note>
+
+### Sleep stage detail
+
+Whoop reports sleep stages as **aggregate durations for the whole sleep**, not as a timed sequence. The `sleep_stages` field on sleep records is therefore always `null` for Whoop, while providers whose APIs expose per-stage intervals (Apple Health, Garmin, Oura, Samsung) populate it.
+
+| Available from Whoop | Not available from Whoop |
+|------|------|
+| Total light / slow-wave (deep) / REM / awake / in-bed durations | Start and end time of each individual stage |
+| `sleep_cycle_count`, `disturbance_count` | Hypnogram or stage-by-stage timeline |
+| `respiratory_rate`, sleep performance / consistency / efficiency percentages | Stage transitions within the sleep |
+
+<Note>
+  This is an upstream API limitation, not a gap in Open Wearables. Whoop's three sleep endpoints — `/v2/activity/sleep`, `/v2/activity/sleep/{sleepId}` and `/v2/cycle/{cycleId}/sleep` — all return the same `Sleep` schema, whose `score.stage_summary` contains only millisecond totals (`total_light_sleep_time_milli`, `total_slow_wave_sleep_time_milli`, `total_rem_sleep_time_milli`, and so on). No Whoop endpoint exposes per-stage intervals, and no sleep schema in the [Whoop OpenAPI spec](https://api.prod.whoop.com/developer/doc/openapi.json) contains an array of stage records.
+
+  The only timestamps on a Whoop sleep are the overall `start` and `end`.
+</Note>
 
 ### Data delivery
 

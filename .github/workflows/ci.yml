@@ -123,6 +123,29 @@ jobs:
         working-directory: backend
         run: uv run pytest -v --cov=app --cov-report=xml --cov-report=term-missing
 
+  backend-migrations:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync
+      - name: Check migration chain
+        working-directory: backend
+        run: uv run python scripts/check_migrations.py --base origin/${{ github.base_ref || 'main' }}
+
   mcp-build:
     needs: changes
     if: ${{ needs.changes.outputs.mcp == 'true' }}

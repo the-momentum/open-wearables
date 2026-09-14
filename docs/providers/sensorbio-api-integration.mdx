@@ -1,0 +1,110 @@
+---
+title: "Sensor Bio API Integration"
+description: "Connect Sensor Bio via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV (RMSSD), SpO2, respiratory rate, and continuous 24/7 biometric timeseries."
+keywords: ["sensor bio api", "sensor bio integration", "sensor bio health data", "sensor bio wearable"]
+"og:title": "Sensor Bio API Integration | Open Wearables"
+"og:description": "Connect Sensor Bio via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, SpO2, and continuous 24/7 biometrics."
+"og:url": "https://docs.openwearables.io/providers/sensorbio-api-integration"
+"og:type": "article"
+"twitter:title": "Sensor Bio API Integration | Open Wearables"
+"twitter:description": "Connect Sensor Bio via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, SpO2, and 24/7 biometrics."
+"twitter:card": "summary_large_image"
+---
+
+<Note>
+**Need help with your Sensor Bio integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Sensor Bio provides access to workout, sleep, recovery, and continuous biometric data through their REST API. The integration uses OAuth 2.0 for authentication and pull-based syncing. All API requests use HTTP/2 as required by the Sensor Bio API specification.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Workouts / Activities | Yes |
+| Sleep (with stages: deep, light, REM, awake) | Yes |
+| Recovery (score, resting HR, HRV, SpO2) | Yes |
+| Continuous 24/7 biometric timeseries (HR, HRV, SpO2, respiration) | Yes |
+| Daily step details (steps, distance, calories) | Yes |
+| Body measurements | No (not available via API) |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** | Open Wearables periodically fetches workout, sleep, recovery, daily stats, and 24/7 biometric data via the Sensor Bio API. |
+
+### Provider quirks
+
+<Accordion title="Continuous 24/7 timeseries behavior">
+Sensor Bio delivers biometric data (heart rate, HRV, SpO2, respiratory rate) as a continuous stream via the `/v1/biometrics` endpoint using cursor-based pagination (`last-timestamp`). Unlike day-aggregated providers, each poll window can return hundreds of timestamped samples covering arbitrary time ranges.
+
+- Timestamps in the biometrics timeseries are **milliseconds** since epoch.
+- Sleep endpoint timestamps (`start_timestamp`, `end_timestamp`) are **seconds** since epoch (not milliseconds — the API docs are inconsistent; the implementation follows observed behavior).
+- The cursor stops when the `links.next` field is absent or the last record timestamp is unchanged.
+</Accordion>
+
+## Prerequisites
+
+- A Sensor Bio developer account with API access
+- `SENSORBIO_CLIENT_ID` and `SENSORBIO_CLIENT_SECRET` environment variables set (see `.env.example`)
+- `SENSORBIO_REDIRECT_URI` must match the redirect URI registered in the Sensor Bio developer portal
+
+## Environment variables
+
+```bash
+SENSORBIO_CLIENT_ID=your_client_id
+SENSORBIO_CLIENT_SECRET=your_client_secret
+SENSORBIO_REDIRECT_URI=https://your-domain/api/v1/oauth/callback/sensorbio
+```
+
+## OAuth flow
+
+The integration follows the standard OAuth 2.0 authorization code flow:
+
+1. User initiates connection — Open Wearables redirects to `https://api.sensorbio.com/oauth/authorize`
+2. User grants consent in the Sensor Bio app
+3. Sensor Bio redirects back with an authorization code
+4. Open Wearables exchanges the code for `access_token` + `refresh_token`
+5. Tokens are stored encrypted per-user and refreshed automatically on expiry
+
+## Data sync
+
+### Workouts
+
+Fetched from `/v1/activities` using cursor pagination on `WorkoutStats.timestamp`. Each activity includes:
+
+- Start/end time, duration
+- Workout type (mapped from `likely_name` or `_workout_name`)
+- Average, max, and min heart rate; calories; distance
+
+### Sleep
+
+Fetched from `/v1/sleep` one day at a time (the API requires a single `date` parameter; there is no multi-day range for session-level sleep). Each day may return multiple sessions (overnight + nap). Each record includes:
+
+- Start/end time, total duration
+- Stage breakdown: deep, light, REM, awake minutes
+- Sleep score (mapped to `efficiency_percent`)
+- Biometrics during sleep: average HR, HRV, SpO2, resting HR
+- Sensor Bio does not label naps; sessions are stored with `is_nap=false`
+
+### Recovery
+
+Fetched from `/v1/scores` one day at a time (single required `date` parameter). Provides daily recovery/activity/sleep scores and resting biometrics (resting HR, resting HRV, SpO2) stored as timeseries samples plus HealthScore rows.
+
+### 24/7 Biometric timeseries
+
+Fetched from `/v1/biometrics` using cursor pagination. Supports:
+
+| Field | Series type |
+|-------|-------------|
+| `bpm` | `heart_rate` |
+| `hrv` | `heart_rate_variability_rmssd` |
+| `spo2` | `oxygen_saturation` |
+| `brpm` | `respiratory_rate` |
+
+### Daily step details
+
+Fetched from `/v1/step/details` one day at a time. Provides steps, distance (km), and calorie burn. Note: the endpoint returns the response body directly (no `data` wrapper).

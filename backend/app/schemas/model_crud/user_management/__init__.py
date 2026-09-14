@@ -16,8 +16,11 @@ from .invitation import (
 )
 from .user import (
     USER_SORT_COLUMNS,
+    UserConnectionSummary,
     UserCreate,
     UserCreateInternal,
+    UserDetailRead,
+    UserInclude,
     UserQueryParams,
     UserRead,
     UserUpdate,
@@ -48,6 +51,8 @@ __all__ = [
     # User
     "UserQueryParams",
     "UserRead",
+    "UserDetailRead",
+    "UserInclude",
     "UserCreate",
     "UserCreateInternal",
     "UserUpdate",
@@ -57,5 +62,6 @@ __all__ = [
     "UserConnectionCreate",
     "UserConnectionUpdate",
     "UserConnectionRead",
+    "UserConnectionSummary",
     "UserConnectionWithCapabilities",
 ]

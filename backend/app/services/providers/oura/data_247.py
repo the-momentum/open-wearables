@@ -15,7 +15,7 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -30,7 +30,7 @@ from app.schemas.providers.oura import (
     OuraDailySleepJSON,
     OuraSleepJSON,
 )
-from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInfoJSON
+from app.schemas.providers.oura.imports import OuraIntervalData, OuraMetJSON, OuraPersonalInfoJSON
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
@@ -45,7 +45,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import offset_to_iso
+from app.utils.dates import offset_to_iso, parse_iso_datetime, to_rfc3339
 from app.utils.structured_logging import LogContext, log_structured
 
 
@@ -199,6 +199,39 @@ class Oura247Data(Base247DataTemplate):
             )
         return result
 
+    @staticmethod
+    def _expand_met_series(met: OuraMetJSON | None, class_5_min: str | None) -> list[dict[str, Any]]:
+        """Expand an Oura intraday MET series into individual timestamped samples."""
+        if met is None or not met.items or not met.interval or met.interval < 0 or class_5_min is None:
+            return []
+
+        start = parse_iso_datetime(met.timestamp)
+        if start is None or start.tzinfo is None:
+            return []
+
+        zone_offset = None
+        if (utcoff := start.utcoffset()) is not None:
+            zone_offset = offset_to_iso(int(utcoff.total_seconds()))
+
+        measured_seconds = len(class_5_min) * 300
+        measured_items = len(met.items) if measured_seconds == 86_400 else measured_seconds // int(met.interval)
+        non_wear_value = 0.1
+
+        samples = []
+        for i, value in enumerate(met.items[:measured_items]):
+            if value is None or value == non_wear_value:
+                continue
+
+            elapsed_seconds = met.interval * i
+            try:
+                recorded_at = start + timedelta(seconds=elapsed_seconds)
+            except OverflowError:
+                return []
+
+            samples.append({"recorded_at": recorded_at, "value": value, "zone_offset": zone_offset})
+
+        return samples
+
     def normalize_activity_samples(
         self,
         raw_samples: list[dict[str, Any]],
@@ -213,6 +246,7 @@ class Oura247Data(Base247DataTemplate):
             "energy": [],
             "distance": [],
             "active_time": [],
+            "met": [],
         }
 
         for activity in activity_items:
@@ -260,6 +294,7 @@ class Oura247Data(Base247DataTemplate):
                         "zone_offset": activity_zone_offset,
                     }
                 )
+            result["met"].extend(self._expand_met_series(activity.met, activity.class_5_min))
 
         return result, activity_scores
 
@@ -286,7 +321,7 @@ class Oura247Data(Base247DataTemplate):
                             zone_offset=item.get("zone_offset"),
                             value=Decimal(str(item["value"])),
                             series_type=series_type,
-                            is_daily_total=True,
+                            is_daily_total=daily_total_flag(series_type, is_daily=True),
                         )
                     )
                 except Exception as e:
@@ -562,23 +597,22 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
-    def _extract_sleep_stages(self, sleep_phase_5_min: str | None, sleep_start: str | None) -> list[SleepStage]:
-        """Convert Oura's 5-minute sleep phase string into list of SleepStage."""
-        if not (sleep_phase_5_min and sleep_start):
+    def _extract_sleep_stages(
+        self, hypnogram: str | None, epoch_seconds: int, sleep_start: str | None
+    ) -> list[SleepStage]:
+        """Convert an Oura hypnogram string (one digit per epoch) into a list of SleepStage."""
+        parsed_start = parse_iso_datetime(sleep_start)
+        if not hypnogram or parsed_start is None:
             return []
 
+        phase_start = parsed_start.astimezone(timezone.utc)
         stages: list[SleepStage] = []
 
-        phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
-
-        for stage, group in groupby(sleep_phase_5_min, lambda x: SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
+        for stage, group in groupby(hypnogram, lambda x: SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
             occurrences = len(list(group))
-            stages.append(
-                SleepStage(
-                    stage=stage, start_time=phase_start, end_time=phase_start + timedelta(minutes=5 * occurrences)
-                )
-            )
-            phase_start += timedelta(minutes=5 * occurrences)
+            phase_end = phase_start + timedelta(seconds=epoch_seconds * occurrences)
+            stages.append(SleepStage(stage=stage, start_time=phase_start, end_time=phase_end))
+            phase_start = phase_end
 
         return stages
 
@@ -615,7 +649,11 @@ class Oura247Data(Base247DataTemplate):
                 except (ValueError, AttributeError):
                     pass
 
-            sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
+            # Prefer the 30-second hypnogram; fall back to the coarser 5-minute one.
+            if sleep.sleep_phase_30_sec:
+                sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_30_sec, 30, start_time)
+            else:
+                sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, 300, start_time)
 
             internal_id = uuid4()
 
@@ -1020,8 +1058,8 @@ class Oura247Data(Base247DataTemplate):
         while chunk_start < end_utc:
             chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS), end_utc)
             params = {
-                "start_datetime": chunk_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "end_datetime": chunk_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "start_datetime": to_rfc3339(chunk_start),
+                "end_datetime": to_rfc3339(chunk_end),
             }
             results.extend(self._paginate(db, user_id, "/v2/usercollection/heartrate", params))
             chunk_start = chunk_end

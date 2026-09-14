@@ -136,6 +136,72 @@ class TestUltrahumanSleepData:
         assert normalized["duration_seconds"] == 0
         assert normalized["efficiency_percent"] is None
 
+    def test_normalize_sleep_parses_sleep_graph_stages(self, db: Session) -> None:
+        """sleep_graph.data intervals are parsed into canonical SleepStage objects."""
+        from app.constants.sleep import SleepStageType
+
+        user = UserFactory()
+        oauth = UltrahumanOAuth(
+            user_repo=UserRepository(User),
+            connection_repo=UserConnectionRepository(),
+            provider_name="ultrahuman",
+            api_base_url="https://partner.ultrahuman.com",
+        )
+        data_247 = Ultrahuman247Data(
+            provider_name="ultrahuman",
+            api_base_url="https://partner.ultrahuman.com",
+            oauth=oauth,
+        )
+
+        raw_sleep = {
+            "ultrahuman_date": "2025-01-14",
+            "bedtime_start": 1736816400,
+            "bedtime_end": 1736820000,
+            "sleep_graph": {
+                "data": [
+                    # deliberately out of order to verify sorting
+                    {"start": 1736817000, "end": 1736817600, "type": "deep_sleep"},
+                    {"start": 1736816400, "end": 1736817000, "type": "awake"},
+                    {"start": 1736817600, "end": 1736818200, "type": "rem_sleep"},
+                    {"start": 1736818200, "end": 1736818800, "type": "somethingelse"},  # unknown → UNKNOWN
+                    {"start": 1736818800, "type": "light_sleep"},  # missing end → skipped
+                ],
+            },
+        }
+
+        normalized = data_247.normalize_sleep(raw_sleep, user.id)
+        stages = normalized["stage_timestamps"]
+
+        # 4 valid intervals (the missing-end one is skipped), sorted by start_time
+        assert [s.stage for s in stages] == [
+            SleepStageType.AWAKE,
+            SleepStageType.DEEP,
+            SleepStageType.REM,
+            SleepStageType.UNKNOWN,
+        ]
+        assert stages[0].start_time.tzinfo is not None
+        assert stages[0].start_time < stages[1].start_time
+        assert stages[1].start_time == stages[0].end_time
+
+    def test_normalize_sleep_without_sleep_graph_yields_no_stages(self, db: Session) -> None:
+        """A payload with no sleep_graph produces an empty stage list, not an error."""
+        user = UserFactory()
+        oauth = UltrahumanOAuth(
+            user_repo=UserRepository(User),
+            connection_repo=UserConnectionRepository(),
+            provider_name="ultrahuman",
+            api_base_url="https://partner.ultrahuman.com",
+        )
+        data_247 = Ultrahuman247Data(
+            provider_name="ultrahuman",
+            api_base_url="https://partner.ultrahuman.com",
+            oauth=oauth,
+        )
+
+        normalized = data_247.normalize_sleep({"ultrahuman_date": "2025-01-14"}, user.id)
+
+        assert normalized["stage_timestamps"] == []
+
 
 class TestUltrahumanRecoveryData:
     """Tests for Ultrahuman recovery data handling."""

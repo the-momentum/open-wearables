@@ -491,7 +491,16 @@ def sample_ultrahuman_api_response() -> dict:
                                 "stage_time": 2100,
                             },
                         ],
-                        "sleep_graph": [],
+                        "sleep_graph": {
+                            "title": "Time In Bed",
+                            "data": [
+                                {"start": 1705287600, "end": 1705288200, "type": "awake"},
+                                {"start": 1705288200, "end": 1705291800, "type": "light_sleep"},
+                                {"start": 1705291800, "end": 1705295400, "type": "deep_sleep"},
+                                {"start": 1705295400, "end": 1705299000, "type": "rem_sleep"},
+                                {"start": 1705299000, "end": 1705314000, "type": "light_sleep"},
+                            ],
+                        },
                         "movement_graph": [],
                         "hr_graph": [],
                         "hrv_graph": [],

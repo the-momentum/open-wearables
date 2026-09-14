@@ -194,6 +194,11 @@ services:
     container_name: frontend__open-wearables
     image: open-wearables-frontend:dev
     pull_policy: never
+    env_file:
+      # .env.example supplies the defaults; .env overrides it when present.
+      - ./frontend/.env.example
+      - path: ./frontend/.env
+        required: false
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

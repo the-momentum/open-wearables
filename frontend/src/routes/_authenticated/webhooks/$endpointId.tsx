@@ -118,7 +118,7 @@ function WebhookDetailPage() {
           </Button>
           <Button
             variant="outline"
-            className="text-[hsl(var(--destructive-muted))] border-[hsl(var(--destructive-muted)/0.3)] hover:bg-[hsl(var(--destructive-muted)/0.1)]"
+            className="text-destructive-muted border-destructive-muted/30 hover:bg-destructive-muted/10"
             onClick={() => setIsDeleteOpen(true)}
           >
             <Trash2 className="h-4 w-4" />
@@ -173,7 +173,7 @@ function WebhookDetailPage() {
                   data: {
                     url: data.url,
                     description: data.description ?? null,
-                    filter_types: data.filter_types ?? null,
+                    filter_types: data.filter_types,
                     user_id: data.user_id ?? null,
                   },
                 })

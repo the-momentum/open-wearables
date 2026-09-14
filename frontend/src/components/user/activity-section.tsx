@@ -19,7 +19,7 @@ import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
-import { SourceBadge } from '@/components/common/source-badge';
+import { DataSourceInfo } from '@/components/common/data-source-info';
 import { SectionHeader } from '@/components/common/section-header';
 import {
   ChartContainer,
@@ -69,8 +69,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Total Steps',
     shortLabel: 'Steps',
     icon: Footprints,
-    color: 'text-[hsl(var(--success-muted))]',
-    bgColor: 'bg-[hsl(var(--success-muted)/0.1)]',
+    color: 'text-success-muted',
+    bgColor: 'bg-success-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
     getValue: (stats) => stats.totalSteps,
     formatValue: formatNumber,
@@ -134,8 +134,8 @@ const METRICS: MetricDefinition[] = [
     label: 'Floors Climbed',
     shortLabel: 'Floors',
     icon: TrendingUp,
-    color: 'text-[hsl(var(--warning-muted))]',
-    bgColor: 'bg-[hsl(var(--warning-muted)/0.1)]',
+    color: 'text-warning-muted',
+    bgColor: 'bg-warning-muted/10',
     glowColor: 'shadow-[0_0_15px_rgba(245,158,11,0.5)]',
     getValue: (stats) => stats.totalFloorsClimbed,
     formatValue: formatNumber,
@@ -194,81 +194,82 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
       {/* Main row - always visible */}
       <button
         onClick={() => hasDetails && setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center text-left"
+        className="w-full px-4 py-3 flex flex-col gap-1.5 text-left"
         disabled={!hasDetails}
       >
-        {/* Date */}
-        <div className="w-28 flex-shrink-0">
-          <p className="text-sm font-medium text-foreground">
-            {format(parseApiDate(summary.date), 'EEE, MMM d')}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {format(parseApiDate(summary.date), 'yyyy')}
-          </p>
-          {summary.source?.provider && (
-            <SourceBadge provider={summary.source.provider} className="mt-1" />
+        <div className="w-full flex items-center">
+          {/* Date */}
+          <div className="w-28 flex-shrink-0">
+            <p className="text-sm font-medium text-foreground">
+              {format(parseApiDate(summary.date), 'EEE, MMM d')}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {format(parseApiDate(summary.date), 'yyyy')}
+            </p>
+          </div>
+
+          {/* Stats - evenly spaced */}
+          <div className="flex-1 flex items-center justify-around">
+            {/* Steps */}
+            <div className="flex items-center gap-2">
+              <Footprints className="h-4 w-4 text-success-muted" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {formatNumber(summary.steps)}
+                </p>
+                <p className="text-xs text-muted-foreground">Steps</p>
+              </div>
+            </div>
+
+            {/* Calories */}
+            <div className="flex items-center gap-2">
+              <Flame className="h-4 w-4 text-orange-400" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {formatNumber(summary.active_calories_kcal)}
+                </p>
+                <p className="text-xs text-muted-foreground">Calories</p>
+              </div>
+            </div>
+
+            {/* Avg Heart Rate */}
+            <div className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-rose-400" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {summary.heart_rate?.avg_bpm
+                    ? `${Math.round(summary.heart_rate.avg_bpm)} bpm`
+                    : '-'}
+                </p>
+                <p className="text-xs text-muted-foreground">Avg HR</p>
+              </div>
+            </div>
+
+            {/* Active Time */}
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 text-sky-400" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {formatMinutes(summary.active_minutes)}
+                </p>
+                <p className="text-xs text-muted-foreground">Active</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Expand indicator */}
+          {hasDetails && (
+            <div className="w-8 flex-shrink-0 flex justify-end">
+              {isExpanded ? (
+                <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              )}
+            </div>
           )}
         </div>
 
-        {/* Stats - evenly spaced */}
-        <div className="flex-1 flex items-center justify-around">
-          {/* Steps */}
-          <div className="flex items-center gap-2">
-            <Footprints className="h-4 w-4 text-[hsl(var(--success-muted))]" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {formatNumber(summary.steps)}
-              </p>
-              <p className="text-xs text-muted-foreground">Steps</p>
-            </div>
-          </div>
-
-          {/* Calories */}
-          <div className="flex items-center gap-2">
-            <Flame className="h-4 w-4 text-orange-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {formatNumber(summary.active_calories_kcal)}
-              </p>
-              <p className="text-xs text-muted-foreground">Calories</p>
-            </div>
-          </div>
-
-          {/* Avg Heart Rate */}
-          <div className="flex items-center gap-2">
-            <Heart className="h-4 w-4 text-rose-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {summary.heart_rate?.avg_bpm
-                  ? `${Math.round(summary.heart_rate.avg_bpm)} bpm`
-                  : '-'}
-              </p>
-              <p className="text-xs text-muted-foreground">Avg HR</p>
-            </div>
-          </div>
-
-          {/* Active Time */}
-          <div className="flex items-center gap-2">
-            <Timer className="h-4 w-4 text-sky-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {formatMinutes(summary.active_minutes)}
-              </p>
-              <p className="text-xs text-muted-foreground">Active</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Expand indicator */}
-        {hasDetails && (
-          <div className="w-8 flex-shrink-0 flex justify-end">
-            {isExpanded ? (
-              <ChevronUp className="h-5 w-5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
-            )}
-          </div>
-        )}
+        <DataSourceInfo source={summary.source} />
       </button>
 
       {/* Expanded details */}
@@ -491,6 +492,7 @@ export function ActivitySection({
                         content={<ChartTooltipContent />}
                       />
                       <Bar
+                        isAnimationActive={false}
                         dataKey="value"
                         fill="var(--color-value)"
                         radius={[4, 4, 0, 0]}

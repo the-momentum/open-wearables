@@ -1,3 +1,5 @@
+import httpx
+
 from app.config import settings
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
@@ -39,7 +41,6 @@ class PolarOAuth(BaseOAuthTemplate):
 
     def _register_user(self, access_token: str, member_id: str) -> None:
         """Registers the user with Polar API."""
-        import httpx
 
         try:
             register_url = f"{self.api_base_url}/v3/users"
@@ -54,3 +55,16 @@ class PolarOAuth(BaseOAuthTemplate):
         except Exception:
             # Don't fail the entire flow - user might already be registered
             pass
+
+    def deregister_user(self, access_token: str, provider_user_id: str | None = None) -> None:
+        """Call Polar's user deregistration endpoint to remove the app association."""
+
+        if not provider_user_id:
+            raise ValueError("Polar deregistration requires provider_user_id")
+
+        deregister_url = f"{self.api_base_url}/v3/users/{provider_user_id}"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+        }
+        response = httpx.delete(deregister_url, headers=headers, timeout=10.0)
+        response.raise_for_status()

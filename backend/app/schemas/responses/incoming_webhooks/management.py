@@ -7,7 +7,7 @@ inbound event processing.
 
 from enum import StrEnum
 
-from pydantic import BaseModel, SerializeAsAny, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, model_serializer, model_validator
 
 from app.schemas.providers.polar.webhook import PolarWebhookEventType
 
@@ -75,6 +75,25 @@ class StravaWebhookSubscription(ProviderWebhookSubscription):
     created_at: str
     updated_at: str
     resource_state: int | None = None
+
+
+class GoogleSubscriberConfig(BaseModel):
+    """One dataType group of a Google Health API subscriber."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    data_types: list[str] = Field(default_factory=list, alias="dataTypes")
+    subscription_create_policy: str | None = Field(default=None, alias="subscriptionCreatePolicy")
+
+
+class GoogleWebhookSubscription(ProviderWebhookSubscription):
+    """A single Google Health API subscriber as returned by GET /v4/projects/{project}/subscribers."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    endpoint_uri: str = Field(alias="endpointUri")
+    subscriber_configs: list[GoogleSubscriberConfig] = Field(default_factory=list, alias="subscriberConfigs")
 
 
 class WebhookSubscriptionsResponse(BaseModel):

@@ -35,23 +35,31 @@ Follow our [Quickstart Guide](/quickstart) to set up Open Wearables in minutes.
 
 #### Which wearable providers are supported?
 
-Currently, Open Wearables supports:
-- Suunto
-- Garmin
-- Polar
+Open Wearables supports a growing list of providers.
 
-More providers are being added regularly. Check the [provider setup guides](/providers/supported) for the latest list, or view the current status of provider requests and implementations on [GitHub Issues](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue+label%3Aprovider-request) tagged with `provider-request`.
+**Cloud-based (OAuth):** Oura, Whoop, Strava, Fitbit, Ultrahuman, Polar, Suunto, Garmin, and Google Health.
+
+**SDK-based:** Apple Health, Google Health Connect, and Samsung Health.
+
+More providers are being added regularly. See the [supported providers guide](/providers/supported) for the full list and per-provider setup instructions, the [coverage matrix](/providers/coverage) for exactly which data types each provider exposes, or the current status of provider requests on [GitHub Issues](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue+label%3Aprovider-request) tagged with `provider-request`.
 
 #### Can I self-host Open Wearables?
 
 Yes! Open Wearables is designed to be self-hosted. You can deploy it on your own infrastructure with full data control.
 
+#### How can I deploy Open Wearables?
+
+There are a few ways, depending on how much you want to manage yourself:
+
+- **[Railway](/deployment/railway)** - one-click deployment and the easiest way to get started. The template provisions the whole stack with sensible defaults, no manual infrastructure setup.
+- **[Docker](/deployment/docker)** - deploy anywhere using our official Docker images. Best if you want to run on your own infrastructure and are comfortable managing it yourself.
+- **[Custom deployment](https://openwearables.io/custom-deployment)** - prefer not to run it yourself? We also offer a managed setup where our team deploys and configures an instance on your infrastructure for you.
+
 #### How do I integrate Open Wearables into my application?
 
 You can integrate Open Wearables using:
 - The unified REST API
-- Embeddable widgets for easy integration (coming soon)
-- Webhook notifications for real-time updates (coming soon)
+- [Webhook notifications](/api-reference/guides/webhooks) for real-time updates (e.g. `connection.created`, new data events)
 
 Check the [API Reference](/api-reference/introduction) for detailed integration guides.
 

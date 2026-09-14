@@ -102,6 +102,38 @@ class TestEventRecordRepository:
         assert data_source.source == "garmin"
         assert data_source.device_model == "device456"
 
+    def test_create_auto_creates_mapping_infers_device_type_from_source(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Providers like Oura never report device_model for sleep — device_type must still
+        be inferred from the source string (e.g. "oura" -> ring) when auto-creating the mapping.
+        """
+        user = UserFactory()
+        now = datetime.now(timezone.utc)
+
+        event_data = EventRecordCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            device_model=None,
+            data_source_id=None,
+            category="sleep",
+            type="sleep_session",
+            source_name="Oura",
+            duration_seconds=25000,
+            start_datetime=now,
+            end_datetime=now + timedelta(seconds=25000),
+        )
+
+        result = event_repo.create(db, event_data)
+
+        from app.models import DataSource
+        from app.repositories.data_source_repository import DataSourceRepository
+
+        data_source = DataSourceRepository(DataSource).get(db, result.data_source_id)
+        assert data_source is not None
+        assert data_source.device_type == "ring"
+
     def test_get(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test retrieving an event record by ID."""
         # Arrange
@@ -393,54 +425,6 @@ class TestEventRecordRepository:
         assert result_events[0].id == event2.id  # 1800
         assert result_events[1].id == event3.id  # 3600
         assert result_events[2].id == event1.id  # 7200
-
-    def test_get_count_by_workout_type(self, db: Session, event_repo: EventRecordRepository) -> None:
-        """Test aggregating workout counts by type."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-        EventRecordFactory(mapping=mapping, category="sleep", type_="deep")  # Should be excluded
-
-        # Act
-        results = event_repo.get_count_by_workout_type(db)
-
-        # Assert
-        # Convert to dict for easier testing
-        counts_dict = dict(results)
-        assert counts_dict.get("running", 0) >= 3
-        assert counts_dict.get("cycling", 0) >= 2
-        # Sleep should not be included
-        assert "deep" not in counts_dict or counts_dict["deep"] == 0
-
-    def test_get_count_by_workout_type_ordered(self, db: Session, event_repo: EventRecordRepository) -> None:
-        """Test that workout type counts are ordered by count descending."""
-        # Arrange
-        mapping = DataSourceFactory()
-
-        # Create more running than cycling workouts
-        for _ in range(5):
-            EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        for _ in range(2):
-            EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-
-        # Act
-        results = event_repo.get_count_by_workout_type(db)
-
-        # Assert
-        # Find our test types
-        test_types = [
-            (workout_type, count) for workout_type, count in results if workout_type in ["running", "cycling"]
-        ]
-        assert len(test_types) >= 2
-        # Running should come first (higher count)
-        running_idx = next(i for i, (t, _) in enumerate(test_types) if t == "running")
-        cycling_idx = next(i for i, (t, _) in enumerate(test_types) if t == "cycling")
-        assert running_idx < cycling_idx
 
     def test_get_records_filters_by_user_id(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that records are filtered by user ID."""

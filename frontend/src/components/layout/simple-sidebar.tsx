@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import {
   Home,
@@ -9,12 +10,22 @@ import {
   Webhook,
   RefreshCw,
   LayoutGrid,
+  Menu,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ROUTES } from '@/lib/constants/routes';
 import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 
 const menuItems = [
   {
@@ -56,12 +67,12 @@ const menuItems = [
   },
 ];
 
-export function SimpleSidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
   const { logout, isLoggingOut } = useAuth();
 
   return (
-    <aside className="relative w-64 bg-black flex flex-col border-r border-border/40">
+    <>
       {/* Header */}
       <div className="p-4 border-b border-border/40">
         <img src={logotype} alt="Open Wearables" className="h-auto" />
@@ -79,6 +90,7 @@ export function SimpleSidebar() {
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={onNavigate}
                 className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-card/40 hover:text-foreground transition-all duration-200"
               >
                 <item.icon className="h-4 w-4 text-muted-foreground" />
@@ -92,6 +104,7 @@ export function SimpleSidebar() {
             <Link
               key={item.title}
               to={item.url}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200',
                 isActive
@@ -107,7 +120,7 @@ export function SimpleSidebar() {
               />
               <span>{item.title}</span>
               {item.badge ? (
-                <span className="ml-auto rounded-full border border-[hsl(var(--warning-muted)/0.3)] bg-[hsl(var(--warning-muted)/0.1)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--warning-muted))]">
+                <span className="ml-auto rounded-full border border-warning-muted/30 bg-warning-muted/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning-muted">
                   {item.badge}
                 </span>
               ) : null}
@@ -125,7 +138,7 @@ export function SimpleSidebar() {
           variant="ghost"
           onClick={() => logout()}
           disabled={isLoggingOut}
-          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-[hsl(var(--destructive-muted))]"
+          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-destructive-muted"
         >
           <LogOut className="h-4 w-4" />
           {isLoggingOut ? 'Logging out...' : 'Logout'}
@@ -134,6 +147,46 @@ export function SimpleSidebar() {
           v{__APP_VERSION__}
         </p>
       </div>
+    </>
+  );
+}
+
+export function SimpleSidebar() {
+  const isMobile = useIsMobile();
+  const [openMobile, setOpenMobile] = useState(false);
+
+  if (isMobile) {
+    return (
+      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border/40 bg-black px-4 py-3 md:hidden">
+        <img src={logotype} alt="Open Wearables" className="h-6" />
+        <Sheet open={openMobile} onOpenChange={setOpenMobile}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Open menu">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent
+            side="left"
+            className="w-64 bg-black p-0 text-sidebar-foreground"
+          >
+            <SheetHeader className="sr-only">
+              <SheetTitle>Navigation</SheetTitle>
+              <SheetDescription>
+                Open Wearables navigation menu
+              </SheetDescription>
+            </SheetHeader>
+            <div className="flex h-full w-full flex-col">
+              <SidebarContent onNavigate={() => setOpenMobile(false)} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  }
+
+  return (
+    <aside className="relative hidden w-64 bg-black flex-col border-r border-border/40 md:flex">
+      <SidebarContent />
     </aside>
   );
 }

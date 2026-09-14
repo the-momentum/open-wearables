@@ -95,39 +95,20 @@ export const healthService = {
   },
 
   /**
-   * Retry backfill for a specific failed data type
-   * @param userId - User UUID
-   * @param typeName - Data type to retry (e.g., "sleeps", "dailies", "hrv")
-   */
-  async retryGarminBackfill(
-    userId: string,
-    typeName: string
-  ): Promise<{ success: boolean; type: string; status: string }> {
-    return apiClient.post<{ success: boolean; type: string; status: string }>(
-      `/api/v1/providers/garmin/users/${userId}/backfill/${typeName}/retry`
-    );
-  },
-
-  /**
-   * Cancel an in-progress Garmin backfill
-   * @param userId - User UUID
-   */
-  async cancelGarminBackfill(
-    userId: string
-  ): Promise<{ success: boolean; user_id: string; message: string }> {
-    return apiClient.post<{
-      success: boolean;
-      user_id: string;
-      message: string;
-    }>(`/api/v1/providers/garmin/users/${userId}/backfill/cancel`);
-  },
-
-  /**
    * Disconnect a user from a provider
    */
   async disconnectProvider(userId: string, provider: string): Promise<void> {
     await apiClient.delete(
       API_ENDPOINTS.userConnectionDisconnect(userId, provider)
+    );
+  },
+
+  /**
+   * Delete all of a user's data for a provider (also revokes the connection)
+   */
+  async purgeProviderData(userId: string, provider: string): Promise<void> {
+    await apiClient.delete(
+      API_ENDPOINTS.userConnectionPurgeData(userId, provider)
     );
   },
 

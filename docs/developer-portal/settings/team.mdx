@@ -1,0 +1,68 @@
+---
+title: "Team"
+sidebarTitle: "Team"
+description: "Invite and remove developers, manage pending invitations, and understand the single-permission access model of an Open Wearables deployment from Settings → Team in the developer portal."
+keywords: ["invite team member", "developer accounts", "developer roles", "admin account", "access model", "invitation link"]
+"og:title": "Team | Open Wearables"
+"og:description": "Invite and remove developers, manage pending invitations, and understand the single-permission access model of an Open Wearables deployment from Settings → Team in the developer portal."
+"og:url": "https://docs.openwearables.io/developer-portal/settings/team"
+"og:type": "article"
+"twitter:title": "Team | Open Wearables"
+"twitter:description": "Invite and remove developers, manage pending invitations, and understand the single-permission access model of an Open Wearables deployment from Settings → Team in the developer portal."
+"twitter:card": "summary_large_image"
+---
+
+**Settings → Team** manages the developer accounts that can sign in to the developer portal.
+
+## Inviting a developer
+
+Click **Invite Member** and enter an email address. Open Wearables creates the invitation and queues an email with a link to create the account.
+
+Invitation links expire after the number of days set in `INVITATION_EXPIRE_DAYS` (default 7).
+
+## Email delivery
+
+Invitation emails are sent through [Resend](https://resend.com). Without it, invitations are still created but no email goes out. Configure these variables in the backend environment:
+
+```bash
+RESEND_API_KEY=re_...
+EMAIL_FROM_ADDRESS=invites@yourdomain.com
+EMAIL_FROM_NAME="Open Wearables"
+FRONTEND_URL=https://portal.yourdomain.com
+```
+
+- `RESEND_API_KEY` - API key from the Resend dashboard. Required for any email to be sent.
+- `EMAIL_FROM_ADDRESS` - sender address. It must belong to a domain verified in Resend. For local testing you can use `onboarding@resend.dev`, which Resend allows only for sending to your own account email.
+- `EMAIL_FROM_NAME` - display name of the sender.
+- `FRONTEND_URL` - public URL of the developer portal. It is used to build the acceptance link inside the email, so with the default `http://localhost:3000` the link only works on your machine.
+
+Delivery is handled by a Celery task, so the worker must be running. Failed sends are retried up to `EMAIL_MAX_RETRIES` times (default 5), after which the invitation is marked **failed** and can be re-sent from the developer portal.
+
+<Note>
+If `RESEND_API_KEY`, `EMAIL_FROM_ADDRESS`, or `EMAIL_FROM_NAME` is missing, the invitation stays **pending** and the backend logs a warning instead of sending. `EMAIL_FROM_NAME` defaults to "Open Wearables", so in practice only the first two need to be set. Use **Copy invite link** on the pending invitation and share the link manually.
+</Note>
+
+## Pending Invitations
+
+Invitations that have not been accepted yet appear in a table with the email, sent date, expiry date, and delivery status. For each one you can:
+
+- **Copy invite link** - copy the acceptance URL to share it manually.
+- **Resend invitation** - generates a new link, extends the expiry, and sends the email again. The previous link stops working.
+- **Revoke invitation** - invalidate the link. The invitee can no longer join with it.
+
+## Developers
+
+The **Developers** table lists every account with access to the deployment, with name, email, ID, and creation date. **Copy ID** copies the developer UUID, which is useful when reading audit fields such as the creator of an API key. **Remove team member** deletes the account. This cannot be undone.
+
+## Access model
+
+Open Wearables has a single permission level for developer accounts.
+
+- **Every developer account is an administrator** of the deployment. There are no roles. All developers see the same settings and can perform the same actions.
+- **There is no self-registration.** The first account is seeded from `ADMIN_EMAIL` and `ADMIN_PASSWORD` on first startup. Every further account can only be created through an invitation sent by an existing developer.
+- Any developer can invite new team members, revoke pending invitations, and remove other developers.
+- API keys and SDK application credentials belong to the deployment, not to the developer who created them. See [Credentials](/developer-portal/settings/credentials#keys-are-shared-across-the-deployment).
+
+<Note>
+One developer managing keys, invitations, or team members created by another developer is the intended behavior of this model, not a vulnerability.
+</Note>

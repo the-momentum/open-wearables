@@ -1,9 +1,14 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+_DESCRIPTION_DOC: str = (
+    "Optional human-readable clarification of what this data type represents. Empty when none is defined."
+)
 
 
 class TimeseriesMetric(BaseModel):
     code: str
     unit: str
+    description: str = Field(default="", description=_DESCRIPTION_DOC)
     providers: list[str]
 
 
@@ -29,6 +34,7 @@ class MenstrualCycleField(BaseModel):
 
 class HealthScore(BaseModel):
     code: str
+    description: str = Field(default="", description=_DESCRIPTION_DOC)
     providers: list[str]
 
 

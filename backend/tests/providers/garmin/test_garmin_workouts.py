@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import WorkoutType
+from app.schemas.enums import EntrySource, WorkoutType
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -149,6 +149,39 @@ class TestGarminWorkouts:
 
         # Should handle zero values
         assert metrics["steps_count"] == 0
+
+    def test_build_metrics_entry_source_and_label(self, garmin_workouts: GarminWorkouts) -> None:
+        """manual=True is a hand-typed Connect entry -> MANUAL; isWebUpload=True is a real
+        file from another device, still measured data -> AUTOMATIC."""
+        base = {
+            "userId": "user_123",
+            "activityId": "act_manual",
+            "activityType": "RUNNING",
+            "startTimeInSeconds": 1705309200,
+            "durationInSeconds": 3600,
+            "activityName": "Trail Run",
+        }
+
+        manual = GarminActivityJSON(**base, manual=True)
+        assert garmin_workouts._build_metrics(manual)["entry_source"] == EntrySource.MANUAL
+
+        web_upload = GarminActivityJSON(**base, isWebUpload=True)
+        assert garmin_workouts._build_metrics(web_upload)["entry_source"] == EntrySource.AUTOMATIC
+
+        manual_takes_priority = GarminActivityJSON(**base, manual=True, isWebUpload=True)
+        assert garmin_workouts._build_metrics(manual_takes_priority)["entry_source"] == EntrySource.MANUAL
+
+        auto = GarminActivityJSON(**base, manual=False, isWebUpload=False)
+        assert garmin_workouts._build_metrics(auto)["entry_source"] == EntrySource.AUTOMATIC
+
+        # The shape every real `activities` push has.
+        real_push = GarminActivityJSON(**base, isWebUpload=False)
+        assert garmin_workouts._build_metrics(real_push)["entry_source"] == EntrySource.AUTOMATIC
+
+        no_flags = GarminActivityJSON(**base)
+        assert "entry_source" not in garmin_workouts._build_metrics(no_flags)
+
+        assert garmin_workouts._build_metrics(manual)["label"] == "Trail Run"
 
     def test_normalize_workout(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
         """Test normalizing Garmin activity to event record."""

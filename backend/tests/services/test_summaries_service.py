@@ -263,6 +263,45 @@ class TestGetSleepSummaries:
 
 
 # ---------------------------------------------------------------------------
+# get_recovery_summaries
+# ---------------------------------------------------------------------------
+
+
+class TestGetRecoverySummaries:
+    def test_rmssd_input_is_exposed_as_rmssd_not_sdnn(
+        self, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row = {
+            "recovery_date": date(2026, 1, 2),
+            "provider": "whoop",
+            "source": "whoop",
+            "device_model": "WHOOP",
+            "device_type": "band",
+            "record_id": uuid4(),
+            "recorded_at": _dt("2026-01-02T00:00:00+00:00"),
+            "recovery_score": 74,
+            "resting_heart_rate": 51,
+            "hrv_rmssd_milli": 63.2,
+            "spo2_percentage": 98.4,
+        }
+        monkeypatch.setattr(service.health_score_repo, "get_recovery_summaries", lambda *_: [row])
+        monkeypatch.setattr(service, "_filter_by_priority", lambda *_args, **_kwargs: [row])
+
+        result = service.get_recovery_summaries(
+            db_session=None,
+            user_id=uuid4(),
+            start_date=_dt("2026-01-01T00:00:00+00:00"),
+            end_date=_dt("2026-01-03T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+
+        summary = result.data[0]
+        assert summary.avg_hrv_sdnn_ms is None
+        assert summary.avg_hrv_rmssd_ms == 63.2
+
+
+# ---------------------------------------------------------------------------
 # get_activity_summaries
 # ---------------------------------------------------------------------------
 

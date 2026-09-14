@@ -885,7 +885,7 @@ export function SeedDataTab() {
                 </div>
               </div>
               {sleepCountExceedsDays && (
-                <p className="text-xs text-[hsl(var(--destructive-muted))] mt-2">
+                <p className="text-xs text-destructive-muted mt-2">
                   Sleep count ({profile.sleep_config.count}) exceeds the number
                   of days in the selected range ({sleepDays}). Each day can have
                   at most one sleep record.
@@ -1071,7 +1071,7 @@ export function SeedDataTab() {
               </div>
 
               {stageDistInvalid && (
-                <p className="text-xs text-[hsl(var(--destructive-muted))] mt-2">
+                <p className="text-xs text-destructive-muted mt-2">
                   Sum of max percentages ({stageMaxSum}%) exceeds 95% - not
                   enough room for light sleep.
                 </p>

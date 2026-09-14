@@ -69,8 +69,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--s3-endpoint-url",
-        default=os.environ.get("RAW_PAYLOAD_S3_ENDPOINT_URL"),
-        help="S3 endpoint URL for S3-compatible storage",
+        default=os.environ.get("RAW_PAYLOAD_S3_ENDPOINT_URL") or os.environ.get("AWS_ENDPOINT_URL"),
+        help="S3 endpoint URL (RAW_PAYLOAD_S3_ENDPOINT_URL or AWS_ENDPOINT_URL)",
     )
     parser.add_argument(
         "--aws-region", default=os.environ.get("AWS_REGION", "eu-north-1"), help="AWS region (default: eu-north-1)"

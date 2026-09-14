@@ -316,7 +316,7 @@ export function DataLifecycleTab() {
 
       {/* Policy Warning */}
       {policyWarning && (
-        <div className="flex items-center gap-2 text-[hsl(var(--warning-muted))] bg-[hsl(var(--warning-muted)/0.1)] border border-[hsl(var(--warning-muted)/0.2)] rounded-lg px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 text-warning-muted bg-warning-muted/10 border border-warning-muted/20 rounded-lg px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {policyWarning}
         </div>
@@ -324,7 +324,7 @@ export function DataLifecycleTab() {
 
       {/* Validation Error */}
       {validationError && (
-        <div className="flex items-center gap-2 text-[hsl(var(--warning-muted))] bg-[hsl(var(--warning-muted)/0.1)] border border-[hsl(var(--warning-muted)/0.2)] rounded-lg px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 text-warning-muted bg-warning-muted/10 border border-warning-muted/20 rounded-lg px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {validationError}
         </div>
@@ -411,24 +411,24 @@ const VOLUME_COMPRESSION = 0.002;
 const GROWTH_CONFIG = {
   bounded: {
     label: 'O(1) — Bounded',
-    color: 'text-[hsl(var(--success-muted))]',
-    bg: 'bg-[hsl(var(--success-muted)/0.1)] border-[hsl(var(--success-muted)/0.2)]',
+    color: 'text-success-muted',
+    bg: 'bg-success-muted/10 border-success-muted/20',
     chartColor: '#34d399',
     description:
       'Storage is capped. Old data is deleted after the retention window and total size stabilises.',
   },
   linear_efficient: {
     label: 'O(n) — Linear (efficient)',
-    color: 'text-[hsl(var(--warning-muted))]',
-    bg: 'bg-[hsl(var(--warning-muted)/0.1)] border-[hsl(var(--warning-muted)/0.2)]',
+    color: 'text-warning-muted',
+    bg: 'bg-warning-muted/10 border-warning-muted/20',
     chartColor: '#fbbf24',
     description:
       'Live data is bounded by the archive window. Daily aggregates accumulate indefinitely at ~1/500 of the raw rate.',
   },
   linear: {
     label: 'O(n) — Linear',
-    color: 'text-[hsl(var(--destructive-muted))]',
-    bg: 'bg-[hsl(var(--destructive-muted)/0.1)] border-[hsl(var(--destructive-muted)/0.2)]',
+    color: 'text-destructive-muted',
+    bg: 'bg-destructive-muted/10 border-destructive-muted/20',
     chartColor: '#f87171',
     description:
       'All raw samples are kept forever. Storage grows linearly with time and connected devices.',

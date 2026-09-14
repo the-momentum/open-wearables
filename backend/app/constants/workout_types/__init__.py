@@ -5,10 +5,12 @@ from .apple_xml import get_activity_name as get_activity_name_apple_xml
 from .apple_xml import get_unified_workout_type as get_unified_apple_workout_type_xml
 from .fitbit import get_unified_workout_type as get_unified_fitbit_workout_type
 from .garmin import get_unified_workout_type as get_unified_garmin_workout_type
+from .google import get_unified_workout_type as get_unified_google_workout_type
 from .polar import get_unified_workout_type as get_unified_polar_workout_type
 from .strava import get_unified_workout_type as get_unified_strava_workout_type
 from .suunto import get_unified_workout_type as get_unified_suunto_workout_type
 from .whoop import get_unified_workout_type as get_unified_whoop_workout_type
+from .withings import get_unified_workout_type as get_unified_withings_workout_type
 
 __all__ = [
     "SDKWorkoutType",
@@ -17,9 +19,11 @@ __all__ = [
     "get_activity_name_apple_sdk",
     "get_unified_apple_workout_type_sdk",
     "get_unified_garmin_workout_type",
+    "get_unified_google_workout_type",
     "get_unified_polar_workout_type",
     "get_unified_suunto_workout_type",
     "get_unified_strava_workout_type",
     "get_unified_whoop_workout_type",
     "get_unified_fitbit_workout_type",
+    "get_unified_withings_workout_type",
 ]

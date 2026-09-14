@@ -1,11 +1,13 @@
+import { Info } from 'lucide-react';
 import { useState } from 'react';
 import { SourceBadge } from '@/components/common/source-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { CoverageResponse, TimeseriesCategory } from '@/lib/api';
 
 interface MatrixProps {
   providers: string[];
-  rows: { code: string; unit?: string; supportedBy: string[] }[];
+  rows: { code: string; unit?: string; description?: string; supportedBy: string[] }[];
 }
 
 function Matrix({ providers, rows }: MatrixProps) {
@@ -33,7 +35,22 @@ function Matrix({ providers, rows }: MatrixProps) {
             <tr key={row.code} className={i % 2 === 0 ? 'bg-zinc-900/20' : 'bg-transparent'}>
               <td className="sticky left-0 bg-inherit px-3 py-2 border-b border-zinc-800/40">
                 <div className="flex items-baseline gap-2">
-                  <code className="text-xs text-zinc-300 font-mono">{row.code}</code>
+                  {row.description ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 cursor-help"
+                        >
+                          <code className="text-xs text-zinc-300 font-mono">{row.code}</code>
+                          <Info aria-hidden="true" className="h-3 w-3 shrink-0 text-zinc-500" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">{row.description}</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <code className="text-xs text-zinc-300 font-mono">{row.code}</code>
+                  )}
                   {row.unit && (
                     <span className="text-[10px] text-zinc-400 bg-zinc-800 px-1 py-0.5 rounded">
                       {row.unit}
@@ -101,6 +118,7 @@ function TimeseriesTab({
             rows={cat.metrics.map((m) => ({
               code: m.code,
               unit: m.unit,
+              description: m.description,
               supportedBy: m.providers,
             }))}
           />
@@ -157,7 +175,11 @@ export function CoverageMatrix({ data }: Props) {
       <TabsContent value="scores">
         <Matrix
           providers={providers}
-          rows={health_scores.map((s) => ({ code: s.code, supportedBy: s.providers }))}
+          rows={health_scores.map((s) => ({
+            code: s.code,
+            description: s.description,
+            supportedBy: s.providers,
+          }))}
         />
       </TabsContent>
     </Tabs>

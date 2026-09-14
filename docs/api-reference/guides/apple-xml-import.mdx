@@ -13,10 +13,11 @@ keywords: ["apple health xml import", "apple health export api", "healthkit xml 
 
 ## Overview
 
-Import complete Apple Health data exports via XML files using one of two methods:
+Import complete Apple Health data exports via XML files using one of these methods:
 
-1. **S3 Presigned URL** (Recommended) - For large files, uses direct S3 upload. The frontend handles this automatically; the scripts below are for manual or testing purposes.
-2. **Direct Upload** - For smaller files or testing, uploads directly to the API
+1. **S3-compatible multipart upload** (Recommended) - For large files, uploads parts directly to an S3-compatible bucket (AWS S3 or self-hosted), reports progress, and explicitly queues processing.
+2. **S3 presigned POST with SNS** - AWS-only workflow for deployments configured with `APPLE_XML_UPLOAD_COMPLETION_MODE=sns`.
+3. **Direct Upload** - For smaller files or testing, uploads directly to the API
 
 ## Authentication
 
@@ -43,9 +44,11 @@ Authorization: Bearer eyJ...
 
 ## Endpoints
 
-## Method 1: S3 Presigned URL (Recommended)
+## Method 1: S3 Presigned POST (SNS mode only)
 
-Best for large files (10MB+). Uploads directly to S3, then processes asynchronously.
+Uploads directly to AWS S3. This workflow starts processing only when
+`APPLE_XML_UPLOAD_COMPLETION_MODE=sns` and the bucket publishes object-created events
+through SNS. In the default `client` mode, use the multipart workflow below.
 
 ### Step 1: Request Presigned URL
 
@@ -135,7 +138,7 @@ const presignedData = await response.json();
 </ParamField>
 
 <ParamField body="max_file_size" type="integer" default="52428800">
-  Maximum file size in bytes (1KB - 500MB). Default is 50MB.
+  Maximum file size in bytes (1KB - 5GiB). Default is 50MB.
 </ParamField>
 
 <ResponseExample>
@@ -217,10 +220,243 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
   **Important:** When uploading to S3 with presigned POST, you must include all `form_fields` as form data, and the `file` field must be last.
 </Note>
 
+## Method 1b: Multipart Upload (S3-compatible)
+
+The portal uploads large exports using **multipart upload**, which splits the file into
+parts uploaded in parallel via presigned URLs. It works identically against any
+S3-compatible bucket (AWS S3 or a self-hosted server), so a local deployment with no AWS
+account can still accept multi-gigabyte Apple Health exports through the UI.
+
+The flow is four calls (all authenticated, all under `/import/apple/xml/s3/multipart`):
+
+<Steps>
+  <Step title="create">
+    `POST .../multipart/create` with `{ "filename", "content_type", "file_size" }` →
+    returns `{ "upload_id", "key", "bucket", "part_size" }`. Split the file into parts of
+    `part_size` bytes (the last part may be smaller).
+  </Step>
+  <Step title="sign">
+    `POST .../multipart/sign` with `{ "key", "upload_id", "part_numbers": [1, 2, ...] }` →
+    returns a presigned `PUT` URL for each part.
+  </Step>
+  <Step title="upload parts">
+    `PUT` each part's bytes to its presigned URL. Capture the `ETag` response header of
+    every part.
+  </Step>
+  <Step title="complete">
+    `POST .../multipart/complete` with `{ "key", "upload_id", "parts": [{ "part_number", "etag" }] }`.
+    In the default **client** completion mode this also dispatches the import task and
+    returns a `task_id`. Use `POST .../multipart/abort` to discard an incomplete upload.
+  </Step>
+</Steps>
+
+<Info>
+  Multipart XML uploads accept files from 5 MiB through 5 GiB. The backend returns its
+  configured recommendation (`APPLE_XML_MULTIPART_PART_SIZE_BYTES`, 100 MiB by default)
+  from the create endpoint. Always use that returned `part_size` instead of hard-coding
+  it in a client.
+</Info>
+
+<Note>
+  Browser part uploads read the `ETag` from the `PUT` response, so the bucket's CORS policy
+  must allow `PUT` and **expose the `ETag` header** (`ExposeHeaders: ["ETag"]`).
+</Note>
+
+<Info>
+  **Completion mode** - the deployment's `APPLE_XML_UPLOAD_COMPLETION_MODE` controls how a
+  finished upload starts processing, and thus the `/complete` response you get: `client`
+  (default) dispatches the import from the `/complete` call and returns `202 Accepted` with
+  a `task_id`; `sns` instead waits for an S3 bucket event and `/complete` only finalizes the
+  object (`200 OK`). Only the selected mode dispatches, so a file is never processed twice.
+</Info>
+
+See the [AWS S3 setup guide](/dev-guides/aws-setup#step-6-update-environment-variables) for
+the storage environment variables - custom endpoints (any S3-compatible bucket), completion
+mode, and size limits - with their defaults.
+
+### Complete multipart example
+
+This script authenticates with an API key, creates and signs an upload, sends every
+part, captures its `ETag`, and completes the upload. If any step fails after creation,
+it makes a best-effort abort request so uploaded parts do not linger.
+
+```python upload_xml_multipart.py
+#!/usr/bin/env python3
+"""Upload an Apple Health export with the Open Wearables multipart API."""
+
+import math
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+import requests
+
+API_URL = os.getenv("OPEN_WEARABLES_API_URL", "http://localhost:8000")
+API_KEY = os.environ["OPEN_WEARABLES_API_KEY"]
+USER_ID = os.environ["OPEN_WEARABLES_USER_ID"]
+API_HEADERS = {"X-Open-Wearables-API-Key": API_KEY}
+
+
+def api_post(
+    path: str,
+    payload: dict[str, object],
+    expected: tuple[int, ...],
+) -> dict[str, Any]:
+    response = requests.post(
+        f"{API_URL}{path}",
+        headers=API_HEADERS,
+        json=payload,
+        timeout=30,
+    )
+    if response.status_code not in expected:
+        raise RuntimeError(f"{response.status_code}: {response.text}")
+    return response.json()
+
+
+def main(file_path: Path) -> None:
+    if not file_path.is_file():
+        raise FileNotFoundError(file_path)
+    if file_path.stat().st_size < 5 * 1024 * 1024:
+        raise ValueError("Multipart uploads require a file of at least 5 MiB")
+
+    base = f"/api/v1/users/{USER_ID}/import/apple/xml/s3/multipart"
+    created: dict[str, Any] | None = None
+    completion_submitted = False
+    try:
+        created = api_post(
+            f"{base}/create",
+            {
+                "filename": file_path.name,
+                "content_type": "application/xml",
+                "file_size": file_path.stat().st_size,
+            },
+            (201,),
+        )
+        part_size = created["part_size"]
+        part_count = math.ceil(file_path.stat().st_size / part_size)
+        signed = api_post(
+            f"{base}/sign",
+            {
+                "key": created["key"],
+                "upload_id": created["upload_id"],
+                "part_numbers": list(range(1, part_count + 1)),
+            },
+            (200,),
+        )
+        urls = {part["part_number"]: part["url"] for part in signed["urls"]}
+
+        completed_parts = []
+        with file_path.open("rb") as xml_file:
+            for part_number in range(1, part_count + 1):
+                body = xml_file.read(part_size)
+                upload = requests.put(urls[part_number], data=body, timeout=(10, 1800))
+                upload.raise_for_status()
+                etag = upload.headers.get("ETag")
+                if not etag:
+                    raise RuntimeError("Missing ETag; expose it in the bucket CORS policy")
+                completed_parts.append({"part_number": part_number, "etag": etag.strip()})
+                print(f"Uploaded part {part_number}/{part_count}")
+
+        # After this request starts, a lost response does not prove that queueing failed.
+        # Do not abort and race a completion worker whose response was lost.
+        completion_submitted = True
+        result = api_post(
+            f"{base}/complete",
+            {
+                "key": created["key"],
+                "upload_id": created["upload_id"],
+                "parts": completed_parts,
+            },
+            (200, 202),
+        )
+        print(f"{result['status']}: {result['key']}")
+        if result.get("task_id"):
+            print(f"Import task: {result['task_id']}")
+    except Exception:
+        if created is not None and not completion_submitted:
+            try:
+                api_post(
+                    f"{base}/abort",
+                    {"key": created["key"], "upload_id": created["upload_id"]},
+                    (200,),
+                )
+            except Exception as abort_error:
+                print(f"Warning: abort failed: {abort_error}", file=sys.stderr)
+        raise
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python upload_xml_multipart.py export.xml")
+    main(Path(sys.argv[1]))
+```
+
+Expected completion response in the default `client` mode:
+
+```json 202 Accepted
+{
+  "status": "processing",
+  "key": "user-id/raw/unique-export.xml",
+  "bucket": "open-wearables",
+  "task_id": "8d603f54-73e9-454e-bb31-4a3bd12a3f37"
+}
+```
+
+The portal listens to `GET /api/v1/users/{user_id}/sync/stream`. The XML import's
+terminal `sync.status` event uses the returned task ID as its `run_id`; on success or
+failure the portal refreshes the user's health data. Recent results are also available
+from `GET /api/v1/users/{user_id}/sync/runs` for 24 hours.
+
+### Multipart responses and errors
+
+| Endpoint | Success | Common errors |
+|----------|---------|---------------|
+| `multipart/create` | `201 Created` | `401` invalid auth, `422` invalid file metadata, `503` storage not configured |
+| `multipart/sign` | `200 OK` | `403` foreign object key, `422` invalid part numbers, `502` signing failure |
+| `multipart/complete` | `202 Accepted` in `client` mode; `200 OK` in `sns` mode | `400` parts/ETags do not match, `404` upload missing, `503` storage or queue unavailable |
+| `multipart/abort` | `200 OK` (also when already absent) | `403` foreign object key, `502` storage failure |
+
+<ResponseExample>
+```json 400 Parts mismatch
+{
+  "detail": "Completed parts do not match the parts stored for this multipart upload"
+}
+```
+
+```json 503 Queue unavailable
+{
+  "detail": "Unable to queue upload processing; the multipart upload remains incomplete"
+}
+```
+</ResponseExample>
+
+There is no endpoint-specific application rate limit. Your API gateway and object
+storage may impose their own request limits; treat `429` and transient `503` responses
+as retryable with exponential backoff.
+
+<Warning>
+  Configure the bucket to abort incomplete multipart uploads after an appropriate number
+  of days. This covers the case where the create response is lost before the client learns
+  the `upload_id`. On AWS S3, merge an `AbortIncompleteMultipartUpload` rule into the
+  bucket's existing lifecycle configuration; applying a new lifecycle file replaces the
+  existing configuration. See [AWS's incomplete multipart upload guidance](https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpu-abort-incomplete-mpu-lifecycle-config.html).
+  Use the equivalent lifecycle control offered by your S3-compatible provider.
+</Warning>
+
+```json lifecycle-rule.json
+{
+  "ID": "abort-incomplete-apple-xml-uploads",
+  "Status": "Enabled",
+  "Filter": {"Prefix": ""},
+  "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}
+}
+```
+
 ## Complete Example Workflow
 
 <Tabs>
-  <Tab title="S3 Presigned URL (Recommended)">
+  <Tab title="S3 Presigned POST (SNS mode)">
     <Steps>
       <Step title="Login to Get Access Token">
         ```python
@@ -284,11 +520,15 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
       </Step>
 
       <Step title="Processing Happens Automatically">
-        The system automatically:
+        With `APPLE_XML_UPLOAD_COMPLETION_MODE=sns` (AWS), the system automatically:
         - Detects the S3 upload via S3 event notification → SNS
         - SNS sends an HTTPS notification to the backend
         - `process_aws_upload` Celery task downloads and processes the XML file
         - Imports workouts and time series data to database
+
+        In the default `client` mode, the presigned-POST method above has no completion
+        trigger - use **Method 1b (multipart)** and its `/complete` call instead, which is
+        what the portal uses and which works for any S3-compatible bucket.
       </Step>
     </Steps>
 
@@ -362,7 +602,7 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
             upload_response.raise_for_status()
         
         print(f"✓ Upload complete! File key: {presigned_data['file_key']}")
-        print("Processing will happen in the background...")
+        print("Upload complete. SNS will queue processing when sns mode is configured.")
 
     if __name__ == "__main__":
         main()
@@ -486,7 +726,7 @@ See [Data Types Guide](/architecture/data-types) for complete list.
 
 <CardGroup cols={2}>
   <Card title="Use S3 for Large Files" icon="cloud-arrow-up">
-    Files over 10MB should use the presigned URL method to avoid timeouts
+    Files over 10MB should use multipart upload to avoid API request limits
   </Card>
   
   <Card title="Handle Async Processing" icon="clock">

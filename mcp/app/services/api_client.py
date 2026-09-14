@@ -204,6 +204,36 @@ class OpenWearablesClient:
             params["cursor"] = cursor
         return await self._request("GET", f"/api/v1/users/{user_id}/timeseries", params=params)
 
+    async def get_menstrual_cycles(
+        self,
+        user_id: str,
+        start_date: str,
+        end_date: str,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get menstrual cycle records for a user within a date range.
+
+        Args:
+            user_id: UUID of the user
+            start_date: Start date (YYYY-MM-DD format)
+            end_date: End date (YYYY-MM-DD format)
+            limit: Page size (1-100)
+            cursor: Opaque pagination cursor returned by a previous call
+
+        Returns:
+            Paginated response with menstrual cycle records
+        """
+        params: dict[str, Any] = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": limit,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        return await self._request("GET", f"/api/v1/users/{user_id}/events/menstrual-cycles", params=params)
+
 
 # Singleton instance
 client = OpenWearablesClient()

@@ -27,6 +27,7 @@ class ActivityAggregateResult(TypedDict):
     provider: str | None
     source: str | None
     device_model: str | None
+    device_type: str | None
     steps_sum: int
     active_energy_sum: float
     basal_energy_sum: float

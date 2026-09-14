@@ -1,12 +1,26 @@
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import exists
-from sqlalchemy.orm import Query
+from sqlalchemy import ColumnElement, Date, cast, exists, func
+from sqlalchemy.orm import InstrumentedAttribute, Query
 
 from app.database import BaseDbModel, DbSession
+from app.schemas.enums import TimelineBucket
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
+
+
+def utc_bucket_start(
+    bucket: TimelineBucket,
+    column: InstrumentedAttribute[datetime] | ColumnElement[datetime],
+) -> ColumnElement[date]:
+    """Truncate a timestamptz column to the start of its UTC day or week.
+
+    ``timezone('UTC', ts)`` pins the truncation to UTC; a bare date_trunc would follow the
+    session timezone and place the same row in a different bucket per connection.
+    """
+    return cast(func.date_trunc(bucket.value, func.timezone("UTC", column)), Date)
 
 
 class CrudRepository[

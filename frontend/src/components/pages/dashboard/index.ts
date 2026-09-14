@@ -3,8 +3,6 @@ export { StatsGrid, type StatsGridProps } from './stats-grid';
 export {
   DataMetricsSection,
   type DataMetricsSectionProps,
-  type SeriesTypeMetric,
-  type WorkoutTypeMetric,
 } from './data-metrics-section';
 export {
   RecentUsersSection,

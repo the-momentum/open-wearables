@@ -8,7 +8,7 @@ export function CodePreviewCard() {
         {/* Fake Window Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/60/60 bg-white/5">
           <div className="flex gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--destructive-muted)/0.15)] border border-red-500/50" />
+            <div className="w-2.5 h-2.5 rounded-full bg-destructive-muted/15 border border-red-500/50" />
             <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
             <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/50" />
           </div>
@@ -61,8 +61,8 @@ export function CodePreviewCard() {
               O
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-[9px] text-[hsl(var(--success-muted))]">
-            <div className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--success-muted))] animate-pulse" />
+          <div className="flex items-center gap-1.5 text-[9px] text-success-muted">
+            <div className="w-1.5 h-1.5 rounded-full bg-success-muted animate-pulse" />
             Connected
           </div>
         </div>

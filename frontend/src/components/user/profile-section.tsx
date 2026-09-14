@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link as LinkIcon, Check, Copy, Pencil } from 'lucide-react';
 import { useUserConnections } from '@/hooks/api/use-health';
 import { useUser, useUpdateUser } from '@/hooks/api/use-users';
@@ -16,22 +16,49 @@ import {
 import { formatDate, truncateId } from '@/lib/utils/format';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { ConnectionCard } from '@/components/user/connection-card';
+import type { SyncStatusEvent, SyncRunSummary } from '@/lib/api';
 import { DataSummarySection } from '@/components/user/data-summary-section';
-import { useSyncStatusStream, useSyncRuns } from '@/hooks/api/use-sync-status';
+import { useSyncRuns } from '@/hooks/api/use-sync-status';
 
 interface ProfileSectionProps {
   userId: string;
+  activeRuns: Map<string, SyncStatusEvent>;
 }
 
-export function ProfileSection({ userId }: ProfileSectionProps) {
+// Stable empty reference so cards for providers with no recent runs don't get a fresh [] each render.
+const EMPTY_RUNS: SyncRunSummary[] = [];
+
+export function ProfileSection({ userId, activeRuns }: ProfileSectionProps) {
   const { data: user, isLoading: userLoading } = useUser(userId);
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
 
-  // Live sync stream – one SSE connection shared across all provider cards
-  const { activeRuns } = useSyncStatusStream(userId);
   const { data: syncRuns } = useSyncRuns(userId, 30);
+
+  // Group sync state by provider once per change instead of re-scanning for every card on every
+  // render. The stable references let the memoized ConnectionCard skip re-renders for providers
+  // whose data did not change (important during the SSE event stream).
+  const activeSyncByProvider = useMemo(() => {
+    const map = new Map<string, SyncStatusEvent>();
+    for (const evt of activeRuns.values()) {
+      if (!map.has(evt.provider)) map.set(evt.provider, evt);
+    }
+    return map;
+  }, [activeRuns]);
+
+  const recentRunsByProvider = useMemo(() => {
+    const map = new Map<string, SyncRunSummary[]>();
+    for (const run of syncRuns ?? []) {
+      const existing = map.get(run.provider);
+      if (existing) {
+        if (existing.length < 10) existing.push(run);
+      } else {
+        map.set(run.provider, [run]);
+      }
+    }
+    return map;
+  }, [syncRuns]);
 
   const [copied, setCopied] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
@@ -141,7 +168,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                       onClick={handleCopyUserId}
                     >
                       {copiedUserId ? (
-                        <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
+                        <Check className="h-3 w-3 text-success-muted" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
@@ -204,23 +231,19 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
               </div>
             ) : connections && connections.length > 0 ? (
               <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(400px,1fr))]">
-                {connections.map((connection) => {
-                  const activeSync =
-                    Array.from(activeRuns.values()).find(
-                      (e) => e.provider === connection.provider
-                    ) ?? null;
-                  const recentRuns = (syncRuns ?? [])
-                    .filter((r) => r.provider === connection.provider)
-                    .slice(0, 10);
-                  return (
-                    <ConnectionCard
-                      key={connection.id}
-                      connection={connection}
-                      activeSync={activeSync}
-                      recentRuns={recentRuns}
-                    />
-                  );
-                })}
+                {connections.map((connection) => (
+                  <ConnectionCard
+                    key={connection.id}
+                    connection={connection}
+                    activeSync={
+                      activeSyncByProvider.get(connection.provider) ?? null
+                    }
+                    recentRuns={
+                      recentRunsByProvider.get(connection.provider) ??
+                      EMPTY_RUNS
+                    }
+                  />
+                ))}
               </div>
             ) : (
               <div className="text-center py-8">
@@ -230,7 +253,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                 <Button variant="outline" onClick={handleCopyPairLink}>
                   {copied ? (
                     <>
-                      <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+                      <Check className="h-4 w-4 text-success-muted" />
                       Link Copied!
                     </>
                   ) : (

@@ -12,6 +12,18 @@
     {
       "source": "/dev-guides/backend-e2e-integration",
       "destination": "/dev-guides/integration-guide"
+    },
+    {
+      "source": "/deployment/docker-images",
+      "destination": "/deployment/docker"
+    },
+    {
+      "source": "/data-migrations/:slug*",
+      "destination": "/dev-guides/data-migrations"
+    },
+    {
+      "source": "/dev-guides/seed-data-generator",
+      "destination": "/developer-portal/settings/seed-data-generator"
     }
   ],
   "navigation": {
@@ -49,7 +61,7 @@
             "pages": [
               "providers/supported",
               "providers/coverage",
-              "providers/garmin-data-pipeline"
+              "providers/historical-data"
             ]
           },
           {
@@ -59,7 +71,7 @@
             ]
           },
           {
-            "group": "Sync SDK",
+            "group": "Mobile SDK",
             "pages": [
               "sdk/index",
               {
@@ -107,22 +119,30 @@
             ]
           },
           {
+            "group": "Developer Portal",
+            "pages": [
+              "developer-portal/index",
+              {
+                "group": "Settings",
+                "pages": [
+                  "developer-portal/settings/credentials",
+                  "developer-portal/settings/providers",
+                  "developer-portal/settings/priorities",
+                  "developer-portal/settings/data-lifecycle",
+                  "developer-portal/settings/team",
+                  "developer-portal/settings/change-password",
+                  "developer-portal/settings/seed-data-generator"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Developer Guides",
             "pages": [
               "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/ngrok-setup",
-              "dev-guides/seed-data-generator"
-            ]
-          },
-          {
-            "group": "Data Migrations",
-            "pages": [
-              "data-migrations/index",
-              "data-migrations/backfill-garmin-sleep-end-datetime",
-              "data-migrations/backfill-sleep-scores",
-              "data-migrations/normalize-body-fat-percentage",
-              "data-migrations/relabel-oura-hrv-sdnn-to-rmssd"
+              "dev-guides/data-migrations",
+              "dev-guides/ngrok-setup"
             ]
           },
           {
@@ -135,7 +155,7 @@
           {
             "group": "Deployment",
             "pages": [
-              "deployment/docker-images",
+              "deployment/docker",
               "deployment/railway"
             ]
           },
@@ -191,7 +211,8 @@
             "group": "Connections",
             "pages": [
               "GET /api/v1/users/{user_id}/connections",
-              "DELETE /api/v1/users/{user_id}/connections/{provider}"
+              "DELETE /api/v1/users/{user_id}/connections/{provider}",
+              "DELETE /api/v1/users/{user_id}/connections/{provider}/data"
             ]
           },
           {
@@ -206,8 +227,6 @@
             "pages": [
               "POST /api/v1/providers/{provider}/users/{user_id}/sync",
               "GET /api/v1/providers/garmin/users/{user_id}/backfill/status",
-              "POST /api/v1/providers/garmin/users/{user_id}/backfill/cancel",
-              "POST /api/v1/providers/garmin/users/{user_id}/backfill/{type_name}/retry",
               "POST /api/v1/providers/{provider}/users/{user_id}/sync/historical"
             ]
           },
@@ -218,7 +237,8 @@
               "GET /api/v1/users/{user_id}/summaries/sleep",
               "GET /api/v1/users/{user_id}/summaries/body",
               "GET /api/v1/users/{user_id}/summaries/recovery",
-              "GET /api/v1/users/{user_id}/summaries/data"
+              "GET /api/v1/users/{user_id}/summaries/data",
+              "GET /api/v1/users/{user_id}/summaries/data/timeline"
             ]
           },
           {
@@ -258,6 +278,10 @@
             "group": "Apple Health Import",
             "pages": [
               "POST /api/v1/users/{user_id}/import/apple/xml/s3",
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/create",
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/sign",
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/complete",
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3/multipart/abort",
               "POST /api/v1/users/{user_id}/import/apple/xml/direct"
             ]
           },
@@ -291,7 +315,9 @@
               "GET /api/v1/users/{user_id}/sync/stream",
               "GET /api/v1/users/{user_id}/sync/recent",
               "GET /api/v1/users/{user_id}/sync/runs",
-              "GET /api/v1/sync/runs"
+              "GET /api/v1/sync/runs",
+              "GET /api/v1/users/{user_id}/sync/history",
+              "GET /api/v1/sync/history/{run_key}"
             ]
           }
         ]

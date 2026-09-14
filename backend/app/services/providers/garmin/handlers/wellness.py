@@ -13,7 +13,7 @@ from app.repositories import UserConnectionRepository
 from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.data_247 import Garmin247Data
-from app.services.sync_status_service import completed, new_run_id
+from app.services.sync_status_service import emit_sync_completed, new_run_id
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ def process_wellness_items(
                 user_id=str(uid),
                 is_secondary=is_secondary,
             )
-            completed(
+            emit_sync_completed(
                 uid,
                 "garmin",
                 sync_source,

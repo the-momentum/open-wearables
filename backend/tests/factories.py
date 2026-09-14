@@ -24,7 +24,6 @@ from app.models import (
     DataSource,
     Developer,
     EventRecord,
-    EventRecordDetail,
     HealthScore,
     PersonalRecord,
     ProviderSetting,
@@ -36,7 +35,7 @@ from app.models import (
 )
 from app.schemas.auth import ConnectionStatus
 from app.schemas.enums import HealthScoreCategory, ProviderName
-from app.utils.security import get_password_hash
+from app.utils.security import get_password_hash, hash_api_key
 
 
 class BaseFactory(factory.alchemy.SQLAlchemyModelFactory):
@@ -280,18 +279,22 @@ class DeveloperFactory(BaseFactory):
 
 
 class ApiKeyFactory(BaseFactory):
-    """Factory for ApiKey model."""
+    """Factory for ApiKey model.
+
+    Only the hash of the key is persisted, so the raw value is exposed on the created
+    instance as ``plain_key`` for tests that need to authenticate with it.
+    """
 
     class Meta:
         model = ApiKey
 
-    id = LazyFunction(lambda: f"sk-{uuid4().hex[:32]}")
+    id = LazyFunction(uuid4)
     name = Sequence(lambda n: f"Test API Key {n}")
     created_at = LazyFunction(lambda: datetime.now(timezone.utc))
 
     @classmethod
     def _create(cls, model_class: type[ApiKey], *args: Any, **kwargs: Any) -> ApiKey:
-        """Override create to handle developer relationship."""
+        """Override create to handle developer relationship and key hashing."""
         developer = kwargs.pop("developer", None)
         # Remove any stale created_by that might have been set
         kwargs.pop("created_by", None)
@@ -299,7 +302,13 @@ class ApiKeyFactory(BaseFactory):
             # Create a developer if not provided
             developer = DeveloperFactory()
         kwargs["created_by"] = developer.id
-        return super()._create(model_class, *args, **kwargs)
+
+        plain_key = kwargs.pop("plain_key", None) or f"sk-{uuid4().hex[:32]}"
+        kwargs.setdefault("key_hash", hash_api_key(plain_key))
+        kwargs.setdefault("key_prefix", plain_key[:10])
+        api_key = super()._create(model_class, *args, **kwargs)
+        api_key.plain_key = plain_key  # type: ignore[attr-defined]
+        return api_key
 
 
 class ApplicationFactory(BaseFactory):
@@ -444,31 +453,6 @@ class EventRecordFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
-class EventRecordDetailFactory(BaseFactory):
-    """Factory for EventRecordDetail model."""
-
-    class Meta:
-        model = EventRecordDetail
-
-    detail_type = "workout"
-
-    @classmethod
-    def _create(
-        cls,
-        model_class: type[EventRecordDetail],
-        *args: Any,
-        **kwargs: Any,
-    ) -> EventRecordDetail:
-        """Override create to handle event_record relationship."""
-        event_record = kwargs.pop("event_record", None)
-        # Remove any stale record_id that might have been set
-        kwargs.pop("record_id", None)
-        if event_record is None:
-            event_record = EventRecordFactory()
-        kwargs["record_id"] = event_record.id
-        return super()._create(model_class, *args, **kwargs)
-
-
 class DataPointSeriesFactory(BaseFactory):
     """Factory for DataPointSeries model."""
 
@@ -605,7 +589,6 @@ __all__ = [
     "DataSourceFactory",  # Backward-compatible alias for DataSourceFactory
     "UserConnectionFactory",
     "EventRecordFactory",
-    "EventRecordDetailFactory",
     "DataPointSeriesFactory",
     "ProviderSettingFactory",
     "WorkoutDetailsFactory",

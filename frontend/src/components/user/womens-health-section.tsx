@@ -10,7 +10,7 @@ import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
-import { SourceBadge } from '@/components/common/source-badge';
+import { DataSourceInfo } from '@/components/common/data-source-info';
 import { SectionHeader } from '@/components/common/section-header';
 import { EventDeleteDialog } from '@/components/common/event-delete-dialog';
 import type { MenstrualCycleRecord } from '@/lib/api/types';
@@ -160,7 +160,7 @@ function CycleCard({
 
         {/* Source + delete */}
         <div className="flex items-center gap-3 shrink-0">
-          <SourceBadge provider={record.source.provider} />
+          <DataSourceInfo source={record.source} />
           <button
             onClick={() => setShowDelete(true)}
             className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"

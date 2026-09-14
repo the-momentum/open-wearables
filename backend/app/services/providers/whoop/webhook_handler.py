@@ -241,9 +241,30 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             case WhoopWebhookNotificationType.WORKOUT_UPDATED:
                 count = self.workouts.load_single_workout(db, user_id, resource_id)
             case WhoopWebhookNotificationType.SLEEP_UPDATED:
-                count = self.data_247.load_single_sleep(db, user_id, resource_id)
+                # Waking closes a cycle, and Whoop emits no cycle event, so this is also
+                # the trigger for refreshing the cycle that just ended.
+                count, cycle_id = self.data_247.load_single_sleep(db, user_id, resource_id)
+                if cycle_id:
+                    self.data_247.load_single_cycle(db, user_id, cycle_id)
             case WhoopWebhookNotificationType.RECOVERY_UPDATED:
-                count = self.data_247.load_single_recovery(db, user_id, resource_id)
+                sleep = self.data_247.get_sleep_record(db, user_id, resource_id)
+                cycle_id = sleep.get("cycle_id") if isinstance(sleep, dict) else None
+                if not cycle_id:
+                    log_structured(
+                        logger,
+                        "warning",
+                        "No cycle_id found in sleep record for Whoop recovery.updated",
+                        provider="whoop",
+                        action="whoop_webhook_recovery_missing_cycle_id",
+                        user_id=str(user_id),
+                        resource_id=resource_id,
+                    )
+                    return {
+                        "status": "ignored",
+                        "reason": "missing_cycle_id",
+                        "resource_id": resource_id,
+                    }
+                count = self.data_247.load_single_recovery(db, user_id, str(cycle_id))
             case _:
                 return {"status": "ignored", "reason": f"unhandled_event_type: {event_type}"}
 

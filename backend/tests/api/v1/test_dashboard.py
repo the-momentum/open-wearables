@@ -3,6 +3,9 @@ Tests for dashboard endpoints.
 
 Tests cover:
 - GET /api/v1/dashboard/stats - get system dashboard statistics
+
+Note: ``data_points.count`` is served approximately (planner statistics / cache) rather than an
+exact ``COUNT(*)``, so it is only asserted to be a valid non-negative integer.
 """
 
 from fastapi.testclient import TestClient
@@ -12,7 +15,6 @@ from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
     DeveloperFactory,
-    EventRecordFactory,
     SeriesTypeDefinitionFactory,
     UserConnectionFactory,
     UserFactory,
@@ -41,7 +43,6 @@ class TestGetDashboardStats:
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
         DataPointSeriesFactory(mapping=mapping1, series_type=heart_rate_type)
         DataPointSeriesFactory(mapping=mapping2, series_type=steps_type)
-        EventRecordFactory(mapping=mapping1, category="workout", type_="running")
 
         # Act
         response = client.get(f"{api_v1_prefix}/dashboard/stats", headers=headers)
@@ -54,27 +55,11 @@ class TestGetDashboardStats:
         assert "total_users" in data
         assert "active_conn" in data
         assert "data_points" in data
+        assert "connections_coverage" in data
 
-        # Verify total_users structure
-        assert "count" in data["total_users"]
-        assert "weekly_growth" in data["total_users"]
         assert isinstance(data["total_users"]["count"], int)
-        assert isinstance(data["total_users"]["weekly_growth"], (int, float))
-
-        # Verify active_conn structure
-        assert "count" in data["active_conn"]
-        assert "weekly_growth" in data["active_conn"]
         assert isinstance(data["active_conn"]["count"], int)
-        assert isinstance(data["active_conn"]["weekly_growth"], (int, float))
-
-        # Verify data_points structure
-        assert "count" in data["data_points"]
-        assert "weekly_growth" in data["data_points"]
-        assert "top_series_types" in data["data_points"]
-        assert "top_workout_types" in data["data_points"]
         assert isinstance(data["data_points"]["count"], int)
-        assert isinstance(data["data_points"]["top_series_types"], list)
-        assert isinstance(data["data_points"]["top_workout_types"], list)
 
     def test_get_dashboard_stats_with_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test dashboard statistics reflect actual data."""
@@ -107,7 +92,7 @@ class TestGetDashboardStats:
         data = response.json()
         assert data["total_users"]["count"] >= 3
         assert data["active_conn"]["count"] >= 2
-        assert data["data_points"]["count"] >= 3
+        assert data["data_points"]["count"] >= 0
 
     def test_get_dashboard_stats_empty_database(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test dashboard statistics with empty database."""
@@ -130,110 +115,6 @@ class TestGetDashboardStats:
         assert isinstance(data["active_conn"]["count"], int)
         assert isinstance(data["data_points"]["count"], int)
 
-    def test_get_dashboard_stats_top_series_types(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test that top series types are correctly reported."""
-        # Arrange
-        developer = DeveloperFactory(email="test@example.com", password="test123")
-        headers = developer_auth_headers(developer.id)
-
-        user = UserFactory()
-        mapping = DataSourceFactory(user=user)
-
-        # Use pre-seeded series types
-        heart_rate_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
-
-        # Create data points with different series types
-        for _ in range(5):
-            DataPointSeriesFactory(mapping=mapping, series_type=heart_rate_type)
-        for _ in range(3):
-            DataPointSeriesFactory(mapping=mapping, series_type=steps_type)
-
-        # Act
-        response = client.get(f"{api_v1_prefix}/dashboard/stats", headers=headers)
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        top_series = data["data_points"]["top_series_types"]
-        assert isinstance(top_series, list)
-
-        # Verify structure of series type metrics
-        if len(top_series) > 0:
-            assert "series_type" in top_series[0]
-            assert "count" in top_series[0]
-            assert isinstance(top_series[0]["count"], int)
-
-    def test_get_dashboard_stats_top_workout_types(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test that top workout types are correctly reported."""
-        # Arrange
-        developer = DeveloperFactory(email="test@example.com", password="test123")
-        headers = developer_auth_headers(developer.id)
-
-        user = UserFactory()
-        mapping = DataSourceFactory(user=user)
-
-        # Create event records with different workout types
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="running")
-        EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
-
-        # Act
-        response = client.get(f"{api_v1_prefix}/dashboard/stats", headers=headers)
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        top_workouts = data["data_points"]["top_workout_types"]
-        assert isinstance(top_workouts, list)
-
-        # Verify structure of workout type metrics
-        if len(top_workouts) > 0:
-            assert "workout_type" in top_workouts[0]
-            assert "count" in top_workouts[0]
-            assert isinstance(top_workouts[0]["count"], int)
-
-    def test_get_dashboard_stats_top_limit_parameter(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test that top_limit query parameter controls the number of returned items."""
-        # Arrange
-        developer = DeveloperFactory(email="test@example.com", password="test123")
-        headers = developer_auth_headers(developer.id)
-
-        user = UserFactory()
-        mapping = DataSourceFactory(user=user)
-
-        # Create multiple series types and workout types
-        for i in range(10):
-            series_type = SeriesTypeDefinitionFactory()
-            for _ in range(i + 1):
-                DataPointSeriesFactory(mapping=mapping, series_type=series_type)
-            for _ in range(i + 1):
-                EventRecordFactory(mapping=mapping, category="workout", type_=f"workout_{i}")
-
-        # Act - test with top_limit=3
-        response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=3", headers=headers)
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["data_points"]["top_series_types"]) <= 3
-        assert len(data["data_points"]["top_workout_types"]) <= 3
-
-        # Act - test with top_limit=8
-        response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=8", headers=headers)
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data["data_points"]["top_series_types"]) <= 8
-        assert len(data["data_points"]["top_workout_types"]) <= 8
-
-        # Act - test with invalid top_limit (should fail validation)
-        response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=0", headers=headers)
-
-        # Assert - app maps RequestValidationError to 400
-        assert response.status_code == 400
-
     def test_get_dashboard_stats_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting dashboard stats fails without authentication."""
         # Act
@@ -252,35 +133,6 @@ class TestGetDashboardStats:
 
         # Assert
         assert response.status_code == 401
-
-    def test_get_dashboard_stats_weekly_growth_calculation(
-        self,
-        client: TestClient,
-        db: Session,
-        api_v1_prefix: str,
-    ) -> None:
-        """Test that weekly growth is calculated and returned."""
-        # Arrange
-        developer = DeveloperFactory(email="test@example.com", password="test123")
-        headers = developer_auth_headers(developer.id)
-
-        # Create test data
-        user = UserFactory()
-        UserConnectionFactory(user=user)
-        mapping = DataSourceFactory(user=user)
-        DataPointSeriesFactory(mapping=mapping)
-
-        # Act
-        response = client.get(f"{api_v1_prefix}/dashboard/stats", headers=headers)
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-
-        # Verify weekly growth fields exist and are numeric
-        assert isinstance(data["total_users"]["weekly_growth"], (int, float))
-        assert isinstance(data["active_conn"]["weekly_growth"], (int, float))
-        assert isinstance(data["data_points"]["weekly_growth"], (int, float))
 
     def test_get_dashboard_stats_multiple_developers(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that each developer can access dashboard stats independently."""
@@ -307,7 +159,6 @@ class TestGetDashboardStats:
         data1 = response1.json()
         data2 = response2.json()
         assert data1["total_users"]["count"] == data2["total_users"]["count"]
-        assert data1["data_points"]["count"] == data2["data_points"]["count"]
 
     def test_get_dashboard_stats_response_schema(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that dashboard stats response matches expected schema."""
@@ -323,29 +174,24 @@ class TestGetDashboardStats:
         data = response.json()
 
         # Validate complete schema
-        required_keys = ["total_users", "active_conn", "data_points"]
+        required_keys = ["total_users", "active_conn", "data_points", "event_records", "connections_coverage"]
         for key in required_keys:
             assert key in data, f"Missing required key: {key}"
 
-        # Validate CountWithGrowth schema
-        for key in ["total_users", "active_conn"]:
+        for key in ["total_users", "active_conn", "data_points"]:
             assert "count" in data[key]
-            assert "weekly_growth" in data[key]
+            assert isinstance(data[key]["count"], int)
 
-        # Validate DataPointsInfo schema
-        assert "count" in data["data_points"]
-        assert "weekly_growth" in data["data_points"]
-        assert "top_series_types" in data["data_points"]
-        assert "top_workout_types" in data["data_points"]
+        assert isinstance(data["data_points"]["archived"], int)
 
-        # Validate list items
-        for series_type in data["data_points"]["top_series_types"]:
-            assert "series_type" in series_type
-            assert "count" in series_type
+        event_records = data["event_records"]
+        for key in ["count", "workouts", "sleep", "menstrual_cycles"]:
+            assert isinstance(event_records[key], int)
 
-        for workout_type in data["data_points"]["top_workout_types"]:
-            assert "workout_type" in workout_type
-            assert "count" in workout_type
+        coverage = data["connections_coverage"]
+        assert "users_with_active" in coverage
+        assert "users_with_multi_active" in coverage
+        assert isinstance(coverage["top_providers"], list)
 
     def test_get_dashboard_stats_concurrent_requests(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that concurrent requests to dashboard stats work correctly."""

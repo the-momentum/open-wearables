@@ -8,7 +8,13 @@ function makeSummary(
 ): ActivitySummary {
   return {
     date: '2026-01-01',
-    source: { provider: 'apple_health', device: null },
+    source: {
+      provider: 'apple',
+      source: null,
+      device: null,
+      device_name: null,
+      device_type: null,
+    },
     steps: null,
     distance_meters: null,
     floors_climbed: null,

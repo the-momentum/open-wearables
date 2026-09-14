@@ -1,11 +1,12 @@
+from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, asc, func
+from sqlalchemy import CursorResult, and_, asc, delete, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.database import DbSession
-from app.models import DataSource, ProviderPriority
+from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import DeviceType, ProviderName, infer_device_type_from_model, infer_device_type_from_source_name
@@ -175,6 +176,36 @@ class DataSourceRepository(
             .order_by(asc(self.model.provider), asc(self.model.device_model))
             .all()
         )
+
+    def delete_user_provider_data(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        provider: ProviderName,
+    ) -> int:
+        """Delete all of a user's data for a single provider.
+
+        Deletes the user's health_score rows for the provider (some are not linked to
+        a data_source), then the data_source rows. ON DELETE CASCADE on the data_source
+        FK removes every dependent row - event_records, data_point_series (+ archive),
+        event/sleep/workout/menstrual details and health_scores linked via data_source
+        or event_record. Returns the number of data_source rows deleted.
+        """
+        db_session.execute(
+            delete(HealthScore).where(
+                and_(HealthScore.user_id == user_id, HealthScore.provider == provider),
+            ),
+        )
+        result = cast(
+            CursorResult,
+            db_session.execute(
+                delete(self.model).where(
+                    and_(self.model.user_id == user_id, self.model.provider == provider),
+                ),
+            ),
+        )
+        db_session.commit()
+        return result.rowcount
 
     def infer_provider_from_source(self, source: str | None) -> ProviderName:
         """Infer provider from source string.

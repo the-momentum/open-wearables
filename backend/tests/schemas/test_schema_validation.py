@@ -20,6 +20,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -119,6 +120,45 @@ class TestEventRecordDetailCreateValidation:
             )
 
         assert "record_id" in str(exc_info.value)
+
+    def test_entry_source_intensity_and_label(self) -> None:
+        detail = EventRecordDetailCreate(
+            record_id=uuid4(),
+            entry_source="manual",
+            intensity="high",
+            label="Evening Ride",
+        )
+
+        assert detail.entry_source == EntrySource.MANUAL
+        assert detail.intensity == WorkoutIntensity.HIGH
+        assert detail.label == "Evening Ride"
+
+    def test_entry_source_and_intensity_reject_unmapped_provider_values(self) -> None:
+        """A provider's raw value must be normalized before reaching this schema, so that an
+        unmapped one fails here instead of leaking through to the API."""
+        with pytest.raises(ValidationError):
+            EventRecordDetailCreate(record_id=uuid4(), entry_source="autodetected")
+
+        with pytest.raises(ValidationError):
+            EventRecordDetailCreate(record_id=uuid4(), intensity="hard")
+
+        # Unified enum members still pass.
+        EventRecordDetailCreate(record_id=uuid4(), entry_source="unknown", intensity="unknown")
+
+    def test_label_truncates_oversized_value(self) -> None:
+        """An oversized label is truncated rather than raising, so one overlong name cannot
+        abort the whole sync batch it arrived in."""
+        detail = EventRecordDetailCreate(record_id=uuid4(), label="x" * 300)
+        assert detail.label is not None
+        assert len(detail.label) == 255
+
+        # Exactly at the limit is untouched.
+        assert EventRecordDetailCreate(record_id=uuid4(), label="x" * 255).label == "x" * 255
+
+        # Characters, not bytes - matching varchar(255) in Postgres.
+        emoji = EventRecordDetailCreate(record_id=uuid4(), label="\N{BICYCLE}" * 300)
+        assert emoji.label is not None
+        assert len(emoji.label) == 255
 
 
 class TestOAuthTokenResponseValidation:

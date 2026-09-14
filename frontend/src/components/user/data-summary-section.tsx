@@ -1,16 +1,16 @@
 import { Database, Dumbbell, Moon, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useUserDataSummary } from '@/hooks/api/use-health';
-import { formatNumber } from '@/lib/utils/format';
+import { formatCompactNumber } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { DateFilter } from '@/components/ui/date-filter';
 import type { DataSummaryParams, ProviderDataCount } from '@/lib/api/types';
 
 // Rank accents for the top three entries (matches the dashboard metrics cards).
 const RANK_COLORS = [
-  'text-[hsl(var(--primary))]',
-  'text-[hsl(var(--foreground-muted))]',
-  'text-[hsl(var(--foreground-subtle))]',
+  'text-primary',
+  'text-foreground-muted',
+  'text-foreground-subtle',
 ];
 
 interface DataSummarySectionProps {
@@ -44,22 +44,24 @@ function StatCard({
         <Icon className="h-4 w-4" />
       </div>
       <p className="text-2xl font-bold tabular-nums text-foreground">
-        {formatNumber(value)}
+        {formatCompactNumber(value)}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }
 
-function TypeGrid({
+const TypeGrid = memo(function TypeGrid({
   counts,
   limit,
 }: {
   counts: Record<string, number>;
   limit?: number;
 }) {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const displayed = limit ? entries.slice(0, limit) : entries;
+  const displayed = useMemo(() => {
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return limit ? entries.slice(0, limit) : entries;
+  }, [counts, limit]);
 
   if (displayed.length === 0) {
     return <p className="text-sm text-muted-foreground">No data points</p>;
@@ -81,7 +83,7 @@ function TypeGrid({
             #{i + 1}
           </span>
           <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
-            {formatNumber(count)}
+            {formatCompactNumber(count)}
           </p>
           <p
             className="truncate text-xs text-muted-foreground"
@@ -93,9 +95,13 @@ function TypeGrid({
       ))}
     </div>
   );
-}
+});
 
-function ProviderCard({ provider }: { provider: ProviderDataCount }) {
+const ProviderCard = memo(function ProviderCard({
+  provider,
+}: {
+  provider: ProviderDataCount;
+}) {
   const [expanded, setExpanded] = useState(false);
   const totalRecords =
     provider.data_points + provider.workout_count + provider.sleep_count;
@@ -119,7 +125,7 @@ function ProviderCard({ provider }: { provider: ProviderDataCount }) {
               {formatProvider(provider.provider)}
             </span>
             <span className="ml-2 rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
-              {formatNumber(totalRecords)}
+              {formatCompactNumber(totalRecords)}
             </span>
           </div>
         </div>
@@ -143,7 +149,7 @@ function ProviderCard({ provider }: { provider: ProviderDataCount }) {
                 className="flex flex-col items-center gap-1 rounded-xl border border-border/60 bg-card/40 p-3 text-center"
               >
                 <p className="text-xl font-bold tabular-nums leading-none text-foreground">
-                  {formatNumber(value)}
+                  {formatCompactNumber(value)}
                 </p>
                 <p className="text-[11px] text-muted-foreground">{label}</p>
               </div>
@@ -157,7 +163,7 @@ function ProviderCard({ provider }: { provider: ProviderDataCount }) {
       )}
     </div>
   );
-}
+});
 
 function LoadingSkeleton() {
   return (
@@ -222,19 +228,19 @@ export function DataSummarySection({ userId }: DataSummarySectionProps) {
                 icon={Database}
                 label="Data Points"
                 value={data.total_data_points}
-                iconClass="border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.1)] text-[hsl(var(--primary-muted))]"
+                iconClass="border-primary/30 bg-primary/10 text-primary-muted"
               />
               <StatCard
                 icon={Dumbbell}
                 label="Workouts"
                 value={data.total_workouts}
-                iconClass="border-[hsl(var(--secondary-muted)/0.3)] bg-[hsl(var(--secondary-muted)/0.1)] text-[hsl(var(--secondary-muted))]"
+                iconClass="border-secondary-muted/30 bg-secondary-muted/10 text-secondary-muted"
               />
               <StatCard
                 icon={Moon}
                 label="Sleep Events"
                 value={data.total_sleep_events}
-                iconClass="border-[hsl(var(--accent-muted)/0.3)] bg-[hsl(var(--accent-muted)/0.1)] text-[hsl(var(--accent-muted))]"
+                iconClass="border-accent-muted/30 bg-accent-muted/10 text-accent-muted"
               />
             </div>
 

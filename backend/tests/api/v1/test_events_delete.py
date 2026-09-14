@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord, EventRecordDetail
+from app.models import EventRecord, SleepDetails, WorkoutDetails
 from tests.factories import (
     ApiKeyFactory,
     DataSourceFactory,
@@ -38,7 +38,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
@@ -54,14 +54,13 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
         assert db.get(EventRecord, workout.id) is None
         # Detail should be cascade-deleted
-        remaining = db.query(EventRecordDetail).filter(EventRecordDetail.record_id == detail_record_id).first()
-        assert remaining is None
+        assert db.get(WorkoutDetails, detail_record_id) is None
 
     def test_delete_workout_not_found(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
@@ -69,7 +68,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{uuid4()}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -83,7 +82,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{other_user.id}/events/workouts/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -99,7 +98,7 @@ class TestDeleteWorkout:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/workouts/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -118,7 +117,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
@@ -134,12 +133,11 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 204
-        remaining = db.query(EventRecordDetail).filter(EventRecordDetail.record_id == detail_record_id).first()
-        assert remaining is None
+        assert db.get(SleepDetails, detail_record_id) is None
 
     def test_delete_sleep_not_found(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
@@ -147,7 +145,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{uuid4()}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -161,7 +159,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{other_user.id}/events/sleep/{sleep.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404
@@ -176,7 +174,7 @@ class TestDeleteSleepSession:
 
         response = client.delete(
             f"/api/v1/users/{user.id}/events/sleep/{workout.id}",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 404

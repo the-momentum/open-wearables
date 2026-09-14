@@ -235,6 +235,11 @@ The `resolution` parameter for timeseries aggregation:
 | `15min` | Aggregated to 15-minute intervals |
 | `1hour` | Aggregated to 1-hour intervals |
 
+Buckets are grouped per data source, so two devices reporting the same minute stay two points.
+Rate metrics (heart rate, power) are averaged and counters (steps, energy) are summed. A
+provider's own daily total is skipped, since it is not a point in an intraday series — use
+`/summaries` for per-day figures.
+
 ---
 
 ## Example: Fetching Multiple Types

@@ -1,13 +1,13 @@
 ---
 title: "HealthKit Integration with Open Wearables"
-description: "Integrate Apple Health via HealthKit using the Open Wearables Flutter SDK. Push-based sync for steps, heart rate, sleep, and workouts. iOS 13+ required."
+description: "Integrate Apple Health via HealthKit using the Open Wearables iOS, Flutter, and React Native SDKs. Push-based sync for steps, heart rate, sleep, and workouts. iOS 13+ required."
 keywords: ["healthkit integration", "apple health api", "apple health data", "healthkit open source"]
 "og:title": "HealthKit Integration with Open Wearables | Apple Health"
-"og:description": "Sync Apple Health via HealthKit with the Flutter SDK. Covers steps, heart rate, sleep, workouts, HRV. iOS 13+, push-based."
+"og:description": "Sync Apple Health via HealthKit with the iOS, Flutter, and React Native SDKs. Covers steps, heart rate, sleep, workouts, HRV. iOS 13+, push-based."
 "og:url": "https://docs.openwearables.io/providers/apple-health"
 "og:type": "article"
 "twitter:title": "HealthKit Integration with Open Wearables | Apple Health"
-"twitter:description": "Sync Apple Health via HealthKit with the Flutter SDK. Covers steps, heart rate, sleep, workouts, HRV. iOS 13+, push-based."
+"twitter:description": "Sync Apple Health via HealthKit with the iOS, Flutter, and React Native SDKs. Covers steps, heart rate, sleep, workouts, HRV. iOS 13+, push-based."
 "twitter:card": "summary_large_image"
 ---
 
@@ -22,8 +22,14 @@ Apple Health integration uses a **push-based model** where health data is sent f
 ## Integration Options
 
 <CardGroup cols={2}>
+  <Card title="iOS SDK (Swift)" icon="apple" href="/sdk/ios">
+    Native iOS SDK — the core implementation for Apple HealthKit sync.
+  </Card>
   <Card title="Flutter SDK" icon="mobile" href="/sdk/flutter">
-    Cross-platform SDK for iOS and Android. Recommended for most applications.
+    Cross-platform wrapper — syncs Apple Health on iOS via the native iOS SDK.
+  </Card>
+  <Card title="React Native SDK" icon="mobile" href="/sdk/react-native">
+    Cross-platform wrapper — syncs Apple Health on iOS via the native iOS SDK.
   </Card>
   <Card title="XML Import" icon="file-import" href="/api-reference/guides/apple-xml-import">
     Import Apple Health data from XML exports. Useful for one-time migrations.

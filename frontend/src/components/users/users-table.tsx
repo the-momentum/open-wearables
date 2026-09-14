@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
+  useTable,
+  tableFeatures,
+  rowSortingFeature,
+  rowPaginationFeature,
+  type Column,
   type ColumnDef,
   type SortingState,
   type PaginationState,
@@ -57,6 +59,11 @@ const columnToSortBy: Record<string, UserQueryParams['sort_by']> = {
   name: 'first_name',
   last_synced_at: 'last_synced_at',
 };
+
+const features = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+});
 
 export function UsersTable({
   data,
@@ -142,11 +149,7 @@ export function UsersTable({
     column,
     children,
   }: {
-    column: {
-      id: string;
-      getIsSorted: () => false | 'asc' | 'desc';
-      toggleSorting: (desc?: boolean) => void;
-    };
+    column: Column<typeof features, UserRead>;
     children: React.ReactNode;
   }) => {
     const isSortable = column.id in columnToSortBy;
@@ -176,7 +179,7 @@ export function UsersTable({
     );
   };
 
-  const columns: ColumnDef<UserRead>[] = [
+  const columns: ColumnDef<typeof features, UserRead>[] = [
     {
       accessorKey: 'id',
       header: () => (
@@ -198,7 +201,7 @@ export function UsersTable({
             onClick={() => handleCopyId(row.original.id)}
           >
             {copiedId === row.original.id ? (
-              <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
+              <Check className="h-3 w-3 text-success-muted" />
             ) : (
               <Copy className="h-3 w-3" />
             )}
@@ -287,7 +290,7 @@ export function UsersTable({
             title="Copy pairing link"
           >
             {copiedPairLink === row.original.id ? (
-              <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
+              <Check className="h-4 w-4 text-success-muted" />
             ) : (
               <LinkIcon className="h-4 w-4" />
             )}
@@ -307,7 +310,8 @@ export function UsersTable({
     },
   ];
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data,
     columns,
     state: {
@@ -316,10 +320,8 @@ export function UsersTable({
     },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
-    getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
     manualSorting: true,
-    manualFiltering: true,
     pageCount,
   });
 
@@ -389,12 +391,9 @@ export function UsersTable({
               >
                 {headerGroup.headers.map((header) => (
                   <th key={header.id} className="px-4 py-3">
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
+                    {header.isPlaceholder ? null : (
+                      <table.FlexRender header={header} />
+                    )}
                   </th>
                 ))}
               </tr>
@@ -434,12 +433,9 @@ export function UsersTable({
                     }
                   }}
                 >
-                  {row.getVisibleCells().map((cell) => (
+                  {row.getAllCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                      <table.FlexRender cell={cell} />
                     </td>
                   ))}
                 </tr>

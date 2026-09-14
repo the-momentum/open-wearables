@@ -11,6 +11,14 @@ keywords: ["fitbit api integration", "fitbit oauth", "fitbit health data", "fitb
 "twitter:card": "summary_large_image"
 ---
 
+<Warning>
+**The Fitbit Web API is being sunset - this integration is feature-frozen.**
+
+Google is turning down the legacy Fitbit Web API: *"In September 2026, the legacy Fitbit Web API will be turned down and will no longer sync data to or from Fitbit users"* ([About the Google Health API](https://developers.google.com/health/about), Google for Developers). Integrations must move to the [Google Health API](https://developers.google.com/health/migration) with Google OAuth 2.0 - existing Fitbit access and refresh tokens cannot be carried over, so every user has to re-consent.
+
+Because of this, Open Wearables **is no longer developing the Fitbit integration**. It stays available and supported as-is for now, but no new data types or features will be added. For Fitbit data going forward, use the [Google Health API integration](/providers/google-api-integration) - it already surfaces Fitbit as a source.
+</Warning>
+
 <Note>
 **Need help with your Fitbit integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
 </Note>
@@ -24,12 +32,12 @@ Fitbit provides access to workout/activity data from Fitbit devices through the 
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Activities | Yes |
-| Sleep | Available via API - not yet implemented |
-| Heart rate (intraday) | Available via API - not yet implemented |
-| Daily activity summary | Available via API - not yet implemented |
+| Sleep | Available via API - not implemented, not planned |
+| Heart rate (intraday) | Available via API - not implemented, not planned |
+| Daily activity summary | Available via API - not implemented, not planned |
 
 <Info>
-Open Wearables currently syncs **workout/activity data** from Fitbit using the Activities List API. Heart rate, sleep, and daily activity summary support is planned for a future release.
+Open Wearables syncs **workout/activity data** from Fitbit using the Activities List API. Heart rate, sleep, and daily activity summary will not be added - see the sunset notice above. Those data types are available for Fitbit users through the [Google Health API integration](/providers/google-api-integration).
 </Info>
 
 ### Data delivery

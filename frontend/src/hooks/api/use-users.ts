@@ -3,7 +3,11 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { usersService } from '../../lib/api';
 import { queryKeys } from '../../lib/query/keys';
-import { S3_UPLOAD_THRESHOLD, MAX_FILE_SIZE } from '@/lib/constants/upload';
+import {
+  BYTES_PER_GIBIBYTE,
+  S3_UPLOAD_THRESHOLD,
+  MAX_FILE_SIZE,
+} from '@/lib/constants/upload';
 import type {
   UserRead,
   UserCreate,
@@ -152,8 +156,15 @@ export function useUploadAppleXml() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ userId, file }: { userId: string; file: File }) =>
-      usersService.uploadAppleXml(userId, file),
+    mutationFn: ({
+      userId,
+      file,
+      onProgress,
+    }: {
+      userId: string;
+      file: File;
+      onProgress?: (percent: number) => void;
+    }) => usersService.uploadAppleXml(userId, file, onProgress),
     onSuccess: (_data, { userId }) => {
       // Invalidate user data to show new imported data
       queryClient.invalidateQueries({
@@ -174,43 +185,30 @@ export function useUploadAppleXml() {
 }
 
 export function useUploadAppleXmlViaS3() {
-  const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async ({ userId, file }: { userId: string; file: File }) => {
-      // Step 1: Get presigned URL from backend
-      const presignedData = await usersService.getAppleXmlPresignedUrl(userId, {
-        filename: file.name,
-        max_file_size: file.size,
-      });
-
-      // Step 2: Upload directly to S3
-      await usersService.uploadToS3(
-        presignedData.upload_url,
-        presignedData.form_fields,
-        file
-      );
-
-      return presignedData;
-    },
-    onSuccess: (_data, { userId }) => {
-      // Invalidate user data (processing will happen asynchronously via SQS)
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.users.detail(userId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.health.all,
-        refetchType: 'active',
-      });
-      toast.success(
-        'XML file uploaded to S3 successfully. Processing will begin shortly.'
-      );
+    mutationFn: ({
+      userId,
+      file,
+      onProgress,
+    }: {
+      userId: string;
+      file: File;
+      onProgress?: (percent: number) => void;
+    }) =>
+      // Multipart upload straight to object storage (S3 or MinIO). Parts are PUT
+      // via presigned URLs; the backend finalizes the object and starts processing.
+      usersService.uploadAppleXmlViaMultipart(userId, file, onProgress),
+    onSuccess: (data) => {
+      const taskSuffix = data.task_id
+        ? ` Task ${data.task_id.slice(0, 8)}… is processing it.`
+        : ' Processing will begin from the configured storage notification.';
+      toast.success(`XML file uploaded to object storage.${taskSuffix}`);
     },
     onError: (error: unknown) => {
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to upload XML file to S3';
+          : 'Failed to upload XML file to object storage';
       toast.error(message);
     },
   });
@@ -221,16 +219,39 @@ interface UseAppleXmlUploadOptions {
   onError?: (error: Error) => void;
 }
 
+export type UploadPhase = 'idle' | 'uploading' | 'success' | 'error';
+
+export interface UploadProgressState {
+  phase: UploadPhase;
+  /** 0-100 during upload; 100 on success. */
+  percent: number;
+  fileName: string | null;
+  fileSize: number | null;
+  errorMessage: string | null;
+}
+
+const IDLE_PROGRESS: UploadProgressState = {
+  phase: 'idle',
+  percent: 0,
+  fileName: null,
+  fileSize: null,
+  errorMessage: null,
+};
+
 /**
  * Custom hook for handling Apple Health XML file uploads
  * Automatically selects between direct upload and S3 based on file size
- * Includes file type and size validation
+ * Includes file type and size validation, and exposes live upload progress
+ * for a progress dialog.
  */
 export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
   const [uploadingUserId, setUploadingUserId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<UploadProgressState>(IDLE_PROGRESS);
 
   const { mutate: uploadDirect } = useUploadAppleXml();
   const { mutate: uploadViaS3 } = useUploadAppleXmlViaS3();
+
+  const resetProgress = () => setProgress(IDLE_PROGRESS);
 
   const handleUpload = (
     userId: string,
@@ -257,8 +278,8 @@ export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
 
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
-      const maxSizeGB = (MAX_FILE_SIZE / (1024 * 1024 * 1024)).toFixed(0);
-      const fileSizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
+      const maxSizeGB = (MAX_FILE_SIZE / BYTES_PER_GIBIBYTE).toFixed(0);
+      const fileSizeGB = (file.size / BYTES_PER_GIBIBYTE).toFixed(2);
       toast.error(
         `File is too large (${fileSizeGB}GB). Maximum size is ${maxSizeGB}GB`
       );
@@ -269,20 +290,36 @@ export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
     }
 
     setUploadingUserId(userId);
+    setProgress({
+      phase: 'uploading',
+      percent: 0,
+      fileName: file.name,
+      fileSize: file.size,
+      errorMessage: null,
+    });
+
+    const onProgress = (percent: number) =>
+      setProgress((prev) => ({ ...prev, percent }));
 
     // Choose upload method based on file size
     const uploadMutation =
       file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
 
     uploadMutation(
-      { userId, file },
+      { userId, file, onProgress },
       {
         onSuccess: () => {
+          setProgress((prev) => ({ ...prev, phase: 'success', percent: 100 }));
           if (options.onSuccess) {
             options.onSuccess(userId);
           }
         },
         onError: (error) => {
+          setProgress((prev) => ({
+            ...prev,
+            phase: 'error',
+            errorMessage: (error as Error).message,
+          }));
           if (options.onError) {
             options.onError(error as Error);
           }
@@ -298,5 +335,7 @@ export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
     handleUpload,
     uploadingUserId,
     isUploading: (userId: string) => uploadingUserId === userId,
+    progress,
+    resetProgress,
   };
 }

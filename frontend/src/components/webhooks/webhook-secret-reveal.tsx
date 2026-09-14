@@ -51,9 +51,7 @@ export function WebhookSecretReveal({ endpointId }: WebhookSecretRevealProps) {
       )}
 
       {revealed && error && (
-        <p className="text-xs text-[hsl(var(--destructive-muted))]">
-          Failed to load secret.
-        </p>
+        <p className="text-xs text-destructive-muted">Failed to load secret.</p>
       )}
 
       {revealed && data && (

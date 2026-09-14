@@ -11,6 +11,7 @@ from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.repositories import CrudRepository
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import SdkConnectionOutcome
 from app.schemas.model_crud.user_management import (
     UserConnectionCreate,
     UserConnectionUpdate,
@@ -381,6 +382,18 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .all()
         )
 
+    def get_all_active_by_provider(self, db_session: DbSession, provider: str) -> list[UserConnection]:
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.status == ConnectionStatus.ACTIVE,
+                ),
+            )
+            .all()
+        )
+
     def get_all_active_users(self, db_session: DbSession) -> list[UUID]:
         """Get all unique user IDs that have active connections."""
         return [
@@ -396,11 +409,15 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session: DbSession,
         user_id: UUID,
         provider: str,
-    ) -> UserConnection:
+    ) -> tuple[UserConnection, SdkConnectionOutcome]:
         """Ensure an SDK-based connection exists for a user and provider.
 
         SDK-based providers (like Apple Health) don't use OAuth tokens.
         This method creates or returns an existing connection without tokens.
+
+        Returns the connection and which branch was taken, so the caller can emit
+        ``connection.created`` only on a real state change. The upload path calls
+        this on every batch, so EXISTING must stay silent.
         """
         existing = self.get_by_user_and_provider(db_session, user_id, provider)
         if existing:
@@ -411,7 +428,8 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 db_session.add(existing)
                 db_session.commit()
                 db_session.refresh(existing)
-            return existing
+                return existing, SdkConnectionOutcome.REACTIVATED
+            return existing, SdkConnectionOutcome.EXISTING
 
         # Create new SDK connection (no tokens needed)
         connection = UserConnection(
@@ -428,4 +446,4 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.add(connection)
         db_session.commit()
         db_session.refresh(connection)
-        return connection
+        return connection, SdkConnectionOutcome.CREATED

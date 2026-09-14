@@ -57,8 +57,8 @@ function WebhooksPage() {
           <Button onClick={() => config.refetch()}>Retry</Button>
         </div>
       ) : !webhooksEnabled ? (
-        <div className="rounded-2xl border border-[hsl(var(--warning-muted)/0.4)] bg-[hsl(var(--warning-muted)/0.08)] p-6">
-          <p className="text-sm font-medium text-[hsl(var(--warning-muted))]">
+        <div className="rounded-2xl border border-warning-muted/40 bg-warning-muted/8 p-6">
+          <p className="text-sm font-medium text-warning-muted">
             Webhooks are not enabled on this instance.
           </p>
           <p className="text-xs text-muted-foreground mt-1">

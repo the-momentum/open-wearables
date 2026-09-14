@@ -36,7 +36,7 @@ class HealthScoreCreate(HealthScoreBase):
     user_id: UUID
     data_source_id: UUID | None = None
     provider: ProviderName
-    sleep_record_id: UUID | None = None
+    event_record_id: UUID | None = None
 
 
 class HealthScoreUpdate(HealthScoreBase): ...
@@ -64,3 +64,6 @@ class HealthScoreResponse(HealthScoreBase):
     id: UUID
     data_source_id: UUID | None
     provider: ProviderName | None
+    event_record_id: UUID | None = Field(
+        None, description="The sleep session or workout this score describes. Null for whole-day scores."
+    )

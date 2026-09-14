@@ -23,8 +23,9 @@ from sqlalchemy.orm import (
 
 from app.config import settings
 from app.schemas.auth import ConnectionStatus, LiveSyncMode, TokenType
-from app.schemas.enums import AggregationMethod, HealthScoreCategory, ProviderName
+from app.schemas.enums import AggregationMethod, DataGranularity, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.user_management import InvitationStatus
+from app.schemas.sync_status import SyncScope, SyncSource, SyncStatus
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -69,11 +70,15 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         datetime: DateTime(timezone=True),
         ConnectionStatus: String(64),
         LiveSyncMode: String(32),
+        DataGranularity: String(32),
         InvitationStatus: String(50),
         ProviderName: String(50),
         HealthScoreCategory: String(32),
         TokenType: String(64),
         AggregationMethod: String(32),
+        SyncSource: String(32),
+        SyncScope: String(32),
+        SyncStatus: String(32),
     }
 
 

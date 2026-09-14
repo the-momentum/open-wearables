@@ -177,6 +177,30 @@ class RecoverySummary(BaseModel):
     sleep_duration_seconds: int | None = None
     sleep_efficiency_percent: float | None = None
     resting_heart_rate_bpm: int | None = None
-    avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN)")
+    avg_hrv_sdnn_ms: float | None = Field(
+        None,
+        description=(
+            "Average HRV (SDNN). Currently always null: every record this endpoint returns "
+            "today comes from WHOOP - a recovery-score record is required for a row to be "
+            "returned, and only WHOOP produces one - and WHOOP reports HRV as RMSSD, which is "
+            "exposed in avg_hrv_rmssd_ms. Once recovery metrics are computed from stored "
+            "timeseries (and returned for all providers, not just WHOOP), this will carry SDNN "
+            "for providers that report it (e.g. Apple Health)."
+        ),
+    )
+    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (RMSSD)")
     avg_spo2_percent: float | None = None
-    recovery_score: int | None = Field(None, ge=0, le=100, description="0-100 score")
+    recovery_score: int | None = Field(
+        None,
+        ge=0,
+        le=100,
+        deprecated=True,
+        description=(
+            "Deprecated and scheduled for removal in an upcoming release: 0-100 recovery "
+            "score. Among the supported providers only WHOOP reports a recovery score, and "
+            "Open Wearables does not compute its own, so this is null for every other "
+            "provider. Migrate to the health scores endpoint "
+            "(GET /api/v1/users/{user_id}/health-scores), whose `components` array exposes "
+            "the underlying metrics the score is derived from."
+        ),
+    )

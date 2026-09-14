@@ -58,6 +58,10 @@ graph TD
   **Never embed your `app_id` / `app_secret` in the mobile app.** App credentials should only exist on your backend server. Only the `access_token` and `refresh_token` are passed to the mobile app.
 </Warning>
 
+<Note>
+  **Building a standalone app with no backend of your own?** Invitation codes are an alternative - a single-use code the app redeems directly, no backend channel required. This is **not** the standard flow; it exists mainly for the [Open Wearables app](/app/introduction) and the [example apps](/sdk/flutter/example-app). If your app authenticates users against your own backend (the normal case), use the backend token flow above. See [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+</Note>
+
 ## Step 1: Backend Setup
 
 Your backend needs a single endpoint that generates access tokens for your users by calling the Open Wearables API and forwarding the tokens.
@@ -346,6 +350,26 @@ if (!success) {
   Health Connect is recommended as the default provider for the widest device and data type support.
 </Tip>
 
+### Samsung Health SDK dependency
+
+If you target Samsung Health, add Samsung's own **Health Data SDK** (distributed as an `.aar`) to your app module. This is required to use the `"samsung"` provider **at all** - including in Developer Mode - not just for production. Download it from the [Samsung Health Data SDK](https://developer.samsung.com/health/data) page:
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    // Samsung Health Data SDK (downloaded from Samsung)
+    implementation(files("libs/samsung-health-data-api.aar"))
+}
+```
+
+<Warning>
+  **Shipping Samsung Health to production requires Samsung's approval.** The permission flow is blocked at runtime until Samsung approves your partnership request and allowlists your release signing key. See [Samsung Health Production Requirements](#samsung-health-production-requirements) before you plan a release.
+</Warning>
+
+<Note>
+  **Testing Samsung Health:** Samsung Health is not available in the Android emulator - test on a physical Samsung device with the Samsung Health app installed. Before Samsung approves your app for production, enable [**Developer Mode**](https://developer.samsung.com/health/data/guide/developer-mode.html) in the Samsung Health app so the permission flow works on your test build. If `setProvider("samsung")` returns `false`, the device, the Samsung Health app, or Developer Mode is not set up.
+</Note>
+
 ## Step 5: Request Permissions
 
 Request access to specific health data types. The type IDs are string-based:
@@ -478,6 +502,29 @@ class MainActivity : AppCompatActivity() {
     }
 }
 ```
+
+## Samsung Health Production Requirements
+
+Samsung Health works on your development build with Developer Mode - **for read access (what Open Wearables needs) you only need a Samsung account, no partnership request**. Production adds a requirement: the same code runs, but the permission flow aborts on release builds until **both** of these are true:
+
+1. **Your partnership request is approved by Samsung.** Submit it through Samsung's [app creation process](https://developer.samsung.com/health/data/process.html), providing your app's package name and release signing key signature.
+2. **Your release signing key is on Samsung's allowlist.** Samsung [matches package name + SHA-256 at runtime](https://developer.samsung.com/health/data/guide/app-verification.html). Get the fingerprint from your release keystore - and if you use Play App Signing, register the Play **app signing key** (Play Console → `Setup → App integrity → App signing`), not your upload key:
+
+   ```bash
+   keytool -list -v -keystore release.keystore -alias your_release_alias
+   ```
+
+<Note>
+  `IllegalStateException: Could not get policy for {package}` on a release build means Samsung has not matched your app - the partnership is not approved, or the running build's **package name or signing certificate** does not match what Samsung registered (a common Play App Signing pitfall). Confirm all three, then contact [Samsung Developer Support](https://developer.samsung.com/health/data).
+</Note>
+
+<Tip>
+  None of this applies to Health Connect (`"google"`), so you can ship with Health Connect first and add Samsung Health once approval lands.
+</Tip>
+
+### Background sync
+
+Samsung Health does **not** use the `android.permission.health.*` declarations Health Connect relies on - permissions are granted through Samsung Health's own dialog, so no extra manifest permissions are needed for the Samsung provider. Background sync uses the same WorkManager and foreground-service mechanism as Health Connect; see [Troubleshooting](/sdk/android/troubleshooting) for the battery-optimization and `POST_NOTIFICATIONS` requirements that affect it.
 
 ## Complete Integration Example
 

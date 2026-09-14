@@ -122,6 +122,12 @@ class SNSService:
         return notification.topic_arn == settings.aws_sns_topic_arn.get_secret_value()
 
     def _confirm_subscription(self, notification: SNSNotification) -> UploadDataResponse:
+        if not self.sns_client:
+            return UploadDataResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                response="SNS client not configured",
+                user_id=None,
+            )
         try:
             self.sns_client.confirm_subscription(
                 TopicArn=notification.topic_arn,
@@ -147,6 +153,20 @@ class SNSService:
                 logger, "info", "Received S3 test event, ignoring", provider="apple_xml", task="sns_notification"
             )
             return UploadDataResponse(status_code=status.HTTP_200_OK, response="ignored: s3:TestEvent", user_id=None)
+
+        # Only dispatch when SNS is the configured completion trigger; otherwise the
+        # frontend's /complete call already handles it and we must not process twice.
+        if settings.apple_xml_upload_completion_mode != "sns":
+            log_structured(
+                logger,
+                "info",
+                "Ignoring S3 notification: completion mode is client-driven",
+                provider="apple_xml",
+                task="sns_notification",
+            )
+            return UploadDataResponse(
+                status_code=status.HTTP_200_OK, response="ignored: client-driven completion", user_id=None
+            )
 
         records = message_body.get("Records", [])
         dispatched = 0

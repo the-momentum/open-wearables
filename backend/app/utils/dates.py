@@ -144,6 +144,35 @@ def parse_webhook_data_timestamp(data_timestamp: str | None) -> datetime:
     return datetime.now(timezone.utc)
 
 
+def align_tz_awareness(start: datetime | None, end: datetime | None) -> tuple[datetime | None, datetime | None]:
+    """Give a naive edge of a time window the sibling edge's offset.
+
+    Two naive or two aware datetimes already compare; only a mixed pair raises
+    TypeError. Both edges come from the same device in the same zone, so the known
+    offset is the right one to borrow — no UTC is assumed and neither wall clock moves.
+    """
+    if start is not None and end is not None and (start.tzinfo is None) != (end.tzinfo is None):
+        if start.tzinfo is None:
+            return start.replace(tzinfo=end.tzinfo), end
+        return start, end.replace(tzinfo=start.tzinfo)
+    return start, end
+
+
+def as_utc(moment: datetime | None) -> datetime | None:
+    """Return the same instant as a UTC-aware datetime; a naive input is read as UTC."""
+    if moment is None:
+        return None
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
+def to_rfc3339(dt: datetime) -> str:
+    """Format a datetime as RFC3339 UTC with a 'Z' suffix; naive datetimes are assumed UTC."""
+    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return aware.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def offset_to_iso(offset_seconds: int | None) -> str | None:
     """Convert a timezone offset in seconds to ISO 8601 format (e.g. 3600 -> '+01:00')."""
     if offset_seconds is None:

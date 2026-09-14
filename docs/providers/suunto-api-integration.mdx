@@ -11,5 +11,255 @@ keywords: ["suunto api integration", "suunto oauth", "suunto health data", "suun
 "twitter:card": "summary_large_image"
 ---
 
-TODO
+<Note>
+**Need help with your Suunto integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Suunto provides access to workout, sleep, recovery, and 24/7 activity data from Suunto watches through the [Suunto Cloud API](https://apizone.suunto.com/). The integration uses OAuth 2.0 for authentication and supports both pull-based syncing (historical data over REST) and real-time webhooks (Suunto pushes events as they happen).
+
+Access requires membership in the **Suunto Developer Program** - you must apply to become a Suunto partner and subscribe to the Developer API product. Every request also carries a **subscription key** (`Ocp-Apim-Subscription-Key`) alongside the OAuth bearer token.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Workouts / Exercises | Yes (HR min/max/avg, steps, energy, distance, speed, power, elevation, moving time) |
+| Sleep (with stages) | Yes (total duration, time in bed, efficiency, deep/REM/light/awake, nap flag) |
+| Recovery (RECOVERY health score) | Yes |
+| Continuous heart rate | Yes |
+| Steps | Yes |
+| SpO2 | Yes |
+| Energy | Yes |
+| HRV (RMSSD) | Yes |
+| Resting heart rate | Yes (from nightly sleep samples) |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Webhooks (push)** | Suunto pushes each event to your notification URL with the data delivered inline. Open Wearables acknowledges within Suunto's 2-second timeout and processes the payload asynchronously. Handles `WORKOUT_CREATED`, `SUUNTO_247_ACTIVITY_CREATED`, `SUUNTO_247_SLEEP_CREATED`, and `SUUNTO_247_RECOVERY_CREATED` (`ROUTE_CREATED` is acknowledged but ignored). |
+| **Polling (pull)** | Open Wearables fetches workouts (`/v3/workouts/`) and 24/7 data (`/247samples/*`, `/247/daily-activity-statistics`) over REST for historical sync and as a fallback. |
+
+<Note>
+Webhook payloads are signed with HMAC-SHA256 over the raw request body, delivered in the `X-HMAC-SHA256-Signature` header. Open Wearables verifies this against `SUUNTO_WEBHOOK_SECRET` (which defaults to your app `SECRET_KEY`). See the configuration step below.
+</Note>
+
+## What you need by the end
+
+- **Partner approval**: an approved application to the Suunto Developer Program
+- **Subscription key**: from your Developer API subscription
+- **App credentials**: Client ID + Client Secret from your Suunto profile's OAuth settings
+- **Redirect URI** registered in your Suunto OAuth settings
+
+## Prerequisites
+
+- A **company or organization** - Suunto Cloud API access is granted only to companies/organizations building tools, apps, or services (commercial or non-commercial). Suunto [does not grant Cloud API access for personal use](https://apizone.suunto.com/faq)
+- A Suunto account (the same one used with the [Suunto app](https://www.suunto.com/suunto-app/suunto-app/)), for testing with real device data
+
+<Note>
+This company requirement applies to the **Suunto Cloud API** used here (`cloudapi.suunto.com`). It is separate from on-watch **SuuntoPlus** apps, which any developer can build without a partner relationship.
+</Note>
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Apply to the Suunto Developer Program">
+    Suunto Cloud API access is gated behind partner approval and is granted **only to companies/organizations** - not for personal use. Submit an application from the [Suunto Partners page](https://www.suunto.com/welcomepartners) using the **Apply now** form, describing your organization and intended integration. Select **Suunto Cloud API** so you are issued the API agreement to sign.
+
+    <Note>
+    Approval is handled by Suunto and is not instant - expect a response within about two weeks. You cannot create OAuth credentials until your partner application is accepted, the API agreement is signed, and you have access to the [Suunto API Zone](https://apizone.suunto.com/).
+    </Note>
+  </Step>
+
+  <Step title="Subscribe to the Developer API product">
+    Sign in to the [Suunto API Zone](https://apizone.suunto.com/) and open the **Developer API** product. Subscribe to it (you can name the subscription, e.g. "Open Wearables").
+
+    Once the subscription is **Active**, open your **Profile → Your subscriptions** to retrieve your **subscription key**. Both a primary and a secondary key are provided - either works, and the secondary key lets you rotate without downtime.
+
+    <Note>
+    The Developer API tier allows **10 calls/minute up to a maximum of 200 calls/week**. Plan your sync volume accordingly and request a higher tier from Suunto if you need more.
+    </Note>
+  </Step>
+
+  <Step title="Configure OAuth settings">
+    In your Suunto **Profile**, fill in the OAuth configuration fields:
+
+    - **App name**: The name shown to users on the consent screen (e.g. "Open Wearables")
+    - **Client secret**: A secret value you set for your app
+    - **Redirect URI**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/suunto/callback`, so register that exact URL here. For local development, expose your backend with [ngrok](/dev-guides/ngrok-setup) and register e.g. `https://your-subdomain.ngrok-free.app/api/v1/oauth/suunto/callback`. In production use your public domain.
+
+    Suunto automatically generates your **Client Id** from this configuration.
+
+    <Warning>
+    Keep your Client Secret and subscription key server-side only - never log or expose them in client code.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/suunto/callback. For local dev, use your ngrok URL.
+API_BASE_URL=https://your-subdomain.ngrok-free.app
+
+#--- Suunto ---#
+SUUNTO_CLIENT_ID=public-client-id
+SUUNTO_CLIENT_SECRET=private-secret-id
+SUUNTO_SUBSCRIPTION_KEY=private-subscription-id
+# SUUNTO_DEFAULT_SCOPE=
+# Optional: defaults to SECRET_KEY. Configure the same value as your Suunto notification secret.
+# SUUNTO_WEBHOOK_SECRET=your-secret
+```
+
+    **Configuration details:**
+
+    | Variable | Description |
+    |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/suunto/callback`, which must match the Redirect URI configured in your Suunto profile. For local dev, use your [ngrok](/dev-guides/ngrok-setup) URL |
+    | `SUUNTO_CLIENT_ID` | Client Id auto-generated by Suunto from your OAuth settings |
+    | `SUUNTO_CLIENT_SECRET` | Client secret you set in your Suunto OAuth settings |
+    | `SUUNTO_SUBSCRIPTION_KEY` | Subscription key from your Developer API subscription. Sent as the `Ocp-Apim-Subscription-Key` header on every API request |
+    | `SUUNTO_DEFAULT_SCOPE` | OAuth scope requested during authorization. Left empty by default, which omits `scope=` from the authorize URL (matching Suunto's default `workout` grant) |
+    | `SUUNTO_WEBHOOK_SECRET` | HMAC-SHA256 secret used to verify incoming webhook signatures. Defaults to your app `SECRET_KEY` - set it explicitly only if Suunto signs your notifications with a different secret |
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow.
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/suunto/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://cloudapi-oauth.suunto.com/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Suunto and authorize your app.
+
+    **3. Suunto redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/suunto/callback`). Open Wearables automatically exchanges the authorization code for access and refresh tokens, and reads the Suunto user identity from the JWT access token (`sub` and `user` claims).
+
+    **4. Verify the connection:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "suunto"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/suunto/callback`) that Suunto sends the authorization code to.
+    </Note>
+  </Step>
+
+  <Step title="Enable webhooks (optional)">
+    Suunto delivers events in **push** mode - each notification carries the data inline, so no extra fetch is needed (workouts are re-fetched via REST using their `workoutKey` to guarantee the canonical schema).
+
+    Webhooks are configured on Suunto's side: register your notification URL with Suunto and point it at:
+
+    ```
+    {API_BASE_URL}/api/v1/providers/suunto/webhooks
+    ```
+
+    Suunto signs each request body with HMAC-SHA256 and sends the result in the `X-HMAC-SHA256-Signature` header. Open Wearables verifies it against `SUUNTO_WEBHOOK_SECRET` (defaulting to `SECRET_KEY`), so make sure the notification secret configured with Suunto matches that value.
+
+    <Note>
+    The endpoint acknowledges within Suunto's 2-second timeout and enqueues processing in the background. If webhooks aren't configured, periodic REST polling still keeps data current.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync is triggered automatically after a successful OAuth connection. To manually sync or fetch historical data:
+
+    ```bash
+    # Sync all data types
+    curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync?data_type=all" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You can also sync specific data types:
+
+    ```bash
+    # Sync only workouts
+    curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync?data_type=workouts" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Sync only 24/7 data (sleep, recovery, activity samples)
+    curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync?data_type=247" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch workouts
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/workouts?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch sleep records
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch timeseries data (heart rate, steps, SpO2, energy, HRV)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Suunto integration is working end-to-end.
+  </Step>
+</Steps>
+
+## API Details
+
+| Detail | Value |
+|--------|-------|
+| **Auth endpoint** | `https://cloudapi-oauth.suunto.com/oauth/authorize` |
+| **Token endpoint** | `https://cloudapi-oauth.suunto.com/oauth/token` |
+| **Data API base** | `https://cloudapi.suunto.com` |
+| **Required header** | `Ocp-Apim-Subscription-Key: {SUUNTO_SUBSCRIPTION_KEY}` on every request |
+| **Webhook callback** | `POST /api/v1/providers/suunto/webhooks` |
+| **Webhook signature** | HMAC-SHA256 of the raw body in `X-HMAC-SHA256-Signature` |
+
+## Rate Limits
+
+The Developer API tier is capped at:
+
+| Limit | Value |
+|-------|-------|
+| Per minute | 10 calls |
+| Per week | 200 calls |
+
+If you need more throughput, request a higher tier from Suunto through the API Zone.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Coverage Matrix" icon="table" href="/providers/coverage">
+    See the full data coverage comparison.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Suunto API Zone](https://apizone.suunto.com/) and the [How to start](https://apizone.suunto.com/how-to-start) guide.
+</Note>
 

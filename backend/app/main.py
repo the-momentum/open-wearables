@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
@@ -57,10 +59,11 @@ init_sentry()
 raw_payload_storage.configure(
     settings.raw_payload_storage,
     settings.raw_payload_max_size_bytes,
-    s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
+    s3_bucket=settings.raw_payload_bucket,
     s3_prefix=settings.raw_payload_s3_prefix,
     s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
     fit_files_enabled=settings.store_fit_files,
+    transport_enabled=settings.sdk_payload_s3_offload,
 )
 
 add_cors_middleware(api)
@@ -77,13 +80,23 @@ async def root() -> dict[str, str]:
     return {"message": "Server is running!"}
 
 
+def _capture_error_body(request: Request, status_code: int, detail: object) -> None:
+    """Stash a 4xx response body on request.state for the access log (flag-gated, byte-capped)."""
+    if settings.log_error_response_body and 400 <= status_code < 500:
+        # truncate on the byte limit; errors="ignore" drops a partial codepoint at the cut
+        truncated = str(detail).encode("utf-8")[: settings.log_error_response_body_max_bytes]
+        request.state.error_response_body = truncated.decode("utf-8", errors="ignore")
+
+
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
     if request.url.path.endswith("/auth/login"):
+        detail = "Incorrect email or password"
+        _capture_error_body(request, status.HTTP_401_UNAUTHORIZED, detail)
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Incorrect email or password"},
+            content={"detail": detail},
             headers={"WWW-Authenticate": "Bearer"},
         )
     raise handle_exception(exc, "")
@@ -92,6 +105,24 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 @api.exception_handler(DatetimeParseError)
 async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
     raise handle_exception(exc, "")
+
+
+@api.exception_handler(StarletteHTTPException)
+async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
+    # request.state survives the middleware boundary, so the access log can read it.
+    _capture_error_body(request, exc.status_code, exc.detail)
+    # real cause behind an opaque HTTPException (e.g. FastAPI's body-parse 400): explicit
+    # `from e`, else the implicitly-chained exception unless suppressed via `from None`.
+    cause = exc.__cause__
+    if cause is None and not exc.__suppress_context__:
+        cause = exc.__context__
+    if cause is not None:
+        request.state.error_cause_type = type(cause).__name__
+        try:
+            request.state.error_cause_msg = str(cause)[:300]
+        except Exception:
+            request.state.error_cause_msg = "<unavailable>"
+    return await http_exception_handler(request, exc)
 
 
 api.include_router(head_router)

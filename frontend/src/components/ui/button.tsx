@@ -12,9 +12,9 @@ const buttonVariants = cva(
         default:
           'bg-white text-black hover:bg-zinc-200 border border-transparent',
         destructive:
-          'bg-[hsl(var(--destructive-muted)/0.1)] text-[hsl(var(--destructive-muted))] border border-red-500/30 hover:border-red-500/50 hover:shadow-[0_0_15px_hsla(350,100%,55%,0.3)]',
+          'bg-destructive-muted/10 text-destructive-muted border border-red-500/30 hover:border-red-500/50 hover:shadow-[0_0_15px_hsla(350,100%,55%,0.3)]',
         'destructive-outline':
-          'border border-border/50 bg-background hover:bg-card hover:border-red-500/50 hover:text-[hsl(var(--destructive-muted))] hover:shadow-[0_0_10px_hsla(350,100%,55%,0.2)]',
+          'border border-border/50 bg-background hover:bg-card hover:border-red-500/50 hover:text-destructive-muted hover:shadow-[0_0_10px_hsla(350,100%,55%,0.2)]',
         outline:
           'border border-border/50 bg-background hover:bg-card hover:border-primary/50 hover:shadow-[0_0_10px_hsla(185,100%,50%,0.2)]',
         secondary:

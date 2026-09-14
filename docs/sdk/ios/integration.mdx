@@ -57,6 +57,10 @@ graph TD
   **Never embed your `app_id` / `app_secret` in the mobile app.** App credentials should only exist on your backend server. Only the `access_token` and `refresh_token` are passed to the mobile app.
 </Warning>
 
+<Note>
+  **Building a standalone app with no backend of your own?** Invitation codes are an alternative - a single-use code the app redeems directly, no backend channel required. This is **not** the standard flow; it exists mainly for the [Open Wearables app](/app/introduction) and the [example apps](/sdk/flutter/example-app). If your app authenticates users against your own backend (the normal case), use the backend token flow above. See [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+</Note>
+
 ## Step 1: Backend Setup
 
 Your backend needs a single endpoint that generates access tokens for your users by calling the Open Wearables API and forwarding the tokens.

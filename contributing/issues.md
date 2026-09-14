@@ -100,6 +100,7 @@ Common labels you may see:
 
 If you need help but it's not a bug or feature request:
 
-- Check the [documentation](../README.md)
-- Review the [API docs](http://localhost:8000/docs) when running locally
-- Ask in discussions or community channels
+- Check the [documentation](https://openwearables.io/docs)
+- Review the [API reference](https://openwearables.io/docs/api-reference/introduction)
+- Browse the live API docs at `http://localhost:8000/docs` when running the stack locally
+- Ask in [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions) or on [Discord](https://discord.gg/qrcfFnNE6H)

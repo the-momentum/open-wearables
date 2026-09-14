@@ -4,6 +4,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.entry_source import get_unified_strava_entry_source
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
 from app.schemas.enums import SeriesType, WorkoutType
@@ -23,6 +24,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.strava.coverage import STREAM_KEY_SERIES_TYPE, STREAM_KEYS_PARAM
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import offset_to_iso
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -183,11 +185,18 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         if raw_workout.calories is not None and raw_workout.calories > 0:
             metrics["energy_burned"] = Decimal(raw_workout.calories)
         elif raw_workout.kilojoules is not None:
-            metrics["energy_burned"] = Decimal(raw_workout.kilojoules) * Decimal("0.239")  # convert to kcal
+            metrics["energy_burned"] = kilojoules_to_kcal(raw_workout.kilojoules)
 
         # Moving time
         if raw_workout.moving_time is not None:
             metrics["moving_time_seconds"] = raw_workout.moving_time
+
+        entry_source = get_unified_strava_entry_source(raw_workout.manual)
+        if entry_source is not None:
+            metrics["entry_source"] = entry_source
+
+        if raw_workout.name:
+            metrics["label"] = raw_workout.name
 
         return metrics
 

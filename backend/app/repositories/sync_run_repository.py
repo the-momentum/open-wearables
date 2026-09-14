@@ -1,0 +1,224 @@
+from datetime import datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy import ColumnElement, and_, case, func, literal, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import InstrumentedAttribute, selectinload
+
+from app.database import DbSession
+from app.models import SyncRun, SyncRunDataType
+from app.schemas.sync_status import DataTypeOutcome, SyncRunWrite, SyncScope, SyncStatus
+
+
+def _overlaps(
+    start_column: InstrumentedAttribute[datetime | None],
+    end_column: InstrumentedAttribute[datetime | None],
+    range_start: datetime | None,
+    range_end: datetime | None,
+) -> list[ColumnElement[bool]]:
+    """Half-open overlap of a covered span against the asked-for range.
+
+    A row with a NULL bound is excluded rather than assumed: whether an unknown span
+    overlaps the range is undecidable.
+    """
+    conditions: list[ColumnElement[bool]] = [start_column.isnot(None), end_column.isnot(None)]
+    if range_end is not None:
+        conditions.append(start_column < range_end)
+    if range_start is not None:
+        conditions.append(end_column > range_start)
+    return conditions
+
+
+class SyncRunRepository:
+    """Durable storage for sync runs and their per-data-type outcomes.
+
+    Rows are keyed by run_key, the same identifier the SSE stream and outgoing webhooks
+    use as run_id, so an event stream can be joined to its stored run. The first event of
+    a run inserts the row, later events update it in place.
+    """
+
+    def upsert_run(self, db_session: DbSession, run: SyncRunWrite) -> UUID:
+        """Insert or update the run, returning its id.
+
+        started_at is insert-only; window_* fill in while empty, since the window is
+        often not known until after the run has opened. Events older than the row are
+        ignored, so a late start cannot reopen a run that already reported its outcome.
+
+        Item counts add up rather than replace, so a run reporting in several times ends
+        up with its total. Re-delivering the same event therefore counts it twice.
+        """
+        stmt = insert(SyncRun).values(id=uuid4(), **run.model_dump())
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["run_key"],
+            set_={
+                "status": stmt.excluded.status,
+                "window_start": func.coalesce(SyncRun.window_start, stmt.excluded.window_start),
+                "window_end": func.coalesce(SyncRun.window_end, stmt.excluded.window_end),
+                # A later start event carries no end, so it must not clear a recorded one.
+                "ended_at": func.coalesce(stmt.excluded.ended_at, SyncRun.ended_at),
+                # Counts accumulate like the per-type rows do: a historical SDK export
+                # reports once per batch, so overwriting would keep only the last batch.
+                "items_inserted": SyncRun.items_inserted + stmt.excluded.items_inserted,
+                "items_updated": SyncRun.items_updated + stmt.excluded.items_updated,
+                "error": stmt.excluded.error,
+                "meta": stmt.excluded.meta,
+                "updated_at": stmt.excluded.updated_at,
+            },
+            where=SyncRun.updated_at <= stmt.excluded.updated_at,
+        ).returning(SyncRun.id)
+        # No row comes back when the where clause rejected an out-of-order event.
+        run_id = db_session.execute(stmt).scalar_one_or_none()
+        if run_id is None:
+            run_id = db_session.execute(select(SyncRun.id).where(SyncRun.run_key == run.run_key)).scalar_one()
+        db_session.commit()
+        return run_id
+
+    def upsert_data_types(
+        self,
+        db_session: DbSession,
+        *,
+        run_id: UUID,
+        outcomes: list[DataTypeOutcome],
+        updated_at: datetime,
+    ) -> None:
+        """Record the outcome of each data type within a run, in one transaction.
+
+        Covered range widens rather than being replaced, so several batches of the same
+        type accumulate into one span. attempt counts how many times the type reported in,
+        which for an SDK export is once per batch plus once for its end event.
+
+        Those two report independently and can arrive in either order, so a write only
+        fills in what it knows: a verdict and its timing survive a later batch.
+        """
+        for outcome in outcomes:
+            self._upsert_data_type(db_session, run_id=run_id, outcome=outcome, updated_at=updated_at)
+        db_session.commit()
+
+    def _upsert_data_type(
+        self,
+        db_session: DbSession,
+        *,
+        run_id: UUID,
+        outcome: DataTypeOutcome,
+        updated_at: datetime,
+    ) -> None:
+        stmt = insert(SyncRunDataType).values(
+            run_id=run_id,
+            attempt=1,
+            updated_at=updated_at,
+            **outcome.model_dump(),
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["run_id", "data_type"],
+            set_={
+                # IN_PROGRESS means the writer has no verdict of its own, so it must not
+                # replace one that already arrived.
+                "status": case(
+                    (stmt.excluded.status == SyncStatus.IN_PROGRESS, SyncRunDataType.status),
+                    else_=stmt.excluded.status,
+                ),
+                # Only the log end event knows the provider's own name for the type.
+                "native_type": func.coalesce(stmt.excluded.native_type, SyncRunDataType.native_type),
+                "reported_records": func.coalesce(stmt.excluded.reported_records, SyncRunDataType.reported_records),
+                "items_inserted": SyncRunDataType.items_inserted + stmt.excluded.items_inserted,
+                "items_updated": SyncRunDataType.items_updated + stmt.excluded.items_updated,
+                "covered_start": func.least(stmt.excluded.covered_start, SyncRunDataType.covered_start),
+                "covered_end": func.greatest(stmt.excluded.covered_end, SyncRunDataType.covered_end),
+                # Coalesced like the run's own ended_at: a batch reporting what it wrote
+                # carries none of this, and must not clear what the end event recorded.
+                "ended_at": func.coalesce(stmt.excluded.ended_at, SyncRunDataType.ended_at),
+                "duration_ms": func.coalesce(stmt.excluded.duration_ms, SyncRunDataType.duration_ms),
+                "error_code": func.coalesce(stmt.excluded.error_code, SyncRunDataType.error_code),
+                "error": func.coalesce(stmt.excluded.error, SyncRunDataType.error),
+                "attempt": SyncRunDataType.attempt + 1,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        db_session.execute(stmt)
+
+    def find_stale(self, db_session: DbSession, cutoff: datetime) -> list[str]:
+        """Keys of runs in progress that have not been written to since the cutoff.
+
+        Matches on updated_at, not started_at, so a long run that keeps reporting is not
+        a candidate. Age alone still does not prove it is dead, so the caller checks
+        liveness before closing anything.
+        """
+        stmt = select(SyncRun.run_key).where(
+            SyncRun.status == SyncStatus.IN_PROGRESS,
+            SyncRun.updated_at < cutoff,
+        )
+        return list(db_session.scalars(stmt).all())
+
+    def close_as_stale(self, db_session: DbSession, run_keys: list[str], ended_at: datetime) -> list[str]:
+        """Close the named runs as stale, returning the keys that actually changed.
+
+        Stale is not failed: we never heard what happened. ended_at is when we gave up,
+        not when it really stopped. The in_progress check is repeated because a run can
+        report its outcome between being picked as a candidate and this update.
+        """
+        if not run_keys:
+            return []
+
+        stmt = (
+            update(SyncRun)
+            .where(SyncRun.run_key.in_(run_keys), SyncRun.status == SyncStatus.IN_PROGRESS)
+            .values(status=SyncStatus.STALE, ended_at=ended_at, updated_at=ended_at)
+            .returning(SyncRun.run_key)
+        )
+        closed = list(db_session.scalars(stmt).all())
+        db_session.commit()
+        return closed
+
+    def get_by_run_key(self, db_session: DbSession, run_key: str) -> SyncRun | None:
+        return db_session.execute(select(SyncRun).where(SyncRun.run_key == run_key)).scalar_one_or_none()
+
+    def get_with_data_types(self, db_session: DbSession, run_key: str) -> SyncRun | None:
+        stmt = select(SyncRun).where(SyncRun.run_key == run_key).options(selectinload(SyncRun.data_types))
+        return db_session.execute(stmt).scalar_one_or_none()
+
+    def list_for_user(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        *,
+        limit: int = 20,
+        scope: SyncScope | None = None,
+        since: datetime | None = None,
+        provider: str | None = None,
+        covered_from: datetime | None = None,
+        covered_to: datetime | None = None,
+    ) -> list[SyncRun]:
+        """Stored runs of one user, newest first.
+
+        ``since`` filters on when a run executed; ``covered_from``/``covered_to`` on the span
+        of data it was meant to cover. A run matches the covered range when its own window
+        overlaps it or when any of its data types covered a span that does — the per-type
+        spans are the more precise answer, and they exist for runs with no recorded window.
+        """
+        stmt = select(SyncRun).where(SyncRun.user_id == user_id).order_by(SyncRun.started_at.desc()).limit(limit)
+        if scope is not None:
+            stmt = stmt.where(SyncRun.scope == scope)
+        if since is not None:
+            stmt = stmt.where(SyncRun.started_at >= since)
+        if provider is not None:
+            stmt = stmt.where(SyncRun.provider == provider)
+        if covered_from is not None or covered_to is not None:
+            covered_by_data_type = (
+                select(literal(1))
+                .where(
+                    SyncRunDataType.run_id == SyncRun.id,
+                    *_overlaps(SyncRunDataType.covered_start, SyncRunDataType.covered_end, covered_from, covered_to),
+                )
+                .correlate(SyncRun)
+                .exists()
+            )
+            stmt = stmt.where(
+                or_(
+                    and_(*_overlaps(SyncRun.window_start, SyncRun.window_end, covered_from, covered_to)),
+                    covered_by_data_type,
+                )
+            )
+        return list(db_session.execute(stmt).scalars().unique().all())
+
+
+sync_run_repository = SyncRunRepository()

@@ -36,7 +36,6 @@ def dispatch_seed_generation(
 
 @router.get(
     "/settings/seed/presets",
-    status_code=status.HTTP_200_OK,
     summary="List available seed data presets",
     description="Returns the list of pre-configured profiles for seed data generation.",
 )
@@ -48,7 +47,6 @@ def list_presets(
 
 @router.get(
     "/settings/seed/sleep-profiles",
-    status_code=status.HTTP_200_OK,
     summary="List available sleep stage profiles",
 )
 def list_sleep_stage_profiles(_developer: DeveloperDep) -> list[dict]:

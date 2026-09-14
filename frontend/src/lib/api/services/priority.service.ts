@@ -1,13 +1,12 @@
 import { apiClient } from '../client';
 import { ApiError } from '../../errors/api-error';
+import type { DeviceType } from '../types';
+
+export type { DeviceType };
 
 // Provider enum matching backend ProviderName
 export type ProviderName =
   'apple' | 'garmin' | 'polar' | 'suunto' | 'whoop' | 'oura' | 'unknown';
-
-// Device type enum matching backend DeviceType
-export type DeviceType =
-  'watch' | 'band' | 'ring' | 'phone' | 'scale' | 'other' | 'unknown';
 
 // Types
 export interface ProviderPriority {

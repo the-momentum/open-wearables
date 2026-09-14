@@ -86,9 +86,7 @@ If configured correctly, Claude will use the `get_users` tool to fetch available
 
 ### "Invalid API key" error
 
-Ensure your `OPEN_WEARABLES_API_KEY` in `config/.env` is valid. You can get an API key from:
-1. The Open Wearables developer portal
-2. Or via the backend admin panel at `/api/v1/developer/api-keys`
+Ensure your `OPEN_WEARABLES_API_KEY` in `config/.env` is valid. Keys are generated in the API Keys section of the Open Wearables developer portal (Settings tab). The full key is shown only once, right after it is created or rotated - if you no longer have it, rotate the key in the portal and update `config/.env` with the new value.
 
 ### "Connection refused" error
 

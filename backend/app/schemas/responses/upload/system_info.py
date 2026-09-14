@@ -1,34 +1,30 @@
 from pydantic import BaseModel
 
 
-class CountWithGrowth(BaseModel):
-    """Count with weekly growth percentage."""
+class MetricCount(BaseModel):
+    """A single count metric."""
 
-    count: int
-    weekly_growth: float
-
-
-class SeriesTypeMetric(BaseModel):
-    """Series type metric information."""
-
-    series_type: str
-    count: int
-
-
-class WorkoutTypeMetric(BaseModel):
-    """Workout type metric information."""
-
-    workout_type: str | None
     count: int
 
 
 class DataPointsInfo(BaseModel):
-    """Data points information."""
+    """Data points information.
+
+    ``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive
+    table. Both are approximate on a cold cache / from planner statistics.
+    """
 
     count: int
-    weekly_growth: float
-    top_series_types: list[SeriesTypeMetric]
-    top_workout_types: list[WorkoutTypeMetric]
+    archived: int
+
+
+class EventRecordsInfo(BaseModel):
+    """Event record counts with a breakdown by category."""
+
+    count: int
+    workouts: int
+    sleep: int
+    menstrual_cycles: int
 
 
 class ProviderConnectionCount(BaseModel):
@@ -45,7 +41,8 @@ class ConnectionsCoverage(BaseModel):
 class SystemInfoResponse(BaseModel):
     """Dashboard system information response."""
 
-    total_users: CountWithGrowth
-    active_conn: CountWithGrowth
+    total_users: MetricCount
+    active_conn: MetricCount
     data_points: DataPointsInfo
+    event_records: EventRecordsInfo
     connections_coverage: ConnectionsCoverage

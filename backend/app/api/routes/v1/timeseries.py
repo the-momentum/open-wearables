@@ -1,10 +1,10 @@
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
-from app.schemas.enums import SeriesType
+from app.schemas.enums import ProviderName, Resolution, SeriesType
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.schemas.responses.activity import TimeSeriesSample
 from app.schemas.utils import PaginatedResponse
@@ -22,9 +22,14 @@ def get_timeseries(
     db: DbSession,
     _api_key: ApiKeyDep,
     types: Annotated[list[SeriesType], Query()] = [],
-    resolution: Literal["raw", "1min", "5min", "15min", "1hour"] = "raw",
+    resolution: Resolution = Resolution.RAW,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
+    provider: ProviderName | None = None,
+    source: str | None = None,
+    device_model: str | None = None,
+    data_source_id: UUID | None = None,
+    filter_by_priority: bool = False,
 ) -> PaginatedResponse[TimeSeriesSample]:
     """Returns granular time series data (biometrics or activity)."""
     params = TimeSeriesQueryParams(
@@ -32,5 +37,10 @@ def get_timeseries(
         end_datetime=parse_query_end_datetime(end_time),
         limit=limit,
         cursor=cursor,
+        resolution=resolution,
+        provider=provider,
+        source=source,
+        device_model=device_model,
+        data_source_id=data_source_id,
     )
-    return timeseries_service.get_timeseries(db, user_id, types, params)
+    return timeseries_service.get_timeseries(db, user_id, types, params, filter_by_priority=filter_by_priority)

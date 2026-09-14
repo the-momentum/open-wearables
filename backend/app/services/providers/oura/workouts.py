@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
+from app.constants.entry_source import get_unified_oura_entry_source
+from app.constants.intensity import get_unified_oura_intensity
 from app.constants.workout_types.oura import get_unified_workout_type
 from app.database import DbSession
 from app.schemas.model_crud.activities import (
@@ -105,11 +107,18 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Oura API."""
         return self._make_api_request(db, user_id, f"/v2/usercollection/workout/{workout_id}")
 
-    def save_by_id(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
+    def save_by_id(self, db: DbSession, user_id: UUID, workout_id: str, trace_id: str | None = None) -> int:
         """Fetch a single workout by ID and save it."""
         raw = self.get_workout_detail_from_api(db, user_id, workout_id)
         if not raw or not isinstance(raw, dict):
             return 0
+        store_raw_payload(
+            source="api_response",
+            provider="oura",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=trace_id,
+        )
         count = 0
         for record, details in self._build_bundles([OuraWorkoutJSON(**raw)], user_id):
             created = event_record_service.create(db, record)
@@ -144,6 +153,17 @@ class OuraWorkouts(BaseWorkoutsTemplate):
             start_dt, end_dt = self._extract_dates(raw_workout.start_datetime, raw_workout.end_datetime)
             duration_seconds = int((end_dt - start_dt).total_seconds())
             metrics["moving_time_seconds"] = duration_seconds
+
+        entry_source = get_unified_oura_entry_source(raw_workout.source)
+        if entry_source is not None:
+            metrics["entry_source"] = entry_source
+
+        intensity = get_unified_oura_intensity(raw_workout.intensity)
+        if intensity is not None:
+            metrics["intensity"] = intensity
+
+        if raw_workout.label:
+            metrics["label"] = raw_workout.label
 
         return metrics
 

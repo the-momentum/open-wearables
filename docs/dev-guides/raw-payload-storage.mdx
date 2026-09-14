@@ -35,7 +35,8 @@ RAW_PAYLOAD_MAX_SIZE_BYTES=10485760
 # S3-specific settings (only needed when using "s3" backend)
 RAW_PAYLOAD_S3_BUCKET=my-raw-payloads        # Falls back to AWS_BUCKET_NAME if not set
 RAW_PAYLOAD_S3_PREFIX=raw-payloads            # S3 key prefix (default: "raw-payloads")
-# RAW_PAYLOAD_S3_ENDPOINT_URL=              # Optional: custom endpoint for S3-compatible providers
+# AWS_ENDPOINT_URL=                         # Shared endpoint for S3-compatible storage
+# RAW_PAYLOAD_S3_ENDPOINT_URL=              # Optional raw-payload-only endpoint override
 ```
 
 <Warning>
@@ -125,6 +126,26 @@ Raw payloads storage is currently enabled at two ingestion points:
 | `POST /api/v1/garmin/push` | `webhook` | `garmin` | 8-char request trace ID |
 | `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `google` | UUID4 batch ID |
 
+## SDK Payload Offload
+
+By default the SDK sync endpoint hands the whole payload to Celery, which keeps it in the Redis broker. A queued backlog then grows with payload size, and a large backfill can push Redis to `maxmemory`.
+
+`SDK_PAYLOAD_S3_OFFLOAD` uploads the payload to S3 instead and queues only its `s3://bucket/key` reference. The worker fetches the body when the task runs.
+
+```bash
+SDK_PAYLOAD_S3_OFFLOAD=false  # default
+```
+
+It needs a bucket (`RAW_PAYLOAD_S3_BUCKET`, or `AWS_BUCKET_NAME`) and startup fails without one. It does **not** need `RAW_PAYLOAD_STORAGE=s3` — archival is a debugging aid and must not gate queue reliability, so offload works with archival `disabled`. For the same reason `RAW_PAYLOAD_MAX_SIZE_BYTES` does not apply to it.
+
+With `RAW_PAYLOAD_STORAGE=s3` there is still one object, written to the same key with the same metadata, serving as both the queued payload and the archive.
+
+With `RAW_PAYLOAD_STORAGE=disabled` the object only exists to carry the payload, so the worker deletes it once the batch is committed — a failed batch keeps its payload for diagnosis. This needs `s3:DeleteObject` on the bucket, otherwise every batch logs a delete failure.
+
+<Warning>
+  S3 is now on the critical path. Keep any lifecycle expiry above your worst queue lag, and expect `503` from the endpoint when the upload fails.
+</Warning>
+
 ## Error Handling
 
 Raw payloads storage is designed to never break your data ingestion pipeline:
@@ -133,6 +154,8 @@ Raw payloads storage is designed to never break your data ingestion pipeline:
 - **S3 upload failures** - Errors are logged but not propagated. The webhook or sync request continues processing.
 - **Missing S3 bucket** - If the S3 backend is configured but no bucket is available, it falls back to `disabled` with an error log.
 - **S3 client failure** - If the S3 client cannot be created (e.g., missing `boto3` or invalid credentials), it falls back to `disabled`.
+
+This covers archival only. Under `SDK_PAYLOAD_S3_OFFLOAD` the upload is the payload's only copy, so a failure returns `503` and the SDK retries, rather than a batch being queued without a body.
 
 ## Example Setup
 
@@ -265,7 +288,7 @@ uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
 | `--api-key` | `OPEN_WEARABLES_API_KEY` env var | API key for authentication |
 | `--s3-bucket` | `RAW_PAYLOAD_S3_BUCKET` or `AWS_BUCKET_NAME` env var | S3 bucket name |
 | `--s3-prefix` | `raw-payloads` | S3 key prefix |
-| `--s3-endpoint-url` | `RAW_PAYLOAD_S3_ENDPOINT_URL` env var | Custom S3 endpoint for compatible providers |
+| `--s3-endpoint-url` | `RAW_PAYLOAD_S3_ENDPOINT_URL` or `AWS_ENDPOINT_URL` env var | Custom S3 endpoint for compatible providers |
 | `--aws-region` | `AWS_REGION` env var or `eu-north-1` | AWS region |
 | `--aws-access-key-id` | `AWS_ACCESS_KEY_ID` env var | AWS access key ID |
 | `--aws-secret-access-key` | `AWS_SECRET_ACCESS_KEY` env var | AWS secret access key |

@@ -2,18 +2,23 @@
 Tests for API key management endpoints.
 
 Tests cover:
-- GET /api/v1/developer/api-keys - list API keys
-- POST /api/v1/developer/api-keys - create new API key
+- GET /api/v1/developer/api-keys - list API keys (prefix only, never the raw key)
+- POST /api/v1/developer/api-keys - create new API key (raw key returned once)
 - DELETE /api/v1/developer/api-keys/{key_id} - delete API key
 - PATCH /api/v1/developer/api-keys/{key_id} - update API key
-- POST /api/v1/developer/api-keys/{key_id}/rotate - rotate API key
+- POST /api/v1/developer/api-keys/{key_id}/rotate - rotate API key (raw key returned once)
 """
+
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.services import api_key_service
 from tests.factories import ApiKeyFactory, DeveloperFactory
-from tests.utils import developer_auth_headers
+from tests.utils import api_key_headers, developer_auth_headers
+
+READ_FIELDS = {"id", "name", "key_prefix", "created_by", "created_at"}
 
 
 class TestListApiKeys:
@@ -34,22 +39,32 @@ class TestListApiKeys:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
-        assert len(data) >= 2
 
-        # Find our test keys
-        key_ids = [api_key1.id, api_key2.id]
-        found_keys = [k for k in data if k["id"] in key_ids]
+        found_keys = [k for k in data if k["id"] in {str(api_key1.id), str(api_key2.id)}]
         assert len(found_keys) == 2
-
-        # Verify structure
         for key in found_keys:
-            assert "id" in key
-            assert "name" in key
-            assert "created_by" in key
-            assert "created_at" in key
+            assert set(key) == READ_FIELDS
+
+    def test_list_api_keys_never_exposes_raw_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """The response must contain only a prefix - not the raw key, nor its hash."""
+        # Arrange
+        developer = DeveloperFactory(email="test@example.com", password="test123")
+        api_key = ApiKeyFactory(developer=developer, name="Secret Key")
+        headers = developer_auth_headers(developer.id)
+
+        # Act
+        response = client.get(f"{api_v1_prefix}/developer/api-keys", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        body = response.text
+        assert api_key.plain_key not in body
+        assert api_key.key_hash not in body
+        item = next(k for k in response.json() if k["id"] == str(api_key.id))
+        assert item["key_prefix"] == api_key.plain_key[:10]
 
     def test_list_api_keys_empty(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test listing API keys when developer has none."""
+        """Test listing API keys when there are none."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
@@ -59,8 +74,7 @@ class TestListApiKeys:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, list)
+        assert response.json() == []
 
     def test_list_api_keys_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test listing API keys fails without authentication."""
@@ -82,7 +96,7 @@ class TestListApiKeys:
         assert response.status_code == 401
 
     def test_list_api_keys_shows_all_keys(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test that authenticated developer can see all API keys."""
+        """Keys are global to the deployment: every developer sees all of them (prefix only)."""
         # Arrange
         developer1 = DeveloperFactory(email="dev1@example.com", password="test123")
         developer2 = DeveloperFactory(email="dev2@example.com", password="test123")
@@ -95,17 +109,17 @@ class TestListApiKeys:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        key_ids = [k["id"] for k in data]
-        assert key1.id in key_ids
-        assert key2.id in key_ids
+        key_ids = [k["id"] for k in response.json()]
+        assert str(key1.id) in key_ids
+        assert str(key2.id) in key_ids
+        assert key2.plain_key not in response.text
 
 
 class TestCreateApiKey:
     """Tests for POST /api/v1/developer/api-keys."""
 
     def test_create_api_key_with_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test creating API key with custom name."""
+        """Test creating API key returns the raw key exactly once."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
@@ -117,34 +131,49 @@ class TestCreateApiKey:
         # Assert
         assert response.status_code == 201
         data = response.json()
+        assert set(data) == READ_FIELDS | {"key"}
         assert data["name"] == "Production API Key"
-        assert "id" in data
-        assert data["id"].startswith("sk-")
+        assert data["key"].startswith("sk-")
+        assert data["key_prefix"] == data["key"][:10]
         assert data["created_by"] == str(developer.id)
-        assert "created_at" in data
 
-        # Verify in database
-        from app.services import api_key_service
-
-        api_key = api_key_service.get(db, data["id"])
+        # Verify in database: only the hash is stored
+        api_key = api_key_service.get(db, UUID(data["id"]))
         assert api_key is not None
         assert api_key.name == "Production API Key"
+        assert api_key.key_hash != data["key"]
+
+    def test_created_key_authenticates_and_is_not_listed_again(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """The raw key works for API auth, but never shows up in the list afterwards."""
+        # Arrange
+        developer = DeveloperFactory(email="test@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
+        raw_key = client.post(f"{api_v1_prefix}/developer/api-keys", headers=headers).json()["key"]
+
+        # Act
+        auth_response = client.get(f"{api_v1_prefix}/users", headers=api_key_headers(raw_key))
+        list_response = client.get(f"{api_v1_prefix}/developer/api-keys", headers=headers)
+
+        # Assert
+        assert auth_response.status_code == 200
+        assert raw_key not in list_response.text
 
     def test_create_api_key_default_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key with default name."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
-        payload = {}
 
         # Act
-        response = client.post(f"{api_v1_prefix}/developer/api-keys", json=payload, headers=headers)
+        response = client.post(f"{api_v1_prefix}/developer/api-keys", json={}, headers=headers)
 
         # Assert
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Default"
-        assert "id" in data
+        assert "key" in data
 
     def test_create_api_key_no_body(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key without request body."""
@@ -157,59 +186,45 @@ class TestCreateApiKey:
 
         # Assert
         assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == "Default"
+        assert response.json()["name"] == "Default"
 
     def test_create_api_key_empty_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key with empty name."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
-        payload = {"name": ""}
 
         # Act
-        response = client.post(f"{api_v1_prefix}/developer/api-keys", json=payload, headers=headers)
+        response = client.post(f"{api_v1_prefix}/developer/api-keys", json={"name": ""}, headers=headers)
 
         # Assert
         assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == ""
+        assert response.json()["name"] == ""
 
     def test_create_api_key_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test creating API key fails without authentication."""
         # Act
-        response = client.post(
-            f"{api_v1_prefix}/developer/api-keys",
-            json={"name": "Test Key"},
-        )
+        response = client.post(f"{api_v1_prefix}/developer/api-keys", json={"name": "Test Key"})
 
         # Assert
         assert response.status_code == 401
 
     def test_create_multiple_api_keys(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test creating multiple API keys for the same developer."""
+        """Test creating multiple API keys yields distinct keys."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
 
-        # Act - Create multiple keys
-        response1 = client.post(
-            f"{api_v1_prefix}/developer/api-keys",
-            json={"name": "Key 1"},
-            headers=headers,
-        )
-        response2 = client.post(
-            f"{api_v1_prefix}/developer/api-keys",
-            json={"name": "Key 2"},
-            headers=headers,
-        )
+        # Act
+        response1 = client.post(f"{api_v1_prefix}/developer/api-keys", json={"name": "Key 1"}, headers=headers)
+        response2 = client.post(f"{api_v1_prefix}/developer/api-keys", json={"name": "Key 2"}, headers=headers)
 
         # Assert
         assert response1.status_code == 201
         assert response2.status_code == 201
-        data1 = response1.json()
-        data2 = response2.json()
+        data1, data2 = response1.json(), response2.json()
         assert data1["id"] != data2["id"]
+        assert data1["key"] != data2["key"]
         assert data1["name"] == "Key 1"
         assert data2["name"] == "Key 2"
 
@@ -218,12 +233,13 @@ class TestDeleteApiKey:
     """Tests for DELETE /api/v1/developer/api-keys/{key_id}."""
 
     def test_delete_api_key_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test deleting API key successfully."""
+        """Test deleting API key successfully revokes it."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer, name="To Delete")
         headers = developer_auth_headers(developer.id)
         key_id = api_key.id
+        raw_key = api_key.plain_key
 
         # Act
         response = client.delete(f"{api_v1_prefix}/developer/api-keys/{key_id}", headers=headers)
@@ -231,28 +247,38 @@ class TestDeleteApiKey:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == key_id
+        assert data["id"] == str(key_id)
         assert data["name"] == "To Delete"
+        assert "key" not in data
 
-        # Verify key is deleted from database
-        from app.services import api_key_service
-
-        deleted_key = api_key_service.get(db, key_id, raise_404=False)
-        assert deleted_key is None
+        assert api_key_service.get(db, key_id, raise_404=False) is None
+        assert client.get(f"{api_v1_prefix}/users", headers=api_key_headers(raw_key)).status_code == 401
 
     def test_delete_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test deleting non-existent API key raises ResourceNotFoundError."""
-
+        """Test deleting non-existent API key returns 404."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
-        fake_key_id = "sk-nonexistent1234567890"
 
         # Act
-        response = client.delete(f"{api_v1_prefix}/developer/api-keys/{fake_key_id}", headers=headers)
+        response = client.delete(f"{api_v1_prefix}/developer/api-keys/{uuid4()}", headers=headers)
 
         # Assert
         assert response.status_code == 404
+
+    def test_delete_api_key_by_raw_value_is_rejected(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Keys are addressed by UUID now, so the raw value is not a valid path parameter."""
+        # Arrange
+        developer = DeveloperFactory(email="test@example.com", password="test123")
+        api_key = ApiKeyFactory(developer=developer)
+        headers = developer_auth_headers(developer.id)
+
+        # Act
+        response = client.delete(f"{api_v1_prefix}/developer/api-keys/{api_key.plain_key}", headers=headers)
+
+        # Assert
+        assert response.status_code == 400  # validation errors are mapped to 400 by the app
+        assert api_key_service.get(db, api_key.id) is not None
 
     def test_delete_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting API key fails without authentication."""
@@ -291,12 +317,11 @@ class TestUpdateApiKey:
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer, name="Old Name")
         headers = developer_auth_headers(developer.id)
-        payload = {"name": "New Name"}
 
         # Act
         response = client.patch(
             f"{api_v1_prefix}/developer/api-keys/{api_key.id}",
-            json=payload,
+            json={"name": "New Name"},
             headers=headers,
         )
 
@@ -304,45 +329,36 @@ class TestUpdateApiKey:
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "New Name"
-        assert data["id"] == api_key.id
+        assert data["id"] == str(api_key.id)
+        assert "key" not in data
 
-        # Verify in database
         db.refresh(api_key)
         assert api_key.name == "New Name"
 
     def test_update_api_key_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating API key with empty payload."""
+        """Test updating API key with empty payload keeps the name."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer, name="Original Name")
         headers = developer_auth_headers(developer.id)
-        payload = {}
 
         # Act
-        response = client.patch(
-            f"{api_v1_prefix}/developer/api-keys/{api_key.id}",
-            json=payload,
-            headers=headers,
-        )
+        response = client.patch(f"{api_v1_prefix}/developer/api-keys/{api_key.id}", json={}, headers=headers)
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "Original Name"
+        assert response.json()["name"] == "Original Name"
 
     def test_update_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating non-existent API key raises ResourceNotFoundError."""
-
+        """Test updating non-existent API key returns 404."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
-        fake_key_id = "sk-nonexistent1234567890"
-        payload = {"name": "New Name"}
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/developer/api-keys/{fake_key_id}",
-            json=payload,
+            f"{api_v1_prefix}/developer/api-keys/{uuid4()}",
+            json={"name": "New Name"},
             headers=headers,
         )
 
@@ -354,13 +370,9 @@ class TestUpdateApiKey:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        payload = {"name": "New Name"}
 
         # Act
-        response = client.patch(
-            f"{api_v1_prefix}/developer/api-keys/{api_key.id}",
-            json=payload,
-        )
+        response = client.patch(f"{api_v1_prefix}/developer/api-keys/{api_key.id}", json={"name": "New Name"})
 
         # Assert
         assert response.status_code == 401
@@ -370,51 +382,43 @@ class TestRotateApiKey:
     """Tests for POST /api/v1/developer/api-keys/{key_id}/rotate."""
 
     def test_rotate_api_key_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test rotating API key successfully."""
+        """Test rotating API key returns a fresh raw key once and revokes the old one."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
-        old_api_key = ApiKeyFactory(developer=developer, name="To Rotate")
+        old_api_key = ApiKeyFactory(developer=developer, name="Production Key")
         headers = developer_auth_headers(developer.id)
         old_key_id = old_api_key.id
+        old_raw_key = old_api_key.plain_key
 
         # Act
-        response = client.post(
-            f"{api_v1_prefix}/developer/api-keys/{old_key_id}/rotate",
-            headers=headers,
-        )
+        response = client.post(f"{api_v1_prefix}/developer/api-keys/{old_key_id}/rotate", headers=headers)
 
         # Assert
         assert response.status_code == 201
         data = response.json()
-        assert data["name"] == "Default"  # New key gets default name
-        assert data["id"] != old_key_id  # New key ID should be different
-        assert data["id"].startswith("sk-")
+        assert set(data) == READ_FIELDS | {"key"}
+        assert data["name"] == "Production Key"
+        assert data["id"] != str(old_key_id)
+        assert data["key"].startswith("sk-")
+        assert data["key"] != old_raw_key
         assert data["created_by"] == str(developer.id)
 
-        # Verify old key is deleted from database
-        from app.services import api_key_service
-
-        old_key = api_key_service.get(db, old_key_id, raise_404=False)
-        assert old_key is None
-
-        # Verify new key exists
-        new_key = api_key_service.get(db, data["id"])
+        assert api_key_service.get(db, old_key_id, raise_404=False) is None
+        new_key = api_key_service.get(db, UUID(data["id"]))
         assert new_key is not None
-        assert new_key.name == "Default"
+        assert new_key.name == "Production Key"
+
+        assert client.get(f"{api_v1_prefix}/users", headers=api_key_headers(old_raw_key)).status_code == 401
+        assert client.get(f"{api_v1_prefix}/users", headers=api_key_headers(data["key"])).status_code == 200
 
     def test_rotate_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test rotating non-existent API key raises ResourceNotFoundError."""
-
+        """Test rotating non-existent API key returns 404."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
-        fake_key_id = "sk-nonexistent1234567890"
 
         # Act
-        response = client.post(
-            f"{api_v1_prefix}/developer/api-keys/{fake_key_id}/rotate",
-            headers=headers,
-        )
+        response = client.post(f"{api_v1_prefix}/developer/api-keys/{uuid4()}/rotate", headers=headers)
 
         # Assert
         assert response.status_code == 404
@@ -446,54 +450,25 @@ class TestRotateApiKey:
         # Assert
         assert response.status_code == 401
 
-    def test_rotate_preserves_key_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test that rotation creates new key with default name (not preserving original)."""
-        # Arrange
-        developer = DeveloperFactory(email="test@example.com", password="test123")
-        old_api_key = ApiKeyFactory(developer=developer, name="Production Key")
-        headers = developer_auth_headers(developer.id)
-
-        # Act
-        response = client.post(
-            f"{api_v1_prefix}/developer/api-keys/{old_api_key.id}/rotate",
-            headers=headers,
-        )
-
-        # Assert
-        assert response.status_code == 201
-        data = response.json()
-        # The new key gets default name (implementation doesn't preserve original name)
-        assert data["name"] == "Default"
-
     def test_rotate_multiple_times(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test rotating the same API key multiple times."""
+        """Test rotating the same API key multiple times leaves only the final key."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer, name="Multi Rotate")
         headers = developer_auth_headers(developer.id)
 
-        # Act - First rotation
-        response1 = client.post(
-            f"{api_v1_prefix}/developer/api-keys/{api_key.id}/rotate",
-            headers=headers,
-        )
+        # Act
+        response1 = client.post(f"{api_v1_prefix}/developer/api-keys/{api_key.id}/rotate", headers=headers)
         assert response1.status_code == 201
-        new_key_id_1 = response1.json()["id"]
+        new_key_id_1 = UUID(response1.json()["id"])
 
-        # Act - Second rotation
-        response2 = client.post(
-            f"{api_v1_prefix}/developer/api-keys/{new_key_id_1}/rotate",
-            headers=headers,
-        )
+        response2 = client.post(f"{api_v1_prefix}/developer/api-keys/{new_key_id_1}/rotate", headers=headers)
 
         # Assert
         assert response2.status_code == 201
-        new_key_id_2 = response2.json()["id"]
+        new_key_id_2 = UUID(response2.json()["id"])
         assert new_key_id_2 != new_key_id_1
         assert new_key_id_2 != api_key.id
-
-        # Verify only the final key exists
-        from app.services import api_key_service
 
         assert api_key_service.get(db, api_key.id, raise_404=False) is None
         assert api_key_service.get(db, new_key_id_1, raise_404=False) is None

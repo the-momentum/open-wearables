@@ -65,6 +65,7 @@ class OuraSleepJSON(BaseModel):
     rem_sleep_duration: int | None = None  # seconds
     restless_periods: int | None = None
     sleep_phase_5_min: str | None = None  # 1 - deep, 2 - light, 3 - rem, 4 - awake
+    sleep_phase_30_sec: str | None = None  # same encoding, 30-second epochs
     sleep_score_delta: float | None = None
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
@@ -109,6 +110,14 @@ class OuraReadinessCollectionJSON(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class OuraMetJSON(BaseModel):
+    """Intraday MET series embedded in a daily activity record."""
+
+    interval: float | None = None  # seconds between items
+    items: list[float | None] = []
+    timestamp: str | None = None  # ISO 8601, start of the series
+
+
 class OuraDailyActivityJSON(BaseModel):
     """Single daily activity record from Oura API v2 /usercollection/daily_activity."""
 
@@ -135,6 +144,8 @@ class OuraDailyActivityJSON(BaseModel):
     total_calories: int | None = None
     timestamp: str | None = None
     contributors: dict | None = None
+    met: OuraMetJSON | None = None
+    class_5_min: str | None = None
 
 
 class OuraActivityCollectionJSON(BaseModel):

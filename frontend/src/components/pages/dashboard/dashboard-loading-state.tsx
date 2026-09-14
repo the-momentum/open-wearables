@@ -13,8 +13,8 @@ export function DashboardLoadingState({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        <div className="absolute -left-32 top-0 h-72 w-72 rounded-full bg-[hsl(var(--primary)/0.08)] blur-3xl" />
-        <div className="absolute right-0 top-32 h-72 w-72 rounded-full bg-[hsl(var(--secondary)/0.06)] blur-3xl" />
+        <div className="absolute -left-32 top-0 h-72 w-72 rounded-full bg-primary/8 blur-3xl" />
+        <div className="absolute right-0 top-32 h-72 w-72 rounded-full bg-secondary/6 blur-3xl" />
       </div>
 
       <div className="relative space-y-6">
