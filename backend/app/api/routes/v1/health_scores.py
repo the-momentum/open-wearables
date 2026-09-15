@@ -11,6 +11,7 @@ from app.schemas.utils.metadata import TimeseriesMetadata
 from app.services import ApiKeyDep
 from app.services.health_score_service import health_score_service
 from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
+from app.utils.pagination import DEFAULT_PAGE_SIZE, PageLimitQueryParam
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ def list_health_scores(
     end_date: DateTimeQueryParam | None = None,
     category: HealthScoreCategory | None = None,
     provider: ProviderName | None = None,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PaginatedResponse[HealthScoreResponse]:
     """Returns health scores (sleep, recovery, readiness, etc.) for a user."""

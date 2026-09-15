@@ -10,6 +10,7 @@ from app.schemas.responses.activity import TimeSeriesSample
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, timeseries_service
 from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
+from app.utils.pagination import DEFAULT_PAGE_SIZE, PageLimitQueryParam
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ def get_timeseries(
     types: Annotated[list[SeriesType], Query()] = [],
     resolution: Resolution = Resolution.RAW,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
     provider: ProviderName | None = None,
     source: str | None = None,
     device_model: str | None = None,

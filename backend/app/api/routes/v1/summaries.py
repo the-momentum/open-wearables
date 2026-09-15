@@ -16,6 +16,7 @@ from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
 from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
+from app.utils.pagination import DEFAULT_PAGE_SIZE, PageLimitQueryParam
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ def get_activity_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=400)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
     sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
@@ -50,7 +51,7 @@ def get_sleep_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=400)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
 ) -> PaginatedResponse[SleepSummary]:
     """Returns daily sleep metrics."""
     start_datetime = parse_query_datetime(start_date)
@@ -66,7 +67,7 @@ def get_recovery_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
 ) -> PaginatedResponse[RecoverySummary]:
     """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2).
 

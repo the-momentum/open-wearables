@@ -3,11 +3,18 @@
 import base64
 import binascii
 from datetime import date, datetime
-from typing import Generic, Protocol, TypeVar
+from typing import Annotated, Generic, Protocol, TypeVar
 from uuid import UUID
+
+from fastapi import Query
 
 from app.utils.dates import parse_query_datetime
 from app.utils.exceptions import InvalidCursorError
+
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 1000
+
+PageLimitQueryParam = Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)]
 
 
 class CursorItem(Protocol):

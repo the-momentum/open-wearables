@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.utils.dates import ZoneOffset
+from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 class WorkoutInclude(StrEnum):
@@ -95,7 +96,7 @@ class EventRecordQueryParams(BaseModel):
 
     # Pagination
     cursor: str | None = Field(None, description="Pagination cursor")
-    limit: int = Field(50, ge=1, le=1000, description="Maximum number of records to return")
+    limit: int = Field(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Maximum number of records to return")
     offset: int = Field(0, ge=0, description="Number of results to skip (for non-cursor pagination)")
 
     # Date filtering

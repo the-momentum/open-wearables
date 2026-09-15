@@ -14,6 +14,7 @@ from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.event_record_service import event_record_service
 from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
+from app.utils.pagination import DEFAULT_PAGE_SIZE, PageLimitQueryParam
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ def list_workouts(
     include: Annotated[list[WorkoutInclude], Query(default_factory=list)],
     record_type: str | None = None,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
@@ -49,7 +50,7 @@ def list_sleep_sessions(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
     filter_by_priority: Annotated[
         bool,
         Query(
@@ -76,7 +77,7 @@ def list_menstrual_cycles(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
 ) -> PaginatedResponse[MenstrualCycleRecord]:
     """Returns menstrual cycle records."""
     params = EventRecordQueryParams(

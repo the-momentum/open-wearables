@@ -148,7 +148,7 @@ GET /api/v1/users?page=2&limit=50
 | `page` | 1 | Page number |
 | `limit` | 20 | Items per page (max: 100) |
 
-### Cursor Pagination (Timeseries, Workouts, Sleep)
+### Cursor Pagination (Timeseries, Events, Summaries)
 
 ```http
 GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
@@ -157,9 +157,11 @@ GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `cursor` | null | Cursor from previous response |
-| `limit` | 50 | Items per page (max: 1000 for timeseries, 100 for workouts and sleep) |
+| `limit` | 50 | Items per page (max: 1000) |
 
 Use the `next_cursor` from the response to fetch the next page.
+
+Health scores page by `limit` and `offset` instead, with the same defaults and maximum.
 
 <Note>
   A timeseries request with a `resolution` other than `raw` pages by bucket, and `total_count` is
