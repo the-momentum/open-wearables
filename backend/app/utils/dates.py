@@ -69,7 +69,7 @@ def parse_query_end_datetime(dt_str: str) -> datetime:
     Bounds are compared with `<`, so a date-only end resolves to the start of the next day.
     """
     if _DATE_ONLY_RE.fullmatch(dt_str):
-        with suppress(ValueError):
+        with suppress(ValueError, OverflowError):
             return datetime.combine(date.fromisoformat(dt_str) + timedelta(days=1), time.min)
     return parse_query_datetime(dt_str)
 

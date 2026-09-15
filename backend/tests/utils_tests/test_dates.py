@@ -54,6 +54,9 @@ class TestParseQueryEndDatetime:
         with pytest.raises(DatetimeParseError):
             parse_query_end_datetime("2024-02-30")
 
+    def test_max_date_falls_back_to_midnight(self) -> None:
+        assert parse_query_end_datetime("9999-12-31") == datetime(9999, 12, 31)
+
 
 class TestAlignTzAwareness:
     """Test suite for align_tz_awareness."""
