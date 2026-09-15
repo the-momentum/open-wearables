@@ -18,6 +18,13 @@ reviews:
         or other pages under docs/) reference the changed endpoint by path,
         example, or response shape and would now be wrong.
 
+    - path: "backend/app/api/**"
+      instructions: |
+        Route decorators set status_code only when the success response is
+        not 200 (201, 202, 204). FastAPI defaults to 200, so do not flag a
+        missing status_code on routes that return 200 and do not suggest
+        adding status_code=status.HTTP_200_OK.
+
     - path: "backend/app/services/providers/**"
       instructions: |
         If a new provider is added or an existing provider's data mapping

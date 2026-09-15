@@ -401,7 +401,8 @@ app/api/routes/
 
 **Route implementation:**
 - Use `@router.method()` decorator with HTTP method and path
-- Add `response_model` (Pydantic) and `status_code` (fastapi.status)
+- Add `response_model` (Pydantic)
+- Set `status_code` (fastapi.status) only when the success response is not 200: `HTTP_201_CREATED` for creates, `HTTP_202_ACCEPTED` for background work, `HTTP_204_NO_CONTENT` for deletes without a body. FastAPI defaults to 200, so never write `status_code=status.HTTP_200_OK`
 - Define functions as `async` by default
 - Use **kebab-case** for paths: `/heart-rate`, `/import-data`
 - Keep route code minimal, delegate to services

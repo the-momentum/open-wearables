@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import SeriesType
+from app.schemas.enums import ProviderName, Resolution, SeriesType
 from app.utils.dates import ZoneOffset
 
 
@@ -71,8 +71,10 @@ class TimeSeriesQueryParams(BaseModel):
         None,
         description="Direct data source identifier filter.",
     )
+    provider: ProviderName | None = Field(None, description="Provider filter")
     limit: int = Field(50, ge=1, le=1000, description="Maximum number of samples to return")
     cursor: str | None = Field(
         None,
         description="Pagination cursor (use next_cursor for forward, previous_cursor for backward)",
     )
+    resolution: Resolution = Resolution.RAW

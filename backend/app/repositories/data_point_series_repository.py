@@ -1,5 +1,5 @@
 import contextlib
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import LiteralString, NamedTuple
 from typing import cast as typing_cast
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     ColumnElement,
     Date,
+    Integer,
     Interval,
     MetaData,
     String,
@@ -19,13 +20,20 @@ from sqlalchemy import (
     asc,
     case,
     cast,
+    column,
     func,
+    literal,
     literal_column,
+    select,
     text,
+    true,
     tuple_,
+    values,
 )
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+from sqlalchemy.orm import Query
 from sqlalchemy.schema import CreateTable
 
 from app.database import DbSession
@@ -34,13 +42,17 @@ from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository, utc_bucket_start
 from app.schemas.enums import (
+    BUCKET_SIZES,
+    AggregationMethod,
     ProviderName,
+    Resolution,
     SeriesType,
     TimelineBucket,
     TimelineGroupBy,
     get_series_type_from_id,
     get_series_type_id,
 )
+from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
@@ -51,8 +63,9 @@ from app.schemas.responses.activity import (
     ActivityAggregateResult,
     IntensityMinutesResult,
 )
+from app.utils.dates import as_utc
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import decode_cursor
+from app.utils.pagination import decode_bucket_cursor, decode_cursor
 
 # Identity tuple: (user_id, device_model, source)
 DataSourceIdentity = tuple[UUID, str | None, str | None]
@@ -110,6 +123,34 @@ class WriteCounts(int):
         )
 
     __radd__ = __add__
+
+
+# Sources whose provider or device type is not ranked sort last, in id order.
+_UNRANKED = 1_000_000
+SERIES_TYPE_IDS: tuple[int, ...] = tuple(get_series_type_id(t) for t in SeriesType)
+_AGGREGATE_FUNCS = {
+    AggregationMethod.AVG: func.avg,
+    AggregationMethod.SUM: func.sum,
+    AggregationMethod.MAX: func.max,
+}
+# Series type ids per non-default aggregation, resolved once: the mapping is static and the
+# lookup would otherwise run per request. AVG is the else branch, so it needs no entry.
+_TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
+    method: frozenset(get_series_type_id(t) for t in SeriesType if get_aggregation_method(t) is method)
+    for method in _AGGREGATE_FUNCS
+    if method is not AggregationMethod.AVG
+}
+
+
+class AggregatedSample(NamedTuple):
+    """One resolution bucket for a single (data source, series type) pair."""
+
+    bucket: datetime
+    series_type_definition_id: int
+    value: Decimal
+    zone_offset: str | None
+    is_daily_total: bool
+    data_source: DataSource
 
 
 class DataPointSeriesRepository(
@@ -359,41 +400,26 @@ class DataPointSeriesRepository(
         params: TimeSeriesQueryParams,
         types: list[SeriesType],
         user_id: UUID,
+        source_by_type: dict[int, UUID] | None = None,
     ) -> tuple[list[tuple[DataPointSeries, DataSource]], int]:
         """Get data points with filtering and keyset pagination.
 
         Returns a tuple of (samples, total_count) where total_count is calculated
         BEFORE applying cursor pagination, giving the total number of matching records.
         """
-        query = (
+        query = self._apply_sample_filters(
             db_session.query(self.model, DataSource)
             .join(
                 DataSource,
                 self.model.data_source_id == DataSource.id,
             )
-            .filter(DataSource.user_id == user_id)
+            .filter(DataSource.user_id == user_id),
+            params,
+            types,
+            params.start_datetime,
+            params.end_datetime,
+            source_by_type,
         )
-
-        if types:
-            type_ids = [get_series_type_id(t) for t in types]
-            query = query.filter(self.model.series_type_definition_id.in_(type_ids))
-
-        if params.device_model:
-            query = query.filter(DataSource.device_model == params.device_model)
-
-        if params.source:
-            query = query.filter(DataSource.source == params.source)
-
-        if params.start_datetime:
-            query = query.filter(self.model.recorded_at >= params.start_datetime)
-
-        if params.end_datetime:
-            # If user didnt specify an hour, minute nor second, add 1 day to include the entire day
-            end_dt = params.end_datetime
-            # Check if the time part after the date is 00:00:00
-            if end_dt.time() == time.min:
-                end_dt = end_dt + timedelta(days=1)
-            query = query.filter(self.model.recorded_at < end_dt)
 
         # Calculate total count BEFORE applying cursor pagination
         # This gives us the total matching records (after all other filters)
@@ -413,7 +439,7 @@ class DataPointSeriesRepository(
                 limit = params.limit or 50
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), total_count  # ty:ignore[invalid-return-type]
+                return list(reversed(results)), total_count
             # Forward pagination: get items AFTER cursor
             query = query.filter(
                 tuple_(self.model.recorded_at, self.model.id) > (cursor_ts, cursor_id),
@@ -424,7 +450,276 @@ class DataPointSeriesRepository(
 
         # Limit + 1 to check for next page
         limit = params.limit or 50
-        return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+        return query.limit(limit + 1).all(), total_count
+
+    def get_aggregated_samples(
+        self,
+        db_session: DbSession,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        user_id: UUID,
+        source_by_type: dict[int, UUID] | None = None,
+    ) -> tuple[list[AggregatedSample], bool]:
+        """Bucket samples into fixed-width windows, one row per (bucket, source, series type).
+
+        Scans at most ``limit + 1`` buckets rather than the requested range: LIMIT cannot be
+        pushed through a GROUP BY, so without the cap a month of 1 Hz data sorts every matching
+        row (~50 MB to disk) just to return one page. Returns the rows and whether more follow.
+        """
+        bucket_size = BUCKET_SIZES[params.resolution]
+        limit = params.limit or 50
+
+        start, end, backward = self._resolve_window(params, bucket_size)
+        if start is not None and end is not None and start >= end:
+            return [], False
+        requested_start, requested_end = start, end
+
+        if not backward:
+            start = (
+                self._first_sample_at_or_after(db_session, params, types, user_id, start, end, source_by_type) or start
+            )
+            if start is None:
+                return [], False
+
+        span = bucket_size * (limit + 1)
+        if backward and end is not None:
+            start = end - span if start is None else max(start, end - span)
+        elif not backward and start is not None:
+            end = start + span if end is None else min(end, start + span)
+
+        bucket = func.date_bin(
+            cast(literal(f"{int(bucket_size.total_seconds())} seconds"), Interval),
+            self.model.recorded_at,
+            literal(datetime(1970, 1, 1, tzinfo=timezone.utc)),
+        ).label("bucket")
+
+        # DataSource is joined to filter by owner, never selected: its columns would ride
+        # through the pre-aggregation sort and double what spills to disk.
+        query = self._apply_sample_filters(
+            db_session.query(
+                bucket,
+                self.model.series_type_definition_id.label("series_type_definition_id"),
+                self.model.data_source_id.label("data_source_id"),
+                self._aggregated_value(types).label("value"),
+                func.min(self.model.zone_offset).label("zone_offset"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            # A day's own total would land inside one bucket and double-count the day.
+            .filter(self.model.is_daily_total.isnot(True))
+            .group_by(bucket, self.model.series_type_definition_id, self.model.data_source_id)
+            .order_by(
+                bucket.desc() if backward else bucket,
+                self.model.data_source_id,
+                self.model.series_type_definition_id,
+            ),
+            params,
+            types,
+            start,
+            end,
+            source_by_type,
+        )
+
+        rows = query.all()
+        sources = self._sources_by_id(db_session, {r.data_source_id for r in rows})
+        samples = [
+            AggregatedSample(
+                bucket=r.bucket,
+                series_type_definition_id=r.series_type_definition_id,
+                value=r.value,
+                zone_offset=r.zone_offset,
+                is_daily_total=False,
+                data_source=sources[r.data_source_id],
+            )
+            for r in rows
+        ]
+        # A capped window is not a next page on its own: hand out a cursor only if the slice of
+        # the requested range we skipped actually holds data.
+        skipped = (requested_start, start) if backward else (end, requested_end)
+        has_more = skipped[0] != skipped[1] and (
+            self._first_sample_at_or_after(db_session, params, types, user_id, *skipped, source_by_type) is not None
+        )
+        return samples, has_more
+
+    @staticmethod
+    def _sources_by_id(db_session: DbSession, source_ids: set[UUID]) -> dict[UUID, DataSource]:
+        if not source_ids:
+            return {}
+        return {s.id: s for s in db_session.query(DataSource).filter(DataSource.id.in_(source_ids))}
+
+    def _apply_sample_filters(
+        self,
+        query: Query,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        start: datetime | None,
+        end: datetime | None,
+        source_by_type: dict[int, UUID] | None = None,
+    ) -> Query:
+        """Filters shared by every sample read. Assumes DataSource is already joined."""
+        if types:
+            query = query.filter(self.model.series_type_definition_id.in_([get_series_type_id(t) for t in types]))
+        if params.device_model:
+            query = query.filter(DataSource.device_model == params.device_model)
+        if params.source:
+            query = query.filter(DataSource.source == params.source)
+        if params.provider:
+            query = query.filter(DataSource.provider == params.provider)
+        if params.data_source_id:
+            query = query.filter(self.model.data_source_id == params.data_source_id)
+        if start is not None:
+            query = query.filter(self.model.recorded_at >= start)
+        if end is not None:
+            query = query.filter(self.model.recorded_at < end)
+        if source_by_type is not None:
+            query = query.filter(
+                tuple_(self.model.series_type_definition_id, self.model.data_source_id).in_(
+                    list(source_by_type.items())
+                )
+            )
+        return query
+
+    def winning_source_by_series_type(
+        self,
+        db_session: DbSession,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        user_id: UUID,
+        provider_order: dict,
+        device_type_order: dict,
+    ) -> dict[int, UUID]:
+        """Best-ranked data source per series type, among those holding data in the window.
+
+        Decided on source metadata plus one existence probe per (source, series type), so the
+        cost tracks the number of devices a user owns rather than the number of samples. The
+        winner is resolved per series type, so a watch with heart rate but no GPS keeps the
+        heart rate and yields only the GPS series to the next source.
+        """
+        ranked = self._ranked_sources(db_session, params, user_id, provider_order, device_type_order)
+        type_ids = [get_series_type_id(t) for t in types] if types else SERIES_TYPE_IDS
+        if not ranked or not type_ids:
+            return {}
+
+        start, end = params.start_datetime, params.end_datetime
+        candidates = values(
+            column("type_id", Integer),
+            column("source_id", PGUUID(as_uuid=True)),
+            name="candidates",
+        ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
+        available = [self.model.recorded_at >= start] if start is not None else []
+        if end is not None:
+            available.append(self.model.recorded_at < end)
+        if params.resolution is not Resolution.RAW:
+            # Bucketed reads drop daily totals, so a source holding only those has nothing to
+            # offer here and must not outrank one with real intraday samples.
+            available.append(self.model.is_daily_total.isnot(True))
+        probe = (
+            select(literal_column("1"))
+            .where(
+                self.model.data_source_id == candidates.c.source_id,
+                self.model.series_type_definition_id == candidates.c.type_id,
+                *available,
+            )
+            # Ordering on the index's trailing column lets the planner stop at the first match
+            # instead of costing this as a full scan once a non-indexed filter is present.
+            .order_by(self.model.recorded_at)
+            .limit(1)
+            .lateral("probe")
+        )
+        populated = db_session.execute(
+            select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
+        ).all()
+
+        rank_of = {source.id: position for position, source in enumerate(ranked)}
+        winners: dict[int, UUID] = {}
+        for type_id, source_id in populated:
+            if type_id not in winners or rank_of[source_id] < rank_of[winners[type_id]]:
+                winners[type_id] = source_id
+        return winners
+
+    def _ranked_sources(
+        self,
+        db_session: DbSession,
+        params: TimeSeriesQueryParams,
+        user_id: UUID,
+        provider_order: dict,
+        device_type_order: dict,
+    ) -> list[DataSource]:
+        """The caller's sources, best first. Honours the source filters, so priority picks a
+        winner from what the request actually asked for rather than from everything owned."""
+        query = db_session.query(DataSource).filter(DataSource.user_id == user_id)
+        if params.provider:
+            query = query.filter(DataSource.provider == params.provider)
+        if params.source:
+            query = query.filter(DataSource.source == params.source)
+        if params.device_model:
+            query = query.filter(DataSource.device_model == params.device_model)
+        if params.data_source_id:
+            query = query.filter(DataSource.id == params.data_source_id)
+        return sorted(
+            query.all(),
+            key=lambda s: (
+                provider_order.get(s.provider, _UNRANKED),
+                device_type_order.get(s.device_type, _UNRANKED),
+                s.id,
+            ),
+        )
+
+    def _first_sample_at_or_after(
+        self,
+        db_session: DbSession,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        user_id: UUID,
+        start: datetime | None,
+        end: datetime | None,
+        source_by_type: dict[int, UUID] | None = None,
+    ) -> datetime | None:
+        """Timestamp of the earliest matching sample in the range, or None if there is none."""
+        return self._apply_sample_filters(
+            db_session.query(func.min(self.model.recorded_at))
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id),
+            params,
+            types,
+            start,
+            end,
+            source_by_type,
+        ).scalar()
+
+    def _resolve_window(
+        self,
+        params: TimeSeriesQueryParams,
+        bucket_size: timedelta,
+    ) -> tuple[datetime | None, datetime | None, bool]:
+        """Move the requested range to the cursor position. Returns (start, end, backward)."""
+        start = params.start_datetime
+        end = params.end_datetime
+
+        backward = False
+        if params.cursor:
+            cursor_ts, direction = decode_bucket_cursor(params.cursor)
+            backward = direction == "prev"
+            if backward:
+                end = cursor_ts
+            else:
+                start = cursor_ts + bucket_size
+
+        return as_utc(start), as_utc(end), backward
+
+    def _aggregated_value(self, types: list[SeriesType]) -> ColumnElement:
+        """Pick avg/sum/max per series type from the shared coverage map, defaulting to avg."""
+        requested = {get_series_type_id(t) for t in types} if types else None
+        branches = []
+        for method, type_ids in _TYPE_IDS_BY_METHOD.items():
+            ids = sorted(type_ids & requested) if requested is not None else sorted(type_ids)
+            if ids:
+                branches.append(
+                    (self.model.series_type_definition_id.in_(ids), _AGGREGATE_FUNCS[method](self.model.value))
+                )
+        if not branches:
+            return func.avg(self.model.value)
+        return case(*branches, else_=func.avg(self.model.value))
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

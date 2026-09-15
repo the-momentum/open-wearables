@@ -174,6 +174,25 @@ def process_paginated_results(
     )
 
 
+def encode_bucket_cursor(bucket_start: datetime, direction: str = "next") -> str:
+    """Cursor for aggregated reads, keyed on the bucket start.
+
+    Single-field on purpose, so UUID-keyed cursors and bucket cursors reject each other.
+    """
+    return _encode_cursor_fields([bucket_start.isoformat()], direction)
+
+
+def decode_bucket_cursor(cursor: str) -> tuple[datetime, str]:
+    """Decode a bucket cursor to (bucket_start, direction)."""
+    fields, direction = _decode_cursor_fields(cursor)
+    if len(fields) != 1:
+        raise InvalidCursorError(cursor=cursor)
+    try:
+        return parse_query_datetime(fields[0]), direction
+    except (ValueError, TypeError):
+        raise InvalidCursorError(cursor=cursor) from None
+
+
 def encode_date_cursor(cursor_date: date, direction: str = "next") -> str:
     """Encode a date-based cursor for date-keyed pagination.
 
