@@ -233,6 +233,9 @@ Heart-rate zones, power zones and lap segments are omitted by default because th
 payload size. Request them explicitly with `?include=zones` and `?include=segments` (repeat the
 parameter to ask for both).
 
+Sleep sessions follow the same rule: `sleep_stage_intervals` is omitted unless you pass
+`?include=stages` on `/events/sleep`.
+
 ---
 
 ## Resolution Options

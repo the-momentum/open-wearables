@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
 from app.schemas.enums import ProviderName, WorkoutType
-from app.schemas.model_crud.activities import EventRecordQueryParams, WorkoutInclude
+from app.schemas.model_crud.activities import EventRecordQueryParams, SleepInclude, WorkoutInclude
 from app.schemas.responses.activity import (
     MenstrualCycleRecord,
     SleepSession,
@@ -75,8 +75,13 @@ def list_sleep_sessions(
     end_date: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
+    include: Annotated[list[SleepInclude], Query(default_factory=list)],
     cursor: str | None = None,
     limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
+    provider: ProviderName | None = None,
+    source: str | None = None,
+    device_model: str | None = None,
+    data_source_id: UUID | None = None,
     filter_by_priority: Annotated[
         bool,
         Query(
@@ -91,8 +96,14 @@ def list_sleep_sessions(
         end_datetime=parse_query_end_datetime(end_date),
         cursor=cursor,
         limit=limit,
+        provider=provider,
+        source=source,
+        device_model=device_model,
+        data_source_id=data_source_id,
     )
-    return event_record_service.get_sleep_sessions(db, user_id, params, filter_by_priority=filter_by_priority)
+    return event_record_service.get_sleep_sessions(
+        db, user_id, params, filter_by_priority=filter_by_priority, include=include
+    )
 
 
 @router.get("/users/{user_id}/events/menstrual-cycles")
@@ -104,6 +115,10 @@ def list_menstrual_cycles(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
+    provider: ProviderName | None = None,
+    source: str | None = None,
+    device_model: str | None = None,
+    data_source_id: UUID | None = None,
 ) -> PaginatedResponse[MenstrualCycleRecord]:
     """Returns menstrual cycle records."""
     params = EventRecordQueryParams(
@@ -111,6 +126,10 @@ def list_menstrual_cycles(
         end_datetime=parse_query_end_datetime(end_date),
         cursor=cursor,
         limit=limit,
+        provider=provider,
+        source=source,
+        device_model=device_model,
+        data_source_id=data_source_id,
     )
     return event_record_service.get_menstrual_cycles(db, user_id, params)
 

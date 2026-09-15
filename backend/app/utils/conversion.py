@@ -59,6 +59,10 @@ def as_dict_list(value: Any) -> list[dict] | None:
     return [item for item in value if isinstance(item, dict)] or None
 
 
+def minutes_to_seconds(minutes: int | None) -> int | None:
+    return minutes * 60 if minutes is not None else None
+
+
 _KCAL_PER_KJ = Decimal("0.239006")  # 1 kcal = 4.184 kJ
 
 

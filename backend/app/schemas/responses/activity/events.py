@@ -86,6 +86,7 @@ class SleepSession(BaseModel):
     source: SourceMetadata
     duration_seconds: int
     sleep_duration_seconds: int | None = None
+    time_in_bed_seconds: int | None = None
     efficiency_percent: float | None = None
     stages: SleepStagesSummary | None = None
     sleep_stage_intervals: list[SleepStage] | None = None

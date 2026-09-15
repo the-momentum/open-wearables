@@ -20,6 +20,12 @@ class WorkoutInclude(StrEnum):
     SEGMENTS = "segments"
 
 
+class SleepInclude(StrEnum):
+    """Optional expansions for sleep read models, requested via the `include` query parameter."""
+
+    STAGES = "stages"
+
+
 class EventRecordMetrics(TypedDict, total=False):
     """Optional workout or sleep metrics collected from providers."""
 

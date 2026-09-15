@@ -34,6 +34,7 @@ from app.schemas.model_crud.activities import (
     EventRecordResponse,
     EventRecordUpdate,
     MenstrualCycleDetailCreate,
+    SleepInclude,
     WorkoutInclude,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -57,7 +58,7 @@ from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on
 from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
-from app.utils.conversion import as_dict_list, as_float, as_model
+from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
@@ -859,8 +860,10 @@ class EventRecordService(
         user_id: UUID,
         params: EventRecordQueryParams,
         filter_by_priority: bool = False,
+        include: Sequence[SleepInclude] = (),
     ) -> PaginatedResponse[SleepSession]:
         params.category = "sleep"
+        with_stages = SleepInclude.STAGES in include
 
         # inline query that restricts records to ones
         # with highest priority
@@ -916,11 +919,8 @@ class EventRecordService(
         for record, data_source in records:
             details: SleepDetails | None = record.sleep_detail
 
-            sleep_duration_seconds = (
-                details.sleep_total_duration_minutes * 60
-                if details and details.sleep_total_duration_minutes is not None
-                else None
-            )
+            sleep_duration_seconds = minutes_to_seconds(details.sleep_total_duration_minutes) if details else None
+            time_in_bed_seconds = minutes_to_seconds(details.sleep_time_in_bed_minutes) if details else None
             session = SleepSession(
                 id=record.id,
                 start_time=record.start_datetime,
@@ -929,16 +929,15 @@ class EventRecordService(
                 source=self._map_source(data_source),
                 duration_seconds=record.duration_seconds or 0,
                 sleep_duration_seconds=sleep_duration_seconds,
-                efficiency_percent=float(details.sleep_efficiency_score)
-                if details and details.sleep_efficiency_score
-                else None,
+                time_in_bed_seconds=time_in_bed_seconds,
+                efficiency_percent=as_float(details.sleep_efficiency_score) if details else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
-                sleep_stage_intervals=details.sleep_stages if details else None,
+                sleep_stage_intervals=details.sleep_stages if details and with_stages else None,
                 stages=SleepStagesSummary(
-                    deep_minutes=details.sleep_deep_minutes or 0 if details else 0,
-                    light_minutes=details.sleep_light_minutes or 0 if details else 0,
-                    rem_minutes=details.sleep_rem_minutes or 0 if details else 0,
-                    awake_minutes=details.sleep_awake_minutes or 0 if details else 0,
+                    deep_minutes=details.sleep_deep_minutes,
+                    light_minutes=details.sleep_light_minutes,
+                    rem_minutes=details.sleep_rem_minutes,
+                    awake_minutes=details.sleep_awake_minutes,
                 )
                 if details
                 else None,
