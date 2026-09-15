@@ -592,12 +592,21 @@ class TestWorkoutsEndpoints:
         # Assert
         assert workout["avg_pace_sec_per_km"] == 300.0
 
-    def test_pace_is_null_without_distance(self, client: TestClient, db: Session) -> None:
-        """No distance means no pace - not a division error."""
+    @pytest.mark.parametrize(
+        ("distance", "moving_time"),
+        [
+            pytest.param(None, 1800, id="no-distance"),
+            pytest.param(Decimal("10000.0"), 0, id="zero-moving-time"),
+        ],
+    )
+    def test_pace_is_null_when_it_cannot_be_derived(
+        self, client: TestClient, db: Session, distance: Decimal | None, moving_time: int
+    ) -> None:
+        """A reported zero moving time is a value, not a gap - it must not fall back to elapsed duration."""
         # Arrange
         user = UserFactory()
         record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="strength_training")
-        WorkoutDetailsFactory(event_record=record, distance=None, moving_time_seconds=1800)
+        WorkoutDetailsFactory(event_record=record, distance=distance, moving_time_seconds=moving_time)
 
         # Act & Assert
         assert _fetch_one(client, user.id)["avg_pace_sec_per_km"] is None

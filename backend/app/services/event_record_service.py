@@ -614,7 +614,7 @@ class EventRecordService(
             case "workout":
                 avg_pace = pace_sec_per_km(
                     as_float(detail.distance),
-                    detail.moving_time_seconds or record.duration_seconds,
+                    detail.moving_time_seconds if detail.moving_time_seconds is not None else record.duration_seconds,
                 )
                 on_workout_created(
                     record_id=record.id,
@@ -726,6 +726,7 @@ class EventRecordService(
 
         return [self._build_response(record, data_source) for record, data_source in records]
 
+    @handle_exceptions
     def get_workout_types(self, db_session: DbSession, user_id: UUID) -> list[str]:
         """Workout types this user actually has, so a client can filter on real options only."""
         return self.crud.get_distinct_workout_types(db_session, user_id)
@@ -796,7 +797,11 @@ class EventRecordService(
         data = []
         for record, data_source in records:
             details: WorkoutDetails | None = record.workout_detail
-            moving_seconds = (details.moving_time_seconds if details else None) or record.duration_seconds
+            moving_seconds = (
+                details.moving_time_seconds
+                if details and details.moving_time_seconds is not None
+                else record.duration_seconds
+            )
             workout = Workout(
                 id=record.id,
                 type=record.type or "unknown",
