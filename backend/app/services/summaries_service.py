@@ -85,6 +85,21 @@ DEFAULT_AVERAGE_PERIOD_DAYS = 7
 DEFAULT_LATEST_WINDOW_HOURS = 4
 
 
+def activity_sort_key(entry: dict) -> tuple:
+    """Compound ordering key for an activity row: (date, provider, device).
+
+    The cursor comparisons below and the ordering of `results` MUST agree, or
+    forward pagination silently skips rows. They share this one expression so
+    they cannot drift apart. `or ""` matches `decode_activity_cursor`, which
+    normalises a missing device to the empty string.
+    """
+    return (
+        entry["activity_date"],
+        entry.get("source") or "",
+        entry.get("device_model") or "",
+    )
+
+
 class SummariesService:
     """Service for aggregating daily health summaries."""
 
@@ -458,6 +473,7 @@ class SummariesService:
         cursor: str | None,
         limit: int,
         sort_order: str = "asc",
+        all_sources: bool = False,
     ) -> PaginatedResponse[ActivitySummary]:
         """Get daily activity summaries aggregated by date, provider, and device.
 
@@ -480,8 +496,22 @@ class SummariesService:
         # Merge archived data when archival is enabled
         results = self._merge_archive_activity(db_session, user_id, start_date, end_date, results)
 
-        # Filter by priority to get best source per date
-        results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+        # Filter by priority to get best source per date.
+        #
+        # `all_sources=True` skips this and returns every source's row, so a
+        # caller with its own per-user preference can choose. The global
+        # priority table cannot express that: it has no `user_id` column, and
+        # `ProviderPriority` documents itself as "not per-user".
+        if all_sources:
+            # Rows arrive ordered by date ONLY (`order_by(asc(local_date))` in
+            # `get_daily_activity_aggregates`). That was sufficient while this
+            # filter collapsed each date to a single row; with several rows per
+            # date the cursor comparisons below — which use the compound key —
+            # would operate on an unsorted list and skip records. Impose the
+            # same ordering the cursor assumes.
+            results = sorted(results, key=activity_sort_key)
+        else:
+            results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
 
         # Get workout aggregates (elevation, distance, energy from workouts)
         workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
@@ -540,34 +570,18 @@ class SummariesService:
                 # Backward pagination: get items BEFORE cursor key (in current sort order)
                 if sort_order == "desc":
                     # In desc order, "before" means items with GREATER keys
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                    ]
+                    results = [r for r in results if activity_sort_key(r) > cursor_key]
                 else:
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                    ]
+                    results = [r for r in results if activity_sort_key(r) < cursor_key]
                 # Reverse to get correct order for backward pagination
                 results = list(reversed(results))
             else:
                 # Forward pagination: get items AFTER cursor key (in current sort order)
                 if sort_order == "desc":
                     # In desc order, "after" means items with SMALLER keys
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                    ]
+                    results = [r for r in results if activity_sort_key(r) < cursor_key]
                 else:
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                    ]
+                    results = [r for r in results if activity_sort_key(r) > cursor_key]
 
         # Check for more data
         has_more = len(results) > limit
