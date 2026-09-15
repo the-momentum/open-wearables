@@ -36,9 +36,9 @@ def _mark(supported: bool) -> str:
 
 
 def _provider_headers(providers: list[str]) -> list[str]:
-    # Provider slugs (from ProviderName) are single lowercase words — capitalize
-    # is a faithful display form, no separate name map to keep in sync.
-    return [p.capitalize() for p in providers]
+    # Slugs are lowercase, some underscore-separated — title-casing each word is a
+    # faithful display form, no separate name map to keep in sync.
+    return [" ".join(word.capitalize() for word in p.split("_")) for p in providers]
 
 
 def _render_timeseries_section(coverage: CoverageResponse) -> str:

@@ -112,8 +112,8 @@ An SDK token is deliberately narrower here than a developer JWT or an API key:
 | Rule | Response when violated |
 |------|------------------------|
 | The token's user must be the `user_id` in the path | `403` |
-| The provider must be one that can be fed by the SDK (Apple Health, Google Health Connect, Samsung Health) | `403` |
-| The connection must not hold OAuth tokens - Google Health is hybrid, and its OAuth-fed connections are out of the app's reach | `403` |
+| The provider must be one that can be fed by the SDK (Apple Health, Health Connect, Samsung Health) | `403` |
+| The connection must not hold OAuth tokens - cloud connections such as Google Health are out of the app's reach | `403` |
 
 No provider deregistration runs on this path: signing out of an app is not a reason to unregister the user from the provider's API. The resulting `connection.revoked` webhook carries `reason: "sdk_sign_out"`, which distinguishes it from a disconnect made in the dashboard.
 

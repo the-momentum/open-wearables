@@ -3,7 +3,8 @@ from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.fitbit.strategy import FitbitStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
-from app.services.providers.google.strategy import GoogleStrategy
+from app.services.providers.google_health.strategy import GoogleHealthStrategy
+from app.services.providers.health_connect.strategy import HealthConnectStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.samsung.strategy import SamsungStrategy
@@ -24,8 +25,10 @@ class ProviderFactory:
                 return AppleStrategy()
             case ProviderName.SAMSUNG.value:
                 return SamsungStrategy()
-            case ProviderName.GOOGLE.value:
-                return GoogleStrategy()
+            case ProviderName.HEALTH_CONNECT.value:
+                return HealthConnectStrategy()
+            case ProviderName.GOOGLE_HEALTH.value:
+                return GoogleHealthStrategy()
             case ProviderName.GARMIN.value:
                 return GarminStrategy()
             case ProviderName.SENSORBIO.value:

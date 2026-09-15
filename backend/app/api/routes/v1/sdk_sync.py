@@ -5,6 +5,7 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.config import settings
+from app.constants.sdk_providers import SDK_PROVIDERS, normalize_sdk_provider
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
@@ -70,14 +71,18 @@ def sync_sdk_data(
 
     # Raw dict, not SyncRequest: schema-validating here would 400 the whole batch on one
     # bad record pre-dispatch. The worker validates and reports failures to Sentry.
-    provider = str(body.get("provider") or "").lower()
+    raw_provider = str(body.get("provider") or "").lower()
 
     # Validate provider (routing decision — needed to select an import service)
-    if provider not in ("apple", "samsung", "google"):
+    provider = normalize_sdk_provider(raw_provider)
+    if provider is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",
+            detail=f"Unsupported provider: {raw_provider}. Supported: {', '.join(sorted(SDK_PROVIDERS))}",
         )
+    # The worker and import service re-read the provider from the payload, so the
+    # canonical slug has to replace the alias here rather than travel alongside it.
+    body["provider"] = provider
 
     # Generate unique batch ID for tracking
     batch_id = str(uuid.uuid4())
