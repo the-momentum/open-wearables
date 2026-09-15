@@ -104,6 +104,10 @@ class DerivedDailyMetric:
     Both operands are fetched independently from dailyRollUp and matched on civil date, so
     the metric owns its inputs and never depends on another metric having run first. A day
     is emitted only when both operands returned a value for it.
+
+    data_source_family scopes both operands to the same sources. Without it they aggregate
+    over different source populations and the result is meaningless — subtracting all-source
+    active from Fitbit-modelled total-calories went negative on 51 of 82 days.
     """
 
     name: str
@@ -111,6 +115,7 @@ class DerivedDailyMetric:
     left: DailyRollupSpec
     right: DailyRollupSpec
     operation: Callable[[Decimal, Decimal], Decimal]
+    data_source_family: str = "users/me/dataSourceFamilies/google-sources"
 
 
 @dataclass(frozen=True)

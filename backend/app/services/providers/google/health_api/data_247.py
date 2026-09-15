@@ -9,7 +9,7 @@ come from the sessions endpoint and are handled separately.
 """
 
 from collections.abc import Iterator
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
@@ -208,9 +208,12 @@ class GoogleHealth247Data(Base247DataTemplate):
         endpoint = ROLLUP_ENDPOINT.format(data_type=metric.data_type)
         samples: list[TimeSeriesSampleCreate] = []
         for chunk_start, chunk_end in self._chunk_range(start_time, end_time, spec.max_range_days):
-            for point in self._fetch_rollup_window(
-                db, user_id, endpoint, chunk_start, chunk_end, window_seconds, page_size
-            ):
+            body = {
+                "range": physical_interval(chunk_start, chunk_end),
+                "windowSize": f"{window_seconds}s",
+                "pageSize": page_size,
+            }
+            for point in self._fetch_rollup_pages(db, user_id, endpoint, body):
                 value_obj = point.get(metric.value_key)
                 recorded_at = parse_rfc3339(point.get("startTime"))
                 if not isinstance(value_obj, dict) or recorded_at is None:
@@ -221,27 +224,20 @@ class GoogleHealth247Data(Base247DataTemplate):
                         samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
         return samples
 
-    def _fetch_rollup_window(
+    def _fetch_rollup_pages(
         self,
         db: DbSession,
         user_id: UUID,
         endpoint: str,
-        start_time: datetime,
-        end_time: datetime,
-        window_seconds: int,
-        page_size: int,
+        body: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """Fetch one within-limit range, following pageToken to exhaustion."""
+        """POST one rollUp/dailyRollUp body, following pageToken to exhaustion.
+
+        dailyRollUp rejects ``pageSize``, so only the windowed form sets it.
+        """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
-            body: dict[str, Any] = {
-                "range": physical_interval(start_time, end_time),
-                "windowSize": f"{window_seconds}s",
-                "pageSize": page_size,
-            }
-            if page_token:
-                body["pageToken"] = page_token
             response = make_authenticated_request(
                 db=db,
                 user_id=user_id,
@@ -251,7 +247,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                 provider_name=self.provider_name,
                 endpoint=endpoint,
                 method="POST",
-                json_data=body,
+                json_data=body if page_token is None else {**body, "pageToken": page_token},
             )
             store_raw_payload(
                 source="api_response",
@@ -291,14 +287,19 @@ class GoogleHealth247Data(Base247DataTemplate):
         """Combine two civil-day totals into one daily-total series.
 
         Both operands are fetched here, so the metric never depends on another having run.
-        A day missing from either side is skipped rather than treated as a zero operand.
+        A day missing from either side is skipped rather than treated as a zero operand, and
+        so is a negative result — energy cannot go below zero, so it means the operands did
+        not describe the same thing.
         """
-        left = self._daily_totals(db, user_id, metric.left, start_time, end_time)
-        right = self._daily_totals(db, user_id, metric.right, start_time, end_time)
-        return [
-            self._sample(user_id, day, metric.operation(left[day], right[day]), metric.series_type, True)
-            for day in sorted(left.keys() & right.keys())
-        ]
+        family = metric.data_source_family
+        left = self._daily_totals(db, user_id, metric.left, start_time, end_time, family)
+        right = self._daily_totals(db, user_id, metric.right, start_time, end_time, family)
+        samples = []
+        for day in sorted(left.keys() & right.keys()):
+            value = metric.operation(left[day], right[day])
+            if value >= 0:
+                samples.append(self._sample(user_id, day, value, metric.series_type, True))
+        return samples
 
     def _daily_totals(
         self,
@@ -307,6 +308,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         spec: DailyRollupSpec,
         start_time: datetime,
         end_time: datetime,
+        data_source_family: str,
     ) -> dict[datetime, Decimal]:
         """Civil-day totals for one data type, keyed on the civil date at midnight UTC.
 
@@ -320,7 +322,12 @@ class GoogleHealth247Data(Base247DataTemplate):
 
         totals: dict[datetime, Decimal] = {}
         for chunk_start, chunk_end in self._chunk_range(start, end, spec.max_range_days):
-            for point in self._fetch_daily_rollup(db, user_id, endpoint, chunk_start.date(), chunk_end.date()):
+            body = {
+                "range": civil_interval(chunk_start.date(), chunk_end.date()),
+                "windowSizeDays": 1,
+                "dataSourceFamily": data_source_family,
+            }
+            for point in self._fetch_rollup_pages(db, user_id, endpoint, body):
                 day = parse_date((point.get("civilStartTime") or {}).get("date"))
                 value_obj = point.get(spec.value_key)
                 if day is None or not isinstance(value_obj, dict):
@@ -329,50 +336,6 @@ class GoogleHealth247Data(Base247DataTemplate):
                 if value is not None:
                     totals[day] = value
         return totals
-
-    def _fetch_daily_rollup(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        endpoint: str,
-        start_date: date,
-        end_date: date,
-    ) -> list[dict[str, Any]]:
-        """Fetch one within-cap civil-day range, following pageToken to exhaustion.
-
-        dailyRollUp rejects ``pageSize`` outright, so the default page (1440 windows) stands.
-        """
-        points: list[dict[str, Any]] = []
-        page_token: str | None = None
-        while True:
-            body: dict[str, Any] = {"range": civil_interval(start_date, end_date), "windowSizeDays": 1}
-            if page_token:
-                body["pageToken"] = page_token
-            response = make_authenticated_request(
-                db=db,
-                user_id=user_id,
-                connection_repo=self.connection_repo,
-                oauth=self.oauth,
-                api_base_url=self.api_base_url,
-                provider_name=self.provider_name,
-                endpoint=endpoint,
-                method="POST",
-                json_data=body,
-            )
-            store_raw_payload(
-                source="api_response",
-                provider=self.provider_name,
-                payload=response,
-                user_id=str(user_id),
-                trace_id=endpoint,
-            )
-            if not isinstance(response, dict):
-                break
-            points.extend(response.get("rollupDataPoints", []))
-            page_token = response.get("nextPageToken")
-            if not page_token:
-                break
-        return points
 
     # -- native-resolution operation (reconcile / list) ------------------------
 
