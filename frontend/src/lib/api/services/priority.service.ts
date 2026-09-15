@@ -15,6 +15,10 @@ export interface ProviderPriority {
   priority: number;
   created_at: string;
   updated_at: string;
+  /** Display name from the provider strategy; null when no strategy exists. */
+  name: string | null;
+  /** Relative icon URL, resolve against API_CONFIG.baseUrl; null when no strategy exists. */
+  icon_url: string | null;
 }
 
 export interface ProviderPriorityListResponse {
