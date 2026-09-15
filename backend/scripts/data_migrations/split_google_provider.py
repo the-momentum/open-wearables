@@ -34,13 +34,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import TextClause
 
 from app.database import SessionLocal
+from app.schemas.sync_status import SyncSource
 
 LEGACY = "google"
 API = "google_health"
 SDK = "health_connect"
 API_SOURCE = "google_health_api"
+SDK_SOURCE = SyncSource.SDK.value
 
-_PARAMS = {"legacy": LEGACY, "api": API, "sdk": SDK, "api_source": API_SOURCE}
+_PARAMS = {"legacy": LEGACY, "api": API, "sdk": SDK, "api_source": API_SOURCE, "sdk_source": SDK_SOURCE}
 
 _COUNTS: dict[str, TextClause] = {
     "data_source_api": text("SELECT COUNT(*) FROM data_source WHERE provider = :legacy AND source = :api_source"),
@@ -58,8 +60,9 @@ _COUNTS: dict[str, TextClause] = {
 _DS_API_UPDATE = text("UPDATE data_source SET provider = :api WHERE provider = :legacy AND source = :api_source")
 _DS_SDK_UPDATE = text("UPDATE data_source SET provider = :sdk WHERE provider = :legacy")
 
-# health_score has no source of its own; it inherits whatever its data source just became.
-# Rows with no data_source_id can only have come from the cloud path, its only writer.
+# health_score has no source of its own, so it inherits whatever its data source just became.
+# Neither Google provider emits scores today, so this is defensive; a row that cannot be
+# attributed is left alone rather than guessed at.
 _HS_UPDATE_FROM_SOURCE = text("""
     UPDATE health_score hs
     SET provider = ds.provider
@@ -68,8 +71,10 @@ _HS_UPDATE_FROM_SOURCE = text("""
       AND hs.provider = :legacy
       AND ds.provider IN (:api, :sdk)
 """)
-_HS_UPDATE_ORPHANS = text("UPDATE health_score SET provider = :api WHERE provider = :legacy")
-
+# sync_run records the transport that produced it, so an SDK batch logged under the old
+# shared slug belongs to Health Connect. Same shape as the data_source rule: claim by the
+# discriminator first, then the catch-all.
+_SR_SDK_UPDATE = text("UPDATE sync_run SET provider = :sdk WHERE provider = :legacy AND source = :sdk_source")
 _SR_UPDATE = text("UPDATE sync_run SET provider = :api WHERE provider = :legacy")
 _PS_UPDATE = text("UPDATE provider_settings SET provider = :api WHERE provider = :legacy")
 _UC_UPDATE = text("UPDATE user_connection SET provider = :api WHERE provider = :legacy")
@@ -105,9 +110,9 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
 
     data_source_api = _rowcount(db, _DS_API_UPDATE)
     data_source_sdk = _rowcount(db, _DS_SDK_UPDATE)
-    health_score = _rowcount(db, _HS_UPDATE_FROM_SOURCE) + _rowcount(db, _HS_UPDATE_ORPHANS)
+    health_score = _rowcount(db, _HS_UPDATE_FROM_SOURCE)
     user_connection = _rowcount(db, _UC_UPDATE)
-    sync_run = _rowcount(db, _SR_UPDATE)
+    sync_run = _rowcount(db, _SR_SDK_UPDATE) + _rowcount(db, _SR_UPDATE)
 
     provider_settings = _rowcount(db, _PS_UPDATE)
     _rowcount(db, _PP_CLONE_FOR_SDK)  # must copy the legacy ranking before it is renamed
