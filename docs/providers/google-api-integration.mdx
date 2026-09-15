@@ -24,6 +24,10 @@ Google Health data reaches Open Wearables through two independent paths, each it
 
 They have separate scopes, connections and lifecycles: connecting one leaves the other untouched, and each reports its own `connection.created` / `connection.revoked` events.
 
+<Note>
+  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in every URL Open Wearables builds. Before the split it was reachable at `/google/`, and OAuth and webhook endpoints still accept that path so URLs already registered with Google keep resolving. Nothing publishes it any more.
+</Note>
+
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
 
 ### Supported data types
@@ -105,7 +109,11 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 
     Then create an **OAuth 2.0 Client ID** (Web application) under **APIs & Services → Credentials**, and add your server-side callback as an **Authorized redirect URI**:
 
-    - Local dev: `http://localhost:8000/api/v1/oauth/google_health/callback`
+    - `http://localhost:8000/api/v1/oauth/google_health/callback`
+
+    <Warning>
+    **Upgrading from before the provider split?** Your client is registered under the old `/oauth/google/callback` path. Add the `google_health` URI above *before* deploying — Google accepts several authorized redirect URIs, so adding it ahead of time causes no downtime, and the old one keeps working until you remove it.
+    </Warning>
 
     <Warning>
     Store the Client Secret securely — Google shows it once.
@@ -135,7 +143,7 @@ GOOGLE_USE_RECONCILE=true
     | `DEFAULT_DATA_GRANULARITY` | `raw` \| `hourly` \| `daily` — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
 
     <Note>
-    The redirect URI is derived from `API_BASE_URL` — it must match the Authorized redirect URI on your OAuth client (`{API_BASE_URL}/api/v1/oauth/google_health/callback`).
+    The redirect URI is derived from `API_BASE_URL` and must match an Authorized redirect URI on your OAuth client exactly: `{API_BASE_URL}/api/v1/oauth/google_health/callback`.
     </Note>
   </Step>
 

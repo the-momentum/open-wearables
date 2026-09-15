@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.config import settings
+from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
@@ -22,6 +23,21 @@ from app.services.providers.factory import ProviderFactory
 router = APIRouter()
 factory = ProviderFactory()
 settings_service = ProviderSettingsService()
+
+
+def resolve_provider(slug: str) -> ProviderName:
+    """Provider behind a URL path segment, accepting its legacy slug as well.
+
+    400 rather than 404 to match the response the enum-typed parameter gave before
+    the path stopped being the provider value.
+    """
+    try:
+        return ProviderName(from_url_slug(slug))
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown provider: '{slug}'",
+        )
 
 
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
@@ -43,7 +59,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
     tags=["External: Providers"],
 )
 def authorize_provider(
-    provider: ProviderName,
+    provider: str,
     user_id: Annotated[UUID, Query(description="User ID to connect")],
     redirect_uri: Annotated[str | None, Query(description="Optional redirect URI after authorization")] = None,
 ):
@@ -52,7 +68,7 @@ def authorize_provider(
 
     Returns authorization URL where user should be redirected to log in.
     """
-    strategy = get_oauth_strategy(provider)
+    strategy = get_oauth_strategy(resolve_provider(provider))
 
     assert strategy.oauth
     auth_url, state = strategy.oauth.get_authorization_url(user_id, redirect_uri)
@@ -61,7 +77,7 @@ def authorize_provider(
 
 @router.get("/{provider}/callback", tags=["System: OAuth"])
 def oauth_callback(
-    provider: ProviderName,
+    provider: str,
     db: DbSession,
     code: Annotated[str | None, Query(description="Authorization code from provider")] = None,
     state: Annotated[str | None, Query(description="State parameter for CSRF protection")] = None,
@@ -85,14 +101,15 @@ def oauth_callback(
             status_code=303,
         )
 
-    strategy = get_oauth_strategy(provider)
+    provider_name = resolve_provider(provider)
+    strategy = get_oauth_strategy(provider_name)
 
     assert strategy.oauth
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.
-    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider.value)
+    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
 
     # Grace-period flag: automatically kick off a historical sync so integrators
     # who haven't yet adopted the explicit /sync/historical call still get backfill.
@@ -113,7 +130,7 @@ def oauth_callback(
                 user_id=str(oauth_state.user_id),
                 start_date=start_date,
                 end_date=now.isoformat(),
-                providers=[provider.value],
+                providers=[provider_name.value],
                 is_historical=True,
             )
 
@@ -123,7 +140,7 @@ def oauth_callback(
 
     # Otherwise, redirect to internal success page
     return RedirectResponse(
-        url=f"/api/v1/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}",
+        url=f"/api/v1/oauth/success?provider={provider_name.value}&user_id={oauth_state.user_id}",
         status_code=303,
     )
 
