@@ -233,7 +233,9 @@ class GoogleHealth247Data(Base247DataTemplate):
     ) -> list[dict[str, Any]]:
         """POST one rollUp/dailyRollUp body, following pageToken to exhaustion.
 
-        dailyRollUp rejects ``pageSize``, so only the windowed form sets it.
+        Only the windowed rollUp body sets ``pageSize``: its page must hold a whole range at the
+        requested window (windowSize * pageSize <= max range). dailyRollUp's default page is
+        1440 one-day windows, far beyond its 14/90-day range cap, so it never paginates in practice.
         """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
