@@ -70,6 +70,9 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "total_elevation_gain",
         "entry_source",
         "label",
+        "hr_zones",
+        "power_zones",
+        "segments",
     }
 )
 

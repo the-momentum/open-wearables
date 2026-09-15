@@ -176,7 +176,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 
 ## Workout Types
 
-Common workout types returned by the events/workouts endpoint. This is not an exhaustive list - the API supports 80+ workout types:
+Common workout types returned by the events/workouts endpoint. This is not an exhaustive list - the API supports 100+ workout types:
 
 | Type | Description |
 |------|-------------|
@@ -220,6 +220,18 @@ Common workout types returned by the events/workouts endpoint. This is not an ex
 <Note>
   Workout types are normalized from provider-specific values. The original provider type is preserved in the raw data.
 </Note>
+
+Filter the list by exact type with `?type=running`. The older `record_type` parameter matches a
+substring, so `record_type=running` also returns `trail_running`; it is kept for backwards
+compatibility.
+
+To offer only the types a user actually has, read them from
+`GET /api/v1/users/{user_id}/events/workouts/types`, which returns a sorted list such as
+`["cycling", "running", "trail_running"]`.
+
+Heart-rate zones, power zones and lap segments are omitted by default because they multiply the
+payload size. Request them explicitly with `?include=zones` and `?include=segments` (repeat the
+parameter to ask for both).
 
 ---
 

@@ -49,6 +49,7 @@ class Workout(BaseModel):
     elev_low: float | None = None
     hr_zones: HRZones | None = None
     power_zones: PowerZones | None = None
+    segments: list[dict] | None = None
 
 
 class Macros(BaseModel):

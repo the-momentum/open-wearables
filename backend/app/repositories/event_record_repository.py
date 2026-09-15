@@ -293,16 +293,22 @@ class EventRecordRepository(
         if query_params.record_type:
             filters.append(EventRecord.type.ilike(f"%{query_params.record_type}%"))
 
+        if query_params.workout_type:
+            filters.append(EventRecord.type == query_params.workout_type)
+
         if query_params.source_name:
             filters.append(EventRecord.source_name.ilike(f"%{query_params.source_name}%"))
+
+        if query_params.provider:
+            filters.append(DataSource.provider == query_params.provider)
 
         if query_params.device_model:
             filters.append(DataSource.device_model == query_params.device_model)
 
-        if getattr(query_params, "source", None):
+        if query_params.source:
             filters.append(DataSource.source == query_params.source)
 
-        if getattr(query_params, "data_source_id", None):
+        if query_params.data_source_id:
             filters.append(EventRecord.data_source_id == query_params.data_source_id)
 
         if query_params.start_datetime:
@@ -520,6 +526,26 @@ class EventRecordRepository(
             .all()
         )
         return [(category, count) for category, count in results]
+
+    def get_distinct_workout_types(self, db_session: DbSession, user_id: UUID) -> list[str]:
+        """Workout types this user actually has, so a client can offer only those.
+
+        Grouped rather than DISTINCT so the planner reuses ``ix_event_record_source_category``;
+        rows with no type are skipped instead of surfacing as an empty option.
+        """
+        results = (
+            db_session.query(self.model.type)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.category == "workout",
+                self.model.type.isnot(None),
+            )
+            .group_by(self.model.type)
+            .order_by(self.model.type)
+            .all()
+        )
+        return [workout_type for (workout_type,) in results]
 
     def get_sleep_stage_stats_via_json(self, db_session: DbSession, record_id: UUID) -> list[dict]:
         """

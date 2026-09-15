@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import EntrySource, WorkoutIntensity
+from app.schemas.enums import EntrySource, ProviderName, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -15,6 +15,7 @@ class WorkoutInclude(StrEnum):
     """Optional expansions for workout read models, requested via the `include` query parameter."""
 
     ZONES = "zones"
+    SEGMENTS = "segments"
 
 
 class EventRecordMetrics(TypedDict, total=False):
@@ -108,9 +109,13 @@ class EventRecordQueryParams(BaseModel):
         "workout",
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
-    record_type: str | None = Field(None, description="Subtype filter (e.g. HKWorkoutActivityTypeRunning)")
+    record_type: str | None = Field(
+        None, description="Subtype filter, substring match (e.g. HKWorkoutActivityTypeRunning)"
+    )
+    workout_type: WorkoutType | None = Field(None, description="Exact normalized workout type filter")
 
     # Source filtering
+    provider: ProviderName | None = Field(None, description="Provider filter")
     device_model: str | None = Field(None, description="Filter by device model")
     source_name: str | None = Field(None, description="Filter by source/app name")
     source: str | None = Field(None, description="Filter by data source")

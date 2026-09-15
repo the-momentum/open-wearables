@@ -52,6 +52,13 @@ def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | Non
         return None
 
 
+def as_dict_list(value: Any) -> list[dict] | None:
+    """Coerce a raw json_binary array (e.g. workout segments) to objects; None if empty or malformed."""
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, dict)] or None
+
+
 _KCAL_PER_KJ = Decimal("0.239006")  # 1 kcal = 4.184 kJ
 
 

@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
+from app.schemas.enums import ProviderName, WorkoutType
 from app.schemas.model_crud.activities import EventRecordQueryParams, WorkoutInclude
 from app.schemas.responses.activity import (
     MenstrualCycleRecord,
@@ -28,8 +29,18 @@ def list_workouts(
     _api_key: ApiKeyDep,
     include: Annotated[list[WorkoutInclude], Query(default_factory=list)],
     record_type: str | None = None,
+    workout_type: Annotated[
+        WorkoutType | None,
+        Query(
+            alias="type", description="Exact normalized workout type. Unlike `record_type`, does not substring-match."
+        ),
+    ] = None,
     cursor: str | None = None,
     limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
+    provider: ProviderName | None = None,
+    source: str | None = None,
+    device_model: str | None = None,
+    data_source_id: UUID | None = None,
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
@@ -38,8 +49,23 @@ def list_workouts(
         cursor=cursor,
         limit=limit,
         record_type=record_type,
+        workout_type=workout_type,
+        provider=provider,
+        source=source,
+        device_model=device_model,
+        data_source_id=data_source_id,
     )
     return event_record_service.get_workouts(db, user_id, params, include=include)
+
+
+@router.get("/users/{user_id}/events/workouts/types")
+def list_workout_types(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> list[str]:
+    """Returns the workout types this user actually has, for populating a filter."""
+    return event_record_service.get_workout_types(db, user_id)
 
 
 @router.get("/users/{user_id}/events/sleep")

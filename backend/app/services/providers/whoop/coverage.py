@@ -27,6 +27,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "distance",
         "total_elevation_gain",
         "moving_time_seconds",
+        "hr_zones",
     }
 )
 
