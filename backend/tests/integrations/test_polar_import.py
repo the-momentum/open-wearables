@@ -75,7 +75,7 @@ class TestPolarOAuthFlow:
 
     @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
     @patch("app.services.providers.templates.base_oauth.get_redis_client")
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     def test_polar_oauth_callback_success(
         self,
         mock_post: MagicMock,
@@ -113,7 +113,7 @@ class TestPolarOAuthFlow:
             "token_type": "Bearer",
             "x_user_id": 12345,
         }
-        mock_post.return_value = mock_token_response
+        mock_post.return_value.__enter__.return_value.post.return_value = mock_token_response
 
         # Mock Celery task
         mock_celery_task.return_value = MagicMock()
