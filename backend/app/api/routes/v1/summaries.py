@@ -147,5 +147,5 @@ def get_data_timeline(
     both returns the user's whole history.
     """
     start_datetime = parse_query_datetime(start_date) if start_date is not None else None
-    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
+    end_datetime = parse_query_end_datetime(end_date) if end_date is not None else None
     return system_info_service.get_user_data_timeline(db, user_id, bucket, group_by, start_datetime, end_datetime)
