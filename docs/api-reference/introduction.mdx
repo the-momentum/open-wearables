@@ -164,9 +164,12 @@ Use the `next_cursor` from the response to fetch the next page.
 Health scores page by `limit` and `offset` instead, with the same defaults and maximum.
 
 <Note>
-  A timeseries request with a `resolution` other than `raw` pages by bucket, and `total_count` is
-  `null` — counting buckets would require scanning the whole requested range. Cursors are not
-  interchangeable between resolutions or endpoints.
+  On `/timeseries`, `total_count` is returned on the first page only and is `null` on any page
+  reached by `cursor` — the count is a full aggregate over the largest table in the system, and a
+  keyset page cannot change it, so keep the value from the first response. A request with a
+  `resolution` other than `raw` pages by bucket and never carries a `total_count`, since counting
+  buckets would require scanning the whole requested range. Cursors are not interchangeable
+  between resolutions or endpoints.
 </Note>
 
 ## Date & Time Parameters

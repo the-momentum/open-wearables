@@ -6,9 +6,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import EntrySource, ProviderName, WorkoutIntensity, WorkoutType
+from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+
+from .source_filters import SourceFilterParams
 
 
 class WorkoutInclude(StrEnum):
@@ -92,7 +94,7 @@ class EventRecordResponse(EventRecordBase):
     data_source_id: UUID | None
 
 
-class EventRecordQueryParams(BaseModel):
+class EventRecordQueryParams(SourceFilterParams):
     """Filtering and sorting parameters for event records."""
 
     # Pagination
@@ -114,12 +116,8 @@ class EventRecordQueryParams(BaseModel):
     )
     workout_type: WorkoutType | None = Field(None, description="Exact normalized workout type filter")
 
-    # Source filtering
-    provider: ProviderName | None = Field(None, description="Provider filter")
-    device_model: str | None = Field(None, description="Filter by device model")
+    # Source filtering (provider, source, device_model, data_source_id come from SourceFilterParams)
     source_name: str | None = Field(None, description="Filter by source/app name")
-    source: str | None = Field(None, description="Filter by data source")
-    data_source_id: UUID | None = Field(None, description="Filter by data source identifier")
 
     # Duration filtering
     min_duration: int | None = Field(None, description="Minimum duration in seconds")

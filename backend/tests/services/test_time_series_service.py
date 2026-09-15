@@ -627,6 +627,22 @@ class TestTimeSeriesServiceGetTimeseries:
                 )
         return user, watch, band
 
+    def test_total_count_is_taken_on_the_first_page_only(self, db: Session) -> None:
+        """A full COUNT over the largest table is paid once; a keyset page cannot change it."""
+        # Arrange
+        user = self._minute_of_heart_rate(db, [60, 70, 80, 90])
+
+        # Act
+        first = timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], self._params(limit=2))
+        second = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate], self._params(limit=2, cursor=first.pagination.next_cursor)
+        )
+
+        # Assert
+        assert first.pagination.total_count == 4
+        assert second.pagination.total_count is None
+        assert [s.value for s in second.data] == [80, 90]
+
     def test_source_filters_narrow_to_one_device(self, db: Session) -> None:
         """Every declared source filter reaches the query; data_source_id used to be ignored."""
         # Arrange

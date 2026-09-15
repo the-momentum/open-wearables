@@ -40,7 +40,12 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import CrudRepository, timeline_key_column, utc_bucket_start
+from app.repositories.repositories import (
+    CrudRepository,
+    source_filter_conditions,
+    timeline_key_column,
+    utc_bucket_start,
+)
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
@@ -401,11 +406,12 @@ class DataPointSeriesRepository(
         types: list[SeriesType],
         user_id: UUID,
         source_by_type: dict[int, UUID] | None = None,
-    ) -> tuple[list[tuple[DataPointSeries, DataSource]], int]:
+    ) -> tuple[list[tuple[DataPointSeries, DataSource]], int | None]:
         """Get data points with filtering and keyset pagination.
 
-        Returns a tuple of (samples, total_count) where total_count is calculated
-        BEFORE applying cursor pagination, giving the total number of matching records.
+        Returns (samples, total_count). The count is a full aggregate over the largest table in
+        the system, so it is taken on the first page only and is None on every page reached by
+        cursor; the total cannot change under a keyset page, so the caller keeps the first value.
         """
         query = self._apply_sample_filters(
             db_session.query(self.model, DataSource)
@@ -421,9 +427,7 @@ class DataPointSeriesRepository(
             source_by_type,
         )
 
-        # Calculate total count BEFORE applying cursor pagination
-        # This gives us the total matching records (after all other filters)
-        total_count = query.count()
+        total_count = query.count() if params.cursor is None else None
 
         # Cursor pagination (keyset)
         if params.cursor:
@@ -559,14 +563,7 @@ class DataPointSeriesRepository(
         """Filters shared by every sample read. Assumes DataSource is already joined."""
         if types:
             query = query.filter(self.model.series_type_definition_id.in_([get_series_type_id(t) for t in types]))
-        if params.device_model:
-            query = query.filter(DataSource.device_model == params.device_model)
-        if params.source:
-            query = query.filter(DataSource.source == params.source)
-        if params.provider:
-            query = query.filter(DataSource.provider == params.provider)
-        if params.data_source_id:
-            query = query.filter(self.model.data_source_id == params.data_source_id)
+        query = query.filter(*source_filter_conditions(params, self.model.data_source_id))
         if start is not None:
             query = query.filter(self.model.recorded_at >= start)
         if end is not None:
@@ -647,15 +644,10 @@ class DataPointSeriesRepository(
     ) -> list[DataSource]:
         """The caller's sources, best first. Honours the source filters, so priority picks a
         winner from what the request actually asked for rather than from everything owned."""
-        query = db_session.query(DataSource).filter(DataSource.user_id == user_id)
-        if params.provider:
-            query = query.filter(DataSource.provider == params.provider)
-        if params.source:
-            query = query.filter(DataSource.source == params.source)
-        if params.device_model:
-            query = query.filter(DataSource.device_model == params.device_model)
-        if params.data_source_id:
-            query = query.filter(DataSource.id == params.data_source_id)
+        query = db_session.query(DataSource).filter(
+            DataSource.user_id == user_id,
+            *source_filter_conditions(params, DataSource.id),
+        )
         return sorted(
             query.all(),
             key=lambda s: (

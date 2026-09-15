@@ -28,7 +28,7 @@ from sqlalchemy.orm import Query, selectinload
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import CrudRepository, utc_bucket_start
+from app.repositories.repositories import CrudRepository, source_filter_conditions, utc_bucket_start
 from app.schemas.enums import ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -299,17 +299,7 @@ class EventRecordRepository(
         if query_params.source_name:
             filters.append(EventRecord.source_name.ilike(f"%{query_params.source_name}%"))
 
-        if query_params.provider:
-            filters.append(DataSource.provider == query_params.provider)
-
-        if query_params.device_model:
-            filters.append(DataSource.device_model == query_params.device_model)
-
-        if query_params.source:
-            filters.append(DataSource.source == query_params.source)
-
-        if query_params.data_source_id:
-            filters.append(EventRecord.data_source_id == query_params.data_source_id)
+        filters.extend(source_filter_conditions(query_params, EventRecord.data_source_id))
 
         if query_params.start_datetime:
             filters.append(EventRecord.start_datetime >= query_params.start_datetime)

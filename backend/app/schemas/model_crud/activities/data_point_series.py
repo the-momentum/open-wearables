@@ -5,9 +5,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import ProviderName, Resolution, SeriesType
+from app.schemas.enums import Resolution, SeriesType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+
+from .source_filters import SourceFilterParams
 
 
 class TimeSeriesSampleBase(BaseModel):
@@ -58,21 +60,11 @@ class StepSampleCreate(TimeSeriesSampleCreate):
     series_type: Literal[SeriesType.steps] = SeriesType.steps
 
 
-class TimeSeriesQueryParams(BaseModel):
+class TimeSeriesQueryParams(SourceFilterParams):
     """Filters for retrieving time series samples."""
 
     start_datetime: datetime | None = Field(None, description="Lower bound (inclusive) for recorded timestamp")
     end_datetime: datetime | None = Field(None, description="Upper bound (inclusive) for recorded timestamp")
-    device_model: str | None = Field(
-        None,
-        description="Device model filter",
-    )
-    source: str | None = Field(None, description="Optional data source filter")
-    data_source_id: UUID | None = Field(
-        None,
-        description="Direct data source identifier filter.",
-    )
-    provider: ProviderName | None = Field(None, description="Provider filter")
     limit: int = Field(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Maximum number of samples to return")
     cursor: str | None = Field(
         None,
