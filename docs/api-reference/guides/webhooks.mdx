@@ -259,6 +259,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 | Reason | Cause |
 |--------|-------|
 | `user_disconnected` | The connection was disconnected via the API. |
+| `sdk_sign_out` | The user signed out of the mobile app; the SDK reported it with its own token. |
 | `refresh_failed` | The OAuth refresh token was rejected by the provider. |
 | `deregistration` | The user deregistered on the provider side (Garmin). |
 
@@ -497,6 +498,22 @@ curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints" \
 ```
 
 Omit the field entirely to receive all event types.
+
+To later remove the event type filter from an existing endpoint (receive all event types again), send a `PATCH` with `"filter_types": []`:
+
+```bash
+curl -X PATCH "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "filter_types": [] }'
+```
+
+<Note>
+  The empty list is what clears the filter. Sending `"filter_types": null` — or leaving the field
+  out — keeps the current filter, so a client that serialises unset fields as `null` will not wipe
+  an endpoint's event types by accident. Note that `user_id` works the other way round: there
+  `null` is what removes the filter.
+</Note>
 
 ### Filter by user
 

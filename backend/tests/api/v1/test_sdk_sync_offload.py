@@ -30,7 +30,7 @@ def _sync(client: TestClient, api_v1_prefix: str) -> object:
     api_key = ApiKeyFactory()
     return client.post(
         f"{api_v1_prefix}/sdk/users/{_USER_ID}/sync/",
-        headers={"X-Open-Wearables-API-Key": api_key.id},
+        headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         json=_BODY,
     )
 

@@ -1,10 +1,14 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from logging import getLogger
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.inspection import inspect
 
 from app.database import BaseDbModel
+
+logger = getLogger(__name__)
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -24,6 +28,27 @@ def as_int(value: Any) -> int | None:
     try:
         return int(value)
     except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def as_float(value: Any) -> float | None:
+    """Coerce a value to float; None if missing or not convertible. Zero is kept."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | None:
+    """Validate a raw mapping (e.g. a json_binary column) into a model; None if empty or malformed."""
+    if not value:
+        return None
+    try:
+        return model.model_validate(value)
+    except ValidationError:
+        logger.warning("Discarding malformed %s payload: %r", model.__name__, value, exc_info=True)
         return None
 
 

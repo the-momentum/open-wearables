@@ -1,0 +1,34 @@
+---
+title: "Priorities"
+sidebarTitle: "Priorities"
+description: "Decide which data provider and which device type wins when data overlaps in time, from Settings → Priorities in the Open Wearables developer portal."
+keywords: ["provider priority", "device type priority", "overlapping data", "multiple wearables", "data source precedence"]
+"og:title": "Priorities | Open Wearables"
+"og:description": "Decide which data provider and which device type wins when data overlaps in time, from Settings → Priorities in the Open Wearables developer portal."
+"og:url": "https://docs.openwearables.io/developer-portal/settings/priorities"
+"og:type": "article"
+"twitter:title": "Priorities | Open Wearables"
+"twitter:description": "Decide which data provider and which device type wins when data overlaps in time, from Settings → Priorities in the Open Wearables developer portal."
+"twitter:card": "summary_large_image"
+---
+
+**Settings → Priorities** decides which data source is shown when more than one source has data for the same period. This matters as soon as a user connects several providers or wears several devices from the same provider.
+
+## Provider Priorities
+
+Use the arrows to reorder the list, then click **Save Changes**. Higher in the list means higher priority.
+
+Providers appear in this list only after their data has started flowing into the deployment, so a fresh instance shows an empty list.
+
+How it works:
+
+- When data from multiple providers overlaps in time, the higher-priority provider's data is shown.
+- Within the same provider, watch data is preferred over phone data by default. You can change that below.
+
+## Device Type Priorities
+
+The second list orders device types within a single provider: **Watch**, **Band**, **Ring**, **Phone**, **Scale**, **Other**, and **Unknown**. When the same provider delivers data from two devices, the higher-priority device type wins.
+
+Reorder with the arrows and click **Save Changes**. The two lists are saved independently.
+
+See [Multi-account sync](/architecture/multi-account-sync) for how data from several connected accounts is merged.

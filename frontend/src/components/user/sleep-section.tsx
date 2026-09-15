@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import {
   useSleepSessions,
-  useSleepSummaries,
+  useAllSleepSummaries,
   useTimeSeries,
   useDeleteSleepSession,
 } from '@/hooks/api/use-health';
@@ -519,14 +519,11 @@ export function SleepSection({
   const allTimeRange = useAllTimeRange();
 
   // Fetch sleep summaries for summary stats (date range filtered)
-  const { data: sleepSummaries, isLoading: summaryLoading } = useSleepSummaries(
-    userId,
-    {
+  const { data: sleepSummaries, isLoading: summaryLoading } =
+    useAllSleepSummaries(userId, {
       start_date: startDate,
       end_date: endDate,
-      limit: 100,
-    }
-  );
+    });
 
   // Fetch sleep sessions with cursor-based pagination
   const {
@@ -555,7 +552,7 @@ export function SleepSection({
 
   // Calculate aggregate statistics from date-range filtered summaries
   const stats = useMemo(
-    () => calculateSleepStats(sleepSummaries?.data || []),
+    () => calculateSleepStats(sleepSummaries || []),
     [sleepSummaries]
   );
 
@@ -573,7 +570,7 @@ export function SleepSection({
 
   // Prepare chart data from summary data (sorted by date ascending)
   const chartData = useMemo(() => {
-    const summaries = sleepSummaries?.data || [];
+    const summaries = sleepSummaries || [];
     if (summaries.length === 0) return [];
 
     return [...summaries]

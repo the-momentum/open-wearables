@@ -4,8 +4,10 @@ from .aggregation_method import (
     daily_total_flag,
 )
 from .data_granularity import (
+    BUCKET_SIZES,
     GRANULARITY_WINDOW_SECONDS,
     DataGranularity,
+    Resolution,
 )
 from .device_type import (
     DEFAULT_DEVICE_TYPE_PRIORITY,
@@ -13,6 +15,7 @@ from .device_type import (
     infer_device_type_from_model,
     infer_device_type_from_source_name,
 )
+from .entry_source import EntrySource
 from .health_score_category import HealthScoreCategory
 from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
@@ -31,6 +34,7 @@ from .timeline import (
     TimelineBucket,
     TimelineGroupBy,
 )
+from .workout_intensity import WorkoutIntensity
 from .workout_types import (
     WORKOUTS_WITH_PACE,
     WorkoutType,
@@ -45,13 +49,17 @@ __all__ = [
     "AGGREGATION_METHOD_BY_TYPE",
     "daily_total_flag",
     "DataGranularity",
+    "Resolution",
+    "BUCKET_SIZES",
     "GRANULARITY_WINDOW_SECONDS",
+    "EntrySource",
     "SeriesType",
     "SERIES_TYPE_DEFINITIONS",
     "SERIES_TYPE_ID_BY_ENUM",
     "get_series_type_id",
     "get_series_type_from_id",
     "get_series_type_unit",
+    "WorkoutIntensity",
     "WorkoutType",
     "WORKOUTS_WITH_PACE",
     "ProviderName",

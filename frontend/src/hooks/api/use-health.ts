@@ -123,6 +123,30 @@ export function useSleepSummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get all pages of sleep summaries for a date range
+ * Uses GET /api/v1/users/{user_id}/summaries/sleep
+ */
+export function useAllSleepSummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: [...queryKeys.health.sleepSummaries(userId, params), 'all-pages'],
+    queryFn: () => healthService.getAllSleepSummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Get all pages of workouts for a date range
+ * Uses GET /api/v1/users/{user_id}/events/workouts
+ */
+export function useAllWorkouts(userId: string, params?: WorkoutsParams) {
+  return useQuery({
+    queryKey: [...queryKeys.health.workouts(userId, params), 'all-pages'],
+    queryFn: () => healthService.getAllWorkouts(userId, params),
+    enabled: !!userId,
+  });
+}
+
+/**
  * Delete a workout event
  */
 export function useDeleteWorkout(userId: string) {
@@ -354,48 +378,6 @@ export function useGarminBackfillStatus(userId: string, enabled: boolean) {
       return status === 'in_progress' || status === 'retry_in_progress'
         ? 10000
         : false;
-    },
-  });
-}
-
-/**
- * Cancel an in-progress Garmin backfill
- * Sets cancellation flag; backfill stops after current type completes
- */
-export function useGarminCancelBackfill(userId: string) {
-  return useMutation({
-    mutationFn: () => healthService.cancelGarminBackfill(userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.garmin.backfillStatus(userId),
-      });
-      toast.info('Backfill cancellation requested');
-    },
-    onError: (error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : 'Failed to cancel backfill';
-      toast.error(message);
-    },
-  });
-}
-
-/**
- * Retry Garmin backfill for a specific failed type
- */
-export function useRetryGarminBackfill(userId: string) {
-  return useMutation({
-    mutationFn: (typeName: string) =>
-      healthService.retryGarminBackfill(userId, typeName),
-    onSuccess: (_, typeName) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.garmin.backfillStatus(userId),
-      });
-      toast.info(`Retrying ${typeName} sync...`);
-    },
-    onError: (error: unknown) => {
-      const message =
-        error instanceof Error ? error.message : 'Failed to retry sync';
-      toast.error(message);
     },
   });
 }

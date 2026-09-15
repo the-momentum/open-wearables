@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
+from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import (
     SVIX_MAX_SAMPLES_PER_EVENT,
     _dispatch,
@@ -489,3 +490,134 @@ class TestOutgoingWebhooksAPI:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# svix_service.create_endpoint / patch_endpoint — filter_types translation
+# ---------------------------------------------------------------------------
+
+
+class TestSvixFilterTypesHandling:
+    """Svix rejects an empty `filter_types` list outright ("eventTypes can't
+    be empty, it must have at least one item"), so an empty selection must be
+    translated to omitting the key (create) or an explicit null (patch)
+    before it reaches the Svix client — never sent through as [].
+    """
+
+    @pytest.fixture
+    def mock_client(self) -> Generator[MagicMock, None, None]:
+        mock = MagicMock()
+        with patch("app.services.outgoing_webhooks.svix._client", mock):
+            yield mock
+
+    @pytest.mark.parametrize("filter_types", [None, []])
+    def test_create_endpoint_omits_filter_types_when_empty(
+        self, mock_client: MagicMock, filter_types: list[str] | None
+    ) -> None:
+        svix_service.create_endpoint("app_1", "https://example.com/wh", filter_types=filter_types)
+
+        sent = mock_client.endpoint.create.call_args.args[1]
+        assert "filter_types" not in sent.model_fields_set
+
+    def test_create_endpoint_includes_filter_types_when_populated(self, mock_client: MagicMock) -> None:
+        svix_service.create_endpoint("app_1", "https://example.com/wh", filter_types=["workout.created"])
+
+        sent = mock_client.endpoint.create.call_args.args[1]
+        assert sent.filter_types == ["workout.created"]
+
+    def test_patch_endpoint_leaves_filter_types_untouched_when_not_provided(self, mock_client: MagicMock) -> None:
+        svix_service.patch_endpoint("app_1", "ep_1", filter_types=None)
+
+        sent = mock_client.endpoint.patch.call_args.args[2]
+        assert "filter_types" not in sent.model_fields_set
+
+    def test_patch_endpoint_clears_filter_types_with_explicit_null(self, mock_client: MagicMock) -> None:
+        svix_service.patch_endpoint("app_1", "ep_1", filter_types=[])
+
+        sent = mock_client.endpoint.patch.call_args.args[2]
+        assert "filter_types" in sent.model_fields_set
+        assert sent.filter_types is None
+
+    def test_patch_endpoint_sets_filter_types_when_populated(self, mock_client: MagicMock) -> None:
+        svix_service.patch_endpoint("app_1", "ep_1", filter_types=["sleep.created"])
+
+        sent = mock_client.endpoint.patch.call_args.args[2]
+        assert sent.filter_types == ["sleep.created"]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /endpoints/{id} — clearing semantics, pinned against regressions
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateEndpointClearingContract:
+    """The two fields clear differently, and both conventions are public API.
+
+    `filter_types`: an empty list clears; an omitted field or an explicit null
+    leaves the current filter alone.
+    `user_id`: an explicit null clears; an omitted field leaves the scope alone.
+
+    The asymmetry is deliberate — external clients already depend on a null
+    `filter_types` being a no-op, so it must never become a second clearing
+    signal.  These tests fail if anyone "harmonises" the two.
+    """
+
+    @pytest.fixture(autouse=True)
+    def mock_svix(self) -> Any:
+        with patch("app.api.routes.v1.outgoing_webhooks.svix_service") as m:
+            m.is_enabled.return_value = True
+            m.ensure_application.return_value = "app_uid_123"
+            m.user_id_from_endpoint.return_value = None
+            m.patch_endpoint.return_value = MagicMock(
+                id="ep_123",
+                url="https://example.com/wh",
+                description="",
+                filter_types=None,
+            )
+            yield m
+
+    def _patch(self, client: TestClient, body: dict[str, Any]) -> Any:
+        token = create_access_token(DeveloperFactory().id)
+        resp = client.patch(
+            "/api/v1/webhooks/endpoints/ep_123",
+            json=body,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        return resp
+
+    @pytest.mark.parametrize(
+        ("body", "expected"),
+        [
+            ({"description": "only the label"}, None),
+            ({"filter_types": None}, None),
+            ({"filter_types": []}, []),
+            ({"filter_types": ["workout.created"]}, ["workout.created"]),
+        ],
+        ids=["omitted", "explicit-null", "empty-list", "populated"],
+    )
+    def test_filter_types_reaches_the_service_verbatim(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_svix: MagicMock,
+        body: dict[str, Any],
+        expected: list[str] | None,
+    ) -> None:
+        self._patch(client, body)
+
+        assert mock_svix.patch_endpoint.call_args.kwargs["filter_types"] == expected
+
+    def test_explicit_null_user_id_clears_the_user_scope(
+        self, client: TestClient, db: Session, mock_svix: MagicMock
+    ) -> None:
+        self._patch(client, {"user_id": None})
+
+        assert mock_svix.patch_endpoint.call_args.kwargs["clear_user_id"] is True
+
+    def test_omitted_user_id_leaves_the_user_scope_untouched(
+        self, client: TestClient, db: Session, mock_svix: MagicMock
+    ) -> None:
+        self._patch(client, {"description": "only the label"})
+
+        assert mock_svix.patch_endpoint.call_args.kwargs["clear_user_id"] is False

@@ -1,0 +1,59 @@
+---
+title: "Data Lifecycle"
+sidebarTitle: "Data Lifecycle"
+description: "Configure archival and retention policies for time-series data, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
+keywords: ["data retention", "time series archival", "storage growth", "delete old data", "postgres storage"]
+"og:title": "Data Lifecycle | Open Wearables"
+"og:description": "Configure archival and retention policies for time-series data, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
+"og:url": "https://docs.openwearables.io/developer-portal/settings/data-lifecycle"
+"og:type": "article"
+"twitter:title": "Data Lifecycle | Open Wearables"
+"twitter:description": "Configure archival and retention policies for time-series data, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
+"twitter:card": "summary_large_image"
+---
+
+**Settings → Data Lifecycle** keeps the size of per-sample time-series data under control. Raw samples such as heart rate at one-minute resolution grow linearly with time and connected devices. This tab lets you aggregate old samples into daily summaries and delete data past a retention window.
+
+<Warning>
+This feature is in early access and is not yet ready for production use.
+</Warning>
+
+## Storage Overview
+
+The top of the page shows the current database footprint:
+
+- **Live Data** - size and row count of the raw time-series table, including indexes.
+- **Archive Data** - size and row count of the archived daily aggregates.
+- **Other Tables** - everything else.
+- **Total Database** - the sum.
+
+## Growth Projection
+
+A chart estimates database size over the next 18 months based on the current ingestion rate and the policies you have configured. The badge above it classifies the outcome:
+
+| Badge | Meaning |
+|---|---|
+| **Bounded** | Retention is enabled. Old data is deleted after the retention window and total size stabilises. |
+| **Linear (efficient)** | Archival is enabled without retention. Live data is bounded by the archive window, daily aggregates accumulate at roughly 1/500 of the raw rate. |
+| **Linear** | Neither policy is enabled. All raw samples are kept forever. |
+
+The projection updates as you edit the policies, before you save.
+
+## Archival Policy
+
+When enabled, per-sample time-series data older than **Archive data older than N days** is aggregated into daily summaries. This reduces storage substantially while preserving aggregate accuracy. Set the threshold between 1 and 3650 days.
+
+## Retention Policy
+
+When enabled, data older than **Delete data older than N days** is permanently deleted. Set the threshold between 1 and 7300 days.
+
+- Without archival, rows are deleted directly from the live table.
+- With archival, only archived aggregates are deleted. Live rows are always archived first.
+
+Deletion is irreversible.
+
+If the retention threshold is lower than or equal to the archival threshold, the page shows a warning: data would be deleted before it can be archived, so archival is effectively disabled. Fix the thresholds before saving.
+
+## Manual Trigger
+
+The archival and retention job runs on a daily schedule. **Run Now** executes it immediately with the currently saved policies, which is useful right after changing thresholds or when validating the effect on storage.

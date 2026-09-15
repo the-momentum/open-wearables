@@ -48,39 +48,6 @@ http://localhost:8000/api/v1
 
 For production deployments, replace with your server URL.
 
-## Quick Reference
-
-| Operation | Method | Endpoint |
-|-----------|--------|----------|
-| List users | GET | `/api/v1/users` |
-| Create user | POST | `/api/v1/users` |
-| Get user | GET | `/api/v1/users/{user_id}` |
-| Get connections | GET | `/api/v1/users/{user_id}/connections` |
-| Get activity summary | GET | `/api/v1/users/{user_id}/summaries/activity` |
-| Get sleep summary | GET | `/api/v1/users/{user_id}/summaries/sleep` |
-| Get body summary | GET | `/api/v1/users/{user_id}/summaries/body` |
-| Get recovery summary | GET | `/api/v1/users/{user_id}/summaries/recovery` |
-| Get timeseries | GET | `/api/v1/users/{user_id}/timeseries` |
-| Get workouts | GET | `/api/v1/users/{user_id}/events/workouts` |
-| Delete workout | DELETE | `/api/v1/users/{user_id}/events/workouts/{workout_id}` |
-| Get sleep sessions | GET | `/api/v1/users/{user_id}/events/sleep` |
-| Delete sleep session | DELETE | `/api/v1/users/{user_id}/events/sleep/{sleep_id}` |
-| Get menstrual cycles | GET | `/api/v1/users/{user_id}/events/menstrual-cycles` |
-| Delete menstrual cycle | DELETE | `/api/v1/users/{user_id}/events/menstrual-cycles/{cycle_id}` |
-| Get data sources | GET | `/api/v1/users/{user_id}/data-sources` |
-| Get health scores | GET | `/api/v1/users/{user_id}/health-scores` |
-| List providers | GET | `/api/v1/oauth/providers` |
-| OAuth authorize | GET | `/api/v1/oauth/{provider}/authorize?user_id={user_id}` |
-| Sync data | POST | `/api/v1/providers/{provider}/users/{user_id}/sync` |
-| Historical sync | POST | `/api/v1/providers/{provider}/users/{user_id}/sync/historical` |
-| Get provider workouts | GET | `/api/v1/providers/{provider}/users/{user_id}/workouts` |
-| List event types | GET | `/api/v1/webhooks/event-types` |
-| Register webhook endpoint | POST | `/api/v1/webhooks/endpoints` |
-| List webhook endpoints | GET | `/api/v1/webhooks/endpoints` |
-| Update webhook endpoint | PATCH | `/api/v1/webhooks/endpoints/{endpoint_id}` |
-| Delete webhook endpoint | DELETE | `/api/v1/webhooks/endpoints/{endpoint_id}` |
-| Get endpoint secret | GET | `/api/v1/webhooks/endpoints/{endpoint_id}/secret` |
-
 ## Authentication
 
 All API endpoints require authentication using API keys. Include your API key in the `X-Open-Wearables-API-Key` header:
@@ -95,11 +62,17 @@ X-Open-Wearables-API-Key: YOUR_API_KEY
 
 ### Getting an API Key
 
-1. Access the Open Wearables Platform at `http://localhost:3000`
+1. Open the [developer portal](/developer-portal) at `http://localhost:3000`
 2. Log in
-3. Navigate to the API Keys section in the Settings tab
+3. Navigate to **Settings → Credentials → API Keys**
 4. Generate a new API key
-5. Copy and securely store the key
+5. Copy and securely store the key - it is shown only once
+
+<Warning>
+  The full key is displayed only once, right after you create or rotate it. Open Wearables stores a hash of the key, so it cannot be retrieved later - the portal shows just a short prefix (for example `sk-a1b2c3d`) to help you tell keys apart. If you lose a key, rotate it from the same section to get a new one.
+</Warning>
+
+API keys are shared across the whole deployment. Every developer account can see, rotate, and delete every key, see [Credentials](/developer-portal/settings/credentials#keys-are-shared-across-the-deployment).
 
 <Warning>
   Keep your API keys secure. Never commit them to version control or expose them in client-side code.
@@ -184,9 +157,15 @@ GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `cursor` | null | Cursor from previous response |
-| `limit` | 50 | Items per page (max: 100) |
+| `limit` | 50 | Items per page (max: 1000 for timeseries, 100 for workouts and sleep) |
 
 Use the `next_cursor` from the response to fetch the next page.
+
+<Note>
+  A timeseries request with a `resolution` other than `raw` pages by bucket, and `total_count` is
+  `null` — counting buckets would require scanning the whole requested range. Cursors are not
+  interchangeable between resolutions or endpoints.
+</Note>
 
 ## Date & Time Parameters
 
@@ -196,11 +175,11 @@ Endpoints that accept date range parameters (`start_date`, `end_date`, `start_ti
 |--------|---------|-------|
 | ISO 8601 datetime with timezone | `2023-11-07T05:31:56Z` | Recommended |
 | ISO 8601 datetime with offset | `2023-11-07T06:31:56+01:00` | |
-| Date-only | `2023-11-07` | Normalized to midnight UTC (`2023-11-07T00:00:00Z`) |
+| Date-only | `2023-11-07` | Start bounds: midnight UTC. End bounds: the whole day |
 | Unix timestamp (seconds) | `1699332716` | UTC |
 
 <Note>
-  When a date-only value (e.g. `2023-11-07`) is provided as an **end date**, it is treated as midnight UTC at the start of that day. Depending on the endpoint, this may be extended to include the full day — use an explicit time component (e.g. `2023-11-07T23:59:59Z`) to avoid ambiguity.
+  Date-only ranges include both boundary days, so `start_date=2023-11-07&end_date=2023-11-07` covers the whole of November 7th. Values with an explicit time component are used exactly as given: `end_time=2023-11-07T00:00:00Z` stops at midnight and returns nothing from that day.
 </Note>
 
 ## Filtering & Sorting

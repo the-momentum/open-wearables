@@ -53,7 +53,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/garmin/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -99,7 +99,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/garmin/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -120,7 +120,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/polar/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -144,7 +144,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/polar/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"samples": True, "zones": True, "route": True},
         )
 
@@ -171,7 +171,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/suunto/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -195,7 +195,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/suunto/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             params={"since": 1609459200, "limit": 25, "offset": 10},
         )
 
@@ -223,7 +223,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/garmin/users/{user.id}/workouts/{workout_id}",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -257,7 +257,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/garmin/users/{user.id}/workouts/{workout_id}",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -272,7 +272,7 @@ class TestVendorWorkoutsEndpoints:
         # Act
         response = client.get(
             f"/api/v1/providers/invalid_provider/users/{user.id}/workouts",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
 
         # Assert
@@ -294,7 +294,7 @@ class TestVendorWorkoutsEndpoints:
             # Act
             response = client.get(
                 f"/api/v1/providers/apple/users/{user.id}/workouts",
-                headers={"X-Open-Wearables-API-Key": api_key.id},
+                headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             )
 
             # Assert

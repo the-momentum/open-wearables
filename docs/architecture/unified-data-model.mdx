@@ -186,8 +186,10 @@ erDiagram
     }
     
     ApiKey {
-        string id PK
+        uuid id PK
         uuid created_by FK
+        string key_hash UK
+        string key_prefix
         string name
         timestamp created_at
     }

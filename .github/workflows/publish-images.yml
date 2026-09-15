@@ -2,6 +2,10 @@ name: Publish Docker images
 
 # Build & push the production images to Docker Hub on three triggers: nightly
 # (schedule), release (release published), and manual (workflow_dispatch).
+#
+# Multi-arch (linux/amd64 + linux/arm64). Each arch builds natively on its
+# own runner and pushes an untagged image by digest. A merge job then
+# publishes one tagged manifest list per image.
 on:
   schedule:
     - cron: "0 2 * * *" # 02:00 UTC daily; scheduled runs use the default branch (main)
@@ -13,30 +17,16 @@ on:
         description: "Image tag to push. A manual run publishes this tag only - no nightly tags. Reserved names (latest, nightly, nightly-<sha>, release versions) are rejected."
         required: true
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: backend
-            context: ./backend
-            dockerfile: ./backend/Dockerfile
-            image: themomentum/open-wearables-backend
-          - name: frontend
-            context: ./frontend
-            dockerfile: ./frontend/Dockerfile
-            image: themomentum/open-wearables-frontend
-    steps:
-      - uses: actions/checkout@v4
+permissions:
+  contents: read
 
-      # A manual run publishes inputs.tag verbatim as its only tag. Require it,
-      # and reject reserved names so a manual run can't move `latest`/`nightly`
-      # to an unreleased build or overwrite an immutable release/nightly-<sha>
-      # tag. (TAG via env, not inline ${{ }}, to avoid shell injection.)
+jobs:
+  # Manual runs publish inputs.tag as the only tag. Reject reserved names so
+  # a dispatch can't move latest/nightly or overwrite a release/nightly-<sha>
+  # tag. TAG is passed via env, not inline ${{ }}, to avoid shell injection.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
       - name: Validate manual tag
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -46,18 +36,47 @@ jobs:
             echo "::error::a manual run requires a tag"
             exit 1
           fi
+          # Also rejects newlines, which would inject extra rules into
+          # metadata-action's multiline tags input.
+          if ! printf '%s' "$TAG" | grep -Eqzx '[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}'; then
+            echo "::error::tag '$TAG' is not a valid Docker tag"
+            exit 1
+          fi
           case "$TAG" in
             latest | nightly | nightly-*)
               echo "::error::tag '$TAG' is reserved (latest / nightly / nightly-<sha>)"
               exit 1 ;;
           esac
-          if printf '%s' "$TAG" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,2}$'; then
+          # Includes prerelease/build-metadata (1.2.3-rc.1) so those stay reserved too.
+          if printf '%s' "$TAG" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,2}([-+].*)?$'; then
             echo "::error::tag '$TAG' looks like a release version and is reserved"
             exit 1
           fi
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  build:
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [backend, frontend]
+        arch: [amd64, arm64]
+        include:
+          - name: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            image: themomentum/open-wearables-backend
+          - name: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            image: themomentum/open-wearables-frontend
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -65,8 +84,103 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Derive image tags & labels
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Schedule rebuilds HEAD even when nothing changed. Skip if this SHA
+      # already has a nightly-<sha> tag; re-pushing would overwrite it (or
+      # fail on an immutable registry).
+      - name: Skip build if this nightly SHA is already published
+        id: nightly_guard
+        uses: ./.github/actions/nightly-guard
+        with:
+          image: ${{ matrix.image }}
+
+      - name: Derive image labels
         id: meta
+        if: steps.nightly_guard.outputs.skip != 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+
+      # Untagged per-arch push; the merge job tags the combined manifest list.
+      - name: Build and push ${{ matrix.name }} (${{ matrix.arch }})
+        id: build
+        if: steps.nightly_guard.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          # Backend uses this as the Sentry release; frontend Dockerfile ignores it.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+          # Frontend API URL is runtime (VITE_API_URL), not a build-arg.
+          # See frontend/src/lib/api/runtime-config.ts.
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.arch }}
+
+      - name: Export digest
+        if: steps.nightly_guard.outputs.skip != 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: steps.nightly_guard.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            image: themomentum/open-wearables-backend
+          - name: frontend
+            image: themomentum/open-wearables-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Same skip as build: no digest artifacts would fail the download below.
+      - name: Skip merge if this nightly SHA is already published
+        id: nightly_guard
+        uses: ./.github/actions/nightly-guard
+        with:
+          image: ${{ matrix.image }}
+
+      - name: Download digests
+        if: steps.nightly_guard.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digest-${{ matrix.name }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Derive image tags
+        id: meta
+        if: steps.nightly_guard.outputs.skip != 'true'
         uses: docker/metadata-action@v5
         with:
           images: ${{ matrix.image }}
@@ -81,35 +195,28 @@ jobs:
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
             type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
 
-      # A scheduled run rebuilds main's current HEAD unconditionally, so an
-      # unchanged SHA would re-push nightly-<sha> - overwriting (mutable registry)
-      # or rejecting (immutable registry) a tag docs promise is immutable. Keyed
-      # on the artifact, not the clock: skip the rebuild if this exact
-      # nightly-<sha> already exists in the registry. Only schedule emits it.
-      - name: Skip build if this nightly SHA is already published
-        id: nightly_guard
-        if: github.event_name == 'schedule'
-        run: |
-          sha_tag=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | grep -m1 ':nightly-' || true)
-          if [ -n "$sha_tag" ] && docker buildx imagetools inspect "$sha_tag" >/dev/null 2>&1; then
-            echo "$sha_tag already published; skipping rebuild"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build and push ${{ matrix.name }}
+      # Both arch digests must be present. A partial list would publish a
+      # single-arch image under a multi-arch tag.
+      - name: Create and push manifest list
         if: steps.nightly_guard.outputs.skip != 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # Baked into the backend image as the Sentry release. The frontend
-          # Dockerfile doesn't declare this ARG and simply ignores it.
-          build-args: |
-            GIT_SHA=${{ github.sha }}
-          # No API URL is baked in: the frontend reads it at runtime from the
-          # container's VITE_API_URL env var. See frontend/src/lib/api/runtime-config.ts.
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ matrix.image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          digests=$(ls)
+          count=$(printf '%s\n' "$digests" | grep -c .)
+          if [ "$count" -ne 2 ]; then
+            echo "::error::expected 2 arch digests for $IMAGE, found $count"
+            exit 1
+          fi
+          tag_args=$(printf '%s\n' "$TAGS" | sed '/^$/d; s/^/-t /' | tr '\n' ' ')
+          ref_args=$(printf '%s\n' "$digests" | sed "s|^|$IMAGE@sha256:|" | tr '\n' ' ')
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $tag_args $ref_args
+
+      - name: Inspect published image
+        if: steps.nightly_guard.outputs.skip != 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: docker buildx imagetools inspect "$(printf '%s\n' "$TAGS" | head -1)"

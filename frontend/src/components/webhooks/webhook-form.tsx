@@ -58,7 +58,7 @@ export function WebhookForm({
     onSubmit({
       url: data.url.trim(),
       description: data.description?.trim() || undefined,
-      filter_types: data.filter_types?.length ? data.filter_types : undefined,
+      filter_types: data.filter_types ?? [],
       user_id: data.user_id?.trim() || undefined,
     });
   });

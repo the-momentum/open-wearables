@@ -12,7 +12,7 @@ import {
   type ChangePasswordFormData,
 } from '@/lib/validation/auth.schemas';
 
-export function SecuritySettings() {
+export function ChangePasswordSettings() {
   const { changePassword, isChangePasswordPending } = useAuth();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -41,7 +41,7 @@ export function SecuritySettings() {
   return (
     <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
       <div className="px-6 py-4 border-b border-border/60">
-        <h3 className="text-sm font-medium text-foreground">Security</h3>
+        <h3 className="text-sm font-medium text-foreground">Change Password</h3>
         <p className="text-xs text-muted-foreground mt-1">
           Update your password to keep your developer account secure.
         </p>

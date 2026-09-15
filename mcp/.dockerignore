@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+.pytest_cache/
+.ruff_cache/
+
+config/.env
+.env
+.env.*
+
+*.log
+*.tmp
+*.bak

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
-from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.model_crud.activities import EventRecordQueryParams, WorkoutInclude
 from app.schemas.responses.activity import (
     MenstrualCycleRecord,
     SleepSession,
@@ -13,7 +13,7 @@ from app.schemas.responses.activity import (
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.event_record_service import event_record_service
-from app.utils.dates import DateTimeQueryParam, parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
 
 router = APIRouter()
 
@@ -25,6 +25,7 @@ def list_workouts(
     end_date: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
+    include: Annotated[list[WorkoutInclude], Query(default_factory=list)],
     record_type: str | None = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -32,12 +33,12 @@ def list_workouts(
     """Returns workout sessions."""
     params = EventRecordQueryParams(
         start_datetime=parse_query_datetime(start_date),
-        end_datetime=parse_query_datetime(end_date),
+        end_datetime=parse_query_end_datetime(end_date),
         cursor=cursor,
         limit=limit,
         record_type=record_type,
     )
-    return event_record_service.get_workouts(db, user_id, params)
+    return event_record_service.get_workouts(db, user_id, params, include=include)
 
 
 @router.get("/users/{user_id}/events/sleep")
@@ -60,7 +61,7 @@ def list_sleep_sessions(
     """Returns sleep sessions (including naps)."""
     params = EventRecordQueryParams(
         start_datetime=parse_query_datetime(start_date),
-        end_datetime=parse_query_datetime(end_date),
+        end_datetime=parse_query_end_datetime(end_date),
         cursor=cursor,
         limit=limit,
     )
@@ -80,7 +81,7 @@ def list_menstrual_cycles(
     """Returns menstrual cycle records."""
     params = EventRecordQueryParams(
         start_datetime=parse_query_datetime(start_date),
-        end_datetime=parse_query_datetime(end_date),
+        end_datetime=parse_query_end_datetime(end_date),
         cursor=cursor,
         limit=limit,
     )

@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.schemas.model_crud.user_management import DeveloperUpdate
+from app.services import developer_service
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -425,32 +427,77 @@ class TestGetDeveloperById:
 class TestUpdateDeveloperById:
     """Tests for PATCH /api/v1/developers/{developer_id}."""
 
-    def test_update_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating developer by ID."""
+    def test_update_own_developer_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """A developer can update their own account through the by-ID endpoint."""
         # Arrange
-        auth_developer = DeveloperFactory(email="auth@example.com", password="test123")
-        target_developer = DeveloperFactory(email="target@example.com", password="test123")
-        headers = developer_auth_headers(auth_developer.id)
+        developer = DeveloperFactory(email="me@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
         payload = {"email": "updated@example.com"}
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/developers/{target_developer.id}",
+            f"{api_v1_prefix}/developers/{developer.id}",
             json=payload,
             headers=headers,
         )
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == "updated@example.com"
+        assert response.json()["email"] == "updated@example.com"
+        db.refresh(developer)
+        assert developer.email == "updated@example.com"
 
-        # Verify in database
-        db.refresh(target_developer)
-        assert target_developer.email == "updated@example.com"
+    def test_update_other_developer_forbidden(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Developers have no roles, so nobody may edit another developer's account."""
+        # Arrange
+        attacker = DeveloperFactory(email="attacker@example.com", password="test123")
+        victim = DeveloperFactory(email="victim@example.com", password="test123")
+        headers = developer_auth_headers(attacker.id)
+        payload = {"email": "hijacked@example.com"}
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/developers/{victim.id}",
+            json=payload,
+            headers=headers,
+        )
+
+        # Assert
+        assert response.status_code == 403
+        db.refresh(victim)
+        assert victim.email == "victim@example.com"
+
+    def test_update_other_developer_password_does_not_take_over_account(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Regression: cross-account PATCH must not change the victim's password."""
+        # Arrange
+        attacker = DeveloperFactory(email="attacker@example.com", password="test123")
+        victim = DeveloperFactory(email="victim@example.com", password="victim-original")
+        headers = developer_auth_headers(attacker.id)
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/developers/{victim.id}",
+            json={"password": "AttackerControlled1!"},
+            headers=headers,
+        )
+
+        # Assert
+        assert response.status_code == 403
+        victim_login = client.post(
+            f"{api_v1_prefix}/auth/login",
+            data={"username": "victim@example.com", "password": "victim-original"},
+        )
+        assert victim_login.status_code == 200
+        attacker_login = client.post(
+            f"{api_v1_prefix}/auth/login",
+            data={"username": "victim@example.com", "password": "AttackerControlled1!"},
+        )
+        assert attacker_login.status_code == 401
 
     def test_update_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating non-existent developer raises ResourceNotFoundError."""
+        """An unknown ID is not the caller's own ID, so it is rejected without revealing existence."""
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
@@ -462,7 +509,7 @@ class TestUpdateDeveloperById:
         response = client.patch(f"{api_v1_prefix}/developers/{fake_id}", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 404
+        assert response.status_code == 403
 
     def test_update_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID fails without authentication."""
@@ -479,14 +526,13 @@ class TestUpdateDeveloperById:
     def test_update_developer_by_id_invalid_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer with invalid data."""
         # Arrange
-        auth_developer = DeveloperFactory(email="auth@example.com", password="test123")
-        target_developer = DeveloperFactory(email="target@example.com", password="test123")
-        headers = developer_auth_headers(auth_developer.id)
+        developer = DeveloperFactory(email="me@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
         payload = {"email": "not-an-email", "password": "short"}
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/developers/{target_developer.id}",
+            f"{api_v1_prefix}/developers/{developer.id}",
             json=payload,
             headers=headers,
         )
@@ -557,3 +603,80 @@ class TestDeleteDeveloperById:
 
         # Assert
         assert response.status_code in [400, 422]
+
+
+class TestPasswordChangeRevokesRefreshTokens:
+    """Changing a developer's password must invalidate refresh tokens issued before the change."""
+
+    @staticmethod
+    def _login(client: TestClient, api_v1_prefix: str, email: str, password: str) -> str:
+        response = client.post(f"{api_v1_prefix}/auth/login", data={"username": email, "password": password})
+        assert response.status_code == 200
+        return response.json()["refresh_token"]
+
+    def test_change_password_revokes_existing_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        developer = DeveloperFactory(email="victim@example.com", password="OldPassword123")
+        old_refresh_token = self._login(client, api_v1_prefix, "victim@example.com", "OldPassword123")
+        headers = developer_auth_headers(developer.id)
+
+        response = client.post(
+            f"{api_v1_prefix}/auth/change-password",
+            json={
+                "current_password": "OldPassword123",
+                "new_password": "NewPassword456",
+                "confirm_password": "NewPassword456",
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Invalid or revoked refresh token"
+
+    def test_update_me_with_password_revokes_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        developer = DeveloperFactory(email="dev@example.com", password="OldPassword123")
+        old_refresh_token = self._login(client, api_v1_prefix, "dev@example.com", "OldPassword123")
+
+        response = client.patch(
+            f"{api_v1_prefix}/auth/me",
+            json={"password": "NewPassword456"},
+            headers=developer_auth_headers(developer.id),
+        )
+        assert response.status_code == 200
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
+        assert response.status_code == 401
+
+    def test_service_level_password_update_revokes_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Any caller of update_developer_info (e.g. an administrative reset) must revoke tokens too."""
+        developer = DeveloperFactory(email="dev@example.com", password="OldPassword123")
+        old_refresh_token = self._login(client, api_v1_prefix, "dev@example.com", "OldPassword123")
+
+        developer_service.update_developer_info(db, developer.id, DeveloperUpdate(password="NewPassword456"))
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
+        assert response.status_code == 401
+
+    def test_update_without_password_keeps_refresh_tokens(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        developer = DeveloperFactory(email="dev@example.com", password="OldPassword123")
+        refresh_token = self._login(client, api_v1_prefix, "dev@example.com", "OldPassword123")
+
+        response = client.patch(
+            f"{api_v1_prefix}/auth/me",
+            json={"first_name": "Renamed"},
+            headers=developer_auth_headers(developer.id),
+        )
+        assert response.status_code == 200
+
+        response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": refresh_token})
+        assert response.status_code == 200
+        assert "access_token" in response.json()

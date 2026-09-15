@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import sentry_sdk
 from pydantic import ValidationError
 
+from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
@@ -186,6 +187,10 @@ class ImportService:
                 provider=provider,
                 user_id=user_uuid,
             )
+
+            entry_source = get_unified_sdk_entry_source(wjson.source.recording_method if wjson.source else None)
+            if entry_source is not None:
+                metrics["entry_source"] = entry_source
 
             detail = EventRecordDetailCreate(
                 record_id=workout_id,

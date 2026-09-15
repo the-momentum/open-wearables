@@ -57,6 +57,11 @@ class ProviderSettingsRepository:
         value = db.execute(stmt).scalar_one_or_none()
         return DataGranularity(value) if value else None
 
+    def get_live_sync_mode(self, db: DbSession, provider: str) -> LiveSyncMode | None:
+        """Return the configured live-sync mode for a provider, or None if unset."""
+        stmt = select(ProviderSetting.live_sync_mode).where(ProviderSetting.provider == provider)
+        return db.execute(stmt).scalar_one_or_none()
+
     def ensure_all_providers_exist(
         self,
         db: DbSession,

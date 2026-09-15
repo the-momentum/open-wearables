@@ -9,7 +9,7 @@ come from the sessions endpoint and are handled separately.
 """
 
 from collections.abc import Iterator
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
@@ -17,17 +17,31 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 
 from app.config import settings
-from app.constants.google_health_endpoints import LIST_ENDPOINT, RECONCILE_ENDPOINT, ROLLUP_ENDPOINT
+from app.constants.google_health_endpoints import (
+    DAILY_ROLLUP_ENDPOINT,
+    LIST_ENDPOINT,
+    RECONCILE_ENDPOINT,
+    ROLLUP_ENDPOINT,
+)
 from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, SeriesType
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
-from app.schemas.providers.google import DataPointsPage, DataTypeMetric, ListSpec, RollupSpec, TimeShape
+from app.schemas.providers.google import (
+    DailyRollupSpec,
+    DataPointsPage,
+    DataTypeMetric,
+    DerivedDailyMetric,
+    ListSpec,
+    RollupSpec,
+    TimeShape,
+)
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google.health_api.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    civil_interval,
     extract_source,
     parse_date,
     parse_rfc3339,
@@ -35,7 +49,7 @@ from app.services.providers.google.health_api.helpers import (
     read_number,
     zone_offset_from,
 )
-from app.services.providers.google.health_api.metrics import METRICS
+from app.services.providers.google.health_api.metrics import DERIVED_DAILY_METRICS, METRICS
 from app.services.providers.google.health_api.sleep import GoogleHealthApiSleep
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -95,6 +109,21 @@ class GoogleHealth247Data(Base247DataTemplate):
             succeeded += 1
             if counts is not None:
                 results[metric.data_type] = counts
+
+        for derived in DERIVED_DAILY_METRICS:
+            try:
+                with db.begin_nested():
+                    samples = self._derived_daily_samples(db, user_id, derived, start_time, end_time)
+                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                self._log_metric_failure(derived.name, user_id, e)
+                failures[derived.name] = str(e)
+                continue
+            succeeded += 1
+            if counts is not None:
+                results[derived.name] = counts
 
         try:
             with db.begin_nested():
@@ -206,9 +235,12 @@ class GoogleHealth247Data(Base247DataTemplate):
         endpoint = ROLLUP_ENDPOINT.format(data_type=metric.data_type)
         samples: list[TimeSeriesSampleCreate] = []
         for chunk_start, chunk_end in self._chunk_range(start_time, end_time, spec.max_range_days):
-            for point in self._fetch_rollup_window(
-                db, user_id, endpoint, chunk_start, chunk_end, window_seconds, page_size
-            ):
+            body = {
+                "range": physical_interval(chunk_start, chunk_end),
+                "windowSize": f"{window_seconds}s",
+                "pageSize": page_size,
+            }
+            for point in self._fetch_rollup_pages(db, user_id, endpoint, body):
                 value_obj = point.get(metric.value_key)
                 recorded_at = parse_rfc3339(point.get("startTime"))
                 if not isinstance(value_obj, dict) or recorded_at is None:
@@ -220,27 +252,22 @@ class GoogleHealth247Data(Base247DataTemplate):
                     samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
         return samples
 
-    def _fetch_rollup_window(
+    def _fetch_rollup_pages(
         self,
         db: DbSession,
         user_id: UUID,
         endpoint: str,
-        start_time: datetime,
-        end_time: datetime,
-        window_seconds: int,
-        page_size: int,
+        body: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """Fetch one within-limit range, following pageToken to exhaustion."""
+        """POST one rollUp/dailyRollUp body, following pageToken to exhaustion.
+
+        Only the windowed rollUp body sets ``pageSize``: its page must hold a whole range at the
+        requested window (windowSize * pageSize <= max range). dailyRollUp's default page is
+        1440 one-day windows, far beyond its 14/90-day range cap, so it never paginates in practice.
+        """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
-            body: dict[str, Any] = {
-                "range": physical_interval(start_time, end_time),
-                "windowSize": f"{window_seconds}s",
-                "pageSize": page_size,
-            }
-            if page_token:
-                body["pageToken"] = page_token
             response = make_authenticated_request(
                 db=db,
                 user_id=user_id,
@@ -250,7 +277,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                 provider_name=self.provider_name,
                 endpoint=endpoint,
                 method="POST",
-                json_data=body,
+                json_data=body if page_token is None else {**body, "pageToken": page_token},
             )
             store_raw_payload(
                 source="api_response",
@@ -275,6 +302,71 @@ class GoogleHealth247Data(Base247DataTemplate):
             nxt = min(cursor + window, end)
             yield cursor, nxt
             cursor = nxt
+
+    # -- dailyRollUp operation -------------------------------------------------
+
+    def _derived_daily_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        metric: DerivedDailyMetric,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Combine two civil-day totals into one daily-total series.
+
+        Both operands are fetched here, so the metric never depends on another having run.
+        A day missing from either side is skipped rather than treated as a zero operand, and
+        so is a negative result — energy cannot go below zero, so it means the operands did
+        not describe the same thing.
+        """
+        family = metric.data_source_family
+        left = self._daily_totals(db, user_id, metric.left, start_time, end_time, family)
+        right = self._daily_totals(db, user_id, metric.right, start_time, end_time, family)
+        samples = []
+        for day in sorted(left.keys() & right.keys()):
+            value = metric.operation(left[day], right[day])
+            if value >= 0:
+                samples.append(self._sample(user_id, day, value, metric.series_type, True))
+        return samples
+
+    def _daily_totals(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        spec: DailyRollupSpec,
+        start_time: datetime,
+        end_time: datetime,
+        data_source_family: str,
+    ) -> dict[datetime, Decimal]:
+        """Civil-day totals for one data type, keyed on the civil date at midnight UTC.
+
+        The range is widened a day each way: the low end re-reads the previous civil day so
+        the partial written before midnight is finalised on the next sync, and the high end
+        covers the civil day the window ends in whatever the user's offset is.
+        """
+        endpoint = DAILY_ROLLUP_ENDPOINT.format(data_type=spec.data_type)
+        start = datetime.combine(start_time.date() - timedelta(days=1), time.min, tzinfo=timezone.utc)
+        end = datetime.combine(end_time.date() + timedelta(days=1), time.min, tzinfo=timezone.utc)
+
+        totals: dict[datetime, Decimal] = {}
+        for chunk_start, chunk_end in self._chunk_range(start, end, spec.max_range_days):
+            body = {
+                "range": civil_interval(chunk_start.date(), chunk_end.date()),
+                "windowSizeDays": 1,
+                "dataSourceFamily": data_source_family,
+            }
+            for point in self._fetch_rollup_pages(db, user_id, endpoint, body):
+                day = parse_date((point.get("civilStartTime") or {}).get("date"))
+                value_obj = point.get(spec.value_key)
+                if day is None or not isinstance(value_obj, dict):
+                    continue
+                value = read_number(value_obj, spec.field, None, spec.scale)
+                if value is not None:
+                    # Windows are disjoint civil days, so two points on one date are
+                    # different sources of the same day, never duplicates — sum them.
+                    totals[day] = totals.get(day, Decimal(0)) + value
+        return totals
 
     # -- native-resolution operation (reconcile / list) ------------------------
 
@@ -445,6 +537,9 @@ class GoogleHealth247Data(Base247DataTemplate):
             value=value,
             series_type=series_type,
             is_daily_total=is_daily_total,
+            external_id=(
+                f"{series_type.value}:{recorded_at.isoformat()}" if series_type is SeriesType.energy else None
+            ),
         )
 
     # -- unused Base247DataTemplate hooks --------------------------------------

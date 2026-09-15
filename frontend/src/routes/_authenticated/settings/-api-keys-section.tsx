@@ -1,13 +1,22 @@
 import { useState } from 'react';
-import { Plus, Eye, EyeOff, Copy, Trash2, Key, Pencil } from 'lucide-react';
+import {
+  AlertTriangle,
+  Copy,
+  Key,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useApiKeys,
   useCreateApiKey,
   useDeleteApiKey,
+  useRotateApiKey,
   useUpdateApiKey,
 } from '@/hooks/api/use-api-keys';
-import type { ApiKey } from '@/lib/api/types';
+import type { ApiKey, ApiKeyWithSecret } from '@/lib/api/types';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,16 +42,19 @@ import {
 
 export function ApiKeysSection() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [keyName, setKeyName] = useState('');
   const [editingKey, setEditingKey] = useState<ApiKey | null>(null);
   const [renameKeyName, setRenameKeyName] = useState('');
   const [keyToDelete, setKeyToDelete] = useState<ApiKey | null>(null);
+  const [keyToRotate, setKeyToRotate] = useState<ApiKey | null>(null);
+  const [revealedKey, setRevealedKey] = useState<ApiKeyWithSecret | null>(null);
+  const [revealTitle, setRevealTitle] = useState('API Key Created');
 
   const { data: apiKeys, isLoading, error, refetch } = useApiKeys();
   const createMutation = useCreateApiKey();
   const deleteMutation = useDeleteApiKey();
   const updateMutation = useUpdateApiKey();
+  const rotateMutation = useRotateApiKey();
 
   const handleCreate = async () => {
     if (!keyName.trim()) {
@@ -50,17 +62,25 @@ export function ApiKeysSection() {
       return;
     }
 
-    const newKey = await createMutation.mutateAsync({ name: keyName });
+    const newKey = await createMutation.mutateAsync({ name: keyName.trim() });
     setIsCreateDialogOpen(false);
     setKeyName('');
-
-    setVisibleKeys((prev) => new Set(prev).add(newKey.id));
+    setRevealTitle('API Key Created');
+    setRevealedKey(newKey);
   };
 
   const handleDeleteConfirm = async () => {
     if (!keyToDelete) return;
     await deleteMutation.mutateAsync(keyToDelete.id);
     setKeyToDelete(null);
+  };
+
+  const handleRotateConfirm = async () => {
+    if (!keyToRotate) return;
+    const rotated = await rotateMutation.mutateAsync(keyToRotate.id);
+    setKeyToRotate(null);
+    setRevealTitle('API Key Rotated');
+    setRevealedKey(rotated);
   };
 
   const openRenameDialog = (key: ApiKey) => {
@@ -81,23 +101,6 @@ export function ApiKeysSection() {
     });
     setEditingKey(null);
     setRenameKeyName('');
-  };
-
-  const toggleKeyVisibility = (id: string) => {
-    setVisibleKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const maskKey = (key: string) => {
-    if (key.length < 10) return '****';
-    return key.substring(0, 10) + '****' + key.substring(key.length - 4);
   };
 
   const formatDate = (dateString: string) => {
@@ -135,7 +138,8 @@ export function ApiKeysSection() {
           <div>
             <h3 className="text-sm font-medium text-foreground">API Keys</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Use these keys to authenticate API requests and embed widgets
+              Use these keys to authenticate API requests and embed widgets. The
+              full key is shown only once, when it is created or rotated.
             </p>
           </div>
           <Button
@@ -177,37 +181,25 @@ export function ApiKeysSection() {
                       {key.name}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <code className="font-mono text-xs bg-muted text-foreground/90 px-2 py-1 rounded">
-                          {visibleKeys.has(key.id) ? key.id : maskKey(key.id)}
-                        </code>
-                        <Button
-                          variant="ghost-faded"
-                          size="icon-sm"
-                          aria-label="Toggle key visibility"
-                          onClick={() => toggleKeyVisibility(key.id)}
-                        >
-                          {visibleKeys.has(key.id) ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost-faded"
-                          size="icon-sm"
-                          aria-label="Copy key ID"
-                          onClick={() => copyToClipboard(key.id)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      <code className="font-mono text-xs bg-muted text-foreground/90 px-2 py-1 rounded">
+                        {key.key_prefix}
+                        {'…'}
+                      </code>
                     </td>
                     <td className="px-6 py-4 text-xs text-muted-foreground">
                       {formatDate(key.created_at)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          aria-label="Rotate API key"
+                          onClick={() => setKeyToRotate(key)}
+                          disabled={rotateMutation.isPending}
+                        >
+                          <RefreshCw className="h-4 w-4" aria-hidden />
+                        </Button>
                         <Button
                           variant="outline"
                           size="icon"
@@ -250,6 +242,66 @@ export function ApiKeysSection() {
           </div>
         )}
       </div>
+
+      {/* One-time key reveal */}
+      <Dialog
+        open={revealedKey !== null}
+        onOpenChange={(open) => {
+          if (!open) setRevealedKey(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{revealTitle}</DialogTitle>
+            <DialogDescription>
+              Store this key in your backend environment. It is shown only once
+              and cannot be retrieved again.
+            </DialogDescription>
+          </DialogHeader>
+
+          {revealedKey && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 rounded-lg border border-[hsl(var(--warning-muted)/0.3)] bg-[hsl(var(--warning-muted)/0.1)] p-3 text-sm text-[hsl(var(--warning-muted))]">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <p>
+                  Copy the key now. If you lose it, you will need to rotate it
+                  and update your integration.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-foreground/90">
+                  {revealedKey.name || 'API Key'}
+                </Label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 font-mono text-xs bg-muted text-foreground/90 px-3 py-2 rounded break-all">
+                    {revealedKey.key}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Copy API key"
+                    onClick={() =>
+                      copyToClipboard(revealedKey.key, 'API key copied')
+                    }
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              onClick={() => setRevealedKey(null)}
+              aria-label="Close key reveal"
+            >
+              I&apos;ve saved the key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={editingKey !== null}
@@ -311,7 +363,8 @@ export function ApiKeysSection() {
           <DialogHeader>
             <DialogTitle>Create New API Key</DialogTitle>
             <DialogDescription>
-              Generate a new API key for your application
+              Generate a new API key for your application. The key will be shown
+              once after creation.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -352,6 +405,36 @@ export function ApiKeysSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={keyToRotate !== null}
+        onOpenChange={(open) => {
+          if (!open) setKeyToRotate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rotate API Key</AlertDialogTitle>
+            <AlertDialogDescription>
+              {keyToRotate
+                ? `Rotate "${keyToRotate.name}"? The current key will stop working immediately and a new one will be shown once.`
+                : 'Rotate this API key? The current key will stop working immediately and a new one will be shown once.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={rotateMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRotateConfirm}
+              disabled={rotateMutation.isPending}
+              aria-label="Rotate key"
+            >
+              {rotateMutation.isPending ? 'Rotating...' : 'Rotate Key'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={keyToDelete !== null}

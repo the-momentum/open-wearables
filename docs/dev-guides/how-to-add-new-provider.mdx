@@ -31,16 +31,17 @@ Each provider declares its data delivery modes via `ProviderCapabilities`:
 
 | Capability | Description | Example providers |
 |---|---|---|
-| `rest_pull` | Usually historical REST API | Oura, Whoop, Strava, Suunto |
+| `rest_pull` | Usually historical REST API | Oura, Whoop, Strava, Suunto, Withings |
 | `client_sdk` | Data delivered via mobile SDK client | Apple, Samsung, Google |
 | `file_import` | File-based data import | Apple Health |
 | `webhook_callback` | Provider-initiates async export delivered to our webhook | Garmin backfill |
 | `webhook_stream` | Provider pushes full data payload in every webhook | Garmin, Suunto |
-| `webhook_ping` | Provider sends a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit, Polar |
-| `webhook_registration_api` | Provider exposes an API to programmatically register webhook subscriptions. When `False`, subscriptions must be configured manually in the provider's developer portal. | Oura |
+| `webhook_ping` | Provider sends a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit, Polar, Withings |
+| `webhook_registration_api` | Provider exposes an API to programmatically register webhook subscriptions. When `False`, subscriptions must be configured manually in the provider's developer portal. | Oura, Withings |
+| `webhook_subscription_per_user` | Subscriptions are created with each connection's own bearer token, so one exists per active connection instead of a single app-level registration. Requires `webhook_registration_api=True`. | Withings |
 
 <Note>
-`webhook_stream` and `webhook_ping` are mutually exclusive. Use `webhook_stream` when the provider embeds the complete record in the webhook body (Garmin, Suunto). Use `webhook_ping` when the webhook is only a trigger and you must call the REST API to retrieve the actual data (Oura, Strava, Fitbit, Polar).
+`webhook_stream` and `webhook_ping` are mutually exclusive. Use `webhook_stream` when the provider embeds the complete record in the webhook body (Garmin, Suunto). Use `webhook_ping` when the webhook is only a trigger and you must call the REST API to retrieve the actual data (Oura, Strava, Fitbit, Polar, Withings).
 </Note>
 
 <img src="/images/providers/custom-providers-architecture.png" alt="Custom providers architecture showing Strategy, OAuth, Workouts, 247 Data, and Webhook Handler components" />
@@ -798,6 +799,18 @@ When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/provide
 If `webhook_registration_api=False` (the default), switching sync mode to `webhook` only updates the database — you must register subscriptions manually in the provider's developer portal pointing to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
 </Note>
 
+#### Per-user subscriptions
+
+Some providers create subscriptions with each user's own bearer token rather than one app-level registration (Withings). For those, also set `webhook_subscription_per_user=True` and:
+
+1. Make `register_subscriptions(callback_url)` dispatch one `register_user_webhooks` task per active connection (`UserConnectionRepository.get_all_active_by_provider`) instead of registering anything itself. The `callback_url` argument is unused — each per-user task builds its own.
+2. Implement `register_user_subscriptions(db, user_id)` on your own webhook service — it stays provider-local rather than going on `BaseWebhookService`, and the task resolves it dynamically. That is what the per-user task calls; work against the provider's currently configured live-sync mode (`ProviderSettingsRepository.get_live_sync_mode`), listing the provider's existing subscriptions first and changing only the gap, so a redelivered task is safe and a mode of `pull` revokes rather than creates.
+3. Drive both ends from `BaseOAuthTemplate` rather than adding new hooks. Override `_save_connection` to enqueue that task after calling `super()` — the connection and its token are committed by then — and `deregister_user` to revoke, which disconnect, data purge and account deletion all already call while the connection is still active.
+
+Each result entry's `status` drives the task's retry policy: `error` retries with the failures attached, anything else counts as success. Return `skipped` for what retrying cannot fix, such as an unusable callback URL or a revoked grant.
+
+Because each connection holds its own subscription, `register_provider_webhooks` is dispatched on *any* live-sync mode change for these providers, not only the switch to `webhook`, so that switching back to `pull` revokes them. `app/services/providers/withings/webhook_service.py` is the reference implementation.
+
 ---
 
 ## Troubleshooting
@@ -840,6 +853,7 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] If `webhook_registration_api=True`: implemented `register_webhooks()` in strategy and verified auto-registration fires on sync mode switch
+- [ ] If `webhook_subscription_per_user=True`: implemented `register_user_subscriptions()` on your webhook service, overrode `_save_connection` and `deregister_user`, and verified the fan-out registers one subscription per active connection
 - [ ] Added error handling and logging
 - [ ] Updated API documentation
 

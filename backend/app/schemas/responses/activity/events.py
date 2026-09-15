@@ -4,10 +4,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.schemas.model_crud.activities import SleepStage
+from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.utils import SourceMetadata
 
-from .data_point_responses import TimeSeriesSample
 from .summaries import SleepStagesSummary
 
 
@@ -20,16 +21,34 @@ class Workout(BaseModel):
     zone_offset: str | None = None
     duration_seconds: int | None = None
     source: SourceMetadata
+    entry_source: EntrySource | None = Field(
+        None,
+        description="How the workout was recorded, normalized across providers.",
+        examples=["automatic"],
+    )
+    intensity: WorkoutIntensity | None = Field(
+        None,
+        description="Subjective intensity of the workout, normalized across providers.",
+        examples=["moderate"],
+    )
     calories_kcal: float | None = None
     distance_meters: float | None = None
     avg_heart_rate_bpm: int | None = None
     max_heart_rate_bpm: int | None = None
     avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
-
-
-class WorkoutDetailed(Workout):
-    heart_rate_samples: list[TimeSeriesSample] | None = None
+    heart_rate_min: int | None = None
+    steps_count: int | None = None
+    average_speed: float | None = None
+    max_speed: float | None = None
+    average_cadence: float | None = None
+    average_watts: float | None = None
+    max_watts: float | None = None
+    moving_time_seconds: int | None = None
+    elev_high: float | None = None
+    elev_low: float | None = None
+    hr_zones: HRZones | None = None
+    power_zones: PowerZones | None = None
 
 
 class Macros(BaseModel):

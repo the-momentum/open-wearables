@@ -4,25 +4,21 @@ Tests for ApiKeyRepository.
 Tests cover:
 - CRUD operations (create, get, get_all, delete)
 - get_all_ordered method (ordered by created_at descending)
-- API key specific behaviors (string ID)
+- get_by_hash lookup used for authentication
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import cast
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import ApiKey
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
+from app.utils.security import hash_api_key
 from tests.factories import ApiKeyFactory, DeveloperFactory
-
-
-def _str_id_as_uuid(str_id: str) -> UUID:
-    """Cast string ID to UUID for type checker (ApiKey uses string IDs)."""
-    return cast(UUID, str_id)
 
 
 class TestApiKeyRepository:
@@ -37,9 +33,10 @@ class TestApiKeyRepository:
         """Test creating a new API key."""
         # Arrange
         developer = DeveloperFactory()
-        key_id = f"sk-{uuid4().hex[:32]}"
+        raw_key = f"sk-{uuid4().hex[:32]}"
         api_key_data = ApiKeyCreate(
-            id=key_id,
+            key_hash=hash_api_key(raw_key),
+            key_prefix=raw_key[:10],
             name="Test API Key",
             created_by=developer.id,
             created_at=datetime.now(timezone.utc),
@@ -47,25 +44,28 @@ class TestApiKeyRepository:
 
         # Act
         result = api_key_repo.create(db, api_key_data)
+        key_id = result.id
 
         # Assert
-        assert result.id == key_id
+        assert result.key_hash == hash_api_key(raw_key)
+        assert result.key_prefix == raw_key[:10]
         assert result.name == "Test API Key"
         assert result.created_by == developer.id
         assert isinstance(result.created_at, datetime)
 
         # Verify in database
         db.expire_all()
-        db_api_key = api_key_repo.get(db, _str_id_as_uuid(key_id))
+        db_api_key = api_key_repo.get(db, key_id)
         assert db_api_key is not None
         assert db_api_key.name == "Test API Key"
 
     def test_create_without_developer(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test creating an API key without a developer (orphaned key)."""
         # Arrange
-        key_id = f"sk-{uuid4().hex[:32]}"
+        raw_key = f"sk-{uuid4().hex[:32]}"
         api_key_data = ApiKeyCreate(
-            id=key_id,
+            key_hash=hash_api_key(raw_key),
+            key_prefix=raw_key[:10],
             name="Orphaned Key",
             created_by=None,
         )
@@ -74,7 +74,7 @@ class TestApiKeyRepository:
         result = api_key_repo.create(db, api_key_data)
 
         # Assert
-        assert result.id == key_id
+        assert result.id is not None
         assert result.name == "Orphaned Key"
         assert result.created_by is None
 
@@ -84,7 +84,7 @@ class TestApiKeyRepository:
         api_key = ApiKeyFactory(name="My Test Key")
 
         # Act
-        result = api_key_repo.get(db, _str_id_as_uuid(api_key.id))
+        result = api_key_repo.get(db, api_key.id)
 
         # Assert
         assert result is not None
@@ -94,7 +94,7 @@ class TestApiKeyRepository:
     def test_get_nonexistent(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test retrieving a nonexistent API key returns None."""
         # Act
-        result = api_key_repo.get(db, _str_id_as_uuid("sk-nonexistent-key-12345"))
+        result = api_key_repo.get(db, uuid4())
 
         # Assert
         assert result is None
@@ -218,7 +218,7 @@ class TestApiKeyRepository:
 
         # Assert
         db.expire_all()
-        deleted_key = api_key_repo.get(db, _str_id_as_uuid(key_id))
+        deleted_key = api_key_repo.get(db, key_id)
         assert deleted_key is None
 
     def test_update_not_implemented(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
@@ -235,7 +235,7 @@ class TestApiKeyRepository:
 
         # Verify in database
         db.expire_all()
-        db_key = api_key_repo.get(db, _str_id_as_uuid(api_key.id))
+        db_key = api_key_repo.get(db, api_key.id)
         assert db_key is not None
         assert db_key.name == "Updated Name"
 
@@ -243,9 +243,10 @@ class TestApiKeyRepository:
         """Test creating an API key with a specific timestamp."""
         # Arrange
         custom_time = datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
-        key_id = f"sk-{uuid4().hex[:32]}"
+        raw_key = f"sk-{uuid4().hex[:32]}"
         api_key_data = ApiKeyCreate(
-            id=key_id,
+            key_hash=hash_api_key(raw_key),
+            key_prefix=raw_key[:10],
             name="Historical Key",
             created_at=custom_time,
         )
@@ -275,22 +276,38 @@ class TestApiKeyRepository:
         assert "Key 2" in key_names
         assert "Key 3" in key_names
 
-    def test_api_key_id_format(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
-        """Test that API key IDs are stored correctly (string format)."""
+    def test_get_by_hash(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
+        """Test looking up an API key by the hash of its raw value."""
         # Arrange
-        key_id = "sk-test-custom-key-id-12345"
-        api_key_data = ApiKeyCreate(
-            id=key_id,
-            name="Custom ID Key",
-        )
+        api_key = ApiKeyFactory(name="Hashed Key")
 
         # Act
-        result = api_key_repo.create(db, api_key_data)
+        result = api_key_repo.get_by_hash(db, hash_api_key(api_key.plain_key))
 
         # Assert
-        assert isinstance(result.id, str)
-        assert result.id == key_id
-        assert result.id.startswith("sk-")
+        assert result is not None
+        assert result.id == api_key.id
+
+    def test_get_by_hash_does_not_match_raw_value(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
+        """The raw key is never stored, so looking it up verbatim finds nothing."""
+        # Arrange
+        api_key = ApiKeyFactory()
+
+        # Act
+        result = api_key_repo.get_by_hash(db, api_key.plain_key)
+
+        # Assert
+        assert result is None
+
+    def test_key_hash_is_unique(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
+        """Two rows cannot share the same key hash."""
+        # Arrange
+        ApiKeyFactory(plain_key="sk-duplicate")
+
+        # Act & Assert
+        with pytest.raises(IntegrityError):
+            ApiKeyFactory(plain_key="sk-duplicate")
+        db.rollback()
 
     def test_get_all_ordered_empty_database(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test get_all_ordered with no API keys."""

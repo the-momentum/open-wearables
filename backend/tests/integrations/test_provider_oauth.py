@@ -287,7 +287,7 @@ class TestConnectionManagement:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Create test connections
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -320,7 +320,7 @@ class TestConnectionManagement:
         user = UserFactory()
         developer = DeveloperFactory()
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Create an expired connection
         UserConnectionFactory(

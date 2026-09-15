@@ -4,6 +4,7 @@ import time
 import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import parse_qsl, urlencode
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,29 @@ from app.utils.config_utils import AccessLogLevel
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger("app.access")
+
+# Query keys whose value authenticates a request and must never reach the logs.
+# Providers that sign inbound webhooks use a header instead; these three carry the
+# shared secret in the URL, so the provider replays it on every delivery:
+#   token              - Withings notify callback (unsigned notifications)
+#   verification_token - Oura subscription verification
+#   hub.verify_token   - Strava subscription validation
+_REDACTED_QUERY_KEYS = frozenset({"token", "verification_token", "hub.verify_token"})
+_REDACTED = "REDACTED"  # plain word: urlencode would percent-encode brackets
+
+
+def _log_path(request: Request) -> str:
+    """The request path with any secret-bearing query values masked."""
+    query = request.url.query
+    if not query:
+        return request.url.path
+    try:
+        pairs = parse_qsl(query, keep_blank_values=True)
+    except ValueError:
+        # Unparseable query: drop it wholesale rather than risk logging a secret.
+        return f"{request.url.path}?{_REDACTED}"
+    masked = [(key, _REDACTED if key.lower() in _REDACTED_QUERY_KEYS else value) for key, value in pairs]
+    return f"{request.url.path}?{urlencode(masked)}"
 
 
 def add_cors_middleware(app: FastAPI) -> None:
@@ -64,10 +88,9 @@ def add_access_log_middleware(app: FastAPI) -> None:
     ) -> None:
         if level == AccessLogLevel.ERRORS and status < 400:
             return
-        path = f"{request.url.path}?{request.url.query}" if request.url.query else request.url.path
         attributes: dict[str, Any] = {
             "method": request.method,
-            "path": path,
+            "path": _log_path(request),
             "status": status,
             "duration_ms": duration_ms,
         }
