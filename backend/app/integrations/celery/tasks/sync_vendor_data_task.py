@@ -24,7 +24,6 @@ from app.services.providers.factory import ProviderFactory
 from app.services.sync_coordination import (
     bind_primary_lease,
     clear_primary_lease,
-    lease_lost,
     release_primary,
     release_stale_primary,
     try_become_primary,
@@ -494,7 +493,7 @@ def sync_vendor_data(
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
 
-                    if shared_token and connection.provider_user_id and not lease_lost():
+                    if shared_token and connection.provider_user_id:
                         # Stop renewing first, or the renewer can retake the lock we just released.
                         clear_primary_lease()
                         release_primary(

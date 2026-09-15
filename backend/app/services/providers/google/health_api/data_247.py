@@ -14,8 +14,6 @@ from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
-
 from app.config import settings
 from app.constants.google_health_endpoints import (
     DAILY_ROLLUP_ENDPOINT,
@@ -28,10 +26,10 @@ from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, SeriesType
+from app.schemas.enums.aggregation_method import daily_total_flag
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.schemas.providers.google import (
     DailyRollupSpec,
-    DataPointsPage,
     DataTypeMetric,
     DerivedDailyMetric,
     ListSpec,
@@ -44,6 +42,7 @@ from app.services.providers.google.health_api.helpers import (
     civil_interval,
     extract_source,
     parse_date,
+    parse_page,
     parse_rfc3339,
     physical_interval,
     read_number,
@@ -183,26 +182,6 @@ class GoogleHealth247Data(Base247DataTemplate):
         db.commit()
         return counts
 
-    def _parse_page(self, response: Any, endpoint: str) -> DataPointsPage:
-        """Validate one page envelope.
-
-        Raises so the caller's per-metric handler records the failure: a malformed page must
-        never read as an exhausted window, which is what let a failed fetch pass as "no data".
-        """
-        try:
-            return DataPointsPage.model_validate(response)
-        except ValidationError as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Unexpected {self.provider_name} page shape",
-                provider=self.provider_name,
-                endpoint=endpoint,
-                response_type=type(response).__name__,
-                error=str(e),
-            )
-            raise RuntimeError(f"Malformed {endpoint} response: {type(response).__name__}") from e
-
     def _log_metric_failure(self, data_type: str, user_id: UUID, error: Exception) -> None:
         log_and_capture_error(
             error,
@@ -247,6 +226,8 @@ class GoogleHealth247Data(Base247DataTemplate):
                     continue
                 for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
                     value = read_number(value_obj, field, subfield, scale)
+                    # Google sends 0 for a field the device does not measure (SDNN on Pixel Watch,
+                    # #1586); for the counters a 0 adds nothing to a sum. Neither is worth a row.
                     if value is None or value == 0:
                         continue
                     samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
@@ -286,7 +267,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                 user_id=str(user_id),
                 trace_id=endpoint,
             )
-            page = self._parse_page(response, endpoint)
+            page = parse_page(response, endpoint)
             points.extend(page.rollup_data_points)
             page_token = page.next_page_token
             if not page_token:
@@ -509,7 +490,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                 user_id=str(user_id),
                 trace_id=endpoint,
             )
-            page = self._parse_page(response, endpoint)
+            page = parse_page(response, endpoint)
             points.extend(page.data_points)
             page_token = page.next_page_token
             if not page_token:
@@ -536,7 +517,9 @@ class GoogleHealth247Data(Base247DataTemplate):
             zone_offset=zone_offset,
             value=value,
             series_type=series_type,
-            is_daily_total=is_daily_total,
+            # Only SUM series carry the daily-vs-intraday distinction; for AVG/MAX it stays None,
+            # or bucketed /timeseries reads would drop the daily rows as "totals" (see daily_total_flag).
+            is_daily_total=daily_total_flag(series_type, is_daily_total),
             external_id=(
                 f"{series_type.value}:{recorded_at.isoformat()}" if series_type is SeriesType.energy else None
             ),

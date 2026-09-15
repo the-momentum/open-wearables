@@ -11,7 +11,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.schemas.enums import DataGranularity, SeriesType
 
@@ -23,8 +23,6 @@ class DataPointsPage(BaseModel):
     optional because Google omits empty ones (an exhausted window returns ``{}``, and a
     page can carry a token with no points).
     """
-
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     data_points: list[dict[str, Any]] = Field(default_factory=list, alias="dataPoints")
     rollup_data_points: list[dict[str, Any]] = Field(default_factory=list, alias="rollupDataPoints")

@@ -26,6 +26,7 @@ from app.services.providers.google.health_api.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     extract_source,
     parse_interval,
+    parse_page,
     parse_rfc3339,
     physical_interval,
     read_number,
@@ -70,8 +71,10 @@ class GoogleHealthApiSleep:
         return count
 
     def _fetch(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict[str, Any]]:
-        window_start = physical_interval(start_time, end_time)["startTime"]
-        time_filter = f'sleep.interval.end_time >= "{window_start}"'
+        window = physical_interval(start_time, end_time)
+        time_filter = (
+            f'sleep.interval.end_time >= "{window["startTime"]}" AND sleep.interval.end_time < "{window["endTime"]}"'
+        )
         points: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
@@ -96,10 +99,9 @@ class GoogleHealthApiSleep:
                 user_id=str(user_id),
                 trace_id=self.LIST_ENDPOINT,
             )
-            if not isinstance(response, dict):
-                break
-            points.extend(response.get("dataPoints", []))
-            page_token = response.get("nextPageToken")
+            page = parse_page(response, self.LIST_ENDPOINT)
+            points.extend(page.data_points)
+            page_token = page.next_page_token
             if not page_token:
                 break
         return points

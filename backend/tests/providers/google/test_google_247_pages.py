@@ -11,6 +11,7 @@ import pytest
 
 from app.schemas.providers.google import DataPointsPage
 from app.services.providers.google.health_api.data_247 import GoogleHealth247Data
+from app.services.providers.google.health_api.helpers import parse_page
 
 USER_ID = uuid4()
 
@@ -54,12 +55,12 @@ class TestDataPointsPage:
 
 
 class TestParsePage:
-    def test_raises_on_a_non_dict_instead_of_ending_the_window(self, data_247: GoogleHealth247Data) -> None:
+    def test_raises_on_a_non_dict_instead_of_ending_the_window(self) -> None:
         with pytest.raises(RuntimeError, match="Malformed .* response: list"):
-            data_247._parse_page([], "/v4/users/me/dataTypes/heart-rate/dataPoints")
+            parse_page([], "/v4/users/me/dataTypes/heart-rate/dataPoints")
 
-    def test_passes_a_valid_page_through(self, data_247: GoogleHealth247Data) -> None:
-        page = data_247._parse_page({"dataPoints": [{"a": 1}]}, "/endpoint")
+    def test_passes_a_valid_page_through(self) -> None:
+        page = parse_page({"dataPoints": [{"a": 1}]}, "/endpoint")
 
         assert len(page.data_points) == 1
 

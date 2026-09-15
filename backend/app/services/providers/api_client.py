@@ -19,8 +19,8 @@ from app.utils.structured_logging import log_structured
 logger = logging.getLogger(__name__)
 
 # Rate limiting configuration (Garmin: 100 req / 60s window)
-MAX_RETRIES = settings.provider_max_retries
-RETRY_BASE_DELAY = settings.provider_retry_base_delay_seconds
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
 
 
 def _get_valid_token(

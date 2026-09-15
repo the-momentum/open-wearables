@@ -4,10 +4,25 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
+from pydantic import ValidationError
+
+from app.schemas.providers.google import DataPointsPage
 from app.utils.conversion import to_decimal
 from app.utils.dates import offset_to_iso, to_rfc3339
 
 GOOGLE_HEALTH_API_SOURCE = "google_health_api"
+
+
+def parse_page(response: Any, endpoint: str) -> DataPointsPage:
+    """Validate one page envelope of a dataPoints / reconcile / rollUp response.
+
+    Raises so the caller's per-metric handler records the failure: a malformed page must
+    never read as an exhausted window, which is what let a failed fetch pass as "no data" (#1545).
+    """
+    try:
+        return DataPointsPage.model_validate(response)
+    except ValidationError as e:
+        raise RuntimeError(f"Malformed {endpoint} response: {type(response).__name__}") from e
 
 
 def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
