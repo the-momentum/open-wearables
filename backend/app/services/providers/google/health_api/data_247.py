@@ -334,7 +334,9 @@ class GoogleHealth247Data(Base247DataTemplate):
                     continue
                 value = read_number(value_obj, spec.field, None, spec.scale)
                 if value is not None:
-                    totals[day] = value
+                    # Windows are disjoint civil days, so two points on one date are
+                    # different sources of the same day, never duplicates — sum them.
+                    totals[day] = totals.get(day, Decimal(0)) + value
         return totals
 
     # -- native-resolution operation (reconcile / list) ------------------------

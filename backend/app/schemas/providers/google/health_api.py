@@ -48,7 +48,7 @@ class RollupSpec:
     subfield:       second-level key when nested (e.g. hydration's ``amountConsumed`` →
                     ``millilitersSum``); None for the flat common case.
     scale:          unit factor applied to the value (e.g. 0.001 for mm→m).
-    max_range_days: rollUp's per-request range cap (14 for heart-rate/total-calories, else 90).
+    max_range_days: rollUp's per-request range cap (14 for heart-rate, else 90).
     extra:          additional series emitted from the same value object, if any.
     """
 
