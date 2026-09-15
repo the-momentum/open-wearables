@@ -15,12 +15,9 @@ The other tables have no per-row discriminator, but only the cloud path ever wro
 connections were OAuth-only, and sync runs, settings and priorities are cloud concerns. They
 all move to ``google_health``. ``health_score`` follows its data source.
 
-Runs before ``init_provider_settings.py`` in ``scripts/start/app.sh`` so the seeder does not
-create the row this rename targets. That ordering is not enough on its own: a pod still on the
-old code re-creates legacy rows after the split has run, so every statement also tolerates
-finding both spellings already present. Where the two collide on a unique constraint the
-canonical row wins and the legacy one is dropped, except in ``data_source`` and
-``health_score``, where it holds data and is left in place and reported instead.
+Runs before ``init_provider_settings.py`` in ``scripts/start/app.sh``: that seeds a
+``google_health`` row, and ``provider_settings.provider`` is a primary key, so the rename
+would collide with it.
 
 Idempotent: every statement is keyed on ``provider = 'google'``, so re-runs are no-ops once
 no legacy rows remain. Safe to run on every startup until removed.
@@ -57,26 +54,9 @@ _COUNTS: dict[str, TextClause] = {
     "provider_priority": text("SELECT COUNT(*) FROM provider_priority WHERE provider = :legacy"),
 }
 
-# Order matters: the cloud rows are claimed by source before the catch-all. Both skip a row
-# whose identity already exists under the target provider — unique on
-# (user_id, provider, coalesce(device_model,''), coalesce(source,'')).
-_DS_NO_TWIN = """
-      AND NOT EXISTS (
-          SELECT 1 FROM data_source t
-          WHERE t.user_id = ds.user_id
-            AND t.provider = {target}
-            AND COALESCE(t.device_model, '') = COALESCE(ds.device_model, '')
-            AND COALESCE(t.source, '') = COALESCE(ds.source, '')
-      )
-"""
-
-_DS_API_UPDATE = text(
-    "UPDATE data_source ds SET provider = :api WHERE ds.provider = :legacy AND ds.source = :api_source"
-    + _DS_NO_TWIN.format(target=":api")
-)
-_DS_SDK_UPDATE = text(
-    "UPDATE data_source ds SET provider = :sdk WHERE ds.provider = :legacy" + _DS_NO_TWIN.format(target=":sdk")
-)
+# Order matters: the cloud rows are claimed by source before the catch-all.
+_DS_API_UPDATE = text("UPDATE data_source SET provider = :api WHERE provider = :legacy AND source = :api_source")
+_DS_SDK_UPDATE = text("UPDATE data_source SET provider = :sdk WHERE provider = :legacy")
 
 # health_score has no source of its own; it inherits whatever its data source just became.
 # Rows with no data_source_id can only have come from the cloud path, its only writer.
@@ -88,47 +68,11 @@ _HS_UPDATE_FROM_SOURCE = text("""
       AND hs.provider = :legacy
       AND ds.provider IN (:api, :sdk)
 """)
-_HS_UPDATE_ORPHANS = text("""
-    UPDATE health_score hs
-    SET provider = :api
-    WHERE hs.provider = :legacy
-      AND NOT EXISTS (
-          SELECT 1 FROM health_score t
-          WHERE t.user_id = hs.user_id
-            AND t.provider = :api
-            AND t.category = hs.category
-            AND t.recorded_at = hs.recorded_at
-      )
-""")
+_HS_UPDATE_ORPHANS = text("UPDATE health_score SET provider = :api WHERE provider = :legacy")
 
 _SR_UPDATE = text("UPDATE sync_run SET provider = :api WHERE provider = :legacy")
-
-# provider is the primary key here and unique in provider_priority, so a legacy row cannot be
-# renamed on top of a canonical one. The canonical row is the configured one post-split; the
-# legacy row only reappears when an old pod re-seeds it, so it is the one that goes.
-_PS_DROP_SUPERSEDED = text("""
-    DELETE FROM provider_settings
-    WHERE provider = :legacy
-      AND EXISTS (SELECT 1 FROM provider_settings t WHERE t.provider = :api)
-""")
 _PS_UPDATE = text("UPDATE provider_settings SET provider = :api WHERE provider = :legacy")
-
-_PP_DROP_SUPERSEDED = text("""
-    DELETE FROM provider_priority
-    WHERE provider = :legacy
-      AND EXISTS (SELECT 1 FROM provider_priority t WHERE t.provider = :api)
-""")
-
-# user_connection is unique on (user_id, provider); a collision means the user was already
-# split, so those rows are left behind and reported rather than failing the run.
-_UC_UPDATE = text("""
-    UPDATE user_connection uc
-    SET provider = :api
-    WHERE uc.provider = :legacy
-      AND NOT EXISTS (
-          SELECT 1 FROM user_connection e WHERE e.user_id = uc.user_id AND e.provider = :api
-      )
-""")
+_UC_UPDATE = text("UPDATE user_connection SET provider = :api WHERE provider = :legacy")
 
 # The legacy ranking covered both channels, so health_connect inherits the same number
 # instead of falling back to a lazily-created default on its first ingestion.
@@ -165,10 +109,9 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
     user_connection = _rowcount(db, _UC_UPDATE)
     sync_run = _rowcount(db, _SR_UPDATE)
 
-    provider_settings = _rowcount(db, _PS_DROP_SUPERSEDED) + _rowcount(db, _PS_UPDATE)
-
+    provider_settings = _rowcount(db, _PS_UPDATE)
     _rowcount(db, _PP_CLONE_FOR_SDK)  # must copy the legacy ranking before it is renamed
-    provider_priority = _rowcount(db, _PP_DROP_SUPERSEDED) + _rowcount(db, _PP_UPDATE)
+    provider_priority = _rowcount(db, _PP_UPDATE)
 
     result = {
         "data_source_api": data_source_api,
@@ -181,11 +124,6 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
     }
     for table, count in result.items():
         print(f"{table:<20} moved {count} row(s)")
-
-    for table in ("user_connection", "data_source_api", "data_source_sdk", "health_score"):
-        stranded = db.execute(_COUNTS[table], _PARAMS).scalar() or 0
-        if stranded:
-            print(f"\n⚠ {table}: {stranded} row(s) still on '{LEGACY}' — an identical row already exists post-split.")
 
     return result
 
