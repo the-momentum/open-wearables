@@ -65,54 +65,54 @@ Open Wearables handles this complexity so you can focus on building your product
 Get Open Wearables up and running in minutes.
 
 1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/the-momentum/open-wearables.git
-   cd open-wearables
-   ```
+ ```bash
+ git clone https://github.com/the-momentum/open-wearables.git
+ cd open-wearables
+ ```
 
 2. **Configure environment variables:**
-   
-   **Backend configuration:**
-   ```bash
-   cp ./backend/config/.env.example ./backend/config/.env
-   ```
-   
-   **Frontend configuration:**
-   ```bash
-   cp ./frontend/.env.example ./frontend/.env
-   ```
+ 
+ **Backend configuration:**
+ ```bash
+ cp ./backend/config/.env.example ./backend/config/.env
+ ```
+ 
+ **Frontend configuration:**
+ ```bash
+ cp ./frontend/.env.example ./frontend/.env
+ ```
 
 3. **Start the application**
-   
-   **Using Docker (Recommended):**
-   
-   The easiest way to get started is with Docker Compose:
-   ```bash
-   docker compose up -d
-   ```
-   
-   For local development setup without Docker take a look at [docs](https://openwearables.io/docs/quickstart#local-development-setup)
+ 
+ **Using Docker (Recommended):**
+ 
+ The easiest way to get started is with Docker Compose:
+ ```bash
+ docker compose up -d
+ ```
+ 
+ For local development setup without Docker take a look at [docs](https://openwearables.io/docs/quickstart#local-development-setup)
 
 4. **Log in to the developer portal:**
 
-   An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. To add further accounts, invite them from the developer portal.
+ An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. To add further accounts, invite them from the developer portal.
 
-   Open http://localhost:3000 to access the developer portal and create API keys.
+ Open http://localhost:3000 to access the developer portal and create API keys.
 
 5. **Seed sample data** (optional):
-   If you want test users and sample activity data:
-   ```bash
-   make seed
-   ```
+ If you want test users and sample activity data:
+ ```bash
+ make seed
+ ```
 
-   This will create:
-   - Test users
-   - Sample activity data for test users
+ This will create:
+ - Test users
+ - Sample activity data for test users
 
 
 6. **View API documentation:**
 
-   Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
+ Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
 
 ## Core Features
 
