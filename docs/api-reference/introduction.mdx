@@ -175,11 +175,11 @@ Endpoints that accept date range parameters (`start_date`, `end_date`, `start_ti
 |--------|---------|-------|
 | ISO 8601 datetime with timezone | `2023-11-07T05:31:56Z` | Recommended |
 | ISO 8601 datetime with offset | `2023-11-07T06:31:56+01:00` | |
-| Date-only | `2023-11-07` | Start bounds: midnight UTC (`2023-11-07T00:00:00Z`). End bounds: end of day (`2023-11-07T23:59:59.999999Z`) |
+| Date-only | `2023-11-07` | Start bounds: midnight UTC. End bounds: the whole day |
 | Unix timestamp (seconds) | `1699332716` | UTC |
 
 <Note>
-  Date-only ranges are inclusive of both boundary days: a date-only **start date** normalizes to midnight and a date-only **end date** to the end of that day, so `start_date=2023-11-07&end_date=2023-11-07` covers the whole of November 7th. Values with an explicit time component are used exactly as given.
+  Date-only ranges include both boundary days, so `start_date=2023-11-07&end_date=2023-11-07` covers the whole of November 7th. Values with an explicit time component are used exactly as given: `end_time=2023-11-07T00:00:00Z` stops at midnight and returns nothing from that day.
 </Note>
 
 ## Filtering & Sorting

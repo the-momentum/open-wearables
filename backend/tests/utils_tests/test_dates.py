@@ -28,15 +28,15 @@ class TestParseQueryDatetime:
 class TestParseQueryEndDatetime:
     """Test suite for parse_query_end_datetime."""
 
-    def test_date_only_normalizes_to_end_of_day(self) -> None:
+    def test_date_only_spans_the_whole_day(self) -> None:
         result = parse_query_end_datetime("2024-01-01")
-        assert result == datetime(2024, 1, 1, 23, 59, 59, 999999)
+        assert result == datetime(2024, 1, 2)
 
     def test_single_day_range_covers_the_whole_day(self) -> None:
         start = parse_query_datetime("2024-01-01")
         end = parse_query_end_datetime("2024-01-01")
-        midday = datetime(2024, 1, 1, 12, 0, 0)
-        assert start <= midday <= end
+        last_moment = datetime(2024, 1, 1, 23, 59, 59, 999999)
+        assert start <= last_moment < end
 
     def test_full_iso_datetime_passes_through(self) -> None:
         result = parse_query_end_datetime("2024-01-01T05:31:56+00:00")
@@ -53,6 +53,7 @@ class TestParseQueryEndDatetime:
     def test_invalid_calendar_date_raises_error(self) -> None:
         with pytest.raises(DatetimeParseError):
             parse_query_end_datetime("2024-02-30")
+
 
 class TestAlignTzAwareness:
     """Test suite for align_tz_awareness."""

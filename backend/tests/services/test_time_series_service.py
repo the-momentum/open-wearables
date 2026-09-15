@@ -748,14 +748,15 @@ class TestTimeSeriesServiceGetTimeseries:
             value=128,
         )
 
-        # Act - both bounds naive, as parse_query_datetime returns them for "YYYY-MM-DD"
+        # Act - naive bounds, as the date-only route parsers produce them
+        midnight = self._START.replace(tzinfo=None, hour=0, minute=0)
         result = timeseries_service.get_timeseries(
             db,
             user.id,
             [SeriesType.heart_rate],
             TimeSeriesQueryParams(
-                start_datetime=self._START.replace(tzinfo=None, hour=0, minute=0),
-                end_datetime=self._START.replace(tzinfo=None, hour=0, minute=0),
+                start_datetime=midnight,
+                end_datetime=midnight + timedelta(days=1),
                 resolution=Resolution.ONE_MIN,
             ),
         )

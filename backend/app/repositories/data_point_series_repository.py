@@ -1,5 +1,5 @@
 import contextlib
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import LiteralString, NamedTuple
 from typing import cast as typing_cast
@@ -140,13 +140,6 @@ _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
     for method in _AGGREGATE_FUNCS
     if method is not AggregationMethod.AVG
 }
-
-
-def _inclusive_end(end: datetime | None) -> datetime | None:
-    """A bare date means the whole day, so midnight is bumped to the next day."""
-    if end is not None and end.time() == time.min:
-        return end + timedelta(days=1)
-    return end
 
 
 class AggregatedSample(NamedTuple):
@@ -424,7 +417,7 @@ class DataPointSeriesRepository(
             params,
             types,
             params.start_datetime,
-            _inclusive_end(params.end_datetime),
+            params.end_datetime,
             source_by_type,
         )
 
@@ -607,7 +600,7 @@ class DataPointSeriesRepository(
         if not ranked or not type_ids:
             return {}
 
-        start, end = params.start_datetime, _inclusive_end(params.end_datetime)
+        start, end = params.start_datetime, params.end_datetime
         candidates = values(
             column("type_id", Integer),
             column("source_id", PGUUID(as_uuid=True)),
@@ -701,7 +694,7 @@ class DataPointSeriesRepository(
     ) -> tuple[datetime | None, datetime | None, bool]:
         """Move the requested range to the cursor position. Returns (start, end, backward)."""
         start = params.start_datetime
-        end = _inclusive_end(params.end_datetime)
+        end = params.end_datetime
 
         backward = False
         if params.cursor:
