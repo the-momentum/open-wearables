@@ -12,10 +12,11 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource
 from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
-from app.repositories.repositories import utc_bucket_start
+from app.repositories.repositories import timeline_key_column, utc_bucket_start
 from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
+    ProviderName,
     SeriesType,
     TimelineBucket,
     TimelineGroupBy,
@@ -369,6 +370,7 @@ class DataPointSeriesArchiveRepository:
         group_by: TimelineGroupBy,
         start_datetime: datetime | None = None,
         end_datetime: datetime | None = None,
+        provider: ProviderName | None = None,
     ) -> list[tuple[str, date, int]]:
         """Archived data point counts for a user, bucketed by time like the live timeline.
 
@@ -379,7 +381,7 @@ class DataPointSeriesArchiveRepository:
         """
         days = self._deduped_archive_days(db, user_id, _archive_range_filters(start_datetime, end_datetime))
         bucket_start = utc_bucket_start(bucket, days.c.bucket_start_at)
-        key_column = DataSource.provider if group_by is TimelineGroupBy.PROVIDER else SeriesTypeDefinition.code
+        key_column = timeline_key_column(group_by)
 
         query = (
             db.query(key_column, bucket_start, func.sum(days.c.sample_count).label("total"))
@@ -388,6 +390,8 @@ class DataPointSeriesArchiveRepository:
         )
         if group_by is TimelineGroupBy.SERIES_TYPE:
             query = query.join(SeriesTypeDefinition, days.c.series_type_definition_id == SeriesTypeDefinition.id)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
 
         rows = query.group_by(key_column, bucket_start).order_by(key_column, bucket_start).all()
         return [(key, bucket_start_value, int(total)) for key, bucket_start_value, total in rows]

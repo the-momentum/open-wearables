@@ -5,9 +5,10 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
-from app.schemas.enums import TimelineBucket, TimelineGroupBy
+from app.schemas.enums import ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.dashboard import (
     ProviderDataCount,
+    TimelineMetric,
     TimelineSeries,
     UserDataSummaryResponse,
     UserDataTimelineResponse,
@@ -157,25 +158,37 @@ class SystemInfoService:
         group_by: TimelineGroupBy = TimelineGroupBy.PROVIDER,
         start_datetime: datetime | None = None,
         end_datetime: datetime | None = None,
+        provider: ProviderName | None = None,
     ) -> UserDataTimelineResponse:
         """Per-user data density over time: which days the user actually has data for.
 
         Live and archived counts are merged per bucket, so archived history reads as data
         rather than as a gap. Empty buckets are omitted.
         """
+        if group_by is TimelineGroupBy.WORKOUT_TYPE:
+            # event_record has no archive table, so there is no second source to merge.
+            rows = self.event_record_service.crud.get_user_workout_timeline_counts(
+                db_session, user_id, bucket, start_datetime, end_datetime, provider
+            )
+            metric = TimelineMetric.WORKOUTS
+        else:
+            rows = [
+                *self.timeseries_service.crud.get_user_timeline_counts(
+                    db_session, user_id, bucket, group_by, start_datetime, end_datetime, provider
+                ),
+                *self.archive_repo.get_user_timeline_counts_from_archive(
+                    db_session, user_id, bucket, group_by, start_datetime, end_datetime, provider
+                ),
+            ]
+            metric = TimelineMetric.DATA_POINTS
+
         counts: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
-        live = self.timeseries_service.crud.get_user_timeline_counts(
-            db_session, user_id, bucket, group_by, start_datetime, end_datetime
-        )
-        archived = self.archive_repo.get_user_timeline_counts_from_archive(
-            db_session, user_id, bucket, group_by, start_datetime, end_datetime
-        )
-        for key, bucket_start, count in [*live, *archived]:
+        for key, bucket_start, count in rows:
             counts[key][bucket_start] += count
 
         # Heaviest series first, then by key, so the response order is stable across calls.
         series = [
-            TimelineSeries(key=key, buckets=sorted(buckets.items()))
+            TimelineSeries(key=key, metric=metric, buckets=sorted(buckets.items()))
             for key, buckets in sorted(counts.items(), key=lambda item: (-sum(item[1].values()), item[0]))
         ]
         return UserDataTimelineResponse(bucket=bucket, group_by=group_by, series=series)

@@ -6,7 +6,9 @@ from sqlalchemy import ColumnElement, Date, cast, exists, func
 from sqlalchemy.orm import InstrumentedAttribute, Query
 
 from app.database import BaseDbModel, DbSession
-from app.schemas.enums import TimelineBucket
+from app.models import DataSource
+from app.models.series_type_definition import SeriesTypeDefinition
+from app.schemas.enums import TimelineBucket, TimelineGroupBy
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
@@ -21,6 +23,20 @@ def utc_bucket_start(
     session timezone and place the same row in a different bucket per connection.
     """
     return cast(func.date_trunc(bucket.value, func.timezone("UTC", column)), Date)
+
+
+def timeline_key_column(group_by: TimelineGroupBy) -> InstrumentedAttribute[str]:
+    """Column a data point timeline series is keyed by.
+
+    Explicit so a new grouping fails loudly here rather than silently reading as series type.
+    """
+    match group_by:
+        case TimelineGroupBy.PROVIDER:
+            return DataSource.provider
+        case TimelineGroupBy.SERIES_TYPE:
+            return SeriesTypeDefinition.code
+        case _:
+            raise ValueError(f"{group_by} does not key a data point timeline")
 
 
 class CrudRepository[

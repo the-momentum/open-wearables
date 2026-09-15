@@ -40,7 +40,7 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import CrudRepository, utc_bucket_start
+from app.repositories.repositories import CrudRepository, timeline_key_column, utc_bucket_start
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
@@ -824,13 +824,14 @@ class DataPointSeriesRepository(
         group_by: TimelineGroupBy,
         start_datetime: datetime | None = None,
         end_datetime: datetime | None = None,
+        provider: ProviderName | None = None,
     ) -> list[tuple[str, date, int]]:
         """Data point counts for a user, bucketed by time and grouped by provider or series type.
 
         Returns (key, bucket_start, count) for non-empty buckets only.
         """
         bucket_start = utc_bucket_start(bucket, self.model.recorded_at)
-        key_column = DataSource.provider if group_by is TimelineGroupBy.PROVIDER else SeriesTypeDefinition.code
+        key_column = timeline_key_column(group_by)
 
         query = db_session.query(key_column, bucket_start, func.count(self.model.id).label("count")).join(
             DataSource, self.model.data_source_id == DataSource.id
@@ -838,6 +839,8 @@ class DataPointSeriesRepository(
         if group_by is TimelineGroupBy.SERIES_TYPE:
             query = query.join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
         query = query.filter(DataSource.user_id == user_id)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
         if start_datetime is not None:
             query = query.filter(self.model.recorded_at >= start_datetime)
         if end_datetime is not None:

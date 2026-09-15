@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
-from app.schemas.enums import TimelineBucket, TimelineGroupBy
+from app.schemas.enums import ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.activity import (
     ActivitySummary,
     BodySummary,
@@ -136,6 +136,7 @@ def get_data_timeline(
     end_date: DateTimeQueryParam | None = None,
     bucket: Annotated[TimelineBucket, Query(description="Bucket width.")] = TimelineBucket.DAY,
     group_by: Annotated[TimelineGroupBy, Query(description="What each series counts.")] = TimelineGroupBy.PROVIDER,
+    provider: ProviderName | None = None,
 ) -> UserDataTimelineResponse:
     """Returns when a user has data, as counts per time bucket.
 
@@ -148,4 +149,6 @@ def get_data_timeline(
     """
     start_datetime = parse_query_datetime(start_date) if start_date is not None else None
     end_datetime = parse_query_end_datetime(end_date) if end_date is not None else None
-    return system_info_service.get_user_data_timeline(db, user_id, bucket, group_by, start_datetime, end_datetime)
+    return system_info_service.get_user_data_timeline(
+        db, user_id, bucket, group_by, start_datetime, end_datetime, provider
+    )
