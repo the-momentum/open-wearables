@@ -132,9 +132,9 @@ See [supported providers](https://openwearables.io/docs/providers/supported) and
 ### AI Integration
 Connect LLMs and AI agents to wearable data from any supported provider - Garmin, Oura, Whoop, Apple Health, and more - through one normalized data model.
 
-- 🔌 **MCP Server**: Built-in [Model Context Protocol](https://modelcontextprotocol.io) server that works with Claude Desktop, Cursor, and other MCP clients
-- 💬 **Natural language queries**: Ask "How did John sleep last week?" or "Compare workouts of these two users" - the AI fetches the right data itself
-- 📊 **Available data**: Users, activity summaries, sleep, workouts, time series (heart rate, HRV, SpO2, weight, and more), and menstrual cycles
+- **MCP Server**: Built-in [Model Context Protocol](https://modelcontextprotocol.io) server that works with Claude Desktop, Cursor, and other MCP clients
+- **Natural language queries**: Ask "How did John sleep last week?" or "Compare workouts of these two users" - the AI fetches the right data itself
+- **Available data**: Users, activity summaries, sleep, workouts, time series (heart rate, HRV, SpO2, weight, and more), and menstrual cycles
 
 More AI capabilities are on the way - see the [roadmap](https://openwearables.io/docs/roadmap).
 
