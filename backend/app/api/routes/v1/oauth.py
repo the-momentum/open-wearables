@@ -26,8 +26,7 @@ settings_service = ProviderSettingsService()
 
 
 def resolve_provider(slug: str) -> ProviderName:
-    """Provider behind a path segment, accepting the pre-split slug. 400 keeps the
-    response the enum-typed parameter gave before the path stopped being the slug."""
+    # 400 rather than 404 keeps the response the enum-typed parameter used to give.
     try:
         return ProviderName(from_url_slug(slug))
     except ValueError:

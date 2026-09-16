@@ -5,7 +5,7 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.config import settings
-from app.constants.sdk_providers import SDK_PROVIDERS, normalize_sdk_provider
+from app.constants.sdk_providers import normalize_sdk_provider, sdk_providers
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
@@ -78,7 +78,7 @@ def sync_sdk_data(
     if provider is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {raw_provider}. Supported: {', '.join(sorted(SDK_PROVIDERS))}",
+            detail=f"Unsupported provider: {raw_provider}. Supported: {', '.join(sorted(sdk_providers()))}",
         )
     # The worker and import service re-read the provider from the payload, so the
     # canonical slug has to replace the alias here rather than travel alongside it.

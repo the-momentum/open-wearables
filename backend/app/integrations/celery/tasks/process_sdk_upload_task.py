@@ -6,7 +6,7 @@ from uuid import UUID
 from celery import shared_task
 
 from app.config import settings
-from app.constants.sdk_providers import SDK_PROVIDERS
+from app.constants.sdk_providers import sdk_providers
 from app.database import SessionLocal
 from app.models import User
 from app.repositories.user_repository import UserRepository
@@ -37,7 +37,7 @@ logger = getLogger(__name__)
 
 
 def _get_import_service(provider: str) -> SDKImportService:
-    if provider in SDK_PROVIDERS:
+    if provider in sdk_providers():
         return sdk_import_service
     raise ValueError(f"Unsupported provider: {provider}")
 
