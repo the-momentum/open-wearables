@@ -33,7 +33,7 @@ PROVIDERS_DIR = Path("app/services/providers")
 # Implementation files that may emit timeseries / set detail fields.
 IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_service.py")
 
-# SDK providers emit via the shared healthkit pipeline (not their own data_247);
+# SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the
 # shared sleep service, so those shared files are scanned for them too.
 SDK_PROVIDERS = {"apple", "samsung", "health_connect"}
