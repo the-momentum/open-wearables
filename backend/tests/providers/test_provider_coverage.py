@@ -38,8 +38,8 @@ IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_servi
 # shared sleep service, so those shared files are scanned for them too.
 SDK_PROVIDERS = {"apple", "samsung", "health_connect"}
 SDK_SHARED_FILES = (
-    Path("app/services/apple/healthkit/import_service.py"),
-    Path("app/services/apple/healthkit/sleep_service.py"),
+    Path("app/services/sdk/import_service.py"),
+    Path("app/services/sdk/sleep_service.py"),
     Path("app/services/apple/apple_xml/xml_service.py"),
 )
 

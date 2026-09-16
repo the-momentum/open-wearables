@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord, WorkoutDetails
 from app.schemas.enums import SeriesType
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
-from app.services.apple.healthkit.import_service import ImportService
+from app.services.sdk.import_service import ImportService
 from tests.factories import UserFactory
 
 SDK_ENVELOPE: dict[str, str] = {
@@ -38,7 +38,7 @@ def mock_sleep_redis() -> Any:
     mock_redis.srem.return_value = 1
 
     with (
-        patch("app.services.apple.healthkit.sleep_service.get_redis_client") as mock_get_redis,
+        patch("app.services.sdk.sleep_service.get_redis_client") as mock_get_redis,
         patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps"),
     ):
         mock_get_redis.return_value = mock_redis

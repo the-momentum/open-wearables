@@ -17,13 +17,13 @@ from app.schemas.sync_status import (
     SyncSource,
     SyncStatus,
 )
-from app.services.apple.healthkit.import_service import (
+from app.services.raw_payload_storage import delete_payload_from_s3, get_payload_from_s3
+from app.services.sdk.import_service import (
     ImportService as SDKImportService,
 )
-from app.services.apple.healthkit.import_service import (
+from app.services.sdk.import_service import (
     import_service as sdk_import_service,
 )
-from app.services.raw_payload_storage import delete_payload_from_s3, get_payload_from_s3
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,

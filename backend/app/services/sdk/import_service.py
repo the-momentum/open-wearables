@@ -16,7 +16,7 @@ from app.constants.series_types.sdk import (
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
-from app.constants.workout_types import get_unified_apple_workout_type_sdk
+from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import SeriesType, daily_total_flag
@@ -169,7 +169,7 @@ class ImportService:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
             workout_type = wjson.type.lower() if wjson.type else None
-            type = get_unified_apple_workout_type_sdk(workout_type).value if workout_type else None
+            type = get_unified_sdk_workout_type(workout_type).value if workout_type else None
 
             record = EventRecordCreate(
                 category="workout",

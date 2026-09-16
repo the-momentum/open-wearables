@@ -26,8 +26,8 @@ from app.schemas.providers.mobile_sdk import (
 from app.schemas.providers.mobile_sdk import (
     SyncRequest as SDKSyncRequest,
 )
-from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
+from app.services.sdk.device_resolution import extract_device_info
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
