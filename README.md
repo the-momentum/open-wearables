@@ -123,9 +123,9 @@ Get Open Wearables up and running in minutes.
 ## Core Features
 
 ### Provider Support
-- ☁️ **Cloud-based**: Garmin, Oura, Whoop, Suunto, Polar, Ultrahuman, Strava, Fitbit, Withings, Google Health
-- 📱 **SDK-based**: Apple Health, Samsung Health, Google Health Connect
-- 🗂️ **Apple Health XML import**: Upload a full Apple Health export, including large files via S3 multipart upload
+- **Cloud-based**: Garmin, Oura, Whoop, Suunto, Polar, Ultrahuman, Strava, Fitbit, Withings, Google Health
+- **SDK-based**: Apple Health, Samsung Health, Google Health Connect
+- **Apple Health XML import**: Upload a full Apple Health export, including large files via S3 multipart upload
 
 See [supported providers](https://openwearables.io/docs/providers/supported) and [data coverage](https://openwearables.io/docs/providers/coverage) for details.
 
@@ -140,16 +140,16 @@ More AI capabilities are on the way - see the [roadmap](https://openwearables.io
 
 ### Unified Data Model & API
 One REST API with consistent data regardless of the source device:
-- 📊 **Daily summaries**: Activity, sleep, body, and recovery
-- 📈 **Time series**: Heart rate, HRV, SpO2, weight, steps, and [many more data types](https://openwearables.io/docs/architecture/data-types)
-- 🏋️ **Events**: Workouts and sleep sessions
-- 🔀 **Data priorities**: Decide which provider and device type wins when data from multiple sources overlaps
-- 🔗 **Multi-account sync**: One provider account can be linked to multiple user profiles
+- **Daily summaries**: Activity, sleep, body, and recovery
+- **Time series**: Heart rate, HRV, SpO2, weight, steps, and [many more data types](https://openwearables.io/docs/architecture/data-types)
+- **Events**: Workouts and sleep sessions
+- **Data priorities**: Decide which provider and device type wins when data from multiple sources overlaps
+- **Multi-account sync**: One provider account can be linked to multiple user profiles
 
 ### Connections & Sync
-- 🔐 **OAuth flow management**: Generate a connection link or use the connect widget - users authenticate with their provider and data syncs automatically
-- ⏪ **Historical backfill**: Pull past data on first connection (within each provider's limits)
-- 📡 **Sync status**: Live sync progress stream (SSE) plus sync run history via the API and the portal
+- **OAuth flow management**: Generate a connection link or use the connect widget - users authenticate with their provider and data syncs automatically
+- **Historical backfill**: Pull past data on first connection (within each provider's limits)
+- **Sync status**: Live sync progress stream (SSE) plus sync run history via the API and the portal
 
 ### Webhooks
 Register HTTPS endpoints to get notified when new data arrives for your users. Filter by event type or user, verify signatures, send test events, and inspect delivery attempts. See the [webhooks guide](https://openwearables.io/docs/api-reference/guides/webhooks).
@@ -163,11 +163,11 @@ Native SDKs for push-based health data sync from on-device health stores:
 
 ### Developer Portal
 Web-based dashboard for managing your deployment:
-- 📈 **Dashboard**: Users and data points at a glance
-- 👥 **Users**: Add users, view connected data sources, and explore their data with visualizations
-- 🧭 **Coverage & Syncs**: See which data types each provider delivers and monitor sync runs
-- 🔔 **Webhooks**: Manage endpoints and debug deliveries
-- ⚙️ **Settings**: API keys and provider credentials, data priorities, data lifecycle (archival and retention), team invitations, and a seed data generator
+- **Dashboard**: Users and data points at a glance
+- **Users**: Add users, view connected data sources, and explore their data with visualizations
+- **Coverage & Syncs**: See which data types each provider delivers and monitor sync runs
+- **Webhooks**: Manage endpoints and debug deliveries
+- **Settings**: API keys and provider credentials, data priorities, data lifecycle (archival and retention), team invitations, and a seed data generator
 
 ## Architecture
 
