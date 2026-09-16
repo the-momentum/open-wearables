@@ -232,6 +232,9 @@ class Settings(BaseSettings):
     # with RAW granularity, either list or reconcile is used
     # true - reconcile, false - list; for details check docs
     google_use_reconcile: bool = True
+    # Compatibility patch: keep emitting the pre-split /oauth/google/callback redirect URI so
+    # an upgrade needs no change to the registered OAuth client. Removed in 1.0.
+    google_legacy_oauth_path: bool = True
 
     withings_client_id: str | None = None
     withings_client_secret: SecretStr | None = None
@@ -385,7 +388,19 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
             return legacy_value
-        return f"{self.api_base_url}/api/v1/oauth/{provider.value}/callback"
+        return f"{self.api_base_url}/api/v1/oauth/{self._oauth_path(provider)}/callback"
+
+    def _oauth_path(self, provider: ProviderName) -> str:
+        """Path segment to publish for a provider's OAuth routes.
+
+        Google Health was reachable at /google/ before it was split from Health Connect,
+        and that path is in every pre-0.8.1 deployment's registered redirect URI.
+        """
+        from app.schemas.enums import ProviderName as _ProviderName  # runtime-only; see TYPE_CHECKING above
+
+        if provider is _ProviderName.GOOGLE_HEALTH and self.google_legacy_oauth_path:
+            return "google"
+        return provider.value
 
     @property
     def raw_payload_bucket(self) -> str | None:

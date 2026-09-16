@@ -18,7 +18,7 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.services.event_record_service import event_record_service
-from app.services.providers.google.health_api.helpers import (
+from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     extract_source,
     parse_duration_seconds,
@@ -49,7 +49,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
         oauth: BaseOAuthTemplate,
         api_base_url: str,
     ):
-        super().__init__(workout_repo, connection_repo, "google", api_base_url, oauth)
+        super().__init__(workout_repo, connection_repo, "google_health", api_base_url, oauth)
 
     # -- fetch -----------------------------------------------------------------
 
@@ -82,7 +82,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             response = self._make_api_request(db, user_id, self.LIST_ENDPOINT, method="GET", params=params)
             store_raw_payload(
                 source="api_response",
-                provider="google",
+                provider="google_health",
                 payload=response,
                 user_id=str(user_id),
                 trace_id=self.LIST_ENDPOINT,
@@ -118,7 +118,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             id=workout_id,
             category="workout",
             type=get_unified_google_workout_type(exercise.get("exerciseType", "")).value,
-            provider=ProviderName.GOOGLE.value,
+            provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
             device_model=device_model,
@@ -166,7 +166,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
                     e,
                     self.logger,
                     f"Google workout sync failed for a datapoint: {e}",
-                    extra={"user_id": str(user_id), "provider": "google", "external_id": point.get("name")},
+                    extra={"user_id": str(user_id), "provider": "google_health", "external_id": point.get("name")},
                 )
                 continue
             count += 1

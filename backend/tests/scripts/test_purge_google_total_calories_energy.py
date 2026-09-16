@@ -55,7 +55,7 @@ def _source(provider: ProviderName, source: str, device_model: str | None = "Tes
 
 
 def _health_api_source() -> DataSource:
-    return _source(ProviderName.GOOGLE, "google_health_api", device_model=None)
+    return _source(ProviderName.GOOGLE_HEALTH, "google_health_api", device_model=None)
 
 
 def _point(db: Session, source: DataSource, *, type_id: int, offset_hours: int, external_id: str | None = None) -> None:
@@ -115,7 +115,7 @@ def test_keeps_other_series_and_other_sources(db: Session) -> None:
     _point(db, api, type_id=ENERGY_ID, offset_hours=0)
     _point(db, api, type_id=BASAL_ID, offset_hours=0)  # derived basal: untagged, must stay
     # Health Connect SDK rows carry the reporting app as source, not google_health_api.
-    sdk = _source(ProviderName.GOOGLE, "Fitbit")
+    sdk = _source(ProviderName.HEALTH_CONNECT, "Fitbit")
     _point(db, sdk, type_id=ENERGY_ID, offset_hours=0)
     apple = _source(ProviderName.APPLE, "apple_health_sdk")
     _point(db, apple, type_id=ENERGY_ID, offset_hours=0)
@@ -146,7 +146,7 @@ def test_purges_archive_energy_buckets_only(db: Session) -> None:
     _archive_row(db, api, type_id=ENERGY_ID, day=-30)
     _archive_row(db, api, type_id=ENERGY_ID, day=-29)
     _archive_row(db, api, type_id=BASAL_ID, day=-30)
-    sdk = _source(ProviderName.GOOGLE, "Fitbit")
+    sdk = _source(ProviderName.HEALTH_CONNECT, "Fitbit")
     _archive_row(db, sdk, type_id=ENERGY_ID, day=-30)
 
     result = purge(db, dry_run=False, batch=1)

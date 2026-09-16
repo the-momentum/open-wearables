@@ -10,8 +10,8 @@ from uuid import uuid4
 import pytest
 
 from app.schemas.providers.google import DataPointsPage
-from app.services.providers.google.health_api.data_247 import GoogleHealth247Data
-from app.services.providers.google.health_api.helpers import parse_page
+from app.services.providers.google_health.data_247 import GoogleHealth247Data
+from app.services.providers.google_health.helpers import parse_page
 
 USER_ID = uuid4()
 
@@ -80,12 +80,12 @@ class TestFailureIsolation:
 
         with (
             patch(
-                "app.services.providers.google.health_api.data_247.make_authenticated_request",
+                "app.services.providers.google_health.data_247.make_authenticated_request",
                 side_effect=fake_request,
             ),
             patch.object(data_247.sleep, "load_and_save", return_value=0),
             patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
-            patch("app.services.providers.google.health_api.data_247.store_raw_payload"),
+            patch("app.services.providers.google_health.data_247.store_raw_payload"),
         ):
             results = data_247.load_and_save_all(db, USER_ID, MagicMock(), MagicMock())
 
@@ -107,12 +107,12 @@ class TestPerMetricTransactions:
 
         with (
             patch(
-                "app.services.providers.google.health_api.data_247.make_authenticated_request",
+                "app.services.providers.google_health.data_247.make_authenticated_request",
                 side_effect=fake_request,
             ),
             patch.object(data_247.sleep, "load_and_save", return_value=0),
             patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
-            patch("app.services.providers.google.health_api.data_247.store_raw_payload"),
+            patch("app.services.providers.google_health.data_247.store_raw_payload"),
         ):
             return data_247.load_and_save_all(db, USER_ID, MagicMock(), MagicMock())
 

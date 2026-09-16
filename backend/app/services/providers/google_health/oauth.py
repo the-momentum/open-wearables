@@ -47,7 +47,7 @@ class GoogleOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.google_client_id or "",
             client_secret=(settings.google_client_secret.get_secret_value() if settings.google_client_secret else ""),
-            redirect_uri=settings.oauth_redirect_uri(ProviderName.GOOGLE),
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.GOOGLE_HEALTH),
             default_scope=settings.google_default_scope,
         )
 

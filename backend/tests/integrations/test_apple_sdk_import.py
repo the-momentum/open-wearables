@@ -649,14 +649,14 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.body_fat_percentage
         assert samples[0].value == Decimal("30.400")
 
-    def test_google_body_fat_percentage_not_scaled(
+    def test_health_connect_body_fat_percentage_not_scaled(
         self,
         import_service: ImportService,
     ) -> None:
-        """Google/Health Connect sends already-percent 30.4 — must be stored as 30.4 (no x100)."""
+        """Health Connect sends already-percent 30.4 — must be stored as 30.4 (no x100)."""
         user_id = str(uuid4())
         request = self._build_request(
-            "google",
+            "health_connect",
             [self._record("BODY_FAT", 30.4)],
         )
         samples = import_service._build_statistic_bundles(request, user_id)
@@ -697,14 +697,14 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
 
-    def test_google_height_converted_meters_to_centimeters(
+    def test_health_connect_height_converted_meters_to_centimeters(
         self,
         import_service: ImportService,
     ) -> None:
         """Health Connect also sends height in meters — the x100 conversion still applies."""
         user_id = str(uuid4())
         request = self._build_request(
-            "google",
+            "health_connect",
             [self._record("HEIGHT", 1.7526)],
         )
         samples = import_service._build_statistic_bundles(request, user_id)

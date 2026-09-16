@@ -37,7 +37,7 @@ from app.schemas.providers.google import (
     TimeShape,
 )
 from app.services.providers.api_client import make_authenticated_request
-from app.services.providers.google.health_api.helpers import (
+from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     civil_interval,
     extract_source,
@@ -48,8 +48,8 @@ from app.services.providers.google.health_api.helpers import (
     read_number,
     zone_offset_from,
 )
-from app.services.providers.google.health_api.metrics import DERIVED_DAILY_METRICS, METRICS
-from app.services.providers.google.health_api.sleep import GoogleHealthApiSleep
+from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
@@ -66,7 +66,7 @@ class GoogleHealth247Data(Base247DataTemplate):
     LIST_PAGE_SIZE = 1_000
 
     def __init__(self, oauth: BaseOAuthTemplate, connection_repo: UserConnectionRepository, api_base_url: str):
-        super().__init__(provider_name="google", api_base_url=api_base_url, oauth=oauth)
+        super().__init__(provider_name="google_health", api_base_url=api_base_url, oauth=oauth)
         self.connection_repo = connection_repo
         self.settings_repo = ProviderSettingsRepository()
         self.sleep = GoogleHealthApiSleep(oauth, connection_repo, api_base_url)

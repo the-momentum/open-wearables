@@ -22,7 +22,7 @@ from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDeta
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
-from app.services.providers.google.health_api.helpers import (
+from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     extract_source,
     parse_interval,
@@ -46,7 +46,7 @@ class GoogleHealthApiSleep:
     def __init__(self, oauth: BaseOAuthTemplate, connection_repo: UserConnectionRepository, api_base_url: str):
         self.oauth = oauth
         self.connection_repo = connection_repo
-        self.provider_name = "google"
+        self.provider_name = "google_health"
         self.api_base_url = api_base_url
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -123,7 +123,7 @@ class GoogleHealthApiSleep:
         record = EventRecordCreate(
             id=record_id,
             category="sleep",
-            provider=ProviderName.GOOGLE.value,
+            provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
             device_model=device_model,

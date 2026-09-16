@@ -30,7 +30,7 @@ from app.schemas.responses.incoming_webhooks import (
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
-from app.services.providers.google.health_api.metrics import METRICS
+from app.services.providers.google_health.metrics import METRICS
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import log_structured
 
@@ -94,7 +94,7 @@ def _error_result(subscription_id: str, action: str, error: httpx.HTTPError) -> 
         logger,
         "error",
         f"Failed to {action} Google Health API subscriber",
-        provider="google",
+        provider="google_health",
         action=f"google_webhook_subscription_{action}_error",
         subscription_id=subscription_id,
         error=str(error),
@@ -146,7 +146,7 @@ class GoogleWebhookService(BaseWebhookService):
                     logger,
                     "error",
                     "Failed to register Google Health API subscriber",
-                    provider="google",
+                    provider="google_health",
                     action="google_webhook_subscription_register_error",
                     error=str(e),
                     status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
@@ -169,7 +169,7 @@ class GoogleWebhookService(BaseWebhookService):
                 logger,
                 "error",
                 "Failed to list Google Health API subscribers",
-                provider="google",
+                provider="google_health",
                 action="google_webhook_subscription_list_error",
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
@@ -185,7 +185,7 @@ class GoogleWebhookService(BaseWebhookService):
                     logger,
                     "error",
                     "Failed to parse Google Health API subscriber",
-                    provider="google",
+                    provider="google_health",
                     action="google_webhook_subscription_parse_error",
                     error=str(e),
                 )
@@ -204,7 +204,7 @@ class GoogleWebhookService(BaseWebhookService):
                 logger,
                 "error",
                 "Failed to get Google Health API subscriber",
-                provider="google",
+                provider="google_health",
                 action="google_webhook_subscription_get_error",
                 subscription_id=subscription_id,
                 error=str(e),

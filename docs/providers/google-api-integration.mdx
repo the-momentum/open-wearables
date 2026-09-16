@@ -17,10 +17,16 @@ keywords: ["google health api integration", "google health oauth", "google healt
 
 ## Overview
 
-Google Health data reaches Open Wearables through two independent paths that share the single `google` provider identity:
+Google Health data reaches Open Wearables through two independent paths, each its own provider:
 
-- **Health Connect (mobile SDK)** — data pushed from an Android device via the Mobile SDK. See the [Android SDK guide](/sdk/android/integration).
-- **Google Health API (cloud OAuth)** — this guide. A server-side OAuth 2.0 flow against the [Google Health API](https://developers.google.com/health) that lets you connect a user's Google account and pull their data over REST, plus receive notify-only webhooks.
+- **Health Connect (mobile SDK)** — provider `health_connect`. Data pushed from an Android device via the Mobile SDK. See the [Android SDK guide](/sdk/android/integration).
+- **Google Health API (cloud OAuth)** — provider `google_health`, this guide. A server-side OAuth 2.0 flow against the [Google Health API](https://developers.google.com/health) that lets you connect a user's Google account and pull their data over REST, plus receive notify-only webhooks.
+
+They have separate scopes, connections and lifecycles: connecting one leaves the other untouched, and each reports its own `connection.created` / `connection.revoked` events.
+
+<Note>
+  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in the URLs new integrations should use. Before the split it was reachable at `/google/`; the OAuth and webhook endpoints still serve that path so anything already registered with Google keeps working, but it is a compatibility path that goes away in 1.0.
+</Note>
 
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
 
@@ -103,7 +109,13 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 
     Then create an **OAuth 2.0 Client ID** (Web application) under **APIs & Services → Credentials**, and add your server-side callback as an **Authorized redirect URI**:
 
-    - Local dev: `http://localhost:8000/api/v1/oauth/google/callback`
+    - `http://localhost:8000/api/v1/oauth/google_health/callback`
+
+    Then set `GOOGLE_LEGACY_OAUTH_PATH=false` so Open Wearables sends that URI. New integrations should always use this path.
+
+    <Warning>
+    **Upgrading from before the provider split?** This provider was reachable at `/oauth/google/` back then, and the flag defaults to `true` so your registered OAuth client keeps working untouched. That default is a compatibility patch, not the intended configuration — it is removed in 1.0. Register the `google_health` URI above, set the flag to `false`, and you are on the supported path. Google accepts several redirect URIs, so both can be registered while you migrate.
+    </Warning>
 
     <Warning>
     Store the Client Secret securely — Google shows it once.
@@ -133,7 +145,7 @@ GOOGLE_USE_RECONCILE=true
     | `DEFAULT_DATA_GRANULARITY` | `raw` \| `hourly` \| `daily` — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
 
     <Note>
-    The redirect URI is derived from `API_BASE_URL` — it must match the Authorized redirect URI on your OAuth client (`{API_BASE_URL}/api/v1/oauth/google/callback`).
+    The redirect URI is derived from `API_BASE_URL` and must match an Authorized redirect URI on your OAuth client exactly: `{API_BASE_URL}/api/v1/oauth/google_health/callback`.
     </Note>
   </Step>
 
@@ -147,13 +159,13 @@ GOOGLE_USE_RECONCILE=true
     **1. Get the authorization URL:**
 
     ```bash
-    curl -X GET "http://localhost:8000/api/v1/oauth/google/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+    curl -X GET "http://localhost:8000/api/v1/oauth/google_health/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 
     **2. Redirect the user** to the returned `authorization_url`. They log in to Google and grant consent.
 
-    **3. Google redirects back** to `{API_BASE_URL}/api/v1/oauth/google/callback`; Open Wearables exchanges the code for tokens and stores the connection. It also resolves the user's stable `healthUserId` (via the Health API identity endpoint) as the connection's provider user id — this is what inbound webhooks are matched against.
+    **3. Google redirects back** to `{API_BASE_URL}/api/v1/oauth/google_health/callback`; Open Wearables exchanges the code for tokens and stores the connection. It also resolves the user's stable `healthUserId` (via the Health API identity endpoint) as the connection's provider user id — this is what inbound webhooks are matched against.
 
     **4. Verify the connection:**
 
@@ -162,14 +174,14 @@ GOOGLE_USE_RECONCILE=true
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 
-    You should see a connection with `"provider": "google"` and `"status": "active"`.
+    You should see a connection with `"provider": "google_health"` and `"status": "active"`.
   </Step>
 
   <Step title="Sync data">
     An initial sync runs automatically after a successful OAuth connection. To trigger one manually:
 
     ```bash
-    curl -X POST "http://localhost:8000/api/v1/providers/google/users/{user_id}/sync" \
+    curl -X POST "http://localhost:8000/api/v1/providers/google_health/users/{user_id}/sync" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
   </Step>
@@ -249,7 +261,7 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
   </Step>
 
   <Step title="Register the subscriber">
-    Switching the provider's live sync mode to `webhook` registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
+    Switching the provider's live sync mode to `webhook` registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google_health/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
   </Step>
 </Steps>
 
@@ -291,7 +303,7 @@ curl -X POST \
   "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers?subscriberId=open-wearables" \
   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
   -d '{
-    "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google/webhooks",
+    "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google_health/webhooks",
     "subscriberConfigs": [
       {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
     ],
@@ -306,7 +318,7 @@ curl "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers" \
 curl -X PATCH \
   "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers/open-wearables?updateMask=endpointUri" \
   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  -d '{"endpointUri": "https://NEW_URL/api/v1/providers/google/webhooks"}'
+  -d '{"endpointUri": "https://NEW_URL/api/v1/providers/google_health/webhooks"}'
 
 # Delete
 curl -X DELETE \
