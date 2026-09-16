@@ -19,7 +19,7 @@
 ---
 
 > [!TIP]
-> **Curious what we're cooking right now?** Take a look at our [roadmap](https://openwearables.io/docs/roadmap).
+> **Curious what we're cooking right now?** Take a look at our [roadmap](https://openwearables.io/docs/roadmap) ✨
 
 Open-source platform that unifies wearable device data from multiple providers behind a single API and makes it available to AI. Build health applications faster with normalized health data, webhooks, and mobile SDKs, and connect LLMs and AI agents to your users' wearable data through the built-in MCP server.
 
