@@ -22,16 +22,33 @@ class TestUrlSlugMapping:
     def test_every_other_provider_is_untouched(self, provider: ProviderName) -> None:
         assert from_url_slug(provider.value) == provider.value
 
-    def test_redirect_uri_uses_the_current_slug(self) -> None:
+    def test_redirect_uri_defaults_to_the_legacy_path(self) -> None:
+        """Default keeps an upgrade from having to touch the registered OAuth client."""
+        uri = settings.oauth_redirect_uri(ProviderName.GOOGLE_HEALTH)
+        assert uri.endswith("/api/v1/oauth/google/callback")
+
+    def test_redirect_uri_follows_the_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "google_legacy_oauth_path", False)
         uri = settings.oauth_redirect_uri(ProviderName.GOOGLE_HEALTH)
         assert uri.endswith("/api/v1/oauth/google_health/callback")
 
+    def test_other_providers_ignore_the_flag(self) -> None:
+        assert settings.oauth_redirect_uri(ProviderName.OURA).endswith("/api/v1/oauth/oura/callback")
+
 
 class TestAuthorizeRoute:
-    def test_legacy_slug_is_rejected(self, client: TestClient, api_v1_prefix: str) -> None:
-        """A redirect URI has to be registered with Google either way, so OAuth is not aliased."""
+    @pytest.mark.parametrize("slug", ["google", "google_health"])
+    def test_both_slugs_reach_the_provider(self, client: TestClient, api_v1_prefix: str, slug: str) -> None:
+        """Google redirects to whichever callback path was registered, so both must route."""
         response = client.get(
-            f"{api_v1_prefix}/oauth/google/authorize",
+            f"{api_v1_prefix}/oauth/{slug}/authorize",
+            params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
+        )
+        assert response.status_code != 404
+
+    def test_unknown_provider_is_rejected(self, client: TestClient, api_v1_prefix: str) -> None:
+        response = client.get(
+            f"{api_v1_prefix}/oauth/nonsense/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
         )
         assert response.status_code == 400

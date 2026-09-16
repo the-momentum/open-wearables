@@ -25,7 +25,7 @@ Google Health data reaches Open Wearables through two independent paths, each it
 They have separate scopes, connections and lifecycles: connecting one leaves the other untouched, and each reports its own `connection.created` / `connection.revoked` events.
 
 <Note>
-  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in every URL. Before the split it was reachable at `/google/`; the webhook endpoint still serves that path so subscribers already registered with Google keep delivering, but nothing else accepts it.
+  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in the URLs new integrations should use. Before the split it was reachable at `/google/`; the OAuth and webhook endpoints still serve that path so anything already registered with Google keeps working, but it is a compatibility path that goes away in 1.0.
 </Note>
 
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
@@ -111,8 +111,10 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 
     - `http://localhost:8000/api/v1/oauth/google_health/callback`
 
+    Then set `GOOGLE_LEGACY_OAUTH_PATH=false` so Open Wearables sends that URI. New integrations should always use this path.
+
     <Warning>
-    **Upgrading from before the provider split?** Your client is registered under the old `/oauth/google/callback` path. Add the `google_health` URI above — Google accepts several authorized redirect URIs, so adding it ahead of the deploy causes no downtime, and existing connections keep syncing throughout (token refresh does not use a redirect URI). Only new connections need it.
+    **Upgrading from before the provider split?** This provider was reachable at `/oauth/google/` back then, and the flag defaults to `true` so your registered OAuth client keeps working untouched. That default is a compatibility patch, not the intended configuration — it is removed in 1.0. Register the `google_health` URI above, set the flag to `false`, and you are on the supported path. Google accepts several redirect URIs, so both can be registered while you migrate.
     </Warning>
 
     <Warning>
