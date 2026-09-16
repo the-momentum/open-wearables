@@ -93,6 +93,8 @@ Get Open Wearables up and running in minutes.
    
    For local development setup without Docker take a look at [docs](https://openwearables.io/docs/quickstart#local-development-setup)
 
+   > **Production:** `docker compose up` builds from local source and is meant for development. For production, run the official [`themomentum/open-wearables-backend`](https://hub.docker.com/r/themomentum/open-wearables-backend) and [`themomentum/open-wearables-frontend`](https://hub.docker.com/r/themomentum/open-wearables-frontend) images pinned to a stable release tag (e.g. `0.7.0`), not `nightly` or a build of `main`. See [Deploying with Docker](https://openwearables.io/docs/deployment/docker).
+
 4. **Log in to the developer portal:**
 
    An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. To add further accounts, invite them from the developer portal.
@@ -215,7 +217,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 ---
 
-**Note**: This is an early-stage project under active development. APIs may change before version 1.0. We recommend pinning to specific versions in production and following the changelog for updates.
+**Note**: This is an early-stage project under active development. APIs may change before version 1.0. In production, pin the official images to a specific release version (see [Deploying with Docker](https://openwearables.io/docs/deployment/docker)) and follow the changelog for updates.
 
 ---
 
