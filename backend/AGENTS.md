@@ -233,6 +233,8 @@ class GarminStrategy(BaseProviderStrategy):
         return "https://apis.garmin.com"
 ```
 
+When adding a capability to one provider, check whether other providers will need it. If so, add it to `BaseProviderStrategy` or `BaseOAuthTemplate` as a no-op default and override it in the specific provider, rather than implementing it in isolation.
+
 ## Database Migrations
 
 Schema changes use Alembic:
