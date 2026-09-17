@@ -13,6 +13,8 @@ labels: bug
 ## Impact
 
 <!--
+How does this affect you? What can't you do, or what do your users see because of it?
+
 Which endpoints, webhooks, MCP tools or providers are affected, e.g.
 - [`GET /api/v1/users/{user_id}/summaries/sleep`](https://openwearables.io/docs/api-reference/external:-summaries/get-sleep-summary) - `interruptions_count` is always `null`
 -->
@@ -32,6 +34,6 @@ something different, that's worth knowing too. For example:
 
 <!-- The request or steps, the provider, and the Open Wearables version you're on. -->
 
-## To do
+## Suggested fix
 
 <!-- Optional. If you have an idea how to fix it. -->
