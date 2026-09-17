@@ -2,6 +2,7 @@ import logging
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
@@ -53,7 +54,7 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
 
-api = FastAPI(title=settings.api_name, lifespan=_lifespan)
+api = FastAPI(title=settings.api_name, version=version("open-wearables"), lifespan=_lifespan)
 celery_app = create_celery()
 init_sentry()
 raw_payload_storage.configure(

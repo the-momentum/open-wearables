@@ -29,7 +29,7 @@ Internal endpoints (dashboard management, team settings, webhook receivers) are 
   <Card
     title="OpenAPI JSON"
     icon="file-code"
-    href="https://api.openwearables.io/openapi.json"
+    href="https://github.com/the-momentum/open-wearables/blob/main/docs/openapi.json"
   >
     Machine-readable OpenAPI 3.1 specification
   </Card>
@@ -193,10 +193,12 @@ Many endpoints support filtering and sorting. Check individual endpoint document
 
 ## OpenAPI Specification
 
-The complete OpenAPI specification is available at:
-- **Swagger UI:** `https://api.openwearables.io/docs`
-- **OpenAPI JSON:** `https://api.openwearables.io/openapi.json`
+This reference is generated from [`docs/openapi.json`](https://github.com/the-momentum/open-wearables/blob/main/docs/openapi.json), which is exported from the API code on every change, so it always describes the current `main` branch.
+
+Every Open Wearables instance also serves the spec for the exact version it runs:
+- **Swagger UI:** `https://<your-instance>/docs`
+- **OpenAPI JSON:** `https://<your-instance>/openapi.json`
 
 <Tip>
-  The OpenAPI specification is auto-generated from the API code and is always the most accurate reference.
+  If you self-host an older release, the spec served by your own instance is the accurate reference for it.
 </Tip>
