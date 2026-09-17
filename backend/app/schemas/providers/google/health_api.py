@@ -2,7 +2,8 @@
 
 Declarative mapping of a Google data type to a unified SeriesType. A data type may
 support the ``rollUp`` operation (windowed aggregates), the ``list`` operation (raw
-data points), or both; the handler picks the operation per the configured granularity.
+data points), or both. Windowed rollUp is currently disabled (see ``DataTypeMetric.use_list``),
+so every type is read at native resolution.
 """
 
 from collections.abc import Callable
@@ -150,16 +151,19 @@ class DataTypeMetric:
     list_spec: ListSpec | None = None
 
     def __post_init__(self) -> None:
-        if self.rollup_spec is None and self.list_spec is None:
-            raise ValueError(f"{self.data_type}: must declare a rollup and/or list spec")
+        # A rollUp-only type would ingest nothing while rollUp is off (see use_list).
+        if self.list_spec is None:
+            raise ValueError(f"{self.data_type}: must declare a list spec")
 
     def use_list(self, granularity: DataGranularity) -> bool:
-        """Pick the operation: forced types use their only op; dual types use list only for RAW."""
-        if self.rollup_spec is None:
-            return True
-        if self.list_spec is None:
-            return False
-        return granularity == DataGranularity.RAW
+        """Always the native-resolution op: windowed rollUp is disabled (#1577).
+
+        rollUp window starts do not line up with the timestamps backfill and live sync write,
+        so the same reading misses the uniqueness index and inserts a duplicate instead of
+        updating. Every registered type declares a list spec, so nothing loses ingestion.
+        Re-enable by restoring the granularity check once window starts are floored.
+        """
+        return True
 
     def series_types(self) -> frozenset[SeriesType]:
         """Every series this metric can emit — primary plus any extra bindings."""

@@ -50,17 +50,20 @@ The Google Health API is an **aggregation layer**: it surfaces data from *every*
 
 ## Data granularity and fetch modes
 
-The Health API exposes the same underlying data through three different operations. Open Wearables picks one per the `DEFAULT_DATA_GRANULARITY` setting, and — at the finest granularity — the `GOOGLE_USE_RECONCILE` flag.
+The Health API exposes the same underlying data through three different operations. Open Wearables reads every 24/7 metric at native resolution, picking the operation per the `GOOGLE_USE_RECONCILE` flag.
 
-| Granularity | Operation | Resolution | Cross-source | Device attribution |
-|-------------|-----------|------------|--------------|--------------------|
-| `raw` + `GOOGLE_USE_RECONCILE=true` **(default)** | `dataPoints:reconcile` | native | **merged & deduplicated** | none |
-| `raw` + `GOOGLE_USE_RECONCILE=false` | `dataPoints` (list) | native | raw, per-source | **per-device** |
-| `hourly` / `daily` | `dataPoints:rollUp` | windowed | reconciled | none |
+| Fetch mode | Operation | Resolution | Cross-source | Device attribution |
+|------------|-----------|------------|--------------|--------------------|
+| `GOOGLE_USE_RECONCILE=true` **(default)** | `dataPoints:reconcile` | native | **merged & deduplicated** | none |
+| `GOOGLE_USE_RECONCILE=false` | `dataPoints` (list) | native | raw, per-source | **per-device** |
 
-<Info>
-`GOOGLE_USE_RECONCILE` only takes effect at `raw` granularity. `hourly`/`daily` always use windowed `rollUp` aggregates regardless of the flag.
-</Info>
+<Warning>
+Windowed `dataPoints:rollUp` aggregates are currently disabled. A rollUp window starts wherever the requested range does, so the same reading came back under a different timestamp on a later sync and was inserted as a duplicate rather than updated.
+
+Because `hourly` and `daily` cannot be honoured without it, Google Health **refuses** them rather than storing raw data under an aggregating setting: a scheduled pull is reported as a failed `data_247` sync, and a webhook notification is reported to the error tracker and dropped (it is not answered with a 5xx, which Google would only retry). Sleep sessions and derived daily totals are unaffected and keep syncing. Set the provider's granularity to `raw` to resume the rest.
+</Warning>
+
+Daily basal energy is the one exception: it is derived from `dataPoints:dailyRollUp`, whose windows are anchored to civil days and so do not drift.
 
 ### Reconcile vs. list — why it matters
 
@@ -130,7 +133,7 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_DEFAULT_SCOPE=openid email https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly https://www.googleapis.com/auth/googlehealth.nutrition.readonly https://www.googleapis.com/auth/googlehealth.sleep.readonly https://www.googleapis.com/auth/googlehealth.settings.readonly
-# Fetch mode for raw-granularity 24/7 data (see "Data granularity and fetch modes")
+# Fetch mode for 24/7 data (see "Data granularity and fetch modes")
 GOOGLE_USE_RECONCILE=true
 ```
 
@@ -141,8 +144,8 @@ GOOGLE_USE_RECONCILE=true
     | `GOOGLE_CLIENT_ID` | OAuth Client ID | — |
     | `GOOGLE_CLIENT_SECRET` | OAuth Client Secret | — |
     | `GOOGLE_DEFAULT_SCOPE` | Space-separated Health API scopes to request | (full read-only set) |
-    | `GOOGLE_USE_RECONCILE` | `true` = reconcile (merged, app-accurate, no device attribution); `false` = list (per-device). Only applies at `raw` granularity. | `true` |
-    | `DEFAULT_DATA_GRANULARITY` | `raw` \| `hourly` \| `daily` — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
+    | `GOOGLE_USE_RECONCILE` | `true` = reconcile (merged, app-accurate, no device attribution); `false` = list (per-device). | `true` |
+    | `DEFAULT_DATA_GRANULARITY` | Must be `raw` for Google Health while `rollUp` is disabled — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
 
     <Note>
     The redirect URI is derived from `API_BASE_URL` and must match an Authorized redirect URI on your OAuth client exactly: `{API_BASE_URL}/api/v1/oauth/google_health/callback`.

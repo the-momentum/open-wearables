@@ -123,8 +123,11 @@ class Settings(BaseSettings):
     # Independent of ingest_workout_samples (DB samples) and raw_payload_storage (JSON payloads).
     store_fit_files: bool = False
 
-    # Default 24/7 data granularity (raw | hourly | daily) for providers that support it
-    # (Google Health), used when a provider has no explicit ProviderSetting.data_granularity.
+    # Default 24/7 data granularity (raw | hourly | daily) for providers that support it,
+    # used when a provider has no explicit ProviderSetting.data_granularity.
+    # DANGER: anything but raw halts Google Health 24/7 ingestion. Its rollUp operation is
+    # disabled (#1577), so every metric it would have driven is skipped and each sync reports
+    # the failure. Sleep and basal energy are unaffected. Leave this at raw.
     default_data_granularity: DataGranularity = DataGranularity.RAW
 
     # SCORE SETTINGS
@@ -229,7 +232,7 @@ class Settings(BaseSettings):
     # Path to the service-account JSON key used to authenticate project-level
     # subscriber registration. If unset, Application Default Credentials are used.
     google_service_account_file: str | None = None
-    # with RAW granularity, either list or reconcile is used
+    # How 24/7 data is fetched, at native resolution either way.
     # true - reconcile, false - list; for details check docs
     google_use_reconcile: bool = True
     # Compatibility patch: keep emitting the pre-split /oauth/google/callback redirect URI so

@@ -19,7 +19,7 @@ from app.schemas.sync_status import (
 )
 from app.services import event_record_service
 from app.services.apple.apple_xml.xml_service import XMLService
-from app.services.apple.healthkit.sleep_service import handle_sleep_data
+from app.services.sdk.sleep_service import handle_sleep_data
 from app.services.sync_status_service import (
     emit_sync_completed,
     emit_sync_failed,

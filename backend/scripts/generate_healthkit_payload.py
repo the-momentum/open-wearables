@@ -29,7 +29,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.constants.series_types.sdk import AppleCategoryType, SDKMetricType, SleepPhase
-from app.constants.workout_types.apple_sdk import SDKWorkoutType
+from app.constants.workout_types.sdk import SDKWorkoutType
 
 # Record types with their HealthKit units and realistic value ranges (min, max)
 RECORD_TYPE_CONFIG: dict[SDKMetricType, dict[str, Any]] = {

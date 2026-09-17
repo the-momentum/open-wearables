@@ -4,9 +4,10 @@ from app.schemas.enums import WorkoutType
 
 
 class SDKWorkoutType(StrEnum):
-    """Apple HealthKit SDK workout activity types.
+    """Mobile SDK workout activity types (apple, samsung, health_connect).
 
-    These are the workout types sent from the iOS SDK in snake_case format.
+    HealthKit snake_case vocabulary plus the Health Connect vocabulary the Android SDK
+    emits in uppercase; lookup normalizes case.
     """
 
     # Exercise and Fitness

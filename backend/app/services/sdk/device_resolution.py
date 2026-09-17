@@ -1,4 +1,4 @@
-"""Device resolution utilities for HealthKit data."""
+"""Device resolution utilities for mobile SDK data (HealthKit, Health Connect, Samsung Health)."""
 
 from app.schemas.providers.mobile_sdk import OSVersion, SourceInfo
 

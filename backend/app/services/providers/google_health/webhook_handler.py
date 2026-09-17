@@ -2,7 +2,7 @@
 
 Google sends notify-only pings: each notification names the changed ``dataType`` and
 the physical-time ``intervals`` that changed, but carries no data. We fetch the actual
-data via REST (rollUp/list, or the sleep/exercise session endpoints) over those
+data via REST (list/reconcile, or the sleep/exercise session endpoints) over those
 intervals, then persist it.
 
 Authentication
@@ -39,7 +39,10 @@ from app.config import settings
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.google import GoogleWebhookNotification
-from app.services.providers.google_health.data_247 import GoogleHealth247Data
+from app.services.providers.google_health.data_247 import (
+    GoogleHealth247Data,
+    UnsupportedGranularityError,
+)
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
@@ -280,7 +283,16 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return self.workouts.load_data(db, user_id, start_date=start, end_date=end)
         if data_type == _SLEEP_DATA_TYPE:
             return self.data_247.sleep.load_and_save(db, user_id, start, end)
-        return int(self.data_247.sync_data_type(db, user_id, data_type, start, end) or 0)
+        try:
+            return int(self.data_247.sync_data_type(db, user_id, data_type, start, end) or 0)
+        except UnsupportedGranularityError as e:
+            log_and_capture_error(
+                e,
+                logger,
+                str(e),
+                extra={"user_id": str(user_id), "provider": "google", "data_type": data_type},
+            )
+            return 0
 
     @staticmethod
     def _window(intervals: Any) -> tuple[datetime, datetime] | None:

@@ -14,29 +14,29 @@ dependencies = [
     "celery>=5.6.3",
     "flower>=2.1.0",
     "redis>=8.1.0",
-    "sentry-sdk[fastapi]>=2.68.1",
+    "sentry-sdk[fastapi]>=2.69.1",
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
     "alembic>=1.19.2",
-    "boto3>=1.43.89",
+    "boto3>=1.43.93",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.42.0",
+    "resend>=2.43.0",
     "pyyaml>=6.0.3",
     "svix>=1.99.1",
     "numpy>=2.5.3",
     "faker>=40.38.0",
     "fitdecode>=0.11.0",
-    "google-auth>=2.57.1",
+    "google-auth>=2.58.0",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.6.1",
-    "ruff>=0.16.6",
-    "ty>=0.0.78",
+    "ruff>=0.16.7",
+    "ty>=0.0.80",
 ]
 dev = [
     "pytest>=9.1.1",

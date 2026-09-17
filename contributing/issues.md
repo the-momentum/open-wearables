@@ -8,79 +8,15 @@ This guide covers how to report bugs and request features for Open Wearables.
 2. **Check closed issues** - The issue may have been resolved in a recent update
 3. **Update to latest** - Ensure you're running the latest version
 
-## Bug Reports
+## Bug Reports and Feature Requests
 
-When reporting a bug, include:
+When you [open an issue](https://github.com/the-momentum/open-wearables/issues/new/choose), pick the **Bug** or **Feature request** template and fill it in. The templates live in [`.github/ISSUE_TEMPLATE`](../.github/ISSUE_TEMPLATE).
 
-### Required Information
+A few things that help us the most:
 
-- **Description**: Clear, concise description of the bug
-- **Steps to Reproduce**: Numbered steps to reproduce the issue
-- **Expected Behavior**: What you expected to happen
-- **Actual Behavior**: What actually happened
-
-### Helpful Information
-
-- **Environment**: OS, browser, Node.js/Python version
-- **Screenshots**: If applicable, add screenshots
-- **Error Messages**: Include any error logs or stack traces
-- **Related Configuration**: Relevant settings or environment variables
-
-### Bug Report Template
-
-```markdown
-## Description
-[Clear description of the bug]
-
-## Steps to Reproduce
-1. Go to '...'
-2. Click on '...'
-3. See error
-
-## Expected Behavior
-[What you expected to happen]
-
-## Actual Behavior
-[What actually happened]
-
-## Environment
-- OS: [e.g., macOS 14.0]
-- Browser: [e.g., Chrome 120]
-- Node.js: [e.g., 20.10.0]
-- Python: [e.g., 3.13.0]
-
-## Additional Context
-[Any other relevant information]
-```
-
-## Feature Requests
-
-When requesting a feature, include:
-
-### Required Information
-
-- **Problem Statement**: What problem does this solve?
-- **Proposed Solution**: How would you like it to work?
-- **Use Case**: Who would benefit and how?
-
-### Feature Request Template
-
-```markdown
-## Problem Statement
-[Description of the problem or need]
-
-## Proposed Solution
-[How you'd like this to work]
-
-## Use Case
-[Who benefits and in what scenario]
-
-## Alternatives Considered
-[Other solutions you've thought about]
-
-## Additional Context
-[Any other relevant information]
-```
+- **Tell us if the docs don't match.** If you checked the [docs](https://openwearables.io/docs) and they say something different from what you're seeing, link the page - it helps us find misleading docs.
+- **Say what it affects.** Endpoints, webhooks, MCP tools, SDKs and providers.
+- **For features, tell us your use case** - what you're building, how you get by without it, and how much it blocks you.
 
 ## Issue Labels
 
@@ -89,7 +25,7 @@ Common labels you may see:
 | Label | Description |
 |-------|-------------|
 | `bug` | Something isn't working |
-| `feature` | New feature request |
+| `enhancement` | New feature request |
 | `documentation` | Documentation improvements |
 | `good first issue` | Good for newcomers |
 | `help wanted` | Extra attention needed |
