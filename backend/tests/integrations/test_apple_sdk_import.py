@@ -755,3 +755,74 @@ class TestSDKImportUnitConversion:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.blood_glucose
         assert samples[0].value == Decimal("105")
+
+
+class TestSDKImportNutrition:
+    """Dietary/nutrition metric types map to per-nutrient SeriesType samples."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _build_record(metric_type: str, value: float, unit: str) -> dict[str, Any]:
+        return {
+            "id": f"test-{metric_type}",
+            "type": metric_type,
+            "unit": unit,
+            "value": value,
+            "startDate": "2025-04-10T12:00:00Z",
+            "endDate": "2025-04-10T12:00:00Z",
+            "source": {
+                "name": "Test Device",
+                "bundleIdentifier": "test",
+            },
+        }
+
+    def _build_request(self, provider: str, records: list[dict[str, Any]]) -> SDKSyncRequest:
+        return SDKSyncRequest(
+            **{
+                "provider": provider,
+                "sdkVersion": "1.0.0",
+                "syncTimestamp": "2025-04-10T12:00:00Z",
+                "data": {"records": records},
+            }
+        )
+
+    def test_dietary_protein_maps_to_series_type(self, import_service: ImportService) -> None:
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._build_record("HKQuantityTypeIdentifierDietaryProtein", value=24.5, unit="g")],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.dietary_protein
+        assert samples[0].value == Decimal("24.5")
+
+    def test_dietary_water_liters_converted_to_hydration_milliliters(self, import_service: ImportService) -> None:
+        """HealthKit reports dietary water in liters; the unified hydration series is in mL."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._build_record("HKQuantityTypeIdentifierDietaryWater", value=0.5, unit="L")],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hydration
+        assert samples[0].value == Decimal("500.0")
+
+    def test_hydration_reported_in_milliliters_is_not_rescaled(self, import_service: ImportService) -> None:
+        """A provider that already reports hydration in mL (e.g. Google Health API) is untouched."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "google",
+            [self._build_record("HYDRATION", value=500, unit="mL")],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hydration
+        assert samples[0].value == Decimal("500")

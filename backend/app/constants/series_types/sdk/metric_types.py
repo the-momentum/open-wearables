@@ -172,6 +172,47 @@ class SDKMetricType(StrEnum):
     # Nike Fuel (deprecated but included for backwards compatibility)
     NIKE_FUEL = "HKQuantityTypeIdentifierNikeFuel"
 
+    # Dietary / Nutrition
+    DIETARY_ENERGY_CONSUMED = "HKQuantityTypeIdentifierDietaryEnergyConsumed"
+    DIETARY_CARBOHYDRATES = "HKQuantityTypeIdentifierDietaryCarbohydrates"
+    DIETARY_FIBER = "HKQuantityTypeIdentifierDietaryFiber"
+    DIETARY_SUGAR = "HKQuantityTypeIdentifierDietarySugar"
+    DIETARY_FAT_TOTAL = "HKQuantityTypeIdentifierDietaryFatTotal"
+    DIETARY_FAT_SATURATED = "HKQuantityTypeIdentifierDietaryFatSaturated"
+    DIETARY_FAT_MONOUNSATURATED = "HKQuantityTypeIdentifierDietaryFatMonounsaturated"
+    DIETARY_FAT_POLYUNSATURATED = "HKQuantityTypeIdentifierDietaryFatPolyunsaturated"
+    DIETARY_CHOLESTEROL = "HKQuantityTypeIdentifierDietaryCholesterol"
+    DIETARY_PROTEIN = "HKQuantityTypeIdentifierDietaryProtein"
+    DIETARY_SODIUM = "HKQuantityTypeIdentifierDietarySodium"
+    DIETARY_POTASSIUM = "HKQuantityTypeIdentifierDietaryPotassium"
+    DIETARY_CALCIUM = "HKQuantityTypeIdentifierDietaryCalcium"
+    DIETARY_IRON = "HKQuantityTypeIdentifierDietaryIron"
+    DIETARY_MAGNESIUM = "HKQuantityTypeIdentifierDietaryMagnesium"
+    DIETARY_PHOSPHORUS = "HKQuantityTypeIdentifierDietaryPhosphorus"
+    DIETARY_ZINC = "HKQuantityTypeIdentifierDietaryZinc"
+    DIETARY_COPPER = "HKQuantityTypeIdentifierDietaryCopper"
+    DIETARY_MANGANESE = "HKQuantityTypeIdentifierDietaryManganese"
+    DIETARY_SELENIUM = "HKQuantityTypeIdentifierDietarySelenium"
+    DIETARY_CHROMIUM = "HKQuantityTypeIdentifierDietaryChromium"
+    DIETARY_MOLYBDENUM = "HKQuantityTypeIdentifierDietaryMolybdenum"
+    DIETARY_IODINE = "HKQuantityTypeIdentifierDietaryIodine"
+    DIETARY_CHLORIDE = "HKQuantityTypeIdentifierDietaryChloride"
+    DIETARY_VITAMIN_A = "HKQuantityTypeIdentifierDietaryVitaminA"
+    DIETARY_VITAMIN_B6 = "HKQuantityTypeIdentifierDietaryVitaminB6"
+    DIETARY_VITAMIN_B12 = "HKQuantityTypeIdentifierDietaryVitaminB12"
+    DIETARY_VITAMIN_C = "HKQuantityTypeIdentifierDietaryVitaminC"
+    DIETARY_VITAMIN_D = "HKQuantityTypeIdentifierDietaryVitaminD"
+    DIETARY_VITAMIN_E = "HKQuantityTypeIdentifierDietaryVitaminE"
+    DIETARY_VITAMIN_K = "HKQuantityTypeIdentifierDietaryVitaminK"
+    DIETARY_THIAMIN = "HKQuantityTypeIdentifierDietaryThiamin"
+    DIETARY_RIBOFLAVIN = "HKQuantityTypeIdentifierDietaryRiboflavin"
+    DIETARY_NIACIN = "HKQuantityTypeIdentifierDietaryNiacin"
+    DIETARY_FOLATE = "HKQuantityTypeIdentifierDietaryFolate"
+    DIETARY_PANTOTHENIC_ACID = "HKQuantityTypeIdentifierDietaryPantothenicAcid"
+    DIETARY_BIOTIN = "HKQuantityTypeIdentifierDietaryBiotin"
+    DIETARY_CAFFEINE = "HKQuantityTypeIdentifierDietaryCaffeine"
+    DIETARY_WATER = "HKQuantityTypeIdentifierDietaryWater"
+
 
 METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Heart & Cardiovascular
@@ -309,6 +350,47 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.INSULIN_DELIVERY: SeriesType.insulin_delivery,
     # Nike Fuel
     SDKMetricType.NIKE_FUEL: SeriesType.distance_other,
+    # Dietary / Nutrition
+    SDKMetricType.DIETARY_ENERGY_CONSUMED: SeriesType.dietary_energy_consumed,
+    SDKMetricType.DIETARY_CARBOHYDRATES: SeriesType.dietary_carbohydrates,
+    SDKMetricType.DIETARY_FIBER: SeriesType.dietary_fiber,
+    SDKMetricType.DIETARY_SUGAR: SeriesType.dietary_sugar,
+    SDKMetricType.DIETARY_FAT_TOTAL: SeriesType.dietary_fat_total,
+    SDKMetricType.DIETARY_FAT_SATURATED: SeriesType.dietary_fat_saturated,
+    SDKMetricType.DIETARY_FAT_MONOUNSATURATED: SeriesType.dietary_fat_monounsaturated,
+    SDKMetricType.DIETARY_FAT_POLYUNSATURATED: SeriesType.dietary_fat_polyunsaturated,
+    SDKMetricType.DIETARY_CHOLESTEROL: SeriesType.dietary_cholesterol,
+    SDKMetricType.DIETARY_PROTEIN: SeriesType.dietary_protein,
+    SDKMetricType.DIETARY_SODIUM: SeriesType.dietary_sodium,
+    SDKMetricType.DIETARY_POTASSIUM: SeriesType.dietary_potassium,
+    SDKMetricType.DIETARY_CALCIUM: SeriesType.dietary_calcium,
+    SDKMetricType.DIETARY_IRON: SeriesType.dietary_iron,
+    SDKMetricType.DIETARY_MAGNESIUM: SeriesType.dietary_magnesium,
+    SDKMetricType.DIETARY_PHOSPHORUS: SeriesType.dietary_phosphorus,
+    SDKMetricType.DIETARY_ZINC: SeriesType.dietary_zinc,
+    SDKMetricType.DIETARY_COPPER: SeriesType.dietary_copper,
+    SDKMetricType.DIETARY_MANGANESE: SeriesType.dietary_manganese,
+    SDKMetricType.DIETARY_SELENIUM: SeriesType.dietary_selenium,
+    SDKMetricType.DIETARY_CHROMIUM: SeriesType.dietary_chromium,
+    SDKMetricType.DIETARY_MOLYBDENUM: SeriesType.dietary_molybdenum,
+    SDKMetricType.DIETARY_IODINE: SeriesType.dietary_iodine,
+    SDKMetricType.DIETARY_CHLORIDE: SeriesType.dietary_chloride,
+    SDKMetricType.DIETARY_VITAMIN_A: SeriesType.dietary_vitamin_a,
+    SDKMetricType.DIETARY_VITAMIN_B6: SeriesType.dietary_vitamin_b6,
+    SDKMetricType.DIETARY_VITAMIN_B12: SeriesType.dietary_vitamin_b12,
+    SDKMetricType.DIETARY_VITAMIN_C: SeriesType.dietary_vitamin_c,
+    SDKMetricType.DIETARY_VITAMIN_D: SeriesType.dietary_vitamin_d,
+    SDKMetricType.DIETARY_VITAMIN_E: SeriesType.dietary_vitamin_e,
+    SDKMetricType.DIETARY_VITAMIN_K: SeriesType.dietary_vitamin_k,
+    SDKMetricType.DIETARY_THIAMIN: SeriesType.dietary_thiamin,
+    SDKMetricType.DIETARY_RIBOFLAVIN: SeriesType.dietary_riboflavin,
+    SDKMetricType.DIETARY_NIACIN: SeriesType.dietary_niacin,
+    SDKMetricType.DIETARY_FOLATE: SeriesType.dietary_folate,
+    SDKMetricType.DIETARY_PANTOTHENIC_ACID: SeriesType.dietary_pantothenic_acid,
+    SDKMetricType.DIETARY_BIOTIN: SeriesType.dietary_biotin,
+    SDKMetricType.DIETARY_CAFFEINE: SeriesType.dietary_caffeine,
+    # Water is a volume of intake, same unified metric as Health Connect's HydrationRecord.
+    SDKMetricType.DIETARY_WATER: SeriesType.hydration,
 }
 
 
