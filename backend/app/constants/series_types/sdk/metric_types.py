@@ -388,6 +388,7 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.DIETARY_PANTOTHENIC_ACID: SeriesType.dietary_pantothenic_acid,
     SDKMetricType.DIETARY_BIOTIN: SeriesType.dietary_biotin,
     SDKMetricType.DIETARY_CAFFEINE: SeriesType.dietary_caffeine,
+    # Water is a volume of intake, same unified metric as Health Connect's HydrationRecord.
     SDKMetricType.DIETARY_WATER: SeriesType.hydration,
 }
 
