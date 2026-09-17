@@ -19,6 +19,7 @@ from jose import jwt
 from svix.api import (
     ApplicationIn,
     EndpointIn,
+    EndpointListOptions,
     EndpointOut,
     EndpointPatch,
     EventTypeIn,
@@ -260,9 +261,10 @@ def create_endpoint(
     )
 
 
-def list_endpoints(app_id: str) -> ListResponseEndpointOut:
+def list_endpoints(app_id: str, *, iterator: str | None = None) -> ListResponseEndpointOut:
+    """One page of endpoints. Pass the previous response's `iterator` to walk the rest."""
     assert _client is not None
-    return _client.endpoint.list(app_id)
+    return _client.endpoint.list(app_id, EndpointListOptions(iterator=iterator))
 
 
 def get_endpoint(app_id: str, endpoint_id: str) -> EndpointOut:

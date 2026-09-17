@@ -29,7 +29,9 @@ Usage (inside Docker):
 """
 
 import argparse
+import sys
 import time
+from collections.abc import Iterator
 
 from app.database import SessionLocal
 from app.models import Developer
@@ -52,21 +54,33 @@ def _target_filters(current: list[str], phase: str) -> list[str] | None:
     return [f for f in current if f != OLD_EVENT] or None
 
 
-def main(phase: str, dry_run: bool, sleep: float) -> None:
+def _iter_endpoints(app_id: str) -> Iterator:
+    """Every endpoint of an application, following Svix's pagination."""
+    iterator = None
+    while True:
+        page = svix.list_endpoints(app_id, iterator=iterator)
+        yield from page.data
+        if page.done or not page.iterator:
+            return
+        iterator = page.iterator
+
+
+def main(phase: str, dry_run: bool, sleep: float) -> int:
     if not svix.is_enabled():
         print("Svix is disabled — nothing to migrate.")
-        return
+        return 0
 
     with SessionLocal() as db:
         developer_ids = [str(d.id) for d in db.query(Developer.id).all()]
     print(f"Developers to scan: {len(developer_ids)}")
 
-    scanned = patched = skipped_last_filter = 0
+    scanned = patched = skipped_last_filter = failed = 0
     for app_id in developer_ids:
         try:
-            endpoints = svix.list_endpoints(app_id).data
+            endpoints = list(_iter_endpoints(app_id))
         except Exception as exc:  # noqa: BLE001 - a missing app must not abort the run
             print(f"  ! {app_id}: cannot list endpoints ({exc})")
+            failed += 1
             continue
 
         for ep in endpoints:
@@ -81,7 +95,13 @@ def main(phase: str, dry_run: bool, sleep: float) -> None:
 
             print(f"  {'[dry-run] ' if dry_run else ''}{app_id}/{ep.id}: {current} -> {target}")
             if not dry_run:
-                svix.patch_endpoint(app_id, ep.id, filter_types=target)
+                # One endpoint the API refuses must not strand the rest half-migrated.
+                try:
+                    svix.patch_endpoint(app_id, ep.id, filter_types=target)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  ! {app_id}/{ep.id}: patch failed ({exc})")
+                    failed += 1
+                    continue
                 if sleep:
                     time.sleep(sleep)
             patched += 1
@@ -89,6 +109,9 @@ def main(phase: str, dry_run: bool, sleep: float) -> None:
     print(f"\nScanned {scanned} endpoints, {'would patch' if dry_run else 'patched'} {patched}.")
     if skipped_last_filter:
         print(f"{skipped_last_filter} endpoint(s) left untouched — remove the filter by hand or widen it first.")
+    if failed:
+        print(f"{failed} failure(s) — re-run once resolved; the migration is idempotent.")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
@@ -97,4 +120,4 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
     parser.add_argument("--sleep", type=float, default=0.05, help="Seconds between writes (Svix rate limits)")
     args = parser.parse_args()
-    main(phase=args.phase, dry_run=args.dry_run, sleep=args.sleep)
+    sys.exit(main(phase=args.phase, dry_run=args.dry_run, sleep=args.sleep))

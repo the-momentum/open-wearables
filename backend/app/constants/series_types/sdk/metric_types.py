@@ -273,7 +273,6 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.ANDROID_POWER: SeriesType.power,
     SDKMetricType.ANDROID_SPEED: SeriesType.speed,
     SDKMetricType.ANDROID_CYCLING_PEDALING_CADENCE: SeriesType.cadence,
-    SDKMetricType.ANDROID_TOTAL_CALORIES_BURNED: SeriesType.active_energy,
     # Environmental
     SDKMetricType.ENVIRONMENTAL_AUDIO_EXPOSURE: SeriesType.environmental_audio_exposure,
     SDKMetricType.HEADPHONE_AUDIO_EXPOSURE: SeriesType.headphone_audio_exposure,
