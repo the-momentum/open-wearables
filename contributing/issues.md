@@ -25,7 +25,7 @@ Common labels you may see:
 | Label | Description |
 |-------|-------------|
 | `bug` | Something isn't working |
-| `feature` | New feature request |
+| `enhancement` | New feature request |
 | `documentation` | Documentation improvements |
 | `good first issue` | Good for newcomers |
 | `help wanted` | Extra attention needed |
