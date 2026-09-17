@@ -14,7 +14,7 @@ When you [open an issue](https://github.com/the-momentum/open-wearables/issues/n
 
 A few things that help us the most:
 
-- **Link the docs you looked at.** For API problems, that's usually the endpoint in the [API reference](https://openwearables.io/docs/api-reference/introduction). If the docs made you expect something different, say so - it helps us find misleading docs.
+- **Tell us if the docs don't match.** If you checked the [docs](https://openwearables.io/docs) and they say something different from what you're seeing, link the page - it helps us find misleading docs.
 - **Say what it affects.** Endpoints, webhooks, MCP tools, SDKs and providers.
 - **For features, tell us your use case** - what you're building, how you get by without it, and how much it blocks you.
 

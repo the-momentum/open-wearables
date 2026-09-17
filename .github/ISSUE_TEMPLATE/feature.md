@@ -28,12 +28,8 @@ roughly how many users?
 ## Docs
 
 <!--
-Which docs pages did you look at, if any? Paste the links - if they led you to expect
-something different, that's worth knowing too. For example:
-- endpoints: https://openwearables.io/docs/api-reference/... (e.g. external:-summaries/get-sleep-summary)
-- webhooks: https://openwearables.io/docs/api-reference/guides/webhooks
-- providers and data coverage: https://openwearables.io/docs/providers/coverage
-- SDKs, MCP server, health scores: https://openwearables.io/docs
+Optional. If you checked the docs and they don't match what you're seeing, link the page,
+e.g. https://openwearables.io/docs/api-reference/external:-summaries/get-sleep-summary
 -->
 
 ## Providers
