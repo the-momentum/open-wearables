@@ -168,7 +168,7 @@ class SeedDataService:
                             enabled_types,
                             fake,
                             user_id=user.id,
-                            source=record.source or "unknown",
+                            source=record.source,
                             device_model=record.device_model,
                             provider=record.provider,
                             software_version=record.software_version,
