@@ -3,7 +3,7 @@
 import pytest
 
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
-from app.schemas.enums import SeriesType, get_series_type_id, retired_series_type_name
+from app.schemas.enums import SeriesType, get_series_type_id
 
 
 class TestRetiredSeriesTypeNames:
@@ -23,12 +23,8 @@ class TestRetiredSeriesTypeNames:
         with pytest.raises(ValueError, match="not a valid SeriesType"):
             SeriesType("not_a_series_type")
 
-    def test_webhook_maps_answer_to_both_spellings(self) -> None:
+    def test_webhook_maps_are_keyed_by_the_current_name(self) -> None:
         """A missing key makes the emitter return without firing, so this fails silently."""
         for mapping in (SERIES_TYPE_TO_GROUP_EVENT, SERIES_TYPE_TO_GRANULAR_EVENT):
-            assert mapping["active_energy"] == mapping["energy"]
-
-    def test_webhook_payload_keeps_the_retired_name(self) -> None:
-        """Subscribers are push-only and cannot ask for a vocabulary, so they keep the old one."""
-        assert retired_series_type_name("active_energy") == "energy"
-        assert retired_series_type_name("steps") == "steps"
+            assert "active_energy" in mapping
+            assert "energy" not in mapping

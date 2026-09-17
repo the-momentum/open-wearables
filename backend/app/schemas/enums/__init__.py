@@ -29,7 +29,6 @@ from .series_types import (
     get_series_type_from_id,
     get_series_type_id,
     get_series_type_unit,
-    retired_series_type_name,
 )
 from .timeline import (
     TimelineBucket,
@@ -56,7 +55,6 @@ __all__ = [
     "EntrySource",
     "SeriesType",
     "SERIES_TYPE_DEFINITIONS",
-    "retired_series_type_name",
     "SERIES_TYPE_ID_BY_ENUM",
     "get_series_type_id",
     "get_series_type_from_id",

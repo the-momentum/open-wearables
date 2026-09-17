@@ -11,19 +11,8 @@ IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in t
 
 from enum import Enum
 
-# TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_.
+# TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_ below.
 RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {"energy": "active_energy"}
-
-_CURRENT_TO_RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {v: k for k, v in RETIRED_SERIES_TYPE_NAMES.items()}
-
-
-def retired_series_type_name(name: str) -> str:
-    """TEMPORARY until 1.0: the name a wire format still has to carry.
-
-    Outgoing webhooks are push, so a subscriber has no way to ask for the old vocabulary the
-    way an API caller does. They keep receiving the retired name until the 1.0 cut.
-    """
-    return _CURRENT_TO_RETIRED_SERIES_TYPE_NAMES.get(name, name)
 
 
 class SeriesType(str, Enum):
@@ -190,14 +179,11 @@ class SeriesType(str, Enum):
     nike_fuel = "nike_fuel"
     hydration = "hydration"
 
-    # TEMPORARY until 1.0: accept retired names on input so existing callers keep working.
-    # Lookup only - `.value` stays the current name, so responses carry the new one.
-    # Delete this together with LEGACY_SERIES_TYPE_NAMES after 1.0.
+    # TEMPORARY until 1.0: lookup only, so `.value` stays current and responses carry the new name.
     @classmethod
     def _missing_(cls, value: object) -> "SeriesType | None":
-        if isinstance(value, str) and value in RETIRED_SERIES_TYPE_NAMES:
-            return cls(RETIRED_SERIES_TYPE_NAMES[value])
-        return None
+        renamed = RETIRED_SERIES_TYPE_NAMES.get(value) if isinstance(value, str) else None
+        return cls(renamed) if renamed else None
 
 
 # =============================================================================

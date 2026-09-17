@@ -62,9 +62,6 @@ SERIES_TYPE_TO_GROUP_EVENT: dict[str, str] = {
     # Activity Basic
     "steps": WebhookEventType.STEPS_CREATED,
     "active_energy": WebhookEventType.CALORIES_CREATED,
-    # TEMPORARY until 1.0: the retired name still keys the map so a caller passing it
-    # does not silently stop emitting. The event names themselves never change.
-    "energy": WebhookEventType.CALORIES_CREATED,
     "basal_energy": WebhookEventType.CALORIES_CREATED,
     "stand_time": WebhookEventType.ACTIVITY_CREATED_TIMESERIES,
     "exercise_time": WebhookEventType.ACTIVITY_CREATED_TIMESERIES,
@@ -163,8 +160,7 @@ SERIES_TYPE_TO_GRANULAR_EVENT: dict[str, str] = {
     "cardiovascular_age": WebhookEventType.SERIES_CARDIOVASCULAR_AGE,
     "garmin_fitness_age": WebhookEventType.SERIES_GARMIN_FITNESS_AGE,
     "steps": WebhookEventType.SERIES_STEPS,
-    "active_energy": WebhookEventType.SERIES_ENERGY,
-    "energy": WebhookEventType.SERIES_ENERGY,  # TEMPORARY until 1.0, see above
+    "active_energy": WebhookEventType.SERIES_ACTIVE_ENERGY,
     "basal_energy": WebhookEventType.SERIES_BASAL_ENERGY,
     "stand_time": WebhookEventType.SERIES_STAND_TIME,
     "exercise_time": WebhookEventType.SERIES_EXERCISE_TIME,
