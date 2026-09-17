@@ -241,6 +241,10 @@ class ImportService:
             if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
                 value = value * MMOL_L_TO_MG_DL
 
+            # Convert liters to milliliters
+            if series_type == SeriesType.hydration and (rjson.unit or "").strip().lower().startswith("l"):
+                value = value * 1000
+
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
 
