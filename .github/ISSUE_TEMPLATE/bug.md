@@ -10,6 +10,14 @@ labels: bug
 
 <!-- A couple of sentences. If you know where in the code it happens, say so. -->
 
+## How do you use Open Wearables?
+
+<!--
+For external contributors - the core team can delete this section.
+Are you using it for yourself, or as the integration layer in an app? If it's an app,
+roughly how many users?
+-->
+
 ## Impact
 
 <!--

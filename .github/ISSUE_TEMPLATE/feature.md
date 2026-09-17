@@ -13,6 +13,14 @@ Tell us what you're building and why you need this. How are you getting by witho
 and how much does it block you?
 -->
 
+## How do you use Open Wearables?
+
+<!--
+For external contributors - the core team can delete this section.
+Are you using it for yourself, or as the integration layer in an app? If it's an app,
+roughly how many users?
+-->
+
 ## What should it look like?
 
 <!-- Optional. The endpoint, field or behavior you have in mind. -->
