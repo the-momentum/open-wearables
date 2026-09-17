@@ -1,6 +1,6 @@
 [project]
 name = "open-wearables"
-version = "0.8.0"
+version = "0.8.1"
 description = ""
 requires-python = ">=3.13"
 dependencies = [
@@ -8,7 +8,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "email-validator>=2.2.0",
     "psycopg>=3.3.5",
-    "sqlalchemy>=2.0.51",
+    "sqlalchemy>=2.0.54",
     "fastapi>=0.139.2",
     "fastapi-cli>=0.0.32",
     "celery>=5.6.3",
@@ -18,16 +18,16 @@ dependencies = [
     "python-multipart>=0.0.32",
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
-    "alembic>=1.19.2",
-    "boto3>=1.43.93",
+    "alembic>=1.20.0",
+    "boto3>=1.43.96",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.43.0",
+    "resend>=2.46.0",
     "pyyaml>=6.0.3",
-    "svix>=1.99.1",
+    "svix>=2.5.0",
     "numpy>=2.5.3",
-    "faker>=40.38.0",
+    "faker>=40.39.0",
     "fitdecode>=0.11.0",
     "google-auth>=2.58.0",
 ]

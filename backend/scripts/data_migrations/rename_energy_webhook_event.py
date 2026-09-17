@@ -85,7 +85,7 @@ def main(phase: str, dry_run: bool, sleep: float) -> int:
 
         for ep in endpoints:
             scanned += 1
-            current = list(ep.filter_types or [])
+            current = list(ep.event_types or [])
             target = _target_filters(current, phase)
             if target is None:
                 if phase == "remove" and current == [OLD_EVENT]:

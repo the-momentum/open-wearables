@@ -517,32 +517,32 @@ class TestSvixFilterTypesHandling:
         svix_service.create_endpoint("app_1", "https://example.com/wh", filter_types=filter_types)
 
         sent = mock_client.endpoint.create.call_args.args[1]
-        assert "filter_types" not in sent.model_fields_set
+        assert "event_types" not in sent.model_fields_set
 
     def test_create_endpoint_includes_filter_types_when_populated(self, mock_client: MagicMock) -> None:
         svix_service.create_endpoint("app_1", "https://example.com/wh", filter_types=["workout.created"])
 
         sent = mock_client.endpoint.create.call_args.args[1]
-        assert sent.filter_types == ["workout.created"]
+        assert sent.event_types == ["workout.created"]
 
     def test_patch_endpoint_leaves_filter_types_untouched_when_not_provided(self, mock_client: MagicMock) -> None:
         svix_service.patch_endpoint("app_1", "ep_1", filter_types=None)
 
         sent = mock_client.endpoint.patch.call_args.args[2]
-        assert "filter_types" not in sent.model_fields_set
+        assert "event_types" not in sent.model_fields_set
 
     def test_patch_endpoint_clears_filter_types_with_explicit_null(self, mock_client: MagicMock) -> None:
         svix_service.patch_endpoint("app_1", "ep_1", filter_types=[])
 
         sent = mock_client.endpoint.patch.call_args.args[2]
-        assert "filter_types" in sent.model_fields_set
-        assert sent.filter_types is None
+        assert "event_types" in sent.model_fields_set
+        assert sent.event_types is None
 
     def test_patch_endpoint_sets_filter_types_when_populated(self, mock_client: MagicMock) -> None:
         svix_service.patch_endpoint("app_1", "ep_1", filter_types=["sleep.created"])
 
         sent = mock_client.endpoint.patch.call_args.args[2]
-        assert sent.filter_types == ["sleep.created"]
+        assert sent.event_types == ["sleep.created"]
 
 
 # ---------------------------------------------------------------------------

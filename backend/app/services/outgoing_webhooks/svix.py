@@ -24,7 +24,7 @@ from svix.api import (
     EndpointPatch,
     EventTypeIn,
     EventTypeListOptions,
-    EventTypeUpdate,
+    EventTypePatch,
     ListResponseEndpointOut,
     ListResponseMessageAttemptOut,
     ListResponseMessageOut,
@@ -151,13 +151,13 @@ def register_event_types() -> bool:
             except Exception:
                 # Deemed missing but create failed (archived/race) — update so it is never left unregistered.
                 try:
-                    _client.event_type.update(evt.value, EventTypeUpdate(description=description))
+                    _client.event_type.patch(evt.value, EventTypePatch(description=description))
                 except Exception:
                     logger.exception("Failed to register/update event type %s", evt.value)
                     all_ok = False
         elif current != description:
             try:
-                _client.event_type.update(evt.value, EventTypeUpdate(description=description))
+                _client.event_type.patch(evt.value, EventTypePatch(description=description))
                 logger.info("Updated event type description: %s", evt.value)
             except Exception:
                 logger.exception("Failed to update event type %s", evt.value)
@@ -251,7 +251,7 @@ def create_endpoint(
         "description": description or "",
     }
     if filter_types:
-        endpoint_data["filter_types"] = filter_types
+        endpoint_data["event_types"] = filter_types
     channels = _user_channels(user_id)
     if channels is not None:
         endpoint_data["channels"] = channels
@@ -303,7 +303,7 @@ def patch_endpoint(
         # so it goes out as an explicit null).  None stays a no-op: it is what an
         # omitted field deserialises to and external clients already rely on that,
         # so it must not be repurposed into a second clearing signal.
-        patch_data["filter_types"] = filter_types or None
+        patch_data["event_types"] = filter_types or None
     if user_id is not None:
         patch_data["channels"] = _user_channels(user_id)
     elif clear_user_id:
@@ -361,15 +361,15 @@ def send_test_message(app_id: str, endpoint_id: str, event_type: str) -> Message
 
     Uses ``message.create`` with an example payload instead of
     ``endpoint.send_example`` which requires Svix event-type schemas to be defined.
-    The event_type is adjusted to match the endpoint's filter_types if set.
+    The event_type is adjusted to match the endpoint's filters if set.
     """
     if not is_enabled():
         return None
     assert _client is not None
     try:
         ep = _client.endpoint.get(app_id, endpoint_id)
-        if ep.filter_types and event_type not in ep.filter_types:
-            event_type = ep.filter_types[0]
+        if ep.event_types and event_type not in ep.event_types:
+            event_type = ep.event_types[0]
         return _client.message.create(
             app_id,
             MessageIn(
