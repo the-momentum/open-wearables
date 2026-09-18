@@ -231,7 +231,7 @@ class TestGarminOAuth:
         assert user_info["user_id"] == "garmin_user_abc"
         assert user_info["scope"] is None
 
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     @patch("app.integrations.redis_client.get_redis_client")
     def test_exchange_token_with_pkce(
         self,
@@ -249,7 +249,7 @@ class TestGarminOAuth:
             "token_type": "Bearer",
         }
         mock_response.raise_for_status.return_value = None
-        mock_httpx_post.return_value = mock_response
+        mock_httpx_post.return_value.__enter__.return_value.post.return_value = mock_response
 
         code = "auth_code_123"
         code_verifier = "test_verifier_abc123"
@@ -262,10 +262,10 @@ class TestGarminOAuth:
         assert token_response.refresh_token == "new_refresh_token"
 
         # Verify PKCE verifier was included in request
-        call_args = mock_httpx_post.call_args
+        call_args = mock_httpx_post.return_value.__enter__.return_value.post.call_args
         assert call_args[1]["data"]["code_verifier"] == code_verifier
 
-    @patch("httpx.post")
+    @patch("app.services.providers.templates.base_oauth.httpx.Client")
     def test_refresh_access_token(
         self,
         mock_httpx_post: MagicMock,
@@ -290,7 +290,7 @@ class TestGarminOAuth:
             "token_type": "Bearer",
         }
         mock_response.raise_for_status.return_value = None
-        mock_httpx_post.return_value = mock_response
+        mock_httpx_post.return_value.__enter__.return_value.post.return_value = mock_response
 
         # Act
         token_response = garmin_oauth.refresh_access_token(db, user.id, "old_refresh_token")
