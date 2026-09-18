@@ -15,6 +15,10 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.incoming_webhooks import WebhookOperationResult, WebhookSubscriptionStatus
 
 
+def _deleted(subscription_id: str) -> WebhookOperationResult:
+    return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.DELETED)
+
+
 @pytest.fixture
 def strategy() -> MagicMock:
     strategy = MagicMock()
@@ -41,9 +45,7 @@ def test_webhook_mode_registers_against_the_callback_url(strategy: MagicMock) ->
 
 def test_pull_mode_deletes_subscriptions(strategy: MagicMock) -> None:
     """Should delete the subscriptions the provider still holds."""
-    strategy.webhook_service.deregister_subscriptions = AsyncMock(
-        return_value=[WebhookOperationResult(subscription_id="sub-1", status=WebhookSubscriptionStatus.DELETED)]
-    )
+    strategy.webhook_service.deregister_subscriptions = AsyncMock(return_value=[_deleted("sub-1")])
 
     result = _run("oura", LiveSyncMode.PULL, strategy)
 
@@ -56,7 +58,7 @@ def test_pull_mode_counts_failed_deletes(strategy: MagicMock) -> None:
     """Should report deletes the provider rejected rather than counting them as gone."""
     strategy.webhook_service.deregister_subscriptions = AsyncMock(
         return_value=[
-            WebhookOperationResult(subscription_id="sub-1", status=WebhookSubscriptionStatus.DELETED),
+            _deleted("sub-1"),
             WebhookOperationResult(subscription_id="sub-2", status=WebhookSubscriptionStatus.ERROR, error="boom"),
         ]
     )

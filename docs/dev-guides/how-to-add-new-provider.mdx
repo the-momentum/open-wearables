@@ -805,13 +805,13 @@ If `webhook_registration_api=False` (the default), switching sync mode to `webho
 
 Some providers create subscriptions with each user's own bearer token rather than one app-level registration (Withings). For those, also set `webhook_subscription_per_user=True` and:
 
-1. Make `register_subscriptions(callback_url)` dispatch one `register_user_webhooks` task per active connection (`UserConnectionRepository.get_all_active_by_provider`) instead of registering anything itself. The `callback_url` argument is unused — each per-user task builds its own.
-2. Implement `register_user_subscriptions(db, user_id)` on your own webhook service — it stays provider-local rather than going on `BaseWebhookService`, and the task resolves it dynamically. That is what the per-user task calls; work against the provider's currently configured live-sync mode (`ProviderSettingsRepository.get_live_sync_mode`), listing the provider's existing subscriptions first and changing only the gap, so a redelivered task is safe and a mode of `pull` revokes rather than creates.
+1. Make `register_subscriptions(callback_url)` and `deregister_subscriptions()` dispatch one per-connection task each (`UserConnectionRepository.get_all_active_by_provider`) instead of subscribing anything themselves, and return no results — nothing is subscribed or deleted there. The `callback_url` argument is unused; each per-connection task builds its own.
+2. Add that task under `app/integrations/celery/tasks/<provider>/`, next to `garmin/`. It stays provider-scoped rather than shared, so it can call your own service directly instead of forcing a per-user method onto `BaseWebhookService`. Give it a single `user_id` argument and have it work against the provider's currently configured live-sync mode (`ProviderSettingsRepository.get_live_sync_mode`), listing the provider's existing subscriptions first and changing only the gap, so a redelivered task is safe and a mode of `pull` revokes rather than creates.
 3. Drive both ends from `BaseOAuthTemplate` rather than adding new hooks. Override `_save_connection` to enqueue that task after calling `super()` — the connection and its token are committed by then — and `deregister_user` to revoke, which disconnect, data purge and account deletion all already call while the connection is still active.
 
 Each result entry's `status` drives the task's retry policy: `error` retries with the failures attached, anything else counts as success. Return `skipped` for what retrying cannot fix, such as an unusable callback URL or a revoked grant.
 
-Because each connection holds its own subscription, both `register_subscriptions()` and `deregister_subscriptions()` fan out the same way — the per-user task reads the configured mode and revokes when it is `pull`, so neither direction is special-cased in shared code. `app/services/providers/withings/webhook_service.py` is the reference implementation.
+Because each connection holds its own subscription, both `register_subscriptions()` and `deregister_subscriptions()` fan out the same way — the per-connection task reads the configured mode and revokes when it is `pull`, so neither direction is special-cased in shared code. `app/services/providers/withings/webhook_service.py` and `app/integrations/celery/tasks/withings/notify_sync_task.py` are the reference implementation.
 
 ---
 
