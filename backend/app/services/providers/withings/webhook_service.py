@@ -120,7 +120,7 @@ class WithingsWebhookService(BaseWebhookService):
         # Provider's default when no admin override is stored (Withings: PULL).
         self._default_live_sync_mode = default_live_sync_mode
 
-    async def register_subscriptions(self, callback_url: str) -> list[WebhookOperationResult]:
+    async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
         """Fan out one sync task per active connection.
 
         ``callback_url`` is ignored: each subscription carries the shared-secret

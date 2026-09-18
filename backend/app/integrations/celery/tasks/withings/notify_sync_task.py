@@ -12,13 +12,11 @@ reconcile a single new connection rather than every existing one.
 """
 
 from logging import getLogger
-from typing import cast
 from uuid import UUID
 
 from celery import Task, shared_task
 
 from app.database import SessionLocal
-from app.schemas.enums import ProviderName
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.withings.webhook_service import WithingsWebhookService
 from app.utils.structured_logging import log_structured
@@ -39,8 +37,9 @@ def sync_user_subscriptions(self: Task, user_id: str) -> dict:
     The service lists first and changes only the gap, so a redelivery after a
     lost worker is safe, and a mode of ``pull`` revokes rather than creates.
     """
-    strategy = ProviderFactory().get_provider(ProviderName.WITHINGS.value)
-    service = cast(WithingsWebhookService, strategy.webhook_service)
+    service = ProviderFactory().get_provider("withings").webhook_service
+    if not isinstance(service, WithingsWebhookService):
+        raise RuntimeError("Withings strategy is not wired with its notify service")
 
     with SessionLocal() as db:
         results = service.register_user_subscriptions(db, UUID(user_id))
