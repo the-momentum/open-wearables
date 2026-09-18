@@ -23,4 +23,5 @@ class UploadDataResponse(BaseModel):
         ),
     )
     workouts_saved: int = Field(0, description="Workouts saved")
+    meals_saved: int = Field(0, description="Meal correlations saved")
     sleep_saved: int = Field(0, description="Sleep records saved")
