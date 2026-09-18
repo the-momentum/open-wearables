@@ -54,8 +54,8 @@ def test_pull_mode_deletes_subscriptions(strategy: MagicMock) -> None:
     assert result == {"provider": "oura", "deleted": 1, "errors": 0}
 
 
-def test_pull_mode_counts_failed_deletes(strategy: MagicMock) -> None:
-    """Should report deletes the provider rejected rather than counting them as gone."""
+def test_pull_mode_retries_when_a_delete_fails(strategy: MagicMock) -> None:
+    """Should retry rather than report success: a surviving subscription keeps delivering."""
     strategy.webhook_service.deregister_subscriptions = AsyncMock(
         return_value=[
             _deleted("sub-1"),
@@ -63,9 +63,8 @@ def test_pull_mode_counts_failed_deletes(strategy: MagicMock) -> None:
         ]
     )
 
-    result = _run("oura", LiveSyncMode.PULL, strategy)
-
-    assert result == {"provider": "oura", "deleted": 1, "errors": 1}
+    with pytest.raises(RuntimeError, match="failed for 1 of 2"):
+        _run("oura", LiveSyncMode.PULL, strategy)
 
 
 def test_provider_without_webhook_service_is_reported_not_retried(strategy: MagicMock) -> None:

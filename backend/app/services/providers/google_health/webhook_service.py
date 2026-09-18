@@ -26,7 +26,6 @@ from app.config import settings
 from app.constants.google_health_endpoints import SUBSCRIBERS_ENDPOINT
 from app.schemas.responses.incoming_webhooks import (
     GoogleWebhookSubscription,
-    ProviderWebhookSubscription,
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
@@ -157,12 +156,13 @@ class GoogleWebhookService(BaseWebhookService):
         return [{"status": "created", "subscriber_id": SUBSCRIBER_ID, "response": response.json()}]
 
     async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
-        """Delete the project's subscriber, registered under a fixed id."""
-        if await self.get_subscription(SUBSCRIBER_ID) is None:
+        """Delete the subscriber we registered, leaving any other project subscriber alone."""
+        subscribers = await self.list_subscriptions()
+        if not any(sub.name.rsplit("/", 1)[-1] == SUBSCRIBER_ID for sub in subscribers):
             return []
         return [await self.delete_subscription(SUBSCRIBER_ID)]
 
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
+    async def list_subscriptions(self) -> list[GoogleWebhookSubscription]:
         """List the project's Health API subscribers."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
         try:
@@ -180,9 +180,9 @@ class GoogleWebhookService(BaseWebhookService):
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            return []
+            raise
 
-        result: list[ProviderWebhookSubscription] = []
+        result: list[GoogleWebhookSubscription] = []
         for item in raw.get("subscribers", []):
             try:
                 result.append(GoogleWebhookSubscription.model_validate(item))

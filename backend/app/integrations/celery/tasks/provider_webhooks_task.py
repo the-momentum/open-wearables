@@ -56,6 +56,9 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
                 deleted=deleted,
                 errors=errors,
             )
+            # Raised, not retried inline: self.retry() raises Retry, which the handler catches.
+            if errors:
+                raise RuntimeError(f"{provider} webhook deregistration failed for {errors} of {len(results)}")
             return {"provider": provider, "deleted": deleted, "errors": errors}
 
         callback_url = f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
@@ -85,6 +88,8 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
                     action="webhook_inbound_secret_missing",
                 )
 
+        if errors:
+            raise RuntimeError(f"{provider} webhook registration failed for {errors} of {len(results)}")
         return {"provider": provider, "created": created, "skipped": skipped, "errors": errors}
 
     except (ValueError, NotImplementedError) as exc:

@@ -121,30 +121,15 @@ class WithingsWebhookService(BaseWebhookService):
         self._default_live_sync_mode = default_live_sync_mode
 
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
-        """Queue one ``sync_user_subscriptions`` task per active connection.
-
-        Withings has no app-level subscription to create: each one is made with a
-        connection's own access token, so the provider-wide operation is a fan-out
-        over connections and every subscribe happens in the per-connection task.
-
-        ``callback_url`` is ignored — each task builds its own from the shared
-        webhook secret (``_callback_url``), which Withings echoes back on delivery.
-
-        Returns nothing because nothing was subscribed here. The fan-out logs how
-        many tasks it queued and captures the ones it could not; the per-connection
-        results are logged by ``sync_user_subscriptions`` itself.
+        """Queue one ``sync_user_subscriptions`` task per connection, since every
+        subscription needs that connection's own token. ``callback_url`` is unused —
+        each task builds its own — and nothing is subscribed here to report.
         """
         self._fan_out()
         return []
 
     async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
-        """Queue the same fan-out to revoke instead of subscribe.
-
-        Identical to ``register_subscriptions`` on purpose: each task resolves the
-        currently stored live-sync mode and reconciles its connection toward it, so
-        a mode of ``pull`` — already committed before this runs — revokes the applis
-        rather than creating them. Nothing is deleted here, so nothing is returned.
-        """
+        """Same fan-out: each task reconciles toward the stored mode, so ``pull`` revokes."""
         self._fan_out()
         return []
 
@@ -189,6 +174,12 @@ class WithingsWebhookService(BaseWebhookService):
             action="notify_fan_out",
             dispatched=sum(1 for result in results if result["status"] == "dispatched"),
         )
+
+        failed = [result for result in results if result["status"] == "error"]
+        if failed:
+            # Raised only after every owner was attempted. Retrying re-dispatches all of
+            # them, which is safe: each per-connection task reconciles idempotently.
+            raise RuntimeError(f"Withings fan-out failed to dispatch {len(failed)} of {len(results)} connections")
         return results
 
     def reconcile_user(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:

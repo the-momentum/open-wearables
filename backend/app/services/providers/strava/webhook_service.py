@@ -46,6 +46,12 @@ class StravaWebhookService(BaseWebhookService):
             raise ValueError("Strava client credentials not configured")
         return client_id, client_secret
 
+    def _error_message(self, e: httpx.HTTPError) -> str:
+        """Strava takes credentials as query params, which httpx renders into ``str(e)``."""
+        if isinstance(e, httpx.HTTPStatusError):
+            return f"HTTP {e.response.status_code}"
+        return str(e)
+
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
         """Register or update the Strava webhook subscription.
 
@@ -80,9 +86,9 @@ class StravaWebhookService(BaseWebhookService):
                     "Failed to list existing Strava subscriptions",
                     provider="strava",
                     action="strava_webhook_subscription_list_error",
-                    error=str(e),
+                    error=self._error_message(e),
                 )
-                return [{"status": "error", "error": str(e)}]
+                return [{"status": "error", "error": self._error_message(e)}]
 
             if existing:
                 sub_id = existing.get("id")
@@ -123,10 +129,10 @@ class StravaWebhookService(BaseWebhookService):
                         provider="strava",
                         action="strava_webhook_subscription_delete_error",
                         subscription_id=sub_id,
-                        error=str(e),
+                        error=self._error_message(e),
                         status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
                     )
-                    return [{"subscription_id": sub_id, "status": "error", "error": str(e)}]
+                    return [{"subscription_id": sub_id, "status": "error", "error": self._error_message(e)}]
 
             # Create new subscription (Strava requires form-encoded body)
             try:
@@ -180,7 +186,11 @@ class StravaWebhookService(BaseWebhookService):
                 params={"client_id": client_id, "client_secret": client_secret},
                 timeout=30.0,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # ``from None`` keeps the client secret, which Strava takes in the query, out of logs.
+                raise RuntimeError(f"Strava subscription list failed: {self._error_message(e)}") from None
             raw = response.json() or []
             result: list[StravaWebhookSubscription] = []
             for item in raw if isinstance(raw, list) else []:
@@ -217,13 +227,13 @@ class StravaWebhookService(BaseWebhookService):
                 provider="strava",
                 action="strava_webhook_subscription_delete_error",
                 subscription_id=subscription_id,
-                error=str(e),
+                error=self._error_message(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
             return WebhookOperationResult(
                 subscription_id=subscription_id,
                 status=WebhookSubscriptionStatus.ERROR,
-                error=str(e),
+                error=self._error_message(e),
             )
 
         log_structured(

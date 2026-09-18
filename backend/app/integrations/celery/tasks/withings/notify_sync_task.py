@@ -37,12 +37,27 @@ def sync_user_subscriptions(self: Task, user_id: str) -> dict:
     The service lists first and changes only the gap, so a redelivery after a
     lost worker is safe, and a mode of ``pull`` revokes rather than creates.
     """
+    # Parsed up front: a malformed id and a mis-wired strategy are both permanent.
+    user_uuid = UUID(user_id)
     service = ProviderFactory().get_provider("withings").webhook_service
     if not isinstance(service, WithingsWebhookService):
         raise RuntimeError("Withings strategy is not wired with its notify service")
 
-    with SessionLocal() as db:
-        results = service.reconcile_user(db, UUID(user_id))
+    try:
+        with SessionLocal() as db:
+            results = service.reconcile_user(db, user_uuid)
+    except Exception as exc:
+        log_structured(
+            logger,
+            "error",
+            "Withings user subscription sync failed, scheduling retry",
+            provider="withings",
+            user_id=user_id,
+            error=str(exc),
+            attempt=self.request.retries,
+            max_retries=self.max_retries,
+        )
+        raise self.retry(exc=exc)
 
     failed = [result for result in results if result.get("status") == "error"]
     if failed:
