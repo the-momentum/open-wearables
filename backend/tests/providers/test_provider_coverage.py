@@ -5,7 +5,7 @@ implementation files and assert that:
 
 - every emitted ``series_type=SeriesType.<x>`` is declared in ``TIMESERIES``
 - every EventRecordDetail data field it sets is declared in
-  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS`` or ``MENSTRUAL_CYCLE_FIELDS``
+  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS``, ``MENSTRUAL_CYCLE_FIELDS`` or ``MEAL_FIELDS``
 - declared field/score names are valid
 
 A drift (new metric in the code, stale coverage) fails the test.
@@ -100,6 +100,10 @@ def _menstrual_cycle_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "MENSTRUAL_CYCLE_FIELDS", frozenset())
 
 
+def _meal_fields(cov: ModuleType) -> frozenset:
+    return getattr(cov, "MEAL_FIELDS", frozenset())
+
+
 def _health_scores(cov: ModuleType) -> frozenset:
     return getattr(cov, "HEALTH_SCORES", frozenset())
 
@@ -121,7 +125,7 @@ def test_emitted_timeseries_are_declared(provider: str) -> None:
 def test_set_detail_fields_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
-    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)
+    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
 
     used = {field for field in TRACKED_DETAIL_FIELDS if re.search(rf"\b{field}=", source) or f'"{field}"' in source}
     undeclared = used - declared
@@ -163,7 +167,9 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
 def test_declared_names_are_valid(provider: str) -> None:
     cov = _load_coverage(provider)
 
-    bad_fields = (_workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)) - ALL_DETAIL_FIELDS
+    bad_fields = (
+        _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
+    ) - ALL_DETAIL_FIELDS
     assert not bad_fields, f"{provider}: unknown EventRecordDetail fields declared: {sorted(bad_fields)}"
 
     assert all(isinstance(s, HealthScoreCategory) for s in _health_scores(cov))
