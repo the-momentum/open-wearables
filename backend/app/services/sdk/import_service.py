@@ -229,6 +229,7 @@ class ImportService:
 
         for rjson in request.data.records:
             value = Decimal(str(rjson.value))
+            unit = (rjson.unit or "").strip().lower()
 
             record_type = rjson.type or ""
             series_type = get_series_type_from_metric_type(record_type)
@@ -238,12 +239,12 @@ class ImportService:
             value = self._normalize_unit(series_type, value, provider)
 
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
-            if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
+            if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
                 value = value * MMOL_L_TO_MG_DL
 
-            # Convert liters to milliliters
-            if series_type == SeriesType.hydration and (rjson.unit or "").strip().lower().startswith("l"):
-                value = value * 1000
+            # Convert hydration units to mL
+            if series_type == SeriesType.hydration and unit in ("l", "liter", "liters", "litre", "litres"):
+                value *= 1000
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
