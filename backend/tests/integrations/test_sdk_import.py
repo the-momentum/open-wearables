@@ -826,3 +826,16 @@ class TestSDKImportNutrition:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.hydration
         assert samples[0].value == Decimal("500")
+
+    def test_hydration_with_unrelated_unit_starting_with_l_is_not_rescaled(self, import_service: ImportService) -> None:
+        """A bogus/unexpected unit like "lb" must not be mistaken for a liter alias."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._build_record("HKQuantityTypeIdentifierDietaryWater", value=500, unit="lb")],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hydration
+        assert samples[0].value == Decimal("500")
