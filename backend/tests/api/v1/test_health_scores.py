@@ -28,7 +28,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(
             f"/api/v1/users/{user.id}/health-scores",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 200
@@ -43,7 +43,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(
             f"/api/v1/users/{user.id}/health-scores",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 200
@@ -59,7 +59,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(
             f"/api/v1/users/{user.id}/health-scores",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={"category": "sleep"},
         )
 
@@ -77,7 +77,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(
             f"/api/v1/users/{user.id}/health-scores",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={"provider": "garmin"},
         )
 
@@ -96,7 +96,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(
             f"/api/v1/users/{user.id}/health-scores",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
             params={
                 "start_date": (now - timedelta(days=3)).isoformat(),
                 "end_date": now.isoformat(),
@@ -122,7 +122,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(
             f"/api/v1/users/{user_a.id}/health-scores",
-            headers=api_key_headers(api_key.id),
+            headers=api_key_headers(api_key.plain_key),
         )
 
         assert response.status_code == 200

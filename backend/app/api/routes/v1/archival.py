@@ -20,7 +20,6 @@ logger = getLogger(__name__)
 
 @router.get(
     "/settings/archival",
-    status_code=status.HTTP_200_OK,
     summary="Get data lifecycle settings",
     description="Returns current archival/retention configuration and storage size estimates.",
 )
@@ -33,7 +32,6 @@ def get_archival_settings(
 
 @router.put(
     "/settings/archival",
-    status_code=status.HTTP_200_OK,
     summary="Update data lifecycle settings",
     description=(
         "Configure archive_after_days (when live data is aggregated) and "

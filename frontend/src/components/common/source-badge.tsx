@@ -14,11 +14,15 @@ const PROVIDER_STYLES: Record<
   oura: { bg: 'bg-violet-500/20', text: 'text-violet-400', label: 'Oura' },
   whoop: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label: 'WHOOP' },
   strava: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Strava' },
-  google: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Google' },
-  'google-fit': {
+  google_health: {
     bg: 'bg-green-500/20',
     text: 'text-green-400',
-    label: 'Google Fit',
+    label: 'Google Health',
+  },
+  health_connect: {
+    bg: 'bg-emerald-500/20',
+    text: 'text-emerald-400',
+    label: 'Health Connect',
   },
   withings: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Withings' },
   polar: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Polar' },

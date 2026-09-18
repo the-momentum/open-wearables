@@ -10,6 +10,7 @@ class TimelineMetric(StrEnum):
     """What a series counts. Event records (workouts, sleep) join as their own metric."""
 
     DATA_POINTS = "data_points"
+    WORKOUTS = "workouts"
 
 
 class TimelineSeries(BaseModel):

@@ -1,0 +1,50 @@
+---
+title: "Data Flow"
+description: "How health data travels from a wearable device through the provider cloud or the mobile SDK into Open Wearables, and on to your backend, frontend, and AI tools."
+keywords: ["wearable data flow", "health data pipeline", "open wearables data flow", "wearable api integration flow"]
+"og:title": "Data Flow | Open Wearables Architecture"
+"og:description": "How health data travels from a wearable device into Open Wearables and on to your application."
+"og:url": "https://docs.openwearables.io/architecture/data-flow"
+"og:type": "article"
+"twitter:title": "Data Flow | Open Wearables Architecture"
+"twitter:description": "How health data travels from a wearable device into Open Wearables and on to your application."
+"twitter:card": "summary_large_image"
+---
+
+![Data flow diagram: a wearable device syncs through the provider app to the provider cloud, which Open Wearables pulls from or receives webhooks from; mobile-only sources reach Open Wearables through the SDK instead. Open Wearables normalizes everything into the unified data model and serves it to your backend over the REST API and outgoing webhooks, and to AI assistants through the MCP server.](../images/data-flow.png)
+
+## Cloud providers
+
+Garmin, Polar, Oura, Whoop, Suunto and other cloud-based providers:
+
+1. **Wearable device** collects data with its sensors.
+2. **Provider app** on the user's phone reads the data from the device over BLE.
+3. **Provider cloud** receives the data when the app syncs.
+4. **User authorizes your app** to access their data via OAuth. The flow is started through Open Wearables - see the [integration guide](/dev-guides/integration-guide#step-2-connect-wearable-provider).
+5. **Open Wearables keeps the data in sync** and normalizes it into the [unified data model](/architecture/unified-data-model). Every provider uses one of two methods:
+   - **push** - the provider sends a webhook as soon as new data is available, and Open Wearables fetches it immediately.
+   - **pull** - Open Wearables polls the provider on a schedule (hourly by default, `SYNC_INTERVAL_SECONDS`), because the provider offers no webhooks.
+
+   Which method a provider uses is a property of that provider, not something you configure per user.
+6. **Your backend** queries the data through the [REST API](/dev-guides/integration-guide#step-4-retrieve-health-data) with an API key, or receives [outgoing webhooks](/api-reference/guides/webhooks) when new data arrives.
+7. **Your frontend** talks to your backend to display the data.
+
+### Historical backfill
+
+Push and pull only cover data recorded from the moment the user connects. Everything older needs a **one-off historical backfill** - a separate job, triggered explicitly:
+
+```
+POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
+```
+
+How far back you can go depends on the provider - see [historical data limits](/providers/historical-data).
+
+For now it also fires automatically after every successful OAuth callback. You control this with `HISTORICAL_SYNC_ON_CONNECT` in the backend environment (default `true`) - set it to `false` to trigger backfill yourself. The automatic dispatch is a leftover that will go away, so don't build on it.
+
+## Mobile-only sources
+
+Apple Health, Samsung Health and Health Connect keep data in an on-device store and have no cloud API, so they can only be read from the user's phone. Instead of steps 3-5, your mobile app uses the [Open Wearables SDK](/sdk) to read the data and push it to Open Wearables in the background. From there the flow is the same.
+
+## AI assistants
+
+The [MCP server](/mcp-server) exposes the same data to AI assistants such as Claude or Cursor, using the REST API under the hood.

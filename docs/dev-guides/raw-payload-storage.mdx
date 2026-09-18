@@ -124,7 +124,11 @@ Raw payloads storage is currently enabled at two ingestion points:
 | Endpoint | Source | Provider | Trace ID |
 |----------|--------|----------|----------|
 | `POST /api/v1/garmin/push` | `webhook` | `garmin` | 8-char request trace ID |
-| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `google` | UUID4 batch ID |
+| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `health_connect` | UUID4 batch ID |
+
+<Note>
+  The Android SDK sends `provider: "google"` for Health Connect; the endpoint normalizes it to `health_connect` before the payload is stored. Objects written before the provider split are still under the `google/` prefix.
+</Note>
 
 ## SDK Payload Offload
 

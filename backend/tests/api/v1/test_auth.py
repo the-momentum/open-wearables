@@ -427,32 +427,77 @@ class TestGetDeveloperById:
 class TestUpdateDeveloperById:
     """Tests for PATCH /api/v1/developers/{developer_id}."""
 
-    def test_update_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating developer by ID."""
+    def test_update_own_developer_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """A developer can update their own account through the by-ID endpoint."""
         # Arrange
-        auth_developer = DeveloperFactory(email="auth@example.com", password="test123")
-        target_developer = DeveloperFactory(email="target@example.com", password="test123")
-        headers = developer_auth_headers(auth_developer.id)
+        developer = DeveloperFactory(email="me@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
         payload = {"email": "updated@example.com"}
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/developers/{target_developer.id}",
+            f"{api_v1_prefix}/developers/{developer.id}",
             json=payload,
             headers=headers,
         )
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
-        assert data["email"] == "updated@example.com"
+        assert response.json()["email"] == "updated@example.com"
+        db.refresh(developer)
+        assert developer.email == "updated@example.com"
 
-        # Verify in database
-        db.refresh(target_developer)
-        assert target_developer.email == "updated@example.com"
+    def test_update_other_developer_forbidden(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Developers have no roles, so nobody may edit another developer's account."""
+        # Arrange
+        attacker = DeveloperFactory(email="attacker@example.com", password="test123")
+        victim = DeveloperFactory(email="victim@example.com", password="test123")
+        headers = developer_auth_headers(attacker.id)
+        payload = {"email": "hijacked@example.com"}
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/developers/{victim.id}",
+            json=payload,
+            headers=headers,
+        )
+
+        # Assert
+        assert response.status_code == 403
+        db.refresh(victim)
+        assert victim.email == "victim@example.com"
+
+    def test_update_other_developer_password_does_not_take_over_account(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Regression: cross-account PATCH must not change the victim's password."""
+        # Arrange
+        attacker = DeveloperFactory(email="attacker@example.com", password="test123")
+        victim = DeveloperFactory(email="victim@example.com", password="victim-original")
+        headers = developer_auth_headers(attacker.id)
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/developers/{victim.id}",
+            json={"password": "AttackerControlled1!"},
+            headers=headers,
+        )
+
+        # Assert
+        assert response.status_code == 403
+        victim_login = client.post(
+            f"{api_v1_prefix}/auth/login",
+            data={"username": "victim@example.com", "password": "victim-original"},
+        )
+        assert victim_login.status_code == 200
+        attacker_login = client.post(
+            f"{api_v1_prefix}/auth/login",
+            data={"username": "victim@example.com", "password": "AttackerControlled1!"},
+        )
+        assert attacker_login.status_code == 401
 
     def test_update_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating non-existent developer raises ResourceNotFoundError."""
+        """An unknown ID is not the caller's own ID, so it is rejected without revealing existence."""
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
@@ -464,7 +509,7 @@ class TestUpdateDeveloperById:
         response = client.patch(f"{api_v1_prefix}/developers/{fake_id}", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 404
+        assert response.status_code == 403
 
     def test_update_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID fails without authentication."""
@@ -481,14 +526,13 @@ class TestUpdateDeveloperById:
     def test_update_developer_by_id_invalid_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer with invalid data."""
         # Arrange
-        auth_developer = DeveloperFactory(email="auth@example.com", password="test123")
-        target_developer = DeveloperFactory(email="target@example.com", password="test123")
-        headers = developer_auth_headers(auth_developer.id)
+        developer = DeveloperFactory(email="me@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
         payload = {"email": "not-an-email", "password": "short"}
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/developers/{target_developer.id}",
+            f"{api_v1_prefix}/developers/{developer.id}",
             json=payload,
             headers=headers,
         )

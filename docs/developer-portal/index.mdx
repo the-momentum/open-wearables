@@ -1,0 +1,48 @@
+---
+title: "Developer Portal Overview"
+sidebarTitle: "Overview"
+description: "The Open Wearables developer portal is the web UI for operating a deployment: users and their connections, outgoing webhooks, sync monitoring, provider data coverage, and settings."
+keywords: ["open wearables developer portal", "dashboard", "users", "webhooks", "syncs", "data coverage", "settings"]
+"og:title": "Developer Portal Overview | Open Wearables"
+"og:description": "The developer portal is the web UI for operating an Open Wearables deployment: users, outgoing webhooks, sync monitoring, provider data coverage, and settings."
+"og:url": "https://docs.openwearables.io/developer-portal"
+"og:type": "article"
+"twitter:title": "Developer Portal Overview | Open Wearables"
+"twitter:description": "The developer portal is the web UI for operating an Open Wearables deployment: users, outgoing webhooks, sync monitoring, provider data coverage, and settings."
+"twitter:card": "summary_large_image"
+---
+
+The developer portal is the web UI for operating an Open Wearables deployment. In a local setup it runs at `http://localhost:3000`. You sign in with a developer account.
+
+## Developer accounts
+
+The first developer account is created automatically on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables. The seed runs only while no developer account exists, so change the default password from **Settings → Change Password** right after your first login.
+
+Every further account is created by invitation from **Settings → Team**. There is no self-registration. All developer accounts have the same permissions, see [Team](/developer-portal/settings/team#access-model).
+
+## Sections
+
+The sidebar of the developer portal has the following sections.
+
+| Section | What it does |
+|---|---|
+| **Dashboard** | Platform overview and key metrics. |
+| **Users** | Manage end users and their wearable connections. |
+| **Webhooks** | Register and monitor outgoing webhook endpoints that receive events when wearable data is ingested. See [Outgoing Webhooks](/api-reference/guides/webhooks). |
+| **Syncs** | Monitor sync activity across all users and providers. See [Live Sync Status](/api-reference/guides/sync-status-stream) for the same data over the API. |
+| **Data Coverage** | What each provider can deliver, by API layer. See the [Wearable API Coverage Matrix](/providers/coverage). |
+| **Settings** | Configuration of the deployment, described below. |
+
+## Settings
+
+Everything that configures a deployment lives under **Settings**, split into the tabs below.
+
+| Tab | What it does |
+|---|---|
+| [Credentials](/developer-portal/settings/credentials) | API keys for the REST API and application credentials for the Mobile SDK. |
+| [Providers](/developer-portal/settings/providers) | Enable or disable OAuth providers and choose how live data is synced. |
+| [Priorities](/developer-portal/settings/priorities) | Decide which provider and device type wins when data overlaps. |
+| [Data Lifecycle](/developer-portal/settings/data-lifecycle) | Archival and retention policies for time-series data. |
+| [Team](/developer-portal/settings/team) | Invite and remove developers. |
+| [Change Password](/developer-portal/settings/change-password) | Change the password of your own developer account. |
+| [Seed Data](/developer-portal/settings/seed-data-generator) | Generate synthetic users, workouts, sleep, and time series. |

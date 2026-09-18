@@ -48,7 +48,6 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
     137: "QT interval duration; no core series type",
     138: "corrected QT interval duration; no core series type",
     139: "AFib result from PPG; classification, not a core series",
-    140: "vascular age contract conflict; deferred/source-gated and not requested",
     158: "left-foot Nerve Health Score; no core series type",
     159: "right-foot Nerve Health Score; no core series type",
     167: (
@@ -70,7 +69,7 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
 ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "distance": SeriesType.distance_walking_running,
-    "calories": SeriesType.energy,
+    "calories": SeriesType.active_energy,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(

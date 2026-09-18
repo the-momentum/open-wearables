@@ -226,7 +226,7 @@ class SeedPresetInfo(BaseModel):
 _ACTIVITY_CORE_TYPES = [
     SeriesType.heart_rate,
     SeriesType.steps,
-    SeriesType.energy,
+    SeriesType.active_energy,
     SeriesType.basal_energy,
     SeriesType.distance_walking_running,
     SeriesType.flights_climbed,
@@ -357,7 +357,7 @@ SEED_PRESETS: dict[str, dict] = {
                 enabled_types=[
                     SeriesType.heart_rate,
                     SeriesType.steps,
-                    SeriesType.energy,
+                    SeriesType.active_energy,
                     *_SLEEP_RECOVERY_TYPES,
                 ],
                 include_blood_pressure=True,  # elevated BP correlates with poor sleep

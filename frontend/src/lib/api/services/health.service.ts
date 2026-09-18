@@ -52,6 +52,35 @@ export interface SummaryParams {
   [key: string]: string | number | undefined;
 }
 
+/**
+ * Fetch every page of a cursor-paginated endpoint. Callers pass the
+ * endpoint's maximum page size so most date ranges resolve in one request.
+ */
+async function fetchAllPages<T>(
+  endpoint: string,
+  params: SummaryParams | WorkoutsParams,
+  pageSize: number
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  // Page cap so a misbehaving cursor cannot loop forever
+  for (let page = 0; page < 50; page++) {
+    const response = await apiClient.get<PaginatedResponse<T>>(endpoint, {
+      params: { ...params, limit: pageSize, cursor },
+    });
+    items.push(...response.data);
+    if (!response.pagination.has_more) {
+      return items;
+    }
+    if (!response.pagination.next_cursor) {
+      throw new Error(`${endpoint} reported more data without a cursor`);
+    }
+    cursor = response.pagination.next_cursor;
+  }
+  // Failing beats silently rendering partial history as complete
+  throw new Error(`Pagination for ${endpoint} exceeded 50 pages`);
+}
+
 export const healthService = {
   /**
    * Synchronize workouts/exercises/activities from fitness provider API for a specific user
@@ -92,34 +121,6 @@ export const healthService = {
     return apiClient.get<GarminBackfillStatus>(
       `/api/v1/providers/garmin/users/${userId}/backfill/status`
     );
-  },
-
-  /**
-   * Retry backfill for a specific failed data type
-   * @param userId - User UUID
-   * @param typeName - Data type to retry (e.g., "sleeps", "dailies", "hrv")
-   */
-  async retryGarminBackfill(
-    userId: string,
-    typeName: string
-  ): Promise<{ success: boolean; type: string; status: string }> {
-    return apiClient.post<{ success: boolean; type: string; status: string }>(
-      `/api/v1/providers/garmin/users/${userId}/backfill/${typeName}/retry`
-    );
-  },
-
-  /**
-   * Cancel an in-progress Garmin backfill
-   * @param userId - User UUID
-   */
-  async cancelGarminBackfill(
-    userId: string
-  ): Promise<{ success: boolean; user_id: string; message: string }> {
-    return apiClient.post<{
-      success: boolean;
-      user_id: string;
-      message: string;
-    }>(`/api/v1/providers/garmin/users/${userId}/backfill/cancel`);
   },
 
   /**
@@ -187,6 +188,34 @@ export const healthService = {
     return apiClient.get<PaginatedResponse<SleepSummary>>(
       API_ENDPOINTS.userSleepSummary(userId),
       { params }
+    );
+  },
+
+  /**
+   * Get all pages of sleep summaries for a date range
+   */
+  async getAllSleepSummaries(
+    userId: string,
+    params: SummaryParams
+  ): Promise<SleepSummary[]> {
+    return fetchAllPages<SleepSummary>(
+      API_ENDPOINTS.userSleepSummary(userId),
+      params,
+      400
+    );
+  },
+
+  /**
+   * Get all pages of workouts for a date range
+   */
+  async getAllWorkouts(
+    userId: string,
+    params?: WorkoutsParams
+  ): Promise<EventRecordResponse[]> {
+    return fetchAllPages<EventRecordResponse>(
+      API_ENDPOINTS.userWorkouts(userId),
+      params ?? {},
+      100
     );
   },
 

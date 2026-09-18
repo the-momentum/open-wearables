@@ -1,4 +1,4 @@
-"""Core backfill state: Redis key helper, trace IDs, lock, cancellation, completion, status."""
+"""Core backfill state: Redis key helper, trace IDs, lock, completion, status."""
 
 import logging
 from typing import Any
@@ -8,7 +8,6 @@ from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     BACKFILL_DATA_TYPES,
     BACKFILL_LOCK_TTL,
-    GC_MAX_ATTEMPTS,
     REDIS_PREFIX,
     REDIS_TTL,
 )
@@ -97,29 +96,9 @@ def release_backfill_lock(user_id: str | UUID, token: str | None = None) -> bool
 
 
 def force_release_backfill_lock(user_id: str | UUID) -> None:
-    """Unconditionally release the backfill lock — use only from GC / admin paths."""
+    """Unconditionally release the backfill lock — use only from admin paths (e.g. user deletion)."""
     uid = str(user_id)
     get_redis_client().delete(_get_key(uid, "lock"), _get_key(uid, "lock_token"))
-
-
-# ---------------------------------------------------------------------------
-# Cancellation
-# ---------------------------------------------------------------------------
-
-
-def set_cancel_flag(user_id: str | UUID) -> None:
-    """Set the cancel flag for a user's backfill."""
-    get_redis_client().setex(_get_key(str(user_id), "cancel_flag"), REDIS_TTL, "1")
-
-
-def is_cancelled(user_id: str | UUID) -> bool:
-    """Return True if the backfill cancel flag is set."""
-    return get_redis_client().get(_get_key(str(user_id), "cancel_flag")) == "1"
-
-
-def clear_cancel_flag(user_id: str | UUID) -> None:
-    """Clear the backfill cancel flag."""
-    get_redis_client().delete(_get_key(str(user_id), "cancel_flag"))
 
 
 # ---------------------------------------------------------------------------
@@ -198,29 +177,19 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
             _get_key(uid, k)
             for k in [
                 "lock",
-                "cancel_flag",
                 "retry_phase",
                 "retry_current_type",
                 "retry_current_window",
-                "attempt_count",
-                "permanently_failed",
             ]
         ]
     )
 
     lock_exists = status_vals[0] is not None
-    cancel_flag = status_vals[1] == "1"
-    retry_phase_active = status_vals[2] == "1"
-    retry_type = status_vals[3]
-    retry_window = int(status_vals[4]) if status_vals[4] else None
-    attempt_count = int(status_vals[5]) if status_vals[5] else 0
-    permanently_failed = status_vals[6] == "1"
+    retry_phase_active = status_vals[1] == "1"
+    retry_type = status_vals[2]
+    retry_window = int(status_vals[3]) if status_vals[3] else None
 
-    if permanently_failed:
-        overall_status = "permanently_failed"
-    elif cancel_flag:
-        overall_status = "cancelled"
-    elif retry_phase_active and lock_exists:
+    if retry_phase_active and lock_exists:
         overall_status = "retry_in_progress"
     elif current_window >= total_windows and not lock_exists:
         overall_status = "complete"
@@ -239,7 +208,4 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         "retry_phase": retry_phase_active,
         "retry_type": retry_type,
         "retry_window": retry_window,
-        "attempt_count": attempt_count,
-        "max_attempts": GC_MAX_ATTEMPTS,
-        "permanently_failed": permanently_failed,
     }

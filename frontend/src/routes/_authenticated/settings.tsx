@@ -7,7 +7,7 @@ import { ProvidersTab } from './settings/-providers-tab';
 import { PrioritiesTab } from './settings/-priorities-tab';
 import { TeamTab } from './settings/-team-tab';
 import { DataLifecycleTab } from './settings/-data-lifecycle-tab';
-import { SecurityTab } from './settings/-security-tab';
+import { ChangePasswordTab } from './settings/-change-password-tab';
 import { SeedDataTab } from './settings/-seed-data-tab';
 
 export const Route = createFileRoute('/_authenticated/settings')({
@@ -47,9 +47,9 @@ const tabs: TabConfig[] = [
     component: TeamTab,
   },
   {
-    id: 'security',
-    label: 'Security',
-    component: SecurityTab,
+    id: 'change-password',
+    label: 'Change Password',
+    component: ChangePasswordTab,
   },
   {
     id: 'seed-data',

@@ -14,6 +14,8 @@ from .event_record import (
     EventRecordQueryParams,
     EventRecordResponse,
     EventRecordUpdate,
+    SleepInclude,
+    WorkoutInclude,
 )
 from .event_record_detail import (
     EventRecordDetailBase,
@@ -54,6 +56,8 @@ __all__ = [
     "EventRecordCreate",
     "EventRecordUpdate",
     "EventRecordResponse",
+    "SleepInclude",
+    "WorkoutInclude",
     # EventRecordDetail
     "EventRecordDetailBase",
     "EventRecordDetailCreate",

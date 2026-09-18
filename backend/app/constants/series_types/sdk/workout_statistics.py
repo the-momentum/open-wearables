@@ -114,7 +114,7 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "maxCadence": SeriesType.cadence,
     "vo2Max": SeriesType.vo2_max,
     # Legacy mappings
-    "totalEnergyBurned": SeriesType.energy,
+    "totalEnergyBurned": SeriesType.active_energy,
     "totalDistance": SeriesType.distance_walking_running,
     "totalSteps": SeriesType.steps,
 }

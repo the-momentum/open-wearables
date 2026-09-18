@@ -1,10 +1,9 @@
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field
 
 from app.constants.devices_map import resolve_device_name
-from app.schemas.enums import DeviceType
+from app.schemas.enums import DeviceType, Resolution
 
 
 class SourceMetadata(BaseModel):
@@ -25,7 +24,7 @@ class SourceMetadata(BaseModel):
 
 
 class TimeseriesMetadata(BaseModel):
-    resolution: Literal["raw", "1min", "5min", "15min", "1hour"] | None = None
+    resolution: Resolution | None = None
     sample_count: int | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None

@@ -55,7 +55,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.six_minute_walk_test_distance: AggregationMethod.MAX,
     # ── Activity — Basic ──
     SeriesType.steps: AggregationMethod.SUM,
-    SeriesType.energy: AggregationMethod.SUM,
+    SeriesType.active_energy: AggregationMethod.SUM,
     SeriesType.basal_energy: AggregationMethod.SUM,
     SeriesType.stand_time: AggregationMethod.SUM,
     SeriesType.exercise_time: AggregationMethod.SUM,

@@ -42,7 +42,7 @@ class TestListUsers:
         api_key = ApiKeyFactory(developer=developer)
         user1 = UserFactory(email="user1@example.com", first_name="John", last_name="Doe")
         user2 = UserFactory(email="user2@example.com", first_name="Jane", last_name="Smith")
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"{api_v1_prefix}/users", headers=headers)
@@ -68,7 +68,7 @@ class TestListUsers:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"{api_v1_prefix}/users", headers=headers)
@@ -106,7 +106,7 @@ class TestListUsers:
         api_key = ApiKeyFactory(developer=developer)
         UserFactory(email="user1@ci.local", first_name="John", last_name="Doe")
         user2 = UserFactory(email="user2@example.com", first_name="Jane", last_name="Smith")
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"{api_v1_prefix}/users", headers=headers)
@@ -130,7 +130,7 @@ class TestGetUser:
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
         user = UserFactory(email="user@example.com", first_name="John", last_name="Doe")
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"{api_v1_prefix}/users/{user.id}", headers=headers)
@@ -150,7 +150,7 @@ class TestGetUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         fake_id = "00000000-0000-0000-0000-000000000000"
 
         # Act
@@ -164,7 +164,7 @@ class TestGetUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
 
         # Act
         response = client.get(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
@@ -192,7 +192,7 @@ class TestCreateUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {
             "email": "newuser@example.com",
             "first_name": "Alice",
@@ -225,7 +225,7 @@ class TestCreateUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {}
 
         # Act
@@ -242,7 +242,7 @@ class TestCreateUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {"email": "onlyemail@example.com"}
 
         # Act
@@ -260,7 +260,7 @@ class TestCreateUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {"email": "not-an-email"}
 
         # Act
@@ -274,7 +274,7 @@ class TestCreateUser:
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {
             "first_name": "a" * 101,  # Max is 100
             "last_name": "Smith",
@@ -422,20 +422,21 @@ class TestUpdateUser:
         # Assert
         assert response.status_code == 401
 
-    def test_update_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating user requires bearer token, not API key."""
+    def test_update_user_with_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test updating user works with an API key, not only a developer token."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
         user = UserFactory(email="user@example.com")
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
         payload = {"email": "new@example.com"}
 
         # Act
         response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
 
-        # Assert - API key auth is rejected, requires bearer token
-        assert response.status_code == 401
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["email"] == "new@example.com"
 
 
 class TestDeleteUser:
@@ -501,19 +502,25 @@ class TestDeleteUser:
         # Assert
         assert response.status_code == 401
 
-    def test_delete_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test deleting user requires bearer token, not API key."""
+    def test_delete_user_with_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test deleting user works with an API key, not only a developer token."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
         user = UserFactory(email="user@example.com")
-        headers = api_key_headers(api_key.id)
+        headers = api_key_headers(api_key.plain_key)
+        user_id = user.id
 
         # Act
-        response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=headers)
+        response = client.delete(f"{api_v1_prefix}/users/{user_id}", headers=headers)
 
-        # Assert - API key auth is rejected, requires bearer token
-        assert response.status_code == 401
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["id"] == str(user_id)
+
+        from app.services import user_service
+
+        assert user_service.get(db, user_id, raise_404=False) is None
 
 
 class TestListUsersConnections:
@@ -522,7 +529,7 @@ class TestListUsersConnections:
     @pytest.fixture
     def headers(self) -> dict[str, str]:
         developer = DeveloperFactory(email="connections@example.com", password="test123")
-        return api_key_headers(ApiKeyFactory(developer=developer).id)
+        return api_key_headers(ApiKeyFactory(developer=developer).plain_key)
 
     def test_connections_absent_by_default(self, client: TestClient, api_v1_prefix: str, headers: dict) -> None:
         """Test that connections are omitted unless the expansion is requested."""
@@ -593,7 +600,7 @@ class TestListUsersFilters:
     @pytest.fixture
     def headers(self) -> dict[str, str]:
         developer = DeveloperFactory(email="filters@example.com", password="test123")
-        return api_key_headers(ApiKeyFactory(developer=developer).id)
+        return api_key_headers(ApiKeyFactory(developer=developer).plain_key)
 
     @pytest.fixture
     def users(self) -> dict[str, User]:
@@ -743,7 +750,7 @@ class TestGetUserDetailProjection:
     @pytest.fixture
     def headers(self) -> dict[str, str]:
         developer = DeveloperFactory(email="detail@example.com", password="test123")
-        return api_key_headers(ApiKeyFactory(developer=developer).id)
+        return api_key_headers(ApiKeyFactory(developer=developer).plain_key)
 
     def test_reports_last_sync_and_active_connection(
         self, client: TestClient, api_v1_prefix: str, headers: dict

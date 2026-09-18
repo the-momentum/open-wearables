@@ -14,7 +14,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         *RECOVERY_SERIES.values(),  # /v2/recovery
         SeriesType.height,  # /v2/user/measurement/body
         SeriesType.weight,  # /v2/user/measurement/body
-        SeriesType.energy,  # /v2/cycle, daily total from kilojoule
+        SeriesType.active_energy,  # /v2/cycle, daily total from kilojoule
     }
 )
 
@@ -27,6 +27,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "distance",
         "total_elevation_gain",
         "moving_time_seconds",
+        "hr_zones",
     }
 )
 

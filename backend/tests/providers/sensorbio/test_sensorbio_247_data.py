@@ -530,7 +530,7 @@ class TestSensorBio247SaveDailyActivity:
         samples = mock_ts.bulk_create_samples.call_args[0][1]
         series_types = {s.series_type for s in samples}
         assert SeriesType.steps in series_types
-        assert SeriesType.energy in series_types
+        assert SeriesType.active_energy in series_types
         assert SeriesType.distance_walking_running in series_types
 
     def test_skips_none_fields(self, data_247: SensorBio247Data) -> None:

@@ -7,15 +7,6 @@ from app.services.providers.garmin.backfill_state import (
 from app.services.providers.garmin.backfill_state import (
     get_pending_types as get_garmin_pending_types,
 )
-from app.services.providers.garmin.backfill_state import (
-    is_cancelled as is_garmin_backfill_cancelled,
-)
-from app.services.providers.garmin.backfill_state import (
-    reset_type_status as reset_garmin_type_status,
-)
-from app.services.providers.garmin.backfill_state import (
-    set_cancel_flag as set_garmin_cancel_flag,
-)
 
 from .archival_task import run_daily_archival
 from .close_stale_sync_runs_task import close_stale_sync_runs
@@ -35,7 +26,6 @@ from .garmin.backfill_timeout import (
 from .garmin.backfill_trigger import (
     trigger_backfill_for_type as trigger_garmin_backfill_for_type,
 )
-from .garmin.gc_task import gc_stuck_backfills
 from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import complete_and_process_aws_upload, process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
@@ -54,13 +44,9 @@ __all__ = [
     "check_garmin_triggered_timeout",
     "get_garmin_backfill_status",
     "get_garmin_pending_types",
-    "reset_garmin_type_status",
     "start_garmin_full_backfill",
     "trigger_garmin_backfill_for_type",
     "trigger_garmin_next_pending_type",
-    "set_garmin_cancel_flag",
-    "is_garmin_backfill_cancelled",
-    "gc_stuck_backfills",
     # Archival
     "run_daily_archival",
     # Apple XML multipart uploads

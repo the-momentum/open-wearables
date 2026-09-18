@@ -2,14 +2,32 @@
 
 Declarative mapping of a Google data type to a unified SeriesType. A data type may
 support the ``rollUp`` operation (windowed aggregates), the ``list`` operation (raw
-data points), or both; the handler picks the operation per the configured granularity.
+data points), or both. Windowed rollUp is currently disabled (see ``DataTypeMetric.use_list``),
+so every type is read at native resolution.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from app.schemas.enums import DataGranularity, SeriesType
+
+
+class DataPointsPage(BaseModel):
+    """One page of a dataPoints, dataPoints:reconcile or dataPoints:rollUp response.
+
+    All three share the envelope and differ only in which list they fill; every field is
+    optional because Google omits empty ones (an exhausted window returns ``{}``, and a
+    page can carry a token with no points).
+    """
+
+    data_points: list[dict[str, Any]] = Field(default_factory=list, alias="dataPoints")
+    rollup_data_points: list[dict[str, Any]] = Field(default_factory=list, alias="rollupDataPoints")
+    next_page_token: str | None = Field(None, alias="nextPageToken")
 
 
 class TimeShape(Enum):
@@ -47,7 +65,7 @@ class RollupSpec:
     subfield:       second-level key when nested (e.g. hydration's ``amountConsumed`` →
                     ``millilitersSum``); None for the flat common case.
     scale:          unit factor applied to the value (e.g. 0.001 for mm→m).
-    max_range_days: rollUp's per-request range cap (14 for heart-rate/total-calories, else 90).
+    max_range_days: rollUp's per-request range cap (14 for heart-rate, else 90).
     extra:          additional series emitted from the same value object, if any.
     """
 
@@ -80,6 +98,44 @@ class ListSpec:
 
 
 @dataclass(frozen=True)
+class DailyRollupSpec:
+    """How to read one data type's civil-day total from a dataPoints:dailyRollUp response.
+
+    data_type/value_key: the type to request and the union key its value lands under.
+    field:               key of the scalar within the ``*RollupValue`` object (e.g. ``kcalSum``).
+    scale:               unit factor applied to the value.
+    max_range_days:      dailyRollUp's per-request range cap (14 for total-calories, else 90).
+    """
+
+    data_type: str
+    value_key: str
+    field: str
+    scale: Decimal = Decimal(1)
+    max_range_days: int = 90
+
+
+@dataclass(frozen=True)
+class DerivedDailyMetric:
+    """A civil-day total computed as ``operation(left, right)`` — ``operator.add`` or ``operator.sub``.
+
+    Both operands are fetched independently from dailyRollUp and matched on civil date, so
+    the metric owns its inputs and never depends on another metric having run first. A day
+    is emitted only when both operands returned a value for it.
+
+    data_source_family scopes both operands to the same sources. Without it they aggregate
+    over different source populations and the result is meaningless — subtracting all-source
+    active from Fitbit-modelled total-calories went negative on 51 of 82 days.
+    """
+
+    name: str
+    series_type: SeriesType
+    left: DailyRollupSpec
+    right: DailyRollupSpec
+    operation: Callable[[Decimal, Decimal], Decimal]
+    data_source_family: str = "users/me/dataSourceFamilies/google-sources"
+
+
+@dataclass(frozen=True)
 class DataTypeMetric:
     """One Google data type mapped to a unified series, with its supported operations.
 
@@ -95,16 +151,19 @@ class DataTypeMetric:
     list_spec: ListSpec | None = None
 
     def __post_init__(self) -> None:
-        if self.rollup_spec is None and self.list_spec is None:
-            raise ValueError(f"{self.data_type}: must declare a rollup and/or list spec")
+        # A rollUp-only type would ingest nothing while rollUp is off (see use_list).
+        if self.list_spec is None:
+            raise ValueError(f"{self.data_type}: must declare a list spec")
 
     def use_list(self, granularity: DataGranularity) -> bool:
-        """Pick the operation: forced types use their only op; dual types use list only for RAW."""
-        if self.rollup_spec is None:
-            return True
-        if self.list_spec is None:
-            return False
-        return granularity == DataGranularity.RAW
+        """Always the native-resolution op: windowed rollUp is disabled (#1577).
+
+        rollUp window starts do not line up with the timestamps backfill and live sync write,
+        so the same reading misses the uniqueness index and inserts a duplicate instead of
+        updating. Every registered type declares a list spec, so nothing loses ingestion.
+        Re-enable by restoring the granularity check once window starts are floored.
+        """
+        return True
 
     def series_types(self) -> frozenset[SeriesType]:
         """Every series this metric can emit — primary plus any extra bindings."""

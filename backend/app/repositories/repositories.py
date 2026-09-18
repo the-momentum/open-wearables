@@ -6,7 +6,10 @@ from sqlalchemy import ColumnElement, Date, cast, exists, func
 from sqlalchemy.orm import InstrumentedAttribute, Query
 
 from app.database import BaseDbModel, DbSession
-from app.schemas.enums import TimelineBucket
+from app.models import DataSource
+from app.models.series_type_definition import SeriesTypeDefinition
+from app.schemas.enums import TimelineBucket, TimelineGroupBy
+from app.schemas.model_crud.activities.source_filters import SourceFilterParams
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
@@ -21,6 +24,41 @@ def utc_bucket_start(
     session timezone and place the same row in a different bucket per connection.
     """
     return cast(func.date_trunc(bucket.value, func.timezone("UTC", column)), Date)
+
+
+def source_filter_conditions(
+    params: SourceFilterParams,
+    data_source_id_column: InstrumentedAttribute[UUID],
+) -> list[ColumnElement[bool]]:
+    """Conditions narrowing a read to one origin. Assumes ``DataSource`` is queried or joined.
+
+    ``data_source_id_column`` is whichever column holds the id on the queried table, so the same
+    filters serve a row table (``<model>.data_source_id``) and ``DataSource`` itself (``.id``).
+    """
+    conditions: list[ColumnElement[bool]] = []
+    if params.provider:
+        conditions.append(DataSource.provider == params.provider)
+    if params.source:
+        conditions.append(DataSource.source == params.source)
+    if params.device_model:
+        conditions.append(DataSource.device_model == params.device_model)
+    if params.data_source_id:
+        conditions.append(data_source_id_column == params.data_source_id)
+    return conditions
+
+
+def timeline_key_column(group_by: TimelineGroupBy) -> InstrumentedAttribute[str]:
+    """Column a data point timeline series is keyed by.
+
+    Explicit so a new grouping fails loudly here rather than silently reading as series type.
+    """
+    match group_by:
+        case TimelineGroupBy.PROVIDER:
+            return DataSource.provider
+        case TimelineGroupBy.SERIES_TYPE:
+            return SeriesTypeDefinition.code
+        case _:
+            raise ValueError(f"{group_by} does not key a data point timeline")
 
 
 class CrudRepository[

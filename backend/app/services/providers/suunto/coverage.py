@@ -6,13 +6,13 @@ ACTIVITY_SERIES: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
     "steps": SeriesType.steps,
     "spo2": SeriesType.oxygen_saturation,
-    "energy": SeriesType.energy,
+    "energy": SeriesType.active_energy,
     # Suunto provides RMSSD-based HRV, map to the correct series type
     "hrv": SeriesType.heart_rate_variability_rmssd,
 }
 DAILY_STAT_SERIES: dict[str, SeriesType] = {
     "stepcount": SeriesType.steps,
-    "energyconsumption": SeriesType.energy,
+    "energyconsumption": SeriesType.active_energy,
 }
 # Per-night scalars carried inside a sleep entry (normalized key → SeriesType).
 SLEEP_SERIES: dict[str, SeriesType] = {

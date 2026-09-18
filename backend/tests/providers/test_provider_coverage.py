@@ -27,26 +27,24 @@ from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.schemas.model_crud.activities import EventRecordDetailCreate
 from app.services.providers.factory import ProviderFactory
-from app.services.providers.google.health_api.metrics import METRICS as GOOGLE_HEALTH_API_METRICS
 
 PROVIDERS_DIR = Path("app/services/providers")
 
 # Implementation files that may emit timeseries / set detail fields.
 IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_service.py")
 
-# SDK providers emit via the shared healthkit pipeline (not their own data_247);
+# SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the
 # shared sleep service, so those shared files are scanned for them too.
-SDK_PROVIDERS = {"apple", "samsung", "google"}
+SDK_PROVIDERS = {"apple", "samsung", "health_connect"}
 SDK_SHARED_FILES = (
-    Path("app/services/apple/healthkit/import_service.py"),
-    Path("app/services/apple/healthkit/sleep_service.py"),
+    Path("app/services/sdk/import_service.py"),
+    Path("app/services/sdk/sleep_service.py"),
     Path("app/services/apple/apple_xml/xml_service.py"),
 )
 
-# EventRecordDetail fields that are NOT part of the coverage matrix (structural
-# or composite objects rather than scalar metric coverage).
-STRUCTURAL_DETAIL_FIELDS = {"record_id", "segments", "hr_zones", "power_zones"}
+# EventRecordDetail fields that are NOT part of the coverage matrix.
+STRUCTURAL_DETAIL_FIELDS = {"record_id"}
 
 
 def _all_detail_fields() -> set[str]:
@@ -134,28 +132,16 @@ def test_set_detail_fields_are_declared(provider: str) -> None:
 _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
     "samsung": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
-    "google": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
-}
-
-
-# SDK providers that also pull cloud series contribute extra timeseries beyond the
-# SDK maps. google is hybrid: Health Connect SDK + Health API daily rollups.
-_EXTRA_SDK_SERIES: dict[str, frozenset[SeriesType]] = {
-    "google": frozenset(s for m in GOOGLE_HEALTH_API_METRICS for s in m.series_types()),
+    "health_connect": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
 }
 
 
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = (
-        frozenset(_SDK_METRIC_MAP[provider].values())
-        | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
-        | _EXTRA_SDK_SERIES.get(provider, frozenset())
-    )
+    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
     assert _timeseries(cov) == expected, (
-        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + "
-        f"workout-statistic maps (plus cloud rollup series for hybrid providers)"
+        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
     )
 
 

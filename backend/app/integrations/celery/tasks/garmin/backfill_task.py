@@ -30,7 +30,6 @@ from app.services.providers.garmin.backfill_state import (
     _get_key,
     acquire_backfill_lock,
     advance_window,
-    clear_cancel_flag,
     clear_retry_state,
     complete_backfill,
     enter_retry_phase,
@@ -41,10 +40,8 @@ from app.services.providers.garmin.backfill_state import (
     get_total_windows,
     get_trace_id,
     init_window_state,
-    is_cancelled,
     is_retry_phase,
     mark_type_failed,
-    persist_window_results,
     release_backfill_lock,
     reset_type_status,
     set_trace_id,
@@ -60,7 +57,6 @@ from app.services.sync_coordination import (
     try_become_primary,
 )
 from app.services.sync_status_service import (
-    emit_sync_cancelled,
     emit_sync_completed,
     emit_sync_progress,
     emit_sync_started,
@@ -118,7 +114,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
 
     This is called after OAuth connection to auto-trigger historical sync.
     Triggers the first type and the rest will chain via webhooks.
-    If existing state is detected (resume after cancel/crash), resumes from current window.
+    If existing state is detected (resume after crash), resumes from current window.
     """
 
     try:
@@ -159,20 +155,6 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
                 scope=connection.scope,
             )
             return {"status": "skipped", "reason": "HISTORICAL_DATA_EXPORT permission not granted"}
-
-    # Reject re-trigger if permanently failed
-    if get_redis_client().get(_get_key(user_id, "permanently_failed")) == "1":
-        log_structured(
-            logger,
-            "warning",
-            "Backfill permanently failed -- cannot re-trigger",
-            provider="garmin",
-            user_id=user_id,
-        )
-        return {
-            "error": "Backfill permanently failed after maximum attempts. Disconnect and reconnect to reset.",
-            "status": "permanently_failed",
-        }
 
     # Acquire exclusive lock
     if not acquire_backfill_lock(user_id):
@@ -277,10 +259,8 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
 
     # Check for existing state (resume detection)
     current_window = get_current_window(user_id)
-    cancel_flag = is_cancelled(user_id)
 
-    if current_window > 0 or cancel_flag:
-        clear_cancel_flag(user_id)
+    if current_window > 0:
         pending = get_pending_types(user_id)
 
         log_structured(
@@ -376,29 +356,6 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
     """
 
     trace_id = get_trace_id(user_id)
-
-    if is_cancelled(user_id):
-        current_window = get_current_window(user_id)
-        persist_window_results(user_id, current_window)
-        log_structured(
-            logger,
-            "info",
-            "Backfill cancelled",
-            provider="garmin",
-            trace_id=trace_id,
-            user_id=user_id,
-        )
-        _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
-        emit_sync_cancelled(
-            UUID(user_id),
-            "garmin",
-            SyncSource.BACKFILL,
-            run_id=_run_id,
-            scope=SyncScope.HISTORICAL,
-            message="Garmin backfill cancelled",
-            metadata={"trace_id": trace_id, "current_window": current_window},
-        )
-        return {"status": "cancelled"}
 
     pending_types = get_pending_types(user_id)
 
