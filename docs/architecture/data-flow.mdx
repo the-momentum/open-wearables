@@ -39,10 +39,6 @@ POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
 
 How far back you can go depends on the provider - see [historical data limits](/providers/historical-data).
 
-<Note>
-  Open Wearables currently also dispatches this backfill automatically on the user's first successful connection. That behaviour sits behind the `HISTORICAL_SYNC_ON_CONNECT` grace-period flag (default `true`), whose default will flip to `false` in a future release. Treat historical backfill as something your integration decides about, not as a guarantee.
-</Note>
-
 ## Mobile-only sources
 
 Apple Health, Samsung Health and Health Connect keep data in an on-device store and have no cloud API, so they can only be read from the user's phone. Instead of steps 3-5, your mobile app uses the [Open Wearables SDK](/sdk) to read the data and push it to Open Wearables in the background. From there the flow is the same.
