@@ -43,6 +43,7 @@
             "group": "Architecture",
             "pages": [
               "architecture/system-overview",
+              "architecture/data-flow",
               "architecture/unified-data-model",
               "architecture/data-types",
               "architecture/multi-account-sync"
