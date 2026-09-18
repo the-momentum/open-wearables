@@ -18,7 +18,6 @@ from pydantic import ValidationError
 
 from app.config import settings
 from app.schemas.responses.incoming_webhooks import (
-    ProviderWebhookSubscription,
     StravaWebhookSubscription,
     WebhookOperationResult,
     WebhookSubscriptionStatus,
@@ -166,7 +165,12 @@ class StravaWebhookService(BaseWebhookService):
                 )
                 return [{"status": "error", "error": str(e)}]
 
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete every push subscription registered for this application."""
+        subscriptions = await self.list_subscriptions()
+        return [await self.delete_subscription(str(sub.id)) for sub in subscriptions]
+
+    async def list_subscriptions(self) -> list[StravaWebhookSubscription]:
         """List active Strava webhook subscriptions."""
         client_id, client_secret = self._get_strava_credentials()
 
@@ -178,7 +182,7 @@ class StravaWebhookService(BaseWebhookService):
             )
             response.raise_for_status()
             raw = response.json() or []
-            result: list[ProviderWebhookSubscription] = []
+            result: list[StravaWebhookSubscription] = []
             for item in raw if isinstance(raw, list) else []:
                 try:
                     result.append(StravaWebhookSubscription.model_validate(item))

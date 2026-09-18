@@ -14,6 +14,9 @@ class BaseWebhookService:
     async def register_subscriptions(self, callback_url: str) -> Any:
         raise NotImplementedError("This provider does not support programmatic webhook registration")
 
+    async def deregister_subscriptions(self) -> Any:
+        raise NotImplementedError("This provider does not support deleting its webhook subscriptions")
+
     async def list_subscriptions(self) -> Any:
         raise NotImplementedError("This provider does not support listing webhook subscriptions")
 

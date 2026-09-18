@@ -133,6 +133,11 @@ class PolarWebhookService(BaseWebhookService):
                 ProviderSettingsRepository().save_webhook_secret(db, ProviderName.POLAR, secret)
         return result
 
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete the single app-level webhook, if one is registered."""
+        webhook = await self.get_webhook()
+        return [await self.delete_subscription(webhook.id)] if webhook else []
+
     async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
         """Update the URL of an existing Polar webhook (PATCH /v3/webhooks/{id})."""
         auth = self._get_basic_auth()

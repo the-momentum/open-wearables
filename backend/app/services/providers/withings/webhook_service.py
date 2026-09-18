@@ -125,6 +125,14 @@ class WithingsWebhookService(BaseWebhookService):
         ``callback_url`` is ignored: each subscription carries the shared-secret
         callback built per request by ``_callback_url``.
         """
+        return self._fan_out()
+
+    async def deregister_subscriptions(self) -> list[dict[str, Any]]:
+        """Revoke through the same fan-out: each task reconciles its own user
+        against the configured mode, which is ``pull`` by the time this runs."""
+        return self._fan_out()
+
+    def _fan_out(self) -> list[dict[str, Any]]:
         with SessionLocal() as db:
             connections = self.connection_repo.get_all_active_by_provider(db, "withings")
 

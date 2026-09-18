@@ -793,7 +793,9 @@ class MyProviderStrategy(BaseProviderStrategy):
         return await my_provider_webhook_service.register_subscriptions(callback_url)
 ```
 
-When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform automatically dispatches a Celery task (`register_provider_webhooks`) that calls `strategy.register_webhooks(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+When an admin changes the sync mode via `PUT /api/v1/oauth/providers/{provider}`, the settings service hands the new mode to `strategy.apply_live_sync_mode(mode)`, which dispatches the `reconcile_provider_webhooks` Celery task so the request is not blocked on the provider's API. The task registers on `webhook` and deletes on `pull`. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+
+Implement `deregister_subscriptions()` on your webhook service on top of the list/get/delete methods it already has — that is the `pull` half, and without it no events stop arriving when an admin switches back to periodic pull. Override `apply_live_sync_mode()` on the strategy only if reconciliation cannot go through that task at all.
 
 <Note>
 If `webhook_registration_api=False` (the default), switching sync mode to `webhook` only updates the database — you must register subscriptions manually in the provider's developer portal pointing to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
@@ -809,7 +811,7 @@ Some providers create subscriptions with each user's own bearer token rather tha
 
 Each result entry's `status` drives the task's retry policy: `error` retries with the failures attached, anything else counts as success. Return `skipped` for what retrying cannot fix, such as an unusable callback URL or a revoked grant.
 
-Because each connection holds its own subscription, `register_provider_webhooks` is dispatched on *any* live-sync mode change for these providers, not only the switch to `webhook`, so that switching back to `pull` revokes them. `app/services/providers/withings/webhook_service.py` is the reference implementation.
+Because each connection holds its own subscription, both `register_subscriptions()` and `deregister_subscriptions()` fan out the same way — the per-user task reads the configured mode and revokes when it is `pull`, so neither direction is special-cased in shared code. `app/services/providers/withings/webhook_service.py` is the reference implementation.
 
 ---
 
@@ -852,7 +854,7 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Verified data in database
 - [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
-- [ ] If `webhook_registration_api=True`: implemented `register_webhooks()` in strategy and verified auto-registration fires on sync mode switch
+- [ ] If `webhook_registration_api=True`: implemented `register_subscriptions()` and `deregister_subscriptions()` on the webhook service, and verified both fire on the sync mode switch
 - [ ] If `webhook_subscription_per_user=True`: implemented `register_user_subscriptions()` on your webhook service, overrode `_save_connection` and `deregister_user`, and verified the fan-out registers one subscription per active connection
 - [ ] Added error handling and logging
 - [ ] Updated API documentation

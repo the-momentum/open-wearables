@@ -156,6 +156,12 @@ class GoogleWebhookService(BaseWebhookService):
 
         return [{"status": "created", "subscriber_id": SUBSCRIBER_ID, "response": response.json()}]
 
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete the project's subscriber, registered under a fixed id."""
+        if await self.get_subscription(SUBSCRIBER_ID) is None:
+            return []
+        return [await self.delete_subscription(SUBSCRIBER_ID)]
+
     async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         """List the project's Health API subscribers."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
