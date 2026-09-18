@@ -22,9 +22,9 @@ View your local preview at `http://localhost:3333` (or the port you specified).
 
 ## API Reference
 
-The API Reference tab is built from `openapi.json` in this directory. The file is generated from the backend code and must not be edited by hand. Regenerate it with:
+The API Reference tab is built from `openapi.json` in this directory. The file is generated from the backend code and must not be edited by hand. Regenerate it from the repository root with:
 
-```
+```bash
 cd backend && uv run python scripts/export_openapi.py
 ```
 

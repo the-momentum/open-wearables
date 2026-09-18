@@ -8,6 +8,7 @@ on:
       - "mcp/**"
       - "backend/**"
       - "frontend/**"
+      - "docs/openapi.json"
   pull_request:
     paths: *paths
 
@@ -21,6 +22,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       mcp: ${{ steps.filter.outputs.mcp }}
+      openapi: ${{ steps.filter.outputs.openapi }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -33,6 +35,8 @@ jobs:
               - 'frontend/**'
             mcp:
               - 'mcp/**'
+            openapi:
+              - 'docs/openapi.json'
   backend-build:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
@@ -80,8 +84,10 @@ jobs:
 
   backend-openapi-spec:
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' }}
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.openapi == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python

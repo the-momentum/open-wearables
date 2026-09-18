@@ -38,7 +38,7 @@ def main() -> int:
     content = render()
 
     if check:
-        current = DOCS_PATH.read_text() if DOCS_PATH.exists() else ""
+        current = DOCS_PATH.read_text(encoding="utf-8") if DOCS_PATH.exists() else ""
         if current != content:
             print(
                 f"{DOCS_PATH.relative_to(DOCS_PATH.parents[1])} is out of date. "
@@ -49,7 +49,7 @@ def main() -> int:
         print("OpenAPI spec is up to date.")
         return 0
 
-    DOCS_PATH.write_text(content)
+    DOCS_PATH.write_text(content, encoding="utf-8")
     print(f"Wrote {DOCS_PATH}")
     return 0
 

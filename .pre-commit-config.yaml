@@ -29,7 +29,7 @@ repos:
         name: export openapi spec to docs/openapi.json
         entry: sh -c 'cd backend && uv run python scripts/export_openapi.py'
         language: system
-        files: ^backend/app/(api/.*|schemas/.*|main\.py)$
+        files: ^backend/app/.*\.py$
         pass_filenames: false
 
       - id: prettier-check
