@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
     RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential libpq-dev && \
@@ -22,7 +22,7 @@ FROM python:3.13-slim AS builder
     COPY . .
     RUN uv sync --locked --no-dev --no-editable
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
     RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 && \

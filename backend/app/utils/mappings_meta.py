@@ -1,4 +1,5 @@
 import types
+from annotationlib import Format, call_annotate_function
 from typing import Annotated, Any, Union, get_args, get_origin
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,7 +23,14 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
     _registry: dict[str, dict[str, tuple[str, str]]] = {}
 
     def __new__(mcls, name: str, bases: tuple, namespace: dict, **kw):
-        annotations = dict(namespace.get("__annotations__", {}))
+        # PEP 649/749: a class body no longer puts a plain __annotations__ dict in
+        # the namespace, it puts a lazy __annotate_func__ there. Reading the dict
+        # would silently yield {} and skip every relationship below. FORWARDREF
+        # leaves names that cannot be resolved yet (TYPE_CHECKING-only model
+        # imports) as ForwardRef rather than raising; _extract_target_name
+        # already unwraps those.
+        annotate = namespace.get("__annotate_func__")
+        annotations = dict(call_annotate_function(annotate, Format.FORWARDREF)) if annotate else {}
         local_rels = {}
         merged_columns = {}
 
@@ -80,7 +88,11 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         if local_rels:
             mcls._registry[name] = local_rels
 
-        if annotations:
+        # Write the popped-down dict back so SQLAlchemy maps only the columns and
+        # never sees the relationship annotations. Unconditional: a class whose
+        # annotations were all relationships must end up with an empty dict, not
+        # fall back to __annotate_func__.
+        if annotate is not None:
             namespace["__annotations__"] = annotations
 
         cls = super().__new__(mcls, name, bases, namespace, **kw)

@@ -24,7 +24,7 @@ open-wearables/
 
 | Backend | Frontend | MCP |
 |---------|----------|-----|
-| Python 3.13+ | React 19 + TypeScript | Python 3.13+ |
+| Python 3.14+ | React 19 + TypeScript | Python 3.13+ |
 | FastAPI | TanStack Router/Query | FastMCP |
 | SQLAlchemy 2.0 | React Hook Form + Zod | httpx |
 | PostgreSQL | Tailwind + shadcn/ui | |

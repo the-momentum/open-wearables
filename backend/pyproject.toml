@@ -2,7 +2,7 @@
 name = "open-wearables"
 version = "0.9.0"
 description = ""
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "cryptography>=50.0.1",
     "pydantic-settings>=2.15.0",
@@ -84,6 +84,9 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-third-party = ["celery"]
+# stdlib as of 3.14, but target-version is pinned to py313 above, so ruff
+# would otherwise sort it as third-party.
+extra-standard-library = ["annotationlib"]
 
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]

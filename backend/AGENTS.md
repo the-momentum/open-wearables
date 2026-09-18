@@ -3,7 +3,7 @@
 This file extends the root AGENTS.md with backend-specific patterns.
 
 ## Tech Stack
-- Python 3.13+
+- Python 3.14+
 - FastAPI for API framework
 - SQLAlchemy 2.0 for ORM
 - PostgreSQL for database
