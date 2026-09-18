@@ -855,7 +855,7 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] If `webhook_registration_api=True`: implemented `register_subscriptions()` and `deregister_subscriptions()` on the webhook service, and verified both fire on the sync mode switch
-- [ ] If `webhook_subscription_per_user=True`: implemented `register_user_subscriptions()` on your webhook service, overrode `_save_connection` and `deregister_user`, and verified the fan-out registers one subscription per active connection
+- [ ] If `webhook_subscription_per_user=True`: implemented the per-connection reconcile on your webhook service plus its provider-scoped task, overrode `_save_connection` and `deregister_user`, and verified the fan-out reconciles one connection per active link in both directions
 - [ ] Added error handling and logging
 - [ ] Updated API documentation
 

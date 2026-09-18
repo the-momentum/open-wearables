@@ -42,7 +42,7 @@ def sync_user_subscriptions(self: Task, user_id: str) -> dict:
         raise RuntimeError("Withings strategy is not wired with its notify service")
 
     with SessionLocal() as db:
-        results = service.register_user_subscriptions(db, UUID(user_id))
+        results = service.reconcile_user(db, UUID(user_id))
 
     failed = [result for result in results if result.get("status") == "error"]
     if failed:

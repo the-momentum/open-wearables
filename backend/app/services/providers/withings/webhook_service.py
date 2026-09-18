@@ -191,12 +191,12 @@ class WithingsWebhookService(BaseWebhookService):
         )
         return results
 
-    def register_user_subscriptions(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:
+    def reconcile_user(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:
         """Bring one user's subscriptions in line with the configured live-sync mode.
 
-        The per-user counterpart of ``register_subscriptions`` and idempotent in
-        the same way, so a mode of ``pull`` revokes rather than creates. Entry
-        point of the ``sync_user_subscriptions`` task.
+        Resolves the stored mode and defers to ``sync_user``, so a mode of ``pull``
+        revokes rather than creates. Entry point of the ``sync_user_subscriptions``
+        task, which carries no mode of its own.
         """
         mode = self.provider_settings_repo.get_live_sync_mode(db, "withings") or self._default_live_sync_mode
         if mode is None:
