@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped
 from app.database import BaseDbModel
 from app.mappings import (
     FKDataSource,
+    FKEventRecordOptional,
     FKSeriesTypeDefinition,
     PrimaryKey,
     numeric_10_3,
@@ -36,3 +37,4 @@ class DataPointSeries(BaseDbModel):
     value: Mapped[numeric_10_3]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
     is_daily_total: Mapped[bool | None] # True = pre-aggregated daily total; False = granular intraday samples
+    event_record_id: Mapped[FKEventRecordOptional]

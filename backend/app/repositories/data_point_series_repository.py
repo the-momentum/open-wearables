@@ -256,6 +256,7 @@ class DataPointSeriesRepository(
         value: Decimal | float | int
         series_type_definition_id: int
         is_daily_total: bool | None
+        event_record_id: UUID | None
 
     # Single source of truth for the COPY/INSERT column list, derived from _StagingRow's
     # own field names above so the SQL text and the row shape can't drift apart.
@@ -289,6 +290,7 @@ class DataPointSeriesRepository(
                     value=creator.value,
                     series_type_definition_id=get_series_type_id(creator.series_type),
                     is_daily_total=creator.is_daily_total,
+                    event_record_id=creator.event_record_id,
                 )
             )
 
@@ -335,11 +337,13 @@ class DataPointSeriesRepository(
                             external_id = excluded.external_id,
                             value = excluded.value,
                             zone_offset = excluded.zone_offset,
-                            is_daily_total = excluded.is_daily_total
+                            is_daily_total = excluded.is_daily_total,
+                            event_record_id = excluded.event_record_id
                         WHERE data_point_series.value IS DISTINCT FROM excluded.value
                            OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
                            OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
                            OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
+                           OR data_point_series.event_record_id IS DISTINCT FROM excluded.event_record_id
                         RETURNING (xmax = 0) AS was_insert
                     )
                     SELECT count(*) FILTER (WHERE was_insert) FROM merged
