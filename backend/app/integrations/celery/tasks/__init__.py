@@ -30,13 +30,14 @@ from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import complete_and_process_aws_upload, process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
+from .provider_webhooks_task import reconcile_provider_webhooks
 from .refresh_dashboard_stats_task import refresh_dashboard_total_data_points
-from .register_provider_webhooks_task import register_provider_webhooks, register_user_webhooks
 from .renew_oura_webhooks_task import renew_oura_webhooks
 from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
 from .sync_vendor_data_task import sync_vendor_data
 from .webhook_push_task import process_webhook_push
+from .withings.notify_sync_task import sync_user_subscriptions as sync_withings_user_subscriptions
 
 __all__ = [
     # Garmin backfill (30-day webhook-based sync)
@@ -67,8 +68,8 @@ __all__ = [
     "generate_seed_data",
     "send_invitation_email_task",
     "process_webhook_push",
-    "register_provider_webhooks",
-    "register_user_webhooks",
+    "reconcile_provider_webhooks",
+    "sync_withings_user_subscriptions",
     "renew_oura_webhooks",
     # Outgoing webhooks
     "emit_webhook_event",

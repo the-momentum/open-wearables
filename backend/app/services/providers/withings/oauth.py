@@ -20,7 +20,7 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.handlers.tasks import REGISTER_USER_WEBHOOKS_TASK
+from app.services.providers.withings.handlers.tasks import SYNC_USER_SUBSCRIPTIONS_TASK
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -210,8 +210,8 @@ class WithingsOAuth(BaseOAuthTemplate):
             return
         try:
             celery_app.send_task(
-                REGISTER_USER_WEBHOOKS_TASK,
-                args=[self.provider_name, str(user_id)],
+                SYNC_USER_SUBSCRIPTIONS_TASK,
+                args=[str(user_id)],
                 queue="webhook_sync",
             )
         except Exception as e:
