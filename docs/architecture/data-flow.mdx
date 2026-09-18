@@ -11,7 +11,7 @@ keywords: ["wearable data flow", "health data pipeline", "open wearables data fl
 "twitter:card": "summary_large_image"
 ---
 
-![Open Wearables data flow](../images/data-flow.png)
+![Data flow diagram: a wearable device syncs through the provider app to the provider cloud, which Open Wearables pulls from or receives webhooks from; mobile-only sources reach Open Wearables through the SDK instead. Open Wearables normalizes everything into the unified data model and serves it to your backend over the REST API and outgoing webhooks, and to AI assistants through the MCP server.](../images/data-flow.png)
 
 ## Cloud providers
 
@@ -39,7 +39,7 @@ POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
 
 How far back you can go depends on the provider - see [historical data limits](/providers/historical-data).
 
-For now it also fires automatically on the user's first connection. You control this with `HISTORICAL_SYNC_ON_CONNECT` in the backend environment (default `true`) - set it to `false` to trigger backfill yourself. The automatic dispatch is a leftover that will go away, so don't build on it.
+For now it also fires automatically after every successful OAuth callback. You control this with `HISTORICAL_SYNC_ON_CONNECT` in the backend environment (default `true`) - set it to `false` to trigger backfill yourself. The automatic dispatch is a leftover that will go away, so don't build on it.
 
 ## Mobile-only sources
 
