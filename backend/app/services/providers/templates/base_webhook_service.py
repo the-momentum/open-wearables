@@ -12,13 +12,9 @@ class BaseWebhookService:
     Concrete services override the methods supported by their provider.
     Unsupported operations raise ``NotImplementedError``, which the router
     maps to HTTP 501.
-
-    Bulk registration results stay loose dicts: entries carry provider payload
-    (a signing secret, a subscriber id, a skip reason) that the result model
-    does not hold. Everything that operates on subscriptions reports
-    ``WebhookOperationResult``.
     """
 
+    # Dicts, not WebhookOperationResult: entries carry provider payload the model has no field for.
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
         raise NotImplementedError("This provider does not support programmatic webhook registration")
 

@@ -121,19 +121,30 @@ class WithingsWebhookService(BaseWebhookService):
         self._default_live_sync_mode = default_live_sync_mode
 
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
-        """Fan out one sync task per active connection.
+        """Queue one ``sync_user_subscriptions`` task per active connection.
 
-        ``callback_url`` is ignored: each subscription carries the shared-secret
-        callback built per request by ``_callback_url``. Nothing is subscribed
-        here, so there are no per-subscription results to report; the fan-out
-        logs what it dispatched and captures what it could not.
+        Withings has no app-level subscription to create: each one is made with a
+        connection's own access token, so the provider-wide operation is a fan-out
+        over connections and every subscribe happens in the per-connection task.
+
+        ``callback_url`` is ignored — each task builds its own from the shared
+        webhook secret (``_callback_url``), which Withings echoes back on delivery.
+
+        Returns nothing because nothing was subscribed here. The fan-out logs how
+        many tasks it queued and captures the ones it could not; the per-connection
+        results are logged by ``sync_user_subscriptions`` itself.
         """
         self._fan_out()
         return []
 
     async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
-        """Revoke through the same fan-out: each task reconciles its own user
-        against the configured mode, which is ``pull`` by the time this runs."""
+        """Queue the same fan-out to revoke instead of subscribe.
+
+        Identical to ``register_subscriptions`` on purpose: each task resolves the
+        currently stored live-sync mode and reconciles its connection toward it, so
+        a mode of ``pull`` — already committed before this runs — revokes the applis
+        rather than creating them. Nothing is deleted here, so nothing is returned.
+        """
         self._fan_out()
         return []
 
