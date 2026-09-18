@@ -39,7 +39,7 @@ POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
 
 How far back you can go depends on the provider - see [historical data limits](/providers/historical-data).
 
-For now it also fires automatically on the user's first connection (`HISTORICAL_SYNC_ON_CONNECT`, default `true`) - a leftover that will go away, so don't build on it.
+For now it also fires automatically on the user's first connection. You control this with `HISTORICAL_SYNC_ON_CONNECT` in the backend environment (default `true`) - set it to `false` to trigger backfill yourself. The automatic dispatch is a leftover that will go away, so don't build on it.
 
 ## Mobile-only sources
 
