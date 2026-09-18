@@ -39,7 +39,7 @@ POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
 
 How far back you can go depends on the provider - see [historical data limits](/providers/historical-data).
 
-It also runs automatically on the user's first connection while `HISTORICAL_SYNC_ON_CONNECT` is enabled (default `true`).
+For now it also fires automatically on the user's first connection (`HISTORICAL_SYNC_ON_CONNECT`, default `true`) - a leftover that will go away, so don't build on it.
 
 ## Mobile-only sources
 
