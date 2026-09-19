@@ -350,3 +350,18 @@ class TestIngestionWiring:
 
         mock_ts.bulk_create_samples.assert_not_called()
         assert count == 0
+
+
+class TestManualActivityIsQuiet:
+    """A manual activity has no streams; its 404 must reach api_client as expected."""
+
+    def test_the_streams_404_reaches_api_client_as_quiet(self, strava_workouts: StravaWorkouts) -> None:
+        # Act: through the real template, so a base that accepts the argument but
+        # drops it would fail here.
+        with patch(
+            "app.services.providers.templates.base_workouts.make_authenticated_request", return_value={}
+        ) as mock_request:
+            strava_workouts._build_workout_samples(MagicMock(), uuid4(), "123", _START_DT, _ZONE_OFFSET, _DEVICE_MODEL)
+
+        # Assert
+        assert mock_request.call_args.kwargs.get("quiet_statuses") == (404,)

@@ -150,8 +150,14 @@ class BaseWorkoutsTemplate(ABC):
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
+        *,
+        quiet_statuses: tuple[int, ...] = (),
     ) -> Any:
-        """Make authenticated request to vendor API."""
+        """Make authenticated request to vendor API.
+
+        ``quiet_statuses`` are statuses the caller expects and handles itself. They
+        still raise, but are not logged as errors first; see make_authenticated_request.
+        """
         return make_authenticated_request(
             db=db,
             user_id=user_id,
@@ -164,4 +170,5 @@ class BaseWorkoutsTemplate(ABC):
             params=params,
             headers=headers,
             json_data=json_data,
+            quiet_statuses=quiet_statuses,
         )
