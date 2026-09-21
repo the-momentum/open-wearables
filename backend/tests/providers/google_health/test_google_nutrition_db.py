@@ -110,8 +110,8 @@ class TestInsideTheSyncSavepoint:
         db.commit()
         real = event_record_service.create_or_update_meal
 
-        def flaky(db_: Session, record, detail):  # noqa: ANN001, ANN202
-            result = real(db_, record, detail)  # record + detail are flushed by now
+        def flaky(db_: Session, record, detail, **kwargs):  # noqa: ANN001, ANN202, ANN003
+            result = real(db_, record, detail, **kwargs)  # record + detail are flushed by now
             if detail.title == "Bad":
                 raise RuntimeError("boom")
             return result

@@ -205,6 +205,7 @@ Fired once when a complete session is saved or merged.
 | `connection.revoked` | A connection became invalid or was disconnected (refresh token expired/revoked, the user deregistered on the provider side, or the user manually disconnected). OAuth connections require re-authorization to resume syncing; SDK connections resume on the next upload. See the `reason` field. |
 | `workout.created` | A new workout session was saved. |
 | `sleep.created` | A new (or merged) sleep session was saved. |
+| `meal.created` | A new meal or nutrition-log entry was saved. |
 | `menstrual_cycle.created` | A new menstrual cycle record was saved. |
 | `activity.created` | A new generic activity session was saved. |
 
@@ -360,6 +361,39 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 
 <Note>
   `sleep_duration_seconds` is the time actually asleep (excludes awake periods within the session); `duration_seconds` is the total time-in-bed span. Both `source.source` (the third-party writer app, e.g. HealthKit/Health Connect) and `sleep_stage_intervals` are `null`/omitted when the provider or ingestion path did not report them. Unlike every other field in this example, `sleep_stage_intervals` above is **not** shown in full — see the note before the code block.
+</Note>
+
+### `meal.created`
+
+```json
+{
+  "type": "meal.created",
+  "data": {
+    "id": "e5f6a7b8-c9d0-1234-efab-234567890123",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "Grilled Chicken Breast",
+    "meal_type": "lunch",
+    "start_time": "2025-12-19T12:30:00+01:00",
+    "end_time": "2025-12-19T12:30:00+01:00",
+    "zone_offset": "+01:00",
+    "source": {
+      "provider": "apple",
+      "device": "iPhone"
+    },
+    "calories_kcal": 550.0,
+    "macros": {
+      "protein_g": 38.2,
+      "carbohydrates_g": 42.0,
+      "fat_g": 18.5,
+      "fiber_g": 4.0
+    },
+    "water_ml": null
+  }
+}
+```
+
+<Note>
+  `title` and `meal_type` come from the provider's food-log entry (or HealthKit/Health Connect correlation metadata) and are `null` when not reported. `macros` is `null` when none of its four fields were recorded for the meal; each of `calories_kcal` and `water_ml` is `null` independently when that nutrient wasn't reported.
 </Note>
 
 ### `menstrual_cycle.created`

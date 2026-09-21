@@ -255,6 +255,25 @@ class ImportService:
 
             yield record, detail
 
+    @staticmethod
+    def _nutrients_by_meal(
+        samples: Iterable[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate],
+        meal_ids: set[UUID],
+    ) -> dict[UUID, dict[SeriesType, Decimal]]:
+        """Group this batch's nutrient samples by their linked meal, for the meal.created webhook.
+
+        Samples are matched via `event_record_id` (set in _build_statistic_bundles from
+        correlation_id_map), the same link `_nutrients_by_meal` on EventRecordService reads
+        back from the database for the Google Health path.
+        """
+        result: dict[UUID, dict[SeriesType, Decimal]] = {}
+        for sample in samples:
+            if sample.event_record_id is None or sample.event_record_id not in meal_ids:
+                continue
+            value = sample.value if isinstance(sample.value, Decimal) else Decimal(str(sample.value))
+            result.setdefault(sample.event_record_id, {})[sample.series_type] = value
+        return result
+
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
         """Rescale a value into the series' stored unit for series where the SDK unit varies by provider."""
         match series_type:
@@ -456,6 +475,8 @@ class ImportService:
         # their internal ids exist before nutrient samples try to link to them.
         meal_bundles = list(self._build_meal_bundles(request, user_id))
         correlation_id_map: dict[str, UUID] = {}
+        meal_details_to_insert: list[EventRecordDetailCreate] = []
+        inserted_meal_ids: set[UUID] = set()
         if meal_bundles:
             meal_records, meal_details = zip(*meal_bundles)
             meal_details_by_id = {detail.record_id: detail for detail in meal_details}
@@ -464,9 +485,7 @@ class ImportService:
             db_session.flush()
             meals_saved = len(inserted_meal_ids)
 
-            details_to_insert = [meal_details_by_id[m] for m in inserted_meal_ids if m in meal_details_by_id]
-            if details_to_insert:
-                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="meal")
+            meal_details_to_insert = [meal_details_by_id[m] for m in inserted_meal_ids if m in meal_details_by_id]
 
             for record in meal_records:
                 if not record.external_id:
@@ -519,6 +538,14 @@ class ImportService:
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
+
+        # Bulk create meal details now that the nutrient samples above are known, so
+        # meal.created can carry their totals (requires event_record to exist due to FK).
+        if meal_details_to_insert:
+            meal_nutrients = self._nutrients_by_meal(samples, inserted_meal_ids)
+            self.event_record_service.bulk_create_details(
+                db_session, meal_details_to_insert, detail_type="meal", nutrients_by_record=meal_nutrients
+            )
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
