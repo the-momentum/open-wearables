@@ -14,29 +14,14 @@
 	import type { PageSize } from '$lib/lists/pagination';
 	import { providerLabel } from '$lib/providers/labels';
 	import { humanise } from '$lib/utils/text';
-	import { withParams } from '$lib/utils/url';
+	import { cursorHrefs } from '$lib/lists/cursor';
 	import type { Workout } from '$lib/workouts/types';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	// A cursor names a position in one query, so any filter change has to drop it
-	// — and the counter with it — or page three of the old list answers for page
-	// one of the new one.
-	const hrefFor = (changes: Record<string, string | null>) =>
-		withParams(page.url, { cursor: null, at: null, ...changes });
-
-	// The API pages by cursor, which carries no ordinal, so the position is
-	// tracked alongside it purely so the reader can see where they are.
-	const at = $derived(Math.max(Number(page.url.searchParams.get('at') ?? 1), 1));
-
-	function stepHref(cursor: string | null, delta: number) {
-		// Page one is the bare URL, never a `prev_` cursor. Reached by cursor it
-		// has nothing before it, so the API reports has_more false and withholds
-		// the forward cursor too — which strands the reader with both arrows dead.
-		if (at + delta === 1) return hrefFor({});
-		return cursor === null ? null : withParams(page.url, { cursor, at: String(at + delta) });
-	}
+	const nav = $derived(cursorHrefs(page.url));
+	const { at, hrefFor } = $derived(nav);
 	const sizeHref = (size: PageSize) => hrefFor({ size: String(size) });
 
 	const label = (entry: string) => providerLabel(data.providers, entry);
@@ -119,8 +104,8 @@
 				page={at}
 				size={data.pageSize}
 				total={data.workouts.pagination.total_count ?? workouts.length}
-				previousHref={stepHref(data.workouts.pagination.previous_cursor, -1)}
-				nextHref={stepHref(data.workouts.pagination.next_cursor, 1)}
+				previousHref={nav.stepHref(data.workouts.pagination.previous_cursor, -1)}
+				nextHref={nav.stepHref(data.workouts.pagination.next_cursor, 1)}
 				sizeHrefFor={sizeHref}
 			/>
 		{/if}

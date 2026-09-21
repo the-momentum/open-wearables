@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cursorHrefs } from './cursor';
 import { isPageSize, pageForSize, paginationItems } from './pagination';
 
 describe('paginationItems', () => {
@@ -86,5 +87,39 @@ describe('isPageSize', () => {
 		[null, false]
 	])('treats %o as %s', (value, expected) => {
 		expect(isPageSize(value)).toBe(expected);
+	});
+});
+
+const at = (search: string) => cursorHrefs(new URL(`https://x/users/1/workouts${search}`));
+
+describe('cursorHrefs', () => {
+	it('reads the position from the URL and refuses a nonsense one', () => {
+		expect(at('?at=3').at).toBe(3);
+		expect(at('').at).toBe(1);
+		expect(at('?at=-2').at).toBe(1);
+	});
+
+	// A cursor names a position in one query, so a filter change has to drop it
+	// or page three of the old list answers for page one of the new one.
+	it('drops the cursor and the counter when a filter changes', () => {
+		expect(at('?cursor=abc&at=4&provider=oura').hrefFor({ type: 'running' })).toBe(
+			'/users/1/workouts?provider=oura&type=running'
+		);
+	});
+
+	// Page one reached by a prev_ cursor has nothing before it, so the API reports
+	// has_more false and withholds the forward cursor too — both arrows go dead.
+	it('steps back to page one as the bare URL, not as a cursor', () => {
+		expect(at('?cursor=page2&at=2').stepHref('prev_x', -1)).toBe('/users/1/workouts');
+	});
+
+	it('carries the cursor and the next position forward', () => {
+		expect(at('?at=2&cursor=page2').stepHref('next_x', 1)).toBe(
+			'/users/1/workouts?at=3&cursor=next_x'
+		);
+	});
+
+	it('has nowhere to step when the API offered no cursor', () => {
+		expect(at('?at=3&cursor=page3').stepHref(null, 1)).toBeNull();
 	});
 });

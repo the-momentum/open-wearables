@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { MICRO } from '$lib/components/ui/typography';
 	import { seriesColour } from '$lib/timeseries/samples';
 
 	let {
@@ -20,7 +21,7 @@
 
 <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 	{#if bands}
-		<span class="text-[11px] text-muted-foreground">Bands: {bands.toLowerCase()} zones</span>
+		<span class={MICRO}>Bands: {bands.toLowerCase()} zones</span>
 		<span aria-hidden="true" class="text-muted-foreground/30">|</span>
 	{/if}
 

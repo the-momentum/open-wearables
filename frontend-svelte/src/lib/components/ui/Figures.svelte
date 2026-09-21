@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
+	import { MICRO } from './typography';
 
 	export type Figure = { icon: Component; label: string; value: string | number };
 
@@ -32,7 +33,7 @@
 				<dd class="truncate text-lg font-semibold text-foreground tabular-nums sm:text-xl">
 					{figure.value}
 				</dd>
-				<dt class="truncate text-[11px] text-muted-foreground">{figure.label}</dt>
+				<dt class="truncate {MICRO}">{figure.label}</dt>
 			</div>
 		</div>
 	{/each}

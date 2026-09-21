@@ -3,6 +3,7 @@
 	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 	import Route from '@lucide/svelte/icons/route';
 	import Timer from '@lucide/svelte/icons/timer';
+	import MetricRow from '$lib/components/events/MetricRow.svelte';
 	import { formatDistance, formatDuration, formatNumber } from '$lib/utils/format';
 	import type { Workout } from '$lib/workouts/types';
 
@@ -18,14 +19,4 @@
 	]);
 </script>
 
-<dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-	{#each metrics as metric (metric.label)}
-		<div class="flex items-center gap-2">
-			<metric.icon size={15} aria-hidden="true" class="shrink-0 text-muted-foreground/60" />
-			<div class="min-w-0">
-				<dd class="truncate text-sm font-medium text-foreground tabular-nums">{metric.value}</dd>
-				<dt class="text-[11px] text-muted-foreground">{metric.label}</dt>
-			</div>
-		</div>
-	{/each}
-</dl>
+<MetricRow {metrics} />

@@ -1,12 +1,10 @@
 import { json } from '@sveltejs/kit';
+import { SUMMARY_CAP } from '$lib/server/events';
 import { requireToken } from '$lib/server/guard';
 import { fetchWorkouts } from '$lib/server/workouts';
 import { parsePeriod } from '$lib/filters/period';
 import { sumWorkouts } from '$lib/workouts/totals';
 import type { RequestHandler } from './$types';
-
-/** The most the endpoint hands over in one page, and what one summary may cost. */
-const CAP = 1000;
 
 /**
  * Its own request because there is no workout aggregate to ask: the figures are
@@ -20,7 +18,7 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 		period: parsePeriod(url.searchParams),
 		provider: url.searchParams.get('provider') ?? '',
 		type: url.searchParams.get('type') ?? '',
-		limit: CAP,
+		limit: SUMMARY_CAP,
 		zones: false
 	});
 

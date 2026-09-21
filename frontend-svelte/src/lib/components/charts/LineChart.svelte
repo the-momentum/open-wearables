@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { MICRO } from '$lib/components/ui/typography';
 	import { seriesColour, type Series } from '$lib/timeseries/samples';
 	import HoverReadout from './HoverReadout.svelte';
 	import SeriesLegend from './SeriesLegend.svelte';
@@ -206,7 +207,7 @@
 		{/if}
 	</div>
 
-	<div class="flex justify-between text-[11px] text-muted-foreground tabular-nums">
+	<div class="flex justify-between tabular-nums {MICRO}">
 		<span>{formatTime(from)}</span>
 		<span>{formatTime(to)}</span>
 	</div>

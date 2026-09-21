@@ -41,7 +41,7 @@ test('sums the whole period, not the page in front of you', async ({ page }) => 
 
 	// And they follow the filters, like every other control on this page.
 	await page.getByRole('link', { name: 'Oura', exact: true }).click();
-	await expect(summary.getByText('5', { exact: true })).toBeVisible();
+	await expect(summary.getByText('4', { exact: true })).toBeVisible();
 });
 
 test('reads the clock the workout was recorded in, not the reader’s', async ({ page }) => {
@@ -94,6 +94,7 @@ test('offers only the workout types this user actually has', async ({ page }) =>
 	await expect(options).toHaveText([
 		'All types',
 		'Cycling',
+		'Open water swimming',
 		'Running',
 		'Strength training',
 		'Swimming'
@@ -267,4 +268,15 @@ test('shows the cards without waiting for the figures above them', async ({ page
 	await expect(figures).toHaveCount(0);
 
 	await expect(figures.getByText('23', { exact: true })).toBeVisible();
+});
+
+test('says which day a workout ended on when it runs past midnight', async ({ page }) => {
+	await page.goto(`${WORKOUTS}?type=open_water_swimming`);
+
+	// Dated by its start, so the weekday belongs to the *end*: marking the start
+	// repeats the date beside it and leaves the finish looking like it happened
+	// earlier the same day.
+	const heading = page.getByRole('article').first().getByRole('heading');
+	await expect(heading).toContainText('22:30');
+	await expect(heading).toContainText(/\w{3}\s*02:19/);
 });

@@ -11,3 +11,6 @@ export const STEP =
 
 export const STEP_SPENT =
 	'border-border text-muted-foreground/40 grid size-10 place-items-center rounded-lg border';
+
+/** Small print beside a chart or under a figure: axis ends, shares, cell labels. */
+export const MICRO = 'text-[11px] text-muted-foreground';

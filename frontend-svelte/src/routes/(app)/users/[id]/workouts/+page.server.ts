@@ -1,12 +1,11 @@
 import { fetchConnections } from '$lib/server/connections';
 import { requireToken } from '$lib/server/guard';
+import { knownProvider } from '$lib/server/events';
 import { fetchProviders } from '$lib/server/providers';
-import { fetchDataTimeline } from '$lib/server/summary';
-import { deleteWorkout, fetchWorkouts } from '$lib/server/workouts';
+import { deleteWorkout, fetchWorkoutTypes, fetchWorkouts } from '$lib/server/workouts';
 import { attempt } from '$lib/server/form';
-import { ALL_TIME, parsePeriod } from '$lib/filters/period';
+import { parsePeriod } from '$lib/filters/period';
 import { isPageSize } from '$lib/lists/pagination';
-import { totalsFromTimeline } from '$lib/summary/timeline';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
@@ -28,28 +27,22 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const options = Promise.all([
 		fetchProviders(accessToken),
 		fetchConnections(params.id, accessToken),
-		fetchDataTimeline(params.id, accessToken, ALL_TIME, 'workout_type')
+		fetchWorkoutTypes(params.id, accessToken)
 	]);
 
 	const query = (provider: string, type: string) =>
 		fetchWorkouts(params.id, accessToken, { period, provider, type, cursor, limit: pageSize });
 
-	// Both filters are backend enums, so an invented one is a 422 and a dead page
-	// — which is why they are checked against what this user actually has, the
-	// same list the controls offer. With neither asked for there is nothing to
-	// check, so the list query has no reason to queue behind the option lists:
-	// on a plain visit the two travel together instead of one after the other.
+	// With neither filter asked for there is nothing to check, so the list query
+	// travels alongside the option lists instead of queueing behind them.
 	const started = !askedProvider && !askedType ? query('', '') : null;
 
 	const [providers, connections, everyType] = await options;
-	const types = Object.keys(totalsFromTimeline(everyType)).sort();
-	const known = (value: string, allowed: string[]) => (allowed.includes(value) ? value : '');
+	const types = [...everyType].sort();
 
-	const provider = known(
-		askedProvider,
-		connections.map((connection) => connection.provider)
-	);
-	const type = known(askedType, types);
+	const provider = knownProvider(connections, askedProvider);
+	// The same rule for the type: `WorkoutType` is an enum too.
+	const type = types.includes(askedType) ? askedType : '';
 
 	const workouts = (await started) ?? (await query(provider, type));
 

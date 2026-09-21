@@ -42,3 +42,18 @@ export function zoneKinds(workout: Workout): ZoneKind[] {
 
 	return kinds;
 }
+
+/**
+ * Zone rows for the shared distribution strip: `≤152` on its own, `134–152`
+ * once the zone below has a ceiling of its own.
+ */
+export function zoneRows(kind: ZoneKind): { label: string; seconds: number }[] {
+	const spent = kind.zones.filter((zone) => zone.seconds > 0);
+
+	return spent.map((zone, index) => {
+		const below = index > 0 ? spent[index - 1].max : null;
+		const range =
+			zone.max === null ? '' : below === null ? ` ≤${zone.max}` : ` ${below + 1}–${zone.max}`;
+		return { label: `Z${zone.zone + 1}${range}`, seconds: zone.seconds };
+	});
+}

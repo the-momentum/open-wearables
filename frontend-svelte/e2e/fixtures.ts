@@ -284,7 +284,8 @@ const WORKOUT_OWNER: Record<string, string> = {
 	running: 'garmin',
 	cycling: 'garmin',
 	strength_training: 'garmin',
-	swimming: 'oura'
+	swimming: 'oura',
+	open_water_swimming: 'suunto'
 };
 
 /**
@@ -372,7 +373,19 @@ const WORKOUT_SHAPES = [
 	{ type: 'running', minutes: 48, distance: 8200, calories: 512, avgHr: 148, maxHr: 176 },
 	{ type: 'cycling', minutes: 92, distance: 41200, calories: 980, avgHr: 139, maxHr: 171 },
 	{ type: 'strength_training', minutes: 35, distance: 0, calories: 240, avgHr: 119, maxHr: 158 },
-	{ type: 'swimming', minutes: 40, distance: 1500, calories: 310, avgHr: 0, maxHr: 0 }
+	{ type: 'swimming', minutes: 40, distance: 1500, calories: 310, avgHr: 0, maxHr: 0 },
+	// Long enough to finish on the following day, like the real open-water swims:
+	// the case where the range needs to say which day it ended on.
+	{
+		type: 'open_water_swimming',
+		minutes: 229,
+		distance: 9400,
+		calories: 1480,
+		avgHr: 131,
+		maxHr: 158,
+		// 20:30Z is 22:30 in the fixture's +02:00, so it finishes after local midnight.
+		startsAt: '20:30'
+	}
 ];
 
 const HR_ZONES = {
@@ -405,7 +418,7 @@ const buildWorkouts = () =>
 		const shape = WORKOUT_SHAPES[index % WORKOUT_SHAPES.length];
 		const provider = WORKOUT_OWNER[shape.type];
 		const seconds = shape.minutes * 60;
-		const start = new Date(`${isoDay(index * 3)}T07:12:00.000Z`);
+		const start = new Date(`${isoDay(index * 3)}T${shape.startsAt ?? '07:12'}:00.000Z`);
 
 		return {
 			id: `w0000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
@@ -587,3 +600,134 @@ export const makeTimeseries = (query: URLSearchParams) => {
 
 	return { data, pagination: { has_more: false, total_count: data.length } };
 };
+
+/**
+ * Oura reports stage intervals, Suunto only the per-stage minutes — the split
+ * the cards have to render differently. Naps every fifth night.
+ */
+const SLEEP_SHAPES = [
+	{ provider: 'oura', asleep: 25_500, inBed: 27_600, efficiency: 92, intervals: true },
+	{ provider: 'suunto', asleep: 21_000, inBed: 24_300, efficiency: 86, intervals: false }
+];
+
+const STAGE_CYCLE: StageName[] = ['awake', 'light', 'deep', 'light', 'rem'];
+type StageName = 'awake' | 'light' | 'deep' | 'rem';
+
+const stageMinutes = (asleep: number) => ({
+	awake_minutes: Math.round((asleep * 0.06) / 60),
+	light_minutes: Math.round((asleep * 0.52) / 60),
+	deep_minutes: Math.round((asleep * 0.21) / 60),
+	rem_minutes: Math.round((asleep * 0.21) / 60)
+});
+
+/** Cycles of the real shape: light, deep, light, REM, with brief wakings. */
+function stageIntervals(start: number, seconds: number) {
+	const out: { stage: StageName; start_time: string; end_time: string }[] = [];
+	let at = start;
+	const step = Math.floor(seconds / 20);
+
+	for (let index = 0; index < 20; index += 1) {
+		const stage = STAGE_CYCLE[index % STAGE_CYCLE.length];
+		const length = stage === 'awake' ? Math.round(step / 4) : step;
+		out.push({
+			stage,
+			start_time: new Date(at).toISOString(),
+			end_time: new Date(at + length * 1000).toISOString()
+		});
+		at += length * 1000;
+	}
+
+	return out;
+}
+
+const buildSleep = () =>
+	Array.from({ length: 17 }, (_, index) => {
+		const shape = SLEEP_SHAPES[index % SLEEP_SHAPES.length];
+		const isNap = index % 5 === 4;
+		const inBed = isNap ? 4200 : shape.inBed;
+		const asleep = isNap ? 3600 : shape.asleep;
+		// Nights start the evening before; naps sit in the afternoon.
+		const start = new Date(`${isoDay(index * 2 + 1)}T${isNap ? '13:20' : '22:40'}:00.000Z`);
+
+		return {
+			id: `s0000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+			start_time: start.toISOString(),
+			end_time: new Date(start.getTime() + inBed * 1000).toISOString(),
+			zone_offset: '+02:00',
+			source: {
+				provider: shape.provider,
+				source: shape.provider,
+				device: DEVICES[shape.provider].model,
+				device_type: DEVICES[shape.provider].type,
+				device_name: DEVICES[shape.provider].model
+			},
+			duration_seconds: inBed,
+			sleep_duration_seconds: asleep,
+			time_in_bed_seconds: inBed,
+			efficiency_percent: shape.efficiency,
+			stages: stageMinutes(asleep),
+			sleep_stage_intervals: shape.intervals ? stageIntervals(start.getTime(), asleep) : null,
+			is_nap: isNap
+		};
+	});
+
+let SLEEP = buildSleep();
+
+/** Restores the list `deleteSleep` mutates, so /__reset gives every test 17. */
+export const resetSleep = () => {
+	SLEEP = buildSleep();
+};
+
+export const deleteSleep = (id: string) => {
+	const index = SLEEP.findIndex((session) => session.id === id);
+	if (index === -1) return false;
+	SLEEP.splice(index, 1);
+	return true;
+};
+
+/** Keyset paging and the same cursor shape as the workouts list. */
+export const makeSleep = (query: URLSearchParams) => {
+	const provider = query.get('provider') ?? '';
+	const limit = Number(query.get('limit') ?? 50);
+	const start = new Date(query.get('start_date') ?? 0).getTime();
+	const end = new Date(query.get('end_date') ?? 0).getTime();
+	const withStages = query.getAll('include').includes('stages');
+
+	let matching = SLEEP.filter((session) => {
+		const at = new Date(session.start_time).getTime();
+		if (at < start || at >= end) return false;
+		return !provider || session.source.provider === provider;
+	});
+
+	// Oura outranks Suunto in the default priority order, so the winning source
+	// per night is the Oura one wherever both reported.
+	if (query.get('filter_by_priority') === 'true') {
+		matching = matching.filter((session) => session.source.provider === 'oura');
+	}
+
+	const cursor = query.get('cursor');
+	const { id, backwards } = cursor ? decodeCursor(cursor) : { id: '', backwards: false };
+	const found = cursor ? matching.findIndex((session) => session.id === id) : -1;
+
+	const offset = backwards ? Math.max(found - limit, 0) : found + 1;
+	const hasMore = backwards ? found > limit : offset + limit < matching.length;
+	const data = matching.slice(offset, offset + limit).map((session) => ({
+		...session,
+		sleep_stage_intervals: withStages ? session.sleep_stage_intervals : null
+	}));
+
+	const previous = cursor && data.length && (!backwards || hasMore);
+
+	return {
+		data,
+		pagination: {
+			next_cursor: hasMore && data.length ? encodeCursor(data[data.length - 1].id, 'next') : null,
+			previous_cursor: previous ? encodeCursor(data[0].id, 'prev') : null,
+			has_more: hasMore,
+			total_count: matching.length
+		}
+	};
+};
+
+/** What `/events/workouts/types` answers: the types this user actually has. */
+export const workoutTypes = () => [...new Set(WORKOUTS.map((workout) => workout.type))].sort();

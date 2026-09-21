@@ -12,10 +12,14 @@ import {
 	makeDataTimeline,
 	makeRecentRuns,
 	makeSyncHistory,
+	deleteSleep,
 	deleteWorkout,
+	makeSleep,
 	makeUsers,
 	makeTimeseries,
 	makeWorkouts,
+	workoutTypes,
+	resetSleep,
 	resetWorkouts
 } from './fixtures';
 
@@ -54,6 +58,7 @@ const server = Bun.serve({
 			DISCONNECTED = new Set();
 			SLOW_SUMMARY = false;
 			resetWorkouts();
+			resetSleep();
 			return new Response(null, { status: 204 });
 		}
 
@@ -144,11 +149,13 @@ const server = Bun.serve({
 			return json({ status: 'queued', provider: syncMatch[1] });
 		}
 
-		const workoutMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)\/events\/workouts\/([^/]+)$/);
-		if (workoutMatch && request.method === 'DELETE') {
-			return deleteWorkout(workoutMatch[2])
-				? new Response(null, { status: 204 })
-				: json({ detail: 'Workout not found' }, 404);
+		const eventMatch = pathname.match(
+			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep)\/([^/]+)$/
+		);
+		if (eventMatch && request.method === 'DELETE') {
+			const gone =
+				eventMatch[2] === 'workouts' ? deleteWorkout(eventMatch[3]) : deleteSleep(eventMatch[3]);
+			return gone ? new Response(null, { status: 204 }) : json({ detail: 'Not found' }, 404);
 		}
 
 		const detailMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)(\/.+)?$/);
@@ -196,6 +203,8 @@ const server = Bun.serve({
 				}
 				case '/timeseries':
 					return json(makeTimeseries(new URL(request.url).searchParams));
+				case '/events/workouts/types':
+					return json(workoutTypes());
 				case '/events/workouts': {
 					const query = new URL(request.url).searchParams;
 					// The page asks for one screen of records and, separately, for
@@ -205,6 +214,8 @@ const server = Bun.serve({
 					}
 					return json(makeWorkouts(query));
 				}
+				case '/events/sleep':
+					return json(makeSleep(new URL(request.url).searchParams));
 				case '/sync/runs':
 					return json(connected ? makeRecentRuns(user.id) : []);
 				default:

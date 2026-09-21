@@ -33,6 +33,8 @@ const clock = new Intl.DateTimeFormat('en-GB', {
 	timeZone: 'UTC'
 });
 
+const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' });
+
 const day = new Intl.DateTimeFormat('en-GB', {
 	weekday: 'short',
 	day: 'numeric',
@@ -71,4 +73,37 @@ export function formatLocalTime(iso: string, zoneOffset: string | null): string 
 export function formatLocalDay(iso: string, zoneOffset: string | null): string {
 	const date = inZone(iso, zoneOffset);
 	return date ? day.format(date) : DASH;
+}
+
+export type LocalRange = {
+	/** The two ends fall on different days in the session's own zone. */
+	crosses: boolean;
+	from: string;
+	to: string;
+	fromDay: string;
+	toDay: string;
+	/** No offset was stored, so both ends are UTC and should say so. */
+	utc: boolean;
+};
+
+/**
+ * A range in the session's own zone, in parts, so a caller can style the clock
+ * times apart from the days — and choose which end wears its weekday. Without
+ * one, a range that crosses midnight reads as running backwards, which is what
+ * a US offset did to the old dashboard.
+ */
+export function localRange(fromIso: string, toIso: string, zoneOffset: string | null): LocalRange {
+	const from = inZone(fromIso, zoneOffset);
+	const to = inZone(toIso, zoneOffset);
+	const blank = { crosses: false, from: DASH, to: DASH, fromDay: '', toDay: '', utc: false };
+	if (!from || !to) return blank;
+
+	return {
+		crosses: from.toISOString().slice(0, 10) !== to.toISOString().slice(0, 10),
+		from: clock.format(from),
+		to: clock.format(to),
+		fromDay: weekday.format(from),
+		toDay: weekday.format(to),
+		utc: !zoneOffset
+	};
 }

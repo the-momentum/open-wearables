@@ -1,22 +1,7 @@
 import { apiDelete, apiGet } from './api';
-import { periodWindow, type Period } from '$lib/filters/period';
+import { eventWindow } from './events';
+import type { Period } from '$lib/filters/period';
 import type { WorkoutPage } from '$lib/workouts/types';
-
-/**
- * Unlike the summaries, this endpoint requires both bounds, so "All time" has to
- * name one. Unix 0 is the honest way to say "from the beginning".
- */
-const ALL_TIME_START = '0';
-
-const stamp = (date: Date) => `${date.toISOString().slice(0, 19)}Z`;
-
-/** Tomorrow UTC, so today's workouts are inside the half-open window. */
-function tomorrow(): Date {
-	const date = new Date();
-	date.setUTCHours(0, 0, 0, 0);
-	date.setUTCDate(date.getUTCDate() + 1);
-	return date;
-}
 
 export type WorkoutQuery = {
 	period: Period;
@@ -33,12 +18,7 @@ export function fetchWorkouts(
 	accessToken: string,
 	{ period, provider = '', type = '', cursor = '', limit = 10, zones = true }: WorkoutQuery
 ): Promise<WorkoutPage> {
-	const window = periodWindow(period);
-	const params = new URLSearchParams({
-		start_date: window ? stamp(window.from) : ALL_TIME_START,
-		end_date: stamp(window ? window.to : tomorrow()),
-		limit: String(limit)
-	});
+	const params = eventWindow(period, limit);
 	// A card cannot draw zones until it is expanded, but paging again on expand
 	// would be worse than carrying them.
 	if (zones) params.set('include', 'zones');
@@ -51,3 +31,7 @@ export function fetchWorkouts(
 
 export const deleteWorkout = (userId: string, workoutId: string, accessToken: string) =>
 	apiDelete(`/api/v1/users/${userId}/events/workouts/${workoutId}`, accessToken);
+
+/** The types this user actually has, so the filter offers nothing that is empty. */
+export const fetchWorkoutTypes = (userId: string, accessToken: string) =>
+	apiGet<string[]>(`/api/v1/users/${userId}/events/workouts/types`, accessToken);

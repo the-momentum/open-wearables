@@ -4,15 +4,15 @@
 	import FieldGroups from '$lib/components/ui/FieldGroups.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import Skeleton from '$lib/components/ui/Skeleton.svelte';
-	import { NOTE } from '$lib/components/ui/typography';
+	import { MICRO, NOTE } from '$lib/components/ui/typography';
 	import { formatLocalTime } from '$lib/utils/format';
 	import { resource } from '$lib/utils/resource.svelte';
 	import { detailGroups } from '$lib/workouts/fields';
 	import { toSeries, type Sample } from '$lib/timeseries/samples';
 	import type { Workout } from '$lib/workouts/types';
-	import { zoneKinds } from '$lib/workouts/zones';
+	import { zoneKinds, zoneRows } from '$lib/workouts/zones';
+	import DistributionBar from '$lib/components/charts/DistributionBar.svelte';
 	import LineChart from '$lib/components/charts/LineChart.svelte';
-	import ZoneBar from './ZoneBar.svelte';
 
 	let { workout, userId, ondelete }: { workout: Workout; userId: string; ondelete: () => void } =
 		$props();
@@ -67,7 +67,7 @@
 			{#if bucket}
 				<!-- Say which, because an average is a different curve: the peaks a
 				     phone shows are exactly what a bucket flattens. -->
-				<p class="text-[11px] text-muted-foreground">
+				<p class={MICRO}>
 					Too many readings to plot one by one, so these are averages per {bucket.resolution.replace(
 						'min',
 						' minute'
@@ -78,11 +78,11 @@
 	</div>
 
 	{#if kind}
-		<ZoneBar
+		<DistributionBar
 			title="Time in {kind.label.toLowerCase()} zones"
 			icon={kind.icon}
 			unit={kind.unit}
-			zones={kind.zones}
+			rows={zoneRows(kind)}
 		>
 			{#if kinds.length > 1}
 				<Segmented
@@ -92,7 +92,7 @@
 					onselect={(value) => (chosen = value)}
 				/>
 			{/if}
-		</ZoneBar>
+		</DistributionBar>
 	{/if}
 
 	<FieldGroups groups={detailGroups(workout)} />

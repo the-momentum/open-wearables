@@ -86,6 +86,11 @@ test('keeps the chosen provider when the period changes', async ({ page }) => {
 	await page.goto(QUARTER);
 	await page.getByRole('link', { name: 'Oura', exact: true }).click();
 
+	// Wait for it to land: the period link's href is built from the current URL,
+	// so clicking mid-flight would carry a URL that has no provider in it yet —
+	// which is a race in the test, not in the page.
+	await expect(page).toHaveURL(`${QUARTER}&provider=oura`);
+
 	await page.getByRole('link', { name: 'All time' }).click();
 
 	await expect(page).toHaveURL(`${DATA}?provider=oura`);
