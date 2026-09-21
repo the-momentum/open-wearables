@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { seriesColour } from '$lib/timeseries/samples';
+	import { seriesColour, unitLabel } from '$lib/timeseries/samples';
 	import { formatNumber } from '$lib/utils/format';
 
 	let {
@@ -28,7 +28,7 @@
 				class="size-1.5 rounded-full"
 				style="background: {seriesColour(reading.type)}"
 			></span>
-			{formatNumber(reading.value, ` ${reading.unit}`)}
+			{formatNumber(reading.value, unitLabel(reading.unit))}
 		</span>
 	{/each}
 </div>

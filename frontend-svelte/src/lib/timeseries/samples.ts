@@ -25,16 +25,33 @@ export const WORKOUT_TYPES = ['heart_rate', 'power', 'cadence', 'speed'];
 /** What a whole day records: movement and effort rather than a single session. */
 export const ACTIVITY_TYPES = ['steps', 'energy', 'heart_rate'];
 
+/**
+ * Vitals worth a trend rather than a reading. Each is plotted on its own, since
+ * a body-fat percentage and a resting pulse share no axis.
+ */
+export const VITAL_TYPES = [
+	'resting_heart_rate',
+	'heart_rate_variability_rmssd',
+	'oxygen_saturation',
+	'respiratory_rate',
+	'vo2_max',
+	'weight',
+	'body_fat_percentage'
+];
+
 const HOUR = 3_600_000;
 
 /**
- * Coarse enough that one request covers the workout. The endpoint caps a page
- * at 1000 samples, and a silently truncated curve is worse than a coarser one.
+ * Coarse enough that one request covers the window. The endpoint caps a page at
+ * 1000 samples, and a silently truncated curve is worse than a coarser one.
  */
-export function resolutionFor(seconds: number): '1min' | '5min' | '15min' {
+export function resolutionFor(seconds: number): '1min' | '5min' | '15min' | '1hour' {
 	const hours = (seconds * 1000) / HOUR;
 	if (hours <= 12) return '1min';
-	return hours <= 60 ? '5min' : '15min';
+	if (hours <= 60) return '5min';
+	// Past ten days even quarter-hours overrun a page, and a body trend is read by
+	// the day anyway.
+	return hours <= 240 ? '15min' : '1hour';
 }
 
 /**
@@ -82,11 +99,58 @@ export function toSeries(samples: Sample[], order: string[] = WORKOUT_TYPES): Se
 /** Theme tokens, so a chart line cannot drift from the rest of the palette. */
 const SERIES_COLOUR: Record<string, string> = {
 	heart_rate: 'var(--color-danger)',
+	resting_heart_rate: 'var(--color-danger)',
 	power: 'var(--color-warning)',
 	energy: 'var(--color-warning)',
+	weight: 'var(--color-warning)',
 	cadence: 'var(--color-primary)',
 	steps: 'var(--color-primary)',
-	speed: 'var(--color-success)'
+	heart_rate_variability_rmssd: 'var(--color-primary)',
+	speed: 'var(--color-success)',
+	oxygen_saturation: 'var(--color-success)',
+	respiratory_rate: 'var(--color-success)',
+	vo2_max: 'var(--color-primary)'
 };
 
 export const seriesColour = (type: string) => SERIES_COLOUR[type] ?? 'var(--color-primary)';
+
+/**
+ * One point a day, the mean of that day's readings. A body trend is read by the
+ * day, and the endpoint has no daily rollup to ask for — so a dense intraday
+ * series like HRV would otherwise arrive as thousands of points, overrun a page,
+ * and be silently cut.
+ */
+export function dailyMeans(series: Series): Series {
+	const byDay = new Map<string, { sum: number; count: number }>();
+
+	for (const point of series.points) {
+		const day = new Date(point.at).toISOString().slice(0, 10);
+		const bucket = byDay.get(day) ?? { sum: 0, count: 0 };
+		byDay.set(day, { sum: bucket.sum + point.value, count: bucket.count + 1 });
+	}
+
+	return {
+		...series,
+		points: [...byDay.entries()]
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([day, { sum, count }]) => ({
+				at: new Date(`${day}T12:00:00Z`).getTime(),
+				value: sum / count
+			}))
+	};
+}
+
+/**
+ * The backend names units for machines (`percent`, `ml_kg_min`); this is what a
+ * reader expects to see. A leading space, or none where the symbol hugs its
+ * number.
+ */
+const UNIT_LABEL: Record<string, string> = {
+	percent: '%',
+	ml_kg_min: ' ml/kg/min',
+	m_per_s: ' m/s',
+	kg_m2: '',
+	count: ''
+};
+
+export const unitLabel = (unit: string) => UNIT_LABEL[unit] ?? ` ${unit}`;

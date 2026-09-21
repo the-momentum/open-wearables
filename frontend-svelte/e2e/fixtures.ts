@@ -823,3 +823,80 @@ export const makeActivity = (query: URLSearchParams) => {
 		}
 	};
 };
+
+/** Mirrors `BodySummary`, including the nulls: this user was never weighed for
+ *  body fat, and nothing was measured recently enough to be `latest`. */
+export const makeBody = () => ({
+	source: {
+		provider: 'garmin',
+		source: 'garmin',
+		device: DEVICES.garmin.model,
+		device_type: DEVICES.garmin.type,
+		device_name: DEVICES.garmin.model
+	},
+	slow_changing: {
+		weight_kg: 74.3,
+		height_cm: 181,
+		body_fat_percent: null,
+		muscle_mass_kg: 59.4,
+		bmi: 22.7,
+		age: 34
+	},
+	averaged: {
+		period_days: 7,
+		resting_heart_rate_bpm: 54,
+		avg_hrv_sdnn_ms: null,
+		avg_hrv_rmssd_ms: 41.8,
+		period_start: `${isoDay(7)}T00:00:00Z`,
+		period_end: `${isoDay(0)}T00:00:00Z`
+	},
+	latest: {
+		body_temperature_celsius: null,
+		body_temperature_measured_at: null,
+		skin_temperature_celsius: null,
+		skin_temperature_measured_at: null,
+		blood_pressure: null,
+		blood_pressure_measured_at: null
+	}
+});
+
+const VITAL_SHAPES: Record<string, { unit: string; base: number; swing: number; perDay: number }> =
+	{
+		resting_heart_rate: { unit: 'bpm', base: 54, swing: 5, perDay: 1 },
+		// Dozens a day, which is why the trend has to average before it draws.
+		heart_rate_variability_rmssd: { unit: 'ms', base: 42, swing: 9, perDay: 24 },
+		oxygen_saturation: { unit: 'percent', base: 96, swing: 2, perDay: 1 },
+		// One reading only, so it has no line to draw and must not claim one.
+		weight: { unit: 'kg', base: 74.3, swing: 0, perDay: 0 }
+	};
+
+/** Daily-ish vitals across the window, so the trends have something to average. */
+export const makeVitals = (query: URLSearchParams) => {
+	const types = query.getAll('types');
+	const start = new Date(query.get('start_time') ?? 0).getTime();
+	const end = new Date(query.get('end_time') ?? 0).getTime();
+	const days = Math.max(Math.round((end - start) / 86_400_000), 1);
+
+	const data: Record<string, unknown>[] = [];
+
+	for (const [type, shape] of Object.entries(VITAL_SHAPES)) {
+		if (!types.includes(type)) continue;
+
+		const readings = shape.perDay === 0 ? 1 : days * shape.perDay;
+		for (let index = 0; index < readings && data.length < 4000; index += 1) {
+			data.push({
+				timestamp: new Date(start + (index / readings) * (end - start)).toISOString(),
+				zone_offset: '+02:00',
+				source: { provider: 'garmin', device: 'Forerunner 265', device_name: 'Forerunner 265' },
+				is_daily_total: false,
+				type,
+				value:
+					Math.round((shape.base + shape.swing * Math.sin(index / (shape.perDay * 3 || 3))) * 10) /
+					10,
+				unit: shape.unit
+			});
+		}
+	}
+
+	return { data, pagination: { has_more: false, total_count: data.length } };
+};

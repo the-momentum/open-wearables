@@ -11,6 +11,7 @@
 		providers,
 		labelFor,
 		selected,
+		periodLabel = 'Period',
 		children
 	}: {
 		period: Period;
@@ -19,6 +20,8 @@
 		providers: string[];
 		labelFor: (provider: string) => string;
 		selected: string;
+		/** What the period governs, where it is not the list itself. */
+		periodLabel?: string;
 		/** Controls only one page needs, appended to the same row. */
 		children?: Snippet;
 	} = $props();
@@ -39,7 +42,7 @@
 <!-- Every filter in one place, above the cards: they govern all of them, and a
      control tucked inside one card is a control nobody finds. -->
 <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
-	<FilterGroup label="Period"><PeriodFilter {period} {hrefFor} /></FilterGroup>
+	<FilterGroup label={periodLabel}><PeriodFilter {period} {hrefFor} /></FilterGroup>
 
 	<!-- Nothing to choose between with a single connection. -->
 	{#if providers.length > 1}

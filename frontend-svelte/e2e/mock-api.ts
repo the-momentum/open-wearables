@@ -14,10 +14,12 @@ import {
 	makeSyncHistory,
 	deleteSleep,
 	makeActivity,
+	makeBody,
 	deleteWorkout,
 	makeSleep,
 	makeUsers,
 	makeTimeseries,
+	makeVitals,
 	makeWorkouts,
 	workoutTypes,
 	resetActivity,
@@ -204,8 +206,18 @@ const server = Bun.serve({
 						)
 					);
 				}
-				case '/timeseries':
-					return json(makeTimeseries(new URL(request.url).searchParams));
+				case '/summaries/body':
+					return json(connected ? makeBody() : null);
+				case '/timeseries': {
+					const query = new URL(request.url).searchParams;
+					// The body tab asks for vitals; every other caller asks for a
+					// session's own sensors.
+					return json(
+						query.getAll('types').includes('resting_heart_rate')
+							? makeVitals(query)
+							: makeTimeseries(query)
+					);
+				}
 				case '/events/workouts/types':
 					return json(workoutTypes());
 				case '/events/workouts': {

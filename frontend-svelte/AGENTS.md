@@ -1400,6 +1400,58 @@ Each tab is then its own `*Card`, `*Metrics`, `*Details`, `*Summary` and a
 domain module — a few dozen lines each. Two of those extractions started as
 duplication I had already written twice and only noticed on the third.
 
+## Body
+
+A snapshot, not a list: `/summaries/body` answers with one object and no
+pagination. The old dashboard showed only that — current weight, height, body
+fat, BMI, resting pulse — as a row of cards. What makes the tab worth opening is
+underneath, and it was not there.
+
+### Trends, because the vitals are dense and the composition is not
+
+In a real database the shape is lopsided: HRV arrives fourteen thousand times,
+resting heart rate and blood oxygen about twice a day, and **weight exactly
+once**. So the tab is three layers — the composition snapshot, a trend panel per
+vital over the chosen period, and the rest of the summary in detail columns.
+
+**Dashes in the snapshot, omissions in the columns.** The reverse of the other
+tabs, and deliberate: the snapshot is a fixed shape where "no weight on record"
+is one of the things somebody opened the tab to learn. A column of dashes in the
+detail groups says nothing, so those drop what never arrived.
+
+**A vital with one reading gets no line.** One point draws nothing, and a lone
+dot says less than the figure above it.
+
+**Trends are averaged to one point a day.** `dailyMeans()` exists because HRV
+alone would arrive four thousand times in a ninety-day window — four times what
+one page carries — and be silently cut. Averaging first makes the point count
+depend on days rather than on how often a device samples. `resolutionFor()`
+gained a `1hour` step for the same reason: a month of quarter-hours is three
+thousand buckets.
+
+**The period governs the trends, not the snapshot.** The snapshot is the latest
+reading whatever window is chosen, and "All time" is refused as a default — a
+decade of readings draws a line nobody can read, so the loader falls back to the
+ninety-day range.
+
+### Shared out of it
+
+- `charts/geometry.ts` — `scaleY`, `linePath`, `extent`. The scale had been
+  deduplicated _inside_ `LineChart` once already; the trend panel then copied it
+  into a second file. Two charts disagreeing about where a value sits is exactly
+  what a pure, tested module prevents.
+- `formatDecimal` — the `toFixed().replace(/\.0$/)` trim existed in three places
+  by the time the tab was finished.
+- `unitLabel` — the backend names units for machines (`percent`, `ml_kg_min`).
+  The first version rendered "94 percent"; the hover readout on every other
+  chart had the same bug.
+
+One thing deliberately **not** extracted: the fetch-and-render scaffold shared
+by `SamplesChart` and `VitalTrends`. Its two instances differ in their
+placeholder — one chart against a grid of three — so the wrapper would need the
+skeleton as a snippet, and a loading scaffold parameterised that far reads worse
+than the ten lines it saves.
+
 ### Month labels thin themselves out
 
 A year of weekly columns has twelve month starts, which on a phone collide into

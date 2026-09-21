@@ -175,11 +175,11 @@ test("gates Women's Health on the user actually having that data", async ({ page
 
 test('gives every tab a real URL, and 404s on one that is not a tab', async ({ page }) => {
 	await page.goto(`/users/${CONNECTED}`);
-	// Body is the next one in line and still the placeholder.
-	await page.getByRole('link', { name: 'Body' }).click();
+	// Scores is the next one in line and still the placeholder.
+	await page.getByRole('link', { name: 'Scores' }).click();
 
-	await expect(page).toHaveURL(`/users/${CONNECTED}/body`);
-	await expect(page.getByText('Body is not built yet')).toBeVisible();
+	await expect(page).toHaveURL(`/users/${CONNECTED}/scores`);
+	await expect(page.getByText('Scores is not built yet')).toBeVisible();
 
 	const response = await page.goto(`/users/${CONNECTED}/not-a-tab`);
 	expect(response?.status()).toBe(404);

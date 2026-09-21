@@ -22,6 +22,11 @@ export function formatPace(secondsPerKm: number | null): string {
 	return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')} /km`;
 }
 
+/** Trailing zeroes dropped: `74.0 kg` reads as a precision nobody claimed. */
+export function formatDecimal(value: number | null, digits = 1): string | null {
+	return value === null ? null : value.toFixed(digits).replace(/\.0+$/, '');
+}
+
 export const formatNumber = (value: number | null, unit = ''): string =>
 	value === null ? DASH : `${Math.round(value).toLocaleString('en-GB')}${unit}`;
 

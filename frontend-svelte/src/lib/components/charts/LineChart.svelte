@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { MICRO } from '$lib/components/ui/typography';
+	import { extent, linePath, scaleY } from '$lib/charts/geometry';
 	import { seriesColour, type Series } from '$lib/timeseries/samples';
 	import HoverReadout from './HoverReadout.svelte';
 	import SeriesLegend from './SeriesLegend.svelte';
@@ -27,9 +28,8 @@
 
 	// The viewBox is stretched to whatever width the card has, so strokes carry
 	// `non-scaling-stroke` and every label lives in HTML outside the SVG.
-	const W = 1000;
-	const H = 200;
-	const PAD = 12;
+	const BOX = { width: 1000, height: 200, pad: 12 };
+	const { width: W, height: H } = BOX;
 	/** Below this a band cannot hold its own label without hitting its neighbour. */
 	const LABEL_ROOM = 18;
 
@@ -57,27 +57,12 @@
 	const span = $derived(Math.max(to - from, 1));
 	const x = (at: number) => ((at - from) / span) * W;
 
-	/** Value to canvas, for one series' own range. Bands share it with their line. */
-	const scaleY = (low: number, high: number) => (value: number) =>
-		high === low ? H / 2 : H - PAD - ((value - low) / (high - low)) * (H - PAD * 2);
-
 	type Scaled = Series & { dash: string; low: number; high: number; path: string };
 
 	const scaled: Scaled[] = $derived(
 		shown.map((entry) => {
-			const values = entry.points.map((point) => point.value);
-			const low = Math.min(...values);
-			const high = Math.max(...values);
-			const y = scaleY(low, high);
-
-			const path = entry.points
-				.map(
-					(point, index) =>
-						`${index ? 'L' : 'M'}${x(point.at).toFixed(1)} ${y(point.value).toFixed(1)}`
-				)
-				.join(' ');
-
-			return { ...entry, low, high, path };
+			const range = extent(entry.points);
+			return { ...entry, ...range, path: linePath(entry.points, { from, to }, range, BOX) };
 		})
 	);
 
@@ -87,7 +72,7 @@
 	const bands = $derived.by(() => {
 		if (!owner || !zones) return [];
 
-		const y = scaleY(owner.low, owner.high);
+		const y = scaleY(owner.low, owner.high, BOX);
 		const out: { zone: number; top: number; y: number; height: number }[] = [];
 		let floor = owner.low;
 
