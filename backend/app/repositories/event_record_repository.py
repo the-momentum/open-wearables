@@ -56,26 +56,34 @@ class EventRecordRepository(
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
 
+    def _resolve_data_source_id(self, db_session: DbSession, creator: EventRecordCreate) -> UUID:
+        """The data source this record belongs to, created (flushed, not committed) if missing.
+
+        Never commits: create_and_flush and find_by_start promise their caller owns the
+        transaction, and the committing create() commits the source together with the record.
+        """
+        if creator.data_source_id:
+            return creator.data_source_id
+        provider = self.data_source_repo.infer_provider_from_source(creator.source)
+        if creator.provider:
+            with contextlib.suppress(ValueError):
+                provider = ProviderName(creator.provider)
+        data_source = self.data_source_repo.ensure_data_source(
+            db_session,
+            user_id=creator.user_id,
+            provider=provider,
+            user_connection_id=creator.user_connection_id,
+            device_model=creator.device_model,
+            source=creator.source,
+            software_version=creator.software_version,
+            original_source_name=creator.source,
+            commit=False,
+        )
+        return data_source.id
+
     def _build_creation(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[UUID, EventRecord]:
         """Resolve the data source and build the ORM object without touching the session."""
-        if creator.data_source_id:
-            data_source_id = creator.data_source_id
-        else:
-            provider = self.data_source_repo.infer_provider_from_source(creator.source)
-            if creator.provider:
-                with contextlib.suppress(ValueError):
-                    provider = ProviderName(creator.provider)
-            data_source = self.data_source_repo.ensure_data_source(
-                db_session,
-                user_id=creator.user_id,
-                provider=provider,
-                user_connection_id=creator.user_connection_id,
-                device_model=creator.device_model,
-                source=creator.source,
-                software_version=creator.software_version,
-                original_source_name=creator.source,
-            )
-            data_source_id = data_source.id
+        data_source_id = self._resolve_data_source_id(db_session, creator)
 
         creation_data = creator.model_dump()
         creation_data["data_source_id"] = data_source_id
@@ -89,6 +97,25 @@ class EventRecordRepository(
         ):
             creation_data.pop(redundant_key, None)
         return data_source_id, self.model(**creation_data)
+
+    def find_by_start(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord | None:
+        """The record of ``creator``'s category that starts at its start time on its data source.
+
+        Unlike the unique index, this ignores the end time - for records whose end moves
+        between syncs (a meal gaining items) it finds the row to update rather than a
+        duplicate to insert.
+        """
+        data_source_id = self._resolve_data_source_id(db_session, creator)
+        return (
+            db_session.query(self.model)
+            .filter(
+                self.model.data_source_id == data_source_id,
+                self.model.category == creator.category,
+                self.model.start_datetime == creator.start_datetime,
+            )
+            .order_by(self.model.end_datetime.desc())
+            .first()
+        )
 
     def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
         return (

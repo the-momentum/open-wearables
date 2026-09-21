@@ -7,6 +7,7 @@ from app.database import DbSession
 from app.schemas.enums import ProviderName, WorkoutType
 from app.schemas.model_crud.activities import EventRecordQueryParams, SleepInclude, WorkoutInclude
 from app.schemas.responses.activity import (
+    Meal,
     MenstrualCycleRecord,
     SleepSession,
     Workout,
@@ -139,6 +140,34 @@ def list_menstrual_cycles(
     return event_record_service.get_menstrual_cycles(db, user_id, params)
 
 
+@router.get("/users/{user_id}/events/meals")
+def list_meals(
+    user_id: UUID,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    cursor: str | None = None,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
+    provider: ProviderName | None = None,
+    source: str | None = None,
+    device_model: str | None = None,
+    data_source_id: UUID | None = None,
+) -> PaginatedResponse[Meal]:
+    """Returns meals (nutrition entries)."""
+    params = EventRecordQueryParams(
+        start_datetime=parse_query_datetime(start_date),
+        end_datetime=parse_query_end_datetime(end_date),
+        cursor=cursor,
+        limit=limit,
+        provider=provider,
+        source=source,
+        device_model=device_model,
+        data_source_id=data_source_id,
+    )
+    return event_record_service.get_meals(db, user_id, params)
+
+
 @router.delete("/users/{user_id}/events/workouts/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_workout(
     user_id: UUID,
@@ -173,3 +202,15 @@ def delete_menstrual_cycle(
     """Delete a menstrual cycle record."""
     if not event_record_service.delete_event_record(db, user_id, cycle_id, "menstrual_cycle"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menstrual cycle record not found")
+
+
+@router.delete("/users/{user_id}/events/meals/{meal_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_meal(
+    user_id: UUID,
+    meal_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> None:
+    """Delete a meal. Its correlated nutrient samples are kept, unlinked from the meal."""
+    if not event_record_service.delete_event_record(db, user_id, meal_id, "meal"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")

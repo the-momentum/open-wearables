@@ -62,7 +62,7 @@ class Macros(BaseModel):
 class Meal(BaseModel):
     id: UUID
     timestamp: datetime
-    meal_type: Literal["breakfast", "lunch", "dinner", "snack"] | None = None
+    meal_type: str | None = None
     name: str | None = None
     source: SourceMetadata
     calories_kcal: float | None = None
