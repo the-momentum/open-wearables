@@ -103,6 +103,44 @@ def on_workout_created(
     )
 
 
+def on_meal_created(
+    *,
+    record_id: UUID,
+    user_id: UUID,
+    provider: str,
+    device: str | None,
+    start_time: str,
+    end_time: str,
+    zone_offset: str | None,
+    title: str | None = None,
+    meal_type: str | None = None,
+    calories_kcal: float | None = None,
+    macros: dict[str, float | None] | None = None,
+    water_ml: float | None = None,
+) -> None:
+    _dispatch(
+        WebhookEventType.MEAL_CREATED,
+        {
+            "type": WebhookEventType.MEAL_CREATED,
+            "data": {
+                "id": str(record_id),
+                "user_id": str(user_id),
+                "title": title,
+                "meal_type": meal_type,
+                "start_time": start_time,
+                "end_time": end_time,
+                "zone_offset": zone_offset,
+                "source": {"provider": provider, "device": device},
+                "calories_kcal": calories_kcal,
+                "macros": macros,
+                "water_ml": water_ml,
+            },
+        },
+        idempotency_key=f"meal.created.{record_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
 def on_menstrual_cycle_created(
     *,
     record_id: UUID,
