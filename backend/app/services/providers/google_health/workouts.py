@@ -167,7 +167,18 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
 
         count = 0
         for chunk_start, chunk_end in chunk_range(start, end, self.WINDOW_DAYS):
-            for point in self.get_workouts(db, user_id, chunk_start, chunk_end):
+            try:
+                points = self.get_workouts(db, user_id, chunk_start, chunk_end)
+            except Exception as e:
+                # One unfetchable week must not cost the rest of the window.
+                log_and_capture_error(
+                    e,
+                    self.logger,
+                    f"Google workouts fetch failed for {chunk_start.date()}..{chunk_end.date()}: {e}",
+                    extra={"user_id": str(user_id), "provider": "google_health"},
+                )
+                continue
+            for point in points:
                 try:
                     record, detail = self._normalize_workout(point, user_id)
                     created = event_record_service.create(db, record)
