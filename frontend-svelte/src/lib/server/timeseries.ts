@@ -1,12 +1,12 @@
 import { apiGet } from './api';
-import { CHART_TYPES, resolutionFor, type Sample } from '$lib/timeseries/samples';
+import { resolutionFor, type Sample } from '$lib/timeseries/samples';
 
 type SamplePage = { data: Sample[]; pagination: { total_count: number | null } };
 
 /** The endpoint's own ceiling, and what one curve is allowed to cost. */
 const PAGE = 1000;
 
-export type WorkoutSamples = {
+export type FetchedSamples = {
 	samples: Sample[];
 	/** What the readings are: stored values, or averages over a bucket. */
 	resolution: string;
@@ -14,12 +14,12 @@ export type WorkoutSamples = {
 	truncated: boolean;
 };
 
-export async function fetchWorkoutSamples(
+export async function fetchSamples(
 	userId: string,
 	accessToken: string,
-	window: { from: string; to: string; seconds: number },
+	window: { from: string; to: string; seconds: number; types: string[] },
 	provider: string
-): Promise<WorkoutSamples> {
+): Promise<FetchedSamples> {
 	const load = async (resolution: string) => {
 		const params = new URLSearchParams({
 			start_time: window.from,
@@ -27,7 +27,7 @@ export async function fetchWorkoutSamples(
 			resolution,
 			limit: String(PAGE)
 		});
-		for (const type of CHART_TYPES) params.append('types', type);
+		for (const type of window.types) params.append('types', type);
 		// Without this a phone worn alongside the watch adds its own lines, and
 		// the question here is what the workout's own device recorded.
 		if (provider) params.set('provider', provider);
@@ -46,3 +46,22 @@ export async function fetchWorkoutSamples(
 	const raw = await load('raw');
 	return raw.truncated ? load(resolutionFor(window.seconds)) : raw;
 }
+
+/**
+ * A samples endpoint: fetched when a card opens, not with the list, because ten
+ * cards' worth of curves is ten timeseries scans for the nine nobody expands.
+ */
+export function samplesFor(url: URL, types: string[]) {
+	const from = url.searchParams.get('from') ?? '';
+	const to = url.searchParams.get('to') ?? '';
+
+	if (!from || !to) return null;
+
+	return {
+		window: { from, to, seconds: Number(url.searchParams.get('seconds') ?? 0), types },
+		provider: url.searchParams.get('provider') ?? ''
+	};
+}
+
+/** What an empty window answers, so a caller need not shape it twice. */
+export const NO_SAMPLES: FetchedSamples = { samples: [], resolution: 'raw', truncated: false };

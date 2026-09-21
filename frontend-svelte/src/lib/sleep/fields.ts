@@ -1,6 +1,6 @@
 import BedDouble from '@lucide/svelte/icons/bed-double';
 import Gauge from '@lucide/svelte/icons/gauge';
-import type { Component } from 'svelte';
+import { toFieldGroups, type GroupSpec } from '$lib/events/fields';
 import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
 import { formatDuration, formatNumber } from '$lib/utils/format';
 import type { SleepSession } from './types';
@@ -15,7 +15,7 @@ const maybe = (value: number | null, format: (value: number) => string): string 
  * of them carries none.
  */
 export function detailGroups(session: SleepSession): FieldGroup[] {
-	const groups: [string, Component, [string, string | null][]][] = [
+	const groups: GroupSpec[] = [
 		[
 			'In bed',
 			BedDouble,
@@ -34,13 +34,5 @@ export function detailGroups(session: SleepSession): FieldGroup[] {
 		]
 	];
 
-	return groups
-		.map(([title, icon, entries]) => ({
-			title,
-			icon,
-			fields: entries
-				.filter((entry): entry is [string, string] => entry[1] !== null)
-				.map(([label, value]) => ({ label, value }))
-		}))
-		.filter((group) => group.fields.length > 0);
+	return toFieldGroups(groups);
 }

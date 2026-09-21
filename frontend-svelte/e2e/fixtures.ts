@@ -556,6 +556,21 @@ export const makeTimeseries = (query: URLSearchParams) => {
 
 	for (let at = start; at <= end && data.length < 2000; at += step) {
 		const fraction = (at - start) / Math.max(end - start, 1);
+
+		// A whole day asks for movement rather than a session's sensors, and the
+		// daily totals ride the same endpoint — the chart has to drop those.
+		if (types.includes('steps')) {
+			data.push({
+				timestamp: new Date(at).toISOString(),
+				zone_offset: '+02:00',
+				source: { provider: 'garmin', device: 'Forerunner 265', device_name: 'Forerunner 265' },
+				is_daily_total: false,
+				type: 'steps',
+				value: Math.round(40 + 90 * Math.abs(Math.sin(fraction * Math.PI * 4))),
+				unit: 'count'
+			});
+		}
+
 		const sample = {
 			timestamp: new Date(at).toISOString(),
 			zone_offset: '+02:00',
@@ -567,7 +582,8 @@ export const makeTimeseries = (query: URLSearchParams) => {
 			is_daily_total: false
 		};
 
-		if (types.includes('heart_rate') && workout?.avg_heart_rate_bpm) {
+		// Activity asks over a whole day, where no workout starts the window.
+		if (types.includes('heart_rate') && (workout?.avg_heart_rate_bpm || types.includes('steps'))) {
 			data.push({ ...sample, type: 'heart_rate', value: heartRateAt(fraction), unit: 'bpm' });
 		}
 		// Only the bike reports power, so only its card gets a second line.
@@ -731,3 +747,79 @@ export const makeSleep = (query: URLSearchParams) => {
 
 /** What `/events/workouts/types` answers: the types this user actually has. */
 export const workoutTypes = () => [...new Set(WORKOUTS.map((workout) => workout.type))].sort();
+
+/**
+ * One row a day, newest first, as the endpoint answers after keeping the
+ * highest-priority source per date. A few gaps, because a day nobody wore the
+ * watch is the thing an admin is usually looking for.
+ */
+const buildActivity = () =>
+	Array.from({ length: 24 }, (_, index) => index)
+		.filter((index) => index % 7 !== 3)
+		.map((index) => {
+			const provider = index % 3 === 0 ? 'oura' : 'garmin';
+			const steps = 5200 + ((index * 1373) % 7400);
+
+			return {
+				date: isoDay(index),
+				source: {
+					provider,
+					source: provider,
+					device: DEVICES[provider].model,
+					device_type: DEVICES[provider].type,
+					device_name: DEVICES[provider].model
+				},
+				steps,
+				distance_meters: Math.round(steps * 0.72),
+				floors_climbed: index % 4 === 0 ? 8 + (index % 5) : null,
+				elevation_meters: index % 4 === 0 ? 24 + index : null,
+				active_calories_kcal: Math.round(steps * 0.042),
+				total_calories_kcal: 1650 + Math.round(steps * 0.042),
+				active_minutes: 40 + (index % 50),
+				sedentary_minutes: 600 - (index % 90),
+				intensity_minutes:
+					provider === 'garmin'
+						? { light: 30 + (index % 20), moderate: 12 + (index % 9), vigorous: index % 7 }
+						: null,
+				heart_rate: { avg_bpm: 62 + (index % 9), max_bpm: 141 + (index % 20), min_bpm: 48 }
+			};
+		});
+
+let ACTIVITY = buildActivity();
+
+export const resetActivity = () => {
+	ACTIVITY = buildActivity();
+};
+
+/** Keyset paging and the same cursor shape as the other lists. */
+export const makeActivity = (query: URLSearchParams) => {
+	const limit = Number(query.get('limit') ?? 50);
+	const start = new Date(query.get('start_date') ?? 0).getTime();
+	const end = new Date(query.get('end_date') ?? 0).getTime();
+
+	const matching = ACTIVITY.filter((day) => {
+		const at = new Date(`${day.date}T12:00:00Z`).getTime();
+		return at >= start && at < end;
+	});
+
+	const cursor = query.get('cursor');
+	const { id, backwards } = cursor ? decodeCursor(cursor) : { id: '', backwards: false };
+	const found = cursor ? matching.findIndex((day) => day.date === id) : -1;
+
+	const offset = backwards ? Math.max(found - limit, 0) : found + 1;
+	const hasMore = backwards ? found > limit : offset + limit < matching.length;
+	const data = matching.slice(offset, offset + limit);
+	const previous = cursor && data.length && (!backwards || hasMore);
+
+	return {
+		data,
+		pagination: {
+			next_cursor: hasMore && data.length ? encodeCursor(data[data.length - 1].date, 'next') : null,
+			previous_cursor: previous ? encodeCursor(data[0].date, 'prev') : null,
+			has_more: hasMore,
+			// Faithful to the endpoint: it builds Pagination without a count, so the
+			// bar has no last page to name and must not invent one.
+			total_count: null
+		}
+	};
+};

@@ -3,16 +3,13 @@
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import FieldGroups from '$lib/components/ui/FieldGroups.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
-	import Skeleton from '$lib/components/ui/Skeleton.svelte';
-	import { MICRO, NOTE } from '$lib/components/ui/typography';
 	import { formatLocalTime } from '$lib/utils/format';
-	import { resource } from '$lib/utils/resource.svelte';
 	import { detailGroups } from '$lib/workouts/fields';
-	import { toSeries, type Sample } from '$lib/timeseries/samples';
+	import { WORKOUT_TYPES } from '$lib/timeseries/samples';
 	import type { Workout } from '$lib/workouts/types';
 	import { zoneKinds, zoneRows } from '$lib/workouts/zones';
 	import DistributionBar from '$lib/components/charts/DistributionBar.svelte';
-	import LineChart from '$lib/components/charts/LineChart.svelte';
+	import SamplesChart from '$lib/components/charts/SamplesChart.svelte';
 
 	let { workout, userId, ondelete }: { workout: Workout; userId: string; ondelete: () => void } =
 		$props();
@@ -27,22 +24,13 @@
 	let chosen = $state('');
 	const kind = $derived(kinds.find((entry) => entry.type === chosen) ?? kinds[0]);
 
-	// The card only mounts this when it opens, so the fetch is the expansion: ten
-	// workouts' worth of curves would be ten timeseries scans for the nine nobody
-	// looks at.
-	const samples = resource<{ samples: Sample[]; truncated: boolean; resolution: string }>(() => {
-		const params = new URLSearchParams({
+	const params = $derived(
+		new URLSearchParams({
 			from: workout.start_time,
 			to: workout.end_time,
 			seconds: String(Math.round((to - from) / 1000)),
 			provider: workout.source.provider
-		});
-		return `/users/${userId}/workouts/samples?${params}`;
-	});
-
-	const series = $derived(toSeries(samples.current?.samples ?? []));
-	const bucket = $derived(
-		samples.current && samples.current.resolution !== 'raw' ? samples.current : null
+		})
 	);
 </script>
 
@@ -50,31 +38,16 @@
 	<div class="flex flex-col gap-1.5">
 		<Caption>During the workout</Caption>
 
-		{#if !samples.settled}
-			<Skeleton class="h-44" />
-		{:else if series.length === 0}
-			<p class={NOTE}>No readings were stored inside this workout's window.</p>
-		{:else}
-			<LineChart
-				{series}
-				zones={kind}
-				{from}
-				{to}
-				formatTime={(at) => formatLocalTime(new Date(at).toISOString(), workout.zone_offset)}
-				label="Sensor readings across the workout"
-			/>
-
-			{#if bucket}
-				<!-- Say which, because an average is a different curve: the peaks a
-				     phone shows are exactly what a bucket flattens. -->
-				<p class={MICRO}>
-					Too many readings to plot one by one, so these are averages per {bucket.resolution.replace(
-						'min',
-						' minute'
-					)}{bucket.truncated ? ', and still more than one page holds' : ''}.
-				</p>
-			{/if}
-		{/if}
+		<SamplesChart
+			url={() => `/users/${userId}/workouts/samples?${params}`}
+			order={WORKOUT_TYPES}
+			zones={kind}
+			{from}
+			{to}
+			formatTime={(at) => formatLocalTime(new Date(at).toISOString(), workout.zone_offset)}
+			label="Sensor readings across the workout"
+			empty="No readings were stored inside this workout's window."
+		/>
 	</div>
 
 	{#if kind}

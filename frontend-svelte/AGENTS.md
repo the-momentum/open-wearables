@@ -1343,6 +1343,63 @@ Suunto curve both need the same thing: its FIT files, which `fit_parser.py`
 already reads for Garmin. Suunto's JSON API carries neither — its only intraday
 heart rate is the 24/7 stream at one sample per ten minutes.
 
+## Activity, and what the three tabs now share
+
+Activity reads like Workouts and Sleep, but its data is a different shape and
+three differences follow from that rather than from taste.
+
+**It is an aggregate, not a record.** `/summaries/activity` sums the time series
+by date, so a row has no `id` and there is nothing to delete.
+
+**No provider filter, and that is not an omission.** `_filter_by_priority`
+([summaries_service.py:100](../backend/app/services/summaries_service.py#L100))
+runs unconditionally: for each date it keeps one source, ranked by provider then
+device type. There is no `provider` parameter because there is nothing left to
+filter. Each card names the source it used instead, and a line above the list
+says so — a control that did nothing would be worse.
+
+Worth knowing while reading those numbers: the losing source's data for that day
+is **discarded, not merged**. If Oura recorded steps and Suunto did not, the
+Suunto row shows none and Oura's are gone. Oura is also absent from
+`DEFAULT_PROVIDER_PRIORITY` entirely, so it falls to 99 and loses to everything.
+
+**Newest first, against the endpoint's own default.** It sorts `asc`; every list
+on this site reads the other way.
+
+### An uncounted list must not claim a last page
+
+This endpoint builds its `Pagination` with `has_more` and the cursors and **no
+`total_count`**. `Pagination` therefore takes `total: number | null`: without a
+count there is no last page, so the bar shows a range and a position and no
+"of N". Substituting the page length there made it claim one page while its own
+next arrow still worked.
+
+The same gap hit the totals strip. `partial` used to compare what was summed
+against `total_count`, which on this endpoint is never anything — so it could not
+have fired however many days were held back. All three tabs now read the API's
+own `has_more`, which is the direct answer to "was there more".
+
+### The shared layer under all three
+
+What the third tab made obvious, in `src/lib/events/` and
+`src/lib/components/events/`:
+
+| Piece                      | What it owns                                                        |
+| -------------------------- | ------------------------------------------------------------------- |
+| `EventCard`                | the accordion shell: header, source, chevron, click-to-open         |
+| `MetricRow` / `MetricCell` | the fixed four-metric grid, and a cell for what a number cannot say |
+| `EventTotals`              | the figures strip, its own fetch, and the partial note              |
+| `CursorBar`                | pagination wiring, and passing `total_count` through untouched      |
+| `SamplesChart`             | fetch-on-open, skeleton, empty note, chart, bucket note             |
+| `events/fields.ts`         | dropping absent fields and then empty groups                        |
+| `events/totals.ts`         | `sumOf`, `meanOf`, `isPartial`                                      |
+| `server/events.ts`         | the window params, the provider guard, `summaryOf`                  |
+| `lists/cursor.ts`          | `at`, `hrefFor`, and the page-one rule                              |
+
+Each tab is then its own `*Card`, `*Metrics`, `*Details`, `*Summary` and a
+domain module — a few dozen lines each. Two of those extractions started as
+duplication I had already written twice and only noticed on the third.
+
 ### Month labels thin themselves out
 
 A year of weekly columns has twelve month starts, which on a phone collide into

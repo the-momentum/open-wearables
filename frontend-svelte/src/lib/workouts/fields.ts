@@ -2,7 +2,8 @@ import Clock from '@lucide/svelte/icons/clock';
 import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 import Mountain from '@lucide/svelte/icons/mountain';
 import Zap from '@lucide/svelte/icons/zap';
-import type { Component } from 'svelte';
+import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
+import { toFieldGroups, type GroupSpec } from '$lib/events/fields';
 import { humanise } from '$lib/utils/text';
 import {
 	formatDistance,
@@ -12,9 +13,6 @@ import {
 	formatPace
 } from '$lib/utils/format';
 import type { Workout } from './types';
-
-export type Field = { label: string; value: string };
-export type FieldGroup = { title: string; icon: Component; fields: Field[] };
 
 const maybe = (value: number | null, format: (value: number) => string): string | null =>
 	value === null ? null : format(value);
@@ -29,7 +27,7 @@ const bpm = (value: number) => formatNumber(value, ' bpm');
  * is deliberately missing — its unit differs per provider.
  */
 export function detailGroups(workout: Workout): FieldGroup[] {
-	const groups: [string, Component, [string, string | null][]][] = [
+	const groups: GroupSpec[] = [
 		[
 			'Session',
 			Clock,
@@ -71,13 +69,5 @@ export function detailGroups(workout: Workout): FieldGroup[] {
 		]
 	];
 
-	return groups
-		.map(([title, icon, entries]) => ({
-			title,
-			icon,
-			fields: entries
-				.filter((entry): entry is [string, string] => entry[1] !== null)
-				.map(([label, value]) => ({ label, value }))
-		}))
-		.filter((group) => group.fields.length > 0);
+	return toFieldGroups(groups);
 }

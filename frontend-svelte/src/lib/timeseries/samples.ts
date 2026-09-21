@@ -19,8 +19,11 @@ export type Series = {
 	points: { at: number; value: number }[];
 };
 
-/** What the chart can draw, in the order it stacks them. */
-export const CHART_TYPES = ['heart_rate', 'power', 'cadence', 'speed'] as const;
+/** What a workout's own sensors record, in the order the chart stacks them. */
+export const WORKOUT_TYPES = ['heart_rate', 'power', 'cadence', 'speed'];
+
+/** What a whole day records: movement and effort rather than a single session. */
+export const ACTIVITY_TYPES = ['steps', 'energy', 'heart_rate'];
 
 const HOUR = 3_600_000;
 
@@ -44,7 +47,7 @@ export function resolutionFor(seconds: number): '1min' | '5min' | '15min' {
  * reading, so they go — the flag is tri-state and a legacy null means "not a
  * total".
  */
-export function toSeries(samples: Sample[]): Series[] {
+export function toSeries(samples: Sample[], order: string[] = WORKOUT_TYPES): Series[] {
 	const groups = new Map<string, Series>();
 
 	for (const sample of samples) {
@@ -72,15 +75,17 @@ export function toSeries(samples: Sample[]): Series[] {
 		if (sameType.length > 1 && series.device) series.label = `${series.label} · ${series.device}`;
 	}
 
-	const order = (type: string) => CHART_TYPES.findIndex((known) => known === type);
-	return kept.sort((a, b) => order(a.type) - order(b.type));
+	const rank = (type: string) => order.indexOf(type);
+	return kept.sort((a, b) => rank(a.type) - rank(b.type));
 }
 
 /** Theme tokens, so a chart line cannot drift from the rest of the palette. */
 const SERIES_COLOUR: Record<string, string> = {
 	heart_rate: 'var(--color-danger)',
 	power: 'var(--color-warning)',
+	energy: 'var(--color-warning)',
 	cadence: 'var(--color-primary)',
+	steps: 'var(--color-primary)',
 	speed: 'var(--color-success)'
 };
 

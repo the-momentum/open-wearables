@@ -13,12 +13,14 @@ import {
 	makeRecentRuns,
 	makeSyncHistory,
 	deleteSleep,
+	makeActivity,
 	deleteWorkout,
 	makeSleep,
 	makeUsers,
 	makeTimeseries,
 	makeWorkouts,
 	workoutTypes,
+	resetActivity,
 	resetSleep,
 	resetWorkouts
 } from './fixtures';
@@ -59,6 +61,7 @@ const server = Bun.serve({
 			SLOW_SUMMARY = false;
 			resetWorkouts();
 			resetSleep();
+			resetActivity();
 			return new Response(null, { status: 204 });
 		}
 
@@ -214,6 +217,8 @@ const server = Bun.serve({
 					}
 					return json(makeWorkouts(query));
 				}
+				case '/summaries/activity':
+					return json(makeActivity(new URL(request.url).searchParams));
 				case '/events/sleep':
 					return json(makeSleep(new URL(request.url).searchParams));
 				case '/sync/runs':

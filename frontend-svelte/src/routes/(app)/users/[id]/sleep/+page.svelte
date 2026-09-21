@@ -8,9 +8,8 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import CursorBar from '$lib/components/events/CursorBar.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
-	import type { PageSize } from '$lib/lists/pagination';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { SleepSession } from '$lib/sleep/types';
 	import { cursorHrefs } from '$lib/lists/cursor';
@@ -19,8 +18,7 @@
 	let { data }: { data: PageData } = $props();
 
 	const nav = $derived(cursorHrefs(page.url));
-	const { at, hrefFor } = $derived(nav);
-	const sizeHref = (size: PageSize) => hrefFor({ size: String(size) });
+	const { hrefFor } = $derived(nav);
 
 	const label = (entry: string) => providerLabel(data.providers, entry);
 	const connected = $derived(data.connections.map((connection) => connection.provider));
@@ -81,16 +79,7 @@
 				{/each}
 			</div>
 
-			<!-- No `hrefFor`: this endpoint pages by cursor, so there is no page seven
-			     to link to and the bar marks the position instead. -->
-			<Pagination
-				page={at}
-				size={data.pageSize}
-				total={data.sessions.pagination.total_count ?? sessions.length}
-				previousHref={nav.stepHref(data.sessions.pagination.previous_cursor, -1)}
-				nextHref={nav.stepHref(data.sessions.pagination.next_cursor, 1)}
-				sizeHrefFor={sizeHref}
-			/>
+			<CursorBar {nav} pagination={data.sessions.pagination} size={data.pageSize} />
 		{/if}
 	</div>
 </div>

@@ -6,12 +6,11 @@
 	import FilterGroup from '$lib/components/filters/FilterGroup.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
-	import Pagination from '$lib/components/ui/Pagination.svelte';
+	import CursorBar from '$lib/components/events/CursorBar.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FilterSelect from '$lib/components/ui/FilterSelect.svelte';
 	import WorkoutCard from '$lib/components/workouts/WorkoutCard.svelte';
 	import WorkoutSummary from '$lib/components/workouts/WorkoutSummary.svelte';
-	import type { PageSize } from '$lib/lists/pagination';
 	import { providerLabel } from '$lib/providers/labels';
 	import { humanise } from '$lib/utils/text';
 	import { cursorHrefs } from '$lib/lists/cursor';
@@ -21,8 +20,7 @@
 	let { data }: { data: PageData } = $props();
 
 	const nav = $derived(cursorHrefs(page.url));
-	const { at, hrefFor } = $derived(nav);
-	const sizeHref = (size: PageSize) => hrefFor({ size: String(size) });
+	const { hrefFor } = $derived(nav);
 
 	const label = (entry: string) => providerLabel(data.providers, entry);
 	const connected = $derived(data.connections.map((connection) => connection.provider));
@@ -98,16 +96,7 @@
 				{/each}
 			</div>
 
-			<!-- No `hrefFor`: this endpoint pages by cursor, so there is no page seven
-			     to link to and the bar marks the position instead. -->
-			<Pagination
-				page={at}
-				size={data.pageSize}
-				total={data.workouts.pagination.total_count ?? workouts.length}
-				previousHref={nav.stepHref(data.workouts.pagination.previous_cursor, -1)}
-				nextHref={nav.stepHref(data.workouts.pagination.next_cursor, 1)}
-				sizeHrefFor={sizeHref}
-			/>
+			<CursorBar {nav} pagination={data.workouts.pagination} size={data.pageSize} />
 		{/if}
 	</div>
 </div>

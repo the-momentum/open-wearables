@@ -1,8 +1,8 @@
 import { json } from '@sveltejs/kit';
 import { summaryOf } from '$lib/server/events';
-import { fetchWorkouts } from '$lib/server/workouts';
+import { fetchActivity } from '$lib/server/activity';
 import { requireToken } from '$lib/server/guard';
-import { sumWorkouts } from '$lib/workouts/totals';
+import { sumActivity } from '$lib/activity/totals';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params, url, locals }) => {
@@ -12,14 +12,11 @@ export const GET: RequestHandler = async ({ params, url, locals }) => {
 		await summaryOf(
 			url,
 			(period, limit) =>
-				fetchWorkouts(params.id, accessToken, {
+				fetchActivity(params.id, accessToken, {
 					period,
-					limit,
-					provider: url.searchParams.get('provider') ?? '',
-					type: url.searchParams.get('type') ?? '',
-					zones: false
+					limit
 				}),
-			sumWorkouts
+			sumActivity
 		)
 	);
 };

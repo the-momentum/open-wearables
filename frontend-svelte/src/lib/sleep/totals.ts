@@ -11,7 +11,11 @@ export type SleepTotals = {
 	partial: boolean;
 };
 
-export function sumSleep(sessions: SleepSession[], total: number | null): SleepTotals {
+export function sumSleep(
+	sessions: SleepSession[],
+	total: number | null,
+	hasMore: boolean
+): SleepTotals {
 	return {
 		count: total ?? sessions.length,
 		naps: sessions.filter((session) => session.is_nap).length,
@@ -22,6 +26,6 @@ export function sumSleep(sessions: SleepSession[], total: number | null): SleepT
 			(session) => session.time_in_bed_seconds ?? session.duration_seconds
 		),
 		efficiency: meanOf(sessions, (session) => session.efficiency_percent),
-		partial: isPartial(sessions.length, total)
+		partial: isPartial(hasMore)
 	};
 }

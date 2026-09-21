@@ -1,4 +1,10 @@
-import { periodWindow, type Period } from '$lib/filters/period';
+import { parsePeriod, periodWindow, type Period } from '$lib/filters/period';
+
+/** The envelope every cursor-paged list endpoint returns. */
+export type Page<Item> = {
+	data: Item[];
+	pagination: { total_count: number | null; has_more: boolean };
+};
 
 /**
  * The event endpoints require both bounds, unlike the summaries, so "All time"
@@ -41,3 +47,18 @@ export const SUMMARY_CAP = 1000;
  */
 export const knownProvider = (connections: { provider: string }[], asked: string) =>
 	connections.some((connection) => connection.provider === asked) ? asked : '';
+
+/**
+ * A summary endpoint: sum every record in the period, in its own request because
+ * no list endpoint has an aggregate to ask and the cards must not wait for it.
+ * `has_more` rides along because it is the only honest "there was more" signal
+ * on the endpoints that return no count.
+ */
+export async function summaryOf<Item, Totals>(
+	url: URL,
+	fetchPage: (period: Period, limit: number) => Promise<Page<Item>>,
+	sum: (items: Item[], total: number | null, hasMore: boolean) => Totals
+): Promise<Totals> {
+	const page = await fetchPage(parsePeriod(url.searchParams), SUMMARY_CAP);
+	return sum(page.data, page.pagination.total_count, page.pagination.has_more);
+}

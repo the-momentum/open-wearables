@@ -19,7 +19,8 @@
 		/** 1-based position, which both kinds of paging know. */
 		page: number;
 		size: number;
-		total: number;
+		/** Null where the endpoint does not count: there is then no last page. */
+		total: number | null;
 		previousHref: string | null;
 		nextHref: string | null;
 		/**
@@ -33,10 +34,12 @@
 		label?: string;
 	} = $props();
 
-	const pages = $derived(Math.max(Math.ceil(total / size), 1));
+	// An uncounted list has no last page, so it gets a position and nothing else:
+	// claiming "of 1" while the next arrow still works is worse than saying less.
+	const pages = $derived(total === null ? null : Math.max(Math.ceil(total / size), 1));
 	const first = $derived((page - 1) * size + 1);
-	const last = $derived(Math.min(page * size, total));
-	const items = $derived(hrefFor ? paginationItems(page, pages) : []);
+	const last = $derived(total === null ? page * size : Math.min(page * size, total));
+	const items = $derived(hrefFor && pages !== null ? paginationItems(page, pages) : []);
 
 	const chip = (current: boolean) =>
 		cn(
@@ -56,6 +59,8 @@
 		<p class="text-sm text-muted-foreground" aria-live="polite">
 			{#if total === 0}
 				No results
+			{:else if total === null}
+				<span class="font-medium text-foreground">{first}–{last}</span>
 			{:else}
 				<span class="font-medium text-foreground">{first}–{last}</span> of {total}
 			{/if}
@@ -83,7 +88,7 @@
 
 		<!-- Numbers need room, so the small screen keeps the plain counter. -->
 		<span class="px-1 text-sm text-muted-foreground tabular-nums sm:hidden">
-			{page} / {pages}
+			{pages === null ? page : `${page} / ${pages}`}
 		</span>
 
 		{#if items.length}
@@ -112,7 +117,9 @@
 			     so the position wears the same chip with nothing beside it. -->
 			<span class="hidden items-center gap-2 sm:flex">
 				<span aria-current="page" class={chip(true)}>{page}</span>
-				<span class="text-sm text-muted-foreground tabular-nums">of {pages}</span>
+				{#if pages !== null}
+					<span class="text-sm text-muted-foreground tabular-nums">of {pages}</span>
+				{/if}
 			</span>
 		{/if}
 

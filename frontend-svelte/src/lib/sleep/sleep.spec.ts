@@ -87,7 +87,7 @@ describe('sumSleep', () => {
 		}) as SleepSession;
 
 	it('counts naps apart from the sessions that hold them', () => {
-		const totals = sumSleep([session({}), session({ is_nap: true })], 2);
+		const totals = sumSleep([session({}), session({ is_nap: true })], 2, false);
 		expect([totals.count, totals.naps]).toEqual([2, 1]);
 	});
 
@@ -96,23 +96,25 @@ describe('sumSleep', () => {
 	it('averages efficiency only over the sessions that reported it', () => {
 		const totals = sumSleep(
 			[session({ efficiency_percent: 90 }), session({}), session({ efficiency_percent: 80 })],
-			3
+			3,
+			false
 		);
 		expect(totals.efficiency).toBe(85);
 	});
 
 	it('has no efficiency at all when nobody reported one', () => {
-		expect(sumSleep([session({})], 1).efficiency).toBeNull();
+		expect(sumSleep([session({})], 1, false).efficiency).toBeNull();
 	});
 
-	// The count is the API's own and stays exact; the sums beside it do not.
-	it('flags itself partial when the API held more than it handed over', () => {
-		expect(sumSleep([session({})], 40).partial).toBe(true);
-		expect(sumSleep([session({})], 1).partial).toBe(false);
+	// The API's own has_more, not a count comparison: the activity endpoint
+	// returns no count at all, and a comparison would quietly miss the case.
+	it('flags itself partial only when the API says it held some back', () => {
+		expect(sumSleep([session({})], null, true).partial).toBe(true);
+		expect(sumSleep([session({})], 1, false).partial).toBe(false);
 	});
 
 	it('falls back to the recorded span when time in bed is missing', () => {
-		expect(sumSleep([session({ time_in_bed_seconds: null })], 1).inBedSeconds).toBe(28_800);
+		expect(sumSleep([session({ time_in_bed_seconds: null })], 1, false).inBedSeconds).toBe(28_800);
 	});
 });
 
