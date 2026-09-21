@@ -314,7 +314,7 @@ class TestUltrahumanActivitySamplesIntegration:
                     type_id_to_code[sample.series_type_definition_id] = std.code if std else None
 
             synced_codes = set(type_id_to_code.values())
-            expected_codes = {"heart_rate", "heart_rate_variability_sdnn", "skin_temperature", "steps"}
+            expected_codes = {"heart_rate", "heart_rate_variability_rmssd", "skin_temperature", "steps"}
 
             for code in expected_codes:
                 assert code in synced_codes, f"{code} missing from synced samples"

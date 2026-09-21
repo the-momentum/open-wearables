@@ -4,7 +4,7 @@ from app.schemas.enums.health_score_category import HealthScoreCategory
 # Timeseries mappings (handler key → SeriesType) consumed directly by data_247.py.
 ACTIVITY_SAMPLE_SERIES: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
-    "hrv": SeriesType.heart_rate_variability_sdnn,
+    "hrv": SeriesType.heart_rate_variability_rmssd,
     "temperature": SeriesType.skin_temperature,
     "steps": SeriesType.steps,
 }

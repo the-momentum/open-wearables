@@ -42,6 +42,14 @@ uv run python scripts/data_migrations/relabel_ultrahuman_body_temp_to_skin_temp.
     || echo "Warning: Ultrahuman temperature relabel failed — will retry on next startup."
 
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Relabels Ultrahuman HRV stored as SDNN (id=3) to RMSSD (id=7); the ring measures
+# RMSSD. Scoped to provider='ultrahuman', no-op once corrected.
+echo 'Running Ultrahuman HRV SDNN->RMSSD relabel...'
+uv run python scripts/data_migrations/relabel_ultrahuman_hrv_sdnn_to_rmssd.py \
+    || echo "Warning: Ultrahuman HRV relabel failed — will retry on next startup."
+
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Links legacy Whoop workout strain scores to their event records; without it they stay
 # indistinguishable from the per-day cycle strain. Idempotent, no-op once linked.
