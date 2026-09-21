@@ -76,6 +76,15 @@ OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
     }
 )
 
+DEFAULT_MEAL_TYPES: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
+
+MEAL_TITLES: dict[str, list[str]] = {
+    "breakfast": ["Oatmeal with Berries", "Scrambled Eggs & Toast", "Greek Yogurt Bowl", "Avocado Toast"],
+    "lunch": ["Grilled Chicken Salad", "Turkey Sandwich", "Quinoa Bowl", "Vegetable Stir Fry"],
+    "dinner": ["Salmon with Rice", "Pasta Bolognese", "Grilled Steak & Veggies", "Vegetable Curry"],
+    "snack": ["Protein Bar", "Mixed Nuts", "Apple with Peanut Butter", "Greek Yogurt"],
+}
+
 # ---------------------------------------------------------------------------
 # Health score component keys (match real provider API formats)
 # ---------------------------------------------------------------------------

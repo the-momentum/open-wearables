@@ -19,16 +19,7 @@ from app.schemas.model_crud.activities import (
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.utils.seed_data import SLEEP_STAGE_PROFILES, MealConfig, SleepConfig, WorkoutConfig
 
-from .constants import GENDERS, OUTDOOR_WORKOUT_TYPES, PROVIDER_CONFIGS
-
-DEFAULT_MEAL_TYPES: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
-
-_MEAL_TITLES: dict[str, list[str]] = {
-    "breakfast": ["Oatmeal with Berries", "Scrambled Eggs & Toast", "Greek Yogurt Bowl", "Avocado Toast"],
-    "lunch": ["Grilled Chicken Salad", "Turkey Sandwich", "Quinoa Bowl", "Vegetable Stir Fry"],
-    "dinner": ["Salmon with Rice", "Pasta Bolognese", "Grilled Steak & Veggies", "Vegetable Curry"],
-    "snack": ["Protein Bar", "Mixed Nuts", "Apple with Peanut Butter", "Greek Yogurt"],
-}
+from .constants import DEFAULT_MEAL_TYPES, GENDERS, MEAL_TITLES, OUTDOOR_WORKOUT_TYPES, PROVIDER_CONFIGS
 
 
 def _resolve_date_bounds(
@@ -340,7 +331,7 @@ def _generate_meal(
 
     meal_types = config.meal_types or list(DEFAULT_MEAL_TYPES)
     meal_type = fake.random.choice(meal_types)
-    title = fake.random.choice(_MEAL_TITLES.get(meal_type, _MEAL_TITLES["snack"]))
+    title = fake.random.choice(MEAL_TITLES.get(meal_type, MEAL_TITLES["snack"]))
 
     calories = fake.random_int(min=config.calories_range[0], max=config.calories_range[1])
     protein_pct = fake.random.uniform(0.15, 0.30)
