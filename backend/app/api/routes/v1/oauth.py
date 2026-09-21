@@ -68,6 +68,12 @@ def authorize_provider(
     return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
 
+@router.head("/{provider}/callback", tags=["System: OAuth"])
+def probe_oauth_callback(provider: str) -> None:
+    """Answer the reachability probe Withings sends when the callback URL is registered."""
+    get_oauth_strategy(resolve_provider(provider))
+
+
 @router.get("/{provider}/callback", tags=["System: OAuth"])
 def oauth_callback(
     provider: str,

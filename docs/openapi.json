@@ -2943,6 +2943,45 @@
       }
     },
     "/api/v1/oauth/{provider}/callback": {
+      "head": {
+        "tags": [
+          "System: OAuth"
+        ],
+        "summary": "Probe Oauth Callback",
+        "description": "Answer the reachability probe Withings sends when the callback URL is registered.",
+        "operationId": "probe_oauth_callback_api_v1_oauth__provider__callback_head",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "System: OAuth"
