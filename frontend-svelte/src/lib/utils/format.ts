@@ -27,6 +27,10 @@ export function formatDecimal(value: number | null, digits = 1): string | null {
 	return value === null ? null : value.toFixed(digits).replace(/\.0+$/, '');
 }
 
+/** The same, for the many callers that want a string either way. */
+export const showDecimal = (value: number | null, digits = 1): string =>
+	formatDecimal(value, digits) ?? DASH;
+
 export const formatNumber = (value: number | null, unit = ''): string =>
 	value === null ? DASH : `${Math.round(value).toLocaleString('en-GB')}${unit}`;
 
@@ -73,6 +77,15 @@ export function formatLocalTime(iso: string, zoneOffset: string | null): string 
 	// Marked, because an unmarked 07:12 would be read as the athlete's morning
 	// when it is only the instant we stored.
 	return zoneOffset ? clock.format(date) : `${clock.format(date)} UTC`;
+}
+
+/**
+ * The calendar day a reading belongs to, in its own zone — the key a list is
+ * grouped by, where `formatLocalDay` is what the group is called.
+ */
+export function localDayKey(iso: string, zoneOffset: string | null): string {
+	const date = inZone(iso, zoneOffset);
+	return date ? date.toISOString().slice(0, 10) : '';
 }
 
 export function formatLocalDay(iso: string, zoneOffset: string | null): string {

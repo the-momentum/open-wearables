@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
-	import { extent, linePath } from '$lib/charts/geometry';
+	import { extent } from '$lib/charts/geometry';
+	import Sparkline from '$lib/components/charts/Sparkline.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { seriesColour, unitLabel, type Series } from '$lib/timeseries/samples';
-	import { formatDecimal } from '$lib/utils/format';
+	import { showDecimal } from '$lib/utils/format';
 
 	let {
 		series,
@@ -22,13 +23,10 @@
 		to: number;
 	} = $props();
 
-	const BOX = { width: 400, height: 90, pad: 8 };
-
 	const range = $derived(extent(series.points));
 	const latest = $derived(series.points[series.points.length - 1]);
-	const path = $derived(linePath(series.points, { from, to }, range, BOX));
 
-	const show = (value: number) => formatDecimal(value, digits);
+	const show = (value: number) => showDecimal(value, digits);
 	const colour = $derived(seriesColour(series.type));
 </script>
 
@@ -42,23 +40,8 @@
 		</span>
 	</div>
 
-	<!-- One point a day, so a month is thirty of them and the shape is the point.
-	     Its own scale, because a pulse and a percentage share no axis. -->
-	<svg
-		viewBox="0 0 {BOX.width} {BOX.height}"
-		preserveAspectRatio="none"
-		class="h-16 w-full"
-		aria-hidden="true"
-	>
-		<path
-			d={path}
-			fill="none"
-			stroke={colour}
-			stroke-width="1.75"
-			stroke-linejoin="round"
-			vector-effect="non-scaling-stroke"
-		/>
-	</svg>
+	<!-- Its own scale, because a pulse and a percentage share no axis. -->
+	<Sparkline lines={[series]} {range} {from} {to} colourFor={() => colour} />
 
 	<div class="flex justify-between {MICRO} tabular-nums">
 		<span>low {show(range.low)}</span>

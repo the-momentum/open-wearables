@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Activity from '@lucide/svelte/icons/activity';
 	import EventCard from '$lib/components/events/EventCard.svelte';
-	import { MICRO } from '$lib/components/ui/typography';
+	import { HEADING, MICRO } from '$lib/components/ui/typography';
 	import type { ActivityDay } from '$lib/activity/types';
 	import { formatDate } from '$lib/utils/datetime';
 	import ActivityDetails from './ActivityDetails.svelte';
@@ -18,7 +18,7 @@
 
 <EventCard icon={Activity} source={day.source} {providerLabel}>
 	{#snippet title()}
-		<span class="text-sm font-semibold text-foreground">{named}</span>
+		<span class={HEADING}>{named}</span>
 	{/snippet}
 
 	{#snippet when()}

@@ -2,7 +2,8 @@ import { fetchBody } from '$lib/server/body';
 import { requireToken } from '$lib/server/guard';
 import { fetchProviders } from '$lib/server/providers';
 import { defaultRange, parsePeriod, periodWindow } from '$lib/filters/period';
-import type { PageServerLoad } from './$types';
+import { userActions } from '$lib/server/user-actions';
+import type { Actions, PageServerLoad } from './$types';
 
 /**
  * A snapshot, not a list: `/summaries/body` answers with one object and no
@@ -24,3 +25,6 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	return { period, window: periodWindow(period), body, providers };
 };
+
+/** The header sits in the layout, so its actions have to exist on every tab. */
+export const actions = userActions as Actions;

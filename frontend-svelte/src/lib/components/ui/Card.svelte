@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { cn } from '$lib/utils/cn';
+	import { HEADING } from './typography';
 
 	let {
 		title,
@@ -29,7 +30,7 @@
 	{#if title}
 		<header class="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
 			<div class="min-w-0">
-				<h2 id={headingId} class="text-sm font-semibold text-foreground">{title}</h2>
+				<h2 id={headingId} class={HEADING}>{title}</h2>
 				{#if description}
 					<p class="mt-0.5 text-xs text-muted-foreground">{description}</p>
 				{/if}

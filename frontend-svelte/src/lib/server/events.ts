@@ -15,7 +15,7 @@ const ALL_TIME_START = '0';
 const stamp = (date: Date) => `${date.toISOString().slice(0, 19)}Z`;
 
 /** Tomorrow UTC, so anything from today is inside the half-open window. */
-function tomorrow(): Date {
+export function tomorrow(): Date {
 	const date = new Date();
 	date.setUTCHours(0, 0, 0, 0);
 	date.setUTCDate(date.getUTCDate() + 1);
@@ -36,6 +36,10 @@ export function eventWindow(period: Period, limit: number): URLSearchParams {
 		limit: String(limit)
 	});
 }
+
+/** The same bounds from explicit dates, for a list that pages by day. */
+export const windowParams = (from: Date, to: Date, limit: number) =>
+	new URLSearchParams({ start_date: stamp(from), end_date: stamp(to), limit: String(limit) });
 
 /** The most either list endpoint hands over at once, and what a summary may cost. */
 export const SUMMARY_CAP = 1000;

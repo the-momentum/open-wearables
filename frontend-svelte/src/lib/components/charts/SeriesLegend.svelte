@@ -1,18 +1,19 @@
 <script lang="ts">
 	import { MICRO } from '$lib/components/ui/typography';
-	import { seriesColour } from '$lib/timeseries/samples';
 
 	let {
 		lines,
 		off,
 		ontoggle,
-		bands
+		bands,
+		colourFor
 	}: {
 		lines: { type: string; label: string; dash: string }[];
 		off: string[];
 		ontoggle: (label: string) => void;
 		/** What the shading behind the chart means, when there is any. */
 		bands?: string;
+		colourFor: (type: string) => string;
 	} = $props();
 
 	// A dashed swatch for a dashed line: same colour, second device.
@@ -36,7 +37,7 @@
 			<span
 				aria-hidden="true"
 				class="h-0.5 w-4 rounded-full"
-				style="background: {seriesColour(line.type)}; {line.dash ? DASHED : ''}"
+				style="background: {colourFor(line.type)}; {line.dash ? DASHED : ''}"
 			></span>
 			<span class="text-foreground/80">{line.label}</span>
 		</button>

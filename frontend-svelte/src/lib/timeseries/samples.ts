@@ -1,4 +1,7 @@
+import type { Line } from '$lib/charts/geometry';
+import { collect } from '$lib/utils/collect';
 import { humanise } from '$lib/utils/text';
+import { dailyPoints } from './daily';
 
 /** Mirrors backend `TimeSeriesSample`. */
 export type Sample = {
@@ -10,13 +13,10 @@ export type Sample = {
 	is_daily_total: boolean | null;
 };
 
-export type Series = {
-	type: string;
-	unit: string;
-	/** Names the device only when a type arrives from more than one. */
-	label: string;
+/** A drawn line that came from a device, which is what may need naming. */
+export type Series = Line & {
+	/** Named in the label only when a type arrives from more than one. */
 	device: string | null;
-	points: { at: number; value: number }[];
 };
 
 /** What a workout's own sensors record, in the order the chart stacks them. */
@@ -65,26 +65,23 @@ export function resolutionFor(seconds: number): '1min' | '5min' | '15min' | '1ho
  * total".
  */
 export function toSeries(samples: Sample[], order: string[] = WORKOUT_TYPES): Series[] {
-	const groups = new Map<string, Series>();
+	const deviceOf = (sample: Sample) => sample.source?.device_name ?? sample.source?.device ?? null;
 
-	for (const sample of samples) {
-		if (sample.is_daily_total === true) continue;
+	const readings = samples.filter((sample) => sample.is_daily_total !== true);
+	const groups = collect(readings, (sample) => `${sample.type}::${deviceOf(sample) ?? ''}`);
 
-		const device = sample.source?.device_name ?? sample.source?.device ?? null;
-		const key = `${sample.type}::${device ?? ''}`;
-		const series = groups.get(key) ?? {
-			type: sample.type,
-			unit: sample.unit,
-			label: humanise(sample.type),
-			device,
-			points: []
-		};
-		series.points.push({ at: new Date(sample.timestamp).getTime(), value: sample.value });
-		groups.set(key, series);
-	}
-
-	const kept = [...groups.values()].filter((series) => series.points.length > 1);
-	for (const series of kept) series.points.sort((a, b) => a.at - b.at);
+	const kept = [...groups.values()]
+		.map((group) => ({
+			type: group[0].type,
+			unit: group[0].unit,
+			label: humanise(group[0].type),
+			device: deviceOf(group[0]),
+			points: group
+				.map((sample) => ({ at: new Date(sample.timestamp).getTime(), value: sample.value }))
+				.sort((a, b) => a.at - b.at)
+		}))
+		// One reading draws no line, and a lone dot says less than a figure.
+		.filter((series) => series.points.length > 1);
 
 	// Only say which device when it disambiguates; otherwise the legend is noise.
 	for (const series of kept) {
@@ -115,30 +112,19 @@ const SERIES_COLOUR: Record<string, string> = {
 export const seriesColour = (type: string) => SERIES_COLOUR[type] ?? 'var(--color-primary)';
 
 /**
- * One point a day, the mean of that day's readings. A body trend is read by the
- * day, and the endpoint has no daily rollup to ask for — so a dense intraday
- * series like HRV would otherwise arrive as thousands of points, overrun a page,
- * and be silently cut.
+ * One point a day. The endpoint has no daily rollup to ask for, so a dense
+ * series like HRV would otherwise arrive thousands of points deep, overrun a
+ * page, and be silently cut.
  */
-export function dailyMeans(series: Series): Series {
-	const byDay = new Map<string, { sum: number; count: number }>();
-
-	for (const point of series.points) {
-		const day = new Date(point.at).toISOString().slice(0, 10);
-		const bucket = byDay.get(day) ?? { sum: 0, count: 0 };
-		byDay.set(day, { sum: bucket.sum + point.value, count: bucket.count + 1 });
-	}
-
-	return {
-		...series,
-		points: [...byDay.entries()]
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([day, { sum, count }]) => ({
-				at: new Date(`${day}T12:00:00Z`).getTime(),
-				value: sum / count
-			}))
-	};
-}
+export const dailyMeans = (series: Series): Series => ({
+	...series,
+	points: dailyPoints(
+		series.points.map((point) => ({
+			day: new Date(point.at).toISOString().slice(0, 10),
+			value: point.value
+		}))
+	)
+});
 
 /**
  * The backend names units for machines (`percent`, `ml_kg_min`); this is what a

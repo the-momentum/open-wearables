@@ -5,6 +5,9 @@ export type Period = { mode: PeriodMode; from: string | null; to: string | null 
 
 export const ALL_TIME: Period = { mode: 'all', from: null, to: null };
 
+/** One day in milliseconds, for the arithmetic every window does. */
+export const DAY_MS = 86_400_000;
+
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 const clean = (raw: string | null) => (raw && DAY.test(raw) ? raw : null);
@@ -49,7 +52,7 @@ export function periodWindow(period: Period): { from: Date; to: Date } | null {
 export function spanDays(period: Period): number | null {
 	const window = periodWindow(period);
 	if (!window) return null;
-	return Math.round((window.to.getTime() - window.from.getTime()) / 86_400_000);
+	return Math.round((window.to.getTime() - window.from.getTime()) / DAY_MS);
 }
 
 /** Daily cells stop being readable — and stop fitting — past a few months. */

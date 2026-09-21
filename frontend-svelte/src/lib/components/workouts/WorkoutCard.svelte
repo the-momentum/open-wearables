@@ -1,6 +1,7 @@
 <script lang="ts">
 	import EventCard from '$lib/components/events/EventCard.svelte';
 	import TimeRange from '$lib/components/ui/TimeRange.svelte';
+	import { HEADING } from '$lib/components/ui/typography';
 	import { humanise } from '$lib/utils/text';
 	import { workoutIcon } from '$lib/workouts/kinds';
 	import type { Workout } from '$lib/workouts/types';
@@ -18,7 +19,7 @@
 <EventCard icon={workoutIcon(workout.type)} source={workout.source} {providerLabel}>
 	{#snippet title()}
 		<span class="flex flex-wrap items-baseline gap-x-2">
-			<span class="text-sm font-semibold text-foreground">{humanise(workout.type)}</span>
+			<span class={HEADING}>{humanise(workout.type)}</span>
 			{#if workout.name}
 				<span class="truncate text-xs text-muted-foreground">{workout.name}</span>
 			{/if}

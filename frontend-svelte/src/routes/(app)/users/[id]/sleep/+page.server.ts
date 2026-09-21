@@ -1,4 +1,5 @@
 import { attempt } from '$lib/server/form';
+import { userActions } from '$lib/server/user-actions';
 import { fetchConnections } from '$lib/server/connections';
 import { requireToken } from '$lib/server/guard';
 import { knownProvider } from '$lib/server/events';
@@ -50,6 +51,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 };
 
 export const actions: Actions = {
+	// The header sits in the layout, so its actions have to exist on every tab.
+	...userActions,
+
 	deleteSleep: async ({ params, request, locals }) => {
 		const accessToken = await requireToken(locals);
 		const id = String((await request.formData()).get('session') ?? '');

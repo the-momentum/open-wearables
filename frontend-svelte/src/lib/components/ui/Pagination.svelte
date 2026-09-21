@@ -14,6 +14,7 @@
 		nextHref,
 		hrefFor,
 		sizeHrefFor,
+		noun = '',
 		label = 'Pagination'
 	}: {
 		/** 1-based position, which both kinds of paging know. */
@@ -30,6 +31,8 @@
 		hrefFor?: (page: number) => string;
 		/** Omit to hide the page-size control. */
 		sizeHrefFor?: (size: PageSize) => string;
+		/** What is being counted, where the list above does not make it obvious. */
+		noun?: string;
 		/** Distinguishes the bars when one appears above the list and one below. */
 		label?: string;
 	} = $props();
@@ -62,7 +65,9 @@
 			{:else if total === null}
 				<span class="font-medium text-foreground">{first}–{last}</span>
 			{:else}
-				<span class="font-medium text-foreground">{first}–{last}</span> of {total}
+				<span class="font-medium text-foreground">{first}–{last}</span> of {total}{noun
+					? ` ${noun}`
+					: ''}
 			{/if}
 		</p>
 

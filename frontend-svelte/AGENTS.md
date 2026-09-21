@@ -4,10 +4,11 @@ Ground-up rewrite of the React dashboard in SvelteKit. Lives on the
 `feat/svelte-frontend` branch and runs alongside the existing frontend until it
 reaches parity; only then does `frontend/` get deleted.
 
-**Status:** the foundations are done and the first real page is built. Container,
-design tokens, responsive shell, cookie-backed authentication, and a complete
-`/users` list. Every other destination is still a placeholder. Read "Current
-state" before assuming anything exists.
+**Status:** the shell, the `/users` list and the user detail page are done, and
+six of the user's seven data tabs are built — Data Summary, Workouts, Activity,
+Sleep, Body and Scores. Women's Health is still the placeholder, as are
+Dashboard, Syncs, Webhooks, Coverage and Settings. Read "Current state" before
+assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
 
@@ -227,6 +228,15 @@ So `bun run dev` and the browser console are the only detector. Green does not
 mean the markup is valid. When a component can hold caller-supplied content,
 check what element it sits in: `Hint`'s bubble takes a snippet, so a `<p>`
 wrapper around it is a trap.
+
+### `getByText` with a regex does not normalize whitespace
+
+A **string** matcher collapses whitespace; a **regex** matches the raw text.
+Prettier reflows markup, so `{count}\n{noun} scored` renders with a newline
+between the number and the word and `/\d+ days scored/` silently never matches
+— while `getByText('24 days scored')` does. Build the sentence in the script and
+interpolate it once, rather than writing a regex that tolerates the wrapping:
+the string the reader sees should be one string in the code too.
 
 ### End-to-end tests sign in for real
 
@@ -1384,17 +1394,18 @@ own `has_more`, which is the direct answer to "was there more".
 What the third tab made obvious, in `src/lib/events/` and
 `src/lib/components/events/`:
 
-| Piece                      | What it owns                                                        |
-| -------------------------- | ------------------------------------------------------------------- |
-| `EventCard`                | the accordion shell: header, source, chevron, click-to-open         |
-| `MetricRow` / `MetricCell` | the fixed four-metric grid, and a cell for what a number cannot say |
-| `EventTotals`              | the figures strip, its own fetch, and the partial note              |
-| `CursorBar`                | pagination wiring, and passing `total_count` through untouched      |
-| `SamplesChart`             | fetch-on-open, skeleton, empty note, chart, bucket note             |
-| `events/fields.ts`         | dropping absent fields and then empty groups                        |
-| `events/totals.ts`         | `sumOf`, `meanOf`, `isPartial`                                      |
-| `server/events.ts`         | the window params, the provider guard, `summaryOf`                  |
-| `lists/cursor.ts`          | `at`, `hrefFor`, and the page-one rule                              |
+| Piece                      | What it owns                                                         |
+| -------------------------- | -------------------------------------------------------------------- |
+| `AccordionCard`            | the accordion shell: header, chevron, click-to-open, click-to-select |
+| `EventCard`                | that shell filled in for one record from one device                  |
+| `MetricRow` / `MetricCell` | the fixed four-metric grid, and a cell for what a number cannot say  |
+| `EventTotals`              | the figures strip, its own fetch, and the partial note               |
+| `CursorBar`                | pagination wiring, and passing `total_count` through untouched       |
+| `SamplesChart`             | fetch-on-open, skeleton, empty note, chart, bucket note              |
+| `events/fields.ts`         | dropping absent fields and then empty groups                         |
+| `events/totals.ts`         | `sumOf`, `meanOf`, `isPartial`                                       |
+| `server/events.ts`         | the window params, the provider guard, `summaryOf`                   |
+| `lists/cursor.ts`          | `at`, `hrefFor`, and the page-one rule                               |
 
 Each tab is then its own `*Card`, `*Metrics`, `*Details`, `*Summary` and a
 domain module — a few dozen lines each. Two of those extractions started as
@@ -1494,6 +1505,168 @@ connection, an anyio worker thread and a Redis pubsub connection for as long as
 the tab stays open, and the React app held one on every user page regardless of
 which tab was showing. The snapshot from `/sync/runs` covers the resting case;
 the stream is for later, opened only when a run is actually in progress.
+
+## Scores
+
+The old dashboard's version of this tab was two gradient panels, a hardcoded
+warning banner, `limit: 1000` with no paging at all, and a day card listing
+every category as a row of grey chips. Three of its numbers were also wrong.
+
+### A page is ten days, not twenty records
+
+`/users/{id}/health-scores` takes `start_date`, `end_date`, `category`,
+`provider`, `limit` and `offset`, and returns a real `total_count` — the only
+list endpoint here that counts what it is holding back. The first version paged
+by record because of that, and the bar read **"1–20 of 312"** while showing two
+cards: a card is a day, and Suunto scores recovery every half hour.
+
+So the page is a **window of days**. `paging.ts` cuts it — page one is the
+newest stretch, page N steps back, the last one clips to the start of the period
+— and the bar counts what the reader sees: `1–10 of 110 days`. `Pagination`
+gained a `noun`, because "of 110" with no unit invites the reader to guess.
+
+Each page fetch is bounded by its own ten-day window and asks for
+`SUMMARY_CAP`, since how many records sit behind a day is the provider's
+business and not something to page over.
+
+**A window can come back empty**, where nobody scored anything for ten days.
+That is the truth about those days, and it reads the same way a calendar does.
+
+### "All time" finds its own first day
+
+Paging by day needs a first day to count back from, and this endpoint only ever
+answers newest-first. The first attempt dodged that by quietly replacing All
+time with the ninety-day range preset — the control offered something it then
+refused to do, which is worse than not offering it.
+
+`scoreDays()` finds the bound instead: a `limit=1` request carries
+`total_count`, and the record at `offset = total_count - 1` is the oldest one
+there is. Two small requests, and only for All time. There is a test that fails
+if the snap-back ever returns.
+
+### Three numbers the old tab got wrong
+
+**Resilience is not `value`.** `fill_missing_resilience_scores_task` stores the
+HRV coefficient of variation in `value` (0.036–0.187 in this database) and the
+readable 0-100 score in `components.resilience_score`. Reading `value` as the
+score is wrong by a factor of five hundred. `scoreOf()` is where that lives, and
+`rawReading()` puts the fraction back on screen under its own name — the old tab
+printed "15.7%" beside "74" and never said what the percentage was.
+
+**A category's scale depends on the provider, not the category.** From
+`backend/app/constants/health_scores.py`: readiness is 1-100 from Oura and
+**0-10 from Polar**, recovery is 0-100 from Whoop and **1-6 from Polar**, strain
+is 0-21 from Whoop. The old chart used one `maxScale` per category, so a Polar
+readiness of 6 out of 10 drew along the floor as if it were a 6 out of 100.
+`LineChart` gained a `shared` flag for this: one scale across every line,
+computed from the observed values. That table is not exposed by the API and is
+**not** copied here — the axis comes from the data. The reason lives in this
+file rather than on the page: the screen carries labels, not rationale.
+
+**A "day" of Suunto recovery is thirty-five rows.** Suunto's stress-recovery
+stream arrives every half hour — 14,547 rows for two users locally, against 168
+for a whole year of Oura sleep. Grouping by day and picking "the highest score"
+the way the old tab did threw away the other thirty-four. `groupScores()`
+collapses a provider to that day's mean and shows the span it hides, and it
+decides whether a provider streams by **counting its readings**, not by knowing
+which providers stream.
+
+### A card is a day, with a row per measure
+
+Which is how the question arrives: not "show me score row 41" but "what did
+Tuesday look like" — and the answer worth having is every provider's answer side
+by side, Open Wearables' own among them. The first version made a card per day
+**and category**, which put the same date on five cards in a row down the page.
+
+So: the day is the card, each measure is a row inside it, and the providers sit
+along that row. The card wears no icon of its own — five rows would all carry
+the same calendar — and the icons belong to the rows, where they tell the
+measures apart. Expanding gives a section per measure: its components, one
+column per provider, and the day's own curve where a provider streamed.
+
+`AccordionCard` lost its required `icon` and `when` for this. A day card's title
+already says when.
+
+### Categories come from the data, and cannot come from coverage
+
+`/v1/meta/coverage` lists which provider produces which score, and `internal` is
+not a provider strategy — so resilience, which only Open Wearables computes,
+does not appear in coverage **at all**. The category list is therefore built
+from whatever the period actually holds. `knownCategory()` is the allowlist for
+the filter itself, because the API takes a `HealthScoreCategory` enum and 422s
+the whole page on anything else.
+
+### No provider filter, deliberately
+
+A score is worth looking at next to the other providers' answer for the same
+day, and filtering to one is exactly what destroys that. The chart's legend
+already hides a line without reloading, which is the control an admin actually
+wants. Activity and Body have no provider filter either, for their own reasons.
+
+### The trends fetch is scoped to the period alone
+
+Not to the whole query. Choosing a category narrows the list below and redraws
+one tile as a chart — refetching every trend to do that would throw away the
+chart the reader is looking at, and would empty the chooser it was chosen from.
+
+### `zone_offset` is in the contract and has never been filled
+
+Null in all 15,417 rows locally. So `localDayKey` and `formatLocalTime` fall
+back to UTC and say so — the intraday chart's axis reads "01:00 UTC", which is
+all a row without an offset can honestly claim. The code reads the offset
+anyway; the day a score is grouped under is the day its owner lived, and that
+matters as soon as a provider starts sending one.
+
+### Shared out of it
+
+| Piece                     | Why it moved                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `events/AccordionCard`    | `EventCard` hardcoded one provider and one device; a score card names several and no device        |
+| `charts/Sparkline`        | `VitalTrend` drew its own SVG; a score tile needs the same one with several lines                  |
+| `charts/palette.ts`       | colour by position, never by hash — a hash eventually gives two lines on one chart the same colour |
+| `geometry.ts` `Line`      | what a chart actually needs; `Series` is now `Line` plus the device that recorded it               |
+| `LineChart` `colourFor`   | a line's `type` means a sensor on one chart and a provider on another                              |
+| `utils/collect.ts`        | group-by, hand-rolled five times over three files, twice by copying the group per item             |
+| `timeseries/daily.ts`     | one point a day at **midday** — two implementations of the same convention                         |
+| `geometry.ts` spans       | `spanOf`, `windowOf`, `CHART_BOX`, `SPARK_BOX`: the extent of a set of lines, worked out four ways |
+| `format.ts` `showDecimal` | `formatDecimal(…) ?? DASH` at four sites, and `?? ''` where null could not arrive                  |
+| `typography.ts` `HEADING` | the card title, spelled out in five files                                                          |
+| `period.ts` `DAY_MS`      | one day in milliseconds, in three files, one of them twice                                         |
+
+The palette is assigned once for the whole page and passed down, because the
+first version let each component derive its own: Suunto came out green in the
+tile and blue inside the card — one provider, two colours, one screen.
+
+### Split so the derivation is testable, not so the tree is deep
+
+`scores/details.ts` holds what an opened card shows — which providers earned a
+curve (more than one reading), and which sections have nothing to show at all.
+It came out of a 99-line component, and those rules are now unit-tested rather
+than only reachable by clicking.
+
+The same pass split `ProviderScore` (one provider's answer), `ScoreSection` (one
+measure, expanded), `CategoryChart` (a category at full size) and
+`CategoryFilter` out of components that had grown to do two jobs. What did
+**not** move is `ScoreRow`: it is nine lines of layout over `ProviderScore`, and
+a component that thin earns its place only because a row is a real thing on the
+page.
+
+### Two bugs this tab turned up
+
+**Open Wearables' own scores read as "Internal".** They are stored under
+`provider = 'internal'`, which is a `ProviderName` but never an OAuth
+connection, so `/oauth/providers` does not list it and `providerLabel()` fell
+through to `humanise()`. 517 sleep scores and 35 resilience scores in this
+database were sitting there under a name nobody would look for. `labels.ts` now
+names the unlisted providers, and `internal` is **OW** — what the React
+dashboard called it.
+
+**The header's actions 404'd on five tabs.** `userActions` are resolved against
+whichever route is showing, and only
+`[id]/` and the placeholder had them. On Workouts, Activity, Sleep, Body and
+Data Summary the header's **Edit user**, **Delete user** and **Pairing link**
+posted to a route with no such action and 404'd. Fixed on all five, with a test
+per tab so the next one cannot ship without them.
 
 ## The pairing pages are public
 
@@ -1621,6 +1794,12 @@ src/
 │   │   │   ├── FilterChip.svelte    # link: navigates
 │   │   │   ├── ToggleChip.svelte    # button: edits a local draft
 │   │   │   └── CopyableId.svelte
+│   │   ├── events/                  # AccordionCard, EventCard, MetricRow,
+│   │   │                            # MetricCell, EventTotals, CursorBar
+│   │   ├── charts/                  # LineChart, Sparkline, SamplesChart,
+│   │   │                            # IntervalChart, DistributionBar,
+│   │   │                            # SeriesLegend, HoverReadout
+│   │   ├── filters/                 # FilterBar, FilterGroup, PeriodFilter
 │   │   ├── providers/               # ProviderMark — a letter mark, since the
 │   │   │                            # API's icon_url is unreachable from the browser
 │   │   ├── syncs/                   # provider-agnostic: SyncRunRow, SavedCounts,
@@ -1634,11 +1813,18 @@ src/
 │   ├── lists/                       # generic list plumbing
 │   │   ├── types.ts                 # Page, Paginated<T>, SortOrder
 │   │   └── pagination.ts            # page window, PAGE_SIZES, pageForSize
-│   ├── users/                       # types.ts, query.ts, avatar.ts
+│   ├── users/                       # types.ts, query.ts, avatar.ts, tabs.ts
+│   ├── charts/                      # geometry.ts (scaleY, linePath, extent),
+│   │                                # palette.ts — pure, and tested as such
+│   ├── events/                      # fields.ts, totals.ts — shared by the tabs
+│   ├── {workouts,sleep,activity,body,scores}/   # one domain module per tab
+│   ├── timeseries/samples.ts        # Sample → Series, colours, units
+│   ├── filters/period.ts            # All time / Day / Range, and its windows
 │   ├── server/                      # never reaches the browser
 │   │   ├── api.ts  redis.ts  session.ts  auth.ts
-│   │   └── users.ts  providers.ts
-│   └── utils/                       # cn.ts, datetime.ts
+│   │   ├── events.ts  timeseries.ts  user-actions.ts
+│   │   └── users.ts  providers.ts  {workouts,sleep,activity,body,scores}.ts
+│   └── utils/                       # cn.ts, datetime.ts, format.ts, resource.svelte.ts
 ├── routes/
 │   ├── +layout.svelte               # imports app.css
 │   ├── +page.ts                     # redirects / → /dashboard
@@ -1651,9 +1837,14 @@ src/
 │       ├── +layout.svelte           # wraps children in AppShell
 │       ├── users/  +page.svelte + +page.server.ts
 │       ├── users/[id]/              # +layout owns the user; +page is Connections
+│       │   ├── {data,workouts,activity,sleep,body,scores}/
+│       │   │                        # each with +page.server.ts and, where it
+│       │   │                        # needs one, totals/ samples/ trends/ +server.ts
 │       │   └── [tab=usertab]/       # one placeholder for every unbuilt tab
 │       └── {dashboard,syncs,webhooks,coverage,settings}/+page.svelte
-└── e2e/  auth  navigation  users (.e2e.ts) + mock-api  support  fixtures
+└── e2e/  auth  navigation  users  user-detail  pairing  data-summary
+       workouts  activity  sleep  body  scores (.e2e.ts)
+       + mock-api  support  fixtures
 ```
 
 Every `.spec.ts` sits beside what it covers; `*.browser.spec.ts` files aggregate

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { MICRO } from '$lib/components/ui/typography';
-	import { extent, linePath, scaleY } from '$lib/charts/geometry';
-	import { seriesColour, type Series } from '$lib/timeseries/samples';
+	import { CHART_BOX, extent, linePath, scaleY, spanOf, type Line } from '$lib/charts/geometry';
+	import { seriesColour, unitLabel } from '$lib/timeseries/samples';
+	import { formatNumber } from '$lib/utils/format';
 	import HoverReadout from './HoverReadout.svelte';
 	import SeriesLegend from './SeriesLegend.svelte';
 
@@ -11,9 +12,12 @@
 		from,
 		to,
 		formatTime,
-		label
+		label,
+		colourFor = seriesColour,
+		format = (value, unit) => formatNumber(value, unitLabel(unit)),
+		shared = false
 	}: {
-		series: Series[];
+		series: Line[];
 		/**
 		 * Shaded bands behind one of the lines, keyed by the series they describe.
 		 * `zones[i].max` is that band's ceiling; a null one is simply not drawn.
@@ -24,12 +28,20 @@
 		/** The caller owns the clock: only it knows whose timezone to read in. */
 		formatTime: (at: number) => string;
 		label: string;
+		/** What a line's `type` means as a colour — a sensor, or a provider. */
+		colourFor?: (type: string) => string;
+		format?: (value: number, unit: string) => string;
+		/**
+		 * One scale for every line instead of each on its own. Sensors share no
+		 * axis — a pulse and a cadence are not comparable heights — but readings of
+		 * the same thing from two providers are exactly what has to be compared.
+		 */
+		shared?: boolean;
 	} = $props();
 
 	// The viewBox is stretched to whatever width the card has, so strokes carry
 	// `non-scaling-stroke` and every label lives in HTML outside the SVG.
-	const BOX = { width: 1000, height: 200, pad: 12 };
-	const { width: W, height: H } = BOX;
+	const { width: W, height: H } = CHART_BOX;
 	/** Below this a band cannot hold its own label without hitting its neighbour. */
 	const LABEL_ROOM = 18;
 
@@ -57,12 +69,14 @@
 	const span = $derived(Math.max(to - from, 1));
 	const x = (at: number) => ((at - from) / span) * W;
 
-	type Scaled = Series & { dash: string; low: number; high: number; path: string };
+	type Scaled = Line & { dash: string; low: number; high: number; path: string };
+
+	const whole = $derived(shared ? spanOf(shown) : null);
 
 	const scaled: Scaled[] = $derived(
 		shown.map((entry) => {
-			const range = extent(entry.points);
-			return { ...entry, ...range, path: linePath(entry.points, { from, to }, range, BOX) };
+			const range = whole ?? extent(entry.points);
+			return { ...entry, ...range, path: linePath(entry.points, { from, to }, range, CHART_BOX) };
 		})
 	);
 
@@ -72,7 +86,7 @@
 	const bands = $derived.by(() => {
 		if (!owner || !zones) return [];
 
-		const y = scaleY(owner.low, owner.high, BOX);
+		const y = scaleY(owner.low, owner.high, CHART_BOX);
 		const out: { zone: number; top: number; y: number; height: number }[] = [];
 		let floor = owner.low;
 
@@ -115,7 +129,13 @@
 </script>
 
 <div class="flex flex-col gap-2">
-	<SeriesLegend {lines} {off} ontoggle={toggle} bands={bands.length ? zones?.label : undefined} />
+	<SeriesLegend
+		{lines}
+		{off}
+		{colourFor}
+		ontoggle={toggle}
+		bands={bands.length ? zones?.label : undefined}
+	/>
 
 	<div
 		class="relative"
@@ -131,10 +151,12 @@
 			<div
 				class="pointer-events-none absolute inset-y-0 left-0 flex flex-col justify-between
 					py-0.5 text-[10px] tabular-nums"
-				style="color: {seriesColour(first.type)}"
+				style="color: {whole ? 'var(--color-muted-foreground)' : colourFor(first.type)}"
 			>
-				<span>{Math.round(first.high)}</span>
-				<span>{Math.round(first.low)}</span>
+				<!-- On their own background, because a line drawn to the top of the
+				     frame crosses the very number that says how high it reached. -->
+				<span class="rounded bg-surface/85 px-0.5">{Math.round(first.high)}</span>
+				<span class="rounded bg-surface/85 px-0.5">{Math.round(first.low)}</span>
 			</div>
 		{/if}
 
@@ -165,7 +187,7 @@
 				<path
 					d={entry.path}
 					fill="none"
-					stroke={seriesColour(entry.type)}
+					stroke={colourFor(entry.type)}
 					stroke-width="2"
 					stroke-linejoin="round"
 					stroke-dasharray={entry.dash || undefined}
@@ -188,7 +210,7 @@
 		</svg>
 
 		{#if hovered !== null && readings.length > 0}
-			<HoverReadout heading={formatTime(hovered)} {readings} {at} />
+			<HoverReadout heading={formatTime(hovered)} {readings} {at} {colourFor} {format} />
 		{/if}
 	</div>
 

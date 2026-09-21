@@ -2,6 +2,9 @@
 export const CAPTION =
 	'text-[10px] font-semibold tracking-wider text-muted-foreground/70 uppercase';
 
+/** What a card is called: a section's heading, and an accordion card's title. */
+export const HEADING = 'text-sm font-semibold text-foreground';
+
 /** A one-line explanation standing in for content that is not there. */
 export const NOTE = 'py-6 text-center text-sm text-muted-foreground';
 

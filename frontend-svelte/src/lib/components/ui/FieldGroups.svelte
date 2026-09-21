@@ -4,7 +4,8 @@
 
 	export type FieldGroup = {
 		title: string;
-		icon: Component;
+		/** Absent where the group is named after its source rather than a subject. */
+		icon?: Component;
 		fields: { label: string; value: string }[];
 	};
 

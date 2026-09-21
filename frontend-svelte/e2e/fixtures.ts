@@ -900,3 +900,129 @@ export const makeVitals = (query: URLSearchParams) => {
 
 	return { data, pagination: { has_more: false, total_count: data.length } };
 };
+
+/**
+ * Health scores as the real table holds them: the same night scored by two
+ * providers, a category whose readable score hides in a component, and one
+ * provider that scores through the day instead of once.
+ */
+const SCORE_SHAPES = [
+	{ category: 'sleep', provider: 'oura', perDay: 1, base: 82, swing: 10 },
+	{ category: 'sleep', provider: 'internal', perDay: 1, base: 76, swing: 12 },
+	{ category: 'readiness', provider: 'oura', perDay: 1, base: 74, swing: 16 },
+	{ category: 'activity', provider: 'oura', perDay: 1, base: 88, swing: 8 },
+	// Suunto's stress-recovery stream: many a day, each with a rating.
+	{ category: 'recovery', provider: 'suunto', perDay: 8, base: 48, swing: 26 },
+	// The odd one: `value` is the HRV coefficient of variation, and the 0-100
+	// score sits in `components.resilience_score`.
+	{ category: 'resilience', provider: 'internal', perDay: 1, base: 0, swing: 0 }
+] as const;
+
+const STRESS_STATES = ['Relaxing', 'Active', 'Passive', 'Stressful'];
+
+const SCORE_COMPONENTS: Record<string, string[]> = {
+	'sleep:oura': ['total_sleep', 'efficiency', 'restfulness', 'timing'],
+	'sleep:internal': ['duration', 'stages', 'consistency', 'interruptions'],
+	'readiness:oura': ['hrv_balance', 'resting_heart_rate', 'previous_night'],
+	'activity:oura': ['stay_active', 'move_every_hour', 'training_volume']
+};
+
+/** Smooth, the way seven days of HRV variability actually move. */
+const resilienceScore = (day: number) => Math.round(74 + 16 * Math.sin(day / 4));
+
+const buildScores = () => {
+	const rows: Record<string, unknown>[] = [];
+
+	// A hundred and ten days: longer than the ninety-day range preset, so a test
+	// can tell "All time" from it by the number of days the bar counts.
+	for (let day = 0; day < 110; day += 1) {
+		for (const shape of SCORE_SHAPES) {
+			for (let index = 0; index < shape.perDay; index += 1) {
+				const step = day * 7 + index * 3;
+				const hour = shape.perDay === 1 ? 2 : 1 + index * 2;
+				// A daily swing plus a within-day one, so a stream's mean moves from day
+				// to day instead of averaging out to the same number every time.
+				const value = Math.round(
+					shape.base +
+						shape.swing * Math.sin(day / 3) +
+						(shape.perDay > 1 ? 24 * Math.sin(index) : 0)
+				);
+
+				const key = `${shape.category}:${shape.provider}`;
+				const components: Record<string, unknown> = Object.fromEntries(
+					(SCORE_COMPONENTS[key] ?? []).map((name, position) => [
+						name,
+						{ value: Math.min(100, value + position * 4), qualifier: null }
+					])
+				);
+
+				if (shape.category === 'recovery') {
+					components.stress_state = {
+						value: step % 4,
+						qualifier: STRESS_STATES[step % STRESS_STATES.length]
+					};
+				}
+
+				rows.push({
+					id: `score-${day}-${shape.category}-${shape.provider}-${index}`,
+					category: shape.category,
+					provider: shape.provider,
+					// A resilience row stores variability here, not a score: 0.157 shown
+					// as the score would be wrong by a factor of five hundred.
+					// A resilience row stores the HRV coefficient of variation here; the
+					// readable score is derived from it, so the fixture derives it the
+					// same way round rather than inventing two unrelated numbers.
+					value:
+						shape.category === 'resilience'
+							? Number(((40 - resilienceScore(day) * 0.33) / 100).toFixed(3))
+							: value,
+					qualifier: shape.category === 'recovery' ? STRESS_STATES[step % 4] : null,
+					recorded_at: `${isoDay(day)}T${String(hour).padStart(2, '0')}:00:00Z`,
+					// Never filled in practice, whatever the schema allows.
+					zone_offset: null,
+					components:
+						shape.category === 'resilience'
+							? {
+									metric_type: { value: null, qualifier: 'RMSSD' },
+									days_counted: { value: 7, qualifier: null },
+									resilience_score: { value: resilienceScore(day), qualifier: null }
+								}
+							: components,
+					event_record_id: null,
+					data_source_id: null
+				});
+			}
+		}
+	}
+
+	return rows.sort((left, right) =>
+		String(right.recorded_at).localeCompare(String(left.recorded_at))
+	);
+};
+
+const SCORES = buildScores();
+
+/** Offset paging with a real count — the one list endpoint that has both. */
+export const makeScores = (query: URLSearchParams) => {
+	const bound = (raw: string | null, fallback: number) =>
+		new Date(raw && raw !== '0' ? raw : fallback).getTime();
+
+	const start = bound(query.get('start_date'), 0);
+	const end = bound(query.get('end_date'), Date.now() + 86_400_000);
+	const category = query.get('category');
+
+	const matched = SCORES.filter((row) => {
+		const at = new Date(String(row.recorded_at)).getTime();
+		return at >= start && at < end && (!category || row.category === category);
+	});
+
+	const limit = Number(query.get('limit') ?? 50);
+	const offset = Number(query.get('offset') ?? 0);
+	const data = matched.slice(offset, offset + limit);
+
+	return {
+		data,
+		pagination: { total_count: matched.length, has_more: offset + data.length < matched.length },
+		metadata: { sample_count: data.length }
+	};
+};

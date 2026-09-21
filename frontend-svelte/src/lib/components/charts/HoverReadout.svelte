@@ -1,16 +1,17 @@
 <script lang="ts">
-	import { seriesColour, unitLabel } from '$lib/timeseries/samples';
-	import { formatNumber } from '$lib/utils/format';
-
 	let {
 		heading,
 		readings,
-		at
+		at,
+		colourFor,
+		format
 	}: {
 		heading: string;
 		readings: { type: string; label: string; unit: string; value: number }[];
 		/** Percentage across the frame the pointer sits at. */
 		at: number;
+		colourFor: (type: string) => string;
+		format: (value: number, unit: string) => string;
 	} = $props();
 </script>
 
@@ -26,9 +27,9 @@
 			<span
 				aria-hidden="true"
 				class="size-1.5 rounded-full"
-				style="background: {seriesColour(reading.type)}"
+				style="background: {colourFor(reading.type)}"
 			></span>
-			{formatNumber(reading.value, unitLabel(reading.unit))}
+			{format(reading.value, reading.unit)}
 		</span>
 	{/each}
 </div>

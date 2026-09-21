@@ -3,6 +3,7 @@
 	import Sunrise from '@lucide/svelte/icons/sunrise';
 	import EventCard from '$lib/components/events/EventCard.svelte';
 	import TimeRange from '$lib/components/ui/TimeRange.svelte';
+	import { HEADING } from '$lib/components/ui/typography';
 	import { sleepIcon, sleepKind } from '$lib/sleep/session';
 	import type { SleepSession } from '$lib/sleep/types';
 	import SleepDetails from './SleepDetails.svelte';
@@ -17,7 +18,7 @@
 
 <EventCard icon={sleepIcon(session)} source={session.source} {providerLabel}>
 	{#snippet title()}
-		<span class="text-sm font-semibold text-foreground">{sleepKind(session)}</span>
+		<span class={HEADING}>{sleepKind(session)}</span>
 	{/snippet}
 
 	{#snippet when()}

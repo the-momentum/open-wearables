@@ -3,7 +3,8 @@ import { fetchProviders } from '$lib/server/providers';
 import { requireToken } from '$lib/server/guard';
 import { parsePeriod } from '$lib/filters/period';
 import { isPageSize } from '$lib/lists/pagination';
-import type { PageServerLoad } from './$types';
+import { userActions } from '$lib/server/user-actions';
+import type { Actions, PageServerLoad } from './$types';
 
 /**
  * No provider filter and no delete: this endpoint aggregates the time series by
@@ -28,3 +29,6 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	return { period, days, providers, pageSize };
 };
+
+/** The header sits in the layout, so its actions have to exist on every tab. */
+export const actions = userActions as Actions;

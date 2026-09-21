@@ -4,6 +4,7 @@ import { knownProvider } from '$lib/server/events';
 import { fetchProviders } from '$lib/server/providers';
 import { deleteWorkout, fetchWorkoutTypes, fetchWorkouts } from '$lib/server/workouts';
 import { attempt } from '$lib/server/form';
+import { userActions } from '$lib/server/user-actions';
 import { parsePeriod } from '$lib/filters/period';
 import { isPageSize } from '$lib/lists/pagination';
 import type { Actions, PageServerLoad } from './$types';
@@ -59,6 +60,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 };
 
 export const actions: Actions = {
+	// The header sits in the layout, so its actions have to exist on every tab.
+	...userActions,
+
 	deleteWorkout: async ({ params, request, locals }) => {
 		const accessToken = await requireToken(locals);
 		const id = String((await request.formData()).get('workout') ?? '');

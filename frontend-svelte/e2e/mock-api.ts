@@ -16,6 +16,7 @@ import {
 	makeActivity,
 	makeBody,
 	deleteWorkout,
+	makeScores,
 	makeSleep,
 	makeUsers,
 	makeTimeseries,
@@ -231,6 +232,14 @@ const server = Bun.serve({
 				}
 				case '/summaries/activity':
 					return json(makeActivity(new URL(request.url).searchParams));
+				case '/health-scores':
+					// Gated like the other data endpoints: a user with no connection has
+					// nothing scored, which is the empty state worth testing.
+					return json(
+						connected
+							? makeScores(new URL(request.url).searchParams)
+							: { data: [], pagination: { total_count: 0, has_more: false } }
+					);
 				case '/events/sleep':
 					return json(makeSleep(new URL(request.url).searchParams));
 				case '/sync/runs':

@@ -4,7 +4,8 @@ import { fetchProviders } from '$lib/server/providers';
 import { fetchDataSummary, fetchDataTimeline } from '$lib/server/summary';
 import { parsePeriod } from '$lib/filters/period';
 import type { TimelineGroupBy } from '$lib/summary/types';
-import type { PageServerLoad } from './$types';
+import { userActions } from '$lib/server/user-actions';
+import type { Actions, PageServerLoad } from './$types';
 
 /**
  * Both aggregates scan this user's slice of data_point_series, which is why
@@ -40,3 +41,6 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	return { period, provider, summary, byType, byProvider, byWorkout, providers, connections };
 };
+
+/** The header sits in the layout, so its actions have to exist on every tab. */
+export const actions = userActions as Actions;

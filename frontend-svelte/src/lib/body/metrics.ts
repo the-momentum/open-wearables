@@ -10,7 +10,7 @@ import type { Component } from 'svelte';
 import { toFieldGroups, type GroupSpec } from '$lib/events/fields';
 import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
 import { formatDateTime } from '$lib/utils/datetime';
-import { DASH, formatDecimal } from '$lib/utils/format';
+import { DASH, formatDecimal, showDecimal } from '$lib/utils/format';
 import type { BodySummary } from './types';
 
 const unit = (value: number | null, suffix: string, digits = 1) => {
@@ -32,7 +32,7 @@ export function composition(body: BodySummary): Figure[] {
 		{ icon: Scale, label: 'Weight', value: unit(slow.weight_kg, 'kg') ?? DASH },
 		{ icon: Ruler, label: 'Height', value: unit(slow.height_cm, 'cm', 0) ?? DASH },
 		{ icon: Percent, label: 'Body fat', value: unit(slow.body_fat_percent, '%') ?? DASH },
-		{ icon: Activity, label: 'BMI', value: formatDecimal(slow.bmi) ?? DASH }
+		{ icon: Activity, label: 'BMI', value: showDecimal(slow.bmi) }
 	];
 }
 
