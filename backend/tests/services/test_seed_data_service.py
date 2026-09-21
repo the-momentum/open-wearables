@@ -8,6 +8,7 @@ from app.models import (
     DataPointSeries,
     DataSource,
     EventRecord,
+    MealDetails,
     PersonalRecord,
     SeriesTypeDefinition,
     User,
@@ -15,6 +16,7 @@ from app.models import (
 )
 from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.utils.seed_data import (
+    MealConfig,
     SeedDataRequest,
     SeedProfileConfig,
     SleepConfig,
@@ -352,3 +354,61 @@ class TestSeededDataSourceProviders:
         # The regression: records with device_model unset landed in a per-user `unknown` bucket.
         assert db.query(DataSource).filter(DataSource.device_model.is_(None)).count() > 0
         assert db.query(DataSource).filter(DataSource.provider == ProviderName.UNKNOWN.value).count() == 0
+
+
+class TestMealGeneration:
+    """Meals are opt-in and produce an EventRecord + MealDetails + correlated nutrient samples."""
+
+    def test_meals_disabled_by_default(self, db: Session) -> None:
+        """Existing presets/defaults must stay meal-free unless generate_meals is set."""
+        request = SeedDataRequest(
+            num_users=1,
+            profile=SeedProfileConfig(
+                generate_workouts=False,
+                generate_sleep=False,
+                generate_time_series=False,
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["meals"] == 0
+        assert db.query(EventRecord).filter_by(category="meal").count() == 0
+
+    def test_generate_meals(self, db: Session) -> None:
+        """Meals create an EventRecord, a MealDetails row, and correlated nutrient samples."""
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=123,
+            profile=SeedProfileConfig(
+                generate_workouts=False,
+                generate_sleep=False,
+                generate_time_series=False,
+                providers=[ProviderName.APPLE],
+                num_connections=1,
+                generate_meals=True,
+                meal_config=MealConfig(meal_count=5),
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["meals"] == 5
+        meal_records = db.query(EventRecord).filter_by(category="meal").all()
+        assert len(meal_records) == 5
+
+        meal_ids = {record.id for record in meal_records}
+        details = db.query(MealDetails).filter(MealDetails.record_id.in_(meal_ids)).all()
+        assert len(details) == 5
+        for detail in details:
+            assert detail.meal_type in ("breakfast", "lunch", "dinner", "snack")
+            assert detail.title is not None
+
+        samples = db.query(DataPointSeries).filter(DataPointSeries.event_record_id.in_(meal_ids)).all()
+        # 6 nutrient types per meal (energy, protein, carbs, fat, fiber, hydration)
+        assert len(samples) == 5 * 6
+        assert summary["time_series_samples"] == 5 * 6
+
+        # hydration is always included, one sample per meal
+        hydration_samples = _samples_by_series(db, SeriesType.hydration)
+        assert sum(1 for s in hydration_samples if s.event_record_id in meal_ids) == 5

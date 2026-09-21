@@ -19,7 +19,7 @@ from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 
 from .constants import PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
-from .event_generators import _generate_personal_record, _generate_sleep, _generate_workout
+from .event_generators import _generate_meal, _generate_personal_record, _generate_sleep, _generate_workout
 from .health_score_generators import _generate_health_scores
 from .support_generators import _generate_time_series_samples, _generate_user_connections
 from .time_series_generators import ProviderDescriptor, _generate_continuous_time_series
@@ -111,6 +111,7 @@ class SeedDataService:
             "sleeps": 0,
             "time_series_samples": 0,
             "health_scores": 0,
+            "meals": 0,
         }
 
         enabled_types: set[SeriesType] = set(profile.time_series_config.enabled_types)
@@ -188,6 +189,21 @@ class SeedDataService:
                     event_record_service.create_detail(db, detail, detail_type="sleep")
                     summary["sleeps"] += 1
 
+            # Meals (+ correlated nutrient samples)
+            if profile.generate_meals and provider_sync_times:
+                for _ in range(profile.meal_config.meal_count):
+                    prov = fake.random.choice(list(provider_sync_times.keys()))
+                    record, detail, nutrient_samples = _generate_meal(
+                        user.id, fake, prov, provider_sync_times[prov], profile.meal_config
+                    )
+                    event_record_service.create(db, record)
+                    event_record_service.create_detail(db, detail, detail_type="meal")
+                    summary["meals"] += 1
+
+                    if nutrient_samples:
+                        timeseries_service.bulk_create_samples(db, nutrient_samples)
+                        summary["time_series_samples"] += len(nutrient_samples)
+
             # Continuous time series (independent of workouts)
             if profile.generate_time_series and provider_sync_times:
                 last_synced_at = max(provider_sync_times.values())
@@ -228,11 +244,12 @@ class SeedDataService:
 
             db.commit()
             logger.info(
-                "Seed user %d/%d created (workouts=%d, sleeps=%d, ts=%d, health_scores=%d)",
+                "Seed user %d/%d created (workouts=%d, sleeps=%d, meals=%d, ts=%d, health_scores=%d)",
                 user_num,
                 request.num_users,
                 summary["workouts"],
                 summary["sleeps"],
+                summary["meals"],
                 summary["time_series_samples"],
                 summary["health_scores"],
             )
