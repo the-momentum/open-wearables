@@ -142,6 +142,7 @@ class ImportService:
         self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
+        """Convert a raw numeric value to `Decimal`, passing `None` through unchanged."""
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
@@ -254,6 +255,7 @@ class ImportService:
             yield record, detail
 
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
+        """Rescale a value into the series' stored unit for series where the SDK unit varies by provider."""
         match series_type:
             # meters → cm
             case SeriesType.height | SeriesType.walking_step_length:
@@ -278,6 +280,12 @@ class ImportService:
         user_id: str,
         correlation_id_map: dict[str, UUID] | None = None,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
+        """Build time series samples from `records[]`, skipping meal correlation records.
+
+        `correlation_id_map` links a sample to its meal (via `parentId`) when that meal's
+        correlation record was already resolved by `_build_meal_bundles` earlier in the same
+        batch; samples with no match, or no `parentId`, are saved as loose samples.
+        """
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
         provider = request.provider
@@ -340,6 +348,7 @@ class ImportService:
         return time_series_samples
 
     def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
+        """Return (min, max, avg) for `values`, or `(None, None, None)` when empty."""
         if not values:
             return None, None, None
         min_v = min(values)
@@ -537,6 +546,12 @@ class ImportService:
         user_id: str,
         batch_id: str | None = None,
     ) -> UploadDataResponse:
+        """Parse, validate, and load an SDK sync request, returning a best-effort response.
+
+        Always returns a 200/400 `UploadDataResponse` rather than raising - validation and
+        processing failures are caught, logged, reported to Sentry, and turned into a response
+        instead of propagating to the caller.
+        """
         provider = "unknown"
         try:
             # Parse content based on type
