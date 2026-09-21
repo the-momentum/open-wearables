@@ -5,8 +5,8 @@ resolution by the operation ``google_use_reconcile`` picks — ``dataPoints:reco
 merged, deduplicated stream across sources, matching the native health app) or ``dataPoints``
 list (raw per-source points with device attribution). Windowed ``dataPoints:rollUp`` is
 disabled (#1577) and the configured granularity no longer selects it; ``dataPoints:dailyRollUp``
-still backs the derived daily metrics. Sleep and workouts come from the sessions endpoint and
-are handled separately.
+still backs the derived daily metrics. Sleep, workouts and nutrition come from the sessions
+endpoint and are handled separately.
 """
 
 from collections.abc import Iterator
@@ -50,6 +50,7 @@ from app.services.providers.google_health.helpers import (
     zone_offset_from,
 )
 from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -82,6 +83,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         self.connection_repo = connection_repo
         self.settings_repo = ProviderSettingsRepository()
         self.sleep = GoogleHealthApiSleep(oauth, connection_repo, api_base_url)
+        self.nutrition = GoogleHealthApiNutrition(oauth, connection_repo, api_base_url)
 
     # -- orchestration ---------------------------------------------------------
 
@@ -153,6 +155,17 @@ class GoogleHealth247Data(Base247DataTemplate):
             failures["sleep"] = str(e)
             sleep_count = 0
 
+        try:
+            with db.begin_nested():
+                nutrition_count = self.nutrition.load_and_save(db, user_id, start_time, end_time)
+            db.commit()
+            succeeded += 1
+        except Exception as e:
+            db.rollback()
+            self._log_metric_failure("nutrition-log", user_id, e)
+            failures["nutrition-log"] = str(e)
+            nutrition_count = 0
+
         if not granularity_supported:
             raise UnsupportedGranularityError(granularity)
         # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — surface it so the sync
@@ -169,6 +182,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             granularity=granularity.value,
             metrics_synced=len(results),
             sleep_sessions=sleep_count,
+            nutrition_entries=nutrition_count,
         )
         return results
 
@@ -182,9 +196,9 @@ class GoogleHealth247Data(Base247DataTemplate):
     ) -> WriteCounts | None:
         """Fetch + persist a single 24/7 metric over an explicit window (webhook-triggered).
 
-        Returns None when ``data_type`` is not a registered metric. Sleep and exercise
-        are owned by their own handlers and are routed there by the webhook handler
-        before ever reaching here, so an unrecognised type is a safe no-op. Raises
+        Returns None when ``data_type`` is not a registered metric. Sleep, exercise and
+        nutrition-log are owned by their own handlers and are routed there by the webhook
+        handler before ever reaching here, so an unrecognised type is a safe no-op. Raises
         UnsupportedGranularityError, which the webhook handler reports without a 5xx.
         """
         metric = next((m for m in METRICS if m.data_type == data_type), None)
