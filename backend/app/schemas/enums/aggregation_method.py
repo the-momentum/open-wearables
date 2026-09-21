@@ -119,6 +119,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.dietary_fat_saturated: AggregationMethod.SUM,
     SeriesType.dietary_fat_monounsaturated: AggregationMethod.SUM,
     SeriesType.dietary_fat_polyunsaturated: AggregationMethod.SUM,
+    SeriesType.dietary_fat_trans: AggregationMethod.SUM,
     SeriesType.dietary_cholesterol: AggregationMethod.SUM,
     SeriesType.dietary_protein: AggregationMethod.SUM,
     SeriesType.dietary_sodium: AggregationMethod.SUM,
