@@ -11276,6 +11276,13 @@
             "type": "array",
             "title": "Menstrual Cycle Fields"
           },
+          "meal_fields": {
+            "items": {
+              "$ref": "#/components/schemas/MealField"
+            },
+            "type": "array",
+            "title": "Meal Fields"
+          },
           "health_scores": {
             "items": {
               "$ref": "#/components/schemas/HealthScore"
@@ -11291,6 +11298,7 @@
           "workout_fields",
           "sleep_fields",
           "menstrual_cycle_fields",
+          "meal_fields",
           "health_scores"
         ],
         "title": "CoverageResponse"
@@ -12663,6 +12671,27 @@
           "webhook"
         ],
         "title": "LiveSyncMode"
+      },
+      "MealField": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "providers"
+        ],
+        "title": "MealField"
       },
       "MenstrualCycleField": {
         "properties": {
