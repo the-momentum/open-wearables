@@ -23,6 +23,7 @@ import {
   Wifi,
   Play,
   CalendarDays,
+  Apple,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,7 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
   generate_workouts: true,
   generate_sleep: true,
   generate_time_series: true,
+  generate_meals: false,
   providers: null,
   num_connections: 2,
   workout_config: {
@@ -87,7 +89,17 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
     date_from: DEFAULT_DATE_FROM,
     date_to: DEFAULT_DATE_TO,
   },
+  meal_config: {
+    meal_count: 60,
+    meal_types: null,
+    calories_range: [150, 900],
+    date_range_months: 6,
+    date_from: DEFAULT_DATE_FROM,
+    date_to: DEFAULT_DATE_TO,
+  },
 };
+
+const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 
 // Curated list of the 20-30 most common continuous series types, grouped
 // semantically. Paired blood_pressure is rendered as a single toggle below.
@@ -336,6 +348,11 @@ export function SeedDataTab() {
           preset.profile.time_series_config?.date_from ?? DEFAULT_DATE_FROM,
         date_to: preset.profile.time_series_config?.date_to ?? DEFAULT_DATE_TO,
       },
+      meal_config: {
+        ...(preset.profile.meal_config ?? DEFAULT_PROFILE.meal_config),
+        date_from: preset.profile.meal_config?.date_from ?? DEFAULT_DATE_FROM,
+        date_to: preset.profile.meal_config?.date_to ?? DEFAULT_DATE_TO,
+      },
     });
   };
 
@@ -448,6 +465,24 @@ export function SeedDataTab() {
       workout_config: {
         ...profile.workout_config,
         workout_types: updated.length > 0 ? updated : null,
+      },
+    });
+    clearPreset();
+  };
+
+  // Meal type checkbox helpers
+  const selectedMealTypes = profile.meal_config.meal_types;
+
+  const toggleMealType = (type: string) => {
+    const current = selectedMealTypes ?? [];
+    const updated = current.includes(type)
+      ? current.filter((t) => t !== type)
+      : [...current, type];
+    setProfile({
+      ...profile,
+      meal_config: {
+        ...profile.meal_config,
+        meal_types: updated.length > 0 ? updated : null,
       },
     });
     clearPreset();
@@ -1250,6 +1285,175 @@ export function SeedDataTab() {
                 >
                   Blood pressure (systolic + diastolic)
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Meals */}
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Apple className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">Meals</h3>
+          </div>
+          <Switch
+            checked={profile.generate_meals}
+            onCheckedChange={(checked) => {
+              setProfile({ ...profile, generate_meals: checked });
+              clearPreset();
+            }}
+          />
+        </div>
+
+        {profile.generate_meals && (
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Count</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={profile.meal_config.meal_count}
+                  onChange={(e) => {
+                    setProfile({
+                      ...profile,
+                      meal_config: {
+                        ...profile.meal_config,
+                        meal_count: parseInt(e.target.value) || 0,
+                      },
+                    });
+                    clearPreset();
+                  }}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  Calories min
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={5000}
+                  value={profile.meal_config.calories_range[0]}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value) || 0;
+                    setProfile({
+                      ...profile,
+                      meal_config: {
+                        ...profile.meal_config,
+                        calories_range: [
+                          v,
+                          Math.max(v, profile.meal_config.calories_range[1]),
+                        ],
+                      },
+                    });
+                    clearPreset();
+                  }}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  Calories max
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={5000}
+                  value={profile.meal_config.calories_range[1]}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value) || 0;
+                    setProfile({
+                      ...profile,
+                      meal_config: {
+                        ...profile.meal_config,
+                        calories_range: [
+                          Math.min(v, profile.meal_config.calories_range[0]),
+                          v,
+                        ],
+                      },
+                    });
+                    clearPreset();
+                  }}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <Label className="text-xs text-muted-foreground">
+                  Date range
+                </Label>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground/70">
+                    From
+                  </Label>
+                  <Input
+                    type="date"
+                    value={profile.meal_config.date_from ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        meal_config: {
+                          ...profile.meal_config,
+                          date_from: e.target.value || null,
+                        },
+                      });
+                      clearPreset();
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground/70">To</Label>
+                  <Input
+                    type="date"
+                    value={profile.meal_config.date_to ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        meal_config: {
+                          ...profile.meal_config,
+                          date_to: e.target.value || null,
+                        },
+                      });
+                      clearPreset();
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs text-muted-foreground block">
+                Meal types{' '}
+                <span className="text-muted-foreground/70">
+                  (none selected = random from breakfast/lunch/dinner/snack)
+                </span>
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {MEAL_TYPES.map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => toggleMealType(type)}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      selectedMealTypes?.includes(type)
+                        ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
+                        : 'border-border text-muted-foreground hover:border-border-hover'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

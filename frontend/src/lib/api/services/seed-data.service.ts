@@ -51,16 +51,27 @@ export interface SleepConfig {
   stage_distribution: SleepStageDistribution;
 }
 
+export interface MealConfig {
+  meal_count: number;
+  meal_types: string[] | null;
+  calories_range: [number, number];
+  date_range_months: number;
+  date_from: string | null;
+  date_to: string | null;
+}
+
 export interface SeedProfileConfig {
   preset: string | null;
   generate_workouts: boolean;
   generate_sleep: boolean;
   generate_time_series: boolean;
+  generate_meals: boolean;
   providers: string[] | null;
   num_connections: number;
   workout_config: WorkoutConfig;
   sleep_config: SleepConfig;
   time_series_config: TimeSeriesConfig;
+  meal_config: MealConfig;
 }
 
 export interface SeedDataRequest {

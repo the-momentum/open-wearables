@@ -22,6 +22,8 @@ import type {
   DataSummaryParams,
   MenstrualCycleRecord,
   MenstrualCyclesParams,
+  Meal,
+  MealsParams,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -334,6 +336,26 @@ export const healthService = {
     return apiClient.delete<void>(
       API_ENDPOINTS.userMenstrualCycleDetail(userId, cycleId)
     );
+  },
+
+  /**
+   * Get meals (nutrition entries) for a user
+   */
+  async getMeals(
+    userId: string,
+    params: MealsParams
+  ): Promise<PaginatedResponse<Meal>> {
+    return apiClient.get<PaginatedResponse<Meal>>(
+      API_ENDPOINTS.userMeals(userId),
+      { params }
+    );
+  },
+
+  /**
+   * Delete a meal
+   */
+  async deleteMeal(userId: string, mealId: string): Promise<void> {
+    return apiClient.delete<void>(API_ENDPOINTS.userMealDetail(userId, mealId));
   },
 
   /**

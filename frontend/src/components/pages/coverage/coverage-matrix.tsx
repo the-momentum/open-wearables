@@ -133,8 +133,15 @@ interface Props {
 }
 
 export function CoverageMatrix({ data }: Props) {
-  const { providers, timeseries, workout_fields, sleep_fields, menstrual_cycle_fields, health_scores } =
-    data;
+  const {
+    providers,
+    timeseries,
+    workout_fields,
+    sleep_fields,
+    menstrual_cycle_fields,
+    meal_fields,
+    health_scores,
+  } = data;
   const [activeTab, setActiveTab] = useState('timeseries');
 
   return (
@@ -144,6 +151,7 @@ export function CoverageMatrix({ data }: Props) {
         <TabsTrigger value="workout" className="text-sm">Workout</TabsTrigger>
         <TabsTrigger value="sleep" className="text-sm">Sleep</TabsTrigger>
         <TabsTrigger value="womens-health" className="text-sm">Women's Health</TabsTrigger>
+        <TabsTrigger value="nutrition" className="text-sm">Nutrition</TabsTrigger>
         <TabsTrigger value="scores" className="text-sm">Health Scores</TabsTrigger>
       </TabsList>
 
@@ -169,6 +177,13 @@ export function CoverageMatrix({ data }: Props) {
         <Matrix
           providers={providers}
           rows={menstrual_cycle_fields.map((f) => ({ code: f.code, supportedBy: f.providers }))}
+        />
+      </TabsContent>
+
+      <TabsContent value="nutrition">
+        <Matrix
+          providers={providers}
+          rows={meal_fields.map((f) => ({ code: f.code, supportedBy: f.providers }))}
         />
       </TabsContent>
 

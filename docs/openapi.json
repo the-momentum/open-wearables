@@ -17517,6 +17517,11 @@
             "type": "boolean",
             "title": "Has Womens Health Data",
             "default": false
+          },
+          "has_nutrition_data": {
+            "type": "boolean",
+            "title": "Has Nutrition Data",
+            "default": false
           }
         },
         "type": "object",

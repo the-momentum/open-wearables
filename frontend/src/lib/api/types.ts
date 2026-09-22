@@ -258,6 +258,7 @@ export interface UserDataSummary {
   workout_type_counts: Record<string, number>;
   by_provider: ProviderDataCount[];
   has_womens_health_data: boolean;
+  has_nutrition_data: boolean;
 }
 
 /** Optional date scope for the data summary. Omitting both fields = all-time. */
@@ -291,6 +292,32 @@ export interface MenstrualCycleRecord {
 }
 
 export interface MenstrualCyclesParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  [key: string]: string | number | undefined;
+}
+
+export interface Macros {
+  protein_g: number | null;
+  carbohydrates_g: number | null;
+  fat_g: number | null;
+  fiber_g: number | null;
+}
+
+export interface Meal {
+  id: string;
+  timestamp: string;
+  meal_type: string | null;
+  name: string | null;
+  source: SourceMetadata;
+  calories_kcal: number | null;
+  macros: Macros | null;
+  water_ml: number | null;
+}
+
+export interface MealsParams {
   start_date: string;
   end_date: string;
   cursor?: string;

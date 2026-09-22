@@ -17,6 +17,7 @@ import {
   Copy,
   Ellipsis,
   Heart,
+  Apple,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -39,6 +40,7 @@ import { BodySection } from '@/components/user/body-section';
 import { WorkoutSection } from '@/components/user/workout-section';
 import { ScoresSection } from '@/components/user/scores-section';
 import { WomensHealthSection } from '@/components/user/womens-health-section';
+import { NutritionSection } from '@/components/user/nutrition-section';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import {
   AlertDialog,
@@ -104,6 +106,8 @@ function UserDetailPage() {
   const [scoresDateRange, setScoresDateRange] = useState<DateRangeValue>(30);
   const [womensHealthDateRange, setWomensHealthDateRange] =
     useState<DateRangeValue>(90);
+  const [nutritionDateRange, setNutritionDateRange] =
+    useState<DateRangeValue>(30);
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const {
@@ -205,6 +209,22 @@ function UserDetailPage() {
             },
           ]
         : []),
+      ...(dataSummary?.has_nutrition_data
+        ? [
+            {
+              id: 'nutrition',
+              label: 'Nutrition',
+              icon: Apple,
+              content: (
+                <NutritionSection
+                  userId={userId}
+                  dateRange={nutritionDateRange}
+                  onDateRangeChange={setNutritionDateRange}
+                />
+              ),
+            },
+          ]
+        : []),
     ],
     [
       userId,
@@ -215,6 +235,8 @@ function UserDetailPage() {
       scoresDateRange,
       womensHealthDateRange,
       dataSummary?.has_womens_health_data,
+      nutritionDateRange,
+      dataSummary?.has_nutrition_data,
     ]
   );
 

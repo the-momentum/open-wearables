@@ -13,6 +13,7 @@ export type {
   WorkoutField,
   SleepField,
   MenstrualCycleField,
+  MealField,
   HealthScore,
 } from './services/meta.service';
 export { configService } from './services/config.service';

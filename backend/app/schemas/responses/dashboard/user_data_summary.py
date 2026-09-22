@@ -22,3 +22,4 @@ class UserDataSummaryResponse(BaseModel):
     workout_type_counts: dict[str, int]
     by_provider: list[ProviderDataCount]
     has_womens_health_data: bool = False
+    has_nutrition_data: bool = False

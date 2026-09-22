@@ -116,6 +116,11 @@ export const API_ENDPOINTS = {
   userMenstrualCycleDetail: (userId: string, cycleId: string) =>
     `/api/v1/users/${userId}/events/menstrual-cycles/${cycleId}`,
 
+  // Meal (nutrition) endpoints
+  userMeals: (userId: string) => `/api/v1/users/${userId}/events/meals`,
+  userMealDetail: (userId: string, mealId: string) =>
+    `/api/v1/users/${userId}/events/meals/${mealId}`,
+
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
 

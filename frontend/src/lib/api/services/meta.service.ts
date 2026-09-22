@@ -28,6 +28,11 @@ export interface MenstrualCycleField {
   providers: string[];
 }
 
+export interface MealField {
+  code: string;
+  providers: string[];
+}
+
 export interface HealthScore {
   code: string;
   description?: string;
@@ -40,6 +45,7 @@ export interface CoverageResponse {
   workout_fields: WorkoutField[];
   sleep_fields: SleepField[];
   menstrual_cycle_fields: MenstrualCycleField[];
+  meal_fields: MealField[];
   health_scores: HealthScore[];
 }
 

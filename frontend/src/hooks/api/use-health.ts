@@ -11,6 +11,7 @@ import type {
   HealthScoreParams,
   MenstrualCyclesParams,
   DataSummaryParams,
+  MealsParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -245,6 +246,40 @@ export function useDeleteMenstrualCycle(userId: string) {
     onError: (error: unknown) => {
       const message =
         error instanceof Error ? error.message : 'Failed to delete record';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Get meals (nutrition entries) for a user
+ * Uses GET /api/v1/users/{user_id}/events/meals
+ */
+export function useMeals(userId: string, params: MealsParams) {
+  return useQuery({
+    queryKey: queryKeys.health.meals(userId, params),
+    queryFn: () => healthService.getMeals(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Delete a meal
+ */
+export function useDeleteMeal(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mealId: string) => healthService.deleteMeal(userId, mealId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'meals', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Meal deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete meal';
       toast.error(message);
     },
   });
