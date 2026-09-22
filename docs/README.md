@@ -20,6 +20,16 @@ mint dev --port 3333
 
 View your local preview at `http://localhost:3333` (or the port you specified).
 
+## API Reference
+
+The API Reference tab is built from `openapi.json` in this directory. The file is generated from the backend code and must not be edited by hand. Regenerate it from the repository root with:
+
+```bash
+cd backend && uv run python scripts/export_openapi.py
+```
+
+A pre-commit hook does this automatically when routes or schemas change, and CI fails if the committed file is stale.
+
 ## Publishing changes
 
 Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.

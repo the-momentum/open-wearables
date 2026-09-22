@@ -1039,7 +1039,7 @@ class Whoop247Data(Base247DataTemplate):
                 recorded_at=recorded_at,
                 zone_offset=zone_offset,
                 value=energy_kcal,
-                series_type=SeriesType.energy,
+                series_type=SeriesType.active_energy,
                 is_daily_total=True,
             )
 

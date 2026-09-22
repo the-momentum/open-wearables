@@ -546,45 +546,49 @@ class TestDisconnectWithSDKToken:
         conn = db.query(UserConnection).filter_by(user_id=user.id, provider="garmin").one()
         assert conn.status == ConnectionStatus.ACTIVE
 
-    def test_sdk_token_cannot_disconnect_oauth_fed_hybrid_connection(self, client: TestClient, db: Session) -> None:
-        """Google is hybrid: an OAuth-fed row stays out of the SDK's reach."""
+    def test_sdk_token_cannot_disconnect_cloud_connection(self, client: TestClient, db: Session) -> None:
+        """Google Health is cloud-only: its OAuth-fed row stays out of the SDK's reach."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(
             user=user,
-            provider="google",
+            provider="google_health",
             status=ConnectionStatus.ACTIVE,
             access_token="secret_access",
             refresh_token="secret_refresh",
         )
 
         # Act
-        response = client.delete(f"/api/v1/users/{user.id}/connections/google", headers=sdk_token_headers(user.id))
+        response = client.delete(
+            f"/api/v1/users/{user.id}/connections/google_health", headers=sdk_token_headers(user.id)
+        )
 
         # Assert
         assert response.status_code == 403
-        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="google").one()
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="google_health").one()
         assert conn.status == ConnectionStatus.ACTIVE
         assert conn.access_token == "secret_access"
 
-    def test_sdk_token_disconnects_sdk_fed_hybrid_connection(self, client: TestClient, db: Session) -> None:
-        """The same provider without OAuth tokens is SDK-fed and may be revoked."""
+    def test_sdk_token_disconnects_sdk_fed_connection(self, client: TestClient, db: Session) -> None:
+        """Health Connect is SDK-fed and may be revoked."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(
             user=user,
-            provider="google",
+            provider="health_connect",
             status=ConnectionStatus.ACTIVE,
             access_token=None,
             refresh_token=None,
         )
 
         # Act
-        response = client.delete(f"/api/v1/users/{user.id}/connections/google", headers=sdk_token_headers(user.id))
+        response = client.delete(
+            f"/api/v1/users/{user.id}/connections/health_connect", headers=sdk_token_headers(user.id)
+        )
 
         # Assert
         assert response.status_code == 204
-        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="google").one()
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="health_connect").one()
         assert conn.status == ConnectionStatus.REVOKED
 
     def test_sdk_token_on_nonexistent_connection_returns_404(self, client: TestClient, db: Session) -> None:
@@ -607,14 +611,14 @@ class TestDisconnectWithSDKToken:
         user = UserFactory()
         UserConnectionFactory(
             user=user,
-            provider="google",
+            provider="health_connect",
             status=ConnectionStatus.ACTIVE,
             access_token=None,
             refresh_token=None,
         )
 
         # Act
-        client.delete(f"/api/v1/users/{user.id}/connections/google", headers=sdk_token_headers(user.id))
+        client.delete(f"/api/v1/users/{user.id}/connections/health_connect", headers=sdk_token_headers(user.id))
 
         # Assert
         assert mock_disconnect.call_args.kwargs["oauth"] is None

@@ -149,7 +149,7 @@ class TestPolar247DailyActivityNormalization:
 
         types = {s.series_type for s in samples}
         assert SeriesType.steps in types
-        assert SeriesType.energy in types
+        assert SeriesType.active_energy in types
         assert SeriesType.distance_walking_running in types
 
     def test_steps_value(self, data_247: Polar247Data, sample_activity: dict) -> None:
@@ -162,7 +162,7 @@ class TestPolar247DailyActivityNormalization:
     def test_energy_value(self, data_247: Polar247Data, sample_activity: dict) -> None:
         user_id = uuid4()
         samples = data_247.normalize_daily_activity([sample_activity], user_id)
-        energy_sample = next(s for s in samples if s.series_type == SeriesType.energy)
+        energy_sample = next(s for s in samples if s.series_type == SeriesType.active_energy)
         assert energy_sample.value == 420
 
     def test_distance_value(self, data_247: Polar247Data, sample_activity: dict) -> None:

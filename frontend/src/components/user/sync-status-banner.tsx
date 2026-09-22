@@ -1,3 +1,4 @@
+import { providerLabel } from '@/components/common/source-badge';
 import { useMemo } from 'react';
 import {
   Loader2,
@@ -63,8 +64,8 @@ function ActiveSyncRow({ event }: { event: SyncStatusEvent }) {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600 dark:text-blue-400" />
-          <span className="font-medium capitalize truncate text-sm">
-            {event.provider}
+          <span className="font-medium truncate text-sm">
+            {providerLabel(event.provider)}
           </span>
           <span className="text-xs text-muted-foreground shrink-0">
             · {sourceLabel}
@@ -141,8 +142,8 @@ function TerminalSyncRow({ event }: { event: SyncStatusEvent }) {
     >
       <div className="flex items-center gap-2 min-w-0">
         <Icon className={cn('h-4 w-4 shrink-0', colorClasses)} />
-        <span className="font-medium capitalize truncate text-sm">
-          {event.provider}
+        <span className="font-medium truncate text-sm">
+          {providerLabel(event.provider)}
         </span>
         <span className="text-xs text-muted-foreground shrink-0">
           · {sourceLabel}

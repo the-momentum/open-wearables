@@ -19,7 +19,7 @@ ACTIVITY_SAMPLE_SERIES: list[tuple[str, SeriesType]] = [
 # Daily summary field → SeriesType (/wellness-api/rest/dailies).
 DAILIES_SERIES: list[tuple[str, SeriesType]] = [
     ("steps", SeriesType.steps),
-    ("active_calories", SeriesType.energy),
+    ("active_calories", SeriesType.active_energy),
     ("resting_heart_rate", SeriesType.resting_heart_rate),
     ("floors_climbed", SeriesType.flights_climbed),
     ("distance_meters", SeriesType.distance_walking_running),
@@ -30,7 +30,7 @@ DAILIES_SERIES: list[tuple[str, SeriesType]] = [
 EPOCHS_SERIES: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
     "steps": SeriesType.steps,
-    "energy": SeriesType.energy,
+    "energy": SeriesType.active_energy,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(

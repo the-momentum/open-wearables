@@ -8,6 +8,7 @@ on:
       - "mcp/**"
       - "backend/**"
       - "frontend/**"
+      - "docs/openapi.json"
   pull_request:
     paths: *paths
 
@@ -21,6 +22,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       mcp: ${{ steps.filter.outputs.mcp }}
+      openapi: ${{ steps.filter.outputs.openapi }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -33,6 +35,8 @@ jobs:
               - 'frontend/**'
             mcp:
               - 'mcp/**'
+            openapi:
+              - 'docs/openapi.json'
   backend-build:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
@@ -42,7 +46,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Add uv to PATH
@@ -60,7 +64,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Add uv to PATH
@@ -77,6 +81,31 @@ jobs:
       - name: Run type checker
         working-directory: backend
         run: uv run ty check
+
+  backend-openapi-spec:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.openapi == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync
+      - name: Check docs/openapi.json is up to date
+        working-directory: backend
+        env:
+          SECRET_KEY: ci-only-secret-key
+        run: uv run python scripts/export_openapi.py --check
 
   backend-test:
     needs: changes
@@ -111,7 +140,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Add uv to PATH
@@ -134,7 +163,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Add uv to PATH

@@ -3,7 +3,7 @@
 This file extends the root AGENTS.md with backend-specific patterns.
 
 ## Tech Stack
-- Python 3.13+
+- Python 3.14+
 - FastAPI for API framework
 - SQLAlchemy 2.0 for ORM
 - PostgreSQL for database
@@ -232,6 +232,8 @@ class GarminStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         return "https://apis.garmin.com"
 ```
+
+When adding a capability to one provider, check whether other providers will need it. If so, define it on the relevant shared base (`BaseProviderStrategy`, `BaseOAuthTemplate`, `BaseWebhookService`, `BaseWorkoutsTemplate`, ...) following that base's existing convention for unsupported operations, and override it in the specific provider rather than implementing it in isolation.
 
 ## Database Migrations
 

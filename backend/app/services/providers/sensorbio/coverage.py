@@ -26,7 +26,7 @@ RECOVERY_SERIES: dict[str, SeriesType] = {
 # Daily totals from /v1/step/details (handler key → SeriesType).
 DAILY_ACTIVITY_SERIES: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
-    "energy": SeriesType.energy,
+    "energy": SeriesType.active_energy,
     "distance": SeriesType.distance_walking_running,
 }
 

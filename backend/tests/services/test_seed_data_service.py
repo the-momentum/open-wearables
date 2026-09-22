@@ -307,3 +307,48 @@ class TestContinuousTimeSeries:
         summary = seed_data_service.generate(db, request)
 
         assert summary["time_series_samples"] == 0
+
+
+class TestSeededDataSourceProviders:
+    """Seeded records must resolve to a real provider, never the `unknown` fallback."""
+
+    def test_oura_records_keep_their_provider(self, db: Session) -> None:
+        """Oura exposes no device info, which used to drop the provider along with it."""
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=7,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=True,
+                generate_time_series=False,
+                providers=[ProviderName.OURA],
+                num_connections=1,
+                workout_config=WorkoutConfig(count=5),
+                sleep_config=SleepConfig(count=5),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        providers = {provider for (provider,) in db.query(DataSource.provider).distinct()}
+        assert providers == {ProviderName.OURA.value}
+
+    def test_records_without_device_info_keep_their_provider(self, db: Session) -> None:
+        """Roughly a fifth of non-Oura records carry no device info; they still know their provider."""
+        request = SeedDataRequest(
+            num_users=2,
+            random_seed=11,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=True,
+                generate_time_series=False,
+                workout_config=WorkoutConfig(count=20),
+                sleep_config=SleepConfig(count=20),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        # The regression: records with device_model unset landed in a per-user `unknown` bucket.
+        assert db.query(DataSource).filter(DataSource.device_model.is_(None)).count() > 0
+        assert db.query(DataSource).filter(DataSource.provider == ProviderName.UNKNOWN.value).count() == 0

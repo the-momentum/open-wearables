@@ -419,3 +419,16 @@ class TestOAuthUpdateProviderEndpoint:
             data = response.json()
             assert data["provider"] == provider
             assert data["is_enabled"] is True
+
+
+class TestOAuthCallbackProbe:
+    """Providers such as Withings send HEAD to the callback URL when it is registered."""
+
+    def test_head_callback_returns_ok_without_body(self, client: TestClient, db: Session) -> None:
+        response = client.head("/api/v1/oauth/withings/callback")
+        assert response.status_code == 200
+        assert response.content == b""
+
+    def test_head_callback_invalid_provider(self, client: TestClient, db: Session) -> None:
+        response = client.head("/api/v1/oauth/not-a-provider/callback")
+        assert response.status_code == 400

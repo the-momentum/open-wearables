@@ -1,7 +1,7 @@
 # Changes here will be overwritten by Copier
 _commit: 0.3.0
 _src_path: https://github.com/the-momentum/python-ai-kit
-default_python_version: '3.13'
+default_python_version: '3.14'
 plugins:
 - celery
 - sentry

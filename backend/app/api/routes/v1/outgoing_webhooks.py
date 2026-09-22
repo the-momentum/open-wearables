@@ -39,7 +39,7 @@ def _ep_to_response(ep: EndpointOut) -> EndpointResponse:
         id=ep.id,
         url=ep.url,
         description=ep.description,
-        filter_types=ep.filter_types,
+        filter_types=ep.event_types,
         user_id=svix_service.user_id_from_endpoint(ep),
     )
 

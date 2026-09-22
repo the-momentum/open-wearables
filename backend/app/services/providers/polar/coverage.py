@@ -5,7 +5,7 @@ from app.schemas.enums.health_score_category import HealthScoreCategory
 # directly by data_247.normalize_daily_activity via /v3/users/activities.
 ACTIVITY_SERIES: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
-    "active_calories": SeriesType.energy,
+    "active_calories": SeriesType.active_energy,
     "distance_from_steps": SeriesType.distance_walking_running,
     "active_time_minutes": SeriesType.active_time,
 }

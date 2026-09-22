@@ -11,6 +11,9 @@ IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in t
 
 from enum import Enum
 
+# TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_ below.
+RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {"energy": "active_energy"}
+
 
 class SeriesType(str, Enum):
     """All supported time-series metric types."""
@@ -75,7 +78,7 @@ class SeriesType(str, Enum):
     # ACTIVITY - Basic (IDs 80-99)
     # =========================================================================
     steps = "steps"
-    energy = "energy"  # Active energy burned
+    active_energy = "active_energy"
     basal_energy = "basal_energy"
     stand_time = "stand_time"
     exercise_time = "exercise_time"
@@ -176,6 +179,12 @@ class SeriesType(str, Enum):
     nike_fuel = "nike_fuel"
     hydration = "hydration"
 
+    # TEMPORARY until 1.0: lookup only, so `.value` stays current and responses carry the new name.
+    @classmethod
+    def _missing_(cls, value: object) -> "SeriesType | None":
+        renamed = RETIRED_SERIES_TYPE_NAMES.get(value) if isinstance(value, str) else None
+        return cls(renamed) if renamed else None
+
 
 # =============================================================================
 # DATABASE ID DEFINITIONS
@@ -235,7 +244,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # ACTIVITY - Basic (IDs 80-99)
     # -------------------------------------------------------------------------
     (80, SeriesType.steps, "count"),
-    (81, SeriesType.energy, "kcal"),
+    (81, SeriesType.active_energy, "kcal"),
     (82, SeriesType.basal_energy, "kcal"),
     (83, SeriesType.stand_time, "minutes"),
     (84, SeriesType.exercise_time, "minutes"),

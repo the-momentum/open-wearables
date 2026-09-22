@@ -25,7 +25,9 @@ if archival already ran over re-synced data, pass --skip-archive (or re-sync aga
 afterwards — the archive rebuilds itself from the live rows on the next archival run).
 
 Scoped to source='google_health_api': Health Connect SDK rows carry the reporting app
-as source, map active calories correctly, and must not be touched.
+as source, map active calories correctly, and must not be touched. Both the pre- and
+post-split cloud provider slugs are matched, so the order against the provider split
+migration does not matter.
 
 Deletes are batched (--batch, default 50000) and committed per batch, so no single
 long-running transaction holds row locks or produces one WAL burst. Idempotent: once
@@ -49,14 +51,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import TextClause
 
 from app.database import SessionLocal
+from app.schemas.enums import SeriesType, get_series_type_id
 
-PROVIDER = "google"
+# Both spellings: the cloud path is google_health since the provider split, but this may
+# run against a database the split has not reached yet. source pins it to the cloud path
+# either way, so accepting both costs nothing and keeps the purge order-independent.
+PROVIDERS = ("google_health", "google")
 SOURCE = "google_health_api"
-SERIES_CODE = "energy"
+SERIES_ID = get_series_type_id(SeriesType.active_energy)
 DEFAULT_BATCH = 50_000
 
-_SOURCE_IDS = text("SELECT id FROM data_source WHERE provider = :provider AND source = :source")
-_SERIES_ID = text("SELECT id FROM series_type_definition WHERE code = :code")
+_SOURCE_IDS = text("SELECT id FROM data_source WHERE provider = ANY(:providers) AND source = :source")
 
 # Live rows: legacy = untagged. The predicate matches the leading columns of
 # uq_data_point_series_source_type_time, so each batch is an index range scan.
@@ -107,13 +112,12 @@ def run(db: Session, dry_run: bool, batch: int = DEFAULT_BATCH, include_archive:
     if batch <= 0:
         raise ValueError(f"batch must be a positive integer, got {batch}")
 
-    sources: list[UUID] = list(db.execute(_SOURCE_IDS, {"provider": PROVIDER, "source": SOURCE}).scalars())
-    series = db.execute(_SERIES_ID, {"code": SERIES_CODE}).scalar_one_or_none()
-    if not sources or series is None:
+    sources: list[UUID] = list(db.execute(_SOURCE_IDS, {"providers": list(PROVIDERS), "source": SOURCE}).scalars())
+    if not sources:
         print("No Google Health API data sources; nothing to purge.")
         return PurgeResult(series_deleted=0, archive_deleted=0)
 
-    params = {"sources": sources, "series": series}
+    params = {"sources": sources, "series": SERIES_ID}
     stale_live = db.execute(_LIVE_COUNT, params).scalar_one()
     stale_archive = db.execute(_ARCHIVE_COUNT, params).scalar_one() if include_archive else 0
     if not stale_live and not stale_archive:

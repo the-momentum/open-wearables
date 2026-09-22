@@ -23,18 +23,26 @@ Withings deviates from every other provider here in one important way: notificat
 
 ### Supported data types
 
-| Data Type | Support |
-|-----------|---------|
-| Body composition (weight, body fat %, lean/skeletal muscle mass) | Yes |
-| Blood pressure & heart rate (spot measurements) | Yes |
-| Blood oxygen (SpO2), body & skin temperature | Yes |
-| Blood glucose | Yes |
-| VO2 max, cardiovascular age, metabolic age | Yes |
-| Daily activity (steps, distance, calories) | Yes |
-| Sleep (duration, efficiency, deep/light/REM/awake totals) | Yes |
-| Sleep stage timeline (hypnogram) | No |
-| Workouts / Exercises | Yes |
-| ECG, HRV | No |
+Everything Open Wearables currently imports from Withings, with the Withings API plan each item needs:
+
+| Data Type | What is imported | Free plan |
+|-----------|------------------|-----------|
+| Body composition | Weight, height, body fat % and mass, lean body mass, skeletal muscle mass, body water mass, bone mass | Yes |
+| Blood pressure & heart rate | Systolic, diastolic, spot heart rate | Yes |
+| Blood oxygen (SpO2) | Spot measurements | Partial - manual readings only; automatic SpO2 from watches needs a paid plan |
+| Body temperature | Thermo readings | Yes |
+| Skin temperature | Spot measurements | No - paid plans only |
+| Blood glucose | Spot measurements | Unknown - not on Withings' biomarker pack list |
+| Pulse wave velocity | Spot measurements | No - paid plans only |
+| VO2 max, cardiovascular age | Spot measurements | No - paid plans only |
+| Metabolic age | Spot measurements | Unknown - not on Withings' biomarker pack list |
+| Daily activity | Steps, distance, active calories, passive calories (derived as total minus active) | Yes |
+| Sleep | Nightly summary: total duration, time in bed, efficiency, deep/light/REM/awake totals, nap flag | Yes |
+| Workouts | Type, duration, average/min/max heart rate, steps, calories, distance | Yes |
+
+The **Free plan** column reflects Withings' *Basic Biomarker Pack*. Metrics in the *Total Biomarker Pack* are not available on the free plan and require an Enterprise, Healthcare or Research plan (some as paid add-ons). See [Available Health Data](https://developer.withings.com/developer-guide/v3/data-api/all-available-health-data/) for the per-metric and per-device breakdown.
+
+Not imported today: sleep stage timeline (hypnogram), sleep score, HRV, ECG, segmental body composition, visceral fat, nerve health scores.
 
 ### Data delivery
 
@@ -57,6 +65,7 @@ Withings defaults to **pull** rather than webhooks, unlike Oura. Enabling webhoo
 
 - A [Withings account](https://www.withings.com) - the same one used by device owners. Withings recommends creating a dedicated account for your organization if you're integrating on behalf of others, but a personal account works too.
 - No partner approval process: Withings Public API access is free and self-serve.
+- The free plan is capped at **1,000 active users** per application and exposes only the basic biomarkers (activity, sleep, body, heart). Larger deployments need an Enterprise, Healthcare or Research plan, which lift the user cap and raise the rate limit - see [Withings API plans](https://developer.withings.com/developer-guide/v3/withings-solutions/withings-api-plans/) and the [Rate Limits](#rate-limits) section below.
 
 ## Application walkthrough
 
@@ -236,11 +245,14 @@ The scopes requested by Open Wearables are controlled by `WITHINGS_DEFAULT_SCOPE
 
 ## Rate Limits
 
-| Limit | Value |
-|-------|-------|
-| Per minute (application-wide) | 120 requests |
+| Limit | Free plan | Paid plans |
+|-------|-----------|------------|
+| Requests per minute (application-wide) | 120 | 1,500+ |
+| Active users per application | 1,000 | Unlimited |
 
-Withings enforces this limit once per registered application, not per user - calling an endpoint for two users counts as two requests against the same allowance. Open Wearables does not pace calls against it, so a deployment with many connected users should keep the pull interval conservative.
+Withings enforces the request limit once per registered application, not per user - calling an endpoint for two users counts as two requests against the same allowance. Open Wearables does not pace calls against it: in pull mode every periodic sync fetches measures, activity, sleep and workouts for every connected user in one burst, and calls that hit 429 are retried a few times and then dropped. Beyond a few dozen users this will exhaust the allowance on every tick, so switch Withings to **webhook mode** (see **Enable webhooks (optional)** above) - then Open Wearables only fetches data for users Withings has just notified about.
+
+The user cap applies to the free plan only. Paid plans (Enterprise, Healthcare, Research) remove it and raise the request limit - see [Withings API plans](https://developer.withings.com/developer-guide/v3/withings-solutions/withings-api-plans/). Separately, an app that never registers a compliant webhook callback URL is capped at 10 linked users - see the webhook step above.
 
 ## Next Steps
 

@@ -125,7 +125,7 @@ const CONTINUOUS_SERIES_GROUPS: {
     label: 'Activity',
     types: [
       { id: 'steps', label: 'Steps' },
-      { id: 'energy', label: 'Energy burned' },
+      { id: 'active_energy', label: 'Energy burned' },
       { id: 'basal_energy', label: 'Basal energy' },
       { id: 'distance_walking_running', label: 'Distance (walk/run)' },
       { id: 'flights_climbed', label: 'Flights climbed' },

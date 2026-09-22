@@ -92,7 +92,7 @@ def test_activity_row_maps_fields_and_derives_passive_calories() -> None:
     by_type = {sample.series_type: sample for sample in samples}
     assert by_type[SeriesType.steps].value == Decimal("8000")
     assert by_type[SeriesType.distance_walking_running].value == Decimal("6400.5")
-    assert by_type[SeriesType.energy].value == Decimal("400.0")
+    assert by_type[SeriesType.active_energy].value == Decimal("400.0")
     assert by_type[SeriesType.basal_energy].value == Decimal("1800.0")
     assert by_type[SeriesType.steps].is_daily_total is True
 

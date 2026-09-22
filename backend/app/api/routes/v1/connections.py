@@ -80,11 +80,9 @@ def _assert_sdk_token_may_disconnect(
 ) -> None:
     """Confine an SDK-token caller to its own user's SDK-fed connections.
 
-    The token carries no provider claim, and neither remaining source covers the scope
-    alone: ``client_sdk`` still rejects a Garmin row whose tokens a prior disconnect
-    already cleared, and only the row's tokens separate hybrid Google's OAuth-fed
-    connections - which the app must not force a re-authorization on - from its SDK-fed
-    ones.
+    The token carries no provider claim, so ``client_sdk`` gates which providers are
+    reachable at all. The token check behind it is defence in depth: no SDK provider
+    holds OAuth tokens today, and an SDK sign-out must never force a re-authorization.
     """
     if auth.user_id != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Token does not match user_id")

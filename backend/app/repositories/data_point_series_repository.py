@@ -926,7 +926,7 @@ class DataPointSeriesRepository(
         """
         # Series type IDs we need
         steps_id = get_series_type_id(SeriesType.steps)
-        energy_id = get_series_type_id(SeriesType.energy)
+        energy_id = get_series_type_id(SeriesType.active_energy)
         basal_energy_id = get_series_type_id(SeriesType.basal_energy)
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)

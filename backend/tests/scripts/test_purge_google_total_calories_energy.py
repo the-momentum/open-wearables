@@ -24,7 +24,7 @@ from app.schemas.enums.provider import ProviderName
 from app.schemas.enums.series_types import get_series_type_id
 from tests.factories import DataPointSeriesFactory, DataSourceFactory
 
-ENERGY_ID = get_series_type_id(SeriesType.energy)
+ENERGY_ID = get_series_type_id(SeriesType.active_energy)
 BASAL_ID = get_series_type_id(SeriesType.basal_energy)
 T0 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
 
@@ -55,7 +55,7 @@ def _source(provider: ProviderName, source: str, device_model: str | None = "Tes
 
 
 def _health_api_source() -> DataSource:
-    return _source(ProviderName.GOOGLE, "google_health_api", device_model=None)
+    return _source(ProviderName.GOOGLE_HEALTH, "google_health_api", device_model=None)
 
 
 def _point(db: Session, source: DataSource, *, type_id: int, offset_hours: int, external_id: str | None = None) -> None:
@@ -115,7 +115,7 @@ def test_keeps_other_series_and_other_sources(db: Session) -> None:
     _point(db, api, type_id=ENERGY_ID, offset_hours=0)
     _point(db, api, type_id=BASAL_ID, offset_hours=0)  # derived basal: untagged, must stay
     # Health Connect SDK rows carry the reporting app as source, not google_health_api.
-    sdk = _source(ProviderName.GOOGLE, "Fitbit")
+    sdk = _source(ProviderName.HEALTH_CONNECT, "Fitbit")
     _point(db, sdk, type_id=ENERGY_ID, offset_hours=0)
     apple = _source(ProviderName.APPLE, "apple_health_sdk")
     _point(db, apple, type_id=ENERGY_ID, offset_hours=0)
@@ -146,7 +146,7 @@ def test_purges_archive_energy_buckets_only(db: Session) -> None:
     _archive_row(db, api, type_id=ENERGY_ID, day=-30)
     _archive_row(db, api, type_id=ENERGY_ID, day=-29)
     _archive_row(db, api, type_id=BASAL_ID, day=-30)
-    sdk = _source(ProviderName.GOOGLE, "Fitbit")
+    sdk = _source(ProviderName.HEALTH_CONNECT, "Fitbit")
     _archive_row(db, sdk, type_id=ENERGY_ID, day=-30)
 
     result = purge(db, dry_run=False, batch=1)
@@ -177,6 +177,26 @@ def test_idempotent_second_run_is_noop(db: Session) -> None:
     second = purge(db, dry_run=False)
 
     assert second == {"series_deleted": 0, "archive_deleted": 0}
+
+
+def test_finds_the_series_when_the_stored_name_is_still_the_retired_one(db: Session) -> None:
+    """The purge may run before the active_energy rename reaches the database.
+
+    Resolving the series by name would come up empty there and report "nothing to purge",
+    which reads as "no data" rather than "lookup failed". The id is what rows reference.
+    """
+    definition = db.get(SeriesTypeDefinition, ENERGY_ID)
+    assert definition is not None
+    definition.code = "energy"
+    db.flush()
+
+    source = _health_api_source()
+    _point(db, source, type_id=ENERGY_ID, offset_hours=0)
+
+    result = purge(db, dry_run=False)
+
+    assert result["series_deleted"] == 1
+    assert _live_rows(db, source) == []
 
 
 def test_no_health_api_sources_is_noop(db: Session) -> None:
