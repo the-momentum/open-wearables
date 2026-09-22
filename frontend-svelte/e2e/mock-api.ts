@@ -8,6 +8,7 @@ import {
 	DEVELOPER,
 	PROVIDER_SETTINGS,
 	makeConnections,
+	makeCoverage,
 	makeDataSummary,
 	makeDataTimeline,
 	makeRecentRuns,
@@ -108,6 +109,10 @@ const server = Bun.serve({
 			// consents, so handing it straight back walks the same path.
 			const redirectUri = new URL(request.url).searchParams.get('redirect_uri') ?? '/';
 			return json({ authorization_url: redirectUri, state: 'state-1' });
+		}
+
+		if (pathname === '/api/v1/meta/coverage') {
+			return json(makeCoverage());
 		}
 
 		if (pathname === '/api/v1/dashboard/stats') {

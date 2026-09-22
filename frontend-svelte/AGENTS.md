@@ -6,7 +6,7 @@ reaches parity; only then does `frontend/` get deleted.
 
 **Status:** the shell, the `/users` list, the user detail page with **all seven**
 of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
-Women's Health — and the Dashboard are built. Syncs, Webhooks, Coverage and
+Women's Health — the Dashboard and Data Coverage are built. Syncs, Webhooks and
 Settings are still placeholders. Read "Current state" before assuming anything
 exists.
 
@@ -1858,6 +1858,69 @@ gives `1.5M` and `2.3B`. `Intl` also rolls the boundary correctly — 999,999 is
 
 Compact is for counts. A step count, a distance or a duration has a precision
 worth keeping, and `formatNumber` keeps it.
+
+## Data Coverage
+
+What every provider can deliver, built in the backend from the provider
+strategies and served from `/meta/coverage` — one request, about 15 KB,
+`lru_cache`d and changing only on deploy. Nothing on this page is scoped to a
+user, so nothing on it grows with anything.
+
+### The matrix was the wrong shape
+
+The old page was a table: 144 capabilities down, 14 providers across, a green
+dot in each cell. To fit, it hid the rows behind **two levels of tabs** — a
+layer, and then one of thirteen timeseries categories — so at most fourteen rows
+were ever on screen, and the columns scrolled sideways on a phone.
+
+It could answer "does Garmin support heart rate" if you already knew which tab
+heart rate lived in. It could not answer anything else.
+
+So the row names its own supporters instead. Each capability carries the marks
+of the providers that can send it, plus `9 of 14`. No fixed columns, so nothing
+scrolls sideways, and a row is readable on its own.
+
+### What it can be asked now
+
+- **Search across every layer at once.** 144 codes, one box, no need to know
+  which category a metric was filed under.
+- **How much of the matrix each provider covers.** `providerTotals` is a count
+  over rows the response already contains: Apple 94 of 144, Fitbit 6. Nothing on
+  the old page said which integrations are rich and which are a formality.
+- **What a provider _cannot_ send.** The `missing` flag inverts the provider
+  filter. This is the half that decides whether one integration can stand in for
+  another, and a grid of dots cannot be asked it at all.
+- **Which capabilities hang on a single provider.** A row with one supporter is
+  badged `only`. In the real matrix that is a long list — `blood_alcohol_content`,
+  `breathing_disturbance_index`, `walking_heart_rate_average` — and each one is
+  something a customer loses outright if that integration goes.
+
+### A strip that scrolls has to be allowed to shrink
+
+Wrapping the layer tabs in `ScrollFade` was not enough. `FilterGroup` sits in a
+flex row, a flex item keeps `min-width: auto`, and so it refused to shrink below
+its content: `overflow-x-auto` had nothing to scroll inside and **the whole page
+went sideways** — 519px in a 390px window — instead of the strip.
+
+Measured one class at a time on the live page: `min-w-0` alone brings it back to
+390, and `w-full` alone does too by forcing a wrap. They do different jobs, so
+the wrapper keeps both — `min-w-0` is the fix, `w-full` is the layout that gives
+the strip its own row on a phone. The user tabs never hit this because their
+`ScrollFade` is a block child of a full-width container.
+
+`ScrollFade` itself cannot carry the fix: the constraint applies to the flex
+item, which is an ancestor of it.
+
+`navigation.e2e.ts` now walks the main routes at phone width and asserts
+`documentElement.scrollWidth <= clientWidth`, which fails if this comes back
+anywhere.
+
+### Every filter is in the URL
+
+Search, layer, provider and side all navigate, so a particular question — "what
+can Whoop not do" — is a link someone can send. An unknown provider is dropped
+rather than forwarded, the same rule the event tabs use: a typo should show the
+whole matrix, not an empty page that reads as a fault.
 
 ## The pairing pages are public
 

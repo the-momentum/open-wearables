@@ -1160,3 +1160,46 @@ export const makeSystemInfo = () => ({
 		]
 	}
 });
+
+/**
+ * Mirrors `CoverageResponse`. Trimmed but shaped like the real thing: every
+ * layer present, a metric with a unit, and one capability only a single
+ * provider can deliver.
+ */
+export const makeCoverage = () => ({
+	providers: [...PROVIDERS].sort(),
+	timeseries: [
+		{
+			name: 'Heart & Cardiovascular',
+			metrics: [
+				{
+					code: 'heart_rate',
+					unit: 'bpm',
+					description: 'Beats per minute, however the device sampled them.',
+					providers: ['garmin', 'oura', 'suunto']
+				},
+				{
+					code: 'heart_rate_variability_rmssd',
+					unit: 'ms',
+					description: '',
+					providers: ['garmin', 'oura']
+				}
+			]
+		},
+		{
+			name: 'Body Composition',
+			metrics: [
+				{ code: 'weight', unit: 'kg', description: '', providers: ['garmin', 'whoop'] },
+				// The only provider for this one, which is a dependency worth seeing.
+				{ code: 'bone_mass', unit: 'kg', description: '', providers: ['garmin'] }
+			]
+		}
+	],
+	workout_fields: [
+		{ code: 'average_cadence', providers: ['garmin', 'suunto'] },
+		{ code: 'total_distance', providers: ['garmin', 'oura', 'suunto', 'whoop'] }
+	],
+	sleep_fields: [{ code: 'deep_sleep_seconds', providers: ['garmin', 'oura'] }],
+	menstrual_cycle_fields: [{ code: 'cycle_length', providers: ['garmin'] }],
+	health_scores: [{ code: 'sleep', description: '', providers: ['garmin', 'oura', 'whoop'] }]
+});

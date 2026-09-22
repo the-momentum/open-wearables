@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from './support';
 
+const CONNECTED = '00000000-0000-4000-8000-000000000007';
+
 // Every destination now sits behind the auth guard.
 test.beforeEach(async ({ page }) => {
 	await signIn(page);
@@ -92,6 +94,32 @@ test.describe('mobile', () => {
 
 		await expect(sheet).toBeHidden();
 	});
+
+	// A row too wide for a phone must scroll inside its own box, the way the user
+	// tabs do. Left to a flex item's `min-width: auto` it pushes the whole page
+	// sideways instead, which is how the coverage filters shipped.
+	const PHONE_ROUTES = [
+		'/dashboard',
+		'/users',
+		'/coverage',
+		`/users/${CONNECTED}`,
+		`/users/${CONNECTED}/data`,
+		`/users/${CONNECTED}/scores`
+	];
+
+	for (const route of PHONE_ROUTES) {
+		test(`nothing on ${route} scrolls the page sideways`, async ({ page }) => {
+			await page.goto(route);
+			await page.waitForLoadState('networkidle');
+
+			const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+				scrollWidth: document.documentElement.scrollWidth,
+				clientWidth: document.documentElement.clientWidth
+			}));
+
+			expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+		});
+	}
 
 	test('content clears the fixed bottom bar', async ({ page }) => {
 		await page.goto('/dashboard');
