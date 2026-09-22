@@ -49,6 +49,15 @@ echo 'Running Whoop strain event_record backfill...'
 uv run python scripts/data_migrations/backfill_whoop_strain_event_record.py \
     || echo "Warning: Whoop strain backfill failed — will retry on next startup."
 
+
+# TODO: Remove this after ~2026-11-01 once all deployments have migrated.
+# Moves Whoop whole-day strain and energy off the cycle's start onto the day the cycle
+# covers. Must stay after the strain backfill above, which is what tells cycle strain
+# apart from legacy workout strain. Idempotent, no-op once re-keyed.
+echo 'Running Whoop cycle day re-key...'
+uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
+    || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
