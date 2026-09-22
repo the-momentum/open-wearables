@@ -160,6 +160,7 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
     assert exposed.menstrual_cycle_fields == _menstrual_cycle_fields(cov), (
         f"{provider}: strategy drops/alters MENSTRUAL_CYCLE_FIELDS"
     )
+    assert exposed.meal_fields == _meal_fields(cov), f"{provider}: strategy drops/alters MEAL_FIELDS"
     assert exposed.health_scores == _health_scores(cov), f"{provider}: strategy drops/alters HEALTH_SCORES"
 
 
