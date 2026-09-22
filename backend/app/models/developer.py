@@ -17,3 +17,5 @@ class Developer(BaseDbModel):
     last_name: Mapped[str_100 | None]
     email: Mapped[Unique[str_255]]
     hashed_password: Mapped[str_255]
+    # When the developer closed the dashboard welcome dialog; None until then.
+    welcome_dialog_seen_at: Mapped[datetime | None]

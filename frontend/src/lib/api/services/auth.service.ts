@@ -9,6 +9,7 @@ import type {
   ResetPasswordRequest,
   ChangePasswordRequest,
   Developer,
+  DeveloperSelfUpdate,
 } from '../types';
 
 export const authService = {
@@ -30,6 +31,10 @@ export const authService = {
 
   async me(): Promise<Developer> {
     return apiClient.get<Developer>(API_ENDPOINTS.me);
+  },
+
+  async updateMe(data: DeveloperSelfUpdate): Promise<Developer> {
+    return apiClient.patch<Developer>(API_ENDPOINTS.me, data);
   },
 
   async forgotPassword(data: ForgotPasswordRequest): Promise<void> {

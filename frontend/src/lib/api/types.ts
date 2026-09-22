@@ -715,6 +715,13 @@ export interface Developer {
   first_name: string | null;
   last_name: string | null;
   created_at: string;
+  welcome_dialog_seen_at: string | null;
+}
+
+export interface DeveloperSelfUpdate {
+  first_name?: string | null;
+  last_name?: string | null;
+  welcome_dialog_seen_at?: string | null;
 }
 
 export interface Invitation {
