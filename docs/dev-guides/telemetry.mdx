@@ -106,49 +106,110 @@ Endpoints for menstrual cycle data are excluded entirely. User agents are not re
 Counting happens in memory and is flushed to Redis every 30 seconds, off the request path. The cost is a few microseconds per request.
 
 <Accordion title="Full example payload">
+This is a real ping built by the code on a local development instance, not a mock-up. The request
+counters come from a scripted set of calls made to that instance on the day shown.
+
 ```json
 {
   "schema_version": 1,
-  "instance_id": "f11594b65f9242398c31fc3c41adb64a",
+  "instance_id": "e0aaddaff6e648e0b1fbed12d9b73152",
   "event": "daily",
-  "sent_at": "2026-07-23T04:12:00+00:00",
-  "app_version": "0.6.3",
-  "git_sha": "abc1234",
-  "python_version": "3.13.1",
-  "platform": "Linux-6.1.0-x86_64-with-glibc2.36",
-  "environment": "production",
-  "instance_age_days": 41,
-  "total_users": 42,
-  "users_with_active_connection": 30,
-  "active_connections": 57,
-  "inactive_connections": 4,
-  "connections_by_provider": { "garmin": 20, "oura": 15 },
-  "data_points_by_provider": { "garmin": 1284932, "oura": 402113 },
-  "workouts_by_provider": { "garmin": 2101, "oura": 118 },
-  "sleep_sessions_by_provider": { "garmin": 1730, "oura": 96 },
-  "menstrual_tracking_used": true,
+  "sent_at": "2026-09-23T09:02:16.598747+00:00",
+  "app_version": "0.8.0",
+  "git_sha": "",
+  "python_version": "3.13.15",
+  "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.41",
+  "environment": "local",
+  "instance_age_days": 5,
+  "total_users": 2,
+  "users_with_active_connection": 1,
+  "active_connections": 2,
+  "inactive_connections": 2,
+  "connections_by_provider": {
+    "apple": 1,
+    "garmin": 1
+  },
+  "data_points_by_provider": {},
+  "workouts_by_provider": {
+    "suunto": 36,
+    "garmin": 46,
+    "unknown": 55,
+    "apple": 23
+  },
+  "sleep_sessions_by_provider": {
+    "suunto": 7,
+    "garmin": 10,
+    "unknown": 16,
+    "apple": 7
+  },
+  "menstrual_tracking_used": false,
   "providers": [
-    { "provider": "garmin", "is_enabled": true, "live_sync_mode": "webhook", "data_granularity": null }
+    { "provider": "apple", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
+    { "provider": "samsung", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
+    { "provider": "garmin", "is_enabled": true, "live_sync_mode": "webhook", "data_granularity": null },
+    { "provider": "polar", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "suunto", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "whoop", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "strava", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "oura", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "fitbit", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "ultrahuman", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "sensorbio", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "withings", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "google_health", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "health_connect", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
+    { "provider": "google", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null }
   ],
   "features": {
-    "sentry_enabled": true,
+    "sentry_enabled": false,
     "ingest_workout_samples": false,
     "store_fit_files": false,
     "historical_sync_on_connect": true,
     "raw_payload_storage": "s3",
-    "outgoing_webhooks_enabled": true,
+    "outgoing_webhooks_enabled": false,
     "default_data_granularity": "raw"
   },
   "endpoint_usage": {
-    "date": "2026-07-22",
+    "date": "2026-09-22",
     "routes": {
-      "GET /api/v1/users/{user_id}/timeseries": {
-        "api_key": { "2xx": "1k-10k", "4xx": "1-10" },
-        "developer_jwt": { "2xx": "11-100" }
+      "GET /api/v1/dashboard/stats": {
+        "developer_jwt": { "2xx": "1-10" }
       },
-      "GET /api/v1/dashboard/stats": { "developer_jwt": { "2xx": "11-100" } },
-      "POST /api/v1/providers/garmin/webhooks": { "none": { "2xx": "101-1k" } },
-      "unmatched": { "none": { "4xx": "11-100" } }
+      "GET /api/v1/auth/me": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/config": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/users": {
+        "developer_jwt": { "2xx": "1-10" },
+        "api_key": { "4xx": "11-100" }
+      },
+      "GET /api/v1/users/{user_id}": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/users/{user_id}/summaries/sleep": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/users/{user_id}/events/workouts": {
+        "developer_jwt": { "4xx": "1-10" }
+      },
+      "GET /api/v1/users/{user_id}/timeseries": {
+        "developer_jwt": { "4xx": "1-10" },
+        "api_key": { "4xx": "11-100" }
+      },
+      "POST /api/v1/sdk/users/{user_id}/sync": {
+        "sdk_token": { "4xx": "11-100" }
+      },
+      "POST /api/v1/providers/garmin/webhooks": {
+        "none": { "4xx": "1-10" }
+      },
+      "GET /api/v1/meta/coverage": {
+        "none": { "2xx": "1-10" }
+      },
+      "unmatched": {
+        "none": { "4xx": "1-10" }
+      }
     }
   }
 }
