@@ -63,16 +63,12 @@ export function UsageSurveyDialog() {
     queryFn: () => authService.me(),
     enabled: isAuthenticated(),
   });
-  // TEMPORARY: always show the dialog and never record it as seen, so it can
-  // be tested repeatedly on the test environment without touching the
-  // database. Revert this commit to restore the once-per-developer behaviour.
-  const ALWAYS_SHOW = true;
   // Local override so the dialog closes instantly, before the PATCH returns.
   const [dismissed, setDismissed] = useState(false);
   const open =
     !dismissed &&
     developer !== undefined &&
-    (ALWAYS_SHOW || developer.welcome_dialog_seen_at === null);
+    developer.welcome_dialog_seen_at === null;
 
   const markSeen = useMutation({
     mutationFn: () =>
@@ -86,7 +82,6 @@ export function UsageSurveyDialog() {
 
   const close = () => {
     setDismissed(true);
-    if (ALWAYS_SHOW) return;
     // Best effort: if this fails the dialog simply shows again next time.
     markSeen.mutate();
   };
