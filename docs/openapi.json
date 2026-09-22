@@ -13058,6 +13058,86 @@
         ],
         "title": "Meal"
       },
+      "MealConfig": {
+        "properties": {
+          "meal_count": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Meal Count",
+            "default": 60
+          },
+          "meal_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Types",
+            "description": "Specific meal types to generate. None = random from breakfast/lunch/dinner/snack."
+          },
+          "calories_range": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Calories Range",
+            "default": [
+              150,
+              900
+            ]
+          },
+          "date_range_months": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Date Range Months",
+            "default": 6
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From",
+            "description": "Explicit start date. Overrides date_range_months."
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To",
+            "description": "Explicit end date. Overrides date_range_months."
+          }
+        },
+        "type": "object",
+        "title": "MealConfig",
+        "description": "Parameters controlling meal generation.\n\nEach meal is an EventRecord (category=\"meal\") plus a MealDetails row and a\nhandful of nutrient DataPointSeries samples (calories, protein, carbs, fat,\nfiber, hydration) correlated to it via event_record_id."
+      },
       "MealField": {
         "properties": {
           "code": {
@@ -14677,6 +14757,7 @@
               "generate_workouts": true,
               "generate_sleep": true,
               "generate_time_series": true,
+              "generate_meals": false,
               "num_connections": 2,
               "workout_config": {
                 "count": 80,
@@ -14722,6 +14803,14 @@
                 "date_range_months": 6,
                 "enabled_types": [],
                 "include_blood_pressure": false
+              },
+              "meal_config": {
+                "calories_range": [
+                  150,
+                  900
+                ],
+                "date_range_months": 6,
+                "meal_count": 60
               }
             }
           },
@@ -14828,6 +14917,12 @@
             "title": "Generate Time Series",
             "default": true
           },
+          "generate_meals": {
+            "type": "boolean",
+            "title": "Generate Meals",
+            "description": "Opt-in: existing presets and defaults stay meal-free unless explicitly enabled.",
+            "default": false
+          },
           "providers": {
             "anyOf": [
               {
@@ -14901,6 +14996,17 @@
             "default": {
               "enabled_types": [],
               "include_blood_pressure": false,
+              "date_range_months": 6
+            }
+          },
+          "meal_config": {
+            "$ref": "#/components/schemas/MealConfig",
+            "default": {
+              "meal_count": 60,
+              "calories_range": [
+                150,
+                900
+              ],
               "date_range_months": 6
             }
           }
