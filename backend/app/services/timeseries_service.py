@@ -34,6 +34,7 @@ from app.schemas.utils import (
 )
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
+from app.services.priority_service import priority_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_bucket_cursor, encode_cursor
@@ -211,19 +212,37 @@ class TimeSeriesService(
         """Get count of data points grouped by source."""
         return self.crud.get_count_by_source(db_session)
 
+    def _winning_sources(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        params: TimeSeriesQueryParams,
+    ) -> dict[int, UUID]:
+        """Resolve one data source per series type, using the ranking sleep and summaries use."""
+        return self.crud.winning_source_by_series_type(
+            db_session,
+            params,
+            types,
+            user_id,
+            priority_service.priority_repo.get_priority_order(db_session),
+            priority_service.device_type_priority_repo.get_priority_order(db_session),
+        )
+
     def _aggregated_timeseries(
         self,
         db_session: DbSession,
         user_id: UUID,
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
+        source_by_type: dict[int, UUID] | None = None,
     ) -> PaginatedResponse[TimeSeriesSample]:
         """Downsampled variant of :meth:`get_timeseries`.
 
         total_count stays unset: counting buckets would scan the whole requested range, which
         is the work the bucket cap exists to avoid.
         """
-        rows, truncated = self.crud.get_aggregated_samples(db_session, params, types, user_id)
+        rows, truncated = self.crud.get_aggregated_samples(db_session, params, types, user_id, source_by_type)
         samples, has_more = _trim_to_whole_buckets(rows, params.limit or 50, truncated)
         is_backward = bool(params.cursor and params.cursor.startswith("prev_"))
         if is_backward:
@@ -253,11 +272,13 @@ class TimeSeriesService(
         user_id: UUID,
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
+        filter_by_priority: bool = False,
     ) -> PaginatedResponse[TimeSeriesSample]:
+        source_by_type = self._winning_sources(db_session, user_id, types, params) if filter_by_priority else None
         if params.resolution is not Resolution.RAW:
-            return self._aggregated_timeseries(db_session, user_id, types, params)
+            return self._aggregated_timeseries(db_session, user_id, types, params, source_by_type)
 
-        samples, total_count = self.crud.get_samples(db_session, params, types, user_id)
+        samples, total_count = self.crud.get_samples(db_session, params, types, user_id, source_by_type)
 
         limit = params.limit or 50
         has_more = len(samples) > limit

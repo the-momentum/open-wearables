@@ -24,7 +24,7 @@ open-wearables/
 
 | Backend | Frontend | MCP |
 |---------|----------|-----|
-| Python 3.13+ | React 19 + TypeScript | Python 3.13+ |
+| Python 3.14+ | React 19 + TypeScript | Python 3.13+ |
 | FastAPI | TanStack Router/Query | FastMCP |
 | SQLAlchemy 2.0 | React Hook Form + Zod | httpx |
 | PostgreSQL | Tailwind + shadcn/ui | |
@@ -100,6 +100,7 @@ When you rebase and `main` gained a migration in the meantime, `alembic heads` s
 6. **Test your changes** - Run relevant tests before considering work complete
 7. **Update documentation** - When adding or changing endpoints, providers, integration logic, API contracts, or features, update the relevant pages in `docs/`
 8. **Update API Reference navigation** - When adding, removing, or renaming **external** API endpoints (tagged `External: *`), update the `API Reference` tab in `docs/docs.json` to keep the endpoint list in sync
+9. **Think beyond the current feature** - Before adding provider-specific or otherwise narrow logic, ask whether the same behavior will be needed elsewhere (other providers, entities). If likely, propose a shared abstraction upfront instead of a one-off implementation.
 
 ## Documentation Standards (docs/)
 

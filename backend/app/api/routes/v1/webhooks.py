@@ -29,6 +29,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
+from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
 from app.schemas.responses.incoming_webhooks import (
     WebhookDeletedResponse,
@@ -50,7 +51,7 @@ _factory = ProviderFactory()
 def _get_strategy(provider: str) -> BaseProviderStrategy:
     """Resolve and return the provider strategy, raising 404 for unknown providers."""
     try:
-        return _factory.get_provider(provider)
+        return _factory.get_provider(from_url_slug(provider))
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
 
@@ -65,7 +66,7 @@ def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
     exists but has not yet implemented a ``BaseWebhookHandler``.
     """
     try:
-        strategy = _factory.get_provider(provider)
+        strategy = _factory.get_provider(from_url_slug(provider))
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
 

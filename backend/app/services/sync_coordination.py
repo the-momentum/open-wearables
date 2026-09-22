@@ -18,15 +18,18 @@ Redis keys (scoped to provider + provider_user_id + scope):
 """
 
 import logging
+import threading
 from uuid import UUID, uuid4
 
+from app.config import settings
 from app.integrations.redis_client import get_redis_client
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
 _PREFIX = "linked_sync"
-_PRIMARY_TTL = 4 * 60 * 60  # 4 h — covers longest Garmin backfill
-_SECONDARY_TTL = 4 * 60 * 60
+# Garmin backfill holds its lock across tasks with no renewer; gc_stuck_backfills recovers it.
+_BACKFILL_TTL = 4 * 60 * 60
 
 # Atomically delete a key only if its current value matches ARGV[1].
 # Prevents releasing a lock that was already expired and re-acquired by
@@ -39,9 +42,26 @@ else
 end
 """
 
+# Extend a lease we still own; if it lapsed unclaimed (Redis was unreachable for longer than
+# a lease), take it back. 0 means another holder has it now.
+_RENEW_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("expire", KEYS[1], ARGV[2])
+end
+if redis.call("set", KEYS[1], ARGV[1], "NX", "EX", ARGV[2]) then
+    return 1
+end
+return 0
+"""
+
 
 def _primary_key(provider: str, provider_user_id: str, scope: str) -> str:
     return f"{_PREFIX}:{provider}:{provider_user_id}:{scope}:primary"
+
+
+def _ttl_for(scope: str) -> int:
+    """Pull renews its lease as it works; the backfill scope spans tasks and cannot."""
+    return settings.linked_sync_pull_lease_seconds if scope == "pull" else _BACKFILL_TTL
 
 
 def _secondaries_key(provider: str, provider_user_id: str, scope: str) -> str:
@@ -70,7 +90,7 @@ def try_become_primary(
     token = uuid4().hex
     value = f"{user_id}:{token}"
 
-    acquired = bool(client.set(key, value, nx=True, ex=_PRIMARY_TTL))
+    acquired = bool(client.set(key, value, nx=True, ex=_ttl_for(scope)))
     if acquired:
         return True, token, user_id
 
@@ -102,6 +122,100 @@ def release_primary(
     return bool(get_redis_client().eval(_RELEASE_LUA, 1, key, value))
 
 
+# The renewer thread for the lease this task thread holds, if any.
+_renewer = threading.local()
+
+# The renewer only ever waits on stop.set(), so a join this long means it is blocked
+# in Redis; it is a daemon thread and dies with the worker either way.
+_JOIN_TIMEOUT_SECONDS = 5.0
+
+
+def _renew_interval() -> float:
+    """Four renewals per lease: one can be missed without the lock lapsing."""
+    return settings.linked_sync_pull_lease_seconds / 4
+
+
+def renew_primary(
+    provider: str,
+    provider_user_id: str,
+    user_id: UUID,
+    token: str,
+    *,
+    scope: str = "pull",
+) -> bool:
+    """Extend (or retake, if it lapsed unclaimed) the lease. False means another holder has it."""
+    key = _primary_key(provider, provider_user_id, scope)
+    value = f"{user_id}:{token}"
+    return bool(get_redis_client().eval(_RENEW_LUA, 1, key, value, _ttl_for(scope)))
+
+
+def bind_primary_lease(
+    provider: str,
+    provider_user_id: str | None,
+    user_id: UUID,
+    token: str,
+    *,
+    scope: str = "pull",
+) -> None:
+    """Hold a won lock alive from a daemon thread for as long as this run lasts.
+
+    The thread dies with the worker process, so a killed or restarted worker stops
+    renewing and the lock frees itself within one lease. A no-op without a token, so
+    callers that are not primary need no branch.
+    """
+    clear_primary_lease()
+    if not token or not provider_user_id:
+        return
+    stop = threading.Event()
+
+    def renew_until_stopped() -> None:
+        while not stop.wait(_renew_interval()):
+            try:
+                held = renew_primary(provider, provider_user_id, user_id, token, scope=scope)
+            except Exception as exc:
+                # An unreachable Redis means nobody else can take the lock either, so keep holding.
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Could not renew {provider} {scope} lease: {exc}",
+                    provider=provider,
+                    action="lease_renew_error",
+                    scope=scope,
+                    user_id=str(user_id),
+                )
+                continue
+            if not held:
+                # release_primary is token-guarded, so the run's own release stays a safe no-op.
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Lost {provider} {scope} lease mid-sync — another profile now holds it",
+                    provider=provider,
+                    action="lease_lost",
+                    scope=scope,
+                    user_id=str(user_id),
+                )
+                return
+
+    thread = threading.Thread(target=renew_until_stopped, name=f"lease-renew-{provider}-{scope}", daemon=True)
+    _renewer.state = (stop, thread)
+    thread.start()
+
+
+def clear_primary_lease() -> None:
+    """Stop renewing. Safe to call when nothing is bound, and safe to call twice.
+
+    Call it before release_primary: a renewal racing the release would retake the lock.
+    """
+    state: tuple[threading.Event, threading.Thread] | None = getattr(_renewer, "state", None)
+    _renewer.state = None
+    if state is None:
+        return
+    stop, thread = state
+    stop.set()
+    thread.join(timeout=_JOIN_TIMEOUT_SECONDS)
+
+
 def store_primary_token(
     provider: str,
     provider_user_id: str,
@@ -118,7 +232,7 @@ def store_primary_token(
     :func:`release_primary_for_user`.
     """
     key = f"{_PREFIX}:{provider}:{provider_user_id}:{scope}:token:{user_id}"
-    get_redis_client().setex(key, _PRIMARY_TTL, token)
+    get_redis_client().setex(key, _ttl_for(scope), token)
 
 
 def release_primary_for_user(
@@ -155,7 +269,7 @@ def register_secondary(
     client = get_redis_client()
     key = _secondaries_key(provider, provider_user_id, scope)
     client.sadd(key, str(user_id))
-    client.expire(key, _SECONDARY_TTL)
+    client.expire(key, _ttl_for(scope))
 
 
 def get_secondary_user_ids(
@@ -172,7 +286,14 @@ def get_secondary_user_ids(
         try:
             uids.append(UUID(raw))
         except ValueError:
-            logger.warning("Ignoring invalid UUID in secondaries set: %s", raw)
+            log_structured(
+                logger,
+                "warning",
+                f"Ignoring invalid UUID in secondaries set: {raw}",
+                provider=provider,
+                action="invalid_secondary",
+                scope=scope,
+            )
     return uids
 
 

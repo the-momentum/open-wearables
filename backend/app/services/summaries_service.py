@@ -211,7 +211,7 @@ class SummariesService:
             get_series_type_id(t)
             for t in [
                 SeriesType.steps,
-                SeriesType.energy,
+                SeriesType.active_energy,
                 SeriesType.basal_energy,
                 SeriesType.heart_rate,
                 SeriesType.distance_walking_running,

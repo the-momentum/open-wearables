@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
@@ -28,8 +28,8 @@ from sqlalchemy.orm import Query, selectinload
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import CrudRepository
-from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
+from app.repositories.repositories import CrudRepository, source_filter_conditions, utc_bucket_start
+from app.schemas.enums import ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
@@ -293,17 +293,13 @@ class EventRecordRepository(
         if query_params.record_type:
             filters.append(EventRecord.type.ilike(f"%{query_params.record_type}%"))
 
+        if query_params.workout_type:
+            filters.append(EventRecord.type == query_params.workout_type)
+
         if query_params.source_name:
             filters.append(EventRecord.source_name.ilike(f"%{query_params.source_name}%"))
 
-        if query_params.device_model:
-            filters.append(DataSource.device_model == query_params.device_model)
-
-        if getattr(query_params, "source", None):
-            filters.append(DataSource.source == query_params.source)
-
-        if getattr(query_params, "data_source_id", None):
-            filters.append(EventRecord.data_source_id == query_params.data_source_id)
+        filters.extend(source_filter_conditions(query_params, EventRecord.data_source_id))
 
         if query_params.start_datetime:
             filters.append(EventRecord.start_datetime >= query_params.start_datetime)
@@ -475,6 +471,39 @@ class EventRecordRepository(
         )
         return [(provider, category, event_type, count) for provider, category, event_type, count in results]
 
+    def get_user_workout_timeline_counts(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        bucket: TimelineBucket,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+        provider: ProviderName | None = None,
+    ) -> list[tuple[str, date, int]]:
+        """Workout counts for a user, bucketed by time and keyed by workout type.
+
+        Windowed on ``start_datetime`` so a workout lands in the bucket it started in, matching
+        how the data summary counts them. Returns (key, bucket_start, count) for non-empty
+        buckets only.
+        """
+        bucket_start = utc_bucket_start(bucket, self.model.start_datetime)
+        key_column = func.coalesce(self.model.type, "unknown")
+
+        query = (
+            db_session.query(key_column, bucket_start, func.count(self.model.id).label("count"))
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.category == "workout")
+        )
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        if start_datetime is not None:
+            query = query.filter(self.model.start_datetime >= start_datetime)
+        if end_datetime is not None:
+            query = query.filter(self.model.start_datetime < end_datetime)
+
+        rows = query.group_by(key_column, bucket_start).order_by(key_column, bucket_start).all()
+        return [(workout_type, bucket_start_value, count) for workout_type, bucket_start_value, count in rows]
+
     def get_category_counts(self, db_session: DbSession) -> list[tuple[str, int]]:
         """Count event records grouped by category (workout, sleep, menstrual_cycle, ...).
 
@@ -487,6 +516,26 @@ class EventRecordRepository(
             .all()
         )
         return [(category, count) for category, count in results]
+
+    def get_distinct_workout_types(self, db_session: DbSession, user_id: UUID) -> list[str]:
+        """Workout types this user actually has, so a client can offer only those.
+
+        Grouped rather than DISTINCT so the planner reuses ``ix_event_record_source_category``;
+        rows with no type are skipped instead of surfacing as an empty option.
+        """
+        results = (
+            db_session.query(self.model.type)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.category == "workout",
+                self.model.type.isnot(None),
+            )
+            .group_by(self.model.type)
+            .order_by(self.model.type)
+            .all()
+        )
+        return [workout_type for (workout_type,) in results]
 
     def get_sleep_stage_stats_via_json(self, db_session: DbSession, record_id: UUID) -> list[dict]:
         """

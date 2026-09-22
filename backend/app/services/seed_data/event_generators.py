@@ -125,11 +125,9 @@ def _generate_workout(
 
     # Oura doesn't expose device info via its API
     device_name: str | None = None
-    device_provider: str | None = None
     sw_version: str | None = None
     if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
-        device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
 
     # Provider-specific workout detail fields
@@ -154,14 +152,14 @@ def _generate_workout(
 
     record = EventRecordCreate(
         id=workout_id,
-        source=device_provider,
+        source=provider.value,
         user_id=user_id,
         category="workout",
         type=workout_type,
         duration_seconds=duration_seconds,
         source_name=prov_config["source_name"],
         device_model=device_name,
-        provider=device_provider,
+        provider=provider.value,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -258,23 +256,21 @@ def _generate_sleep(
 
     # Oura doesn't expose device info via its API
     device_name: str | None = None
-    device_provider: str | None = None
     sw_version: str | None = None
     if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
-        device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
 
     record = EventRecordCreate(
         id=sleep_id,
-        source=device_provider,
+        source=provider.value,
         user_id=user_id,
         category="sleep",
         type=None,
         duration_seconds=sleep_duration_seconds,
         source_name=prov_config["source_name"],
         device_model=device_name,
-        provider=device_provider,
+        provider=provider.value,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,

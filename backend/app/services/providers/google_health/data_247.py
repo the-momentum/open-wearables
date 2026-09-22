@@ -1,0 +1,588 @@
+"""Google Health API 24/7 handler.
+
+Drives Google's fetch operations from one registry. Every metric is read at native
+resolution by the operation ``google_use_reconcile`` picks — ``dataPoints:reconcile`` (one
+merged, deduplicated stream across sources, matching the native health app) or ``dataPoints``
+list (raw per-source points with device attribution). Windowed ``dataPoints:rollUp`` is
+disabled (#1577) and the configured granularity no longer selects it; ``dataPoints:dailyRollUp``
+still backs the derived daily metrics. Sleep and workouts come from the sessions endpoint and
+are handled separately.
+"""
+
+from collections.abc import Iterator
+from datetime import datetime, time, timedelta, timezone
+from decimal import Decimal
+from typing import Any, NoReturn
+from uuid import UUID, uuid4
+
+from app.config import settings
+from app.constants.google_health_endpoints import (
+    DAILY_ROLLUP_ENDPOINT,
+    LIST_ENDPOINT,
+    RECONCILE_ENDPOINT,
+    ROLLUP_ENDPOINT,
+)
+from app.database import DbSession
+from app.repositories.data_point_series_repository import WriteCounts
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, SeriesType
+from app.schemas.enums.aggregation_method import daily_total_flag
+from app.schemas.model_crud.activities import TimeSeriesSampleCreate
+from app.schemas.providers.google import (
+    DailyRollupSpec,
+    DataTypeMetric,
+    DerivedDailyMetric,
+    ListSpec,
+    RollupSpec,
+    TimeShape,
+)
+from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.google_health.helpers import (
+    GOOGLE_HEALTH_API_SOURCE,
+    civil_interval,
+    extract_source,
+    parse_date,
+    parse_page,
+    parse_rfc3339,
+    physical_interval,
+    read_number,
+    zone_offset_from,
+)
+from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.sleep import GoogleHealthApiSleep
+from app.services.providers.templates.base_247_data import Base247DataTemplate
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
+from app.services.timeseries_service import timeseries_service
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
+
+
+class UnsupportedGranularityError(RuntimeError):
+    """The configured granularity needs the windowed rollUp operation, which is disabled."""
+
+    def __init__(self, granularity: DataGranularity):
+        super().__init__(
+            f"Google Health data_granularity '{granularity.value}' needs the windowed rollUp "
+            "operation, which is disabled (#1577). Its data types were skipped; set the provider's "
+            "granularity to 'raw' to resume them. Sleep and derived daily totals are unaffected."
+        )
+
+
+class GoogleHealth247Data(Base247DataTemplate):
+    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as DataPointSeries."""
+
+    # rollUp enforces windowSize * pageSize <= the data type's max range; list default page.
+    MAX_PAGE_SIZE = 10_000
+    LIST_PAGE_SIZE = 1_000
+
+    def __init__(self, oauth: BaseOAuthTemplate, connection_repo: UserConnectionRepository, api_base_url: str):
+        super().__init__(provider_name="google_health", api_base_url=api_base_url, oauth=oauth)
+        self.connection_repo = connection_repo
+        self.settings_repo = ProviderSettingsRepository()
+        self.sleep = GoogleHealthApiSleep(oauth, connection_repo, api_base_url)
+
+    # -- orchestration ---------------------------------------------------------
+
+    def load_and_save_all(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+        is_first_sync: bool = False,
+    ) -> dict[str, WriteCounts]:
+        """Fetch + persist every registered metric; failures are isolated per metric."""
+        granularity = (
+            self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
+        )
+        results: dict[str, WriteCounts] = {}
+        failures: dict[str, str] = {}
+        succeeded = 0
+
+        # These types can only be read at native resolution now, so an aggregating granularity
+        # cannot be honoured — skip them rather than quietly storing raw rows against the
+        # setting. The raise waits until the work that does not aggregate has had its turn.
+        granularity_supported = granularity is DataGranularity.RAW
+
+        if granularity_supported:
+            for metric in METRICS:
+                # Confine each metric (fetch + write) to a savepoint so a failed write rolls
+                # back only that metric and leaves the transaction usable for the rest.
+                try:
+                    with db.begin_nested():
+                        if metric.use_list(granularity):
+                            samples = self._native_samples(db, user_id, metric, start_time, end_time)
+                        else:
+                            samples = self._rollup_samples(db, user_id, metric, start_time, end_time, granularity)
+                        counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
+                    db.commit()
+                except Exception as e:
+                    db.rollback()
+                    self._log_metric_failure(metric.data_type, user_id, e)
+                    failures[metric.data_type] = str(e)
+                    continue
+                succeeded += 1
+                if counts is not None:
+                    results[metric.data_type] = counts
+
+        for derived in DERIVED_DAILY_METRICS:
+            try:
+                with db.begin_nested():
+                    samples = self._derived_daily_samples(db, user_id, derived, start_time, end_time)
+                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                self._log_metric_failure(derived.name, user_id, e)
+                failures[derived.name] = str(e)
+                continue
+            succeeded += 1
+            if counts is not None:
+                results[derived.name] = counts
+
+        try:
+            with db.begin_nested():
+                sleep_count = self.sleep.load_and_save(db, user_id, start_time, end_time)
+            db.commit()
+            succeeded += 1
+        except Exception as e:
+            db.rollback()
+            self._log_metric_failure("sleep", user_id, e)
+            failures["sleep"] = str(e)
+            sleep_count = 0
+
+        if not granularity_supported:
+            raise UnsupportedGranularityError(granularity)
+        # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — surface it so the sync
+        # is marked FAILED rather than an empty success. A partial/empty run returns normally.
+        if failures and not succeeded:
+            raise RuntimeError(f"All Google 24/7 data types failed: {failures}")
+        log_structured(
+            self.logger,
+            "info",
+            "Google 24/7 sync complete",
+            provider=self.provider_name,
+            task="load_and_save_all",
+            user_id=str(user_id),
+            granularity=granularity.value,
+            metrics_synced=len(results),
+            sleep_sessions=sleep_count,
+        )
+        return results
+
+    def sync_data_type(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        data_type: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> WriteCounts | None:
+        """Fetch + persist a single 24/7 metric over an explicit window (webhook-triggered).
+
+        Returns None when ``data_type`` is not a registered metric. Sleep and exercise
+        are owned by their own handlers and are routed there by the webhook handler
+        before ever reaching here, so an unrecognised type is a safe no-op. Raises
+        UnsupportedGranularityError, which the webhook handler reports without a 5xx.
+        """
+        metric = next((m for m in METRICS if m.data_type == data_type), None)
+        if metric is None:
+            return None
+        granularity = (
+            self.settings_repo.get_data_granularity(db, self.provider_name) or settings.default_data_granularity
+        )
+        if granularity is not DataGranularity.RAW:
+            raise UnsupportedGranularityError(granularity)
+        if metric.use_list(granularity):
+            samples = self._native_samples(db, user_id, metric, start_time, end_time)
+        else:
+            samples = self._rollup_samples(db, user_id, metric, start_time, end_time, granularity)
+        if not samples:
+            return None
+        counts = timeseries_service.bulk_create_samples(db, samples)
+        db.commit()
+        return counts
+
+    def _log_metric_failure(self, data_type: str, user_id: UUID, error: Exception) -> None:
+        log_and_capture_error(
+            error,
+            self.logger,
+            f"Google 24/7 sync failed for data type {data_type}: {error}",
+            extra={"user_id": str(user_id), "provider": self.provider_name, "data_type": data_type},
+        )
+
+    # -- rollUp operation ------------------------------------------------------
+
+    def _rollup_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        metric: DataTypeMetric,
+        start_time: datetime,
+        end_time: datetime,
+        granularity: DataGranularity,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Roll up one metric at the granularity's window and map to samples.
+
+        Unreachable while ``use_list`` is pinned to True; kept for when window starts are floored.
+        """
+        spec = metric.rollup_spec
+        if spec is None:
+            return []
+        # RAW falls back to the finest aggregate (hourly) for rollUp-only data types.
+        window_seconds = GRANULARITY_WINDOW_SECONDS.get(granularity, GRANULARITY_WINDOW_SECONDS[DataGranularity.HOURLY])
+        windows_per_day = GRANULARITY_WINDOW_SECONDS[DataGranularity.DAILY] // window_seconds
+        page_size = min(spec.max_range_days * windows_per_day, self.MAX_PAGE_SIZE)
+        is_daily_total = granularity == DataGranularity.DAILY
+
+        endpoint = ROLLUP_ENDPOINT.format(data_type=metric.data_type)
+        samples: list[TimeSeriesSampleCreate] = []
+        for chunk_start, chunk_end in self._chunk_range(start_time, end_time, spec.max_range_days):
+            body = {
+                "range": physical_interval(chunk_start, chunk_end),
+                "windowSize": f"{window_seconds}s",
+                "pageSize": page_size,
+            }
+            for point in self._fetch_rollup_pages(db, user_id, endpoint, body):
+                value_obj = point.get(metric.value_key)
+                recorded_at = parse_rfc3339(point.get("startTime"))
+                if not isinstance(value_obj, dict) or recorded_at is None:
+                    continue
+                for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
+                    value = read_number(value_obj, field, subfield, scale)
+                    # Google sends 0 for a field the device does not measure (SDNN on Pixel Watch,
+                    # #1586); for the counters a 0 adds nothing to a sum. Neither is worth a row.
+                    if value is None or value == 0:
+                        continue
+                    samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
+        return samples
+
+    def _fetch_rollup_pages(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        body: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """POST one rollUp/dailyRollUp body, following pageToken to exhaustion.
+
+        Only the windowed rollUp body sets ``pageSize``: its page must hold a whole range at the
+        requested window (windowSize * pageSize <= max range). dailyRollUp's default page is
+        1440 one-day windows, far beyond its 14/90-day range cap, so it never paginates in practice.
+        """
+        points: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            response = make_authenticated_request(
+                db=db,
+                user_id=user_id,
+                connection_repo=self.connection_repo,
+                oauth=self.oauth,
+                api_base_url=self.api_base_url,
+                provider_name=self.provider_name,
+                endpoint=endpoint,
+                method="POST",
+                json_data=body if page_token is None else {**body, "pageToken": page_token},
+            )
+            store_raw_payload(
+                source="api_response",
+                provider=self.provider_name,
+                payload=response,
+                user_id=str(user_id),
+                trace_id=endpoint,
+            )
+            page = parse_page(response, endpoint)
+            points.extend(page.rollup_data_points)
+            page_token = page.next_page_token
+            if not page_token:
+                break
+        return points
+
+    @staticmethod
+    def _chunk_range(start: datetime, end: datetime, max_days: int) -> Iterator[tuple[datetime, datetime]]:
+        """Split [start, end) into consecutive windows no longer than max_days."""
+        window = timedelta(days=max_days)
+        cursor = start
+        while cursor < end:
+            nxt = min(cursor + window, end)
+            yield cursor, nxt
+            cursor = nxt
+
+    # -- dailyRollUp operation -------------------------------------------------
+
+    def _derived_daily_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        metric: DerivedDailyMetric,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Combine two civil-day totals into one daily-total series.
+
+        Both operands are fetched here, so the metric never depends on another having run.
+        A day missing from either side is skipped rather than treated as a zero operand, and
+        so is a negative result — energy cannot go below zero, so it means the operands did
+        not describe the same thing.
+        """
+        family = metric.data_source_family
+        left = self._daily_totals(db, user_id, metric.left, start_time, end_time, family)
+        right = self._daily_totals(db, user_id, metric.right, start_time, end_time, family)
+        samples = []
+        for day in sorted(left.keys() & right.keys()):
+            value = metric.operation(left[day], right[day])
+            if value >= 0:
+                samples.append(self._sample(user_id, day, value, metric.series_type, True))
+        return samples
+
+    def _daily_totals(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        spec: DailyRollupSpec,
+        start_time: datetime,
+        end_time: datetime,
+        data_source_family: str,
+    ) -> dict[datetime, Decimal]:
+        """Civil-day totals for one data type, keyed on the civil date at midnight UTC.
+
+        The range is widened a day each way: the low end re-reads the previous civil day so
+        the partial written before midnight is finalised on the next sync, and the high end
+        covers the civil day the window ends in whatever the user's offset is.
+        """
+        endpoint = DAILY_ROLLUP_ENDPOINT.format(data_type=spec.data_type)
+        start = datetime.combine(start_time.date() - timedelta(days=1), time.min, tzinfo=timezone.utc)
+        end = datetime.combine(end_time.date() + timedelta(days=1), time.min, tzinfo=timezone.utc)
+
+        totals: dict[datetime, Decimal] = {}
+        for chunk_start, chunk_end in self._chunk_range(start, end, spec.max_range_days):
+            body = {
+                "range": civil_interval(chunk_start.date(), chunk_end.date()),
+                "windowSizeDays": 1,
+                "dataSourceFamily": data_source_family,
+            }
+            for point in self._fetch_rollup_pages(db, user_id, endpoint, body):
+                day = parse_date((point.get("civilStartTime") or {}).get("date"))
+                value_obj = point.get(spec.value_key)
+                if day is None or not isinstance(value_obj, dict):
+                    continue
+                value = read_number(value_obj, spec.field, None, spec.scale)
+                if value is not None:
+                    # Windows are disjoint civil days, so two points on one date are
+                    # different sources of the same day, never duplicates — sum them.
+                    totals[day] = totals.get(day, Decimal(0)) + value
+        return totals
+
+    # -- native-resolution operation (reconcile / list) ------------------------
+
+    def _native_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        metric: DataTypeMetric,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Fetch native-resolution points and map those within the sync window to samples.
+
+        Picks the operation per ``google_use_reconcile``: reconcile returns one merged,
+        deduplicated stream across all sources (no dataSource, so no device attribution);
+        list returns raw per-source points that carry a dataSource we attribute a device from.
+        Both share the union-key payload shape and timestamp shapes; the fetch is bounded to
+        the window server-side via the AIP-160 filter, and the client-side check below is the
+        precise gate.
+        """
+        spec = metric.list_spec
+        if spec is None:
+            return []
+        reconcile = settings.google_use_reconcile
+        template = RECONCILE_ENDPOINT if reconcile else LIST_ENDPOINT
+        endpoint = template.format(data_type=metric.data_type)
+        time_filter = self._time_filter(metric.data_type, spec.time, start_time, end_time, spec.session_interval)
+
+        samples: list[TimeSeriesSampleCreate] = []
+        for point in self._fetch_points(db, user_id, endpoint, time_filter):
+            # Both operations nest the payload under the type's union key.
+            value_obj = point.get(metric.value_key)
+            if not isinstance(value_obj, dict):
+                continue
+            recorded_at, zone_offset = self._point_time(value_obj, spec.time)
+            if recorded_at is None or not self._in_window(spec.time, recorded_at, start_time, end_time):
+                continue
+            # Only list points carry a dataSource; reconciled points are already merged.
+            device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
+            for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
+                value = read_number(value_obj, field, subfield, scale)
+                if value is None or value == 0:
+                    continue
+                samples.append(
+                    self._sample(
+                        user_id, recorded_at, value, series_type, spec.is_daily_total, zone_offset, device_model
+                    )
+                )
+        return samples
+
+    @staticmethod
+    def _bindings(
+        primary: SeriesType,
+        spec: RollupSpec | ListSpec,
+    ) -> Iterator[tuple[SeriesType, str, str | None, Decimal]]:
+        """Yield (series, field, subfield, scale) for the spec's primary + extra series."""
+        yield primary, spec.field, spec.subfield, spec.scale
+        for sf in spec.extra or ():
+            yield sf.series_type, sf.field, sf.subfield, sf.scale
+
+    @staticmethod
+    def _point_time(point: dict[str, Any], shape: TimeShape) -> tuple[datetime | None, str | None]:
+        """Resolve a list data point's (timestamp, zone_offset) from its declared record shape."""
+        match shape:
+            case TimeShape.INTERVAL:
+                interval = point.get("interval") or {}
+                recorded_at = parse_rfc3339(interval.get("startTime") or interval.get("endTime"))
+                return recorded_at, zone_offset_from(interval.get("startUtcOffset"))
+            case TimeShape.SAMPLE:
+                sample_time = point.get("sampleTime") or {}
+                return parse_rfc3339(sample_time.get("physicalTime")), zone_offset_from(sample_time.get("utcOffset"))
+            case TimeShape.DATE:
+                return parse_date(point.get("date")), None
+
+    @staticmethod
+    def _in_window(shape: TimeShape, recorded_at: datetime, start_time: datetime, end_time: datetime) -> bool:
+        """Whether a point belongs to this sync window, matching :meth:`_time_filter`.
+
+        Daily points are stamped midnight, so an intraday window would never contain one;
+        they are compared by date instead, reaching back a day for a total published late.
+        """
+        if shape is TimeShape.DATE:
+            return (start_time.date() - timedelta(days=1)) <= recorded_at.date() <= end_time.date()
+        return start_time <= recorded_at < end_time
+
+    @staticmethod
+    def _time_filter(
+        data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime, session_interval: bool = False
+    ) -> str:
+        """AIP-160 filter bounding the fetch to [start_time, end_time) for the type's time shape."""
+        field = data_type.replace("-", "_")
+        match shape:
+            case TimeShape.INTERVAL if session_interval:
+                # SessionTimeInterval types (excl. sleep/ECG) filter on civil start time, not physical.
+                member = f"{field}.interval.civil_start_time"
+                low = (start_time.date() - timedelta(days=1)).isoformat()
+                high = (end_time.date() + timedelta(days=1)).isoformat()
+            case TimeShape.DATE:
+                # A daily total is published once its day closes.
+                member = f"{field}.date"
+                low = (start_time.date() - timedelta(days=1)).isoformat()
+                high = (end_time.date() + timedelta(days=1)).isoformat()
+            case TimeShape.INTERVAL | TimeShape.SAMPLE:
+                suffix = "interval.start_time" if shape is TimeShape.INTERVAL else "sample_time.physical_time"
+                member = f"{field}.{suffix}"
+                window = physical_interval(start_time, end_time)
+                low, high = window["startTime"], window["endTime"]
+        return f'{member} >= "{low}" AND {member} < "{high}"'
+
+    def _fetch_points(
+        self, db: DbSession, user_id: UUID, endpoint: str, time_filter: str | None = None
+    ) -> list[dict[str, Any]]:
+        """GET a native-resolution endpoint (list or reconcile), following pageToken.
+
+        Both return their points under ``dataPoints`` and paginate identically.
+        """
+        points: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"pageSize": self.LIST_PAGE_SIZE}
+            if time_filter:
+                params["filter"] = time_filter
+            if page_token:
+                params["pageToken"] = page_token
+            response = make_authenticated_request(
+                db=db,
+                user_id=user_id,
+                connection_repo=self.connection_repo,
+                oauth=self.oauth,
+                api_base_url=self.api_base_url,
+                provider_name=self.provider_name,
+                endpoint=endpoint,
+                method="GET",
+                params=params,
+            )
+            store_raw_payload(
+                source="api_response",
+                provider=self.provider_name,
+                payload=response,
+                user_id=str(user_id),
+                trace_id=endpoint,
+            )
+            page = parse_page(response, endpoint)
+            points.extend(page.data_points)
+            page_token = page.next_page_token
+            if not page_token:
+                break
+        return points
+
+    def _sample(
+        self,
+        user_id: UUID,
+        recorded_at: datetime,
+        value: Any,
+        series_type: SeriesType,
+        is_daily_total: bool,
+        zone_offset: str | None = None,
+        device_model: str | None = None,
+    ) -> TimeSeriesSampleCreate:
+        return TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            source=GOOGLE_HEALTH_API_SOURCE,
+            provider=self.provider_name,
+            device_model=device_model,
+            recorded_at=recorded_at,
+            zone_offset=zone_offset,
+            value=value,
+            series_type=series_type,
+            # Only SUM series carry the daily-vs-intraday distinction; for AVG/MAX it stays None,
+            # or bucketed /timeseries reads would drop the daily rows as "totals" (see daily_total_flag).
+            is_daily_total=daily_total_flag(series_type, is_daily_total),
+            external_id=(
+                f"{series_type.value}:{recorded_at.isoformat()}" if series_type is SeriesType.active_energy else None
+            ),
+        )
+
+    # -- unused Base247DataTemplate hooks --------------------------------------
+    # Google uses load_and_save_all(); the sleep/recovery/activity-sample split is unused.
+
+    def _unsupported(self, feature: str) -> NoReturn:
+        raise NotImplementedError(f"Google Health API 24/7 uses load_and_save_all(); {feature} is not used")
+
+    def get_sleep_data(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict]:
+        self._unsupported("get_sleep_data")
+
+    def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any]:
+        self._unsupported("normalize_sleep")
+
+    def get_recovery_data(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict]:
+        self._unsupported("get_recovery_data")
+
+    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any]:
+        self._unsupported("normalize_recovery")
+
+    def get_activity_samples(
+        self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
+    ) -> list[dict]:
+        self._unsupported("get_activity_samples")
+
+    def normalize_activity_samples(
+        self, raw_samples: list[dict[str, Any]], user_id: UUID
+    ) -> dict[str, list[dict[str, Any]]]:
+        self._unsupported("normalize_activity_samples")
+
+    def get_daily_activity_statistics(
+        self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+    ) -> list[dict]:
+        self._unsupported("get_daily_activity_statistics")
+
+    def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any]:
+        self._unsupported("normalize_daily_activity")

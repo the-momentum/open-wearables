@@ -9,6 +9,7 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
@@ -167,7 +168,7 @@ def make_authenticated_request(
                     params=params or {},
                     data=form_data,
                     json=json_data,
-                    timeout=30.0,
+                    timeout=settings.provider_request_timeout_seconds,
                 )
 
             # Handle 429 rate limiting with retry
@@ -308,7 +309,9 @@ def download_binary_content(
     headers = {"Authorization": f"Bearer {access_token}"}
 
     for attempt in range(MAX_RETRIES + 1):
-        response = httpx.get(url, headers=headers, timeout=30.0, follow_redirects=True)
+        response = httpx.get(
+            url, headers=headers, timeout=settings.provider_request_timeout_seconds, follow_redirects=True
+        )
         if response.status_code == 429 and attempt < MAX_RETRIES:
             backoff_delay = RETRY_BASE_DELAY * (2**attempt)
             log_structured(

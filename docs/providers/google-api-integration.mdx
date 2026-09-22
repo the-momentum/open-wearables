@@ -17,10 +17,16 @@ keywords: ["google health api integration", "google health oauth", "google healt
 
 ## Overview
 
-Google Health data reaches Open Wearables through two independent paths that share the single `google` provider identity:
+Google Health data reaches Open Wearables through two independent paths, each its own provider:
 
-- **Health Connect (mobile SDK)** — data pushed from an Android device via the Mobile SDK. See the [Android SDK guide](/sdk/android/integration).
-- **Google Health API (cloud OAuth)** — this guide. A server-side OAuth 2.0 flow against the [Google Health API](https://developers.google.com/health) that lets you connect a user's Google account and pull their data over REST, plus receive notify-only webhooks.
+- **Health Connect (mobile SDK)** — provider `health_connect`. Data pushed from an Android device via the Mobile SDK. See the [Android SDK guide](/sdk/android/integration).
+- **Google Health API (cloud OAuth)** — provider `google_health`, this guide. A server-side OAuth 2.0 flow against the [Google Health API](https://developers.google.com/health) that lets you connect a user's Google account and pull their data over REST, plus receive notify-only webhooks.
+
+They have separate scopes, connections and lifecycles: connecting one leaves the other untouched, and each reports its own `connection.created` / `connection.revoked` events.
+
+<Note>
+  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in the URLs new integrations should use. Before the split it was reachable at `/google/`; the OAuth and webhook endpoints still serve that path so anything already registered with Google keeps working, but it is a compatibility path that goes away in 1.0.
+</Note>
 
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
 
@@ -44,17 +50,20 @@ The Google Health API is an **aggregation layer**: it surfaces data from *every*
 
 ## Data granularity and fetch modes
 
-The Health API exposes the same underlying data through three different operations. Open Wearables picks one per the `DEFAULT_DATA_GRANULARITY` setting, and — at the finest granularity — the `GOOGLE_USE_RECONCILE` flag.
+The Health API exposes the same underlying data through three different operations. Open Wearables reads every 24/7 metric at native resolution, picking the operation per the `GOOGLE_USE_RECONCILE` flag.
 
-| Granularity | Operation | Resolution | Cross-source | Device attribution |
-|-------------|-----------|------------|--------------|--------------------|
-| `raw` + `GOOGLE_USE_RECONCILE=true` **(default)** | `dataPoints:reconcile` | native | **merged & deduplicated** | none |
-| `raw` + `GOOGLE_USE_RECONCILE=false` | `dataPoints` (list) | native | raw, per-source | **per-device** |
-| `hourly` / `daily` | `dataPoints:rollUp` | windowed | reconciled | none |
+| Fetch mode | Operation | Resolution | Cross-source | Device attribution |
+|------------|-----------|------------|--------------|--------------------|
+| `GOOGLE_USE_RECONCILE=true` **(default)** | `dataPoints:reconcile` | native | **merged & deduplicated** | none |
+| `GOOGLE_USE_RECONCILE=false` | `dataPoints` (list) | native | raw, per-source | **per-device** |
 
-<Info>
-`GOOGLE_USE_RECONCILE` only takes effect at `raw` granularity. `hourly`/`daily` always use windowed `rollUp` aggregates regardless of the flag.
-</Info>
+<Warning>
+Windowed `dataPoints:rollUp` aggregates are currently disabled. A rollUp window starts wherever the requested range does, so the same reading came back under a different timestamp on a later sync and was inserted as a duplicate rather than updated.
+
+Because `hourly` and `daily` cannot be honoured without it, Google Health **refuses** them rather than storing raw data under an aggregating setting: a scheduled pull is reported as a failed `data_247` sync, and a webhook notification is reported to the error tracker and dropped (it is not answered with a 5xx, which Google would only retry). Sleep sessions and derived daily totals are unaffected and keep syncing. Set the provider's granularity to `raw` to resume the rest.
+</Warning>
+
+Daily basal energy is the one exception: it is derived from `dataPoints:dailyRollUp`, whose windows are anchored to civil days and so do not drift.
 
 ### Reconcile vs. list — why it matters
 
@@ -103,7 +112,13 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 
     Then create an **OAuth 2.0 Client ID** (Web application) under **APIs & Services → Credentials**, and add your server-side callback as an **Authorized redirect URI**:
 
-    - Local dev: `http://localhost:8000/api/v1/oauth/google/callback`
+    - `http://localhost:8000/api/v1/oauth/google_health/callback`
+
+    Then set `GOOGLE_LEGACY_OAUTH_PATH=false` so Open Wearables sends that URI. New integrations should always use this path.
+
+    <Warning>
+    **Upgrading from before the provider split?** This provider was reachable at `/oauth/google/` back then, and the flag defaults to `true` so your registered OAuth client keeps working untouched. That default is a compatibility patch, not the intended configuration — it is removed in 1.0. Register the `google_health` URI above, set the flag to `false`, and you are on the supported path. Google accepts several redirect URIs, so both can be registered while you migrate.
+    </Warning>
 
     <Warning>
     Store the Client Secret securely — Google shows it once.
@@ -118,7 +133,7 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_DEFAULT_SCOPE=openid email https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly https://www.googleapis.com/auth/googlehealth.nutrition.readonly https://www.googleapis.com/auth/googlehealth.sleep.readonly https://www.googleapis.com/auth/googlehealth.settings.readonly
-# Fetch mode for raw-granularity 24/7 data (see "Data granularity and fetch modes")
+# Fetch mode for 24/7 data (see "Data granularity and fetch modes")
 GOOGLE_USE_RECONCILE=true
 ```
 
@@ -129,11 +144,11 @@ GOOGLE_USE_RECONCILE=true
     | `GOOGLE_CLIENT_ID` | OAuth Client ID | — |
     | `GOOGLE_CLIENT_SECRET` | OAuth Client Secret | — |
     | `GOOGLE_DEFAULT_SCOPE` | Space-separated Health API scopes to request | (full read-only set) |
-    | `GOOGLE_USE_RECONCILE` | `true` = reconcile (merged, app-accurate, no device attribution); `false` = list (per-device). Only applies at `raw` granularity. | `true` |
-    | `DEFAULT_DATA_GRANULARITY` | `raw` \| `hourly` \| `daily` — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
+    | `GOOGLE_USE_RECONCILE` | `true` = reconcile (merged, app-accurate, no device attribution); `false` = list (per-device). | `true` |
+    | `DEFAULT_DATA_GRANULARITY` | Must be `raw` for Google Health while `rollUp` is disabled — see the [fetch modes](#data-granularity-and-fetch-modes) table | `raw` |
 
     <Note>
-    The redirect URI is derived from `API_BASE_URL` — it must match the Authorized redirect URI on your OAuth client (`{API_BASE_URL}/api/v1/oauth/google/callback`).
+    The redirect URI is derived from `API_BASE_URL` and must match an Authorized redirect URI on your OAuth client exactly: `{API_BASE_URL}/api/v1/oauth/google_health/callback`.
     </Note>
   </Step>
 
@@ -147,13 +162,13 @@ GOOGLE_USE_RECONCILE=true
     **1. Get the authorization URL:**
 
     ```bash
-    curl -X GET "http://localhost:8000/api/v1/oauth/google/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+    curl -X GET "http://localhost:8000/api/v1/oauth/google_health/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 
     **2. Redirect the user** to the returned `authorization_url`. They log in to Google and grant consent.
 
-    **3. Google redirects back** to `{API_BASE_URL}/api/v1/oauth/google/callback`; Open Wearables exchanges the code for tokens and stores the connection. It also resolves the user's stable `healthUserId` (via the Health API identity endpoint) as the connection's provider user id — this is what inbound webhooks are matched against.
+    **3. Google redirects back** to `{API_BASE_URL}/api/v1/oauth/google_health/callback`; Open Wearables exchanges the code for tokens and stores the connection. It also resolves the user's stable `healthUserId` (via the Health API identity endpoint) as the connection's provider user id — this is what inbound webhooks are matched against.
 
     **4. Verify the connection:**
 
@@ -162,14 +177,14 @@ GOOGLE_USE_RECONCILE=true
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 
-    You should see a connection with `"provider": "google"` and `"status": "active"`.
+    You should see a connection with `"provider": "google_health"` and `"status": "active"`.
   </Step>
 
   <Step title="Sync data">
     An initial sync runs automatically after a successful OAuth connection. To trigger one manually:
 
     ```bash
-    curl -X POST "http://localhost:8000/api/v1/providers/google/users/{user_id}/sync" \
+    curl -X POST "http://localhost:8000/api/v1/providers/google_health/users/{user_id}/sync" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
   </Step>
@@ -249,7 +264,7 @@ Subscribers live at the **project** level (`POST /v4/projects/{project}/subscrib
   </Step>
 
   <Step title="Register the subscriber">
-    Switching the provider's live sync mode to `webhook` registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
+    Switching the provider's live sync mode to `webhook` registers the subscriber automatically. Google then performs an endpoint-verification handshake (`POST {"type":"verification"}`) against `{API_BASE_URL}/api/v1/providers/google_health/webhooks`, which must return `2xx` when authenticated. Once verified, notifications begin flowing.
   </Step>
 </Steps>
 
@@ -291,7 +306,7 @@ curl -X POST \
   "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers?subscriberId=open-wearables" \
   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
   -d '{
-    "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google/webhooks",
+    "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google_health/webhooks",
     "subscriberConfigs": [
       {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
     ],
@@ -306,7 +321,7 @@ curl "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers" \
 curl -X PATCH \
   "https://health.googleapis.com/v4/projects/${PROJECT}/subscribers/open-wearables?updateMask=endpointUri" \
   -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  -d '{"endpointUri": "https://NEW_URL/api/v1/providers/google/webhooks"}'
+  -d '{"endpointUri": "https://NEW_URL/api/v1/providers/google_health/webhooks"}'
 
 # Delete
 curl -X DELETE \
@@ -317,8 +332,9 @@ curl -X DELETE \
 <Note>
 `dataTypes` above is an abbreviated example — use the set the app supports for webhooks
 (steps, distance, hydration-log, heart-rate, run-vo2-max, daily-resting-heart-rate,
-heart-rate-variability, weight, body-fat, blood-glucose, daily-respiratory-rate, sleep,
-exercise). Registering a data type the app doesn't handle just means its notifications are ignored.
+heart-rate-variability, daily-heart-rate-variability, weight, body-fat, blood-glucose,
+daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise). Registering a data type
+the app doesn't handle just means its notifications are ignored.
 </Note>
 
 ## Next Steps

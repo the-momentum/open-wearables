@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models import DataPointSeriesArchive, DataSource, SeriesTypeDefinition
 from app.schemas.enums import AggregationMethod, ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.dashboard import UserDataTimelineResponse
+from app.schemas.responses.dashboard.data_timeline import TimelineMetric
 from app.services.system_info_service import system_info_service
 from tests.factories import (
     DataPointSeriesFactory,
@@ -478,3 +479,108 @@ class TestGetUserDataTimeline:
 
         assert [s.key for s in result.series] == [ProviderName.GARMIN]
         assert self._buckets(result, ProviderName.GARMIN) == {"2026-06-15": 1}
+
+    def test_provider_filter_scopes_every_series(self, db: Session) -> None:
+        """Without this the filtered heatmap still renders other providers' data."""
+        user = UserFactory()
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        for ds in (garmin, oura):
+            DataPointSeriesFactory(
+                data_source=ds, series_type=hr_type, recorded_at=datetime(2026, 6, 15, 8, tzinfo=timezone.utc)
+            )
+
+        unfiltered = system_info_service.get_user_data_timeline(db, user.id)
+        filtered = system_info_service.get_user_data_timeline(db, user.id, provider=ProviderName.GARMIN)
+
+        assert {s.key for s in unfiltered.series} == {ProviderName.GARMIN, ProviderName.OURA}
+        assert {s.key for s in filtered.series} == {ProviderName.GARMIN}
+
+    def test_provider_filter_also_scopes_archived_counts(self, db: Session) -> None:
+        """The archive has its own join, so a filter applied only to live data leaks history."""
+        user = UserFactory()
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        for ds in (garmin, oura):
+            _archive_row(db, ds, hr_type, datetime(2026, 6, 15, tzinfo=timezone.utc), sample_count=5)
+
+        result = system_info_service.get_user_data_timeline(db, user.id, provider=ProviderName.GARMIN)
+
+        assert {s.key for s in result.series} == {ProviderName.GARMIN}
+
+    def test_unknown_provider_returns_no_series(self, db: Session) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            recorded_at=datetime(2026, 6, 15, 8, tzinfo=timezone.utc),
+        )
+
+        result = system_info_service.get_user_data_timeline(db, user.id, provider=ProviderName.WHOOP)
+
+        assert result.series == []
+
+    def test_groups_by_workout_type(self, db: Session) -> None:
+        """Workouts live in event_record, so they need their own query and their own metric."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        for day, hour, workout_type in ((15, 8, "running"), (15, 17, "running"), (16, 8, "cycling")):
+            EventRecordFactory(
+                data_source=ds,
+                category="workout",
+                type_=workout_type,
+                start_datetime=datetime(2026, 6, day, hour, tzinfo=timezone.utc),
+            )
+
+        result = system_info_service.get_user_data_timeline(db, user.id, group_by=TimelineGroupBy.WORKOUT_TYPE)
+
+        assert {s.metric for s in result.series} == {TimelineMetric.WORKOUTS}
+        assert self._buckets(result, "running") == {"2026-06-15": 2}
+        assert self._buckets(result, "cycling") == {"2026-06-16": 1}
+
+    def test_workout_timeline_counts_only_workouts(self, db: Session) -> None:
+        """Sleep sessions share the table and must not land in the workout heatmap."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        EventRecordFactory(
+            data_source=ds,
+            category="workout",
+            type_="running",
+            start_datetime=datetime(2026, 6, 15, 8, tzinfo=timezone.utc),
+        )
+        EventRecordFactory(
+            data_source=ds,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 6, 15, 23, tzinfo=timezone.utc),
+        )
+
+        result = system_info_service.get_user_data_timeline(db, user.id, group_by=TimelineGroupBy.WORKOUT_TYPE)
+
+        assert [s.key for s in result.series] == ["running"]
+
+    def test_workout_timeline_honours_the_provider_filter(self, db: Session) -> None:
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        EventRecordFactory(
+            data_source=garmin,
+            category="workout",
+            type_="running",
+            start_datetime=datetime(2026, 6, 15, 8, tzinfo=timezone.utc),
+        )
+        EventRecordFactory(
+            data_source=oura,
+            category="workout",
+            type_="walking",
+            start_datetime=datetime(2026, 6, 15, 9, tzinfo=timezone.utc),
+        )
+
+        result = system_info_service.get_user_data_timeline(
+            db, user.id, group_by=TimelineGroupBy.WORKOUT_TYPE, provider=ProviderName.GARMIN
+        )
+
+        assert [s.key for s in result.series] == ["running"]

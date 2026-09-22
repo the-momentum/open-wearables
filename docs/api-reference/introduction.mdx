@@ -29,7 +29,7 @@ Internal endpoints (dashboard management, team settings, webhook receivers) are 
   <Card
     title="OpenAPI JSON"
     icon="file-code"
-    href="https://api.openwearables.io/openapi.json"
+    href="https://github.com/the-momentum/open-wearables/blob/main/docs/openapi.json"
   >
     Machine-readable OpenAPI 3.1 specification
   </Card>
@@ -148,7 +148,7 @@ GET /api/v1/users?page=2&limit=50
 | `page` | 1 | Page number |
 | `limit` | 20 | Items per page (max: 100) |
 
-### Cursor Pagination (Timeseries, Workouts, Sleep)
+### Cursor Pagination (Timeseries, Events, Summaries)
 
 ```http
 GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
@@ -157,14 +157,19 @@ GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `cursor` | null | Cursor from previous response |
-| `limit` | 50 | Items per page (max: 1000 for timeseries, 100 for workouts and sleep) |
+| `limit` | 50 | Items per page (max: 1000) |
 
 Use the `next_cursor` from the response to fetch the next page.
 
+Health scores page by `limit` and `offset` instead, with the same defaults and maximum.
+
 <Note>
-  A timeseries request with a `resolution` other than `raw` pages by bucket, and `total_count` is
-  `null` — counting buckets would require scanning the whole requested range. Cursors are not
-  interchangeable between resolutions or endpoints.
+  On `/timeseries`, `total_count` is returned on the first page only and is `null` on any page
+  reached by `cursor` — the count is a full aggregate over the largest table in the system, and a
+  keyset page cannot change it, so keep the value from the first response. A request with a
+  `resolution` other than `raw` pages by bucket and never carries a `total_count`, since counting
+  buckets would require scanning the whole requested range. Cursors are not interchangeable
+  between resolutions or endpoints.
 </Note>
 
 ## Date & Time Parameters
@@ -175,11 +180,11 @@ Endpoints that accept date range parameters (`start_date`, `end_date`, `start_ti
 |--------|---------|-------|
 | ISO 8601 datetime with timezone | `2023-11-07T05:31:56Z` | Recommended |
 | ISO 8601 datetime with offset | `2023-11-07T06:31:56+01:00` | |
-| Date-only | `2023-11-07` | Normalized to midnight UTC (`2023-11-07T00:00:00Z`) |
+| Date-only | `2023-11-07` | Start bounds: midnight UTC. End bounds: the whole day |
 | Unix timestamp (seconds) | `1699332716` | UTC |
 
 <Note>
-  When a date-only value (e.g. `2023-11-07`) is provided as an **end date**, it is treated as midnight UTC at the start of that day. Depending on the endpoint, this may be extended to include the full day — use an explicit time component (e.g. `2023-11-07T23:59:59Z`) to avoid ambiguity.
+  Date-only ranges include both boundary days, so `start_date=2023-11-07&end_date=2023-11-07` covers the whole of November 7th. Values with an explicit time component are used exactly as given: `end_time=2023-11-07T00:00:00Z` stops at midnight and returns nothing from that day.
 </Note>
 
 ## Filtering & Sorting
@@ -188,10 +193,12 @@ Many endpoints support filtering and sorting. Check individual endpoint document
 
 ## OpenAPI Specification
 
-The complete OpenAPI specification is available at:
-- **Swagger UI:** `https://api.openwearables.io/docs`
-- **OpenAPI JSON:** `https://api.openwearables.io/openapi.json`
+This reference is generated from [`docs/openapi.json`](https://github.com/the-momentum/open-wearables/blob/main/docs/openapi.json), which is exported from the API code on every change, so it always describes the current `main` branch.
+
+Every Open Wearables instance also serves the spec for the exact version it runs:
+- **Swagger UI:** `https://<your-instance>/docs`
+- **OpenAPI JSON:** `https://<your-instance>/openapi.json`
 
 <Tip>
-  The OpenAPI specification is auto-generated from the API code and is always the most accurate reference.
+  If you self-host an older release, the spec served by your own instance is the accurate reference for it.
 </Tip>

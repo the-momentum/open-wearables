@@ -43,6 +43,7 @@
             "group": "Architecture",
             "pages": [
               "architecture/system-overview",
+              "architecture/data-flow",
               "architecture/unified-data-model",
               "architecture/data-types",
               "architecture/multi-account-sync"
@@ -171,7 +172,7 @@
       },
       {
         "tab": "API Reference",
-        "openapi": "https://api.openwearables.io/openapi.json",
+        "openapi": "openapi.json",
         "groups": [
           {
             "group": "Overview",

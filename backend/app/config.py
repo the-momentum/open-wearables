@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     # Will default to false in a future release.
     historical_sync_on_connect: bool = True
 
+    # Per-request timeout for provider API calls (connect/read/write/pool alike).
+    provider_request_timeout_seconds: float = Field(30.0, gt=0, le=300)
+
+    # How long a linked-account pull lock survives without renewal. The holder renews it
+    # four times per lease from a daemon thread, so the lock dies with the worker process.
+    linked_sync_pull_lease_seconds: int = Field(120, ge=30, le=3600)
+
     # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
     # data_point_series on workout webhook arrival. Significantly increases DB storage.
     # Per-provider granularity will be added via ProviderSetting in a future release.
@@ -117,8 +124,11 @@ class Settings(BaseSettings):
     # Independent of ingest_workout_samples (DB samples) and raw_payload_storage (JSON payloads).
     store_fit_files: bool = False
 
-    # Default 24/7 data granularity (raw | hourly | daily) for providers that support it
-    # (Google Health), used when a provider has no explicit ProviderSetting.data_granularity.
+    # Default 24/7 data granularity (raw | hourly | daily) for providers that support it,
+    # used when a provider has no explicit ProviderSetting.data_granularity.
+    # DANGER: anything but raw halts Google Health 24/7 ingestion. Its rollUp operation is
+    # disabled (#1577), so every metric it would have driven is skipped and each sync reports
+    # the failure. Sleep and basal energy are unaffected. Leave this at raw.
     default_data_granularity: DataGranularity = DataGranularity.RAW
 
     # SCORE SETTINGS
@@ -223,9 +233,12 @@ class Settings(BaseSettings):
     # Path to the service-account JSON key used to authenticate project-level
     # subscriber registration. If unset, Application Default Credentials are used.
     google_service_account_file: str | None = None
-    # with RAW granularity, either list or reconcile is used
+    # How 24/7 data is fetched, at native resolution either way.
     # true - reconcile, false - list; for details check docs
     google_use_reconcile: bool = True
+    # Compatibility patch: keep emitting the pre-split /oauth/google/callback redirect URI so
+    # an upgrade needs no change to the registered OAuth client. Removed in 1.0.
+    google_legacy_oauth_path: bool = True
 
     withings_client_id: str | None = None
     withings_client_secret: SecretStr | None = None
@@ -401,7 +414,19 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
             return legacy_value
-        return f"{self.api_base_url}/api/v1/oauth/{provider.value}/callback"
+        return f"{self.api_base_url}/api/v1/oauth/{self._oauth_path(provider)}/callback"
+
+    def _oauth_path(self, provider: ProviderName) -> str:
+        """Path segment to publish for a provider's OAuth routes.
+
+        Google Health was reachable at /google/ before it was split from Health Connect,
+        and that path is in every pre-0.8.1 deployment's registered redirect URI.
+        """
+        from app.schemas.enums import ProviderName as _ProviderName  # runtime-only; see TYPE_CHECKING above
+
+        if provider is _ProviderName.GOOGLE_HEALTH and self.google_legacy_oauth_path:
+            return "google"
+        return provider.value
 
     @property
     def raw_payload_bucket(self) -> str | None:

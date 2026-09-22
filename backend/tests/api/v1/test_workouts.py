@@ -8,11 +8,13 @@ Tests the /api/v1/users/{user_id}/workouts endpoint including:
 """
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas.enums import ProviderName
 from tests.factories import (
     ApiKeyFactory,
     DataSourceFactory,
@@ -49,8 +51,8 @@ _WHOOP_HR_OUT = {
 }
 
 
-def _fetch_one(client: TestClient, user_id: object, **extra: object) -> dict:
-    """GET the workout list over a window wide enough to catch the factory defaults."""
+def _fetch_all(client: TestClient, user_id: object, **extra: object) -> list[dict]:
+    """GET the workout list over a wide window, returning every row."""
     now = datetime.now(timezone.utc)
     response = client.get(
         f"/api/v1/users/{user_id}/events/workouts",
@@ -62,7 +64,12 @@ def _fetch_one(client: TestClient, user_id: object, **extra: object) -> dict:
         },
     )
     assert response.status_code == 200
-    data = response.json()["data"]
+    return response.json()["data"]
+
+
+def _fetch_one(client: TestClient, user_id: object, **extra: object) -> dict:
+    """GET the workout list over a window wide enough to catch the factory defaults."""
+    data = _fetch_all(client, user_id, **extra)
     assert len(data) == 1
     return data[0]
 
@@ -484,17 +491,21 @@ class TestWorkoutsEndpoints:
         assert workout["hr_zones"] == expected_hr
         assert workout["power_zones"] == expected_power
 
-    def test_zones_are_opt_in_and_the_expansion_is_validated(self, client: TestClient, db: Session) -> None:
-        """Zones roughly double the payload, so they ship only on request; typos are rejected."""
+    def test_expansions_are_opt_in_and_validated(self, client: TestClient, db: Session) -> None:
+        """Zones and segments inflate the payload, so they ship only on request; typos are rejected."""
         # Arrange
         user = UserFactory()
         record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="cycling")
-        WorkoutDetailsFactory(event_record=record, hr_zones=_FIT_HR, power_zones=_FIT_POWER)
+        segments = [{"lap": 1, "seconds": 300.0}, {"lap": 2, "seconds": 280.0}]
+        WorkoutDetailsFactory(event_record=record, hr_zones=_FIT_HR, power_zones=_FIT_POWER, segments=segments)
         now = datetime.now(timezone.utc)
 
         # Act & Assert
-        assert _fetch_one(client, user.id)["hr_zones"] is None
+        default = _fetch_one(client, user.id)
+        assert default["hr_zones"] is None
+        assert default["segments"] is None
         assert _fetch_one(client, user.id, include="zones")["hr_zones"] == _FIT_HR
+        assert _fetch_one(client, user.id, include="segments")["segments"] == segments
 
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
@@ -502,7 +513,100 @@ class TestWorkoutsEndpoints:
             params={
                 "start_date": (now - timedelta(days=30)).isoformat(),
                 "end_date": (now + timedelta(days=1)).isoformat(),
-                "include": "segments",
+                "include": "zonez",
             },
         )
         assert response.status_code == 400
+
+    def test_source_filters_narrow_the_list(self, client: TestClient, db: Session) -> None:
+        """Every source filter is wired through to the query, not just accepted and dropped."""
+        # Arrange
+        user = UserFactory()
+        garmin = DataSourceFactory(
+            user=user, provider=ProviderName.GARMIN, device_model="Forerunner 965", source="garmin_connect"
+        )
+        whoop = DataSourceFactory(user=user, provider=ProviderName.WHOOP, device_model="Whoop 4.0", source="whoop_api")
+        now = datetime.now(timezone.utc)
+        EventRecordFactory(mapping=garmin, category="workout", type_="running", start_datetime=now)
+        EventRecordFactory(mapping=whoop, category="workout", type_="running", start_datetime=now - timedelta(hours=3))
+
+        # Act & Assert
+        assert len(_fetch_all(client, user.id)) == 2
+        assert len(_fetch_all(client, user.id, provider="garmin")) == 1
+        assert len(_fetch_all(client, user.id, device_model="Whoop 4.0")) == 1
+        assert len(_fetch_all(client, user.id, source="garmin_connect")) == 1
+        assert len(_fetch_all(client, user.id, data_source_id=str(whoop.id))) == 1
+        assert _fetch_all(client, user.id, provider="garmin")[0]["source"]["provider"] == "garmin"
+
+    def test_type_matches_exactly_where_record_type_matches_a_substring(self, client: TestClient, db: Session) -> None:
+        """`record_type=running` also catches trail_running; `type=running` must not."""
+        # Arrange
+        user = UserFactory()
+        source = DataSourceFactory(user=user)
+        now = datetime.now(timezone.utc)
+        EventRecordFactory(mapping=source, category="workout", type_="running", start_datetime=now)
+        EventRecordFactory(
+            mapping=source, category="workout", type_="trail_running", start_datetime=now - timedelta(hours=3)
+        )
+
+        # Act & Assert
+        assert len(_fetch_all(client, user.id, record_type="running")) == 2
+        exact = _fetch_all(client, user.id, type="running")
+        assert [w["type"] for w in exact] == ["running"]
+
+    def test_workout_types_lists_only_what_the_user_has(self, client: TestClient, db: Session) -> None:
+        """The dropdown source: the user's own types, not the whole 100+ member enum."""
+        # Arrange
+        user = UserFactory()
+        other_user = UserFactory()
+        source = DataSourceFactory(user=user)
+        now = datetime.now(timezone.utc)
+        EventRecordFactory(mapping=source, category="workout", type_="cycling", start_datetime=now)
+        EventRecordFactory(mapping=source, category="workout", type_="running", start_datetime=now - timedelta(hours=3))
+        EventRecordFactory(mapping=source, category="workout", type_="running", start_datetime=now - timedelta(hours=6))
+        EventRecordFactory(mapping=source, category="sleep", type_="sleep", start_datetime=now - timedelta(hours=9))
+        EventRecordFactory(mapping=DataSourceFactory(user=other_user), category="workout", type_="swimming")
+
+        # Act
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts/types",
+            headers=api_key_headers(ApiKeyFactory().plain_key),
+        )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json() == ["cycling", "running"]
+
+    def test_pace_is_derived_from_distance_and_time(self, client: TestClient, db: Session) -> None:
+        """Pace comes from distance and moving time, never from average_speed (unit varies per provider)."""
+        # Arrange
+        user = UserFactory()
+        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="running")
+        WorkoutDetailsFactory(
+            event_record=record, distance=Decimal("10000"), moving_time_seconds=3000, average_speed=Decimal("12.00")
+        )
+
+        # Act
+        workout = _fetch_one(client, user.id)
+
+        # Assert
+        assert workout["avg_pace_sec_per_km"] == 300.0
+
+    @pytest.mark.parametrize(
+        ("distance", "moving_time"),
+        [
+            pytest.param(None, 1800, id="no-distance"),
+            pytest.param(Decimal("10000.0"), 0, id="zero-moving-time"),
+        ],
+    )
+    def test_pace_is_null_when_it_cannot_be_derived(
+        self, client: TestClient, db: Session, distance: Decimal | None, moving_time: int
+    ) -> None:
+        """A reported zero moving time is a value, not a gap - it must not fall back to elapsed duration."""
+        # Arrange
+        user = UserFactory()
+        record = EventRecordFactory(mapping=DataSourceFactory(user=user), category="workout", type_="strength_training")
+        WorkoutDetailsFactory(event_record=record, distance=distance, moving_time_seconds=moving_time)
+
+        # Act & Assert
+        assert _fetch_one(client, user.id)["avg_pace_sec_per_km"] is None

@@ -680,7 +680,7 @@ class Suunto247Data(Base247DataTemplate):
 
                 final_value = Decimal(str(value))
                 # Suunto provides energy in joules — convert to kcal
-                if series_type == SeriesType.energy:
+                if series_type == SeriesType.active_energy:
                     final_value = final_value / Decimal("4184")
 
                 all_samples.append(

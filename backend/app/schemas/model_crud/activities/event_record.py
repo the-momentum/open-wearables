@@ -6,14 +6,24 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import EntrySource, WorkoutIntensity
+from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
+from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+
+from .source_filters import SourceFilterParams
 
 
 class WorkoutInclude(StrEnum):
     """Optional expansions for workout read models, requested via the `include` query parameter."""
 
     ZONES = "zones"
+    SEGMENTS = "segments"
+
+
+class SleepInclude(StrEnum):
+    """Optional expansions for sleep read models, requested via the `include` query parameter."""
+
+    STAGES = "stages"
 
 
 class EventRecordMetrics(TypedDict, total=False):
@@ -90,12 +100,12 @@ class EventRecordResponse(EventRecordBase):
     data_source_id: UUID | None
 
 
-class EventRecordQueryParams(BaseModel):
+class EventRecordQueryParams(SourceFilterParams):
     """Filtering and sorting parameters for event records."""
 
     # Pagination
     cursor: str | None = Field(None, description="Pagination cursor")
-    limit: int = Field(50, ge=1, le=1000, description="Maximum number of records to return")
+    limit: int = Field(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Maximum number of records to return")
     offset: int = Field(0, ge=0, description="Number of results to skip (for non-cursor pagination)")
 
     # Date filtering
@@ -107,13 +117,13 @@ class EventRecordQueryParams(BaseModel):
         "workout",
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
-    record_type: str | None = Field(None, description="Subtype filter (e.g. HKWorkoutActivityTypeRunning)")
+    record_type: str | None = Field(
+        None, description="Subtype filter, substring match (e.g. HKWorkoutActivityTypeRunning)"
+    )
+    workout_type: WorkoutType | None = Field(None, description="Exact normalized workout type filter")
 
-    # Source filtering
-    device_model: str | None = Field(None, description="Filter by device model")
+    # Source filtering (provider, source, device_model, data_source_id come from SourceFilterParams)
     source_name: str | None = Field(None, description="Filter by source/app name")
-    source: str | None = Field(None, description="Filter by data source")
-    data_source_id: UUID | None = Field(None, description="Filter by data source identifier")
 
     # Duration filtering
     min_duration: int | None = Field(None, description="Minimum duration in seconds")

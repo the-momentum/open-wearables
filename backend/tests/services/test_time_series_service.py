@@ -611,8 +611,12 @@ class TestTimeSeriesServiceGetTimeseries:
         """One user wearing a Garmin watch and a Whoop band, both logging heart rate."""
         user = UserFactory()
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_model="FR965")
-        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_model="Whoop 4.0")
+        watch = DataSourceFactory(
+            user=user, provider="garmin", source="garmin", device_model="FR965", device_type="watch"
+        )
+        band = DataSourceFactory(
+            user=user, provider="whoop", source="whoop", device_model="Whoop 4.0", device_type="band"
+        )
         for mapping, value in ((watch, 100), (band, 200)):
             for second in range(3):
                 DataPointSeriesFactory(
@@ -622,6 +626,22 @@ class TestTimeSeriesServiceGetTimeseries:
                     value=value,
                 )
         return user, watch, band
+
+    def test_total_count_is_taken_on_the_first_page_only(self, db: Session) -> None:
+        """A full COUNT over the largest table is paid once; a keyset page cannot change it."""
+        # Arrange
+        user = self._minute_of_heart_rate(db, [60, 70, 80, 90])
+
+        # Act
+        first = timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], self._params(limit=2))
+        second = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate], self._params(limit=2, cursor=first.pagination.next_cursor)
+        )
+
+        # Assert
+        assert first.pagination.total_count == 4
+        assert second.pagination.total_count is None
+        assert [s.value for s in second.data] == [80, 90]
 
     def test_source_filters_narrow_to_one_device(self, db: Session) -> None:
         """Every declared source filter reaches the query; data_source_id used to be ignored."""
@@ -653,3 +673,109 @@ class TestTimeSeriesServiceGetTimeseries:
 
     def _fetch(self, db: Session, user: object, **filters) -> object:
         return timeseries_service.get_timeseries(db, user.id, [SeriesType.heart_rate], self._params(**filters))
+
+    def test_priority_filter_keeps_one_device_per_series(self, db: Session) -> None:
+        """Two devices logging the same signal collapse to the higher-ranked one."""
+        # Arrange - with no provider ranking configured, device type decides: watch beats band
+        user, _, _ = self._two_sources(db)
+
+        # Act
+        unfiltered = self._fetch(db, user)
+        filtered = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate], self._params(), filter_by_priority=True
+        )
+
+        # Assert
+        assert {s.source.provider for s in unfiltered.data} == {"garmin", "whoop"}
+        assert {s.source.provider for s in filtered.data} == {"garmin"}
+
+    def test_priority_filter_falls_back_per_series_type(self, db: Session) -> None:
+        """A watch without steps yields only that series, it does not lose its heart rate."""
+        # Arrange
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        DataPointSeriesFactory(mapping=watch, series_type=heart_rate, recorded_at=self._START, value=100)
+        DataPointSeriesFactory(mapping=band, series_type=heart_rate, recorded_at=self._START, value=200)
+        DataPointSeriesFactory(mapping=band, series_type=steps, recorded_at=self._START, value=42)
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate, SeriesType.steps], self._params(), filter_by_priority=True
+        )
+
+        # Assert - heart rate from the watch, steps from the band that alone recorded them
+        assert {(s.type, s.source.provider, s.value) for s in result.data} == {
+            (SeriesType.heart_rate, "garmin", 100),
+            (SeriesType.steps, "whoop", 42),
+        }
+
+    def test_priority_picks_a_winner_from_the_filtered_sources(self, db: Session) -> None:
+        """Ranking runs over what the request asked for, not over every device the user owns."""
+        # Arrange - the watch outranks the band, but the caller asked for the band's provider
+        user, _, _ = self._two_sources(db)
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.heart_rate], self._params(provider="whoop"), filter_by_priority=True
+        )
+
+        # Assert - without this the two filters intersect to nothing
+        assert {(s.value, s.source.provider) for s in result.data} == {(200, "whoop")}
+
+    def test_priority_skips_a_source_holding_only_daily_totals(self, db: Session) -> None:
+        """Bucketed reads drop daily totals, so a source with nothing else must not win."""
+        # Arrange - the watch outranks the band but only reported the day's own step total
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        DataPointSeriesFactory(
+            mapping=watch, series_type=steps, recorded_at=self._START, value=9000, is_daily_total=True
+        )
+        for second in range(3):
+            DataPointSeriesFactory(
+                mapping=band,
+                series_type=steps,
+                recorded_at=self._START + timedelta(seconds=second),
+                value=10,
+                is_daily_total=False,
+            )
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], self._params(resolution=Resolution.ONE_MIN), filter_by_priority=True
+        )
+
+        # Assert - without this the watch wins and the bucket it would fill is then discarded
+        assert [(s.value, s.source.provider) for s in result.data] == [(30, "whoop")]
+
+    def test_date_only_bounds_are_accepted_by_bucketed_reads(self, db: Session) -> None:
+        """A date-only query parameter parses without a timezone and must still compare."""
+        # Arrange
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            recorded_at=self._START,
+            value=128,
+        )
+
+        # Act - naive bounds, as the date-only route parsers produce them
+        midnight = self._START.replace(tzinfo=None, hour=0, minute=0)
+        result = timeseries_service.get_timeseries(
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            TimeSeriesQueryParams(
+                start_datetime=midnight,
+                end_datetime=midnight + timedelta(days=1),
+                resolution=Resolution.ONE_MIN,
+            ),
+        )
+
+        # Assert
+        assert [s.value for s in result.data] == [128]

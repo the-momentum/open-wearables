@@ -21,6 +21,8 @@ Related issue: #
 
 <!--
 Be concrete: the commands you ran, the flow you clicked through, the data you looked at.
+Best formats: before/after request + response, a table with numbers, a screenshot for
+docs/UI. Say what you did NOT test. Examples: contributing/pull-requests.md#showing-that-it-works
 
 If your change touches a provider integration, we need to know it was tested against
 a real account and real API responses.

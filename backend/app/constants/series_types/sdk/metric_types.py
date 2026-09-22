@@ -226,9 +226,9 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Activity - Basic
     SDKMetricType.APPLE_STEP_COUNT: SeriesType.steps,
     SDKMetricType.ANDROID_STEP_COUNT: SeriesType.steps,
-    SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED: SeriesType.energy,
+    SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED: SeriesType.active_energy,
     SDKMetricType.APPLE_BASAL_ENERGY_BURNED: SeriesType.basal_energy,
-    SDKMetricType.ANDROID_ACTIVE_CALORIES_BURNED: SeriesType.energy,
+    SDKMetricType.ANDROID_ACTIVE_CALORIES_BURNED: SeriesType.active_energy,
     SDKMetricType.ANDROID_BASAL_METABOLIC_RATE: SeriesType.basal_energy,
     SDKMetricType.APPLE_STAND_TIME: SeriesType.stand_time,
     SDKMetricType.APPLE_EXERCISE_TIME: SeriesType.exercise_time,
@@ -273,7 +273,6 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.ANDROID_POWER: SeriesType.power,
     SDKMetricType.ANDROID_SPEED: SeriesType.speed,
     SDKMetricType.ANDROID_CYCLING_PEDALING_CADENCE: SeriesType.cadence,
-    SDKMetricType.ANDROID_TOTAL_CALORIES_BURNED: SeriesType.energy,
     # Environmental
     SDKMetricType.ENVIRONMENTAL_AUDIO_EXPOSURE: SeriesType.environmental_audio_exposure,
     SDKMetricType.HEADPHONE_AUDIO_EXPOSURE: SeriesType.headphone_audio_exposure,

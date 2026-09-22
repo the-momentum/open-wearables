@@ -1,7 +1,10 @@
 # Google Health API schemas
 
 from .health_api import (
+    DailyRollupSpec,
+    DataPointsPage,
     DataTypeMetric,
+    DerivedDailyMetric,
     ListSpec,
     RollupSpec,
     SeriesField,
@@ -15,7 +18,10 @@ from .webhooks import (
 )
 
 __all__ = [
+    "DailyRollupSpec",
+    "DataPointsPage",
     "DataTypeMetric",
+    "DerivedDailyMetric",
     "GooglePhysicalTimeInterval",
     "GoogleWebhookData",
     "GoogleWebhookInterval",

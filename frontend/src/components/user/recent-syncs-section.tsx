@@ -1,3 +1,4 @@
+import { providerLabel } from '@/components/common/source-badge';
 import { useMemo } from 'react';
 import { History, RefreshCw } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
@@ -63,7 +64,9 @@ function RunRow({ run }: { run: SyncRunSummary }) {
     <div className="flex items-center justify-between gap-4 rounded-lg border bg-card/40 p-3">
       <div className="flex flex-col min-w-0 gap-0.5">
         <div className="flex items-center gap-2">
-          <span className="font-medium capitalize text-sm">{run.provider}</span>
+          <span className="font-medium text-sm">
+            {providerLabel(run.provider)}
+          </span>
           <span className="text-xs text-muted-foreground">· {sourceLabel}</span>
           {run.source === 'linked_account' && run.primary_user_id && (
             <Link
