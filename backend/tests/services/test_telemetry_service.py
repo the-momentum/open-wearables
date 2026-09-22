@@ -1,6 +1,7 @@
 """Tests for the anonymous usage telemetry service."""
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -8,7 +9,7 @@ import httpx
 import pytest
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import Settings, settings
 from app.integrations.redis_client import get_redis_client
 from app.models import ProviderSetting
 from app.schemas.auth import ConnectionStatus, LiveSyncMode
@@ -142,6 +143,18 @@ class TestEndpointUsagePayload:
             payload = telemetry_service.build_payload(db, event="daily")
 
         assert payload["endpoint_usage"] is None
+
+
+class TestOptOutSettings:
+    @pytest.mark.parametrize("value", ["1", "true", "YES", " on "])
+    def test_do_not_track_disables_telemetry(self, value: str) -> None:
+        with patch.dict(os.environ, {"DO_NOT_TRACK": value}):
+            assert Settings(telemetry_enabled=True).telemetry_enabled is False
+
+    @pytest.mark.parametrize("value", ["0", "false", ""])
+    def test_do_not_track_off_leaves_the_setting_alone(self, value: str) -> None:
+        with patch.dict(os.environ, {"DO_NOT_TRACK": value}):
+            assert Settings(telemetry_enabled=True).telemetry_enabled is True
 
 
 class TestSendPing:

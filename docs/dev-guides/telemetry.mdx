@@ -186,7 +186,14 @@ Set one environment variable in your backend `.env` and restart:
 TELEMETRY_ENABLED=false
 ```
 
-This fully disables telemetry: no scheduled task, no startup ping, no HTTP calls, no request
+Open Wearables also honors the [`DO_NOT_TRACK`](https://donottrack.sh) convention shared by many
+developer tools:
+
+```bash
+DO_NOT_TRACK=1
+```
+
+Either one fully disables telemetry: no scheduled task, no startup ping, no HTTP calls, no request
 counting.
 
 Set it on every backend container (API, Celery worker and Celery beat): the API counts requests, the
