@@ -3,7 +3,7 @@ import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 import Database from '@lucide/svelte/icons/database';
 import Users from '@lucide/svelte/icons/users';
 import type { Part } from '$lib/components/charts/ShareBar.svelte';
-import type { Tone } from '$lib/components/dashboard/StatTile.svelte';
+import type { Tone } from '$lib/components/ui/tone';
 import { formatCompact, formatNumber } from '$lib/utils/format';
 import type { SystemInfo } from './types';
 

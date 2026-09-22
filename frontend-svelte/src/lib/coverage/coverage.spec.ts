@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { byGroup, capabilities, filterCapabilities, providerTotals } from './rows';
+import { capabilities, filterCapabilities, providerTotals } from './rows';
+import { grouped } from '$lib/utils/collect';
 import type { Coverage } from './types';
 
 const coverage: Coverage = {
@@ -91,9 +92,9 @@ describe('providerTotals', () => {
 	});
 });
 
-describe('byGroup', () => {
+describe('grouping the matrix', () => {
 	it('keeps the order the backend chose rather than sorting it', () => {
-		expect(byGroup(rows).map((group) => group.group)).toEqual([
+		expect(grouped(rows, (row) => row.group).map((group) => group.key)).toEqual([
 			'Heart',
 			'Body',
 			'Workout fields',

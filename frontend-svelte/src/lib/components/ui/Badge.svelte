@@ -1,22 +1,13 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { cn } from '$lib/utils/cn';
-
-	export type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+	import { TONE, type Tone } from './tone';
 
 	let {
 		tone = 'neutral',
 		class: className,
 		children
-	}: { tone?: BadgeTone; class?: string; children: Snippet } = $props();
-
-	const TONE = {
-		success: 'bg-success/12 text-success',
-		warning: 'bg-warning/15 text-warning',
-		danger: 'bg-danger/12 text-danger',
-		info: 'bg-primary/12 text-primary',
-		neutral: 'bg-surface-muted text-muted-foreground'
-	} as const;
+	}: { tone?: Tone; class?: string; children: Snippet } = $props();
 </script>
 
 <span

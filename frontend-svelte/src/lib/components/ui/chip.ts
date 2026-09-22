@@ -1,5 +1,10 @@
 import { cn } from '$lib/utils/cn';
 
+/** On and off for anything the reader picks: filter chips, event chips. */
+export const CHIP_ON = 'border-primary/40 bg-primary/10 text-primary';
+export const CHIP_OFF =
+	'border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground';
+
 /**
  * Shared by FilterChip (a link) and ToggleChip (a button) so the two cannot
  * drift apart visually.
@@ -7,8 +12,6 @@ import { cn } from '$lib/utils/cn';
 export function chipClass(selected: boolean): string {
 	return cn(
 		'inline-flex min-h-9 items-center rounded-full border px-3 text-xs font-medium capitalize transition-colors',
-		selected
-			? 'border-primary/40 bg-primary/10 text-primary'
-			: 'border-border text-muted-foreground hover:bg-surface-muted hover:text-foreground'
+		selected ? CHIP_ON : CHIP_OFF
 	);
 }

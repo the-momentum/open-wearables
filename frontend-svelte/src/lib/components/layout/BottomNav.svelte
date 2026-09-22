@@ -2,6 +2,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { page } from '$app/state';
 	import { PRIMARY_NAV_ITEMS, SECONDARY_NAV_ITEMS, isNavItemActive } from '$lib/config/nav';
+	import { TINY } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
 	import MoreSheet from './MoreSheet.svelte';
 
@@ -31,12 +32,27 @@
 					href={item.href}
 					aria-current={active ? 'page' : undefined}
 					class={cn(
-						'flex min-h-14 flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium transition-colors',
+						'flex min-h-14 flex-col items-center justify-center gap-1 font-medium transition-colors',
+						TINY,
 						active ? 'text-primary' : 'text-muted-foreground'
 					)}
 				>
-					<Icon size={20} aria-hidden="true" />
-					{item.label}
+					<!-- No room for the word on a phone, so the mark rides the icon. The
+					     label says "beta" for anything that cannot see it. -->
+					<span class="relative">
+						<Icon size={20} aria-hidden="true" />
+						{#if item.beta}
+							<span
+								aria-hidden="true"
+								class="absolute -top-1 -right-2 grid size-3.5 place-items-center rounded-full
+									bg-surface text-[0.5rem] leading-none font-semibold text-primary
+									ring-1 ring-primary/40"
+							>
+								β
+							</span>
+						{/if}
+					</span>
+					{item.label}{#if item.beta}<span class="sr-only"> (beta)</span>{/if}
 				</a>
 			</li>
 		{/each}
@@ -48,7 +64,8 @@
 				aria-haspopup="dialog"
 				aria-expanded={sheetOpen}
 				class={cn(
-					'flex min-h-14 w-full flex-col items-center justify-center gap-1 text-[0.6875rem] font-medium transition-colors',
+					'flex min-h-14 w-full flex-col items-center justify-center gap-1 font-medium transition-colors',
+					TINY,
 					moreActive ? 'text-primary' : 'text-muted-foreground'
 				)}
 			>

@@ -6,8 +6,8 @@ reaches parity; only then does `frontend/` get deleted.
 
 **Status:** the shell, the `/users` list, the user detail page with **all seven**
 of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
-Women's Health — the Dashboard and Data Coverage are built. Syncs, Webhooks and
-Settings are still placeholders. Read "Current state" before assuming anything
+Women's Health — the Dashboard, Data Coverage and Webhook subscriptions are
+built. Syncs and Settings are still placeholders. Read "Current state" before assuming anything
 exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
@@ -228,6 +228,19 @@ So `bun run dev` and the browser console are the only detector. Green does not
 mean the markup is valid. When a component can hold caller-supplied content,
 check what element it sits in: `Hint`'s bubble takes a snippet, so a `<p>`
 wrapper around it is a trap.
+
+### `signIn` is on the critical path of every test
+
+It asserts the redirect landed on `/dashboard`, which now spans the login POST,
+a session written to Redis, the redirect itself and the dashboard's own three
+requests — the dashboard used to be a static placeholder, so this resolved
+immediately. Locally the whole hop is 30–80ms; on a shared CI runner it once
+exceeded Playwright's default five seconds and took one unrelated test with it.
+
+The assertion carries an explicit 20-second timeout for that reason. It is not a
+retry and it hides nothing: a login that is genuinely broken still fails, just
+later. Nothing else in the suite should need a raised timeout — if something
+does, the thing being waited for is probably wrong.
 
 ### `getByText` with a regex does not normalize whitespace
 
@@ -1921,6 +1934,94 @@ Search, layer, provider and side all navigate, so a particular question — "wha
 can Whoop not do" — is a link someone can send. An unknown provider is dropped
 rather than forwarded, the same rule the event tabs use: a typo should show the
 whole matrix, not an empty page that reads as a fault.
+
+## Webhook subscriptions
+
+Named for what a row is: a standing request to be told about events. "Webhooks"
+alone reads as something already running, and people went looking for it.
+
+### The row is the page
+
+The old dashboard opened a second screen with two tabs — Overview to edit, and
+Deliveries. Here the row carries both: **Edit** opens the same dialog the
+subscription was created in, **Deliveries** goes to the full list, and opening
+the row shows the last five inline. The list never loads them: each expansion
+fetches its own, or a page of ten subscriptions would be ten Svix round trips
+for the nine nobody opens.
+
+Those three controls cannot live in `AccordionCard`'s header, which is itself a
+button — so they sit in the metrics row and stop the click from reaching the
+card.
+
+### A test event offers only what the subscription listens for
+
+`POST /endpoints/{id}/test` takes an event type, and the picker in the expansion
+is narrowed to that subscription's own `filter_types` — testing something it
+filters out would be delivered nowhere and read as a failure. A subscription
+that filters nothing gets the whole list.
+
+It sits above the recent deliveries, because that is where what you send turns
+up. Svix queues it, so the row says it will appear rather than pretending it
+already has.
+
+### Svix 2.x returns an empty payload, and that is a backend fix
+
+Delivery payloads and response bodies arrive as `{}` — on the React dashboard
+too. The cause is in the SDK, not in either frontend:
+
+```
+MessageGetOptions.with_content / MessageAttemptListByEndpointOptions.with_content
+  "Defaults to false in v2+ of the Svix SDKs, true in v1 …"
+```
+
+`_query_params` then sends `with_content=false` explicitly. Neither
+`svix_service.get_message` nor `list_message_attempts` passes the flag, so the
+service is asked not to return the content and obliges. **Not changed here** —
+it is two keyword arguments in `app/services/outgoing_webhooks/svix.py`.
+
+What the frontend can do is not lie about it. `hasContent()` treats `{}` and
+`""` as nothing to show, and the panel says "Not returned by the webhook
+service" rather than printing an empty object, because "nobody asked" and "the
+provider sent nothing" are different facts.
+
+### Eighty event names do not go in one list
+
+`/webhooks/event-types` answers flat, but two shapes hide in it: a time-series
+group event declares its granular `series.*` children, and everything else
+falls into a family by the word before the dot. `groupEvents()` recovers both,
+and the picker folds each family, saying how many of it are on while closed.
+
+A child never appears loose as well — it already sits under its group, and
+offering the same event twice is offering a choice that is not one.
+
+**"Select all" is a separate control from the group event**, and deliberately.
+`heart_rate.created` is its own subscription — one event covering the whole
+category — while `series.heart_rate` and friends are the granular ones; the
+backend says you may take either level or both. Wiring the parent chip to tick
+its children would collapse two different subscriptions into one and take the
+choice away.
+
+### Deliveries page
+
+Filters navigate, so a question is a link. Svix pages by an opaque iterator, so
+`Pagination` gets `total: null` — it marks the position and steps, and never
+claims a last page. `cursorHrefs` took a parameter name for this: the event
+lists call it `cursor`, Svix calls it `iterator`, and the page-one rule is the
+same either way.
+
+The first attempt put the word "Older" inside `STEP`, which is the 40×40 square
+a chevron lives in. It rendered as a box with the text jammed in it, and there
+was no way back at all.
+
+Rows group by the day they went out — forty timestamps in one column is a wall,
+and the question asked of it is usually "did anything go out yesterday". The
+HTTP code wears the status colour rather than sitting in grey beside a dot that
+repeats it.
+
+An opened delivery puts the payload and the response **side by side** from `lg`
+up, each capped at `max-h-64` and scrolling, because a round trip is read by
+comparing the two halves and a large payload should not push the next row off
+the screen.
 
 ## The pairing pages are public
 

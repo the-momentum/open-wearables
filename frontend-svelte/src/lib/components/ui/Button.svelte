@@ -1,21 +1,23 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { HTMLButtonAttributes } from 'svelte/elements';
-	import { buttonClass, type ButtonVariant } from './button';
+	import { buttonClass, type ButtonSize, type ButtonVariant } from './button';
 
 	let {
 		variant = 'primary',
+		size = 'md',
 		type = 'button',
 		class: className,
 		children,
 		...rest
 	}: HTMLButtonAttributes & {
 		variant?: ButtonVariant;
+		size?: ButtonSize;
 		children: Snippet;
 	} = $props();
 </script>
 
 <!-- Spreads the rest so callers keep control of aria-* and the like. -->
-<button {type} {...rest} class={buttonClass(variant, className)}>
+<button {type} {...rest} class={buttonClass(variant, size, className)}>
 	{@render children()}
 </button>

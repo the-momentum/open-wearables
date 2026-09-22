@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
+	import { TONE, type Tone } from '$lib/components/ui/tone';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
-
-	export type Tone = 'primary' | 'success' | 'warning' | 'muted';
 
 	let {
 		icon: Icon,
@@ -25,15 +24,6 @@
 		parts: { label: string; value: string }[];
 		tone?: Tone;
 	} = $props();
-
-	// Theme tokens, and no danger: a red tile reads as an alarm, and these are
-	// just counts.
-	const TONES: Record<Tone, string> = {
-		primary: 'bg-primary/10 text-primary',
-		success: 'bg-success/12 text-success',
-		warning: 'bg-warning/15 text-warning',
-		muted: 'bg-surface-muted text-foreground/70'
-	};
 </script>
 
 <div class="flex flex-col rounded-xl border border-border bg-surface p-4">
@@ -41,7 +31,7 @@
 		<span class="truncate text-xs font-medium text-muted-foreground">{label}</span>
 		<span
 			aria-hidden="true"
-			class={cn('grid size-8 shrink-0 place-items-center rounded-lg', TONES[tone])}
+			class={cn('grid size-8 shrink-0 place-items-center rounded-lg', TONE[tone])}
 		>
 			<Icon size={16} />
 		</span>

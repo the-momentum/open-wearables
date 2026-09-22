@@ -1,16 +1,16 @@
-import type { BadgeTone } from '$lib/components/ui/Badge.svelte';
+import type { Tone } from '$lib/components/ui/tone';
 
-const TONE: Record<string, BadgeTone> = {
+const TONE: Record<string, Tone> = {
 	success: 'success',
 	partial: 'warning',
 	stale: 'warning',
-	in_progress: 'info',
+	in_progress: 'primary',
 	failed: 'danger',
 	cancelled: 'neutral',
 	skipped: 'neutral'
 };
 
-export const statusTone = (status: string): BadgeTone => TONE[status] ?? 'neutral';
+export const statusTone = (status: string): Tone => TONE[status] ?? 'neutral';
 
 export const isRunning = (status: string) => status === 'in_progress';
 

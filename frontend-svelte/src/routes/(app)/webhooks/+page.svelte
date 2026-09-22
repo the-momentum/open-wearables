@@ -1,5 +1,92 @@
 <script lang="ts">
-	import PagePlaceholder from '$lib/components/PagePlaceholder.svelte';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Webhook from '@lucide/svelte/icons/webhook';
+	import Button from '$lib/components/ui/Button.svelte';
+	import Card from '$lib/components/ui/Card.svelte';
+	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import { MICRO } from '$lib/components/ui/typography';
+	import SubscriptionCard from '$lib/components/webhooks/SubscriptionCard.svelte';
+	import SubscriptionDialog from '$lib/components/webhooks/SubscriptionDialog.svelte';
+	import type { Subscription } from '$lib/webhooks/types';
+	import type { ActionData, PageData } from './$types';
+
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	// One dialog of each kind for the page, not one per row, and the subject is
+	// separate from openness so closing does not have to null it.
+	let editing = $state<Subscription | null>(null);
+	let formOpen = $state(false);
+	let removing = $state<Subscription | null>(null);
+	let removeOpen = $state(false);
+
+	// `id` where an action can fail for one row in particular, as a test send can.
+	const messageFor = (action: string, id?: string) =>
+		form?.action === action && (id === undefined || form.id === id) ? form.message : undefined;
+
+	function open(subscription: Subscription | null) {
+		editing = subscription;
+		formOpen = true;
+	}
 </script>
 
-<PagePlaceholder title="Webhooks" />
+<div class="flex flex-col gap-5">
+	<div class="flex flex-wrap items-start justify-between gap-3">
+		<div class="flex flex-col gap-0.5">
+			<h1 class="text-lg font-semibold text-foreground">Webhook subscriptions</h1>
+			<!-- Named for what it is: a standing request to be told about events.
+			     "Webhooks" alone reads as something already running. -->
+			<p class={MICRO}>Each one asks us to POST events to a URL of yours as they happen.</p>
+		</div>
+
+		<Button onclick={() => open(null)}>
+			<Plus size={15} aria-hidden="true" />
+			New subscription
+		</Button>
+	</div>
+
+	{#if data.subscriptions.length === 0}
+		<Card>
+			<EmptyState
+				icon={Webhook}
+				title="No subscriptions yet"
+				description="Create one to have events posted to your own service as they happen, rather than polling for them."
+			/>
+		</Card>
+	{:else}
+		<div class="flex flex-col gap-3 border-t border-border pt-5">
+			{#each data.subscriptions as subscription (subscription.id)}
+				<SubscriptionCard
+					{subscription}
+					types={data.types}
+					testMessage={messageFor('test', subscription.id)}
+					onedit={() => open(subscription)}
+					ondelete={() => {
+						removing = subscription;
+						removeOpen = true;
+					}}
+				/>
+			{/each}
+		</div>
+	{/if}
+</div>
+
+<SubscriptionDialog
+	bind:open={formOpen}
+	subscription={editing}
+	types={data.types}
+	message={messageFor(editing ? 'update' : 'create')}
+/>
+
+<ConfirmDialog
+	bind:open={removeOpen}
+	title="Delete subscription?"
+	action="?/delete"
+	confirmLabel="Delete"
+	busyLabel="Deleting…"
+	destructive
+	fields={{ id: removing?.id ?? '' }}
+>
+	Events stop being posted to {removing?.url ?? 'this URL'} straight away. Deliveries already made are
+	kept by the webhook service until it expires them.
+</ConfirmDialog>

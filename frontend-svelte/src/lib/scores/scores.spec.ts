@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { localDayKey } from '$lib/utils/format';
-import { collect } from '$lib/utils/collect';
 import { byCategory, componentsOf, knownCategory, rawReading, scoreOf } from './categories';
 import { detailSections, hasDetail } from './details';
 import { groupByDay } from './group';
@@ -347,15 +346,5 @@ describe('categoriesIn', () => {
 
 	it('leaves out one the API cannot be asked to filter by', () => {
 		expect(categoriesIn([], 'invented')).toEqual([]);
-	});
-});
-
-describe('collect', () => {
-	// Both orders are load-bearing: the groups come back in the order their first
-	// item arrived, and the items inside keep the order they came in.
-	it('keeps the order the items arrived in', () => {
-		const grouped = collect(['b1', 'a1', 'b2', 'a2'], (item) => item[0]);
-		expect([...grouped.keys()]).toEqual(['b', 'a']);
-		expect(grouped.get('b')).toEqual(['b1', 'b2']);
 	});
 });

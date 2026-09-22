@@ -8,7 +8,12 @@ import {
 	DEVELOPER,
 	PROVIDER_SETTINGS,
 	makeConnections,
+	createSubscription,
+	deleteSubscription,
+	listSubscriptions,
 	makeCoverage,
+	makeDeliveries,
+	makeEventTypes,
 	makeDataSummary,
 	makeDataTimeline,
 	makeRecentRuns,
@@ -29,6 +34,8 @@ import {
 	workoutTypes,
 	resetActivity,
 	resetCycles,
+	resetWebhooks,
+	updateSubscription,
 	resetSleep,
 	resetWorkouts
 } from './fixtures';
@@ -74,6 +81,7 @@ const server = Bun.serve({
 			resetSleep();
 			resetActivity();
 			resetCycles();
+			resetWebhooks();
 			return new Response(null, { status: 204 });
 		}
 
@@ -109,6 +117,46 @@ const server = Bun.serve({
 			// consents, so handing it straight back walks the same path.
 			const redirectUri = new URL(request.url).searchParams.get('redirect_uri') ?? '/';
 			return json({ authorization_url: redirectUri, state: 'state-1' });
+		}
+
+		if (pathname === '/api/v1/webhooks/event-types') {
+			return json(makeEventTypes());
+		}
+
+		const testMatch = pathname.match(/^\/api\/v1\/webhooks\/endpoints\/([^/]+)\/test$/);
+		if (testMatch && request.method === 'POST') {
+			const { event_type } = await request.json();
+			// The real thing queues it, so a delivery does not appear at once.
+			return json({ message: 'Test event sent successfully.', message_id: `msg_${event_type}` });
+		}
+
+		const attemptsMatch = pathname.match(/^\/api\/v1\/webhooks\/endpoints\/([^/]+)\/attempts$/);
+		if (attemptsMatch) {
+			return json(makeDeliveries(new URL(request.url).searchParams));
+		}
+
+		const endpointMatch = pathname.match(/^\/api\/v1\/webhooks\/endpoints\/([^/]+)$/);
+		if (endpointMatch) {
+			if (request.method === 'DELETE') {
+				return deleteSubscription(endpointMatch[1])
+					? new Response(null, { status: 204 })
+					: json({ detail: 'Not found' }, 404);
+			}
+			if (request.method === 'PATCH') {
+				const updated = updateSubscription(endpointMatch[1], await request.json());
+				return updated ? json(updated) : json({ detail: 'Not found' }, 404);
+			}
+		}
+
+		if (pathname === '/api/v1/webhooks/endpoints') {
+			if (request.method === 'POST') {
+				const body = await request.json();
+				if (!String(body.url ?? '').startsWith('https://')) {
+					return json({ detail: 'Webhook URL must use HTTPS' }, 422);
+				}
+				return json(createSubscription(body), 201);
+			}
+			return json(listSubscriptions());
 		}
 
 		if (pathname === '/api/v1/meta/coverage') {

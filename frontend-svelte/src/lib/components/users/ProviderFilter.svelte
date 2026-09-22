@@ -5,6 +5,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import ToggleChip from '$lib/components/ui/ToggleChip.svelte';
+	import { toggled } from '$lib/utils/collect';
 	import type { Provider } from '$lib/server/providers';
 	import { usersQueryHref, withUsersQuery, type UsersQuery } from '$lib/users/query';
 
@@ -21,9 +22,7 @@
 	}
 
 	function toggle(provider: string) {
-		draft = draft.includes(provider)
-			? draft.filter((name) => name !== provider)
-			: [...draft, provider].sort();
+		draft = toggled(draft, provider).sort();
 	}
 
 	function apply() {
@@ -43,7 +42,7 @@
 	<SlidersHorizontal size={15} aria-hidden="true" />
 	Provider
 	{#if query.providers.length > 0}
-		<Badge tone="info" class="px-1.5 tabular-nums">{query.providers.length}</Badge>
+		<Badge tone="primary" class="px-1.5 tabular-nums">{query.providers.length}</Badge>
 	{/if}
 </Button>
 

@@ -102,6 +102,8 @@ test.describe('mobile', () => {
 		'/dashboard',
 		'/users',
 		'/coverage',
+		'/webhooks',
+		'/webhooks/ep_live/deliveries',
 		`/users/${CONNECTED}`,
 		`/users/${CONNECTED}/data`,
 		`/users/${CONNECTED}/scores`

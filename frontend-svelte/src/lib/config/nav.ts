@@ -16,6 +16,8 @@ export type NavItem = {
 	/** Shown directly in the mobile bottom bar; the rest live behind "More". */
 	primary: boolean;
 	external?: boolean;
+	/** Marks a destination whose API is still moving under it. */
+	beta?: boolean;
 };
 
 /**
@@ -27,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
 	{ label: 'Dashboard', href: resolve('/dashboard'), icon: House, primary: true },
 	{ label: 'Users', href: resolve('/users'), icon: Users, primary: true },
 	{ label: 'Syncs', href: resolve('/syncs'), icon: RefreshCw, primary: true },
-	{ label: 'Webhooks', href: resolve('/webhooks'), icon: Webhook, primary: true },
+	{ label: 'Webhooks', href: resolve('/webhooks'), icon: Webhook, primary: true, beta: true },
 	{ label: 'Data Coverage', href: resolve('/coverage'), icon: LayoutGrid, primary: false },
 	{ label: 'Settings', href: resolve('/settings'), icon: Settings, primary: false },
 	{

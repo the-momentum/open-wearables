@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { TINY } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
 	import type { UserConnection } from '$lib/users/types';
 
@@ -28,7 +29,8 @@
 			<li
 				title="{connection.provider}: {connection.status}"
 				class={cn(
-					'rounded-md border px-1.5 py-0.5 text-[0.6875rem] leading-none capitalize',
+					'rounded-md border px-1.5 py-0.5 leading-none capitalize',
+					TINY,
 					STATUS_CLASS[connection.status]
 				)}
 			>

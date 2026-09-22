@@ -1203,3 +1203,140 @@ export const makeCoverage = () => ({
 	menstrual_cycle_fields: [{ code: 'cycle_length', providers: ['garmin'] }],
 	health_scores: [{ code: 'sleep', description: '', providers: ['garmin', 'oura', 'whoop'] }]
 });
+
+/** Mirrors `EventTypeResponse`: a flat list where a group carries its children. */
+export const makeEventTypes = () => [
+	{ name: 'connection.created', description: 'A user linked a provider.', child_events: null },
+	{ name: 'connection.revoked', description: 'A user unlinked a provider.', child_events: null },
+	{ name: 'sync.completed', description: 'A sync run finished.', child_events: null },
+	{ name: 'workout.created', description: 'A workout was stored.', child_events: null },
+	{ name: 'sleep.created', description: 'A sleep session was stored.', child_events: null },
+	{
+		name: 'heart_rate.created',
+		description: 'Any heart-rate series arrived.',
+		child_events: [
+			'series.heart_rate',
+			'series.resting_heart_rate',
+			'series.heart_rate_recovery_one_minute'
+		]
+	},
+	{ name: 'series.heart_rate', description: 'Intraday heart rate.', child_events: null },
+	{ name: 'series.resting_heart_rate', description: 'Resting heart rate.', child_events: null },
+	{
+		name: 'series.heart_rate_recovery_one_minute',
+		description: 'One of the longest names the catalogue actually carries.',
+		child_events: null
+	}
+];
+
+const buildSubscriptions = () => [
+	{
+		id: 'ep_live',
+		url: 'https://api.acme.test/hooks/openwearables',
+		description: 'Production listener',
+		filter_types: ['workout.created', 'sleep.created', 'series.heart_rate'],
+		user_id: null
+	},
+	{
+		id: 'ep_bare',
+		url: 'https://hooks.example.test/all',
+		description: null,
+		filter_types: [],
+		user_id: '00000000-0000-4000-8000-000000000007'
+	}
+];
+
+let SUBSCRIPTIONS = buildSubscriptions();
+
+export const resetWebhooks = () => {
+	SUBSCRIPTIONS = buildSubscriptions();
+};
+
+export const listSubscriptions = () => SUBSCRIPTIONS;
+
+export const createSubscription = (body: Record<string, unknown>) => {
+	const created = {
+		id: `ep_${SUBSCRIPTIONS.length + 1}`,
+		url: String(body.url ?? ''),
+		description: (body.description as string) ?? null,
+		filter_types: (body.filter_types as string[]) ?? [],
+		user_id: (body.user_id as string) ?? null
+	};
+	SUBSCRIPTIONS.unshift(created);
+	return created;
+};
+
+export const updateSubscription = (id: string, body: Record<string, unknown>) => {
+	const found = SUBSCRIPTIONS.find((entry) => entry.id === id);
+	if (!found) return null;
+	Object.assign(found, {
+		url: String(body.url ?? found.url),
+		description: (body.description as string) ?? null,
+		filter_types: (body.filter_types as string[]) ?? [],
+		user_id: (body.user_id as string) ?? null
+	});
+	return found;
+};
+
+export const deleteSubscription = (id: string) => {
+	const index = SUBSCRIPTIONS.findIndex((entry) => entry.id === id);
+	if (index === -1) return false;
+	SUBSCRIPTIONS.splice(index, 1);
+	return true;
+};
+
+/**
+ * Delivery attempts, faithful to what Svix 2.x actually returns: the response
+ * body and the event payload are behind a `with_content` flag the backend does
+ * not set, so they arrive **empty** however the delivery went.
+ */
+const buildDeliveries = () =>
+	// More than one page of twenty, so stepping through them is exercised.
+	Array.from({ length: 45 }, (_, index) => {
+		const failed = index % 5 === 2;
+		return {
+			id: `atmpt_${index}`,
+			endpointId: 'ep_live',
+			msgId: `msg_${index}`,
+			url: 'https://api.acme.test/hooks/openwearables',
+			// Empty, as the live service returns it today.
+			response: index === 0 ? '{"ok":true}' : '',
+			responseStatusCode: failed ? 500 : 200,
+			responseDurationMs: 40 + index * 7,
+			status: failed ? 2 : 0,
+			statusText: failed ? 'Internal Server Error' : null,
+			triggerType: failed ? 1 : 0,
+			timestamp: new Date(Date.now() - index * 3_600_000).toISOString(),
+			msg: {
+				id: `msg_${index}`,
+				eventType: index % 3 === 0 ? 'workout.created' : 'series.heart_rate',
+				eventId: null,
+				timestamp: new Date(Date.now() - index * 3_600_000).toISOString(),
+				payload: index === 0 ? { event: 'workout.created', user_id: 'abc' } : {}
+			}
+		};
+	});
+
+export const makeDeliveries = (query: URLSearchParams) => {
+	const status = query.get('status');
+	const types = query.getAll('event_types');
+
+	const matching = buildDeliveries().filter((attempt) => {
+		if (status !== null && String(attempt.status) !== status) return false;
+		return types.length === 0 || types.includes(attempt.msg.eventType);
+	});
+
+	const limit = Number(query.get('limit') ?? 20);
+	const from = Number(query.get('iterator') ?? 0);
+	const data = matching.slice(from, from + limit);
+	const done = from + limit >= matching.length;
+
+	return {
+		data,
+		done,
+		iterator: done ? null : String(from + limit),
+		// Svix hands one out going back too, so the mock does: without it the
+		// back arrow would test as dead when the real thing is not.
+		prevIterator: from > 0 ? String(Math.max(from - limit, 0)) : null
+	};
+};

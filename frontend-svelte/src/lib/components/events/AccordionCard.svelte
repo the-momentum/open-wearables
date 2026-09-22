@@ -26,16 +26,31 @@
 	const panelId = $props.id();
 
 	/**
-	 * The metrics open the card too, but they are text first: dragging across a
-	 * value to copy it ends in a click, and that must not count as one.
+	 * The whole card opens it, not just the header: the padding and the gaps
+	 * between the rows are card too, and a click that lands there and does
+	 * nothing reads as a broken control.
+	 *
+	 * Two things are not that click. A control the card carries — an edit button,
+	 * a link to somewhere else — does its own job and must not fold the card
+	 * underneath it. And a card is text first: dragging across a value to copy it
+	 * ends in a click, which must not count as one either.
 	 */
-	function toggleUnlessSelecting() {
+	function toggleUnlessBusy(event: MouseEvent) {
+		const target = event.target as Element | null;
+		const control = target?.closest('a, button, input, select, textarea, label');
+
+		if (control && !control.matches('[data-accordion-toggle]')) return;
 		if (!document.getSelection()?.toString()) expanded = !expanded;
 	}
 </script>
 
+<!-- The heading button below is what assistive tech and the keyboard drive; this
+     handler only widens the pointer target to the whole card. -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <article
-	class="flex flex-col gap-3.5 rounded-xl border bg-surface p-4 transition-colors
+	onclick={toggleUnlessBusy}
+	class="flex cursor-pointer flex-col gap-3.5 rounded-xl border bg-surface p-4 transition-colors
 		{expanded ? 'border-primary/30' : 'border-border'}"
 >
 	<!-- A heading wrapping the toggle is the accordion pattern: the card keeps a
@@ -44,7 +59,7 @@
 	<h3>
 		<button
 			type="button"
-			onclick={() => (expanded = !expanded)}
+			data-accordion-toggle
 			aria-expanded={expanded}
 			aria-controls={panelId}
 			class="group flex w-full cursor-pointer items-start gap-3 text-left"
@@ -80,13 +95,15 @@
 		</button>
 	</h3>
 
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div onclick={toggleUnlessSelecting} class="cursor-pointer">
-		{@render metrics()}
-	</div>
+	<div>{@render metrics()}</div>
 
+	<!-- The panel is its own thing: selecting a value or following a link inside
+	     it must not fold the card away underneath. -->
 	{#if expanded}
-		<div id={panelId}>{@render details()}</div>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div id={panelId} class="cursor-auto" onclick={(event) => event.stopPropagation()}>
+			{@render details()}
+		</div>
 	{/if}
 </article>

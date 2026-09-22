@@ -8,8 +8,9 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
-	import { byGroup, capabilities, filterCapabilities, providerTotals } from '$lib/coverage/rows';
+	import { capabilities, filterCapabilities, providerTotals } from '$lib/coverage/rows';
 	import { providerLabel } from '$lib/providers/labels';
+	import { grouped } from '$lib/utils/collect';
 	import { formatShare } from '$lib/utils/format';
 	import { withParams } from '$lib/utils/url';
 	import type { PageData } from './$types';
@@ -58,11 +59,11 @@
 				/>
 			</Card>
 		{:else}
-			{#each byGroup(shown) as group (group.group)}
+			{#each grouped(shown, (row) => row.group) as group (group.key)}
 				<section class="flex flex-col gap-1">
-					<Caption>{group.group}</Caption>
+					<Caption>{group.key}</Caption>
 					<div class="divide-y divide-border">
-						{#each group.rows as row (row.code)}
+						{#each group.items as row (row.code)}
 							<CapabilityRow {row} {total} labelFor={label} />
 						{/each}
 					</div>

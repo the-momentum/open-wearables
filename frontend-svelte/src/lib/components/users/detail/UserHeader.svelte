@@ -1,8 +1,8 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import BackLink from '$lib/components/ui/BackLink.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import DeleteUserDialog from '$lib/components/users/DeleteUserDialog.svelte';
 	import UserAvatar from '$lib/components/users/UserAvatar.svelte';
@@ -35,13 +35,7 @@
 </script>
 
 <div class="flex flex-col gap-3">
-	<a
-		href={resolve('/users')}
-		class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-	>
-		<ArrowLeft size={16} aria-hidden="true" />
-		Users
-	</a>
+	<BackLink href={resolve('/users')}>Users</BackLink>
 
 	<!-- No flex-wrap: the identity block is min-w-0 and shrinks instead, so the
 	     actions stay on the name's row rather than dropping to a line of their

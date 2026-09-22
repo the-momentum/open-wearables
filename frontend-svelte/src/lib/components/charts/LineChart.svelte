@@ -2,6 +2,7 @@
 	import { MICRO } from '$lib/components/ui/typography';
 	import { CHART_BOX, extent, linePath, scaleY, spanOf, type Line } from '$lib/charts/geometry';
 	import { seriesColour, unitLabel } from '$lib/timeseries/samples';
+	import { toggled } from '$lib/utils/collect';
 	import { formatNumber } from '$lib/utils/format';
 	import HoverReadout from './HoverReadout.svelte';
 	import SeriesLegend from './SeriesLegend.svelte';
@@ -50,7 +51,7 @@
 	let off = $state<string[]>([]);
 
 	function toggle(label: string) {
-		const next = off.includes(label) ? off.filter((entry) => entry !== label) : [...off, label];
+		const next = toggled(off, label);
 		// Turning the last one off leaves an empty frame, which reads as no data.
 		if (next.length < series.length) off = next;
 	}

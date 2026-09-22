@@ -1,4 +1,3 @@
-import { collect } from '$lib/utils/collect';
 import type { Coverage } from './types';
 
 export const LAYERS = {
@@ -58,10 +57,6 @@ export function filterCapabilities(rows: Capability[], filters: Filters): Capabi
 		return row.providers.includes(filters.provider) !== filters.missing;
 	});
 }
-
-/** In the order they arrived, which is the order the backend chose. */
-export const byGroup = (rows: Capability[]) =>
-	[...collect(rows, (row) => row.group).entries()].map(([group, own]) => ({ group, rows: own }));
 
 /** How many of the whole matrix each provider covers, richest first. */
 export function providerTotals(rows: Capability[]): Record<string, number> {
