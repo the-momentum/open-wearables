@@ -11445,6 +11445,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "welcome_dialog_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Welcome Dialog Seen At"
           }
         },
         "type": "object",
@@ -11505,6 +11517,18 @@
               }
             ],
             "title": "Password"
+          },
+          "welcome_dialog_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Welcome Dialog Seen At"
           }
         },
         "type": "object",
