@@ -8,8 +8,8 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.schemas.providers.apple.apple_xml import PresignedURLRequest
-from app.services.apple.apple_xml import presigned_url_service as presign_module
-from app.services.apple.apple_xml.presigned_url_service import PresignedURLService
+from app.services.providers.apple.apple_xml import presigned_url_service as presign_module
+from app.services.providers.apple.apple_xml.presigned_url_service import PresignedURLService
 
 _clients: dict[str, MagicMock | None] = {"internal": None, "public": None}
 

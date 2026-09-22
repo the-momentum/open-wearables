@@ -315,27 +315,33 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
         patch("boto3.client", return_value=mock_s3) as mock_boto3,
         patch("requests.Session") as mock_requests,
         patch.object(settings, "aws_bucket_name", "test-bucket"),
-        patch("app.services.apple.apple_xml.aws_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.apple.apple_xml.presigned_url_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.apple.apple_xml.multipart_upload_service.get_s3_client", return_value=mock_s3),
-        patch("app.services.apple.apple_xml.presigned_url_service.get_public_s3_client", return_value=mock_s3),
-        patch("app.services.apple.apple_xml.multipart_upload_service.get_public_s3_client", return_value=mock_s3),
+        patch("app.services.providers.apple.apple_xml.aws_service.get_s3_client", return_value=mock_s3),
+        patch("app.services.providers.apple.apple_xml.presigned_url_service.get_s3_client", return_value=mock_s3),
+        patch("app.services.providers.apple.apple_xml.multipart_upload_service.get_s3_client", return_value=mock_s3),
+        patch(
+            "app.services.providers.apple.apple_xml.presigned_url_service.get_public_s3_client", return_value=mock_s3
+        ),
+        patch(
+            "app.services.providers.apple.apple_xml.multipart_upload_service.get_public_s3_client", return_value=mock_s3
+        ),
         patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
         patch(
-            "app.services.apple.apple_xml.presigned_url_service.presigned_url_service.s3_client", mock_s3, create=True
-        ),
-        patch(
-            "app.services.apple.apple_xml.presigned_url_service.presigned_url_service.public_s3_client",
+            "app.services.providers.apple.apple_xml.presigned_url_service.presigned_url_service.s3_client",
             mock_s3,
             create=True,
         ),
         patch(
-            "app.services.apple.apple_xml.multipart_upload_service.multipart_upload_service.s3_client",
+            "app.services.providers.apple.apple_xml.presigned_url_service.presigned_url_service.public_s3_client",
             mock_s3,
             create=True,
         ),
         patch(
-            "app.services.apple.apple_xml.multipart_upload_service.multipart_upload_service.public_s3_client",
+            "app.services.providers.apple.apple_xml.multipart_upload_service.multipart_upload_service.s3_client",
+            mock_s3,
+            create=True,
+        ),
+        patch(
+            "app.services.providers.apple.apple_xml.multipart_upload_service.multipart_upload_service.public_s3_client",
             mock_s3,
             create=True,
         ),

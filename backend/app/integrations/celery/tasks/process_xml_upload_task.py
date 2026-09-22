@@ -18,7 +18,7 @@ from app.schemas.sync_status import (
     SyncStatus,
 )
 from app.services import event_record_service
-from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.providers.apple.apple_xml.xml_service import XMLService
 from app.services.sdk.sleep_service import handle_sleep_data
 from app.services.sync_status_service import (
     emit_sync_completed,

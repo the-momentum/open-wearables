@@ -15,9 +15,9 @@ from app.integrations.redis_client import get_redis_client
 from app.schemas.providers.apple.apple_xml import CompletedPart
 from app.schemas.sync_status import SyncScope, SyncSource, SyncStatus
 from app.services import event_record_service
-from app.services.apple.apple_xml.aws_service import get_s3_client
-from app.services.apple.apple_xml.multipart_upload_service import multipart_upload_service
-from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.providers.apple.apple_xml.aws_service import get_s3_client
+from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
+from app.services.providers.apple.apple_xml.xml_service import XMLService
 from app.services.sdk.sleep_service import handle_sleep_data
 from app.services.sync_status_service import (
     emit_sync_completed,
