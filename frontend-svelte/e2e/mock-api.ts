@@ -12,6 +12,7 @@ import {
 	makeDataTimeline,
 	makeRecentRuns,
 	makeSyncHistory,
+	makeSystemInfo,
 	deleteCycle,
 	deleteSleep,
 	makeActivity,
@@ -37,6 +38,8 @@ let USERS = makeUsers();
 let DISCONNECTED = new Set<string>();
 /** Holds the workouts summary query back, so a test can watch the page stream. */
 let SLOW_SUMMARY = false;
+/** Lets a test see what an untouched archive looks like on the dashboard. */
+let EMPTY_ARCHIVE = false;
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8787);
 
@@ -65,10 +68,16 @@ const server = Bun.serve({
 			USERS = makeUsers();
 			DISCONNECTED = new Set();
 			SLOW_SUMMARY = false;
+			EMPTY_ARCHIVE = false;
 			resetWorkouts();
 			resetSleep();
 			resetActivity();
 			resetCycles();
+			return new Response(null, { status: 204 });
+		}
+
+		if (pathname === '/__empty-archive') {
+			EMPTY_ARCHIVE = true;
 			return new Response(null, { status: 204 });
 		}
 
@@ -99,6 +108,12 @@ const server = Bun.serve({
 			// consents, so handing it straight back walks the same path.
 			const redirectUri = new URL(request.url).searchParams.get('redirect_uri') ?? '/';
 			return json({ authorization_url: redirectUri, state: 'state-1' });
+		}
+
+		if (pathname === '/api/v1/dashboard/stats') {
+			const info = makeSystemInfo();
+			if (EMPTY_ARCHIVE) info.data_points.archived = 0;
+			return json(info);
 		}
 
 		if (pathname === '/api/v1/oauth/providers') {

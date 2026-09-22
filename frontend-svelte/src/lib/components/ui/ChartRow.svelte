@@ -31,7 +31,10 @@
 	<div class="min-w-0 flex-1">{@render children()}</div>
 
 	<span
-		class={cn('w-12 shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:w-14', shift)}
+		class={cn(
+			'w-14 shrink-0 text-right text-xs whitespace-nowrap text-muted-foreground tabular-nums sm:w-20',
+			shift
+		)}
 	>
 		{value}
 	</span>

@@ -96,9 +96,15 @@ test.describe('mobile', () => {
 	test('content clears the fixed bottom bar', async ({ page }) => {
 		await page.goto('/dashboard');
 
+		// Scrolled to the end, which is the only place a fixed bar can cover
+		// anything. Comparing the unscrolled box only ever tested that the page
+		// was shorter than the window, which stopped being true the moment a real
+		// page replaced the placeholder.
+		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
 		const contentBottom = await page
 			.getByRole('main')
-			.evaluate((el) => el.getBoundingClientRect().bottom);
+			.evaluate((el) => (el.lastElementChild ?? el).getBoundingClientRect().bottom);
 		const navTop = await page
 			.getByRole('navigation', { name: 'Primary' })
 			.evaluate((el) => el.getBoundingClientRect().top);

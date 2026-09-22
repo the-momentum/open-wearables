@@ -31,6 +31,27 @@ export function formatDecimal(value: number | null, digits = 1): string | null {
 export const showDecimal = (value: number | null, digits = 1): string =>
 	formatDecimal(value, digits) ?? DASH;
 
+/**
+ * en-US, against the en-GB the rest of this file uses: en-GB compact renders
+ * "2.3bn" and a lowercase "1m", and an "m" beside a metric reads as a unit.
+ */
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
+
+/**
+ * A big aggregate at a glance: 8_432 → "8.4K", 1_450_000 → "1.5M". Rolls K → M →
+ * B at the boundary, so 999_999 is "1M" and never "1000K". Anything under a
+ * thousand is shown whole.
+ *
+ * For counts, not for quantities: a step count or a distance has a precision
+ * worth keeping, and `formatNumber` is what keeps it.
+ */
+export const formatCompact = (value: number | null): string =>
+	value === null ? DASH : compact.format(value);
+
+/** A count and the share of a whole it makes up: "480 · 53%". */
+export const formatShare = (value: number, whole: number): string =>
+	`${formatNumber(value)} · ${whole > 0 ? Math.round((value / whole) * 100) : 0}%`;
+
 /** The unit a cycle, a trend and an average are all counted in. */
 export const formatDays = (value: number): string =>
 	`${showDecimal(value)} ${value === 1 ? 'day' : 'days'}`;

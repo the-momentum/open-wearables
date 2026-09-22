@@ -4,10 +4,11 @@ Ground-up rewrite of the React dashboard in SvelteKit. Lives on the
 `feat/svelte-frontend` branch and runs alongside the existing frontend until it
 reaches parity; only then does `frontend/` get deleted.
 
-**Status:** the shell, the `/users` list, the user detail page and **all seven**
-of its data tabs are built — Data Summary, Workouts, Activity, Sleep, Body,
-Scores and Women's Health. Dashboard, Syncs, Webhooks, Coverage and Settings are
-still placeholders. Read "Current state" before assuming anything exists.
+**Status:** the shell, the `/users` list, the user detail page with **all seven**
+of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
+Women's Health — and the Dashboard are built. Syncs, Webhooks, Coverage and
+Settings are still placeholders. Read "Current state" before assuming anything
+exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
 
@@ -1743,6 +1744,120 @@ predicted. Two things to get right when writing more:
   Put it anywhere else and the bar draws ovulation in the wrong half.
 
 The e2e fixture builds the same shape, so it is the one to read.
+
+## Dashboard
+
+The landing page, and the one where a query written carelessly is paid for by
+every client with a lot of data. The rule here is that **nothing on this page
+grows with how much data a client has**.
+
+### One cached aggregate, and what that means for the numbers
+
+`GET /stats` answers the whole page. The backend deliberately does not count
+`data_point_series` on request: the total is served from Redis, stale while it
+revalidates, and falls back to the planner's `reltuples` on a cold cache, with
+the exact recount done in a Celery task. The archive figure is always a planner
+estimate.
+
+So two of the five figures are **approximate, and the response does not say
+which**. That decides how they are shown:
+
+- **Users and active connections** are cheap exact counts of small tables, so
+  they are spelled out — `1,247`.
+- **Data points and event records** are aggregates, one of them an estimate, so
+  they are compact — `1.5M`. Seven digits would claim a precision the number has
+  not got, and would not fit the tile either.
+
+The data-points tile is marked `estimated` beside its figure, because a number
+set in that size invites the reader to believe every digit of it.
+
+**A tile's sub-metrics are always rendered, zero included.** The first version
+put the archive count in a proportion bar that drops empty parts, so an empty
+archive read as no archive at all. "Archived 0" is a fact; a missing row is not.
+
+### What was left behind
+
+The React dashboard made three requests. Two were cheap; the third asked
+`/users?sort_by=last_synced_at`, and that sort is resolved in the repository as
+a correlated `SELECT max(last_synced_at) FROM user_connection WHERE user_id =
+user.id` in the ORDER BY of the outer query — evaluated for every user row
+before the LIMIT.
+
+Measured on 200,000 synthetic users with 72% of them connected, returning six
+rows:
+
+| ORDER BY              | time   | buffers | index searches |
+| --------------------- | ------ | ------- | -------------- |
+| `created_at`          | 9 ms   | 1,274   | —              |
+| `max(last_synced_at)` | 370 ms | 745,262 | 200,000        |
+
+The plan says `loops=200000` out loud. Neither sort is free — **`user.created_at`
+has no index**, so both are a sequential scan and a top-N heapsort — but one of
+them adds an index lookup per user row on top of that, and it is forty times
+slower for it.
+
+This page does not ask for it. "Newest users" sorts by `created_at`, and the
+recently-synced list is gone rather than replaced with something equally
+expensive. `/sync/runs` looks like a cheap substitute because it is Redis-backed,
+but it `SCAN`s for every user with recent activity and merges their runs in
+Python, which is a fan-out of its own.
+
+The three requests it does make are the cached aggregate, one indexed page of
+users, and the static provider catalogue. None of them touches a user's data.
+
+### What else it shows without asking for anything
+
+Two things were already in hand and going unused:
+
+- **The last sync per listed user.** `/users` computes it in a lateral summary
+  **for the rows on the page**, which is a different query from ordering every
+  user by it. So the six newest carry "19 days ago, via Suunto" for free, and
+  the expensive global sort still is not made.
+- **Each provider's share of live connections.** `top_providers` and
+  `active_conn` are both in the response; one division turns "480" into "480 ·
+  53%", which is the difference between a number and a proportion.
+
+One idea that does **not** work: naming the providers that are enabled but
+unused. `top_providers` is capped at six and only lists providers with at least
+one active connection, so a provider missing from it might have none — or might
+be seventh. The response cannot tell the two apart.
+
+### Shared out of it
+
+| Piece                                | Why it moved                                                                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dashboard/stats.ts` `statTiles`     | forty lines of tile content sat in the page; as a function it is testable, and the exact-versus-compact rule lives with the thing it governs |
+| `format.ts` `formatShare`            | "480 · 53%" was written twice, once with `toFixed` and once with `Math.round`                                                                |
+| `UserIdentity` `secondary`           | the dashboard row hand-rolled avatar + name and lost the "Unnamed" case the shared one already handled                                       |
+| `charts/ShareBar`                    | was `summary/ProviderShare`, typed to one summary's shape; it is a stacked proportion with a legend, and the dashboard needed the same       |
+| `CountRanking` `labelFor` / `format` | a provider has a catalogue name rather than a humanised slug, and a count can carry its share                                                |
+
+`ChartRow`'s value column went from `w-12 sm:w-14` to `w-14 sm:w-20`, because a
+count and its share no longer fit and wrapped onto two lines. It is one constant
+for a reason — the heatmap's axis row has to line up with the rows under it — so
+widening it moves both together.
+
+### The mock will happily answer a path that does not exist
+
+This page shipped calling `/api/v1/stats`, because the route is declared
+`@router.get("/stats")` — and mounted with `prefix="/dashboard"`. Every test
+passed: the e2e mock was written from the same misreading, so it answered the
+wrong path too. Only the real backend said 404.
+
+[endpoints.spec.ts](src/lib/server/endpoints.spec.ts) now reads every
+`/api/v1/...` literal out of `src/lib/server/` and checks it against
+`docs/openapi.json`, which pre-commit regenerates from the app. A router's
+decorator is half the path; the prefix it is mounted under is the other half.
+
+### `formatCompact` is pinned to en-US on purpose
+
+The rest of this codebase formats in en-GB. Compact notation there renders
+`2.3bn` and a lowercase `1m`, and an "m" beside a metric reads as a unit. en-US
+gives `1.5M` and `2.3B`. `Intl` also rolls the boundary correctly — 999,999 is
+`1M`, never `1000K` — which a hand-rolled divide-by-a-million does not.
+
+Compact is for counts. A step count, a distance or a duration has a precision
+worth keeping, and `formatNumber` keeps it.
 
 ## The pairing pages are public
 

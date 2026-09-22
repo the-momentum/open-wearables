@@ -1,4 +1,4 @@
-import type { DataSummary } from './types';
+import type { DataSummary, ProviderDataCount } from './types';
 
 /** The figures above the fold; per-type counts come from the timelines. */
 export type Totals = Pick<
@@ -19,3 +19,19 @@ export function narrowToProvider(summary: DataSummary, provider: string): Totals
 		total_sleep_events: only?.sleep_count ?? 0
 	};
 }
+
+/**
+ * Every kind of record a provider sent, so the bar answers "where does the data
+ * come from" rather than "where do data points come from".
+ */
+export const providerParts = (
+	providers: ProviderDataCount[],
+	labelFor: (provider: string) => string
+) =>
+	providers
+		.map((entry) => ({
+			key: entry.provider,
+			label: labelFor(entry.provider),
+			value: entry.data_points + entry.workout_count + entry.sleep_count
+		}))
+		.sort((a, b) => b.value - a.value);

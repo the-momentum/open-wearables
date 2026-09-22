@@ -1,10 +1,20 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { fullName } from '$lib/users/avatar';
+	import { DASH } from '$lib/utils/format';
 	import type { User } from '$lib/users/types';
 	import UserAvatar from './UserAvatar.svelte';
 
-	let { user, overlay = false }: { user: User; overlay?: boolean } = $props();
+	let {
+		user,
+		overlay = false,
+		secondary
+	}: {
+		user: User;
+		overlay?: boolean;
+		/** Under the name, where the email is not what the list is about. */
+		secondary?: string;
+	} = $props();
 
 	const name = $derived(fullName(user));
 </script>
@@ -26,6 +36,8 @@
 				<span class="text-muted-foreground/70 italic">Unnamed</span>
 			{/if}
 		</a>
-		<span class="block truncate text-xs text-muted-foreground">{user.email ?? '—'}</span>
+		<span class="block truncate text-xs text-muted-foreground">
+			{secondary ?? user.email ?? DASH}
+		</span>
 	</div>
 </div>

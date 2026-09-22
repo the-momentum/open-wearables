@@ -1136,3 +1136,27 @@ export const makeCycles = (query: URLSearchParams) => {
 		}
 	};
 };
+
+/**
+ * Mirrors `SystemInfoResponse`. The numbers are deliberately large: the tiles
+ * compact anything past a thousand, and a fixture in the hundreds would never
+ * exercise it.
+ */
+export const makeSystemInfo = () => ({
+	total_users: { count: 1247 },
+	active_conn: { count: 902 },
+	// Both approximate in the real thing — a cached count with a planner estimate
+	// behind it, and the archive count straight from planner statistics.
+	data_points: { count: 1_452_310, archived: 318_004 },
+	event_records: { count: 20_418, workouts: 8432, sleep: 11_766, menstrual_cycles: 220 },
+	connections_coverage: {
+		users_with_active: 902,
+		users_with_multi_active: 214,
+		top_providers: [
+			{ provider: 'garmin', count: 480 },
+			{ provider: 'oura', count: 265 },
+			{ provider: 'whoop', count: 112 },
+			{ provider: 'suunto', count: 45 }
+		]
+	}
+});

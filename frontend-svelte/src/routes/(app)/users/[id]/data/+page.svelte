@@ -3,12 +3,12 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { CAPTION } from '$lib/components/ui/typography';
 	import Heatmap from '$lib/components/summary/Heatmap.svelte';
-	import ProviderShare from '$lib/components/summary/ProviderShare.svelte';
+	import ShareBar from '$lib/components/charts/ShareBar.svelte';
 	import FilterBar from '$lib/components/filters/FilterBar.svelte';
 	import SummaryTotals from '$lib/components/summary/SummaryTotals.svelte';
 	import TimelinePanel from '$lib/components/summary/TimelinePanel.svelte';
 	import { providerLabel } from '$lib/providers/labels';
-	import { narrowToProvider } from '$lib/summary/narrow';
+	import { narrowToProvider, providerParts } from '$lib/summary/narrow';
 	import { plottable } from '$lib/filters/period';
 	import { humanise } from '$lib/utils/text';
 	import { withParams } from '$lib/utils/url';
@@ -44,7 +44,7 @@
 	>
 		<div class="flex flex-col gap-5">
 			<SummaryTotals summary={totals} />
-			<ProviderShare providers={data.summary.by_provider} labelFor={label} selected={chosen} />
+			<ShareBar parts={providerParts(data.summary.by_provider, label)} selected={chosen} />
 
 			<!-- Providers get a heatmap and never a ranking: the share bar above
 			     already ranks them, and one day of one provider is a single bar. -->

@@ -1,12 +1,13 @@
 <script lang="ts">
 	import ChartRow from '$lib/components/ui/ChartRow.svelte';
+	import { formatNumber } from '$lib/utils/format';
 	import { heatShade } from '$lib/summary/shades';
 	import type { Row } from '$lib/summary/timeline';
 
 	let { row, label, max, unit }: { row: Row; label: string; max: number; unit: string } = $props();
 </script>
 
-<ChartRow {label} value={row.total} hoverable>
+<ChartRow {label} value={formatNumber(row.total)} hoverable>
 	<!-- Contiguous, not gapped: 90 columns of 2px gaps come to 178px, most of a
 	     phone. Cells flex, so the strip fits any width and the ramp separates them. -->
 	<div
