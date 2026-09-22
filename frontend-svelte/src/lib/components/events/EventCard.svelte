@@ -2,7 +2,7 @@
 	import type { Component, Snippet } from 'svelte';
 	import ProviderMark from '$lib/components/providers/ProviderMark.svelte';
 	import { deviceIcon } from '$lib/providers/devices';
-	import type { WorkoutSource } from '$lib/workouts/types';
+	import type { SourceMetadata } from '$lib/events/types';
 	import AccordionCard from './AccordionCard.svelte';
 
 	let {
@@ -15,7 +15,7 @@
 		details
 	}: {
 		icon: Component;
-		source: WorkoutSource;
+		source: SourceMetadata;
 		providerLabel: string;
 		title: Snippet;
 		when: Snippet;

@@ -31,6 +31,10 @@ export function formatDecimal(value: number | null, digits = 1): string | null {
 export const showDecimal = (value: number | null, digits = 1): string =>
 	formatDecimal(value, digits) ?? DASH;
 
+/** The unit a cycle, a trend and an average are all counted in. */
+export const formatDays = (value: number): string =>
+	`${showDecimal(value)} ${value === 1 ? 'day' : 'days'}`;
+
 export const formatNumber = (value: number | null, unit = ''): string =>
 	value === null ? DASH : `${Math.round(value).toLocaleString('en-GB')}${unit}`;
 
@@ -46,6 +50,13 @@ const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: '
 
 const day = new Intl.DateTimeFormat('en-GB', {
 	weekday: 'short',
+	day: 'numeric',
+	month: 'short',
+	year: 'numeric',
+	timeZone: 'UTC'
+});
+
+const date = new Intl.DateTimeFormat('en-GB', {
 	day: 'numeric',
 	month: 'short',
 	year: 'numeric',
@@ -91,6 +102,15 @@ export function localDayKey(iso: string, zoneOffset: string | null): string {
 export function formatLocalDay(iso: string, zoneOffset: string | null): string {
 	const date = inZone(iso, zoneOffset);
 	return date ? day.format(date) : DASH;
+}
+
+/**
+ * A calendar date with no weekday, for a record measured in days rather than
+ * hours — where which weekday it fell on says nothing.
+ */
+export function formatLocalDate(iso: string, zoneOffset: string | null): string {
+	const at = inZone(iso, zoneOffset);
+	return at ? date.format(at) : DASH;
 }
 
 export type LocalRange = {

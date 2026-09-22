@@ -12,10 +12,12 @@ import {
 	makeDataTimeline,
 	makeRecentRuns,
 	makeSyncHistory,
+	deleteCycle,
 	deleteSleep,
 	makeActivity,
 	makeBody,
 	deleteWorkout,
+	makeCycles,
 	makeScores,
 	makeSleep,
 	makeUsers,
@@ -24,6 +26,7 @@ import {
 	makeWorkouts,
 	workoutTypes,
 	resetActivity,
+	resetCycles,
 	resetSleep,
 	resetWorkouts
 } from './fixtures';
@@ -65,6 +68,7 @@ const server = Bun.serve({
 			resetWorkouts();
 			resetSleep();
 			resetActivity();
+			resetCycles();
 			return new Response(null, { status: 204 });
 		}
 
@@ -156,12 +160,17 @@ const server = Bun.serve({
 		}
 
 		const eventMatch = pathname.match(
-			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep)\/([^/]+)$/
+			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep|menstrual-cycles)\/([^/]+)$/
 		);
 		if (eventMatch && request.method === 'DELETE') {
-			const gone =
-				eventMatch[2] === 'workouts' ? deleteWorkout(eventMatch[3]) : deleteSleep(eventMatch[3]);
-			return gone ? new Response(null, { status: 204 }) : json({ detail: 'Not found' }, 404);
+			const remove = {
+				workouts: deleteWorkout,
+				sleep: deleteSleep,
+				'menstrual-cycles': deleteCycle
+			}[eventMatch[2]]!;
+			return remove(eventMatch[3])
+				? new Response(null, { status: 204 })
+				: json({ detail: 'Not found' }, 404);
 		}
 
 		const detailMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)(\/.+)?$/);
@@ -239,6 +248,14 @@ const server = Bun.serve({
 						connected
 							? makeScores(new URL(request.url).searchParams)
 							: { data: [], pagination: { total_count: 0, has_more: false } }
+					);
+				case '/events/menstrual-cycles':
+					// Gated like the other data endpoints, and only for the user the
+					// detail route marks as having this data.
+					return json(
+						user.first_name === 'Zofia'
+							? makeCycles(new URL(request.url).searchParams)
+							: { data: [], pagination: { has_more: false, total_count: 0 } }
 					);
 				case '/events/sleep':
 					return json(makeSleep(new URL(request.url).searchParams));

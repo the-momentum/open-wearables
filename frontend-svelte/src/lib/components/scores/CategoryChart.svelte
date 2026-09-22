@@ -3,7 +3,7 @@
 	import { MICRO } from '$lib/components/ui/typography';
 	import { categoryLabel } from '$lib/scores/categories';
 	import type { CategoryTrend } from '$lib/scores/trends';
-	import { formatLocalDay, showDecimal } from '$lib/utils/format';
+	import { formatDays, formatLocalDay, showDecimal } from '$lib/utils/format';
 
 	let {
 		trend,
@@ -17,7 +17,7 @@
 		colourFor: (provider: string) => string;
 	} = $props();
 
-	const days = $derived(trend.days === 1 ? '1 day' : `${trend.days} days`);
+	const days = $derived(formatDays(trend.days));
 </script>
 
 <!-- Framed like a tile, because it stands where the tiles were: one category at

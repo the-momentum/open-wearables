@@ -1,4 +1,4 @@
-import type { WorkoutSource } from '$lib/workouts/types';
+import type { SourceMetadata } from '$lib/events/types';
 
 /** Mirrors backend `IntensityMinutes` — minutes in each heart-rate band. */
 export type IntensityMinutes = {
@@ -21,7 +21,7 @@ export type HeartRateStats = {
  */
 export type ActivityDay = {
 	date: string;
-	source: WorkoutSource;
+	source: SourceMetadata;
 	steps: number | null;
 	distance_meters: number | null;
 	floors_climbed: number | null;

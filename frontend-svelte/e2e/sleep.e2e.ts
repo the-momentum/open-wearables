@@ -4,6 +4,15 @@ import { signIn } from './support';
 const USER = '00000000-0000-4000-8000-000000000007';
 const SLEEP = `/users/${USER}/sleep`;
 
+/**
+ * The fixtures are built relative to today, so the newest row is always today's.
+ * Spelling a weekday or a date into the assertion made these tests pass only on
+ * the day they were written.
+ */
+const today = new Date();
+const named = (options: Intl.DateTimeFormatOptions) =>
+	new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' }).format(today);
+
 test.beforeEach(async ({ page, request }) => {
 	await request.post('http://localhost:8787/__reset');
 	await signIn(page);
@@ -19,7 +28,8 @@ test('lists sessions newest first, dated by the morning they ended', async ({ pa
 	// woken up in sits under it — which is how anyone looks for "last night".
 	const first = cards.first().getByRole('heading');
 	await expect(first).toContainText('Night sleep');
-	await expect(first).toContainText('Mon, 21 Sept 2026');
+	await expect(first).toContainText(named({ weekday: 'short' }));
+	await expect(first).toContainText(named({ day: 'numeric', month: 'short', year: 'numeric' }));
 	// Bedtime and wake time read as two times, not as one grey run of characters.
 	await expect(first).toContainText('00:40');
 	await expect(first).toContainText('08:20');

@@ -1,12 +1,9 @@
 import BedDouble from '@lucide/svelte/icons/bed-double';
 import Gauge from '@lucide/svelte/icons/gauge';
-import { toFieldGroups, type GroupSpec } from '$lib/events/fields';
+import { maybe, toFieldGroups, type GroupSpec } from '$lib/events/fields';
 import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
 import { formatDuration, formatNumber } from '$lib/utils/format';
 import type { SleepSession } from './types';
-
-const maybe = (value: number | null, format: (value: number) => string): string | null =>
-	value === null ? null : format(value);
 
 /**
  * What the card does not already show, grouped by subject. The kind is the

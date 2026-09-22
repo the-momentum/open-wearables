@@ -1,4 +1,4 @@
-import type { WorkoutSource } from '$lib/workouts/types';
+import type { SourceMetadata } from '$lib/events/types';
 
 /** Mirrors backend `BodySlowChanging`: the latest reading of each. */
 export type SlowChanging = {
@@ -37,7 +37,7 @@ export type Latest = {
 
 /** Mirrors `BodySummary`. The endpoint answers null when the user has no body data. */
 export type BodySummary = {
-	source: WorkoutSource;
+	source: SourceMetadata;
 	slow_changing: SlowChanging;
 	averaged: Averaged;
 	latest: Latest;

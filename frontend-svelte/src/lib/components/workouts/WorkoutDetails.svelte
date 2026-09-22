@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import DeleteAction from '$lib/components/events/DeleteAction.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import FieldGroups from '$lib/components/ui/FieldGroups.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
@@ -77,13 +77,6 @@
 			{workout.segments?.length ? `${workout.segments.length} laps recorded` : ''}
 		</span>
 
-		<button
-			type="button"
-			onclick={ondelete}
-			class="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-danger"
-		>
-			<Trash2 size={14} aria-hidden="true" />
-			Delete workout
-		</button>
+		<DeleteAction label="Delete workout" onclick={ondelete} />
 	</div>
 </div>

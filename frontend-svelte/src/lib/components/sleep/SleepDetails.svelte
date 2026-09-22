@@ -1,6 +1,6 @@
 <script lang="ts">
+	import DeleteAction from '$lib/components/events/DeleteAction.svelte';
 	import Layers from '@lucide/svelte/icons/layers';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import DistributionBar from '$lib/components/charts/DistributionBar.svelte';
 	import IntervalChart from '$lib/components/charts/IntervalChart.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
@@ -54,13 +54,6 @@
 	<FieldGroups groups={detailGroups(session)} />
 
 	<div class="flex justify-end border-t border-border pt-3">
-		<button
-			type="button"
-			onclick={ondelete}
-			class="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-danger"
-		>
-			<Trash2 size={14} aria-hidden="true" />
-			Delete session
-		</button>
+		<DeleteAction label="Delete session" onclick={ondelete} />
 	</div>
 </div>

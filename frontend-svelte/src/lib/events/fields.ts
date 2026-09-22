@@ -1,6 +1,15 @@
 import type { Component } from 'svelte';
 import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
 
+/**
+ * Format a reading, or keep the null that says the provider sent none — which
+ * is what `toFieldGroups` drops the field on.
+ */
+export const maybe = <T>(
+	value: T | null | undefined,
+	format: (value: T) => string
+): string | null => (value === null || value === undefined ? null : format(value));
+
 /** A group before the empty entries are dropped: `null` means the provider sent none. */
 export type GroupSpec = [string, Component, [string, string | null][]];
 

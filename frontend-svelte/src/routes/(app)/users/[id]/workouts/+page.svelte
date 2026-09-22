@@ -5,8 +5,8 @@
 	import FilterBar from '$lib/components/filters/FilterBar.svelte';
 	import FilterGroup from '$lib/components/filters/FilterGroup.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import CursorBar from '$lib/components/events/CursorBar.svelte';
+	import DeleteEventDialog from '$lib/components/events/DeleteEventDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import FilterSelect from '$lib/components/ui/FilterSelect.svelte';
 	import WorkoutCard from '$lib/components/workouts/WorkoutCard.svelte';
@@ -101,15 +101,10 @@
 	</div>
 </div>
 
-<ConfirmDialog
+<DeleteEventDialog
 	bind:open={removeOpen}
-	title="Delete workout?"
+	noun="workout"
 	action="?/deleteWorkout"
-	confirmLabel="Delete"
-	busyLabel="Deleting…"
-	destructive
-	fields={{ workout: removing?.id ?? '' }}
->
-	This removes the workout and everything stored with it. It cannot be undone — though a later sync
-	will bring it back if the provider still has it.
-</ConfirmDialog>
+	field="workout"
+	id={removing?.id ?? ''}
+/>

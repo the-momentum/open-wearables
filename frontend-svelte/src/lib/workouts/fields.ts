@@ -3,7 +3,7 @@ import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 import Mountain from '@lucide/svelte/icons/mountain';
 import Zap from '@lucide/svelte/icons/zap';
 import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
-import { toFieldGroups, type GroupSpec } from '$lib/events/fields';
+import { maybe, toFieldGroups, type GroupSpec } from '$lib/events/fields';
 import { humanise } from '$lib/utils/text';
 import {
 	formatDistance,
@@ -13,9 +13,6 @@ import {
 	formatPace
 } from '$lib/utils/format';
 import type { Workout } from './types';
-
-const maybe = (value: number | null, format: (value: number) => string): string | null =>
-	value === null ? null : format(value);
 
 const bpm = (value: number) => formatNumber(value, ' bpm');
 

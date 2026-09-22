@@ -175,11 +175,11 @@ test("gates Women's Health on the user actually having that data", async ({ page
 
 test('gives every tab a real URL, and 404s on one that is not a tab', async ({ page }) => {
 	await page.goto(`/users/${CONNECTED}`);
-	// Women's Health is the last one in line and still the placeholder.
+	// The last tab to be built, so nothing is behind a placeholder any more.
 	await page.getByRole('link', { name: "Women's Health" }).click();
 
 	await expect(page).toHaveURL(`/users/${CONNECTED}/womens-health`);
-	await expect(page.getByText("Women's Health is not built yet")).toBeVisible();
+	await expect(page.getByRole('article').first()).toBeVisible();
 
 	const response = await page.goto(`/users/${CONNECTED}/not-a-tab`);
 	expect(response?.status()).toBe(404);
@@ -188,7 +188,7 @@ test('gives every tab a real URL, and 404s on one that is not a tab', async ({ p
 // The header sits in the layout, so `?/update` resolves against whichever tab
 // is showing. Every built tab has to carry those actions or the button 404s.
 test.describe('header actions reach the server from a built tab', () => {
-	for (const tab of ['workouts', 'activity', 'sleep', 'body', 'data', 'scores']) {
+	for (const tab of ['workouts', 'activity', 'sleep', 'body', 'data', 'scores', 'womens-health']) {
 		test(tab, async ({ page }) => {
 			await page.goto(`/users/${CONNECTED}/${tab}`);
 			await page.getByRole('button', { name: 'Edit user' }).click();

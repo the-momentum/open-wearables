@@ -31,9 +31,6 @@ export const USER_TABS: readonly UserTab[] = [
 	{ slug: 'womens-health', label: "Women's Health", icon: Heart, gated: true }
 ];
 
-/** What the route matcher accepts, so an invented tab 404s. */
-export const USER_TAB_SLUGS = USER_TABS.map((tab) => tab.slug).filter(Boolean);
-
 export function tabsFor(user: Pick<UserDetail, 'has_womens_health_data'>): UserTab[] {
 	return USER_TABS.filter((tab) => !tab.gated || user.has_womens_health_data);
 }

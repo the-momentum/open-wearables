@@ -4,6 +4,15 @@ import { signIn } from './support';
 const USER = '00000000-0000-4000-8000-000000000007';
 const ACTIVITY = `/users/${USER}/activity`;
 
+/**
+ * The fixtures are built relative to today, so the newest row is always today's.
+ * Spelling a weekday or a date into the assertion made these tests pass only on
+ * the day they were written.
+ */
+const today = new Date();
+const named = (options: Intl.DateTimeFormatOptions) =>
+	new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' }).format(today);
+
 test.beforeEach(async ({ page, request }) => {
 	await request.post('http://localhost:8787/__reset');
 	await signIn(page);
@@ -17,8 +26,9 @@ test('lists one row a day, newest first, and says where the row came from', asyn
 
 	// A weekday tells an admin more than a date alone: "nothing on Sundays" is a
 	// pattern, "nothing on the 14th" is not.
-	await expect(cards.first().getByRole('heading')).toContainText('Monday');
-	await expect(cards.first().getByRole('heading')).toContainText('21 Sept 2026');
+	const heading = cards.first().getByRole('heading');
+	await expect(heading).toContainText(named({ weekday: 'long' }));
+	await expect(heading).toContainText(named({ day: 'numeric', month: 'short', year: 'numeric' }));
 
 	// The endpoint picks the winning source per date, so the card names the one it
 	// used rather than offering a filter that does not exist.

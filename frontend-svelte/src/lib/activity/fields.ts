@@ -2,13 +2,10 @@ import Flame from '@lucide/svelte/icons/flame';
 import Footprints from '@lucide/svelte/icons/footprints';
 import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 import Mountain from '@lucide/svelte/icons/mountain';
-import { toFieldGroups, type GroupSpec } from '$lib/events/fields';
+import { maybe, toFieldGroups, type GroupSpec } from '$lib/events/fields';
 import type { FieldGroup } from '$lib/components/ui/FieldGroups.svelte';
 import { formatDistance, formatDuration, formatNumber } from '$lib/utils/format';
 import type { ActivityDay } from './types';
-
-const maybe = (value: number | null | undefined, format: (value: number) => string) =>
-	value === null || value === undefined ? null : format(value);
 
 const minutes = (value: number | null | undefined) =>
 	maybe(value, (mins) => formatDuration(mins * 60));

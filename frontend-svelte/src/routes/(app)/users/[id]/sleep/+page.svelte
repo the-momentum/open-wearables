@@ -6,9 +6,9 @@
 	import SleepCard from '$lib/components/sleep/SleepCard.svelte';
 	import SleepSummary from '$lib/components/sleep/SleepSummary.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
-	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import CursorBar from '$lib/components/events/CursorBar.svelte';
+	import DeleteEventDialog from '$lib/components/events/DeleteEventDialog.svelte';
 	import Segmented from '$lib/components/ui/Segmented.svelte';
 	import { providerLabel } from '$lib/providers/labels';
 	import type { SleepSession } from '$lib/sleep/types';
@@ -84,15 +84,10 @@
 	</div>
 </div>
 
-<ConfirmDialog
+<DeleteEventDialog
 	bind:open={removeOpen}
-	title="Delete sleep session?"
+	noun="sleep session"
 	action="?/deleteSleep"
-	confirmLabel="Delete"
-	busyLabel="Deleting…"
-	destructive
-	fields={{ session: removing?.id ?? '' }}
->
-	This removes the session and everything stored with it. It cannot be undone — though a later sync
-	will bring it back if the provider still has it.
-</ConfirmDialog>
+	field="session"
+	id={removing?.id ?? ''}
+/>

@@ -1026,3 +1026,113 @@ export const makeScores = (query: URLSearchParams) => {
 		metadata: { sample_count: data.length }
 	};
 };
+
+/**
+ * Menstrual cycles, chained so each one ends where the next begins, with the
+ * newest still running and one ahead of it predicted. The columns are the
+ * unified ones, which is why the provider here is Oura: nothing about the shape
+ * belongs to whoever sent it.
+ */
+const buildCycles = () => {
+	const lengths = Array.from({ length: 14 }, (_, index) => 26 + ((index * 3) % 5));
+	let back = 0;
+
+	const cycles = lengths.map((cycleLength, index) => {
+		if (index > 0) back += cycleLength;
+		const start = isoDay(12 + back);
+		const fertileStart = cycleLength - 18;
+		const running = index === 0;
+
+		return {
+			id: `cycle-${index}`,
+			start_time: `${start}T00:00:00Z`,
+			end_time: `${isoDay(12 + back - cycleLength)}T00:00:00Z`,
+			zone_offset: null,
+			source: {
+				provider: 'oura',
+				source: 'oura',
+				device: null,
+				device_type: 'ring',
+				device_name: null
+			},
+			current_phase: running ? 3 : 4,
+			current_phase_type: running ? 'ovulation' : 'luteal',
+			day_in_cycle: running ? 13 : cycleLength,
+			cycle_length: cycleLength,
+			predicted_cycle_length: cycleLength,
+			is_predicted_cycle: false,
+			period_length: 4 + (index % 3),
+			length_of_current_phase: running ? 6 : cycleLength - (fertileStart + 6) + 1,
+			days_until_next_phase: running ? 1 : 0,
+			fertile_window_start: fertileStart,
+			length_of_fertile_window: 6,
+			last_updated_at: `${isoDay(running ? 0 : 12 + back - cycleLength)}T06:00:00Z`,
+			// Not every cycle's length is the person's own word for it.
+			has_specified_cycle_length: index % 4 !== 0,
+			has_specified_period_length: true,
+			pregnancy_snapshot: null
+		};
+	});
+
+	// The cycle after the newest: a forecast, so no day in it and no measured
+	// length — only the one the provider expects.
+	const next = {
+		...cycles[0],
+		id: 'cycle-next',
+		start_time: cycles[0].end_time,
+		end_time: `${isoDay(12 - lengths[0] - 28)}T00:00:00Z`,
+		current_phase: null,
+		current_phase_type: null,
+		day_in_cycle: null,
+		cycle_length: null,
+		predicted_cycle_length: 28,
+		is_predicted_cycle: true,
+		length_of_current_phase: null,
+		days_until_next_phase: null,
+		has_specified_cycle_length: false
+	};
+
+	return [next, ...cycles];
+};
+
+let CYCLES = buildCycles();
+
+export const resetCycles = () => {
+	CYCLES = buildCycles();
+};
+
+export const deleteCycle = (id: string) => {
+	const index = CYCLES.findIndex((cycle) => cycle.id === id);
+	if (index === -1) return false;
+	CYCLES.splice(index, 1);
+	return true;
+};
+
+/**
+ * Keyset paging, and faithfully **no upper bound**: the endpoint drops
+ * `end_datetime` because a cycle running now ends in the future.
+ */
+export const makeCycles = (query: URLSearchParams) => {
+	const limit = Number(query.get('limit') ?? 50);
+	const start = new Date(query.get('start_date') ?? 0).getTime();
+	const matching = CYCLES.filter((cycle) => new Date(cycle.start_time).getTime() >= start);
+
+	const cursor = query.get('cursor');
+	const { id, backwards } = cursor ? decodeCursor(cursor) : { id: '', backwards: false };
+	const found = cursor ? matching.findIndex((cycle) => cycle.id === id) : -1;
+
+	const offset = backwards ? Math.max(found - limit, 0) : found + 1;
+	const hasMore = backwards ? found > limit : offset + limit < matching.length;
+	const data = matching.slice(offset, offset + limit);
+	const previous = cursor && data.length && (!backwards || hasMore);
+
+	return {
+		data,
+		pagination: {
+			next_cursor: hasMore && data.length ? encodeCursor(data[data.length - 1].id, 'next') : null,
+			previous_cursor: previous ? encodeCursor(data[0].id, 'prev') : null,
+			has_more: hasMore,
+			total_count: matching.length
+		}
+	};
+};

@@ -1,4 +1,4 @@
-import type { WorkoutSource } from '$lib/workouts/types';
+import type { SourceMetadata } from '$lib/events/types';
 
 /** Mirrors backend `SleepStageType`. */
 export type StageName = 'awake' | 'rem' | 'light' | 'deep' | 'sleeping' | 'in_bed' | 'unknown';
@@ -23,7 +23,7 @@ export type SleepSession = {
 	start_time: string;
 	end_time: string;
 	zone_offset: string | null;
-	source: WorkoutSource;
+	source: SourceMetadata;
 	duration_seconds: number;
 	sleep_duration_seconds: number | null;
 	time_in_bed_seconds: number | null;

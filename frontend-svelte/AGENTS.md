@@ -4,11 +4,10 @@ Ground-up rewrite of the React dashboard in SvelteKit. Lives on the
 `feat/svelte-frontend` branch and runs alongside the existing frontend until it
 reaches parity; only then does `frontend/` get deleted.
 
-**Status:** the shell, the `/users` list and the user detail page are done, and
-six of the user's seven data tabs are built — Data Summary, Workouts, Activity,
-Sleep, Body and Scores. Women's Health is still the placeholder, as are
-Dashboard, Syncs, Webhooks, Coverage and Settings. Read "Current state" before
-assuming anything exists.
+**Status:** the shell, the `/users` list, the user detail page and **all seven**
+of its data tabs are built — Data Summary, Workouts, Activity, Sleep, Body,
+Scores and Women's Health. Dashboard, Syncs, Webhooks, Coverage and Settings are
+still placeholders. Read "Current state" before assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
 
@@ -1668,6 +1667,83 @@ Data Summary the header's **Edit user**, **Delete user** and **Pairing link**
 posted to a route with no such action and 404'd. Fixed on all five, with a test
 per tab so the next one cannot ship without them.
 
+## Women's Health
+
+The last tab, and the one whose data is most plainly **unified**: every provider
+that sends cycles writes into `menstrual_cycle_details`, so the columns are the
+same whoever filled them. The local database is seeded against the Oura demo
+user for exactly that reason — Oura sends no MCT, and nothing about the shape
+belongs to whoever did.
+
+### No period control, because half of one would be a lie
+
+`get_menstrual_cycles` sets `params.end_datetime = None` before it queries, with
+its own comment: a cycle running now ends in the future, and filtering on
+`end_datetime` would hide the cycle a reader came for. So the endpoint honours
+the lower bound of a window and silently ignores the upper one. A Range picker
+over that narrows one end and not the other, which is worse than not offering
+it. The list is every cycle, newest first, paged by cursor.
+
+### The bar is built from the fields, not from the provider's phase names
+
+`current_phase_type` is a **snapshot** — where the cycle stood when the provider
+last looked, which for a closed cycle is wherever it ended. Reading the list by
+it gives a column of "Luteal" saying nothing.
+
+What is worth drawing is the cycle itself, so `phaseSpans()` lays the phases
+along its own days out of `period_length`, `fertile_window_start` and
+`length_of_fertile_window`. Follicular and luteal are only what is left either
+side of the fertile window — **without one they cannot be told apart**, and the
+bar then carries the period and stops rather than inventing a boundary.
+
+Every bar on the page is drawn against the longest cycle on it, so a
+twenty-six-day cycle is visibly shorter than a thirty-day one. The running cycle
+carries a marker at the day it stands on; `currentDay()` returns one only while
+the cycle is open, because a closed cycle's `day_in_cycle` is where it ended and
+not a place to write "today".
+
+### What is deliberately not shown
+
+`current_phase` is the provider's own integer code for the phase. There is no
+table anywhere saying what 3 means, so printing it would be printing a number
+nobody can read. The tab shows `current_phase_type` and leaves the code in the
+API.
+
+Predicted cycles are kept out of the averages: a forecast length would make
+"average cycle" describe the provider's model rather than the person.
+
+### Shared out of it
+
+| Piece                              | Why it moved                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events/types.ts` `SourceMetadata` | it was `WorkoutSource` in `workouts/types.ts`, imported by sleep, body, activity, cycles and the shared card — five of the six had nothing to do with workouts |
+| `events/fields.ts` `maybe`         | the same null-or-format helper stood in three field modules, and cycles had it inlined twice                                                                   |
+| `charts/SpanBar`                   | a track of coloured spans on a shared scale — the cycle bar is one, and so is anything else counted in whole units                                             |
+| `events/DeleteEventDialog`         | three pages carried the same dialog and the same sentence, differing only in a noun                                                                            |
+| `events/DeleteAction`              | and the same quiet trash button in three `*Details` components                                                                                                 |
+| `format.ts` `formatDays`           | "N day(s)" was spelled out three times, and one of them said "1 days"                                                                                          |
+
+What stayed put is the `removing` / `removeOpen` pair the three lists each
+declare. It is two lines of `$state` and a callback; a rune wrapping it would
+save twelve lines across the app and cost every reader a hop to find out what
+`ask()` does.
+
+### The demo rows in the local database
+
+Fifteen chained cycles were written straight into the local Postgres against the
+Oura data source — fourteen lived, the newest still running, one ahead of it
+predicted. Two things to get right when writing more:
+
+- **Each cycle ends exactly where the next begins.** A cycle's `end_datetime` is
+  its start plus its own length, so chaining backwards has to subtract _its_
+  length, not the previous one's. Off by one index and every cycle overlaps its
+  neighbour by the difference between their lengths.
+- **The fertile window sits about fourteen days before the next period**, so
+  `fertile_window_start` is roughly `cycle_length - 18` with a length of six.
+  Put it anywhere else and the bar draws ovulation in the wrong half.
+
+The e2e fixture builds the same shape, so it is the one to read.
+
 ## The pairing pages are public
 
 `/users/[id]/pair` lives **outside the `(app)` group**, so the auth guard never
@@ -1817,13 +1893,13 @@ src/
 │   ├── charts/                      # geometry.ts (scaleY, linePath, extent),
 │   │                                # palette.ts — pure, and tested as such
 │   ├── events/                      # fields.ts, totals.ts — shared by the tabs
-│   ├── {workouts,sleep,activity,body,scores}/   # one domain module per tab
+│   ├── {workouts,sleep,activity,body,scores,cycles}/  # one module per tab
 │   ├── timeseries/samples.ts        # Sample → Series, colours, units
 │   ├── filters/period.ts            # All time / Day / Range, and its windows
 │   ├── server/                      # never reaches the browser
 │   │   ├── api.ts  redis.ts  session.ts  auth.ts
 │   │   ├── events.ts  timeseries.ts  user-actions.ts
-│   │   └── users.ts  providers.ts  {workouts,sleep,activity,body,scores}.ts
+│   │   └── users.ts  providers.ts  {workouts,sleep,activity,body,scores,cycles}.ts
 │   └── utils/                       # cn.ts, datetime.ts, format.ts, resource.svelte.ts
 ├── routes/
 │   ├── +layout.svelte               # imports app.css
@@ -1837,13 +1913,12 @@ src/
 │       ├── +layout.svelte           # wraps children in AppShell
 │       ├── users/  +page.svelte + +page.server.ts
 │       ├── users/[id]/              # +layout owns the user; +page is Connections
-│       │   ├── {data,workouts,activity,sleep,body,scores}/
-│       │   │                        # each with +page.server.ts and, where it
-│       │   │                        # needs one, totals/ samples/ trends/ +server.ts
-│       │   └── [tab=usertab]/       # one placeholder for every unbuilt tab
+│       │   └── {data,workouts,activity,sleep,body,scores,womens-health}/
+│       │                            # each with +page.server.ts and, where it
+│       │                            # needs one, totals/ samples/ trends/ +server.ts
 │       └── {dashboard,syncs,webhooks,coverage,settings}/+page.svelte
 └── e2e/  auth  navigation  users  user-detail  pairing  data-summary
-       workouts  activity  sleep  body  scores (.e2e.ts)
+       workouts  activity  sleep  body  scores  womens-health (.e2e.ts)
        + mock-api  support  fixtures
 ```
 

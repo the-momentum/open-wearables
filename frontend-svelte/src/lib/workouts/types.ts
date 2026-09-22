@@ -1,18 +1,11 @@
+import type { SourceMetadata } from '$lib/events/types';
+
 /** Mirrors backend `HRZones` / `PowerZones` (app/schemas/model_crud/activities/zones.py). */
 export type HRZone = { zone: number; seconds: number; max_bpm: number | null };
 export type HRZones = { zones: HRZone[]; max_hr: number | null; threshold_hr: number | null };
 
 export type PowerZone = { zone: number; seconds: number; max_watts: number | null };
 export type PowerZones = { zones: PowerZone[]; ftp_watts: number | null };
-
-/** Mirrors `SourceMetadata`. `provider` is the integration, `source` the writer inside it. */
-export type WorkoutSource = {
-	provider: string;
-	source: string | null;
-	device: string | null;
-	device_type: string | null;
-	device_name: string | null;
-};
 
 /**
  * Mirrors backend `Workout`. Almost everything is nullable because no provider
@@ -26,7 +19,7 @@ export type Workout = {
 	end_time: string;
 	zone_offset: string | null;
 	duration_seconds: number | null;
-	source: WorkoutSource;
+	source: SourceMetadata;
 	entry_source: string | null;
 	intensity: string | null;
 	calories_kcal: number | null;
