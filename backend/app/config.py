@@ -298,7 +298,7 @@ class Settings(BaseSettings):
     # user data - see docs/dev-guides/telemetry.mdx for the full payload.
     # Disable with TELEMETRY_ENABLED=false (or the standard DO_NOT_TRACK=1).
     telemetry_enabled: bool = True
-    telemetry_endpoint_url: str = "https://telemetry.mntm.dev/api/v1/pings"
+    telemetry_endpoint_url: str = "https://telemetry.openwearables.io/api/v1/pings"
     # How often the beat due-check task runs; it only sends when a ping is due.
     telemetry_beat_interval_seconds: float = 3600.0
     # Minimum time between "daily" pings / debounce window for "startup" pings.

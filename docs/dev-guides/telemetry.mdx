@@ -224,7 +224,7 @@ counters come from a scripted set of calls made to that instance on the day show
 - No per-user or per-request information, only instance-wide aggregate counts
 - No raw request paths, query strings, user agents or exact request volumes
 
-Pings are sent to `https://telemetry.mntm.dev`, a collector operated by the Open Wearables team. The
+Pings are sent to `https://telemetry.openwearables.io`, a collector operated by the Open Wearables team. The
 sending code lives in `backend/app/services/telemetry_service.py` and the request counters in
 `backend/app/services/endpoint_usage.py`. Both are easy to audit.
 
@@ -274,7 +274,7 @@ If the line is absent, telemetry is off. You can also confirm that the Celery be
 ### Blocking at the network level
 
 If you want a guarantee that does not depend on configuration, block outbound traffic to
-`telemetry.mntm.dev` in your firewall. Telemetry is best-effort, so a blocked request is logged at
+`telemetry.openwearables.io` in your firewall. Telemetry is best-effort, so a blocked request is logged at
 `WARNING` and never affects the instance.
 
 ## Failure behavior
