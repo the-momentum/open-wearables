@@ -28,6 +28,7 @@ from app.models import (
     UserConnection,
 )
 from app.schemas.auth import ConnectionStatus
+from app.services.endpoint_usage import endpoint_usage
 
 logger = getLogger(__name__)
 
@@ -115,6 +116,7 @@ class TelemetryService:
                 "outgoing_webhooks_enabled": settings.outgoing_webhooks_enabled,
                 "default_data_granularity": settings.default_data_granularity,
             },
+            "endpoint_usage": self._endpoint_usage(now),
         }
 
     def send_ping(self, db: Session, event: str) -> str:
@@ -138,6 +140,21 @@ class TelemetryService:
         db.commit()
         logger.info("Telemetry ping delivered (event=%s)", event)
         return "sent"
+
+    @staticmethod
+    def _endpoint_usage(now: datetime) -> dict | None:
+        """Yesterday's bucketed request counters, or None when unavailable.
+
+        Always the last complete UTC day, so a "startup" and a "daily" ping sent on the
+        same day carry identical data and the collector can dedupe on the date.
+        """
+        day = (now - timedelta(days=1)).date()
+        try:
+            routes = endpoint_usage.read_day(day)
+        except Exception:
+            logger.debug("Could not read endpoint usage counters", exc_info=True)
+            return None
+        return {"date": day.isoformat(), "routes": routes}
 
     @staticmethod
     def _is_due(state: TelemetryState, event: str) -> bool:

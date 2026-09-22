@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.integrations.redis_client import get_redis_client
 from app.models import ProviderSetting
 from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from app.services.telemetry_service import telemetry_service
@@ -108,6 +109,39 @@ class TestBuildPayload:
         assert "Doe" not in serialized
         assert "jane_doe_92" not in serialized
         assert settings.secret_key not in serialized
+
+
+class TestEndpointUsagePayload:
+    def test_payload_carries_the_last_complete_day(self, db: Session) -> None:
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+        get_redis_client().hset(
+            f"telemetry:endpoint_usage:{yesterday.isoformat()}",
+            mapping={
+                "api_key|2xx|GET /api/v1/users/{user_id}/timeseries": 4200,
+                "developer_jwt|2xx|GET /api/v1/dashboard/stats": 12,
+            },
+        )
+        # today's partial counters must not leak into the ping
+        get_redis_client().hset(
+            f"telemetry:endpoint_usage:{datetime.now(timezone.utc).date().isoformat()}",
+            mapping={"api_key|2xx|GET /api/v1/users": 1},
+        )
+
+        payload = telemetry_service.build_payload(db, event="daily")
+
+        assert payload["endpoint_usage"] == {
+            "date": yesterday.isoformat(),
+            "routes": {
+                "GET /api/v1/users/{user_id}/timeseries": {"api_key": {"2xx": "1k-10k"}},
+                "GET /api/v1/dashboard/stats": {"developer_jwt": {"2xx": "11-100"}},
+            },
+        }
+
+    def test_redis_failure_does_not_block_the_ping(self, db: Session) -> None:
+        with patch("app.services.endpoint_usage.get_redis_client", side_effect=ConnectionError("down")):
+            payload = telemetry_service.build_payload(db, event="daily")
+
+        assert payload["endpoint_usage"] is None
 
 
 class TestSendPing:

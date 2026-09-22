@@ -85,6 +85,26 @@ One entry per row in the `provider_settings` table.
 | `outgoing_webhooks_enabled` | Whether outgoing webhooks (Svix) are on | `true` | Adoption of outgoing webhooks |
 | `default_data_granularity` | Instance-wide default granularity: `raw`, `hourly` or `daily` | `raw` | Whether the rollup modes are used |
 
+### API usage
+
+How often each API endpoint is called, for the last complete UTC day. This is the only part of the ping that describes activity rather than state.
+
+| Field | What it is | Example | Why we track it |
+|-------|------------|---------|-----------------|
+| `endpoint_usage.date` | The UTC day the counters cover. Always yesterday, so a `startup` and a `daily` ping sent on the same day carry the same data | `2026-07-22` | Lets the collector drop duplicates |
+| `endpoint_usage.routes` | Request counts keyed by route, then caller type, then status class | see below | Which endpoints are used, which are safe to deprecate, and where clients hit errors |
+
+Each level is deliberately coarse:
+
+- **Route** is the route template from the API's own route table, such as `GET /api/v1/users/{user_id}/timeseries`. The raw request path, query string and any ID in it are never recorded. The one path parameter kept is `{provider}`, and only when it is a known provider name. Requests that match no route are counted together as `unmatched`.
+- **Caller type** is which kind of credential the request presented: `developer_jwt` (the dashboard), `api_key` (a backend integration), `sdk_token` (the mobile SDK) or `none`. It tells us whether an endpoint is used through the dashboard or through the API. No key, token or identity is recorded.
+- **Status class** is `2xx`, `3xx`, `4xx` or `5xx`.
+- **Count** is an order-of-magnitude bucket, never the exact number: `1-10`, `11-100`, `101-1k`, `1k-10k`, `10k-100k`, `100k-1M` or `1M+`.
+
+Endpoints for menstrual cycle data are excluded entirely. User agents are not recorded, and there is no per-hour breakdown.
+
+Counting happens in memory and is flushed to Redis every 30 seconds, off the request path. The cost is a few microseconds per request.
+
 <Accordion title="Full example payload">
 ```json
 {
@@ -118,6 +138,18 @@ One entry per row in the `provider_settings` table.
     "raw_payload_storage": "s3",
     "outgoing_webhooks_enabled": true,
     "default_data_granularity": "raw"
+  },
+  "endpoint_usage": {
+    "date": "2026-07-22",
+    "routes": {
+      "GET /api/v1/users/{user_id}/timeseries": {
+        "api_key": { "2xx": "1k-10k", "4xx": "1-10" },
+        "developer_jwt": { "2xx": "11-100" }
+      },
+      "GET /api/v1/dashboard/stats": { "developer_jwt": { "2xx": "11-100" } },
+      "POST /api/v1/providers/garmin/webhooks": { "none": { "2xx": "101-1k" } },
+      "unmatched": { "none": { "4xx": "11-100" } }
+    }
   }
 }
 ```
@@ -129,9 +161,11 @@ One entry per row in the `provider_settings` table.
 - No credentials, tokens, API keys, or secrets
 - No hostnames, IP addresses, or URLs of your deployment
 - No per-user or per-request information, only instance-wide aggregate counts
+- No raw request paths, query strings, user agents or exact request volumes
 
 Pings are sent to `https://telemetry.mntm.dev`, a collector operated by the Open Wearables team. The
-sending code lives in `backend/app/services/telemetry_service.py` and is easy to audit.
+sending code lives in `backend/app/services/telemetry_service.py` and the request counters in
+`backend/app/services/endpoint_usage.py`. Both are easy to audit.
 
 ## What we do with the data
 
@@ -152,7 +186,11 @@ Set one environment variable in your backend `.env` and restart:
 TELEMETRY_ENABLED=false
 ```
 
-This fully disables telemetry: no scheduled task, no startup ping, no HTTP calls.
+This fully disables telemetry: no scheduled task, no startup ping, no HTTP calls, no request
+counting.
+
+Set it on every backend container (API, Celery worker and Celery beat): the API counts requests, the
+worker builds and sends the ping, and beat schedules it.
 
 ### Verifying it is disabled
 

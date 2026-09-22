@@ -303,6 +303,8 @@ class Settings(BaseSettings):
     # Minimum time between "daily" pings / debounce window for "startup" pings.
     telemetry_send_interval_seconds: float = 86400.0
     telemetry_startup_debounce_seconds: float = 43200.0
+    # How often each API process flushes its in-memory endpoint usage counters to Redis.
+    telemetry_usage_flush_interval_seconds: float = 30.0
 
     @model_validator(mode="after")
     def derive_access_log_level(self) -> "Settings":
