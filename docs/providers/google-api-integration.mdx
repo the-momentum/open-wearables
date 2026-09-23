@@ -209,11 +209,11 @@ Every `googlehealth.*` scope Open Wearables requests is a **restricted** scope, 
 | Review | Run by | Cost | Typical duration |
 |--------|--------|------|------------------|
 | [Brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification) | Google, mostly automated | free | minutes; 2-3 business days if a human looks |
-| [OAuth app verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification) | Google Trust and Safety | free | 3-5 business days for the scope review itself |
+| [OAuth app verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification) | Google Trust and Safety | free | several weeks — it does not close until the CASA result lands |
 | [CASA security assessment](https://developers.google.com/health/app-verification) | a third-party [authorized lab](https://www.appdefensealliance.org/certification/authorized-labs) | $500-$4,500 USD | 2-3 weeks (tier 2), 4-6 weeks (tier 3) |
 
 <Warning>
-Plan **6-10 weeks** end to end for the first pass, and put a reminder in the calendar a month before each anniversary. The assessment is annual — letting it lapse pulls your restricted scopes, which breaks every connected user at once.
+Google publishes no end-to-end figure. The parts it does publish — days for branding, "several weeks" for the scope review, 2-6 weeks for the assessment — put a realistic first pass at **one to two months**, so start well before you need it. The assessment is annual, so set a reminder a month before each anniversary rather than letting restricted-scope access lapse.
 </Warning>
 
 ### Does this apply to you?
@@ -226,7 +226,7 @@ Plan **6-10 weeks** end to end for the first pass, and put a reminder in the cal
 | Only the Health Connect mobile SDK (provider `health_connect`) | Not this process at all — that path never touches Google OAuth. It is governed by the Play Console health apps declaration for your Android app. |
 
 <Note>
-Verification is per OAuth client, so keep a separate Google Cloud project for staging. That one stays in Testing and is never reviewed; only the production client goes through the process.
+Verification attaches to the **Google Cloud project** — its consent screen and branding — not to an individual OAuth client, so every client in a verified project rides on the same submission. Keep a separate project for staging: Google exempts apps in the development, testing or staging phases, so that one stays in **Testing** and is never reviewed even though it requests the same restricted scopes.
 </Note>
 
 <AccordionGroup>
