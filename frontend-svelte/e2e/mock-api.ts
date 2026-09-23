@@ -21,6 +21,10 @@ import {
 	listProviderPriorities,
 	renameApiKey,
 	resetSettings,
+	resetLifecycle,
+	lifecycleScans,
+	readLifecycle,
+	saveLifecycle,
 	revokeInvitation,
 	rotateApiKey,
 	rotateApplicationSecret,
@@ -104,6 +108,7 @@ const server = Bun.serve({
 			resetCycles();
 			resetWebhooks();
 			resetSettings();
+			resetLifecycle();
 			return new Response(null, { status: 204 });
 		}
 
@@ -207,6 +212,29 @@ const server = Bun.serve({
 		}
 
 		// ------------------------------------------------------------ settings --
+
+		if (pathname === '/__lifecycle-scans') {
+			return json({ scans: lifecycleScans() });
+		}
+
+		if (pathname === '/api/v1/settings/archival/run' && request.method === 'POST') {
+			return json({ task_id: 'task-1', status: 'dispatched' }, 202);
+		}
+
+		if (pathname === '/api/v1/settings/archival') {
+			if (request.method === 'PUT') {
+				const body = await request.json();
+				const out = (days: unknown, max: number) =>
+					days !== null &&
+					(!Number.isInteger(days) || (days as number) < 1 || (days as number) > max);
+				if (out(body.archive_after_days, 3650) || out(body.delete_after_days, 7300)) {
+					// FastAPI's shape: a list, no string `detail` to show.
+					return json({ detail: [{ loc: ['body'], msg: 'out of range' }] }, 422);
+				}
+				return json(saveLifecycle(body));
+			}
+			return json(readLifecycle());
+		}
 
 		const keyMatch = pathname.match(/^\/api\/v1\/developer\/api-keys\/([^/]+)(\/rotate)?$/);
 		if (keyMatch) {

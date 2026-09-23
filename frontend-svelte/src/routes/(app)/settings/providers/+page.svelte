@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Plug from '@lucide/svelte/icons/plug';
 	import SaveBar from '$lib/components/settings/SaveBar.svelte';
-	import ProviderRow from '$lib/components/settings/providers/ProviderRow.svelte';
+	import ProviderCard from '$lib/components/settings/providers/ProviderCard.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Alert from '$lib/components/ui/Alert.svelte';
@@ -31,15 +31,17 @@
 		{#if data.providers.length === 0}
 			<EmptyState icon={Plug} title="No providers available" />
 		{:else}
-			<div class="divide-y divide-border">
+			<!-- A grid, not a list: a row per provider left two thirds of a desktop
+			     width empty between the name and its switch. -->
+			<ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
 				{#each data.providers as provider (provider.provider)}
-					<ProviderRow
+					<ProviderCard
 						{provider}
 						enabled={draft[provider.provider] ?? provider.is_enabled}
 						ontoggle={(next) => (draft = { ...draft, [provider.provider]: next })}
 					/>
 				{/each}
-			</div>
+			</ul>
 		{/if}
 	</Card>
 </div>

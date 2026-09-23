@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCompact } from '$lib/utils/format';
-import { formatShare } from '$lib/utils/format';
+import { formatCompact, formatPercent, formatShare } from '$lib/utils/format';
 import { coverageOf, eventMix, providerUse, statTiles } from './stats';
 import type { SystemInfo } from './types';
 
@@ -115,6 +114,13 @@ describe('formatShare', () => {
 
 	it('calls it zero rather than dividing by one', () => {
 		expect(formatShare(0, 0)).toBe('0 · 0%');
+	});
+
+	// 57 KB of archive in a 475 MB database rounded to "0%", which read as empty.
+	it('never calls something present zero', () => {
+		expect(formatPercent(57, 475_000)).toBe('<1%');
+		expect(formatPercent(0, 475_000)).toBe('0%');
+		expect(formatShare(3, 1000)).toBe('3 · <1%');
 	});
 });
 

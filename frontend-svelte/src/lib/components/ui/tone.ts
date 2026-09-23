@@ -13,3 +13,13 @@ export const TONE: Record<Tone, string> = {
 	neutral: 'bg-surface-muted text-muted-foreground',
 	muted: 'bg-surface-muted text-foreground/70'
 };
+
+/** The same tones as a raw colour, for a stroke or a figure that is not a pill. */
+export const TONE_COLOUR: Record<Tone, string> = {
+	primary: 'var(--color-primary)',
+	success: 'var(--color-success)',
+	warning: 'var(--color-warning)',
+	danger: 'var(--color-danger)',
+	neutral: 'var(--color-muted-foreground)',
+	muted: 'var(--color-muted-foreground)'
+};

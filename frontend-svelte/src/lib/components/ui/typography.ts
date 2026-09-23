@@ -4,6 +4,9 @@ export const TINY = 'text-[11px]';
 /** Small print beside a chart or under a figure: axis ends, shares, cell labels. */
 export const MICRO = `${TINY} text-muted-foreground`;
 
+/** The small print under a section: how a figure was reached, what it leaves out. */
+export const FOOTNOTE = `${TINY} text-muted-foreground/80`;
+
 /** An id, a URL, an event name — anything read character by character. */
 export const MONO = `${TINY} font-mono`;
 

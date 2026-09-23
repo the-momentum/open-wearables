@@ -48,9 +48,19 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 export const formatCompact = (value: number | null): string =>
 	value === null ? DASH : compact.format(value);
 
+/**
+ * A part of a whole, as a percentage. Something present never reads as "0%":
+ * 57 KB of archive in a 475 MB database is small, not absent.
+ */
+export function formatPercent(value: number, whole: number): string {
+	if (whole <= 0 || value <= 0) return '0%';
+	const percent = (value / whole) * 100;
+	return percent < 1 ? '<1%' : `${Math.round(percent)}%`;
+}
+
 /** A count and the share of a whole it makes up: "480 · 53%". */
 export const formatShare = (value: number, whole: number): string =>
-	`${formatNumber(value)} · ${whole > 0 ? Math.round((value / whole) * 100) : 0}%`;
+	`${formatNumber(value)} · ${formatPercent(value, whole)}`;
 
 /** The unit a cycle, a trend and an average are all counted in. */
 export const formatDays = (value: number): string =>
@@ -165,4 +175,19 @@ export function localRange(fromIso: string, toIso: string, zoneOffset: string | 
 		toDay: weekday.format(to),
 		utc: !zoneOffset
 	};
+}
+
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+
+/**
+ * Base 1024 with the backend's unit names, so a size read here and one read
+ * off the API agree. One decimal: storage is an estimate, and a second digit
+ * claims a precision nobody has.
+ */
+export function formatBytes(bytes: number): string {
+	if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+	const step = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), BYTE_UNITS.length - 1);
+	return step === 0
+		? `${Math.round(bytes)} B`
+		: `${(bytes / 1024 ** step).toFixed(1)} ${BYTE_UNITS[step]}`;
 }

@@ -2,7 +2,13 @@
 	import type { Component } from 'svelte';
 	import { MICRO } from './typography';
 
-	export type Figure = { icon: Component; label: string; value: string | number };
+	export type Figure = {
+		icon: Component;
+		label: string;
+		value: string | number;
+		/** A third line, for what the figure is made of. */
+		note?: string;
+	};
 
 	let { figures, label }: { figures: Figure[]; label: string } = $props();
 
@@ -34,6 +40,9 @@
 					{figure.value}
 				</dd>
 				<dt class="truncate {MICRO}">{figure.label}</dt>
+				{#if figure.note}
+					<dd class="text-[10px] text-muted-foreground/70">{figure.note}</dd>
+				{/if}
 			</div>
 		</div>
 	{/each}

@@ -734,13 +734,21 @@ Extracted after the same code appeared twice or more:
 Runes only work in `.svelte` and `.svelte.ts` files — that is why the two
 helpers carry the double extension.
 
-### The provider list is cached
+### Cached API answers go through `server/cache.ts`
 
-`fetchProviders` caches in Redis for 60s. The list is near-static, but the call
-is not rare: every search keystroke, sort, page change and mutation re-runs the
-loader, and `enhance` invalidates everything on success. Unlike the session
-store this cache fails **open** — an unreachable Redis costs an API call, not a
-login.
+`recall`, `keep` and `cached` are the one Redis cache, and unlike the session
+store it fails **open** — an unreachable Redis costs an API call, not a login.
+Two things use it, for different reasons:
+
+- **The provider list**, 60s. Near-static, but the call is not rare: every
+  search keystroke, sort, page change and mutation re-runs the loader, and
+  `enhance` invalidates everything on success.
+- **The data lifecycle estimate**, 60s. Both its GET and its PUT scan the whole
+  of `data_point_series` for MIN/MAX(`recorded_at`) — no index leads with that
+  column — so on a customer's database each call is a pass over the largest
+  table. The PUT refills the cache, so the reload after a save is a hit; a miss
+  is streamed, so the tab opens on a skeleton instead of waiting. The e2e suite
+  counts the backend's scans and fails if either path starts paying twice.
 
 ### Contract details that bite
 

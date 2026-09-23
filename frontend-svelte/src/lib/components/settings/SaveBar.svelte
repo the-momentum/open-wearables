@@ -6,13 +6,16 @@
 	let {
 		action,
 		note,
-		payload
+		payload,
+		disabled = false
 	}: {
 		action: string;
 		/** What is about to be saved, in the reader's words. */
 		note: string;
 		/** The draft, as the one hidden field the action reads. */
 		payload: Record<string, string>;
+		/** The draft cannot be saved as it stands; `note` says why. */
+		disabled?: boolean;
 	} = $props();
 
 	const submit = createSubmitFlag();
@@ -33,7 +36,7 @@
 	{/each}
 
 	<p class="text-xs text-foreground/90">{note}</p>
-	<Button type="submit" size="sm" disabled={submit.submitting}>
+	<Button type="submit" size="sm" disabled={disabled || submit.submitting}>
 		{submit.submitting ? 'Saving…' : 'Save changes'}
 	</Button>
 </form>

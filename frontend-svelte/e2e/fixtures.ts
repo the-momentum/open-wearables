@@ -1542,3 +1542,48 @@ export const revokeInvitation = (id: string) => {
 	INVITATIONS = INVITATIONS.filter((invitation) => invitation.id !== id);
 	return INVITATIONS.length < before;
 };
+
+// --------------------------------------------------------------- lifecycle --
+
+const MB = 1024 ** 2;
+
+/** Proportions like a real install: the live series is nearly all of it. */
+const buildLifecycle = () => ({
+	settings: { archive_after_days: null as number | null, delete_after_days: null as number | null },
+	storage: {
+		live_data_bytes: 38 * MB,
+		live_index_bytes: 420 * MB,
+		archive_data_bytes: 8 * 1024,
+		archive_index_bytes: 48 * 1024,
+		other_tables_bytes: 17 * MB,
+		total_bytes: 475 * MB,
+		live_row_count: 1946,
+		archive_row_count: 0,
+		live_data_span_days: 324
+	}
+});
+
+let LIFECYCLE = buildLifecycle();
+/** Every GET and PUT is a scan of the series table on the real backend. */
+let LIFECYCLE_SCANS = 0;
+
+export const resetLifecycle = () => {
+	LIFECYCLE = buildLifecycle();
+	LIFECYCLE_SCANS = 0;
+};
+
+export const lifecycleScans = () => LIFECYCLE_SCANS;
+
+export const readLifecycle = () => {
+	LIFECYCLE_SCANS += 1;
+	return LIFECYCLE;
+};
+
+export const saveLifecycle = (body: {
+	archive_after_days: number | null;
+	delete_after_days: number | null;
+}) => {
+	LIFECYCLE_SCANS += 1;
+	LIFECYCLE = { ...LIFECYCLE, settings: { ...body } };
+	return LIFECYCLE;
+};
