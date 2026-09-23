@@ -12709,7 +12709,8 @@
           "code",
           "providers"
         ],
-        "title": "MealField"
+        "title": "MealField",
+        "description": "Coverage entry for a meal-detail field, and which providers report it."
       },
       "MenstrualCycleField": {
         "properties": {
