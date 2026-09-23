@@ -61,6 +61,7 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
         "sleep_light_minutes",
         "sleep_awake_minutes",
         "is_nap",
+        "sleep_stages",
     }
 )
 

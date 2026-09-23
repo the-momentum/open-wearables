@@ -89,6 +89,7 @@ Fetched from `/v1/sleep` one day at a time (the API requires a single `date` par
 - Sleep score (mapped to `efficiency_percent`)
 - Biometrics during sleep: average HR, HRV, SpO2, resting HR
 - Sensor Bio does not label naps; sessions are stored with `is_nap=false`
+- Stage timeline: `/v1/sleep/details/day` is called once per day and returns the stage intervals for every sleep of that day; each session keeps the intervals that start inside its own window. A session is stored without the timeline when that call returns nothing.
 
 ### Recovery
 
