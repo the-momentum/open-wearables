@@ -104,7 +104,7 @@ export async function apiGet<T>(path: string, accessToken?: string): Promise<T> 
 }
 
 async function apiWrite<T>(
-	method: 'POST' | 'PATCH' | 'DELETE',
+	method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
 	path: string,
 	accessToken: string,
 	body?: unknown
@@ -124,6 +124,9 @@ async function apiWrite<T>(
 
 export const apiPost = <T>(path: string, accessToken: string, body?: unknown) =>
 	apiWrite<T>('POST', path, accessToken, body);
+
+export const apiPut = <T>(path: string, accessToken: string, body: unknown) =>
+	apiWrite<T>('PUT', path, accessToken, body);
 
 export const apiPatch = <T>(path: string, accessToken: string, body: unknown) =>
 	apiWrite<T>('PATCH', path, accessToken, body);

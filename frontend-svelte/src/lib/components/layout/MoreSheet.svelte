@@ -3,6 +3,7 @@
 	import { SECONDARY_NAV_ITEMS, isNavItemActive } from '$lib/config/nav';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import NavLink from './NavLink.svelte';
+	import AccountBadge from './AccountBadge.svelte';
 	import LogoutButton from './LogoutButton.svelte';
 	import AppVersion from './AppVersion.svelte';
 
@@ -27,6 +28,7 @@
 	<!-- The sidebar is desktop-only, so this is the only way out on a phone. -->
 	<div class="mx-3 mt-1 border-t border-border/60"></div>
 	<div class="px-3 pt-2">
+		<AccountBadge />
 		<LogoutButton />
 		<AppVersion />
 	</div>

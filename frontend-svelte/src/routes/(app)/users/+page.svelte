@@ -13,6 +13,7 @@
 	import { setRowActions } from '$lib/users/row-actions';
 	import type { User } from '$lib/users/types';
 	import type { ActionData, PageData } from './$types';
+	import { messageFrom } from '$lib/utils/forms.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -35,7 +36,7 @@
 		}
 	});
 
-	const messageFor = (action: string) => (form?.action === action ? form.message : undefined);
+	const messageFor = (action: string) => messageFrom(form, action);
 
 	const searchHref = (search: string) => usersQueryHref(withUsersQuery(data.query, { search }));
 	const pageHref = (page: number) => usersQueryHref(withUsersQuery(data.query, { page }));

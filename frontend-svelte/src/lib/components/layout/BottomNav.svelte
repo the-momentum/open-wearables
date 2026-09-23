@@ -2,6 +2,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { page } from '$app/state';
 	import { PRIMARY_NAV_ITEMS, SECONDARY_NAV_ITEMS, isNavItemActive } from '$lib/config/nav';
+	import BetaMark from '$lib/components/ui/BetaMark.svelte';
 	import { TINY } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
 	import MoreSheet from './MoreSheet.svelte';
@@ -41,16 +42,7 @@
 					     label says "beta" for anything that cannot see it. -->
 					<span class="relative">
 						<Icon size={20} aria-hidden="true" />
-						{#if item.beta}
-							<span
-								aria-hidden="true"
-								class="absolute -top-1 -right-2 grid size-3.5 place-items-center rounded-full
-									bg-surface text-[0.5rem] leading-none font-semibold text-primary
-									ring-1 ring-primary/40"
-							>
-								β
-							</span>
-						{/if}
+						{#if item.beta}<BetaMark />{/if}
 					</span>
 					{item.label}{#if item.beta}<span class="sr-only"> (beta)</span>{/if}
 				</a>

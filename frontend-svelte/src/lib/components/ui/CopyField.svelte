@@ -1,12 +1,9 @@
 <script lang="ts">
-	import Check from '@lucide/svelte/icons/check';
-	import Copy from '@lucide/svelte/icons/copy';
-	import { createCopier } from '$lib/utils/clipboard.svelte';
 	import { cn } from '$lib/utils/cn';
+	import CopyButton from './CopyButton.svelte';
 
 	let { label, value, mono = false }: { label: string; value: string; mono?: boolean } = $props();
 
-	const copier = createCopier();
 	const fieldId = $props.id();
 </script>
 
@@ -22,17 +19,6 @@
 				mono && 'text-center font-mono tracking-widest'
 			)}
 		/>
-		<button
-			type="button"
-			onclick={() => copier.copy(value)}
-			aria-label={copier.copied ? `${label} copied` : `Copy ${label}`}
-			class="grid size-11 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
-		>
-			{#if copier.copied}
-				<Check size={16} aria-hidden="true" class="text-success" />
-			{:else}
-				<Copy size={16} aria-hidden="true" />
-			{/if}
-		</button>
+		<CopyButton {value} {label} place="field" />
 	</div>
 </div>

@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { enhance } from '$app/forms';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
+	import DialogActions from '$lib/components/ui/DialogActions.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import { createDialogSubmit } from '$lib/utils/forms.svelte';
 
@@ -45,15 +45,12 @@
 
 		<div class="text-sm">{@render children()}</div>
 
-		<div class="mt-1 flex justify-end gap-2">
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
-			<Button
-				type="submit"
-				disabled={submit.submitting}
-				class={destructive ? 'bg-danger text-danger-foreground hover:bg-danger/90' : undefined}
-			>
-				{submit.submitting ? busyLabel : confirmLabel}
-			</Button>
-		</div>
+		<DialogActions
+			oncancel={() => (open = false)}
+			submitting={submit.submitting}
+			submitLabel={confirmLabel}
+			{busyLabel}
+			{destructive}
+		/>
 	</form>
 </Sheet>

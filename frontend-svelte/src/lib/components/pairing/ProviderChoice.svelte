@@ -4,7 +4,7 @@
 	import { enhance } from '$app/forms';
 	import type { Provider } from '$lib/server/providers';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
-	import ProviderLogo from './ProviderLogo.svelte';
+	import ProviderLogo from '$lib/components/providers/ProviderLogo.svelte';
 
 	let { provider, returnUrl }: { provider: Provider; returnUrl: string | null } = $props();
 

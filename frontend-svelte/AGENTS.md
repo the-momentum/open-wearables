@@ -6,9 +6,10 @@ reaches parity; only then does `frontend/` get deleted.
 
 **Status:** the shell, the `/users` list, the user detail page with **all seven**
 of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
-Women's Health — the Dashboard, Data Coverage and Webhook subscriptions are
-built. Syncs and Settings are still placeholders. Read "Current state" before assuming anything
-exists.
+Women's Health — the Dashboard, Data Coverage, Webhook subscriptions and
+Settings are built. Settings covers Credentials, Providers, Priorities and Team;
+Data Lifecycle and Seed Data are named but empty. Syncs is still a placeholder.
+Read "Current state" before assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
 
@@ -657,7 +658,8 @@ real page — see "The pairing pages are public".
 
 ### Shared styling, not copied styling
 
-Two extractions exist because the same classes had been pasted more than once:
+These exist because the same markup had been pasted more than once. Reach for
+them before writing a control by hand:
 
 - **`ui/chip.ts`** — `FilterChip` (a link, `aria-current`) and `ToggleChip` (a
   button, `aria-pressed`) differ only in element and ARIA. The class string
@@ -671,6 +673,27 @@ Two extractions exist because the same classes had been pasted more than once:
   Both components **spread `...rest`**, and that is not cosmetic: the first
   `Button` took a fixed prop list and silently dropped `aria-haspopup` and
   `aria-expanded` from the provider trigger. An e2e test now asserts both.
+- **`ui/tone.ts`** — one tinted-background map for badges, status pills and tile
+  icons. It had been written out three times, with the same colour under two
+  names (`info` in the badge, `primary` in the dashboard tile).
+- **`ui/TextField.svelte`** — label, box, and a hint tied on with
+  `aria-describedby`. A hint _inside_ the `<label>` becomes part of the field's
+  accessible name, which is how three settings dialogs ended up with fields
+  called "Name A name you will recognise…". `ui/PasswordField.svelte` is this
+  plus the show/hide eye; `ui/field.ts` holds the box the search field shares.
+- **`ui/DialogActions.svelte`** — the Cancel/confirm footer, once, for all six
+  dialogs. Cancel first so the destructive button is not where a thumb lands.
+- **`ui/IconButton.svelte`** — the glyph-only row action, with `danger` for the
+  ones that delete. Ten of them had been hand-rolled, five carrying the same
+  `hover:border-danger/40` string.
+- **`ui/CopyButton.svelte`** — copy-with-confirmation, in the three places it
+  sits: `inline` beside a code chip, `field` beside a read-only input, `action`
+  in a row of buttons.
+- **`ui/TabStrip.svelte`** — the scrolling tab strip, shared by the user detail
+  tabs and Settings. It puts the Beta word pill up from `sm` and the circled β
+  on the icon below it, which is the trade the bottom bar already makes.
+- **`settings/SettingRow.svelte`** — lead glyph, title, small print, actions.
+  Four settings rows had it pasted, and had already drifted on padding.
 
 ### Mutations go through form actions
 

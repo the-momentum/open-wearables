@@ -10,6 +10,7 @@
 	import SubscriptionDialog from '$lib/components/webhooks/SubscriptionDialog.svelte';
 	import type { Subscription } from '$lib/webhooks/types';
 	import type { ActionData, PageData } from './$types';
+	import { messageFrom } from '$lib/utils/forms.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -20,9 +21,7 @@
 	let removing = $state<Subscription | null>(null);
 	let removeOpen = $state(false);
 
-	// `id` where an action can fail for one row in particular, as a test send can.
-	const messageFor = (action: string, id?: string) =>
-		form?.action === action && (id === undefined || form.id === id) ? form.message : undefined;
+	const messageFor = (action: string, id?: string) => messageFrom(form, action, id);
 
 	function open(subscription: Subscription | null) {
 		editing = subscription;

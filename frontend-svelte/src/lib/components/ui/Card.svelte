@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import type { Component, Snippet } from 'svelte';
 	import { cn } from '$lib/utils/cn';
 	import { HEADING } from './typography';
 
 	let {
+		icon: Icon,
 		title,
 		description,
 		action,
@@ -11,6 +12,8 @@
 		bodyClass,
 		children
 	}: {
+		/** Gives a section a mark of its own where several stack up. */
+		icon?: Component;
 		title?: string;
 		description?: string;
 		/** Rendered on the right of the header — a button, a count, a filter. */
@@ -29,11 +32,21 @@
 >
 	{#if title}
 		<header class="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
-			<div class="min-w-0">
-				<h2 id={headingId} class={HEADING}>{title}</h2>
-				{#if description}
-					<p class="mt-0.5 text-xs text-muted-foreground">{description}</p>
+			<div class="flex min-w-0 items-start gap-3">
+				{#if Icon}
+					<span
+						aria-hidden="true"
+						class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+					>
+						<Icon size={16} />
+					</span>
 				{/if}
+				<div class="min-w-0">
+					<h2 id={headingId} class={HEADING}>{title}</h2>
+					{#if description}
+						<p class="mt-0.5 text-xs text-muted-foreground">{description}</p>
+					{/if}
+				</div>
 			</div>
 			{#if action}
 				<div class="shrink-0">{@render action()}</div>

@@ -13,6 +13,7 @@
 	import InvitationDialog from './InvitationDialog.svelte';
 	import UserHeaderActions from './UserHeaderActions.svelte';
 	import UserIdentityMeta from './UserIdentityMeta.svelte';
+	import { messageFrom } from '$lib/utils/forms.svelte';
 
 	let { user }: { user: UserDetail } = $props();
 
@@ -27,7 +28,7 @@
 		page.form as { action?: string; message?: string; invitation?: InvitationCode } | null
 	);
 	const invitation = $derived(form?.action === 'invite' ? (form.invitation ?? null) : null);
-	const messageFor = (action: string) => (form?.action === action ? form.message : undefined);
+	const messageFor = (action: string) => messageFrom(form, action);
 
 	$effect(() => {
 		if (invitation) inviting = true;

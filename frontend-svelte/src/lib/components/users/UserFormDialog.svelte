@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
+	import DialogActions from '$lib/components/ui/DialogActions.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
+	import TextField from '$lib/components/ui/TextField.svelte';
 	import type { User } from '$lib/users/types';
 	import { createDialogSubmit } from '$lib/utils/forms.svelte';
 
@@ -30,9 +31,6 @@
 		email = user?.email ?? '';
 		externalId = user?.external_user_id ?? '';
 	});
-
-	const field =
-		'min-h-11 rounded-lg border border-border bg-surface px-3 text-sm placeholder:text-muted-foreground/60';
 </script>
 
 <Sheet bind:open title={editing ? 'Edit user' : 'Add user'}>
@@ -53,32 +51,29 @@
 		<!-- min-w-0: an input carries a default content width, so a flex item
 		     holding one will not shrink below it and overflows instead. -->
 		<div class="flex flex-col gap-3 sm:flex-row">
-			<label class="flex min-w-0 flex-1 flex-col gap-1.5">
-				<span class="text-sm font-medium">First name</span>
-				<input name="first_name" maxlength="100" bind:value={firstName} class={field} />
-			</label>
-			<label class="flex min-w-0 flex-1 flex-col gap-1.5">
-				<span class="text-sm font-medium">Last name</span>
-				<input name="last_name" maxlength="100" bind:value={lastName} class={field} />
-			</label>
+			<div class="min-w-0 flex-1">
+				<TextField name="first_name" label="First name" maxlength={100} bind:value={firstName} />
+			</div>
+			<div class="min-w-0 flex-1">
+				<TextField name="last_name" label="Last name" maxlength={100} bind:value={lastName} />
+			</div>
 		</div>
 
-		<label class="flex flex-col gap-1.5">
-			<span class="text-sm font-medium">Email</span>
-			<input name="email" type="email" bind:value={email} class={field} />
-		</label>
+		<TextField name="email" type="email" label="Email" bind:value={email} />
 
-		<label class="flex flex-col gap-1.5">
-			<span class="text-sm font-medium">External user ID</span>
-			<input name="external_user_id" maxlength="255" bind:value={externalId} class={field} />
-			<span class="text-xs text-muted-foreground">Your own identifier for this person.</span>
-		</label>
+		<TextField
+			name="external_user_id"
+			label="External user ID"
+			maxlength={255}
+			hint="Your own identifier for this person."
+			bind:value={externalId}
+		/>
 
-		<div class="mt-1 flex justify-end gap-2">
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
-			<Button type="submit" disabled={submit.submitting}>
-				{submit.submitting ? 'Saving…' : editing ? 'Save changes' : 'Create user'}
-			</Button>
-		</div>
+		<DialogActions
+			oncancel={() => (open = false)}
+			submitting={submit.submitting}
+			submitLabel={editing ? 'Save changes' : 'Create user'}
+			busyLabel="Saving…"
+		/>
 	</form>
 </Sheet>

@@ -4,6 +4,7 @@
 
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import TextField from '$lib/components/ui/TextField.svelte';
 	import Wordmark from '$lib/components/layout/Wordmark.svelte';
 	import type { ActionData } from './$types';
 
@@ -41,30 +42,22 @@
 				<Alert>{form.message}</Alert>
 			{/if}
 
-			<label class="flex flex-col gap-1.5">
-				<span class="text-sm font-medium">Email</span>
-				<input
-					name="email"
-					type="email"
-					required
-					autocomplete="username"
-					value={form?.email ?? ''}
-					class="min-h-11 rounded-lg border border-border bg-surface px-3 text-sm
-						placeholder:text-muted-foreground/60"
-				/>
-			</label>
+			<TextField
+				name="email"
+				type="email"
+				label="Email"
+				autocomplete="username"
+				required
+				value={form?.email ?? ''}
+			/>
 
-			<label class="flex flex-col gap-1.5">
-				<span class="text-sm font-medium">Password</span>
-				<input
-					name="password"
-					type="password"
-					required
-					autocomplete="current-password"
-					class="min-h-11 rounded-lg border border-border bg-surface px-3 text-sm
-						placeholder:text-muted-foreground/60"
-				/>
-			</label>
+			<TextField
+				name="password"
+				type="password"
+				label="Password"
+				autocomplete="current-password"
+				required
+			/>
 
 			<Button type="submit" disabled={submitting} class="mt-1 w-full">
 				{#if submitting}

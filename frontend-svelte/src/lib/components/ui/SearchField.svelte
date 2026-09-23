@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Search from '@lucide/svelte/icons/search';
 	import { goto } from '$app/navigation';
+	import { FIELD } from './field';
 
 	let {
 		value: current,
@@ -58,8 +59,7 @@
 		}}
 		aria-label={label}
 		{placeholder}
-		class="min-h-11 w-full rounded-lg border border-border bg-surface
-			pr-3 pl-9 text-sm placeholder:text-muted-foreground/60"
+		class="{FIELD} pr-3 pl-9"
 	/>
 	{#each Object.entries(hidden) as [name, fieldValue] (name)}
 		<input type="hidden" {name} value={fieldValue} />

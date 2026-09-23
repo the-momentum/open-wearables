@@ -7,6 +7,27 @@ import {
 	CREDENTIALS,
 	DEVELOPER,
 	PROVIDER_SETTINGS,
+	createApiKey,
+	createApplication,
+	createInvitation,
+	deleteApiKey,
+	deleteApplication,
+	deleteDeveloper,
+	listApiKeys,
+	listApplications,
+	listDevelopers,
+	listDeviceTypePriorities,
+	listInvitations,
+	listProviderPriorities,
+	renameApiKey,
+	resetSettings,
+	revokeInvitation,
+	rotateApiKey,
+	rotateApplicationSecret,
+	saveDeviceTypePriorities,
+	saveProviderPriorities,
+	setLiveSyncMode,
+	setProviderEnabled,
 	makeConnections,
 	createSubscription,
 	deleteSubscription,
@@ -82,6 +103,7 @@ const server = Bun.serve({
 			resetActivity();
 			resetCycles();
 			resetWebhooks();
+			resetSettings();
 			return new Response(null, { status: 204 });
 		}
 
@@ -170,7 +192,126 @@ const server = Bun.serve({
 		}
 
 		if (pathname === '/api/v1/oauth/providers') {
+			if (request.method === 'PUT') {
+				const { providers } = await request.json();
+				return json(setProviderEnabled(providers));
+			}
 			return json(PROVIDER_SETTINGS);
+		}
+
+		const liveSyncMatch = pathname.match(/^\/api\/v1\/oauth\/providers\/([^/]+)$/);
+		if (liveSyncMatch && request.method === 'PUT') {
+			const { live_sync_mode } = await request.json();
+			const updated = setLiveSyncMode(liveSyncMatch[1], live_sync_mode);
+			return updated ? json(updated) : json({ detail: 'Not found' }, 404);
+		}
+
+		// ------------------------------------------------------------ settings --
+
+		const keyMatch = pathname.match(/^\/api\/v1\/developer\/api-keys\/([^/]+)(\/rotate)?$/);
+		if (keyMatch) {
+			const [, id, rotating] = keyMatch;
+			if (rotating && request.method === 'POST') {
+				const rotated = rotateApiKey(id);
+				return rotated ? json(rotated) : json({ detail: 'Not found' }, 404);
+			}
+			if (request.method === 'PATCH') {
+				const { name } = await request.json();
+				const renamed = renameApiKey(id, name);
+				return renamed ? json(renamed) : json({ detail: 'Not found' }, 404);
+			}
+			if (request.method === 'DELETE') {
+				return deleteApiKey(id)
+					? new Response(null, { status: 204 })
+					: json({ detail: 'Not found' }, 404);
+			}
+		}
+
+		if (pathname === '/api/v1/developer/api-keys') {
+			if (request.method === 'POST') {
+				const { name } = await request.json();
+				if (!String(name ?? '').trim()) return json({ detail: 'Name is required' }, 422);
+				return json(createApiKey(name), 201);
+			}
+			return json(listApiKeys());
+		}
+
+		const appMatch = pathname.match(/^\/api\/v1\/applications\/([^/]+)(\/rotate-secret)?$/);
+		if (appMatch) {
+			const [, appId, rotating] = appMatch;
+			if (rotating && request.method === 'POST') {
+				const rotated = rotateApplicationSecret(appId);
+				return rotated ? json(rotated) : json({ detail: 'Not found' }, 404);
+			}
+			if (request.method === 'DELETE') {
+				return deleteApplication(appId)
+					? new Response(null, { status: 204 })
+					: json({ detail: 'Not found' }, 404);
+			}
+		}
+
+		if (pathname === '/api/v1/applications') {
+			if (request.method === 'POST') {
+				const { name } = await request.json();
+				return json(createApplication(name), 201);
+			}
+			return json(listApplications());
+		}
+
+		if (pathname === '/api/v1/priorities/providers') {
+			if (request.method === 'PUT') {
+				const { priorities } = await request.json();
+				return json(saveProviderPriorities(priorities));
+			}
+			return json(listProviderPriorities());
+		}
+
+		if (pathname === '/api/v1/priorities/device-types') {
+			if (request.method === 'PUT') {
+				const { priorities } = await request.json();
+				return json(saveDeviceTypePriorities(priorities));
+			}
+			return json(listDeviceTypePriorities());
+		}
+
+		if (pathname === '/api/v1/developers') {
+			return json(listDevelopers());
+		}
+
+		const developerMatch = pathname.match(/^\/api\/v1\/developers\/([^/]+)$/);
+		if (developerMatch && request.method === 'DELETE') {
+			return deleteDeveloper(developerMatch[1])
+				? new Response(null, { status: 204 })
+				: json({ detail: 'Not found' }, 404);
+		}
+
+		const invitationMatch = pathname.match(/^\/api\/v1\/invitations\/([^/]+)(\/resend)?$/);
+		if (invitationMatch) {
+			const [, id, resending] = invitationMatch;
+			if (resending && request.method === 'POST') return json({ message: 'Invitation resent.' });
+			if (request.method === 'DELETE') {
+				return revokeInvitation(id)
+					? new Response(null, { status: 204 })
+					: json({ detail: 'Not found' }, 404);
+			}
+		}
+
+		if (pathname === '/api/v1/invitations') {
+			if (request.method === 'POST') {
+				const { email } = await request.json();
+				if (listDevelopers().some((developer) => developer.email === email)) {
+					return json({ detail: 'That person is already on the team.' }, 409);
+				}
+				return json(createInvitation(email), 201);
+			}
+			return json(listInvitations());
+		}
+
+		if (pathname === '/api/v1/auth/change-password' && request.method === 'POST') {
+			const { current_password } = await request.json();
+			return current_password === CREDENTIALS.password
+				? json({ message: 'Password updated successfully.' })
+				: json({ detail: 'Incorrect current password' }, 400);
 		}
 
 		if (pathname === '/api/v1/users' && request.method === 'POST') {

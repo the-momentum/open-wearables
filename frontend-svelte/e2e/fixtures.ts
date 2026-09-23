@@ -10,13 +10,32 @@ export const DEVELOPER = {
 
 export const PROVIDERS = ['garmin', 'oura', 'whoop', 'suunto'];
 
-export const PROVIDER_SETTINGS = PROVIDERS.map((provider) => ({
-	provider,
-	name: provider[0].toUpperCase() + provider.slice(1),
-	has_cloud_api: true,
-	is_enabled: true,
-	icon_url: `/static/provider-icons/${provider}.svg`
-}));
+/** Garmin is webhook-only and Whoop is off, so the settings rows are not all alike. */
+const buildProviderSettings = () =>
+	PROVIDERS.map((provider) => ({
+		provider,
+		name: provider[0].toUpperCase() + provider.slice(1),
+		has_cloud_api: true,
+		is_enabled: provider !== 'whoop',
+		icon_url: `/static/provider-icons/${provider}.svg`,
+		live_sync_mode: provider === 'garmin' ? 'webhook' : 'pull',
+		live_sync_configurable: provider === 'oura' || provider === 'suunto'
+	}));
+
+export let PROVIDER_SETTINGS = buildProviderSettings();
+
+export const setProviderEnabled = (providers: Record<string, boolean>) => {
+	for (const setting of PROVIDER_SETTINGS) {
+		if (setting.provider in providers) setting.is_enabled = providers[setting.provider];
+	}
+	return PROVIDER_SETTINGS;
+};
+
+export const setLiveSyncMode = (provider: string, mode: string) => {
+	const found = PROVIDER_SETTINGS.find((setting) => setting.provider === provider);
+	if (found) found.live_sync_mode = mode;
+	return found ?? null;
+};
 
 /** 47 users: enough for three pages at 20, with a memorable one to search for. */
 /** Mirrors UserRead; declared here so e2e files need no $lib alias. */
@@ -1339,4 +1358,187 @@ export const makeDeliveries = (query: URLSearchParams) => {
 		// back arrow would test as dead when the real thing is not.
 		prevIterator: from > 0 ? String(Math.max(from - limit, 0)) : null
 	};
+};
+
+// ---------------------------------------------------------------- settings --
+
+const buildApiKeys = () => [
+	{
+		id: 'key_1',
+		name: 'Production backend',
+		key_prefix: 'ow_live_9f2a',
+		created_at: '2026-09-01T09:00:00Z'
+	}
+];
+
+const buildApplications = () => [
+	{
+		id: 'app_row_1',
+		app_id: 'app_7c1d9d49dd0b2893',
+		name: 'Fieldwork iOS',
+		created_at: '2026-08-14T09:00:00Z'
+	}
+];
+
+const buildPriorities = () => ({
+	providers: PROVIDERS.map((provider, index) => ({ provider, priority: index + 1 })),
+	deviceTypes: ['watch', 'ring', 'band', 'phone'].map((device_type, index) => ({
+		device_type,
+		priority: index + 1
+	}))
+});
+
+const buildDevelopers = () => [
+	DEVELOPER,
+	{
+		id: '00000000-0000-4000-8000-000000000002',
+		email: 'colleague@example.com',
+		first_name: 'Ada',
+		last_name: 'Lovelace',
+		created_at: '2026-02-03T00:00:00Z'
+	}
+];
+
+/** One live invitation, one that has lapsed, one already accepted. */
+const buildInvitations = () => [
+	{
+		id: 'inv_open',
+		email: 'new.hire@example.com',
+		token: 'tok-open',
+		status: 'sent',
+		expires_at: '2099-01-01T00:00:00Z',
+		created_at: '2026-09-20T00:00:00Z'
+	},
+	{
+		id: 'inv_lapsed',
+		email: 'never.replied@example.com',
+		token: 'tok-lapsed',
+		status: 'sent',
+		expires_at: '2026-01-01T00:00:00Z',
+		created_at: '2025-12-01T00:00:00Z'
+	},
+	{
+		id: 'inv_done',
+		email: 'colleague@example.com',
+		token: 'tok-done',
+		status: 'accepted',
+		expires_at: '2099-01-01T00:00:00Z',
+		created_at: '2026-02-01T00:00:00Z'
+	}
+];
+
+let API_KEYS = buildApiKeys();
+let APPLICATIONS = buildApplications();
+let PRIORITIES = buildPriorities();
+let DEVELOPERS = buildDevelopers();
+let INVITATIONS = buildInvitations();
+
+export const resetSettings = () => {
+	PROVIDER_SETTINGS = buildProviderSettings();
+	API_KEYS = buildApiKeys();
+	APPLICATIONS = buildApplications();
+	PRIORITIES = buildPriorities();
+	DEVELOPERS = buildDevelopers();
+	INVITATIONS = buildInvitations();
+};
+
+export const listApiKeys = () => API_KEYS;
+
+export const createApiKey = (name: string) => {
+	const created = {
+		id: `key_${API_KEYS.length + 1}`,
+		name,
+		key_prefix: 'ow_live_new1',
+		created_at: new Date().toISOString()
+	};
+	API_KEYS = [...API_KEYS, created];
+	// The secret exists in exactly one response, which is the whole point of it.
+	return { ...created, key: 'ow_live_new1_full_secret_value' };
+};
+
+export const renameApiKey = (id: string, name: string) => {
+	const found = API_KEYS.find((key) => key.id === id);
+	if (found) found.name = name;
+	return found ?? null;
+};
+
+export const rotateApiKey = (id: string) => {
+	const found = API_KEYS.find((key) => key.id === id);
+	if (!found) return null;
+	found.key_prefix = 'ow_live_rot8';
+	return { ...found, key: 'ow_live_rot8_full_secret_value' };
+};
+
+export const deleteApiKey = (id: string) => {
+	const before = API_KEYS.length;
+	API_KEYS = API_KEYS.filter((key) => key.id !== id);
+	return API_KEYS.length < before;
+};
+
+export const listApplications = () => APPLICATIONS;
+
+export const createApplication = (name: string) => {
+	const created = {
+		id: `app_row_${APPLICATIONS.length + 1}`,
+		app_id: `app_${APPLICATIONS.length + 1}0000000000000`,
+		name,
+		created_at: new Date().toISOString()
+	};
+	APPLICATIONS = [...APPLICATIONS, created];
+	return { ...created, app_secret: 'app_secret_shown_once' };
+};
+
+export const rotateApplicationSecret = (appId: string) => {
+	const found = APPLICATIONS.find((app) => app.app_id === appId);
+	return found ? { ...found, app_secret: 'app_secret_rotated_once' } : null;
+};
+
+export const deleteApplication = (appId: string) => {
+	const before = APPLICATIONS.length;
+	APPLICATIONS = APPLICATIONS.filter((app) => app.app_id !== appId);
+	return APPLICATIONS.length < before;
+};
+
+export const listProviderPriorities = () => ({ items: PRIORITIES.providers });
+export const listDeviceTypePriorities = () => ({ items: PRIORITIES.deviceTypes });
+
+export const saveProviderPriorities = (priorities: { provider: string; priority: number }[]) => {
+	PRIORITIES.providers = [...priorities].sort((a, b) => a.priority - b.priority);
+	return { items: PRIORITIES.providers };
+};
+
+export const saveDeviceTypePriorities = (
+	priorities: { device_type: string; priority: number }[]
+) => {
+	PRIORITIES.deviceTypes = [...priorities].sort((a, b) => a.priority - b.priority);
+	return { items: PRIORITIES.deviceTypes };
+};
+
+export const listDevelopers = () => DEVELOPERS;
+
+export const deleteDeveloper = (id: string) => {
+	const before = DEVELOPERS.length;
+	DEVELOPERS = DEVELOPERS.filter((developer) => developer.id !== id);
+	return DEVELOPERS.length < before;
+};
+
+export const listInvitations = () => INVITATIONS;
+
+export const createInvitation = (email: string) => {
+	const created = {
+		id: `inv_${INVITATIONS.length + 1}`,
+		email,
+		token: `tok-${INVITATIONS.length + 1}`,
+		status: 'sent',
+		expires_at: '2099-01-01T00:00:00Z',
+		created_at: new Date().toISOString()
+	};
+	INVITATIONS = [...INVITATIONS, created];
+	return created;
+};
+
+export const revokeInvitation = (id: string) => {
+	const before = INVITATIONS.length;
+	INVITATIONS = INVITATIONS.filter((invitation) => invitation.id !== id);
+	return INVITATIONS.length < before;
 };

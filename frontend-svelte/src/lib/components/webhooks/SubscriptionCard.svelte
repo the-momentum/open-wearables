@@ -7,6 +7,7 @@
 	import AccordionCard from '$lib/components/events/AccordionCard.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import LinkButton from '$lib/components/ui/LinkButton.svelte';
 	import { HEADING, MICRO, MONO } from '$lib/components/ui/typography';
 	import type { EventType, Subscription } from '$lib/webhooks/types';
@@ -79,15 +80,13 @@
 					Deliveries
 				</LinkButton>
 
-				<Button
-					variant="outline"
-					size="sm"
+				<IconButton
+					icon={Trash2}
+					label="Delete subscription"
+					danger
 					onclick={ondelete}
-					aria-label="Delete subscription"
-					class="{quiet} hover:border-danger/40 hover:text-danger"
-				>
-					<Trash2 size={13} aria-hidden="true" />
-				</Button>
+					class={quiet}
+				/>
 			</div>
 		</div>
 	{/snippet}

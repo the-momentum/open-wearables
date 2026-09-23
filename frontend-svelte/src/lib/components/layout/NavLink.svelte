@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import BetaTag from '$lib/components/ui/BetaTag.svelte';
 	import { cn } from '$lib/utils/cn';
 	import type { NavItem } from '$lib/config/nav';
 
@@ -33,14 +34,7 @@
 >
 	<Icon size={18} aria-hidden="true" />
 	<span class="flex-1">{item.label}</span>
-	{#if item.beta}
-		<span
-			class="rounded px-1 py-0.5 text-[0.625rem] leading-none font-semibold tracking-wide
-				text-primary uppercase ring-1 ring-primary/30"
-		>
-			Beta
-		</span>
-	{/if}
+	{#if item.beta}<BetaTag />{/if}
 	{#if item.external}
 		<ExternalLink size={14} aria-hidden="true" class="opacity-60" />
 	{/if}

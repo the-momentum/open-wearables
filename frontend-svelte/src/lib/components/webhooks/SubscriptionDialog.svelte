@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Alert from '$lib/components/ui/Alert.svelte';
-	import Button from '$lib/components/ui/Button.svelte';
+	import DialogActions from '$lib/components/ui/DialogActions.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
+	import TextField from '$lib/components/ui/TextField.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
 	import { createDialogSubmit } from '$lib/utils/forms.svelte';
 	import EventPicker from './EventPicker.svelte';
@@ -37,9 +38,6 @@
 		userId = subscription?.user_id ?? '';
 		chosen = [...(subscription?.filter_types ?? [])];
 	});
-
-	const field =
-		'min-h-11 rounded-lg border border-border bg-surface px-3 text-sm placeholder:text-muted-foreground/60';
 </script>
 
 <Sheet bind:open title={editing ? 'Edit subscription' : 'New subscription'}>
@@ -60,48 +58,39 @@
 			<Alert>{message}</Alert>
 		{/if}
 
-		<label class="flex flex-col gap-1.5">
-			<span class={MICRO}>Endpoint URL</span>
-			<input
-				name="url"
-				type="url"
-				required
-				bind:value={url}
-				placeholder="https://api.example.com/webhooks"
-				class={field}
-			/>
-		</label>
+		<TextField
+			name="url"
+			type="url"
+			label="Endpoint URL"
+			placeholder="https://api.example.com/webhooks"
+			required
+			bind:value={url}
+		/>
 
-		<label class="flex flex-col gap-1.5">
-			<span class={MICRO}>Description</span>
-			<input
-				name="description"
-				bind:value={description}
-				placeholder="What this subscription is for"
-				class={field}
-			/>
-		</label>
+		<TextField
+			name="description"
+			label="Description"
+			placeholder="What this subscription is for"
+			bind:value={description}
+		/>
 
-		<label class="flex flex-col gap-1.5">
-			<span class={MICRO}>One user only</span>
-			<input
-				name="user_id"
-				bind:value={userId}
-				placeholder="User ID — leave empty for every user"
-				class={field}
-			/>
-		</label>
+		<TextField
+			name="user_id"
+			label="One user only"
+			placeholder="User ID — leave empty for every user"
+			bind:value={userId}
+		/>
 
 		<fieldset class="flex flex-col gap-2">
 			<legend class={MICRO}>Events — none chosen means every event</legend>
 			<EventPicker {types} bind:chosen />
 		</fieldset>
 
-		<div class="flex justify-end gap-2 pt-1">
-			<Button type="button" variant="outline" onclick={() => (open = false)}>Cancel</Button>
-			<Button type="submit" disabled={submit.submitting}>
-				{submit.submitting ? 'Saving…' : editing ? 'Save changes' : 'Create subscription'}
-			</Button>
-		</div>
+		<DialogActions
+			oncancel={() => (open = false)}
+			submitting={submit.submitting}
+			submitLabel={editing ? 'Save changes' : 'Create subscription'}
+			busyLabel="Saving…"
+		/>
 	</form>
 </Sheet>
