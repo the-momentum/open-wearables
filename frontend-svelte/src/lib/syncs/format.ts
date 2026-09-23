@@ -1,9 +1,11 @@
 import type { Tone } from '$lib/components/ui/tone';
+import type { SyncRunSummary } from './types';
 
 const TONE: Record<string, Tone> = {
 	success: 'success',
 	partial: 'warning',
 	stale: 'warning',
+	unfinished: 'warning',
 	in_progress: 'primary',
 	failed: 'danger',
 	cancelled: 'neutral',
@@ -13,6 +15,14 @@ const TONE: Record<string, Tone> = {
 export const statusTone = (status: string): Tone => TONE[status] ?? 'neutral';
 
 export const isRunning = (status: string) => status === 'in_progress';
+
+/** "40/100", or just "40" when the provider never said how many there are. */
+export const itemsLabel = (run: Pick<SyncRunSummary, 'items_processed' | 'items_total'>) =>
+	run.items_processed === null
+		? null
+		: run.items_total === null
+			? String(run.items_processed)
+			: `${run.items_processed}/${run.items_total}`;
 
 export function formatDuration(startIso: string | null, endIso: string | null): string | null {
 	if (!startIso || !endIso) return null;

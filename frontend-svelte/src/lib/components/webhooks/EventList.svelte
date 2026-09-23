@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { CAPTION, MICRO } from '$lib/components/ui/typography';
-	import type { EventSummary } from '$lib/webhooks/events';
+	import { strayNote, type EventSummary } from '$lib/webhooks/events';
 
 	let { groups }: { groups: EventSummary[] } = $props();
 </script>
@@ -17,7 +17,11 @@
 		<dl class="grid grid-cols-[minmax(0,9rem)_1fr] gap-x-4 gap-y-1.5 text-sm">
 			{#each groups as group (group.label)}
 				<dt class="pt-0.5 {CAPTION}">{group.label}</dt>
-				<dd class="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 text-foreground/90">
+				<dd
+					class="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 {group.stray
+						? 'text-warning'
+						: 'text-foreground/90'}"
+				>
 					{#if group.groupEvent}
 						<!-- One event for the lot, not one per series: it says so. -->
 						<span title="{group.groupEvent.name}: {group.groupEvent.description}">
@@ -33,6 +37,11 @@
 							{item.label}
 						</span>
 					{/each}
+					{#if group.stray}
+						<span class="basis-full text-xs text-muted-foreground">
+							{strayNote(group.items.length)}
+						</span>
+					{/if}
 				</dd>
 			{/each}
 		</dl>

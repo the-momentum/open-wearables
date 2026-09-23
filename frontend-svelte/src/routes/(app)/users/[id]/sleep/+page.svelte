@@ -40,10 +40,8 @@
 		labelFor={label}
 		selected={data.provider}
 	>
-		<!-- Two watches can both claim one night. This is the same ranking the
-		     summaries use, and it answers "why are there two of these". -->
-		<!-- The backend filters this now, so paging and the totals agree with it;
-		     done here it would have thinned each page instead. -->
+		<!-- Filtered by the backend, so paging and the totals agree with it; done
+		     here it would have thinned each page instead. -->
 		<FilterGroup label="Sessions">
 			<Segmented
 				label="Sessions"
@@ -56,6 +54,8 @@
 			/>
 		</FilterGroup>
 
+		<!-- Two watches can both claim one night. This is the same ranking the
+		     summaries use, and it answers "why are there two of these". -->
 		<FilterGroup label="Sources">
 			<Segmented
 				label="Sources"

@@ -1,5 +1,12 @@
 export type SyncStatus =
-	'in_progress' | 'success' | 'failed' | 'partial' | 'cancelled' | 'skipped' | 'stale';
+	| 'in_progress'
+	| 'success'
+	| 'failed'
+	| 'partial'
+	| 'cancelled'
+	| 'skipped'
+	| 'unfinished'
+	| 'stale';
 
 /** Mirrors backend `SyncRunRecord` — Postgres, unbounded in time, historical runs. */
 export type SyncRun = {
@@ -26,7 +33,7 @@ export type SyncRunSummary = {
 	provider: string;
 	source: string;
 	stage: string;
-	status: string;
+	status: SyncStatus;
 	message: string | null;
 	progress: number | null;
 	items_processed: number | null;
@@ -40,3 +47,22 @@ export type SyncRunSummary = {
 	ended_at: string | null;
 	last_update: string;
 };
+
+/** Mirrors `SyncRunDataTypeRecord`: one data type inside a stored run. */
+export type SyncDataType = {
+	data_type: string;
+	kind: string;
+	status: SyncStatus;
+	native_type: string | null;
+	reported_records: number | null;
+	items_inserted: number;
+	items_updated: number;
+	covered_start: string | null;
+	covered_end: string | null;
+	error_code: string | null;
+	error: string | null;
+	attempt: number;
+};
+
+/** Mirrors `SyncRunDetail`: a stored run and what it did per data type. */
+export type SyncRunDetail = SyncRun & { data_types: SyncDataType[] };

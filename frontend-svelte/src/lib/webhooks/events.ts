@@ -43,6 +43,10 @@ export const namesIn = (group: EventGroup): string[] => [
 	...group.events.map((event) => event.name)
 ];
 
+/** What a card says about names the catalogue dropped, as chip tooltip and as list hint. */
+export const strayNote = (count: number) =>
+	`The API no longer sends ${count === 1 ? 'this event' : 'these events'}, so nothing will arrive. Edit the subscription to remove or replace ${count === 1 ? 'it' : 'them'}.`;
+
 export type EventSummary = {
 	label: string;
 	/** Nothing in the group is left out: its group event, or every event of a family. */
@@ -69,8 +73,8 @@ function shortLabel(event: EventType, group: EventGroup): string {
 
 /**
  * A subscription's filter read the way the picker groups it. A name the
- * catalogue no longer has is kept, and said to be no longer offered, rather
- * than dropped: the subscription still holds it, and it is one to edit out.
+ * catalogue no longer has is kept, and said to be no longer sent, rather than
+ * dropped: the subscription still holds it, and nothing will ever arrive for it.
  */
 export function summarise(names: string[], types: EventType[]): EventSummary[] {
 	const chosen = new Set(names);
@@ -101,7 +105,7 @@ export function summarise(names: string[], types: EventType[]): EventSummary[] {
 	const other = stray.length
 		? [
 				{
-					label: 'No longer offered',
+					label: 'No longer sent',
 					whole: false,
 					groupEvent: null,
 					items: stray.map((name) => ({ label: name, name, description: '' })),

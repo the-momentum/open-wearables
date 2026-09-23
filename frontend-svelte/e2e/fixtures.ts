@@ -1834,3 +1834,126 @@ export const queueSeed = (body: { random_seed: number | null }) => {
 	LAST_SEED = body;
 	return { task_id: 'seed-task-1', status: 'dispatched', seed_used: body.random_seed ?? 424242 };
 };
+
+// ------------------------------------------------------------------- syncs --
+
+const SYNC_USERS = [
+	'00000000-0000-4000-8000-000000000007',
+	'00000000-0000-4000-8000-000000000008',
+	'00000000-0000-4000-8000-000000000009'
+];
+
+/**
+ * Forty-five runs over three users, newest first, shaped like the real buffer:
+ * mostly quiet pulls, one sync running, a few failures, and one backfill that
+ * also has a stored record in Postgres.
+ */
+const buildGlobalRuns = () =>
+	Array.from({ length: 45 }, (_, index) => {
+		const at = new Date(Date.parse('2026-09-23T18:00:00Z') - index * 4 * 60_000);
+		const status =
+			index === 0
+				? 'in_progress'
+				: index % 11 === 5
+					? 'failed'
+					: index % 13 === 7
+						? 'partial'
+						: index % 3 === 0
+							? 'success'
+							: 'skipped';
+		const provider = ['oura', 'suunto', 'garmin', 'whoop'][index % 4];
+		return {
+			run_id: index === 3 ? 'run_backfill_1' : `run_${index}`,
+			user_id: SYNC_USERS[index % 3],
+			provider,
+			source: index === 3 ? 'backfill' : index % 5 === 0 ? 'webhook' : 'pull',
+			stage: status === 'in_progress' ? 'processing' : 'completed',
+			status,
+			message:
+				status === 'skipped'
+					? `Sync from ${provider} completed, nothing new`
+					: `Sync from ${provider} ${status === 'failed' ? 'failed' : 'completed'}`,
+			progress: status === 'in_progress' ? 0.4 : 1,
+			items_processed: status === 'in_progress' ? 40 : 12,
+			items_total: status === 'in_progress' ? 100 : 12,
+			error: status === 'failed' ? `${provider} API answered 503` : null,
+			started_at: new Date(at.getTime() - 60_000).toISOString(),
+			ended_at: status === 'in_progress' ? null : at.toISOString(),
+			last_update: at.toISOString()
+		};
+	});
+
+let GLOBAL_RUNS = buildGlobalRuns();
+/** Every call scans the whole buffer on the real backend, so tests count them. */
+let SYNC_SCANS = 0;
+
+export const resetSyncs = () => {
+	GLOBAL_RUNS = buildGlobalRuns();
+	SYNC_SCANS = 0;
+};
+
+export const syncScans = () => SYNC_SCANS;
+
+export const listGlobalRuns = (query: URLSearchParams) => {
+	SYNC_SCANS += 1;
+	const keep = (key: string, field: 'user_id' | 'provider' | 'status' | 'source') => {
+		const wanted = query.get(key);
+		return (run: (typeof GLOBAL_RUNS)[number]) => !wanted || run[field] === wanted;
+	};
+	return GLOBAL_RUNS.filter(keep('user_id', 'user_id'))
+		.filter(keep('provider', 'provider'))
+		.filter(keep('status', 'status'))
+		.filter(keep('source', 'source'))
+		.slice(0, Number(query.get('limit') ?? 50));
+};
+
+/** Only the backfill is in Postgres; live runs are not stored. */
+export const storedRun = (runKey: string) =>
+	runKey !== 'run_backfill_1'
+		? null
+		: {
+				run_key: 'run_backfill_1',
+				user_id: SYNC_USERS[0],
+				provider: 'whoop',
+				source: 'backfill',
+				scope: 'historical',
+				status: 'partial',
+				trace_id: null,
+				window_start: '2026-06-23T00:00:00Z',
+				window_end: '2026-09-23T00:00:00Z',
+				started_at: '2026-09-23T17:45:00Z',
+				ended_at: '2026-09-23T17:48:30Z',
+				items_inserted: 5120,
+				items_updated: 7,
+				error: null,
+				data_types: [
+					{
+						data_type: 'sleep',
+						kind: 'event',
+						status: 'success',
+						native_type: null,
+						reported_records: 90,
+						items_inserted: 90,
+						items_updated: 0,
+						covered_start: '2026-06-23T00:00:00Z',
+						covered_end: '2026-09-23T00:00:00Z',
+						error_code: null,
+						error: null,
+						attempt: 1
+					},
+					{
+						data_type: 'workouts',
+						kind: 'event',
+						status: 'failed',
+						native_type: null,
+						reported_records: null,
+						items_inserted: 0,
+						items_updated: 0,
+						covered_start: null,
+						covered_end: null,
+						error_code: 'rate_limited',
+						error: 'Provider rate limit reached',
+						attempt: 2
+					}
+				]
+			};

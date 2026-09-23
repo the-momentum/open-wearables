@@ -21,6 +21,9 @@ const SOURCES: Record<string, { icon: Component; label: string }> = {
 	linked_account: { icon: Link2, label: 'Linked account' }
 };
 
+/** Mirrors backend `SyncSource`, in the order the filter offers them. */
+export const SYNC_SOURCES = Object.keys(SOURCES);
+
 /** Both fall back rather than render nothing: the backend may add a source. */
 export const sourceIcon = (source: string): Component => SOURCES[source]?.icon ?? CircleHelp;
 

@@ -23,6 +23,10 @@ import {
 	resetSettings,
 	resetLifecycle,
 	resetSeed,
+	resetSyncs,
+	syncScans,
+	listGlobalRuns,
+	storedRun,
 	lastSeed,
 	queueSeed,
 	SEED_PRESETS,
@@ -116,6 +120,7 @@ const server = Bun.serve({
 			resetSettings();
 			resetLifecycle();
 			resetSeed();
+			resetSyncs();
 			return new Response(null, { status: 204 });
 		}
 
@@ -219,6 +224,20 @@ const server = Bun.serve({
 		}
 
 		// ------------------------------------------------------------ settings --
+
+		if (pathname === '/__sync-scans') {
+			return json({ scans: syncScans() });
+		}
+
+		if (pathname === '/api/v1/sync/runs') {
+			return json(listGlobalRuns(new URL(request.url).searchParams));
+		}
+
+		const storedMatch = pathname.match(/^\/api\/v1\/sync\/history\/([^/]+)$/);
+		if (storedMatch) {
+			const stored = storedRun(decodeURIComponent(storedMatch[1]));
+			return stored ? json(stored) : json({ detail: 'Sync run not found' }, 404);
+		}
 
 		if (pathname === '/__live-sync-calls') {
 			return json({ calls: liveSyncCalls() });

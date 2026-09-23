@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import type { Component, Snippet } from 'svelte';
+	import { togglesCard } from './accordion';
 
 	let {
 		icon: Icon,
@@ -33,23 +34,9 @@
 	let expanded = $state(false);
 	const panelId = $props.id();
 
-	/**
-	 * The whole card opens it, not just the header: the padding and the gaps
-	 * between the rows are card too, and a click that lands there and does
-	 * nothing reads as a broken control.
-	 *
-	 * Two things are not that click. A control the card carries — an edit button,
-	 * a link to somewhere else — does its own job and must not fold the card
-	 * underneath it. And a card is text first: dragging across a value to copy it
-	 * ends in a click, which must not count as one either.
-	 */
-	function toggleUnlessBusy(event: MouseEvent) {
-		const target = event.target as Element | null;
-		const control = target?.closest('a, button, input, select, textarea, label');
-
-		if (control && !control.matches('[data-accordion-toggle]')) return;
-		if (!document.getSelection()?.toString()) expanded = !expanded;
-	}
+	const toggleUnlessBusy = (event: MouseEvent) => {
+		if (togglesCard(event)) expanded = !expanded;
+	};
 </script>
 
 <!-- The heading button below is what assistive tech and the keyboard drive; this

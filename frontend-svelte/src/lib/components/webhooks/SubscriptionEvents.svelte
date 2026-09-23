@@ -1,19 +1,22 @@
 <script lang="ts">
 	import { MICRO } from '$lib/components/ui/typography';
-	import type { EventSummary } from '$lib/webhooks/events';
+	import { strayNote, type EventSummary } from '$lib/webhooks/events';
 
 	let { groups }: { groups: EventSummary[] } = $props();
 
 	const SHOWN = 4;
+
+	const tooltip = (group: EventSummary) =>
+		group.stray
+			? `${group.items.map((item) => item.name).join(', ')} — ${strayNote(group.items.length)}`
+			: group.items.map((item) => item.label).join(', ') || group.label;
 </script>
 
 <!-- A chip per group, folded: the events themselves are one click away, in the
      card's own details, so nothing sits behind a "+ more" you cannot open. -->
 {#each groups.slice(0, SHOWN) as group (group.label)}
 	<span
-		title={group.stray
-			? group.items.map((item) => item.name).join('\n')
-			: group.items.map((item) => item.label).join(', ') || group.label}
+		title={tooltip(group)}
 		class="inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs
 			{group.stray ? 'bg-warning/12 text-warning' : 'bg-surface-muted text-foreground/90'}"
 	>

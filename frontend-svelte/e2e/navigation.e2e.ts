@@ -102,6 +102,7 @@ test.describe('mobile', () => {
 		'/dashboard',
 		'/users',
 		'/coverage',
+		'/syncs',
 		'/webhooks',
 		'/webhooks/ep_live/deliveries',
 		`/users/${CONNECTED}`,
@@ -150,6 +151,7 @@ test.describe('mobile', () => {
 // that way, where it quietly broke the preset the card was showing.
 const CONTROLS = 'a[href], button, input, select, textarea';
 const NESTED_ROUTES = [
+	'/syncs',
 	'/webhooks',
 	'/settings/seed-data',
 	'/settings/team',

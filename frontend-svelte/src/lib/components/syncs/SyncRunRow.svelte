@@ -1,25 +1,17 @@
 <script lang="ts">
 	import Layers from '@lucide/svelte/icons/layers';
-	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProviderMark from '$lib/components/providers/ProviderMark.svelte';
-	import { isRunning, statusTone } from '$lib/syncs/format';
+	import { isRunning, itemsLabel } from '$lib/syncs/format';
 	import type { SyncRunSummary } from '$lib/syncs/types';
-	import { formatRelativeTime } from '$lib/utils/datetime';
-	import { humanise } from '$lib/utils/text';
+	import { formatDateTime, formatRelativeTime } from '$lib/utils/datetime';
+	import RunProgress from './RunProgress.svelte';
+	import RunStatus from './RunStatus.svelte';
 	import SavedCounts from './SavedCounts.svelte';
 	import SourceGlyph from './SourceGlyph.svelte';
 
 	let { run, label }: { run: SyncRunSummary; label: string } = $props();
 
-	const running = $derived(isRunning(run.status));
-
-	const items = $derived(
-		run.items_processed === null
-			? null
-			: run.items_total === null
-				? String(run.items_processed)
-				: `${run.items_processed}/${run.items_total}`
-	);
+	const items = $derived(itemsLabel(run));
 
 	const saved = $derived(
 		run.items_inserted != null || run.items_updated != null
@@ -27,8 +19,8 @@
 			: null
 	);
 
-	// At 100% it would only repeat the badge, and full width it outweighed it.
-	const progress = $derived(running && run.progress !== null ? run.progress : null);
+	// At 100% it would only repeat the badge.
+	const progress = $derived(isRunning(run.status) ? run.progress : null);
 </script>
 
 <li class="flex items-start gap-3 px-4 py-3 sm:px-5">
@@ -37,23 +29,12 @@
 	<div class="min-w-0 flex-1">
 		<div class="flex items-center gap-2">
 			<span class="truncate text-sm text-foreground/90">{label}</span>
-			<Badge tone={statusTone(run.status)}>
-				{running ? humanise(run.stage) : humanise(run.status)}
-			</Badge>
+			<RunStatus {run} />
 			<SourceGlyph source={run.source} />
 		</div>
 
 		{#if progress !== null}
-			<div
-				class="mt-1.5 h-1 w-full max-w-48 overflow-hidden rounded-full bg-surface-muted"
-				role="progressbar"
-				aria-valuenow={Math.round(progress * 100)}
-				aria-valuemin="0"
-				aria-valuemax="100"
-				aria-label="Sync progress"
-			>
-				<div class="h-full rounded-full bg-primary/60" style="width: {progress * 100}%"></div>
-			</div>
+			<RunProgress value={progress} class="mt-1.5" />
 		{/if}
 
 		{#if run.error}
@@ -68,7 +49,10 @@
 	</div>
 
 	<div class="flex shrink-0 flex-col items-end gap-0.5">
-		<p class="text-xs whitespace-nowrap text-muted-foreground" title={run.last_update}>
+		<p
+			class="text-xs whitespace-nowrap text-muted-foreground"
+			title={formatDateTime(run.last_update)}
+		>
 			{formatRelativeTime(run.last_update)}
 		</p>
 		{#if items}

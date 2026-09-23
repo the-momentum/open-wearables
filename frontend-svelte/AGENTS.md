@@ -8,7 +8,7 @@ reaches parity; only then does `frontend/` get deleted.
 of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
 Women's Health — the Dashboard, Data Coverage, Webhook subscriptions and
 Settings are built — Credentials, Providers, Priorities, Data Lifecycle, Team
-and Seed Data. Syncs is still a placeholder.
+and Seed Data — and Syncs. Every tab of the old dashboard now has a counterpart.
 Read "Current state" before assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
@@ -1001,6 +1001,26 @@ when they are present and the message when they are not. Do not parse the
 message: the numbers are structured one layer up, and the fix belongs in the
 schema. Both paths are covered by e2e, so adding the two fields backend-side
 needs no frontend change at all.
+
+### The Syncs tab: Redis lists, Postgres explains
+
+Two stores hold runs, and the tab keeps them apart rather than merging them:
+
+- **The list is Redis** (`GET /sync/runs`): every user, every source, only the
+  last 24 hours. The endpoint scans every user's buffer on each call whatever
+  `limit` says, so [`fetchRunWindow`](src/lib/server/syncs.ts) takes one window
+  of `SYNC_WINDOW` (500) runs per filter set, caches it for 20 s, and the page
+  pages inside it. Refresh drops the cache. Filters go to the backend, since it
+  applies them before cutting to the limit.
+- **The stored record is Postgres** (`GET /sync/history/{run_key}`), fetched
+  when a row opens, never for the list. Only historical runs (backfills, XML
+  imports) are stored unless the backend runs with `PERSIST_LIVE_SYNC_RUNS`, so
+  a live run says "None" there.
+- **Older backfills are not on this tab.** There is no global history endpoint,
+  only a per-user one, so they live on the user's connection cards.
+
+The status and source lists the filters offer are guarded against the enums in
+`docs/openapi.json` ([`format.spec.ts`](src/lib/syncs/format.spec.ts)).
 
 ### Chart rows share one set of column widths
 
@@ -2197,8 +2217,9 @@ src/
 │   │   ├── filters/                 # FilterBar, FilterGroup, PeriodFilter
 │   │   ├── providers/               # ProviderMark — a letter mark, since the
 │   │   │                            # API's icon_url is unreachable from the browser
-│   │   ├── syncs/                   # provider-agnostic: SyncRunRow, SavedCounts,
-│   │   │                            # SourceGlyph, RecentSyncsCard
+│   │   ├── syncs/                   # provider-agnostic: SyncRunRow, SyncRunItem,
+│   │   │                            # RunStatus, RunProgress, StoredRun, SavedCounts,
+│   │   │                            # SourceGlyph, RecentSyncsCard, SyncOverview
 │   │   └── users/                   # UsersList, UsersTable, UserCard,
 │   │                                # UserIdentity, UserAvatar, SyncCell,
 │   │                                # ConnectionBadges, UserActions,

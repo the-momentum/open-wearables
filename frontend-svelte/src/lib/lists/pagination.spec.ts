@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cursorHrefs } from './cursor';
+import { offsetHrefs } from './offset';
 import { isPageSize, pageForSize, paginationItems } from './pagination';
 
 describe('paginationItems', () => {
@@ -121,5 +122,20 @@ describe('cursorHrefs', () => {
 
 	it('has nowhere to step when the API offered no cursor', () => {
 		expect(at('?at=3&cursor=page3').stepHref(null, 1)).toBeNull();
+	});
+});
+
+describe('offsetHrefs', () => {
+	const hrefs = offsetHrefs(new URL('http://x/syncs?status=failed&page=3&size=50'));
+
+	it('sends any filter change back to page one', () => {
+		expect(hrefs.hrefFor({ status: 'partial' })).toBe('/syncs?status=partial&size=50');
+		expect(hrefs.sizeHref(20)).toBe('/syncs?status=failed&size=20');
+	});
+
+	// Page one is the bare URL, so both ways of reaching it share a link.
+	it('keeps the filters when paging, and leaves page one out', () => {
+		expect(hrefs.pageHref(4)).toBe('/syncs?status=failed&page=4&size=50');
+		expect(hrefs.pageHref(1)).toBe('/syncs?status=failed&size=50');
 	});
 });

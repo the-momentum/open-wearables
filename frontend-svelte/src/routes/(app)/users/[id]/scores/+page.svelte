@@ -11,23 +11,17 @@
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
 	import { periodParams } from '$lib/filters/period';
-	import type { PageSize } from '$lib/lists/pagination';
+	import { offsetHrefs } from '$lib/lists/offset';
 	import { providerLabel } from '$lib/providers/labels';
 	import { groupByDay } from '$lib/scores/group';
 	import { categoriesIn, categoryTrends, providersIn } from '$lib/scores/trends';
 	import type { HealthScore } from '$lib/scores/types';
 	import { resource } from '$lib/utils/resource.svelte';
-	import { withParams } from '$lib/utils/url';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
-	// Any filter change returns to page one: page five of the old list would
-	// otherwise answer for page one of the new one.
-	const hrefFor = (changes: Record<string, string | null>) =>
-		withParams(page.url, { page: null, ...changes });
-	const pageHref = (at: number) => withParams(page.url, { page: at === 1 ? null : String(at) });
-	const sizeHref = (size: PageSize) => hrefFor({ size: String(size) });
+	const { hrefFor, pageHref, sizeHref } = $derived(offsetHrefs(page.url));
 
 	const label = (entry: string) => providerLabel(data.providers, entry);
 

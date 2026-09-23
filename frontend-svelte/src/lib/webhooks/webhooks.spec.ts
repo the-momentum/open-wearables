@@ -134,7 +134,7 @@ describe('summarise', () => {
 	// Still in the subscription, so still on the card.
 	it('keeps a name the catalogue no longer has', () => {
 		expect(labels(['gone.created'])).toEqual([
-			{ label: 'No longer offered', whole: false, groupEvent: null, items: ['gone.created'] }
+			{ label: 'No longer sent', whole: false, groupEvent: null, items: ['gone.created'] }
 		]);
 		// Marked, so the card can show it as something to edit out rather than a group.
 		expect(summarise(['gone.created'], types)[0].stray).toBe(true);
