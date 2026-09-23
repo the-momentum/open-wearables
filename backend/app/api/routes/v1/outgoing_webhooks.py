@@ -172,6 +172,7 @@ def list_endpoint_attempts(
         after=after,
         status=MessageStatus(status) if status is not None else None,
         event_types=event_types,
+        with_content=True,
     )
     result = svix_service.list_message_attempts(app_id, endpoint_id, options)
 
