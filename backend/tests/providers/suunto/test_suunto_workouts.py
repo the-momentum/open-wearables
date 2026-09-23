@@ -377,6 +377,37 @@ class TestSuuntoWorkouts:
         # Verify data source creation was attempted
         mock_ensure_data_source.assert_called_once()
 
+    @patch.object(SuuntoWorkouts, "_make_api_request")
+    @patch("app.services.event_record_service.event_record_service.create")
+    @patch("app.services.event_record_service.event_record_service.create_detail")
+    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
+    def test_load_data_walks_every_page(
+        self,
+        mock_ensure_data_source: MagicMock,
+        mock_create_detail: MagicMock,
+        mock_create: MagicMock,
+        mock_request: MagicMock,
+        suunto_workouts: SuuntoWorkouts,
+        db: Session,
+        sample_workout_data: dict,
+    ) -> None:
+        """Historical sync must not stop at the first page of 100 workouts."""
+        from tests.factories import UserFactory
+
+        user = UserFactory()
+        mock_request.side_effect = [
+            {"payload": [sample_workout_data] * 100},
+            {"payload": [sample_workout_data] * 100},
+            {"payload": [sample_workout_data] * 30},
+        ]
+
+        result = suunto_workouts.load_data(db, user.id, start_date="2025-01-01T00:00:00Z")
+
+        assert result == 230
+        pages = [call.kwargs["params"] for call in mock_request.call_args_list]
+        assert [(page["offset"], page["limit"]) for page in pages] == [(0, 100), (100, 100), (200, 100)]
+        assert {page["since"] for page in pages} == {1735689600000}
+
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
     @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
