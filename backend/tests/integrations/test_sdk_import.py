@@ -827,8 +827,11 @@ class TestSDKImportNutrition:
         assert samples[0].series_type == SeriesType.hydration
         assert samples[0].value == Decimal("500")
 
-    def test_hydration_with_unrelated_unit_starting_with_l_is_not_rescaled(self, import_service: ImportService) -> None:
-        """A bogus/unexpected unit like "lb" must not be mistaken for a liter alias."""
+    def test_hydration_with_unrecognized_unit_falls_back_to_milliliters_and_logs(
+        self, import_service: ImportService, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A bogus/unexpected unit like "lb" must not be mistaken for a liter alias - it's
+        kept as mL (best-effort fallback) but the mismatch is logged."""
         user_id = str(uuid4())
         request = self._build_request(
             "apple",
@@ -839,6 +842,26 @@ class TestSDKImportNutrition:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.hydration
         assert samples[0].value == Decimal("500")
+
+        log_output = capsys.readouterr().out
+        assert "Unrecognized hydration unit" in log_output
+        assert '"level": "warning"' in log_output
+
+    def test_record_failing_sample_validation_is_skipped_without_failing_the_batch(
+        self, import_service: ImportService
+    ) -> None:
+        """A record that passes envelope parsing but fails validation while being turned into
+        a sample (here: a malformed zoneOffset) must not take the rest of the batch down with it."""
+        user_id = str(uuid4())
+        good_record = self._build_record("HKQuantityTypeIdentifierDietaryProtein", value=24.5, unit="g")
+        bad_record = self._build_record("HKQuantityTypeIdentifierDietaryCarbohydrates", value=10, unit="g")
+        bad_record["zoneOffset"] = "not-a-zone"
+        request = self._build_request("apple", [good_record, bad_record])
+
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.dietary_protein
 
 
 class TestSDKImportMealCorrelation:

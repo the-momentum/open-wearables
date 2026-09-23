@@ -45,7 +45,6 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -60,6 +59,9 @@ MMOL_L_TO_MG_DL = Decimal("18.0182")
 # these types carries no numeric measurement itself (see MetricRecord) - it only
 # groups sibling records that reference it via their own `parentId`.
 CORRELATION_TYPE_IDENTIFIERS = frozenset({"HKCorrelationTypeIdentifierFood"})
+
+HYDRATION_L_UNITS = frozenset({"l", "liter", "liters", "litre", "litres"})
+HYDRATION_ML_UNITS = frozenset({"ml", "milliliter", "milliliters", "millilitre", "millilitres"})
 
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
 
@@ -275,7 +277,6 @@ class ImportService:
             case _:
                 return value
 
-    @handle_exceptions
     def _build_statistic_bundles(
         self,
         request: SDKSyncRequest,
@@ -312,9 +313,20 @@ class ImportService:
             if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
                 value = value * MMOL_L_TO_MG_DL
 
-            # Convert hydration units to mL
-            if series_type == SeriesType.hydration and unit in ("l", "liter", "liters", "litre", "litres"):
-                value *= 1000
+            # Hydration is stored in mL: a liter alias is rescaled, an mL alias is kept
+            # as-is, and anything else falls back to mL too but gets logged.
+            if series_type == SeriesType.hydration:
+                if unit in HYDRATION_L_UNITS:
+                    value *= 1000
+                elif unit not in HYDRATION_ML_UNITS:
+                    log_structured(
+                        self.log,
+                        "warning",
+                        "Unrecognized hydration unit, assuming milliliters",
+                        provider=provider,
+                        user_id=user_id,
+                        unit=rjson.unit,
+                    )
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
@@ -323,29 +335,40 @@ class ImportService:
             # correlation was resolved in this same batch. None for a loose sample.
             event_record_id = correlation_id_map.get(rjson.parentId) if rjson.parentId else None
 
-            sample = TimeSeriesSampleCreate(
-                id=uuid4(),
-                external_id=rjson.id,
-                user_id=user_uuid,
-                source=original_source_name,
-                device_model=device_model,
-                software_version=software_version,
-                provider=provider,
-                recorded_at=rjson.startDate,
-                zone_offset=rjson.zoneOffset,
-                value=value,
-                series_type=series_type,
-                is_daily_total=daily_total_flag(series_type, is_daily=False),
-                event_record_id=event_record_id,
-            )
+            try:
+                sample = TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    external_id=rjson.id,
+                    user_id=user_uuid,
+                    source=original_source_name,
+                    device_model=device_model,
+                    software_version=software_version,
+                    provider=provider,
+                    recorded_at=rjson.startDate,
+                    zone_offset=rjson.zoneOffset,
+                    value=value,
+                    series_type=series_type,
+                    is_daily_total=daily_total_flag(series_type, is_daily=False),
+                    event_record_id=event_record_id,
+                )
 
-            match series_type:
-                case SeriesType.heart_rate:
-                    time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
-                case SeriesType.steps:
-                    time_series_samples.append(StepSampleCreate(**sample.model_dump()))
-                case _:
-                    time_series_samples.append(sample)
+                match series_type:
+                    case SeriesType.heart_rate:
+                        time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
+                    case SeriesType.steps:
+                        time_series_samples.append(StepSampleCreate(**sample.model_dump()))
+                    case _:
+                        time_series_samples.append(sample)
+            except ValidationError as exc:
+                log_structured(
+                    self.log,
+                    "warning",
+                    "Skipping invalid SDK record while building time series sample",
+                    provider=provider,
+                    user_id=user_id,
+                    series_type=series_type.value,
+                    error=str(exc),
+                )
 
         return time_series_samples
 
