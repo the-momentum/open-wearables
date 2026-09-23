@@ -299,11 +299,14 @@ class Withings247Data(Base247DataTemplate):
             },
             list_key=SLEEP_SUMMARY.list_key,
         ).rows
+        # One hypnogram request for the whole window: the free plan allows 120 requests
+        # a minute for the whole application, and a year of backfill is ~300 nights.
+        window_stages = self._fetch_sleep_stages(db, user_id, start, end)
         processed = 0
         for row in rows:
             # Tolerate a malformed night without dropping the rest of the batch.
             try:
-                if self._save_sleep_row(db, user_id, row, user_connection_id):
+                if self._save_sleep_row(db, user_id, row, user_connection_id, window_stages):
                     processed += 1
             except Exception as e:
                 db.rollback()
@@ -323,7 +326,11 @@ class Withings247Data(Base247DataTemplate):
         start_dt: datetime,
         end_dt: datetime,
     ) -> list[SleepStage] | None:
-        """Fetch the hypnogram for one night. Returns None when it is unavailable."""
+        """Fetch the hypnogram for a window. Returns None when the call itself failed.
+
+        An empty list means the window holds no stages, which is worth telling apart: it
+        stops the per-night fallback from repeating a request that has nothing to give.
+        """
         try:
             body = withings_request(
                 db=db,
@@ -363,7 +370,13 @@ class Withings247Data(Base247DataTemplate):
                     end_time=datetime.fromtimestamp(entry.enddate, tz=timezone.utc),
                 )
             )
-        return sorted(stages, key=lambda s: s.start_time) or None
+        return sorted(stages, key=lambda s: s.start_time)
+
+    @staticmethod
+    def _stages_within(stages: list[SleepStage], start_dt: datetime, end_dt: datetime) -> list[SleepStage] | None:
+        """Take one night out of a window hypnogram, keyed on where each stage starts."""
+        night = [stage for stage in stages if start_dt <= stage.start_time < end_dt]
+        return night or None
 
     def _save_sleep_row(
         self,
@@ -371,6 +384,7 @@ class Withings247Data(Base247DataTemplate):
         user_id: UUID,
         row: dict,
         user_connection_id: UUID | None,
+        window_stages: list[SleepStage] | None = None,
     ) -> bool:
         summary = WithingsSleepSummary.model_validate(row)
         start_dt = datetime.fromtimestamp(summary.startdate, tz=timezone.utc)
@@ -409,7 +423,10 @@ class Withings247Data(Base247DataTemplate):
         efficiency = data.sleep_efficiency
 
         record_id = uuid4()
-        sleep_stages = self._fetch_sleep_stages(db, user_id, start_dt, end_dt)
+        if window_stages is None:
+            # The window request failed, so this night gets its own attempt.
+            window_stages = self._fetch_sleep_stages(db, user_id, start_dt, end_dt) or []
+        sleep_stages = self._stages_within(window_stages, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,
             category="sleep",

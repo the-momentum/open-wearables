@@ -1,5 +1,6 @@
 """Withings payload normalization for measures, activity and workouts."""
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -198,3 +199,30 @@ def test_sleep_row_is_saved_when_the_hypnogram_call_fails(mock_request: MagicMoc
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
     assert detail.sleep_stages is None
     assert detail.sleep_deep_minutes == 120
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request")
+@patch("app.services.providers.withings.data_247.paginate")
+def test_two_nights_share_one_hypnogram_request(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+) -> None:
+    second_night = {**SLEEP_ROW, "id": 12346, "startdate": 1594245600, "enddate": 1594274400}
+    mock_paginate.return_value = MagicMock(rows=[SLEEP_ROW, second_night])
+    mock_request.return_value = {
+        "series": [
+            {"startdate": 1594160100, "enddate": 1594163700, "state": 2},
+            {"startdate": 1594246500, "enddate": 1594250100, "state": 1},
+        ]
+    }
+
+    saved = _data_247().save_sleep(
+        MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 7, 9, tzinfo=timezone.utc)
+    )
+
+    assert saved == 2
+    # A year of backfill would otherwise be one request per night against a 120/min cap.
+    assert mock_request.call_count == 1
+    first, second = (call.args[3] for call in mock_event.create_or_merge_sleep.call_args_list)
+    assert [stage.stage.value for stage in first.sleep_stages] == ["deep"]
+    assert [stage.stage.value for stage in second.sleep_stages] == ["light"]
