@@ -12,6 +12,7 @@ from logging import getLogger
 
 from celery import shared_task
 
+from app.config import settings
 from app.database import SessionLocal
 from app.services.archival_service import archival_service
 
@@ -33,6 +34,9 @@ def run_daily_archival() -> dict:
     is safe for first-run scenarios with millions of rows. If not all rows
     are processed, the next scheduled invocation continues automatically.
     """
+    if not settings.data_lifecycle_enabled:
+        return {"skipped": "data_lifecycle_disabled"}
+
     with SessionLocal() as db:
         try:
             summary = archival_service.run_daily_archival(db)

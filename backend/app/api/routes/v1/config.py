@@ -12,8 +12,12 @@ class ConfigResponse(BaseModel):
     never remove or repurpose, so the frontend stays backward compatible."""
 
     outgoing_webhooks_enabled: bool
+    data_lifecycle_enabled: bool
 
 
 @router.get("/config", response_model=ConfigResponse)
 def get_config(_developer: DeveloperDep):
-    return ConfigResponse(outgoing_webhooks_enabled=settings.outgoing_webhooks_enabled)
+    return ConfigResponse(
+        outgoing_webhooks_enabled=settings.outgoing_webhooks_enabled,
+        data_lifecycle_enabled=settings.data_lifecycle_enabled,
+    )
