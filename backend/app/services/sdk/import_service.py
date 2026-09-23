@@ -485,7 +485,8 @@ class ImportService:
         meal_bundles = list(self._build_meal_bundles(request, user_id))
         correlation_id_map: dict[str, UUID] = {}
         if meal_bundles:
-            meal_records, meal_details = zip(*meal_bundles)
+            deduped_bundles = {record.external_id: (record, detail) for record, detail in meal_bundles}
+            meal_records, meal_details = zip(*deduped_bundles.values())
             meal_details_by_id = {detail.record_id: detail for detail in meal_details}
 
             inserted_meal_ids = set(self.event_record_service.bulk_create(db_session, list(meal_records)))

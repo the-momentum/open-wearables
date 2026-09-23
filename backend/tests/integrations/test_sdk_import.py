@@ -996,3 +996,26 @@ class TestSDKImportMealCorrelation:
         detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
         assert detail.title == "Sałatka z kurczakiem"
         assert detail.meal_type == "kolacja"
+
+    def test_food_correlation_duplicated_within_same_batch_does_not_crash(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """A batch containing the same correlation record twice (e.g. a client-side
+        retry appended to the same payload) must collapse to a single meal instead of
+        making the ON CONFLICT DO UPDATE upsert reject a duplicate key."""
+        user = UserFactory()
+        user_id = str(user.id)
+        batch = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._correlation_record("MEAL-1"),
+            ]
+        )
+
+        result = import_service.load_data(db, batch, user_id)
+
+        assert result["meals_saved"] == 1
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        assert detail.title == "Kurczak z ryżem"
+        assert detail.meal_type == "obiad"
