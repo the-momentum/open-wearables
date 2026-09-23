@@ -359,7 +359,10 @@ class ImportService:
                         time_series_samples.append(StepSampleCreate(**sample.model_dump()))
                     case _:
                         time_series_samples.append(sample)
-            except ValidationError as exc:
+            except ValidationError as exception:
+                # Log only loc/msg/type - `str(exc)` embeds the raw input_value, which may
+                # be a health measurement or zone offset, right next to user_id.
+                errors = (exception.errors() or [{}])[0]
                 log_structured(
                     self.log,
                     "warning",
@@ -367,7 +370,9 @@ class ImportService:
                     provider=provider,
                     user_id=user_id,
                     series_type=series_type.value,
-                    error=str(exc),
+                    error_loc=".".join(str(x) for x in errors.get("loc", [])),
+                    error_msg=errors.get("msg"),
+                    error_type=errors.get("type"),
                 )
 
         return time_series_samples
