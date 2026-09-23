@@ -286,9 +286,7 @@ def sync_vendor_data(
                     },
                 )
 
-                # Stamps every data event written below with the run that produced it.
-                # Set here rather than earlier so the paths that skip the sync entirely
-                # never leave it set; the matching reset is this block's finally.
+                # Set here, not earlier: the skip paths above must not leave it set.
                 sync_run_token = sync_run_var.set(SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope))
                 try:
                     # Inside the try: the finally below is what stops the renewal thread.
