@@ -10,6 +10,7 @@ from .event_record import EventRecord
 from .event_record_detail import DetailType, EventRecordDetail
 from .health_score import HealthScore
 from .invitation import Invitation
+from .meal_details import MealDetails
 from .menstrual_cycle_details import MenstrualCycleDetails
 from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
@@ -48,6 +49,7 @@ __all__ = [
     "UserInvitationCode",
     "EventRecord",
     "EventRecordDetail",
+    "MealDetails",
     "MenstrualCycleDetails",
     "SleepDetails",
     "WorkoutDetails",
