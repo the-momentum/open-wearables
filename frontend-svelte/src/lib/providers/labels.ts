@@ -1,6 +1,9 @@
 import { humanise } from '$lib/utils/text';
 import type { Provider } from '$lib/server/providers';
 
+/** What a provider needs to be shown: its slug, its name and where its logo is. */
+export type ProviderBrand = Pick<Provider, 'provider' | 'name' | 'icon_url'>;
+
 /**
  * Backend `ProviderName` values that are not OAuth connections, so `/oauth/providers`
  * never names them. `internal` is Open Wearables' own work — its sleep and

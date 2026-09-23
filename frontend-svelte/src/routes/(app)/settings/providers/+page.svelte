@@ -7,6 +7,7 @@
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import { enabledMap, flipped } from '$lib/settings/providers';
 	import type { ActionData, PageData } from './$types';
+	import { plural } from '$lib/utils/text';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
@@ -49,7 +50,7 @@
 {#if changed.length > 0}
 	<SaveBar
 		action="?/save"
-		note="{changed.length} provider{changed.length === 1 ? '' : 's'} changed"
+		note="{plural(changed.length, 'provider')} changed"
 		payload={{ providers: JSON.stringify(draft) }}
 	/>
 {/if}

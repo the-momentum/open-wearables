@@ -1587,3 +1587,240 @@ export const saveLifecycle = (body: {
 	LIFECYCLE = { ...LIFECYCLE, settings: { ...body } };
 	return LIFECYCLE;
 };
+
+// -------------------------------------------------------------------- seed --
+
+/** Copied from a real backend, so the page is tested against the true shapes. */
+export const SEED_PRESETS = [
+	{
+		id: 'minimal',
+		label: 'Minimal (Quick)',
+		description: 'Small dataset for quick testing - 5 workouts, 5 sleeps, no time series.',
+		profile: {
+			preset: 'minimal',
+			generate_workouts: true,
+			generate_sleep: true,
+			generate_time_series: false,
+			providers: null,
+			num_connections: 2,
+			workout_config: {
+				count: 5,
+				workout_types: null,
+				duration_min_minutes: 15,
+				duration_max_minutes: 180,
+				hr_min_range: [90, 120],
+				hr_max_range: [140, 180],
+				steps_range: [500, 20000],
+				date_range_months: 6,
+				date_from: null,
+				date_to: null
+			},
+			sleep_config: {
+				count: 5,
+				duration_min_minutes: 300,
+				duration_max_minutes: 600,
+				nap_chance_pct: 10,
+				weekend_catchup: false,
+				date_range_months: 6,
+				date_from: null,
+				date_to: null,
+				stage_profile: null,
+				stage_distribution: {
+					deep_pct_range: [15, 25],
+					rem_pct_range: [20, 25],
+					awake_pct_range: [2, 8]
+				}
+			},
+			time_series_config: {
+				enabled_types: [],
+				include_blood_pressure: false,
+				date_range_months: 6,
+				date_from: null,
+				date_to: null
+			}
+		}
+	},
+	{
+		id: 'active_athlete',
+		label: 'Active Athlete',
+		description: 'High-volume training across running, cycling, swimming, and strength.',
+		profile: {
+			preset: 'active_athlete',
+			generate_workouts: true,
+			generate_sleep: true,
+			generate_time_series: true,
+			providers: null,
+			num_connections: 2,
+			workout_config: {
+				count: 120,
+				workout_types: ['running', 'cycling', 'swimming', 'strength_training'],
+				duration_min_minutes: 30,
+				duration_max_minutes: 180,
+				hr_min_range: [80, 110],
+				hr_max_range: [160, 195],
+				steps_range: [2000, 25000],
+				date_range_months: 6,
+				date_from: null,
+				date_to: null
+			},
+			sleep_config: {
+				count: 30,
+				duration_min_minutes: 300,
+				duration_max_minutes: 600,
+				nap_chance_pct: 10,
+				weekend_catchup: false,
+				date_range_months: 6,
+				date_from: null,
+				date_to: null,
+				stage_profile: 'athlete_recovery',
+				stage_distribution: {
+					deep_pct_range: [15, 25],
+					rem_pct_range: [20, 25],
+					awake_pct_range: [2, 8]
+				}
+			},
+			time_series_config: {
+				enabled_types: [
+					'heart_rate',
+					'steps',
+					'active_energy',
+					'basal_energy',
+					'distance_walking_running',
+					'flights_climbed',
+					'resting_heart_rate',
+					'heart_rate_variability_sdnn',
+					'oxygen_saturation',
+					'skin_temperature',
+					'respiratory_rate',
+					'weight',
+					'body_fat_percentage',
+					'vo2_max',
+					'running_power',
+					'running_speed',
+					'cadence',
+					'power',
+					'swimming_stroke_count'
+				],
+				include_blood_pressure: false,
+				date_range_months: 6,
+				date_from: null,
+				date_to: null
+			}
+		}
+	},
+	{
+		id: 'sleep_only',
+		label: 'Sleep Only',
+		description: 'Sleep records only - no workout data.',
+		profile: {
+			preset: 'sleep_only',
+			generate_workouts: false,
+			generate_sleep: true,
+			generate_time_series: false,
+			providers: null,
+			num_connections: 2,
+			workout_config: {
+				count: 80,
+				workout_types: null,
+				duration_min_minutes: 15,
+				duration_max_minutes: 180,
+				hr_min_range: [90, 120],
+				hr_max_range: [140, 180],
+				steps_range: [500, 20000],
+				date_range_months: 6,
+				date_from: null,
+				date_to: null
+			},
+			sleep_config: {
+				count: 40,
+				duration_min_minutes: 300,
+				duration_max_minutes: 600,
+				nap_chance_pct: 10,
+				weekend_catchup: false,
+				date_range_months: 6,
+				date_from: null,
+				date_to: null,
+				stage_profile: 'optimal',
+				stage_distribution: {
+					deep_pct_range: [15, 25],
+					rem_pct_range: [20, 25],
+					awake_pct_range: [2, 8]
+				}
+			},
+			time_series_config: {
+				enabled_types: [],
+				include_blood_pressure: false,
+				date_range_months: 6,
+				date_from: null,
+				date_to: null
+			}
+		}
+	}
+];
+
+export const SLEEP_PROFILES = [
+	{
+		id: 'optimal',
+		label: 'Optimal Sleeper',
+		description: 'Balanced stages - good sleep scores',
+		distribution: {
+			deep_pct_range: [18, 25],
+			rem_pct_range: [20, 25],
+			awake_pct_range: [2, 5]
+		}
+	},
+	{
+		id: 'deep_deficit',
+		label: 'Deep Sleep Deficit',
+		description: 'Low deep sleep - poor physical recovery',
+		distribution: {
+			deep_pct_range: [5, 10],
+			rem_pct_range: [20, 25],
+			awake_pct_range: [5, 10]
+		}
+	},
+	{
+		id: 'rem_deprived',
+		label: 'REM Deprived',
+		description: 'Low REM sleep - poor cognitive recovery',
+		distribution: {
+			deep_pct_range: [15, 22],
+			rem_pct_range: [8, 13],
+			awake_pct_range: [5, 10]
+		}
+	},
+	{
+		id: 'restless',
+		label: 'Restless Sleeper',
+		description: 'Excessive wake time - fragmented sleep',
+		distribution: {
+			deep_pct_range: [10, 15],
+			rem_pct_range: [15, 20],
+			awake_pct_range: [15, 25]
+		}
+	},
+	{
+		id: 'athlete_recovery',
+		label: 'Athlete Recovery',
+		description: 'Heavy deep sleep - optimal physical recovery',
+		distribution: {
+			deep_pct_range: [25, 35],
+			rem_pct_range: [20, 25],
+			awake_pct_range: [2, 5]
+		}
+	}
+];
+
+/** What the page last asked the generator for, so a test can read it back. */
+let LAST_SEED: unknown = null;
+
+export const resetSeed = () => {
+	LAST_SEED = null;
+};
+
+export const lastSeed = () => LAST_SEED;
+
+export const queueSeed = (body: { random_seed: number | null }) => {
+	LAST_SEED = body;
+	return { task_id: 'seed-task-1', status: 'dispatched', seed_used: body.random_seed ?? 424242 };
+};

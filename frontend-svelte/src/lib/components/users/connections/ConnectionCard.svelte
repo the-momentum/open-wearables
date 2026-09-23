@@ -5,6 +5,7 @@
 	import BackfillList from './BackfillList.svelte';
 	import ConnectionHeader from './ConnectionHeader.svelte';
 	import ConnectionRoutes from './ConnectionRoutes.svelte';
+	import { noun } from '$lib/utils/text';
 
 	let {
 		connection,
@@ -30,7 +31,7 @@
 
 	{#if shared > 0}
 		<p class="text-xs text-muted-foreground">
-			Shares this provider account with {shared} other profile{shared === 1 ? '' : 's'}.
+			Shares this provider account with {shared} other {noun(shared, 'profile')}.
 		</p>
 	{/if}
 

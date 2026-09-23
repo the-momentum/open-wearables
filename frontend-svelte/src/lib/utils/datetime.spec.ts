@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatRelativeTime } from './datetime';
+import { formatDate, formatRelativeTime, isoDay } from './datetime';
 
 const NOW = new Date('2026-09-05T12:00:00Z').getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -33,5 +33,13 @@ describe('formatDate', () => {
 	it('falls back to a dash for missing or malformed input', () => {
 		expect(formatDate(null)).toBe('—');
 		expect(formatDate('nonsense')).toBe('—');
+	});
+});
+
+describe('isoDay', () => {
+	// UTC fields, on purpose: a date shifted into a zone first reads as that zone's day.
+	it('is the calendar day of the UTC fields', () => {
+		expect(isoDay(new Date('2026-09-23T23:30:00Z'))).toBe('2026-09-23');
+		expect(isoDay(new Date('2026-09-24T00:30:00Z'))).toBe('2026-09-24');
 	});
 });

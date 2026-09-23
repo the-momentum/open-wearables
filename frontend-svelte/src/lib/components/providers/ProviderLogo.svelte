@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ProviderBrand } from '$lib/providers/labels';
 	import { publicApiUrl } from '$lib/config/public-api';
 	import ProviderMark from './ProviderMark.svelte';
 	import { cn } from '$lib/utils/cn';
@@ -8,8 +9,8 @@
 		size = 'sm'
 	}: {
 		/** Whatever carries a logo — an OAuth catalogue entry or a settings row. */
-		provider: { provider: string; name: string; icon_url: string };
-		size?: 'sm' | 'md' | 'lg';
+		provider: ProviderBrand;
+		size?: 'xs' | 'sm' | 'md' | 'lg';
 	} = $props();
 
 	// Static files on the API, so a browser can fetch them even though the
@@ -18,8 +19,13 @@
 	const base = publicApiUrl();
 	const src = $derived(base && provider.icon_url ? `${base}${provider.icon_url}` : '');
 
-	const TILE = { sm: 'size-10 p-1.5', md: 'size-12 p-2', lg: 'size-16 p-2.5' } as const;
-	const MARK = { sm: 'md', md: 'md', lg: 'lg' } as const;
+	const TILE = {
+		xs: 'size-5 rounded-md p-0.5',
+		sm: 'size-10 p-1.5',
+		md: 'size-12 p-2',
+		lg: 'size-16 p-2.5'
+	} as const;
+	const MARK = { xs: 'sm', sm: 'md', md: 'md', lg: 'lg' } as const;
 </script>
 
 {#if src && !broken}

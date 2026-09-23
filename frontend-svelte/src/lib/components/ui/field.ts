@@ -1,7 +1,8 @@
 /**
- * The box a form control sits in, shared by `TextField` and `SearchField` so
- * the two cannot drift. Horizontal padding is the caller's: a search field
- * holds a glyph on the left, a plain one does not.
+ * The box every form control sits in, so none can drift. Width and horizontal
+ * padding are the caller's: a text field fills its row, a number is four
+ * digits wide, and a search field holds a glyph on the left. Carrying `w-full`
+ * here once meant a `w-24` beside it lost to stylesheet order.
  */
 export const FIELD =
-	'min-h-11 w-full rounded-lg border border-border bg-surface text-sm placeholder:text-muted-foreground/60';
+	'min-h-11 rounded-lg border border-border bg-surface text-sm placeholder:text-muted-foreground/60';

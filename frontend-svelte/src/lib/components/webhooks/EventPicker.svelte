@@ -1,9 +1,9 @@
 <script lang="ts">
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import { CHIP_OFF, CHIP_ON } from '$lib/components/ui/chip';
-	import { MICRO, MONO } from '$lib/components/ui/typography';
+	import { tagClass } from '$lib/components/ui/chip';
+	import { MICRO, MONO, TEXT_LINK } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
-	import { toggled } from '$lib/utils/collect';
+	import { toggled, withAll } from '$lib/utils/collect';
 	import { groupEvents, namesIn } from '$lib/webhooks/events';
 	import type { EventType } from '$lib/webhooks/types';
 
@@ -21,12 +21,10 @@
 	 * bulk selector would take that choice away.
 	 */
 	function setAll(names: string[], on: boolean) {
-		const rest = chosen.filter((name) => !names.includes(name));
-		chosen = on ? [...rest, ...names] : rest;
+		chosen = withAll(chosen, names, on);
 	}
 
-	const chip = (on: boolean) =>
-		cn('rounded-md border px-2 py-1 text-left transition-colors', MONO, on ? CHIP_ON : CHIP_OFF);
+	const chip = (on: boolean) => cn(tagClass(on), MONO);
 </script>
 
 <!-- Eighty names in one flat wall is a list nobody reads: each family folds, and
@@ -58,7 +56,7 @@
 					<button
 						type="button"
 						onclick={() => setAll(names, picked < names.length)}
-						class="{MICRO} self-start underline-offset-2 hover:underline"
+						class="{TEXT_LINK} self-start"
 					>
 						{picked < names.length ? 'Select all' : 'Clear all'}
 					</button>

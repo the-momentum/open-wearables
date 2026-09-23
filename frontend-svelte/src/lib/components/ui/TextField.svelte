@@ -33,7 +33,7 @@
 			bind:value
 			aria-describedby={hint ? hintId : undefined}
 			{...rest}
-			class={cn(FIELD, 'px-3', className)}
+			class={cn(FIELD, 'w-full px-3', className)}
 		/>
 		{@render trailing?.()}
 	</div>

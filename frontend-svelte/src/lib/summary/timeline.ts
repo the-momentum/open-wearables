@@ -1,12 +1,11 @@
 import type { DataTimeline, TimelineSeries } from './types';
 import { weekStart } from '$lib/filters/period';
+import { isoDay } from '$lib/utils/datetime';
 
 export type Cell = { date: string; count: number };
 export type Row = { key: string; cells: Cell[]; total: number };
 
 const DAY_MS = 86_400_000;
-
-const iso = (date: Date) => date.toISOString().slice(0, 10);
 
 const step = (date: Date, bucket: 'day' | 'week') =>
 	new Date(date.getTime() + (bucket === 'week' ? 7 : 1) * DAY_MS);
@@ -23,7 +22,7 @@ function grid(from: Date, to: Date, bucket: 'day' | 'week', align: boolean): str
 		at < to;
 		at = step(at, bucket)
 	) {
-		dates.push(iso(at));
+		dates.push(isoDay(at));
 	}
 	return dates;
 }

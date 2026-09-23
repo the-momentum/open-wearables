@@ -24,3 +24,9 @@ export function grouped<T>(items: T[], key: (item: T) => string): { key: string;
 /** Membership toggled, as a new array: what every row of chips does on click. */
 export const toggled = <T>(list: T[], value: T): T[] =>
 	list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
+
+/** Every one of `values` in the list, or none of them — a group's all / none. */
+export function withAll<T>(list: T[], values: T[], on: boolean): T[] {
+	const rest = list.filter((entry) => !values.includes(entry));
+	return on ? [...rest, ...values] : rest;
+}

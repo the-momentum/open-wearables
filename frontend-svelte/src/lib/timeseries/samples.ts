@@ -2,6 +2,7 @@ import type { Line } from '$lib/charts/geometry';
 import { collect } from '$lib/utils/collect';
 import { humanise } from '$lib/utils/text';
 import { dailyPoints } from './daily';
+import { isoDay } from '$lib/utils/datetime';
 
 /** Mirrors backend `TimeSeriesSample`. */
 export type Sample = {
@@ -120,7 +121,7 @@ export const dailyMeans = (series: Series): Series => ({
 	...series,
 	points: dailyPoints(
 		series.points.map((point) => ({
-			day: new Date(point.at).toISOString().slice(0, 10),
+			day: isoDay(new Date(point.at)),
 			value: point.value
 		}))
 	)

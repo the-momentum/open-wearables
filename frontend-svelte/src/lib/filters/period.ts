@@ -1,3 +1,5 @@
+import { isoDay } from '$lib/utils/datetime';
+
 export type PeriodMode = 'all' | 'day' | 'range';
 
 /** Inclusive `YYYY-MM-DD` bounds; both null means the user's whole history. */
@@ -29,7 +31,7 @@ export function periodParams(period: Period): URLSearchParams {
 	return params;
 }
 
-export const todayIso = (now = new Date()) => now.toISOString().slice(0, 10);
+export const todayIso = (now = new Date()) => isoDay(now);
 
 /** Postgres truncates weeks to Monday, so a week grid has to start there too. */
 export function weekStart(date: Date): Date {

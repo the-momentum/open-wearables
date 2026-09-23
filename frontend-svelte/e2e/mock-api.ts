@@ -22,6 +22,11 @@ import {
 	renameApiKey,
 	resetSettings,
 	resetLifecycle,
+	resetSeed,
+	lastSeed,
+	queueSeed,
+	SEED_PRESETS,
+	SLEEP_PROFILES,
 	lifecycleScans,
 	readLifecycle,
 	saveLifecycle,
@@ -109,6 +114,7 @@ const server = Bun.serve({
 			resetWebhooks();
 			resetSettings();
 			resetLifecycle();
+			resetSeed();
 			return new Response(null, { status: 204 });
 		}
 
@@ -212,6 +218,21 @@ const server = Bun.serve({
 		}
 
 		// ------------------------------------------------------------ settings --
+
+		if (pathname === '/__last-seed') {
+			return json({ request: lastSeed() });
+		}
+
+		if (pathname === '/api/v1/settings/seed/presets') return json(SEED_PRESETS);
+		if (pathname === '/api/v1/settings/seed/sleep-profiles') return json(SLEEP_PROFILES);
+
+		if (pathname === '/api/v1/settings/seed' && request.method === 'POST') {
+			const body = await request.json();
+			if (body.num_users < 1 || body.num_users > 10) {
+				return json({ detail: [{ loc: ['body', 'num_users'], msg: 'out of range' }] }, 422);
+			}
+			return json(queueSeed(body), 202);
+		}
 
 		if (pathname === '/__lifecycle-scans') {
 			return json({ scans: lifecycleScans() });

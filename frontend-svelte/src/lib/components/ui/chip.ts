@@ -15,3 +15,13 @@ export function chipClass(selected: boolean): string {
 		selected ? CHIP_ON : CHIP_OFF
 	);
 }
+
+/**
+ * The small square chip for picking many from a long list — event types,
+ * workout types, series. `chipClass` is the round one for a short filter row.
+ */
+export const tagClass = (selected: boolean): string =>
+	cn(
+		'rounded-md border px-2 py-1 text-left text-xs transition-colors',
+		selected ? CHIP_ON : CHIP_OFF
+	);

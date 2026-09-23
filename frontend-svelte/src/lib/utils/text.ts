@@ -10,3 +10,8 @@ export function humanise(slug: string): string {
 		})
 		.join(' ');
 }
+
+/** The word for a count of it: 1 day, 2 days. Regular plurals only, which is all this app needs. */
+export const noun = (count: number, word: string) => (count === 1 ? word : `${word}s`);
+
+export const plural = (count: number, word: string) => `${count} ${noun(count, word)}`;

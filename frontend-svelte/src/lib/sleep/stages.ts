@@ -18,6 +18,10 @@ const ORDER: { stage: StageName; shade: string }[] = [
 
 export const stageLabel = (stage: StageName) => (stage === 'rem' ? 'REM' : humanise(stage));
 
+/** The same shade wherever a stage is drawn, a session or a seed profile. */
+export const stageShade = (stage: StageName) =>
+	ORDER.find((entry) => entry.stage === stage)?.shade ?? 'bg-border';
+
 export type StageLane = {
 	key: StageName;
 	label: string;

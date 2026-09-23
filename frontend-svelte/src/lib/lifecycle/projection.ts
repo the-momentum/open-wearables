@@ -1,4 +1,5 @@
 import type { ArchivalSettings, Policy, StorageEstimate } from './types';
+import { isWholeIn } from '$lib/utils/numbers';
 
 export const PROJECTION_MONTHS = 18;
 export const DAYS_PER_MONTH = 30;
@@ -130,7 +131,7 @@ export function invalid(policy: Policy): string | null {
 	return null;
 }
 
-const inRange = (days: number, max: number) => Number.isInteger(days) && days >= 1 && days <= max;
+const inRange = (days: number, max: number) => isWholeIn(days, 1, max);
 
 /** Saveable, but almost certainly not what was meant. */
 export function conflict(policy: Policy): string | null {

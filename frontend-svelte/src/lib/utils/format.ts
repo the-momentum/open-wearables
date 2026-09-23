@@ -1,3 +1,6 @@
+import { noun } from './text';
+import { isoDay } from './datetime';
+
 /** A missing value is a fact about the provider, not a zero. */
 export const DASH = '—';
 
@@ -63,8 +66,7 @@ export const formatShare = (value: number, whole: number): string =>
 	`${formatNumber(value)} · ${formatPercent(value, whole)}`;
 
 /** The unit a cycle, a trend and an average are all counted in. */
-export const formatDays = (value: number): string =>
-	`${showDecimal(value)} ${value === 1 ? 'day' : 'days'}`;
+export const formatDays = (value: number): string => `${showDecimal(value)} ${noun(value, 'day')}`;
 
 export const formatNumber = (value: number | null, unit = ''): string =>
 	value === null ? DASH : `${Math.round(value).toLocaleString('en-GB')}${unit}`;
@@ -127,7 +129,7 @@ export function formatLocalTime(iso: string, zoneOffset: string | null): string 
  */
 export function localDayKey(iso: string, zoneOffset: string | null): string {
 	const date = inZone(iso, zoneOffset);
-	return date ? date.toISOString().slice(0, 10) : '';
+	return date ? isoDay(date) : '';
 }
 
 export function formatLocalDay(iso: string, zoneOffset: string | null): string {
@@ -168,7 +170,7 @@ export function localRange(fromIso: string, toIso: string, zoneOffset: string | 
 	if (!from || !to) return blank;
 
 	return {
-		crosses: from.toISOString().slice(0, 10) !== to.toISOString().slice(0, 10),
+		crosses: isoDay(from) !== isoDay(to),
 		from: clock.format(from),
 		to: clock.format(to),
 		fromDay: weekday.format(from),

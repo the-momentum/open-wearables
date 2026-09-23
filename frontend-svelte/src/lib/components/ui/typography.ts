@@ -10,6 +10,9 @@ export const FOOTNOTE = `${TINY} text-muted-foreground/80`;
 /** An id, a URL, an event name — anything read character by character. */
 export const MONO = `${TINY} font-mono`;
 
+/** A small action set in running text — a group's "all", a "select all". */
+export const TEXT_LINK = `${MICRO} underline-offset-2 hover:text-foreground hover:underline`;
+
 /** The micro heading used above a figure, a pane or a filter group. */
 export const CAPTION =
 	'text-[10px] font-semibold tracking-wider text-muted-foreground/70 uppercase';

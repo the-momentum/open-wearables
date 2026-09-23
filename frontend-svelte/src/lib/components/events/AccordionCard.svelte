@@ -7,6 +7,7 @@
 		title,
 		when,
 		aside,
+		control,
 		metrics,
 		details
 	}: {
@@ -15,9 +16,16 @@
 		title: Snippet;
 		/** A second heading line, where the title does not say when. */
 		when?: Snippet;
-		/** What sits before the chevron — where a record came from, usually. */
-		aside: Snippet;
-		metrics: Snippet;
+		/** What sits before the chevron — where a record came from, usually. Part of the toggle's name. */
+		aside?: Snippet;
+		/**
+		 * A control of the card's own — a switch, say. Outside the header button,
+		 * because a button inside a button is not HTML: the parser closes the
+		 * first at the second, so the server's markup arrives already broken.
+		 */
+		control?: Snippet;
+		/** Always visible under the header; a form section has none. */
+		metrics?: Snippet;
 		/** Rendered only once the card is open, so its own fetches wait for that. */
 		details: Snippet;
 	} = $props();
@@ -56,46 +64,52 @@
 	<!-- A heading wrapping the toggle is the accordion pattern: the card keeps a
 	     place in the document outline, and only the header toggles, so the metrics
 	     below stay selectable text rather than sitting inside a button. -->
-	<h3>
-		<button
-			type="button"
-			data-accordion-toggle
-			aria-expanded={expanded}
-			aria-controls={panelId}
-			class="group flex w-full cursor-pointer items-start gap-3 text-left"
+	<div class="group flex items-start gap-1.5">
+		<h3 class="min-w-0 flex-1">
+			<button
+				type="button"
+				data-accordion-toggle
+				aria-expanded={expanded}
+				aria-controls={panelId}
+				class="flex w-full cursor-pointer items-start gap-3 text-left"
+			>
+				{#if Icon}
+					<span
+						aria-hidden="true"
+						class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
+					>
+						<Icon size={18} />
+					</span>
+				{/if}
+
+				<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+					{@render title()}
+					{@render when?.()}
+				</span>
+
+				{#if aside}
+					<span class="flex shrink-0 items-center gap-1.5">{@render aside()}</span>
+				{/if}
+			</button>
+		</h3>
+
+		{@render control?.()}
+
+		<!-- Outside the button so a control can sit between them; a click on it
+		     still reaches the card, which is what opens it. A bordered target, not
+		     a bare glyph: at the end of a long source string a muted chevron reads
+		     as decoration, and nothing else on the card says it opens. -->
+		<span
+			aria-hidden="true"
+			class="grid size-7 shrink-0 place-items-center rounded-lg border border-border
+				text-muted-foreground transition-colors group-hover:border-primary/40
+				group-hover:bg-primary/10 group-hover:text-primary"
 		>
-			{#if Icon}
-				<span
-					aria-hidden="true"
-					class="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"
-				>
-					<Icon size={18} />
-				</span>
-			{/if}
+			<ChevronDown size={15} class="transition-transform {expanded ? 'rotate-180' : ''}" />
+		</span>
+	</div>
 
-			<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-				{@render title()}
-				{@render when?.()}
-			</span>
-
-			<span class="flex shrink-0 items-center gap-1.5">
-				{@render aside()}
-				<!-- A bordered target, not a bare glyph: at the end of a long source
-				     string a muted chevron reads as decoration, and nothing else on the
-				     card says it opens. -->
-				<span
-					aria-hidden="true"
-					class="grid size-7 shrink-0 place-items-center rounded-lg border border-border
-						text-muted-foreground transition-colors group-hover:border-primary/40
-						group-hover:bg-primary/10 group-hover:text-primary"
-				>
-					<ChevronDown size={15} class="transition-transform {expanded ? 'rotate-180' : ''}" />
-				</span>
-			</span>
-		</button>
-	</h3>
-
-	<div>{@render metrics()}</div>
+	{#if metrics}<div>{@render metrics()}</div>{/if}
 
 	<!-- The panel is its own thing: selecting a value or following a link inside
 	     it must not fold the card away underneath. -->

@@ -7,8 +7,8 @@ reaches parity; only then does `frontend/` get deleted.
 **Status:** the shell, the `/users` list, the user detail page with **all seven**
 of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
 Women's Health — the Dashboard, Data Coverage, Webhook subscriptions and
-Settings are built. Settings covers Credentials, Providers, Priorities and Team;
-Data Lifecycle and Seed Data are named but empty. Syncs is still a placeholder.
+Settings are built — Credentials, Providers, Priorities, Data Lifecycle, Team
+and Seed Data. Syncs is still a placeholder.
 Read "Current state" before assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
@@ -225,10 +225,19 @@ provider name — and nothing caught it:
 - `svelte/server`'s `render()` in the node project emits nothing either.
 - The e2e suite runs a **production build**, where the warning is stripped.
 
-So `bun run dev` and the browser console are the only detector. Green does not
-mean the markup is valid. When a component can hold caller-supplied content,
-check what element it sits in: `Hint`'s bubble takes a snippet, so a `<p>`
-wrapper around it is a trap.
+So `bun run dev` and the browser console are the only general detector. Green
+does not mean the markup is valid. When a component can hold caller-supplied
+content, check what element it sits in: `Hint`'s bubble takes a snippet, so a
+`<p>` wrapper around it is a trap.
+
+One case does have a guard, because it breaks behaviour and not just markup:
+**a control inside a control**. The parser closes a `<button>` at the next
+`<button>`, so the server's HTML arrives broken and hydration has to repair
+it. A `Switch` in `AccordionCard`'s `aside` — which renders inside the header
+button — shipped that way on Seed Data and stopped the preset highlighting.
+`navigation.e2e.ts` now checks the pages with accordions for any `a`, `button`,
+`input`, `select` or `textarea` inside another, and `AccordionCard` has a
+`control` snippet, outside the button, for exactly this.
 
 ### `signIn` is on the critical path of every test
 

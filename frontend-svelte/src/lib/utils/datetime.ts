@@ -1,3 +1,10 @@
+/**
+ * The calendar day of an instant as its UTC fields read — which, for a date
+ * shifted into a zone first, is that zone's day. The key every day grid and
+ * date input here uses.
+ */
+export const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 	['year', 31_536_000_000],
 	['month', 2_592_000_000],

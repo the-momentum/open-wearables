@@ -59,7 +59,7 @@
 		}}
 		aria-label={label}
 		{placeholder}
-		class="{FIELD} pr-3 pl-9"
+		class="{FIELD} w-full pr-3 pl-9"
 	/>
 	{#each Object.entries(hidden) as [name, fieldValue] (name)}
 		<input type="hidden" {name} value={fieldValue} />
