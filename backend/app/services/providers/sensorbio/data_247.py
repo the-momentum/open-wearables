@@ -19,7 +19,6 @@ from app.schemas.model_crud.activities.event_record_detail import EventRecordDet
 from app.schemas.providers.sensorbio import (
     BiometricsRecord,
     ScoresRecord,
-    SleepDetailsDay,
     SleepRecord,
     SleepStageIntervalRecord,
     StepDetailsResponse,
@@ -36,6 +35,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import as_utc
 from app.utils.structured_logging import log_structured
 
 _SchemaT = TypeVar("_SchemaT", bound=BaseModel)
@@ -136,11 +136,12 @@ class SensorBio247Data(Base247DataTemplate):
                 response = self._make_api_request(db, user_id, "/v1/sleep", params={"date": current_date.isoformat()})
                 records = response.get("data", []) if isinstance(response, dict) else []
                 if isinstance(records, list):
+                    # One details call per day; each session picks its own intervals
+                    # out of the day's list during normalization.
                     intervals = self._get_stage_intervals(db, user_id, current_date)
-                    all_sleep_data.extend(
-                        {**record, "stage_intervals": intervals} if intervals and isinstance(record, dict) else record
-                        for record in records
-                    )
+                    if intervals:
+                        records = [{**record, "stage_intervals": intervals} for record in records]
+                    all_sleep_data.extend(records)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -154,7 +155,7 @@ class SensorBio247Data(Base247DataTemplate):
         return all_sleep_data
 
     def _get_stage_intervals(self, db: DbSession, user_id: UUID, day: date) -> list[dict[str, Any]] | None:
-        """Stage intervals for one day. Returns None when the details call gives nothing.
+        """Fetch the day's stage intervals. Returns None when there are none to store.
 
         ``/v1/sleep/details/day`` returns one stage list for the whole day; sessions are
         split out in ``normalize_sleep`` by their own windows.
@@ -172,13 +173,12 @@ class SensorBio247Data(Base247DataTemplate):
             return None
         if not isinstance(response, dict):
             return None
-        parsed = self._parse(response, SleepDetailsDay, "sleep_details", user_id)
-        if parsed is None:
-            return None
-        # Dumped back to plain JSON so the payload stays serialisable in ``raw``.
-        return [interval.model_dump(mode="json") for interval in parsed.sleep_stages] or None
+        intervals = response.get("sleep_stages")
+        # Left as raw dicts: each one is validated in _extract_sleep_stages, and the
+        # payload stays JSON-serialisable while it travels with the sleep record.
+        return intervals if isinstance(intervals, list) and intervals else None
 
-    def _stage_timeline(
+    def _extract_sleep_stages(
         self,
         raw_sleep: dict[str, Any],
         user_id: UUID,
@@ -189,16 +189,15 @@ class SensorBio247Data(Base247DataTemplate):
         stages: list[SleepStage] = []
         for interval in raw_sleep.get("stage_intervals") or []:
             parsed = self._parse(interval, SleepStageIntervalRecord, "sleep_stage", user_id)
-            if parsed is None or parsed.start_time is None or parsed.end_time is None:
+            if parsed is None:
                 continue
             stage = SLEEP_STATUS_STAGE_MAP.get((parsed.status or "").lower())
-            if stage is None:
+            start, end = as_utc(parsed.start_time), as_utc(parsed.end_time)
+            if stage is None or start is None or end is None:
                 continue
-            if start_dt and parsed.start_time < start_dt:
+            if (start_dt and start < start_dt) or (end_dt and start >= end_dt):
                 continue
-            if end_dt and parsed.start_time >= end_dt:
-                continue
-            stages.append(SleepStage(stage=stage, start_time=parsed.start_time, end_time=parsed.end_time))
+            stages.append(SleepStage(stage=stage, start_time=start, end_time=end))
         return sorted(stages, key=lambda s: s.start_time) or None
 
     def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
@@ -234,7 +233,7 @@ class SensorBio247Data(Base247DataTemplate):
             "duration_seconds": duration_seconds,
             "efficiency_percent": score.value if score else None,
             "is_nap": False,
-            "stage_timestamps": self._stage_timeline(raw_sleep, user_id, start_dt, end_dt),
+            "stage_timestamps": self._extract_sleep_stages(raw_sleep, user_id, start_dt, end_dt),
             "stages": {
                 "deep_seconds": int((parsed.deep_sleep_mins or 0) * 60),
                 "light_seconds": int((parsed.light_sleep_mins or 0) * 60),

@@ -1,6 +1,7 @@
 """Withings 24/7 data: body measures (``getmeas``), daily activity (``getactivity``),
-and sleep (``getsummary``). Continuous metrics become ``DataPointSeries`` samples;
-sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
+and sleep (``getsummary`` for the night's totals, ``get`` for its hypnogram). Continuous
+metrics become ``DataPointSeries`` samples; sleep becomes an ``EventRecord`` +
+``EventRecordDetail``, mirroring Oura.
 """
 
 import logging
@@ -408,6 +409,7 @@ class Withings247Data(Base247DataTemplate):
         efficiency = data.sleep_efficiency
 
         record_id = uuid4()
+        sleep_stages = self._fetch_sleep_stages(db, user_id, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,
             category="sleep",
@@ -434,7 +436,7 @@ class Withings247Data(Base247DataTemplate):
             sleep_rem_minutes=data.remsleepduration // 60 if data.remsleepduration is not None else None,
             sleep_awake_minutes=data.wakeupduration // 60 if data.wakeupduration is not None else None,
             is_nap=False,
-            sleep_stages=self._fetch_sleep_stages(db, user_id, start_dt, end_dt),
+            sleep_stages=sleep_stages,
         )
         try:
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)

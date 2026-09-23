@@ -9,7 +9,6 @@ from .models import (
     Activity,
     BiometricsRecord,
     ScoresRecord,
-    SleepDetailsDay,
     SleepRecord,
     SleepStageIntervalRecord,
     StepDetailMetric,
@@ -19,7 +18,6 @@ from .models import (
 
 __all__ = [
     "SleepRecord",
-    "SleepDetailsDay",
     "SleepStageIntervalRecord",
     "ScoresRecord",
     "BiometricsRecord",

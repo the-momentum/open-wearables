@@ -38,13 +38,6 @@ class SleepStageIntervalRecord(BaseModel):
     status: str | None = None
 
 
-class SleepDetailsDay(BaseModel):
-    """Response shape of /v1/sleep/details/day: one stage list for the whole day."""
-
-    date: str | None = None
-    sleep_stages: list[SleepStageIntervalRecord] = Field(default_factory=list)
-
-
 class SleepRecord(BaseModel):
     """Response shape for a single /v1/sleep record.
 
