@@ -338,12 +338,15 @@ class DataPointSeriesRepository(
                             value = excluded.value,
                             zone_offset = excluded.zone_offset,
                             is_daily_total = excluded.is_daily_total,
-                            event_record_id = excluded.event_record_id
+                            event_record_id = COALESCE(excluded.event_record_id, data_point_series.event_record_id)
                         WHERE data_point_series.value IS DISTINCT FROM excluded.value
                            OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
                            OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
                            OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
-                           OR data_point_series.event_record_id IS DISTINCT FROM excluded.event_record_id
+                           OR (
+                               excluded.event_record_id IS NOT NULL
+                               AND data_point_series.event_record_id IS DISTINCT FROM excluded.event_record_id
+                           )
                         RETURNING (xmax = 0) AS was_insert
                     )
                     SELECT count(*) FILTER (WHERE was_insert) FROM merged
