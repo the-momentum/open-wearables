@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { navLabelFor } from '$lib/config/nav';
 	import AppShell from '$lib/components/layout/AppShell.svelte';
+	import NavigationProgress from '$lib/components/layout/NavigationProgress.svelte';
 
 	let { children } = $props();
 
@@ -12,6 +13,8 @@
 <svelte:head>
 	<title>{title ? `${title} · Open Wearables` : 'Open Wearables'}</title>
 </svelte:head>
+
+<NavigationProgress />
 
 <AppShell>
 	{@render children()}

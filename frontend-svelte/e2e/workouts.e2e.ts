@@ -260,7 +260,7 @@ test('shows the cards without waiting for the figures above them', async ({ page
 	// Summing the period reads every record in it, and there is no aggregate
 	// endpoint to ask instead — so it is its own request and the list must not
 	// queue behind it.
-	await request.post('http://localhost:8787/__slow-summary');
+	await request.post('http://localhost:8787/__slow/workouts-summary');
 	await page.goto(WORKOUTS);
 
 	const figures = page.locator('[aria-label="Workout totals"]');

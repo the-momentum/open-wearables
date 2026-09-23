@@ -99,6 +99,17 @@
 
 	--radius-lg: var(--ow-radius);
 	--radius-xl: calc(var(--ow-radius) + 0.25rem);
+
+	--animate-progress: progress 1.1s ease-in-out infinite;
+
+	@keyframes progress {
+		from {
+			transform: translateX(-100%);
+		}
+		to {
+			transform: translateX(300%);
+		}
+	}
 }
 
 @layer base {

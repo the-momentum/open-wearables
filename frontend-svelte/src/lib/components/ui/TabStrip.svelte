@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Component } from 'svelte';
+	import { navigating } from '$app/state';
 	import BetaMark from './BetaMark.svelte';
 	import BetaTag from './BetaTag.svelte';
 	import ScrollFade from './ScrollFade.svelte';
@@ -27,9 +28,14 @@
 
 	let scroller = $state<HTMLDivElement>();
 
+	// The clicked tab lights up at once, not when its data has loaded.
+	const shown = $derived(
+		tabs.find((tab) => tab.href === navigating.to?.url.pathname)?.href ?? active
+	);
+
 	// A strip parked at the left would hide the tab you just opened.
 	$effect(() => {
-		void active;
+		void shown;
 		scroller
 			?.querySelector('[aria-current="page"]')
 			?.scrollIntoView({ block: 'nearest', inline: 'center' });
@@ -43,7 +49,7 @@
 		<nav aria-label={label}>
 			<ul class="flex gap-1">
 				{#each tabs as tab (tab.href)}
-					{@const current = tab.href === active}
+					{@const current = tab.href === shown}
 					<li>
 						<a
 							href={tab.href}

@@ -223,3 +223,25 @@ test('returns to the list after deleting, since the page it was on is gone', asy
 	await expect(page).toHaveURL('/users');
 	await expect(page.getByText('Zofia')).toHaveCount(0);
 });
+
+// A load holds the page until its data arrives; with years of data that is
+// seconds, and a tab that shows nothing for that long gets clicked again.
+test('a tab answers the click at once, even while its data is slow', async ({ page, request }) => {
+	await page.goto(`/users/${CONNECTED}`);
+	await request.post('http://localhost:8787/__slow/activity');
+
+	const tabs = page.getByRole('navigation', { name: 'User sections' });
+	await tabs.getByRole('link', { name: 'Activity' }).click();
+
+	await expect(tabs.getByRole('link', { name: 'Activity' })).toHaveAttribute(
+		'aria-current',
+		'page',
+		{ timeout: 500 }
+	);
+	await expect(page.locator('[aria-busy="true"]')).toBeVisible({ timeout: 500 });
+	await expect(page.getByRole('progressbar', { name: 'Loading' })).toBeVisible();
+
+	await expect(page).toHaveURL(/\/activity$/);
+	await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+	await expect(page.getByRole('progressbar', { name: 'Loading' })).toHaveCount(0);
+});

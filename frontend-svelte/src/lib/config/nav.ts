@@ -8,6 +8,7 @@ import Webhook from '@lucide/svelte/icons/webhook';
 import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 import Settings from '@lucide/svelte/icons/settings';
 import FileText from '@lucide/svelte/icons/file-text';
+import { isWithin } from '$lib/utils/url';
 
 export type NavItem = {
 	label: string;
@@ -47,7 +48,7 @@ export const SECONDARY_NAV_ITEMS = NAV_ITEMS.filter((item) => !item.primary);
 /** Nested paths count, so `/users/abc-123` still highlights "Users". */
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
 	if (item.external) return false;
-	return pathname === item.href || pathname.startsWith(`${item.href}/`);
+	return isWithin(pathname, item.href);
 }
 
 /** Label of the destination a path belongs to — drives the header and <title>. */

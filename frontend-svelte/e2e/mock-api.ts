@@ -79,8 +79,10 @@ import {
 let USERS = makeUsers();
 /** Connections revoked during a test, so the detail endpoints agree with the list. */
 let DISCONNECTED = new Set<string>();
-/** Holds the workouts summary query back, so a test can watch the page stream. */
-let SLOW_SUMMARY = false;
+/** Endpoints a test has asked to answer late, as they do for a user with years of data. */
+let SLOW = new Set<string>();
+const late = (name: string, ms: number) =>
+	SLOW.has(name) ? new Promise((resolve) => setTimeout(resolve, ms)) : undefined;
 /** Lets a test see what an untouched archive looks like on the dashboard. */
 let EMPTY_ARCHIVE = false;
 
@@ -110,7 +112,7 @@ const server = Bun.serve({
 		if (pathname === '/__reset') {
 			USERS = makeUsers();
 			DISCONNECTED = new Set();
-			SLOW_SUMMARY = false;
+			SLOW = new Set();
 			EMPTY_ARCHIVE = false;
 			resetWorkouts();
 			resetSleep();
@@ -129,8 +131,9 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
-		if (pathname === '/__slow-summary') {
-			SLOW_SUMMARY = true;
+		const slowMatch = pathname.match(/^\/__slow\/([a-z-]+)$/);
+		if (slowMatch) {
+			SLOW.add(slowMatch[1]);
 			return new Response(null, { status: 204 });
 		}
 
@@ -531,12 +534,11 @@ const server = Bun.serve({
 					const query = new URL(request.url).searchParams;
 					// The page asks for one screen of records and, separately, for
 					// everything in the period to sum. Only the second is held back.
-					if (SLOW_SUMMARY && Number(query.get('limit')) > 100) {
-						await new Promise((resolve) => setTimeout(resolve, 600));
-					}
+					if (Number(query.get('limit')) > 100) await late('workouts-summary', 600);
 					return json(makeWorkouts(query));
 				}
 				case '/summaries/activity':
+					await late('activity', 1500);
 					return json(makeActivity(new URL(request.url).searchParams));
 				case '/health-scores':
 					// Gated like the other data endpoints: a user with no connection has

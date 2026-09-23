@@ -7,3 +7,7 @@ export function withParams(url: URL, changes: Record<string, string | null>): st
 	}
 	return `${next.pathname}${next.search}`;
 }
+
+/** The path itself or anything under it, so `/users/abc` is within `/users`. */
+export const isWithin = (pathname: string, base: string) =>
+	pathname === base || pathname.startsWith(`${base}/`);

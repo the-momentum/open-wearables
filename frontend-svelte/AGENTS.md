@@ -722,6 +722,13 @@ them before writing a control by hand:
   running one shows its stage instead. `SavedCounts` owns its own row, so it
   can sit anywhere without a wrapper to line its parts up.
 - **`INLINE_LINK`** in `ui/typography.ts` — a link inside a sentence.
+- **`layout/PendingOutlet.svelte`** — a `load` holds the page until its data
+  arrives, which for a user with years of data is seconds of a dead click. Around
+  a tabbed layout's content it shows `TabSkeleton` while another tab loads and
+  dims the content while a filter reloads it; `TabStrip` lights the clicked tab
+  at once and `NavigationProgress` draws a bar for any slow navigation. The
+  skeleton and the bar wait `slowNavigation()`'s 150 ms, so a fast one does not
+  flash; the tab does not wait.
 
 ### Mutations go through form actions
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collect, grouped, toggled, withAll } from './collect';
 import { isWholeIn } from './numbers';
 import { noun, plural } from './text';
+import { isWithin } from './url';
 
 describe('collect', () => {
 	// Both orders are load-bearing: the groups come back in the order their first
@@ -59,5 +60,14 @@ describe('isWholeIn', () => {
 		expect(isWholeIn(11, 1, 10)).toBe(false);
 		expect(isWholeIn(1.5, 1, 10)).toBe(false);
 		expect(isWholeIn(Number.NaN, 1, 10)).toBe(false);
+	});
+});
+
+describe('isWithin', () => {
+	// A shared prefix is not nesting: /users-archive is not inside /users.
+	it('counts the path and what is under it, not a sibling that shares a prefix', () => {
+		expect(isWithin('/users', '/users')).toBe(true);
+		expect(isWithin('/users/abc/sleep', '/users')).toBe(true);
+		expect(isWithin('/users-archive', '/users')).toBe(false);
 	});
 });

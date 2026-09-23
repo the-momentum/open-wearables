@@ -2,6 +2,8 @@
 	import { page } from '$app/state';
 	import TabStrip from '$lib/components/ui/TabStrip.svelte';
 	import PageHeader from '$lib/components/layout/PageHeader.svelte';
+	import PendingOutlet from '$lib/components/layout/PendingOutlet.svelte';
+	import { resolve } from '$app/paths';
 	import { SETTINGS_TABS, activeSettingsTab } from '$lib/settings/tabs';
 
 	let { children } = $props();
@@ -19,5 +21,5 @@
 
 	<TabStrip label="Settings sections" {tabs} {active} />
 
-	{@render children()}
+	<PendingOutlet within={resolve('/settings')}>{@render children()}</PendingOutlet>
 </div>
