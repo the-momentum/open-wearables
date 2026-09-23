@@ -177,6 +177,7 @@ class SeriesType(str, Enum):
     dietary_fat_saturated = "dietary_fat_saturated"
     dietary_fat_monounsaturated = "dietary_fat_monounsaturated"
     dietary_fat_polyunsaturated = "dietary_fat_polyunsaturated"
+    dietary_fat_trans = "dietary_fat_trans"
     dietary_cholesterol = "dietary_cholesterol"
     dietary_protein = "dietary_protein"
     dietary_sodium = "dietary_sodium"
@@ -404,6 +405,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (295, SeriesType.dietary_pantothenic_acid, "mg"),
     (296, SeriesType.dietary_biotin, "mcg"),
     (297, SeriesType.dietary_caffeine, "mg"),
+    (298, SeriesType.dietary_fat_trans, "g"),
     # -------------------------------------------------------------------------
     # OTHER (IDs 500-)
     # -------------------------------------------------------------------------

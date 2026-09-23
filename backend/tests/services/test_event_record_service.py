@@ -21,6 +21,7 @@ from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordQueryParams,
+    MealDetailCreate,
     SleepInclude,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -364,6 +365,113 @@ class TestEventRecordServiceGetRecordsResponse:
 
         # Assert
         assert records == []
+
+
+class TestCreateOrUpdateMeal:
+    """One meal per (data source, start): an extended meal is refreshed, never duplicated."""
+
+    START = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+
+    def _record(self, data_source: DataSource, end: datetime) -> EventRecordCreate:
+        return EventRecordCreate(
+            id=uuid4(),
+            category="meal",
+            source_name="Google Health",
+            source=data_source.source,
+            user_id=data_source.user_id,
+            data_source_id=data_source.id,
+            start_datetime=self.START,
+            end_datetime=end,
+            duration_seconds=int((end - self.START).total_seconds()),
+        )
+
+    def test_new_meal_is_inserted_with_its_detail(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        record = self._record(data_source, self.START + timedelta(minutes=30))
+        detail = MealDetailCreate(record_id=record.id, title="Chicken", meal_type="lunch")
+
+        saved, inserted = event_record_service.create_or_update_meal(db, record, detail)
+        db.commit()
+
+        assert inserted is True
+        assert saved.id == record.id
+        assert db.get(EventRecord, record.id).meal_detail.title == "Chicken"
+
+    def test_a_later_end_updates_the_existing_meal_instead_of_duplicating_it(self, db: Session) -> None:
+        """Adding an item that ends later moves the meal's end; the (source, start, end) unique
+        index would otherwise let a second record in, leaving the first without nutrients."""
+        data_source = DataSourceFactory()
+        first = self._record(data_source, self.START + timedelta(minutes=30))
+        event_record_service.create_or_update_meal(
+            db, first, MealDetailCreate(record_id=first.id, title="Chicken", meal_type="lunch")
+        )
+        db.commit()
+
+        extended = self._record(data_source, self.START + timedelta(minutes=45))
+        saved, inserted = event_record_service.create_or_update_meal(
+            db, extended, MealDetailCreate(record_id=extended.id, title="Chicken, Rice", meal_type="lunch")
+        )
+        db.commit()
+
+        assert inserted is False
+        assert saved.id == first.id
+        meals = db.query(EventRecord).filter(EventRecord.data_source_id == data_source.id).all()
+        assert len(meals) == 1
+        assert meals[0].end_datetime == self.START + timedelta(minutes=45)
+        assert meals[0].duration_seconds == 45 * 60
+
+    def test_resync_refreshes_title_and_meal_type(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        end = self.START + timedelta(minutes=30)
+        first = self._record(data_source, end)
+        event_record_service.create_or_update_meal(
+            db, first, MealDetailCreate(record_id=first.id, title="Chicken", meal_type="lunch")
+        )
+        db.commit()
+
+        again = self._record(data_source, end)
+        saved, _ = event_record_service.create_or_update_meal(
+            db, again, MealDetailCreate(record_id=again.id, title="Chicken, Rice", meal_type="dinner")
+        )
+        db.commit()
+
+        detail = db.get(EventRecord, saved.id).meal_detail
+        assert detail.title == "Chicken, Rice"
+        assert detail.meal_type == "dinner"
+
+    def test_a_different_start_is_a_different_meal(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        lunch = self._record(data_source, self.START + timedelta(minutes=30))
+        event_record_service.create_or_update_meal(db, lunch, MealDetailCreate(record_id=lunch.id, title="Lunch"))
+        db.commit()
+
+        dinner = self._record(data_source, self.START + timedelta(hours=7))
+        dinner.start_datetime = self.START + timedelta(hours=6)
+        saved, inserted = event_record_service.create_or_update_meal(
+            db, dinner, MealDetailCreate(record_id=dinner.id, title="Dinner")
+        )
+        db.commit()
+
+        assert inserted is True
+        assert saved.id != lunch.id
+
+    def test_same_start_on_another_source_is_a_different_meal(self, db: Session) -> None:
+        user = UserFactory()
+        phone = DataSourceFactory(user=user, device_model="Pixel Fold")
+        watch = DataSourceFactory(user=user, device_model="Pixel Watch")
+        end = self.START + timedelta(minutes=30)
+        event_record_service.create_or_update_meal(
+            db, self._record(phone, end), MealDetailCreate(record_id=uuid4(), title="Phone")
+        )
+        db.commit()
+
+        saved, inserted = event_record_service.create_or_update_meal(
+            db, self._record(watch, end), MealDetailCreate(record_id=uuid4(), title="Watch")
+        )
+        db.commit()
+
+        assert inserted is True
+        assert saved.data_source_id == watch.id
 
 
 class TestCreateOrMergeSleep:

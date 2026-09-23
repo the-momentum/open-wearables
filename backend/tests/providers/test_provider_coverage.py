@@ -31,7 +31,7 @@ from app.services.providers.factory import ProviderFactory
 PROVIDERS_DIR = Path("app/services/providers")
 
 # Implementation files that may emit timeseries / set detail fields.
-IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_service.py")
+IMPL_FILES = ("data_247.py", "workouts.py", "nutrition.py", "webhook_handler.py", "webhook_service.py")
 
 # SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the

@@ -15,6 +15,7 @@ from app.models import (
     EventRecord,
     EventRecordDetail,
     HealthScore,
+    MealDetails,
     MenstrualCycleDetails,
     SleepDetails,
     WorkoutDetails,
@@ -26,7 +27,7 @@ from app.repositories import (
     EventRecordRepository,
     HealthScoreRepository,
 )
-from app.schemas.enums import HealthScoreCategory
+from app.schemas.enums import HealthScoreCategory, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -40,6 +41,8 @@ from app.schemas.model_crud.activities import (
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.responses.activity import (
+    Macros,
+    Meal,
     MenstrualCycleRecord,
     SleepSession,
     SleepStagesSummary,
@@ -61,6 +64,18 @@ from app.services.services import AppService
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+
+# Nutrient series correlated to a meal EventRecord that the /events/meals response summarizes.
+_MEAL_SERIES_TYPES: frozenset[SeriesType] = frozenset(
+    {
+        SeriesType.dietary_energy_consumed,
+        SeriesType.dietary_protein,
+        SeriesType.dietary_carbohydrates,
+        SeriesType.dietary_fat_total,
+        SeriesType.dietary_fiber,
+        SeriesType.hydration,
+    }
+)
 
 
 def pace_sec_per_km(distance_meters: float | None, seconds: int | None) -> float | None:
@@ -237,6 +252,40 @@ class EventRecordService(
         return self.crud.find_adjacent_sleep_record(
             db_session, user_id, start_time, end_time, threshold_minutes, source=source, provider=provider
         )
+
+    def create_or_update_meal(
+        self,
+        db_session: DbSession,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+    ) -> tuple[EventRecord, bool]:
+        """Insert a meal, or refresh the one already stored for its data source and start time.
+
+        Food loggers emit one point per item and a meal's end moves as items are added, so
+        the (data source, start, end) uniqueness create_and_flush falls back on would turn an
+        extended meal into a duplicate. Matching on start alone keeps one record per meal and
+        lets its end, title and meal type follow the latest sync.
+
+        Flushes only - the caller commits, so the meal's nutrient samples can share the
+        transaction. Returns (record, inserted).
+        """
+        existing = self.crud.find_by_start(db_session, record)
+        if existing is None:
+            created = self.crud.create_and_flush(db_session, record)
+            self.event_record_detail_repo.create_and_flush(
+                db_session, detail.model_copy(update={"record_id": created.id}), detail_type="meal"
+            )
+            return created, created.id == record.id
+
+        existing.end_datetime = record.end_datetime
+        existing.duration_seconds = record.duration_seconds
+        existing.zone_offset = record.zone_offset
+        db_session.flush()
+        self.event_record_detail_repo.delete_by_record_id(db_session, existing.id, "meal")
+        self.event_record_detail_repo.create_and_flush(
+            db_session, detail.model_copy(update={"record_id": existing.id}), detail_type="meal"
+        )
+        return existing, False
 
     def create_or_merge_sleep(
         self,
@@ -1038,6 +1087,90 @@ class EventRecordService(
                 end_time=params.end_datetime,
             ),
         )
+
+    @handle_exceptions
+    def get_meals(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+    ) -> PaginatedResponse[Meal]:
+        params.category = "meal"
+        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
+
+        limit = params.limit or 20
+        has_more = len(records) > limit
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        if has_more:
+            records = records[-limit:] if is_backward else records[:limit]
+
+        next_cursor = None
+        previous_cursor = None
+
+        if records:
+            if has_more:
+                last_record, _ = records[-1]
+                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+            if params.cursor:
+                if is_backward:
+                    if has_more:
+                        first_record, _ = records[0]
+                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+                else:
+                    first_record, _ = records[0]
+                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+
+        nutrients_by_meal = self._nutrients_by_meal(db_session, [record.id for record, _ in records])
+
+        data = []
+        for record, data_source in records:
+            details: MealDetails | None = record.meal_detail
+            nutrients = nutrients_by_meal.get(record.id, {})
+            macros = Macros(
+                protein_g=as_float(nutrients.get(SeriesType.dietary_protein)),
+                carbohydrates_g=as_float(nutrients.get(SeriesType.dietary_carbohydrates)),
+                fat_g=as_float(nutrients.get(SeriesType.dietary_fat_total)),
+                fiber_g=as_float(nutrients.get(SeriesType.dietary_fiber)),
+            )
+            data.append(
+                Meal(
+                    id=record.id,
+                    timestamp=record.start_datetime,
+                    meal_type=details.meal_type if details else None,
+                    name=details.title if details else None,
+                    source=self._map_source(data_source),
+                    calories_kcal=as_float(nutrients.get(SeriesType.dietary_energy_consumed)),
+                    macros=macros if any(v is not None for v in macros.model_dump().values()) else None,
+                    water_ml=as_float(nutrients.get(SeriesType.hydration)),
+                )
+            )
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+                total_count=total_count,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
+
+    def _nutrients_by_meal(self, db_session: DbSession, meal_ids: list[UUID]) -> dict[UUID, dict[SeriesType, Decimal]]:
+        """Group the correlated DataPointSeries samples (macros, calories, water) per meal."""
+        id_to_series_type = {get_series_type_id(t): t for t in _MEAL_SERIES_TYPES}
+        result: dict[UUID, dict[SeriesType, Decimal]] = {}
+        for sample in self.data_point_series_repo.get_by_event_record_ids(db_session, meal_ids):
+            series_type = id_to_series_type.get(sample.series_type_definition_id)
+            if series_type is None or sample.event_record_id is None:
+                continue
+            result.setdefault(sample.event_record_id, {})[series_type] = sample.value
+        return result
 
     def delete_event_record(
         self,

@@ -58,7 +58,14 @@ class DataSourceRepository(
         software_version: str | None = None,
         source: str | None = None,
         original_source_name: str | None = None,
+        commit: bool = True,
     ) -> DataSource:
+        """Return the data source for this identity, creating it if missing.
+
+        ``commit=False`` only flushes a newly created source, for callers that run inside a
+        transaction they (or a savepoint) own - a commit there would close the enclosing
+        ``begin_nested()`` context and break every statement after it.
+        """
         existing = self.get_by_identity(db_session, user_id, provider, device_model, source)
         if existing:
             updated = False
@@ -96,9 +103,14 @@ class DataSourceRepository(
             device_type=device_type.value if device_type != DeviceType.UNKNOWN else None,
             original_source_name=original_source_name,
         )
-        result = self.create(db_session, create_payload)
-        assert result is not None
-        return result
+        if commit:
+            result = self.create(db_session, create_payload)
+            assert result is not None
+            return result
+        creation = self.model(**create_payload.model_dump())
+        db_session.add(creation)
+        db_session.flush()
+        return creation
 
     def _infer_device_type(
         self,
