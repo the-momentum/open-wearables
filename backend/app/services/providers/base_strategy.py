@@ -41,6 +41,7 @@ class ProviderCoverage:
     workout_fields:         EventRecordDetail fields populated in workout records
     sleep_fields:           EventRecordDetail fields populated in sleep records
     menstrual_cycle_fields: EventRecordDetail fields populated in menstrual-cycle records
+    meal_fields:            EventRecordDetail fields populated in meal records
     health_scores:          HealthScoreCategory values produced by this provider
 
     Define the frozensets in the provider's coverage.py and assign here in
@@ -53,6 +54,7 @@ class ProviderCoverage:
     workout_fields: frozenset[str] = field(default_factory=frozenset)
     sleep_fields: frozenset[str] = field(default_factory=frozenset)
     menstrual_cycle_fields: frozenset[str] = field(default_factory=frozenset)
+    meal_fields: frozenset[str] = field(default_factory=frozenset)
     health_scores: frozenset[HealthScoreCategory] = field(default_factory=frozenset)
 
 
