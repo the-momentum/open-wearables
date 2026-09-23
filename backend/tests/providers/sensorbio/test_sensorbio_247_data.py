@@ -12,7 +12,7 @@ t_5912f22f adds: ACTIVITY + SLEEP HealthScore extraction from /v1/scores (parity
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -25,6 +25,7 @@ from app.services.providers.sensorbio.data_247 import SensorBio247Data
 
 USER_ID = uuid4()
 DB = MagicMock()
+_SEPT_10 = datetime(2026, 9, 10, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -770,3 +771,62 @@ class TestSensorBio247SaveRecoveryDataScores:
 
         assert counts == {"metrics_synced": 0, "scores_synced": 0}
         mock_hs.bulk_create.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Sleep stage intervals (/v1/sleep/details/day)
+# ---------------------------------------------------------------------------
+
+DETAILS_DAY = {
+    "date": "2026-09-10",
+    "sleep_stages": [
+        {"start_time": "2026-09-10T00:10:00Z", "end_time": "2026-09-10T02:00:00Z", "status": "light"},
+        {"start_time": "2026-09-10T02:00:00Z", "end_time": "2026-09-10T02:20:00Z", "status": "awake"},
+        {"start_time": "2026-09-10T13:00:00Z", "end_time": "2026-09-10T13:40:00Z", "status": "light"},
+    ],
+}
+# 2026-09-10: night 00:00-03:00 UTC, nap 12:30-14:00 UTC.
+NIGHT = {"id": "night", "start_timestamp": 1788998400, "end_timestamp": 1789009200, "total_sleep_mins": 110.0}
+NAP = {"id": "nap", "start_timestamp": 1789043400, "end_timestamp": 1789048800, "total_sleep_mins": 40.0}
+
+
+class TestSensorBio247SleepStageIntervals:
+    """A day's stage intervals are fetched once and split between that day's sessions."""
+
+    def test_night_keeps_only_its_own_intervals(self, data_247: SensorBio247Data) -> None:
+        normalized = data_247.normalize_sleep({**NIGHT, "stage_intervals": DETAILS_DAY["sleep_stages"]}, USER_ID)
+
+        assert normalized is not None
+        assert [stage.stage.value for stage in normalized["stage_timestamps"]] == ["light", "awake"]
+
+    def test_nap_keeps_only_its_own_intervals(self, data_247: SensorBio247Data) -> None:
+        normalized = data_247.normalize_sleep({**NAP, "stage_intervals": DETAILS_DAY["sleep_stages"]}, USER_ID)
+
+        assert normalized is not None
+        assert [stage.stage.value for stage in normalized["stage_timestamps"]] == ["light"]
+
+    def test_sleep_without_intervals_has_no_timeline(self, data_247: SensorBio247Data) -> None:
+        normalized = data_247.normalize_sleep(NIGHT, USER_ID)
+
+        assert normalized is not None
+        assert normalized["stage_timestamps"] is None
+
+    def test_intervals_are_attached_to_every_session_of_the_day(self, data_247: SensorBio247Data) -> None:
+        def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
+            return {"data": [NIGHT, NAP]} if endpoint == "/v1/sleep" else DETAILS_DAY
+
+        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+            records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
+
+        assert [len(record["stage_intervals"]) for record in records] == [3, 3]
+
+    def test_failing_details_call_leaves_the_session_without_intervals(self, data_247: SensorBio247Data) -> None:
+        def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
+            if endpoint == "/v1/sleep":
+                return {"data": [NIGHT]}
+            raise RuntimeError("boom")
+
+        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+            records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
+
+        assert records[0].get("stage_intervals") is None
