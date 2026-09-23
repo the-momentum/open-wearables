@@ -14,11 +14,11 @@ keywords: ["android health connect sdk", "samsung health sdk", "android health d
 
 ## Introduction
 
-The Open Wearables Android SDK (`open-wearables-android-sdk`) is a native Kotlin SDK for secure background synchronization of health data from **Samsung Health** and **Health Connect** to the Open Wearables platform.
+The Open Wearables Android SDK (`open_wearables_android_sdk`) is a native Kotlin SDK for secure background synchronization of health data from **Samsung Health** and **Health Connect** to the Open Wearables platform.
 
 This is the **core native implementation** that powers health data sync on Android. The [Flutter SDK](/sdk/flutter) uses this SDK under the hood as a wrapper.
 
-<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open-wearables-android-sdk">
+<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open_wearables_android_sdk">
   View source code, report issues, and contribute to the Android SDK.
 </Card>
 
@@ -58,11 +58,11 @@ dependencyResolutionManagement {
 }
 ```
 
-Then add the dependency in your app's `build.gradle.kts`:
+Then add the `sdk` module in your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.the-momentum:open-wearables-android-sdk:0.5.0")
+    implementation("com.github.the-momentum.open_wearables_android_sdk:sdk:v0.12.0")
 }
 ```
 
@@ -91,7 +91,7 @@ The SDK declares these permissions automatically (merged via manifest):
   | Permission | Purpose |
   |------------|---------|
   | `FOREGROUND_SERVICE` | Foreground service during sync |
-  | `FOREGROUND_SERVICE_DATA_SYNC` | Data sync foreground service type |
+  | `FOREGROUND_SERVICE_HEALTH` | Health foreground service type |
   | `POST_NOTIFICATIONS` | Sync notification (Android 13+) |
   | `INTERNET` | Network access |
   | `ACCESS_NETWORK_STATE` | Network monitoring |
@@ -143,8 +143,8 @@ class HealthService(private val context: Context) {
         sdk.logLevel = OWLogLevel.ALWAYS
 
         // 4. Handle auth errors (optional)
-        sdk.authErrorListener = { error ->
-            Log.e("HealthSDK", "Auth error: $error")
+        sdk.authErrorListener = { statusCode, message ->
+            Log.e("HealthSDK", "Auth error $statusCode: $message")
         }
 
         // 5. Configure with your backend host

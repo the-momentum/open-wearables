@@ -290,14 +290,6 @@ await OpenWearablesHealthSdk.startBackgroundSync();
   Background sync frequency is managed by the OS and may vary based on battery level, network conditions, and user behavior.
 </Warning>
 
-### Manual Sync
-
-Trigger an immediate sync when needed:
-
-```dart
-await OpenWearablesHealthSdk.syncNow();
-```
-
 ### Log Level
 
 Control SDK log output using `setLogLevel`. By default, the SDK uses `OWLogLevel.debug`, which prints logs only in debug builds:
@@ -331,7 +323,6 @@ Here's a complete service class showing the full integration:
 import 'dart:convert';
 import 'dart:io';
 import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
-import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -479,8 +470,9 @@ class HealthSyncService {
 
   /// Force a full re-sync of all data
   Future<void> resyncAllData() async {
+    await OpenWearablesHealthSdk.stopBackgroundSync();
     await OpenWearablesHealthSdk.resetAnchors();
-    await OpenWearablesHealthSdk.syncNow();
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: 90);
   }
 }
 ```

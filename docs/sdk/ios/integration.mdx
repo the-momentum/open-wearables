@@ -258,16 +258,6 @@ OpenWearablesHealthSDK.shared.startBackgroundSync { started in
   Background sync frequency is controlled by iOS and may vary based on battery level, network conditions, and user behavior. The 15-minute interval is a minimum - actual syncs may be less frequent.
 </Warning>
 
-### Manual Sync
-
-Trigger an immediate sync when needed:
-
-```swift
-OpenWearablesHealthSDK.shared.syncNow {
-    print("Sync completed")
-}
-```
-
 ### Stop Sync
 
 ```swift
@@ -409,17 +399,11 @@ class HealthSyncService {
         sdk.signOut()
     }
 
-    /// Trigger an immediate sync
-    func syncNow(completion: @escaping () -> Void) {
-        sdk.syncNow {
-            completion()
-        }
-    }
-
     /// Force a full re-sync of all data
     func resyncAllData() {
+        sdk.stopBackgroundSync()
         sdk.resetAnchors()
-        sdk.syncNow { }
+        sdk.startBackgroundSync { _ in }
     }
 }
 
@@ -456,14 +440,6 @@ class HealthViewController: UIViewController {
     @IBAction func disconnectTapped(_ sender: Any) {
         HealthSyncService.shared.disconnect()
         showAlert(title: "Disconnected", message: "Health sync stopped.")
-    }
-
-    @IBAction func syncNowTapped(_ sender: Any) {
-        HealthSyncService.shared.syncNow {
-            DispatchQueue.main.async {
-                self.showAlert(title: "Sync", message: "Sync completed!")
-            }
-        }
     }
 
     private func showAlert(title: String, message: String) {

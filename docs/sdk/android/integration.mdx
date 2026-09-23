@@ -57,8 +57,8 @@ class MyApplication : Application() {
         sdk.logLevel = OWLogLevel.ALWAYS
 
         // Optional: Handle auth errors (e.g. token expired)
-        sdk.authErrorListener = { error ->
-            Log.e("HealthSDK", "Auth error: $error")
+        sdk.authErrorListener = { statusCode, message ->
+            Log.e("HealthSDK", "Auth error $statusCode: $message")
         }
 
         // Configure with your backend host
@@ -279,16 +279,8 @@ sdk.startBackgroundSync()
 | Mechanism | Description |
 |-----------|-------------|
 | WorkManager | Periodic background sync with system-managed scheduling |
-| Foreground Service | Used during active sync for reliability (`dataSync` type) |
+| Foreground Service | Used during active sync for reliability (`health` type) |
 | Notification | Shows a notification during active sync (Android 13+ requires permission) |
-
-### Manual Sync
-
-Trigger an immediate sync:
-
-```kotlin
-sdk.syncNow()
-```
 
 ### Stop Sync
 
@@ -432,12 +424,6 @@ class HealthViewModel : ViewModel() {
         }
     }
 
-    fun syncNow() {
-        viewModelScope.launch {
-            sdk.syncNow()
-        }
-    }
-
     fun checkAndResumeSync() {
         viewModelScope.launch {
             if (sdk.hasResumableSyncSession()) {
@@ -450,8 +436,9 @@ class HealthViewModel : ViewModel() {
 
     fun resyncAllData() {
         viewModelScope.launch {
+            sdk.stopBackgroundSync()
             sdk.resetAnchors()
-            sdk.syncNow()
+            sdk.startBackgroundSync()
         }
     }
 
@@ -497,10 +484,6 @@ class HealthActivity : AppCompatActivity() {
         disconnectButton.setOnClickListener {
             viewModel.disconnect()
         }
-
-        syncNowButton.setOnClickListener {
-            viewModel.syncNow()
-        }
     }
 
     override fun onDestroy() {
@@ -523,7 +506,7 @@ The payload includes a `provider` field (`"samsung"` or `"google"`) and the SDK 
 ```json
 {
   "provider": "google",
-  "sdkVersion": "0.5.0",
+  "sdkVersion": "0.12.0",
   "syncTimestamp": "2025-01-15T10:30:00Z",
   "data": {
     "records": [...],

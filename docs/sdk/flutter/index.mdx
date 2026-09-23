@@ -16,7 +16,7 @@ keywords: ["flutter health data sdk", "flutter healthkit", "flutter health conne
 
 The Open Wearables Flutter SDK (`open_wearables_health_sdk`) enables secure background synchronization of health data from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
 
-On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open-wearables-android-sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
+On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open_wearables_android_sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
 
 <CardGroup cols={3}>
   <Card title="Flutter SDK Repository" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk">
@@ -77,7 +77,7 @@ On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (
 
     ```yaml
     dependencies:
-      open_wearables_health_sdk: ^0.0.14
+      open_wearables_health_sdk: ^0.0.23
     ```
 
     Then run:
@@ -226,7 +226,7 @@ await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.none);
 The SDK exposes streams for logging and auth errors:
 
 ```dart
-import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 
 // Log stream from native SDK
 MethodChannelOpenWearablesHealthSdk.logStream.listen((message) {
