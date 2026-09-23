@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupEvents, namesIn } from './events';
+import { groupEvents, namesIn, summarise } from './events';
 import { hasContent, statusOf, triggerOf } from './status';
 import type { EventType } from './types';
 
@@ -91,5 +91,53 @@ describe('statusOf', () => {
 
 	it('tells a retry from a scheduled send', () => {
 		expect([triggerOf(0), triggerOf(1)]).toEqual(['Scheduled', 'Retry']);
+	});
+});
+
+describe('summarise', () => {
+	const labels = (names: string[]) =>
+		summarise(names, types).map((group) => ({
+			label: group.label,
+			whole: group.whole,
+			groupEvent: group.groupEvent?.name ?? null,
+			items: group.items.map((item) => item.label)
+		}));
+
+	// Read the way the picker groups them, with the noise taken off the names.
+	it('puts series under their group, without the prefix and the .created', () => {
+		expect(labels(['series.heart_rate', 'series.resting_heart_rate'])).toEqual([
+			{
+				label: 'Heart rate',
+				whole: false,
+				groupEvent: null,
+				items: ['Heart rate', 'Resting heart rate']
+			}
+		]);
+	});
+
+	it('counts the group event as the whole group, apart from its children', () => {
+		expect(labels(['heart_rate.created'])).toEqual([
+			{ label: 'Heart rate', whole: true, groupEvent: 'heart_rate.created', items: [] }
+		]);
+	});
+
+	// "revoked" and "created" are different events, so the verb stays.
+	it('keeps the verb inside a family, and knows when a family is taken whole', () => {
+		expect(labels(['connection.revoked'])).toEqual([
+			{ label: 'Connection', whole: false, groupEvent: null, items: ['Revoked'] }
+		]);
+		expect(labels(['connection.created', 'connection.revoked'])).toEqual([
+			{ label: 'Connection', whole: true, groupEvent: null, items: ['Created', 'Revoked'] }
+		]);
+	});
+
+	// Still in the subscription, so still on the card.
+	it('keeps a name the catalogue no longer has', () => {
+		expect(labels(['gone.created'])).toEqual([
+			{ label: 'No longer offered', whole: false, groupEvent: null, items: ['gone.created'] }
+		]);
+		// Marked, so the card can show it as something to edit out rather than a group.
+		expect(summarise(['gone.created'], types)[0].stray).toBe(true);
+		expect(summarise(['workout.created'], types)[0].stray).toBe(false);
 	});
 });

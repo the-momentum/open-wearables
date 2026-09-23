@@ -108,3 +108,29 @@ test('deletes a session after confirming, and the list agrees afterwards', async
 
 	await expect(pager).toContainText('of 16');
 });
+
+test('shows only naps, or only night sleep, and the totals follow', async ({ page }) => {
+	await page.goto(SLEEP);
+	const cards = page.getByRole('article');
+	const sessions = page.getByRole('group', { name: 'Sessions' });
+
+	await sessions.getByRole('link', { name: 'Naps' }).click();
+	await expect(page).toHaveURL(/kind=nap/);
+	// Three of the seventeen are naps, and every card left says so.
+	await expect(cards).toHaveCount(3);
+	await expect(cards.filter({ hasText: 'Night sleep' })).toHaveCount(0);
+	// The totals are asked with the same filter, so they count the same three.
+	const figures = page.locator('[aria-label="Sleep totals"]');
+	await expect(figures.getByText('3', { exact: true }).first()).toBeVisible();
+	await expect(figures.getByText('17', { exact: true })).toHaveCount(0);
+
+	await sessions.getByRole('link', { name: 'Night sleep' }).click();
+	await expect(cards.filter({ hasText: 'Nap' })).toHaveCount(0);
+	// Filtered by the backend, not per page: the pager counts the fourteen that match.
+	await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText('of 14');
+});
+
+test('says so when a period has no naps', async ({ page }) => {
+	await page.goto(`${SLEEP}?kind=nap&from=2020-01-01&to=2020-01-31`);
+	await expect(page.getByText('No naps in this period')).toBeVisible();
+});

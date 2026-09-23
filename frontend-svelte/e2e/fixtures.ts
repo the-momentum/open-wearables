@@ -31,7 +31,12 @@ export const setProviderEnabled = (providers: Record<string, boolean>) => {
 	return PROVIDER_SETTINGS;
 };
 
+/** Each call reconciles webhook subscriptions on the real backend, so tests count them. */
+let LIVE_SYNC_CALLS = 0;
+export const liveSyncCalls = () => LIVE_SYNC_CALLS;
+
 export const setLiveSyncMode = (provider: string, mode: string) => {
+	LIVE_SYNC_CALLS += 1;
 	const found = PROVIDER_SETTINGS.find((setting) => setting.provider === provider);
 	if (found) found.live_sync_mode = mode;
 	return found ?? null;
@@ -728,9 +733,13 @@ export const makeSleep = (query: URLSearchParams) => {
 	const end = new Date(query.get('end_date') ?? 0).getTime();
 	const withStages = query.getAll('include').includes('stages');
 
+	const nap = query.get('is_nap');
+
 	let matching = SLEEP.filter((session) => {
 		const at = new Date(session.start_time).getTime();
 		if (at < start || at >= end) return false;
+		// Unset is both, as on the real endpoint.
+		if (nap !== null && session.is_nap !== (nap === 'true')) return false;
 		return !provider || session.source.provider === provider;
 	});
 
@@ -1435,6 +1444,7 @@ let INVITATIONS = buildInvitations();
 
 export const resetSettings = () => {
 	PROVIDER_SETTINGS = buildProviderSettings();
+	LIVE_SYNC_CALLS = 0;
 	API_KEYS = buildApiKeys();
 	APPLICATIONS = buildApplications();
 	PRIORITIES = buildPriorities();

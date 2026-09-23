@@ -1,4 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './api';
+import { byName } from '$lib/providers/labels';
 import type {
 	ApiKey,
 	ApiKeySecret,
@@ -42,8 +43,8 @@ export const deleteApplication = (appId: string, accessToken: string) =>
 	apiDelete(`${APPS}/${appId}`, accessToken);
 
 /** Every provider, enabled or not: this is the page that decides which. */
-export const listProviderSettings = (accessToken: string) =>
-	apiGet<ProviderSetting[]>(PROVIDERS, accessToken);
+export const listProviderSettings = async (accessToken: string) =>
+	byName(await apiGet<ProviderSetting[]>(PROVIDERS, accessToken));
 
 export const saveProviderSettings = (providers: Record<string, boolean>, accessToken: string) =>
 	apiPut<ProviderSetting[]>(PROVIDERS, accessToken, { providers });

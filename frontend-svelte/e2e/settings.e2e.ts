@@ -122,6 +122,36 @@ test('switches one provider to webhooks on the click, without a save', async ({ 
 	await expect(page.getByText('provider changed')).toHaveCount(0);
 });
 
+test('lists the providers by name, not in the order the API added them', async ({ page }) => {
+	await page.goto('/settings/providers');
+
+	const names = await page
+		.getByRole('switch', { name: /^Enable / })
+		.evaluateAll((switches) => switches.map((s) => s.getAttribute('aria-label')?.slice(7)));
+	expect(names).toEqual(['Garmin', 'Oura', 'Suunto', 'Whoop']);
+});
+
+test('will not send the mode a provider is already in', async ({ page, request }) => {
+	await page.goto('/settings/providers');
+	const calls = async () =>
+		(await (await request.get('http://localhost:8787/__live-sync-calls')).json()).calls;
+
+	const oura = page.getByRole('group', { name: 'How Oura reports new data' });
+	const pull = oura.getByRole('button', { name: 'Periodic pull' });
+	const webhook = oura.getByRole('button', { name: 'Webhook' });
+
+	// Each switch reconciles the provider's subscriptions, and on pull that
+	// deletes every one — so the chosen mode is not something to press again.
+	await expect(pull).toBeDisabled();
+	await pull.click({ force: true });
+	expect(await calls()).toBe(0);
+
+	await webhook.click();
+	await expect(webhook).toBeDisabled();
+	await expect(pull).toBeEnabled();
+	expect(await calls()).toBe(1);
+});
+
 test('states the mode as a fact where the provider offers no choice', async ({ page }) => {
 	await page.goto('/settings/providers');
 

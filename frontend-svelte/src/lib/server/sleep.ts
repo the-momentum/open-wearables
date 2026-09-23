@@ -1,6 +1,7 @@
 import { apiDelete, apiGet } from './api';
 import { eventWindow } from './events';
 import type { Period } from '$lib/filters/period';
+import { isNapParam, type SessionFilter } from '$lib/sleep/query';
 import type { SleepPage } from '$lib/sleep/types';
 
 export type SleepQuery = {
@@ -8,6 +9,7 @@ export type SleepQuery = {
 	provider?: string;
 	/** Keeps only the winning source per night, the same ranking summaries use. */
 	topSourceOnly?: boolean;
+	kind?: SessionFilter;
 	cursor?: string;
 	limit?: number;
 	/** Stage intervals are a second table read, so the totals pass asks for none. */
@@ -21,6 +23,7 @@ export function fetchSleep(
 		period,
 		provider = '',
 		topSourceOnly = false,
+		kind = 'all',
 		cursor = '',
 		limit = 10,
 		stages = true
@@ -32,6 +35,8 @@ export function fetchSleep(
 	if (stages) params.set('include', 'stages');
 	if (provider) params.set('provider', provider);
 	if (topSourceOnly) params.set('filter_by_priority', 'true');
+	const nap = isNapParam(kind);
+	if (nap) params.set('is_nap', nap);
 	if (cursor) params.set('cursor', cursor);
 
 	return apiGet<SleepPage>(`/api/v1/users/${userId}/events/sleep?${params}`, accessToken);

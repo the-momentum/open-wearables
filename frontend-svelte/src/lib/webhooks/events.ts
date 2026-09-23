@@ -42,3 +42,74 @@ export const namesIn = (group: EventGroup): string[] => [
 	...(group.parent ? [group.parent.name] : []),
 	...group.events.map((event) => event.name)
 ];
+
+export type EventSummary = {
+	label: string;
+	/** Nothing in the group is left out: its group event, or every event of a family. */
+	whole: boolean;
+	/** The group event itself, where it is in the filter — one event for the lot. */
+	groupEvent: EventType | null;
+	/** The chosen events, in the fewest words that still tell them apart. */
+	items: { label: string; name: string; description: string }[];
+	/** How many events the group has, so a part of it can say how big a part. */
+	total: number;
+	/** Names the catalogue no longer has: not a group, something to edit out. */
+	stray: boolean;
+};
+
+/**
+ * `series.garmin_stress_level.created` as "Garmin stress level": almost every
+ * event ends in `.created`, and a series child already sits under its group.
+ * Other verbs are kept, since "revoked" and "created" are different events.
+ */
+function shortLabel(event: EventType, group: EventGroup): string {
+	if (group.parent) return humanise(event.name.replace(/^series\./, '').replace(/\.created$/, ''));
+	return humanise(event.name.split('.').at(-1) ?? event.name);
+}
+
+/**
+ * A subscription's filter read the way the picker groups it. A name the
+ * catalogue no longer has is kept, and said to be no longer offered, rather
+ * than dropped: the subscription still holds it, and it is one to edit out.
+ */
+export function summarise(names: string[], types: EventType[]): EventSummary[] {
+	const chosen = new Set(names);
+
+	const known = groupEvents(types).flatMap((group) => {
+		const events = group.events.filter((event) => chosen.has(event.name));
+		const groupEvent = group.parent && chosen.has(group.parent.name) ? group.parent : null;
+		if (!groupEvent && events.length === 0) return [];
+
+		return [
+			{
+				label: group.label,
+				whole: group.parent ? groupEvent !== null : events.length === group.events.length,
+				groupEvent,
+				items: events.map((event) => ({
+					label: shortLabel(event, group),
+					name: event.name,
+					description: event.description
+				})),
+				total: group.events.length,
+				stray: false
+			}
+		];
+	});
+
+	const catalogued = new Set(types.map((type) => type.name));
+	const stray = names.filter((name) => !catalogued.has(name));
+	const other = stray.length
+		? [
+				{
+					label: 'No longer offered',
+					whole: false,
+					groupEvent: null,
+					items: stray.map((name) => ({ label: name, name, description: '' })),
+					total: stray.length,
+					stray: true
+				}
+			]
+		: [];
+
+	return [...known, ...other];
+}

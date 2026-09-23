@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isNapParam, sessionFilter } from './query';
 import { localRange } from '$lib/utils/format';
 import { stageLanes, stageRows } from './stages';
 import { sumSleep } from './totals';
@@ -152,5 +153,21 @@ describe('localRange', () => {
 	// instant and the card has to say so rather than pass it off as bedtime.
 	it('reports when there was no offset to read in', () => {
 		expect(localRange('2026-09-20T22:40:00Z', '2026-09-21T06:20:00Z', null).utc).toBe(true);
+	});
+});
+
+describe('the session filter', () => {
+	// Three states for a boolean parameter: leaving it off is how "both" is asked for.
+	it('reads the URL, falling back to all', () => {
+		expect(sessionFilter(new URLSearchParams('kind=nap'))).toBe('nap');
+		expect(sessionFilter(new URLSearchParams('kind=night'))).toBe('night');
+		expect(sessionFilter(new URLSearchParams('kind=junk'))).toBe('all');
+		expect(sessionFilter(new URLSearchParams())).toBe('all');
+	});
+
+	it('asks the API for naps, for night sleep, or for nothing in particular', () => {
+		expect(isNapParam('nap')).toBe('true');
+		expect(isNapParam('night')).toBe('false');
+		expect(isNapParam('all')).toBeNull();
 	});
 });

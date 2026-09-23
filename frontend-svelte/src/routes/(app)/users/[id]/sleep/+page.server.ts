@@ -6,6 +6,7 @@ import { knownProvider } from '$lib/server/events';
 import { fetchProviders } from '$lib/server/providers';
 import { deleteSleep, fetchSleep } from '$lib/server/sleep';
 import { parsePeriod } from '$lib/filters/period';
+import { sessionFilter } from '$lib/sleep/query';
 import { isPageSize } from '$lib/lists/pagination';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -15,6 +16,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	const askedProvider = url.searchParams.get('provider') ?? '';
 	const topSourceOnly = url.searchParams.get('top') === '1';
+	const kind = sessionFilter(url.searchParams);
 	const cursor = url.searchParams.get('cursor') ?? '';
 
 	// Ten, not the list default of twenty: these cards expand, and twenty of them
@@ -34,6 +36,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			period,
 			provider,
 			topSourceOnly,
+			kind,
 			cursor,
 			limit: pageSize
 		});
@@ -47,7 +50,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	const sessions = (await started) ?? (await query(provider));
 
-	return { period, provider, topSourceOnly, sessions, providers, connections, pageSize };
+	return { period, provider, topSourceOnly, kind, sessions, providers, connections, pageSize };
 };
 
 export const actions: Actions = {

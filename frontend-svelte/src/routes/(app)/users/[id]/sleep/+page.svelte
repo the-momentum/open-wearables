@@ -24,7 +24,9 @@
 	const connected = $derived(data.connections.map((connection) => connection.provider));
 
 	const sessions = $derived(data.sessions.data);
-	const filtered = $derived(Boolean(data.provider || data.topSourceOnly || data.period.from));
+	const filtered = $derived(
+		Boolean(data.provider || data.topSourceOnly || data.kind !== 'all' || data.period.from)
+	);
 
 	let removing = $state<SleepSession | null>(null);
 	let removeOpen = $state(false);
@@ -40,6 +42,20 @@
 	>
 		<!-- Two watches can both claim one night. This is the same ranking the
 		     summaries use, and it answers "why are there two of these". -->
+		<!-- The backend filters this now, so paging and the totals agree with it;
+		     done here it would have thinned each page instead. -->
+		<FilterGroup label="Sessions">
+			<Segmented
+				label="Sessions"
+				selected={data.kind}
+				items={[
+					{ value: 'all', label: 'All', href: hrefFor({ kind: null }) },
+					{ value: 'night', label: 'Night sleep', href: hrefFor({ kind: 'night' }) },
+					{ value: 'nap', label: 'Naps', href: hrefFor({ kind: 'nap' }) }
+				]}
+			/>
+		</FilterGroup>
+
 		<FilterGroup label="Sources">
 			<Segmented
 				label="Sources"
@@ -59,9 +75,13 @@
 			<Card>
 				<EmptyState
 					icon={Moon}
-					title={filtered ? 'No sessions match these filters' : 'No sleep recorded'}
+					title={filtered
+						? data.kind === 'nap'
+							? 'No naps in this period'
+							: 'No sessions match these filters'
+						: 'No sleep recorded'}
 					description={filtered
-						? 'Widen the period, or clear the provider.'
+						? 'Widen the period, or clear a filter.'
 						: 'Nothing this user’s providers have delivered is a sleep session.'}
 				/>
 			</Card>

@@ -190,8 +190,9 @@ test('keeps exactly the events that were ticked', async ({ page }) => {
 	// Not "All events", which is what an empty filter means — and what a dropped
 	// selection would look like.
 	const card = page.getByRole('article').filter({ hasText: 'Picked one' });
-	await expect(card).toContainText('1 events');
-	await expect(card.getByText('workout.created')).toBeVisible();
+	await expect(card).toContainText('1 event');
+	// The folded card names the group; the exact name is in the dialog.
+	await expect(card).toContainText('Workout');
 });
 
 test('groups deliveries by the day they went out', async ({ page }) => {
@@ -238,4 +239,37 @@ test('keeps the test-event picker inside its card, however long the names are', 
 	const box = await card.boundingBox();
 	const picker = await card.getByLabel('Event to send').boundingBox();
 	expect(picker!.x + picker!.width).toBeLessThanOrEqual(box!.x + box!.width);
+});
+
+test('names the groups a subscription listens to, and lists every event when opened', async ({
+	page
+}) => {
+	await page.goto('/webhooks');
+	const card = page.getByRole('article').filter({ hasText: 'Production listener' });
+
+	// Folded: a chip per group, and a part of a group says how big a part.
+	await expect(card).toContainText('Workout');
+	await expect(card).toContainText('Sleep');
+	await expect(card.getByText('Heart rate', { exact: true })).toBeVisible();
+	await expect(card.getByText('1/3', { exact: true })).toBeVisible();
+	await expect(card.getByText('Listens to')).toHaveCount(0);
+
+	await card.click({ position: { x: 5, y: 5 } });
+	const list = card.locator('dl');
+	await expect(card.getByText('Listens to')).toBeVisible();
+	// The label a person reads, with the exact name kept on hover.
+	await expect(list.getByText('Heart rate', { exact: true }).last()).toHaveAttribute(
+		'title',
+		/^series\.heart_rate/
+	);
+});
+
+test('says an empty filter means every event, later ones included', async ({ page }) => {
+	await page.goto('/webhooks');
+	const card = page.getByRole('article').filter({ hasText: 'hooks.example.test' });
+
+	await card.click({ position: { x: 5, y: 5 } });
+	await expect(
+		card.getByText('Every event, including ones added after this was created.')
+	).toBeVisible();
 });

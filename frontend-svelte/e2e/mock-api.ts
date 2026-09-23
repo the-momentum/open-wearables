@@ -36,6 +36,7 @@ import {
 	saveDeviceTypePriorities,
 	saveProviderPriorities,
 	setLiveSyncMode,
+	liveSyncCalls,
 	setProviderEnabled,
 	makeConnections,
 	createSubscription,
@@ -218,6 +219,10 @@ const server = Bun.serve({
 		}
 
 		// ------------------------------------------------------------ settings --
+
+		if (pathname === '/__live-sync-calls') {
+			return json({ calls: liveSyncCalls() });
+		}
 
 		if (pathname === '/__last-seed') {
 			return json({ request: lastSeed() });

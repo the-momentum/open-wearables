@@ -9,9 +9,13 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 	import LinkButton from '$lib/components/ui/LinkButton.svelte';
-	import { HEADING, MICRO, MONO } from '$lib/components/ui/typography';
+	import { HEADING, MICRO } from '$lib/components/ui/typography';
 	import type { EventType, Subscription } from '$lib/webhooks/types';
 	import RecentDeliveries from './RecentDeliveries.svelte';
+	import { summarise } from '$lib/webhooks/events';
+	import { plural } from '$lib/utils/text';
+	import EventList from './EventList.svelte';
+	import SubscriptionEvents from './SubscriptionEvents.svelte';
 	import TestEvent from './TestEvent.svelte';
 
 	let {
@@ -29,6 +33,7 @@
 	} = $props();
 
 	const filters = $derived(subscription.filter_types ?? []);
+	const groups = $derived(summarise(filters, types));
 	const named = $derived(subscription.description?.trim());
 
 	const quiet = 'text-muted-foreground hover:text-foreground';
@@ -44,18 +49,13 @@
 	{/snippet}
 
 	{#snippet aside()}
-		<Badge>{filters.length === 0 ? 'All events' : `${filters.length} events`}</Badge>
+		<Badge>{filters.length === 0 ? 'All events' : plural(filters.length, 'event')}</Badge>
 	{/snippet}
 
 	{#snippet metrics()}
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-				{#each filters.slice(0, 3) as type (type)}
-					<code class="rounded bg-surface-muted px-1.5 py-0.5 {MONO}">{type}</code>
-				{/each}
-				{#if filters.length > 3}
-					<span class={MICRO}>+{filters.length - 3} more</span>
-				{/if}
+				<SubscriptionEvents {groups} />
 				{#if subscription.user_id}
 					<!-- No leading separator with nothing before it: a subscription to
 					     every event has no chips for the dot to follow. -->
@@ -93,6 +93,8 @@
 
 	{#snippet details()}
 		<div class="flex flex-col gap-4 border-t border-border pt-4">
+			<EventList {groups} />
+
 			<!-- Above the list on purpose: what you send lands in it. -->
 			<TestEvent {subscription} {types} message={testMessage} />
 

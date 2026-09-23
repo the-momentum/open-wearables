@@ -48,17 +48,22 @@
 		>
 			{#each MODES as option (option.value)}
 				{@const active = mode === option.value}
+				<!-- The chosen one cannot be sent again: every switch reconciles the
+				     provider's webhook subscriptions, and on pull that deletes all of them. -->
 				<button
 					type="submit"
 					name="mode"
 					value={option.value}
-					disabled={submit.submitting}
+					disabled={submit.submitting || active}
 					aria-pressed={active}
 					class={cn(
-						'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 disabled:opacity-50',
+						'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 disabled:cursor-default',
+						// Dimmed while sending, not while disabled: the chosen mode is disabled
+						// too, and it must not look switched off.
+						submit.submitting && 'opacity-50',
 						active
 							? `${option.on} shadow-sm`
-							: 'border-transparent text-muted-foreground hover:bg-surface-muted hover:text-foreground'
+							: 'border-border bg-surface text-foreground/75 hover:border-primary/40 hover:bg-primary/5 hover:text-primary'
 					)}
 				>
 					<option.icon size={12} aria-hidden="true" />
