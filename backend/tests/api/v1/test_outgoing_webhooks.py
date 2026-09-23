@@ -497,18 +497,19 @@ class TestOutgoingWebhooksAPI:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def mock_client() -> Generator[MagicMock, None, None]:
+    mock = MagicMock()
+    with patch("app.services.outgoing_webhooks.svix._client", mock):
+        yield mock
+
+
 class TestSvixFilterTypesHandling:
     """Svix rejects an empty `filter_types` list outright ("eventTypes can't
     be empty, it must have at least one item"), so an empty selection must be
     translated to omitting the key (create) or an explicit null (patch)
     before it reaches the Svix client — never sent through as [].
     """
-
-    @pytest.fixture
-    def mock_client(self) -> Generator[MagicMock, None, None]:
-        mock = MagicMock()
-        with patch("app.services.outgoing_webhooks.svix._client", mock):
-            yield mock
 
     @pytest.mark.parametrize("filter_types", [None, []])
     def test_create_endpoint_omits_filter_types_when_empty(
@@ -543,6 +544,29 @@ class TestSvixFilterTypesHandling:
 
         sent = mock_client.endpoint.patch.call_args.args[2]
         assert sent.event_types == ["sleep.created"]
+
+
+class TestSvixDeliveryContent:
+    """Svix SDK v2 defaults with_content to false, which empties the message payload
+    and the attempt response body shown in the delivery log."""
+
+    def test_get_message_requests_payload(self, mock_client: MagicMock) -> None:
+        svix_service.get_message("app_1", "msg_1")
+
+        assert mock_client.message.get.call_args.args[2].with_content is True
+
+    def test_list_attempts_requests_response_body(self, client: TestClient, db: Session) -> None:
+        token = create_access_token(DeveloperFactory().id)
+        with patch("app.api.routes.v1.outgoing_webhooks.svix_service") as svix:
+            svix.list_message_attempts.return_value = MagicMock(data=[], done=True, iterator=None, prev_iterator=None)
+
+            resp = client.get(
+                "/api/v1/webhooks/endpoints/ep_1/attempts",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert resp.status_code == 200
+        assert svix.list_message_attempts.call_args.args[2].with_content is True
 
 
 # ---------------------------------------------------------------------------

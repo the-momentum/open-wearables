@@ -135,8 +135,9 @@ keywords: ["ios healthkit troubleshooting", "healthkit permissions fix", "ios he
 
     4. **Reset anchors for full sync:**
        ```swift
+       sdk.stopBackgroundSync()
        sdk.resetAnchors()
-       sdk.syncNow { }
+       sdk.startBackgroundSync { _ in }
        ```
 
     5. **Check permissions:**
@@ -208,7 +209,7 @@ iOS has strict limits on background execution:
 | Device Locked | SDK monitors protected data availability and resumes after unlock |
 
 <Tip>
-  For critical sync operations, prompt users to open the app and trigger `syncNow()` manually.
+  For critical sync operations, prompt users to open the app — the SDK resumes an interrupted sync when the app returns to the foreground.
 </Tip>
 
 ## Testing Background Sync

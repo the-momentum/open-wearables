@@ -2259,6 +2259,24 @@
             }
           },
           {
+            "name": "is_nap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only naps; when false, only main sleep. Omit to return both.",
+              "title": "Is Nap"
+            },
+            "description": "When true, return only naps; when false, only main sleep. Omit to return both."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
@@ -13753,6 +13771,30 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name (e.g., 'Apple Health', 'Garmin')."
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url",
+            "description": "Relative URL to provider icon (e.g., '/static/provider-icons/garmin.svg'). Resolve against the API base URL."
           }
         },
         "type": "object",

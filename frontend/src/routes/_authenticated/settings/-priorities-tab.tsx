@@ -12,16 +12,8 @@ import type {
   DeviceTypePriority,
 } from '@/lib/api/services/priority.service';
 import { deviceTypeInfo } from '@/components/common/device-type';
-
-// Provider display info
-const PROVIDER_INFO: Record<string, { name: string; color: string }> = {
-  apple: { name: 'Apple Health', color: 'bg-gray-500' },
-  garmin: { name: 'Garmin', color: 'bg-blue-500' },
-  polar: { name: 'Polar', color: 'bg-red-500' },
-  suunto: { name: 'Suunto', color: 'bg-orange-500' },
-  whoop: { name: 'WHOOP', color: 'bg-teal-500' },
-  oura: { name: 'Oura', color: 'bg-purple-500' },
-};
+import { providerLabel } from '@/components/common/source-badge';
+import { API_CONFIG } from '@/lib/api/config';
 
 interface ProviderItemProps {
   provider: ProviderPriority;
@@ -38,10 +30,11 @@ function ProviderItem({
   onMoveUp,
   onMoveDown,
 }: ProviderItemProps) {
-  const info = PROVIDER_INFO[provider.provider] || {
-    name: provider.provider,
-    color: 'bg-zinc-500',
-  };
+  const [imageError, setImageError] = useState(false);
+  const name = provider.name ?? providerLabel(provider.provider);
+  const iconUrl = provider.icon_url
+    ? new URL(provider.icon_url, API_CONFIG.baseUrl).toString()
+    : null;
 
   return (
     <div className="flex items-center gap-4 px-4 py-3 bg-card/40 border border-border/60 rounded-lg">
@@ -65,8 +58,21 @@ function ProviderItem({
       </div>
 
       <div className="flex items-center gap-3 flex-1">
-        <div className={`w-3 h-3 rounded-full ${info.color}`} />
-        <span className="text-foreground font-medium">{info.name}</span>
+        <div className="flex-shrink-0 h-8 w-8 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+          {iconUrl && !imageError ? (
+            <img
+              src={iconUrl}
+              alt={name}
+              className="h-6 w-6 object-contain"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <span className="text-sm font-medium text-muted-foreground">
+              {name.charAt(0).toUpperCase()}
+            </span>
+          )}
+        </div>
+        <span className="text-foreground font-medium">{name}</span>
       </div>
 
       <div className="text-sm text-muted-foreground">Priority {index + 1}</div>
@@ -325,8 +331,7 @@ export function PrioritiesTab() {
         <div className="p-4 space-y-2">
           {localOrder.length === 0 ? (
             <p className="px-4 py-8 text-sm text-muted-foreground text-center">
-              Providers will appear here as soon as their data starts flowing
-              in.
+              No providers configured yet. They are seeded when the API starts.
             </p>
           ) : (
             localOrder.map((provider, index) => (

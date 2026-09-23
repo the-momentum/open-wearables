@@ -1,0 +1,195 @@
+---
+title: "Mobile SDK Integration Guide"
+sidebarTitle: "Integration Guide"
+description: "How to integrate any Open Wearables mobile SDK: backend token endpoint, SDK lifecycle, permissions, background sync, disconnecting, and a production checklist for iOS and Android."
+keywords: ["mobile health sdk integration", "healthkit sdk integration", "health connect sdk integration", "open wearables sdk guide"]
+"og:title": "Mobile SDK Integration Guide | Open Wearables"
+"og:description": "Backend token endpoint, SDK lifecycle, permissions, background sync, and a production checklist - the same for every Open Wearables mobile SDK."
+"og:url": "https://docs.openwearables.io/sdk/integration"
+"og:type": "article"
+"twitter:title": "Mobile SDK Integration Guide | Open Wearables"
+"twitter:description": "Backend token endpoint, SDK lifecycle, permissions, background sync, and a production checklist - the same for every Open Wearables mobile SDK."
+"twitter:card": "summary_large_image"
+---
+
+All Open Wearables mobile SDKs - [iOS](/sdk/ios), [Android](/sdk/android), [Flutter](/sdk/flutter) and [React Native](/sdk/react-native) - work the same way: the same authentication, the same calls in the same order. This page explains the flow once. Each platform's integration guide shows the code and covers what is specific to that platform.
+
+![Mobile SDK app lifecycle: configure() on every app launch, and if isSessionValid() is true background sync resumes on its own. Otherwise, once per user: get tokens from your backend, signIn(), setProvider() on Android, requestAuthorization(), startBackgroundSync(). Later, on onAuthError call updateTokens() rather than signIn(); to disconnect, call DELETE on the connection, then stopBackgroundSync() and signOut().](../images/sdk/app-lifecycle.png)
+
+## Authentication Architecture
+
+Your backend holds the **app credentials** (`app_id` + `app_secret`) and exchanges them for short-lived, user-scoped tokens. The app only ever receives those tokens.
+
+![Mobile SDK authentication: your backend requests a token from Open Wearables with app_id and app_secret and gets back an access_token (60 min) and a refresh_token, then forwards them to the mobile app over its own API. The app calls signIn(), and the SDK syncs to the SDK sync endpoint with the access token, refreshing it automatically on 401. If refresh fails, the SDK emits onAuthError and the app gets new tokens from your backend and calls updateTokens().](../images/sdk/auth-flow.png)
+
+1. Your backend calls [`POST /api/v1/users/{user_id}/token`](/api-reference/external:-mobile-sdk/create-user-token) and receives an `access_token` (valid 60 minutes) and a `refresh_token`.
+2. Your backend forwards both tokens and the Open Wearables `user_id` to the app over your own authenticated API.
+3. The app passes them to `signIn()`. The SDK stores them in the iOS Keychain / Android EncryptedSharedPreferences.
+4. The SDK uploads data to [`POST /api/v1/sdk/users/{user_id}/sync`](/api-reference/external:-mobile-sdk/sync-sdk-data). When the access token expires, it refreshes it on its own via [`POST /api/v1/token/refresh`](/api-reference/external:-token/refresh-token).
+
+<Warning>
+  **Never ship `app_id` / `app_secret` in the mobile app.** SDK tokens can only write to `/sdk/*` endpoints for their own user, so a leaked token can't read data or act as another user.
+</Warning>
+
+<Note>
+  Apps with no backend of their own can use single-use **invitation codes** instead. This is not the standard flow - see [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+</Note>
+
+## Backend Endpoint
+
+Before you start:
+
+- Create an application in the developer portal under **Settings → Credentials → SDK Applications** and store `app_id` / `app_secret` in your backend's secrets. The secret is shown once.
+- Create an Open Wearables user for each of your users with [`POST /api/v1/users`](/api-reference/external:-users/create-user) and store the returned `id` next to your user. See [User Registration](/dev-guides/integration-guide#step-1-user-registration).
+
+Then add an endpoint the app can call to get SDK tokens:
+
+<Tabs>
+  <Tab title="Node.js">
+```javascript
+// Express
+app.post("/api/health/token", authenticateUser, async (req, res) => {
+  const owUserId = req.user.owUserId; // stored when the user was created in Open Wearables
+
+  const response = await fetch(`${process.env.OW_HOST}/api/v1/users/${owUserId}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      app_id: process.env.OW_APP_ID,
+      app_secret: process.env.OW_APP_SECRET,
+    }),
+  });
+  if (!response.ok) {
+    return res.status(502).json({ error: "Failed to create SDK token" });
+  }
+
+  const { access_token, refresh_token } = await response.json();
+  res.json({ userId: owUserId, accessToken: access_token, refreshToken: refresh_token });
+});
+```
+  </Tab>
+  <Tab title="Python">
+```python
+# FastAPI
+@app.post("/api/health/token")
+async def health_token(current_user=Depends(get_current_user)):
+    ow_user_id = current_user.ow_user_id  # stored when the user was created in Open Wearables
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{os.environ['OW_HOST']}/api/v1/users/{ow_user_id}/token",
+            json={"app_id": os.environ["OW_APP_ID"], "app_secret": os.environ["OW_APP_SECRET"]},
+        )
+    if response.status_code != 200:
+        raise HTTPException(502, "Failed to create SDK token")
+
+    data = response.json()
+    return {"userId": str(ow_user_id), "accessToken": data["access_token"], "refreshToken": data["refresh_token"]}
+```
+  </Tab>
+</Tabs>
+
+The Open Wearables response also contains `token_type` and `expires_in` (seconds). The app calls your endpoint on first connect and whenever the SDK reports an auth error.
+
+## SDK Lifecycle
+
+### Configure on every launch
+
+Call `configure(host)` on every app start, before any other SDK call. Besides setting the host, it restores background sync for a user who is already signed in. `isSessionValid()` then tells you whether a user is signed in - it only checks that credentials are stored on the device, not that the access token is still valid.
+
+### Sign in once per user
+
+Call `signIn(userId, accessToken, refreshToken)` only when there is no session or a different user signs in. `userId` is the Open Wearables user ID (UUID), not your own.
+
+<Warning>
+  **Don't call `signIn()` on every launch.** It clears the SDK's sync state, so the next sync uploads the history window again - the last `syncDaysBack` days, or everything if you didn't set it.
+</Warning>
+
+`signIn()` also accepts an Open Wearables API key instead of tokens. The key ends up on the device and grants full API access, so only use it for internal tools.
+
+### Handle expired sessions
+
+The SDK refreshes the access token automatically. If the refresh itself fails (for example, the refresh token was revoked), the SDK reports an auth error. Get new tokens from your backend and pass them to `updateTokens()`, which keeps the sync state.
+
+| SDK | Auth error callback |
+|-----|---------------------|
+| iOS | `onAuthError` property |
+| Android | `authErrorListener` property |
+| Flutter | `authErrorStream` |
+| React Native | `onAuthError` event |
+
+### Select the provider (Android)
+
+On Android, data can come from Health Connect or Samsung Health. Call `setProvider()` explicitly:
+
+- If you don't, the SDK picks Samsung Health whenever it is installed. Release builds can't use Samsung Health until Samsung approves your app (see [Samsung Health production requirements](/sdk/android/integration#samsung-health-production-requirements)), so choose Health Connect unless you have that approval.
+- The SDK persists the choice across restarts.
+- On iOS, Apple Health is the only source and no selection is needed.
+
+### Request permissions
+
+Call `requestAuthorization(types)` with only the types you need - long permission lists reduce acceptance. The returned boolean means different things per platform, so don't treat `false` as "no access":
+
+| Platform | `true` | `false` |
+|----------|--------|---------|
+| iOS | The permission dialog completed. HealthKit doesn't reveal what the user granted. | The dialog couldn't be shown. |
+| Android (Health Connect) | Every requested permission was granted. | At least one permission was denied. Granted types still sync. |
+
+### Start background sync
+
+Call `startBackgroundSync(syncDaysBack)` after permissions:
+
+- **`syncDaysBack`** limits how much history is uploaded - from midnight that many days ago. `0` means **no limit**: the user's entire history. The value is persisted until sign-out, and omitting it keeps the stored value - which is `0` if it was never set. The smallest window is `1` (since yesterday). Widening it later requires `resetAnchors()` while sync is stopped.
+- **It returns `false` instead of throwing** when it can't start - the SDK isn't configured, no user is signed in, or (iOS) no types are authorized.
+- **There is no manual sync call.** The SDK syncs in the background and resumes an interrupted sync when the app returns to the foreground.
+- **Track progress** with `getSyncStatus()`. Until the first historical upload finishes, `initialExportDone` is `false` - a good moment to ask the user to keep the app open.
+
+| Platform | Mechanism |
+|----------|-----------|
+| iOS | HealthKit background delivery (new data wakes the app), `BGAppRefreshTask` and `BGProcessingTask` scheduled by the system, background `URLSession` uploads |
+| Android | WorkManager periodic work (at most every 15 minutes) that runs as a foreground service during a sync, plus an expedited sync when the app goes to the background |
+
+The OS decides when background work actually runs, based on battery, network, and app usage.
+
+### Disconnect
+
+Report the disconnect to Open Wearables with [`DELETE /api/v1/users/{user_id}/connections/{provider}`](/api-reference/external:-connections/disconnect-provider-endpoint), using the SDK access token, then call `stopBackgroundSync()` and `signOut()`. The provider slug is `apple`, `health_connect` or `samsung`. Without that call the backend never learns the user left - see [Disconnecting](/sdk#disconnecting).
+
+<Note>
+  The native iOS SDK sends this request itself in `signOut()` from version 0.15.0. The other SDKs need the explicit call.
+</Note>
+
+## Production Checklist
+
+<AccordionGroup>
+  <Accordion title="iOS">
+    - Enable HealthKit, including **Background Delivery**, for your App ID and in the app's entitlements.
+    - Add `NSHealthShareUsageDescription` (and `NSHealthUpdateUsageDescription`) to `Info.plist`.
+    - Enable the `fetch` and `processing` background modes and register `com.openwearables.healthsdk.task.refresh` and `com.openwearables.healthsdk.task.process` in `BGTaskSchedulerPermittedIdentifiers`.
+    - Test on a physical device - HealthKit doesn't work in the Simulator.
+  </Accordion>
+  <Accordion title="Android">
+    - Set `minSdk` to 29.
+    - The SDK's manifest declares every Health Connect `READ_*` permission it supports, plus `READ_HEALTH_DATA_IN_BACKGROUND`, `FOREGROUND_SERVICE_HEALTH` and `POST_NOTIFICATIONS`. Remove the ones you don't use with `tools:node="remove"`, because Google Play reviews every declared health permission.
+    - Complete the Health apps declaration in the Play Console and publish a privacy policy - both are required for Health Connect access, and background reads need a separate justification for `READ_HEALTH_DATA_IN_BACKGROUND`.
+    - Request `POST_NOTIFICATIONS` at runtime on Android 13+, otherwise the sync notification is hidden.
+    - For Samsung Health, see [Samsung Health production requirements](/sdk/android/integration#samsung-health-production-requirements).
+  </Accordion>
+</AccordionGroup>
+
+## Platform Guides
+
+<CardGroup cols={2}>
+  <Card title="iOS (Swift)" icon="apple" href="/sdk/ios/integration">
+    Native iOS SDK integration.
+  </Card>
+  <Card title="Android (Kotlin)" icon="android" href="/sdk/android/integration">
+    Native Android SDK integration.
+  </Card>
+  <Card title="Flutter" icon="mobile" href="/sdk/flutter/integration">
+    Flutter SDK integration.
+  </Card>
+  <Card title="React Native" icon="react" href="/sdk/react-native/integration">
+    React Native SDK integration.
+  </Card>
+</CardGroup>

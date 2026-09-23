@@ -53,8 +53,8 @@ This guide gives an overview of data type support across the integrated wearable
 |------|------|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
 | `heart_rate` | bpm | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| `heart_rate_variability_sdnn` | ms | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `resting_heart_rate` | bpm | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -383,7 +383,7 @@ Key differences and limitations to be aware of when working with each provider:
   - Data synced via periodic polling (default: every hour); Ultrahuman does not support webhooks
   - Daily metrics endpoint returns all data types for a single day: sleep, HR, HRV, skin temperature, steps, VO2 max, recovery indices
   - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, and efficiency score
-  - Continuous 24/7 timeseries: heart rate, HRV (SDNN), skin temperature, steps
+  - Continuous 24/7 timeseries: heart rate, HRV (RMSSD), skin temperature, steps
   - VO2 max as a daily aggregate value
   - Recovery metrics (recovery index, movement index, metabolic score) are normalized but not yet persisted
   - No workout/activity data available via the Partnership API

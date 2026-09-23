@@ -16,7 +16,13 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.utils.dates import offset_to_iso
+from app.utils.dates import offset_to_iso, parse_iso_datetime
+
+_MAX_PAGE_SIZE = 100
+
+
+def _epoch_ms(moment: datetime) -> int:
+    return int(moment.timestamp() * 1000)
 
 
 class SuuntoWorkouts(BaseWorkoutsTemplate):
@@ -43,15 +49,20 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         end_date: datetime,
     ) -> list[Any]:
         """Get workouts from Suunto API."""
-        # Suunto uses 'since' parameter in epoch milliseconds
-        since = int(start_date.timestamp() * 1000)
-        params = {
-            "since": since,
-            "limit": 100,
-        }
-        headers = self._get_suunto_headers()
-        response = self._make_api_request(db, user_id, "/v3/workouts/", params=params, headers=headers)
-        return response.get("payload", [])
+        return self._get_all_workouts(db, user_id, since=_epoch_ms(start_date))
+
+    def _get_all_workouts(self, db: DbSession, user_id: UUID, **kwargs: Any) -> list[dict[str, Any]]:
+        """Walk every page of /v3/workouts/ from ``offset``; a short page is the last one."""
+        page_size = min(kwargs.get("limit", _MAX_PAGE_SIZE), _MAX_PAGE_SIZE)
+        offset = kwargs.get("offset", 0)
+        workouts: list[dict[str, Any]] = []
+        while True:
+            response = self.get_workouts_from_api(db, user_id, **{**kwargs, "limit": page_size, "offset": offset})
+            page = response.get("payload", [])
+            workouts.extend(page)
+            if len(page) < page_size:
+                return workouts
+            offset += page_size
 
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
         """Get workouts from Suunto API with specific options."""
@@ -62,7 +73,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         params = {
             "since": since,
-            "limit": min(limit, 100),
+            "limit": min(limit, _MAX_PAGE_SIZE),
             "offset": offset,
             "filter-by-modification-time": str(filter_by_modification_time).lower(),
         }
@@ -221,32 +232,15 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         **kwargs: Any,
     ) -> int:
         """Load data from Suunto API."""
-        # Handle generic start_date/end_date
-        start_date = kwargs.get("start_date")
-
         api_kwargs = kwargs.copy()
+        start_date = kwargs.get("start_date")
+        start_dt = start_date if isinstance(start_date, datetime) else parse_iso_datetime(start_date)
+        if start_dt:
+            api_kwargs["since"] = _epoch_ms(start_dt)
 
-        # Convert start_date to 'since' timestamp (Suunto expects epoch milliseconds)
-        if start_date:
-            if isinstance(start_date, str):
-                try:
-                    start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                    api_kwargs["since"] = int(start_dt.timestamp() * 1000)
-                except (ValueError, AttributeError):
-                    pass
-            elif isinstance(start_date, datetime):
-                api_kwargs["since"] = int(start_date.timestamp() * 1000)
-
-        # Set Suunto-specific defaults
-        if "limit" not in api_kwargs:
-            api_kwargs["limit"] = 100
-
-        response = self.get_workouts_from_api(db, user_id, **api_kwargs)
-        workouts_data = response.get("payload", [])
-        workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
+        workouts = [SuuntoWorkoutJSON(**w) for w in self._get_all_workouts(db, user_id, **api_kwargs)]
 
         for workout in workouts:
-            # Save device/data source info if available
             if workout.gear:
                 device_name = workout.gear.displayName or workout.gear.name
                 self.data_source_repo.ensure_data_source(

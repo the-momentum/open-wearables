@@ -9,8 +9,8 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.schemas.providers.apple.apple_xml import CompletedPart
-from app.services.apple.apple_xml import multipart_upload_service as mp_module
-from app.services.apple.apple_xml.multipart_upload_service import MultipartUploadService
+from app.services.providers.apple.apple_xml import multipart_upload_service as mp_module
+from app.services.providers.apple.apple_xml.multipart_upload_service import MultipartUploadService
 
 USER_ID = "user-123"
 

@@ -29,12 +29,14 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
     Health data is stored locally on the user's device — in Apple Health (iOS), Samsung Health, or Health Connect (Android).
   </Step>
   <Step title="Your App + Mobile SDK" icon="mobile">
-    The SDK reads data from the health store and handles background synchronization automatically. Available as native iOS (Swift), native Android (Kotlin), or Flutter (cross-platform).
+    The SDK reads data from the health store and handles background synchronization automatically. Available as native iOS (Swift), native Android (Kotlin), Flutter, or React Native.
   </Step>
   <Step title="Open Wearables Platform" icon="cloud-arrow-up">
     Data is pushed to `POST {host}/api/v1/sdk/users/{userId}/sync` and normalized to the unified data model.
   </Step>
 </Steps>
+
+The [Integration Guide](/sdk/integration) walks through the flow step by step, the same for every SDK.
 
 ## Key Features
 
@@ -72,13 +74,13 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
 
 ## Choosing an onboarding flow
 
-For any real integration, use the **backend token flow**: your backend mints a short-lived, user-scoped token (write-only to the `/sdk/*` endpoints) via [`POST /api/v1/users/{user_id}/token`](/api-reference/mobile-sdk/create-user-token) and forwards it to the app over its own authenticated API. Your `app_secret` never touches the device. This is the standard path, covered in each platform's Integration Guide.
+For any real integration, use the **backend token flow**: your backend mints a short-lived, user-scoped token (write-only to the `/sdk/*` endpoints) via [`POST /api/v1/users/{user_id}/token`](/api-reference/external:-mobile-sdk/create-user-token) and forwards it to the app over its own authenticated API. Your `app_secret` never touches the device. This is the standard path, covered in the [Integration Guide](/sdk/integration).
 
 <Warning>
   **Invitation codes are a niche mechanism, not a co-equal second option.** They exist for apps with **no backend of their own** to mint and forward tokens. Right now the flow is aimed primarily at individual users self-hosting Open Wearables for their own data (and the [Open Wearables app](/app/introduction) / quick manual testing), not at multi-user production integrations. If you are building your own app with its own backend, use the backend token flow above.
 </Warning>
 
-With an invitation code, a single-use code is issued via [`POST /api/v1/users/{user_id}/invitation-code`](/api-reference/mobile-sdk/generate-invitation-code) - from the dashboard or the API - and the app redeems it directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/mobile-sdk/redeem-invitation-code) to obtain SDK tokens. Two situations are possible: in the primary case the same person generates the code in their own dashboard and enters it in their own app, so it never leaves that person. A code can also be delegated - for example a coach or clinician issuing one for a client - and **only in that hand-off** does the code travel to someone else; when it does, use a **secure channel**, because the code is the sole credential (single-use blocks replay after redemption, but not first-use theft if the code is intercepted in transit).
+With an invitation code, a single-use code is issued via [`POST /api/v1/users/{user_id}/invitation-code`](/api-reference/external:-mobile-sdk/generate-invitation-code) - from the dashboard or the API - and the app redeems it directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/external:-mobile-sdk/redeem-invitation-code) to obtain SDK tokens. Two situations are possible: in the primary case the same person generates the code in their own dashboard and enters it in their own app, so it never leaves that person. A code can also be delegated - for example a coach or clinician issuing one for a client - and **only in that hand-off** does the code travel to someone else; when it does, use a **secure channel**, because the code is the sole credential (single-use blocks replay after redemption, but not first-use theft if the code is intercepted in transit).
 
 ## Security Model
 
@@ -96,9 +98,9 @@ The SDK uses a secure token-based authentication flow that keeps your App creden
 
 ## Disconnecting
 
-`signOut()` only clears the credentials stored on the device. It makes no network call, so on its own the backend never learns the user left: the connection stays `active` behind a plausible `last_synced_at` and is indistinguishable from a healthy one.
+In most SDKs `signOut()` only clears the credentials stored on the device. It makes no network call, so on its own the backend never learns the user left: the connection stays `active` behind a plausible `last_synced_at` and is indistinguishable from a healthy one. The native iOS SDK reports the disconnect itself from version 0.15.0; the other SDKs need the call below.
 
-To report the disconnect, call [`DELETE /api/v1/users/{user_id}/connections/{provider}`](/api-reference/connections/disconnect-provider-endpoint) with the SDK access token **before** signing out locally:
+To report the disconnect, call [`DELETE /api/v1/users/{user_id}/connections/{provider}`](/api-reference/external:-connections/disconnect-provider-endpoint) with the SDK access token **before** signing out locally:
 
 ```bash
 curl -X DELETE "https://api.openwearables.io/api/v1/users/$USER_ID/connections/apple" \
@@ -123,7 +125,7 @@ No provider deregistration runs on this path: signing out of an app is not a rea
 
 ## Next Steps
 
-<CardGroup cols={3}>
+<CardGroup cols={2}>
   <Card title="iOS SDK" icon="arrow-right" href="/sdk/ios">
     Get started with the native iOS SDK (Swift)
   </Card>
@@ -132,5 +134,8 @@ No provider deregistration runs on this path: signing out of an app is not a rea
   </Card>
   <Card title="Flutter SDK" icon="arrow-right" href="/sdk/flutter">
     Get started with the Flutter SDK
+  </Card>
+  <Card title="React Native SDK" icon="arrow-right" href="/sdk/react-native">
+    Get started with the React Native SDK
   </Card>
 </CardGroup>
