@@ -144,6 +144,34 @@ class SleepConfig(BaseModel):
         return self
 
 
+class MealConfig(BaseModel):
+    """Parameters controlling meal generation.
+
+    Each meal is an EventRecord (category="meal") plus a MealDetails row and a
+    handful of nutrient DataPointSeries samples (calories, protein, carbs, fat,
+    fiber, hydration) correlated to it via event_record_id.
+    """
+
+    meal_count: int = Field(60, ge=0, le=1000)
+    meal_types: list[str] | None = Field(
+        None, description="Specific meal types to generate. None = random from breakfast/lunch/dinner/snack."
+    )
+    calories_range: tuple[int, int] = (150, 900)
+    date_range_months: int = Field(6, ge=1, le=24)
+    date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
+    date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "MealConfig":
+        if self.calories_range[0] > self.calories_range[1]:
+            msg = f"calories_range min ({self.calories_range[0]}) must be <= max ({self.calories_range[1]})"
+            raise ValueError(msg)
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            msg = f"date_from ({self.date_from}) must be <= date_to ({self.date_to})"
+            raise ValueError(msg)
+        return self
+
+
 class TimeSeriesConfig(BaseModel):
     """Parameters controlling continuous time-series generation.
 
@@ -184,11 +212,15 @@ class SeedProfileConfig(BaseModel):
     generate_workouts: bool = True
     generate_sleep: bool = True
     generate_time_series: bool = True
+    generate_meals: bool = Field(
+        False, description="Opt-in: existing presets and defaults stay meal-free unless explicitly enabled."
+    )
     providers: list[ProviderName] | None = Field(None, description="Specific providers. None = random selection.")
     num_connections: int = Field(2, ge=1, le=5)
     workout_config: WorkoutConfig = WorkoutConfig()
     sleep_config: SleepConfig = SleepConfig()
     time_series_config: TimeSeriesConfig = TimeSeriesConfig()
+    meal_config: MealConfig = MealConfig()
 
 
 class SeedDataRequest(BaseModel):
@@ -470,6 +502,21 @@ SEED_PRESETS: dict[str, dict] = {
                 enabled_types=[*_ALL_CONTINUOUS_TYPES, *_WORKOUT_BOUND_TYPES],
                 include_blood_pressure=True,
             ),
+            generate_meals=True,
+            meal_config=MealConfig(meal_count=90),
+        ),
+    },
+    "nutrition_focused": {
+        "label": "Nutrition Focused",
+        "description": "3 meals/day of logged nutrition data, light workouts, no sleep.",
+        "profile": SeedProfileConfig(
+            preset="nutrition_focused",
+            generate_workouts=True,
+            generate_sleep=False,
+            generate_time_series=False,
+            workout_config=WorkoutConfig(count=10),
+            generate_meals=True,
+            meal_config=MealConfig(meal_count=180),
         ),
     },
 }

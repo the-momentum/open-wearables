@@ -7,17 +7,19 @@ from uuid import UUID, uuid4
 from faker import Faker
 
 from app.constants.sleep import SleepStageType
-from app.schemas.enums import ProviderName, WorkoutType
+from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.enums.workout_types import WORKOUTS_WITH_PACE
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    MealDetailCreate,
     PersonalRecordCreate,
+    TimeSeriesSampleCreate,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
-from app.schemas.utils.seed_data import SLEEP_STAGE_PROFILES, SleepConfig, WorkoutConfig
+from app.schemas.utils.seed_data import SLEEP_STAGE_PROFILES, MealConfig, SleepConfig, WorkoutConfig
 
-from .constants import GENDERS, OUTDOOR_WORKOUT_TYPES, PROVIDER_CONFIGS
+from .constants import DEFAULT_MEAL_TYPES, GENDERS, MEAL_TITLES, OUTDOOR_WORKOUT_TYPES, PROVIDER_CONFIGS
 
 
 def _resolve_date_bounds(
@@ -299,3 +301,97 @@ def _generate_personal_record(user_id: UUID, fake: Faker) -> PersonalRecordCreat
         birth_date=fake.date_of_birth(minimum_age=18, maximum_age=80),
         gender=fake.random.choice(GENDERS) if fake.boolean(chance_of_getting_true=80) else None,
     )
+
+
+def _generate_meal(
+    user_id: UUID,
+    fake: Faker,
+    provider: ProviderName,
+    last_synced_at: datetime,
+    config: MealConfig,
+) -> tuple[EventRecordCreate, MealDetailCreate, list[TimeSeriesSampleCreate]]:
+    """Generate a single meal: an EventRecord + MealDetails + correlated nutrient samples.
+
+    Nutrient values (calories, protein, carbs, fat, fiber, hydration) are emitted as
+    DataPointSeries samples linked back to the meal via event_record_id, mirroring how
+    real HealthKit/Health Connect meal correlations are stored (see MealDetails docstring).
+    """
+    start_bound, end_bound = _resolve_date_bounds(
+        config.date_from,
+        config.date_to,
+        config.date_range_months,
+        last_synced_at,
+    )
+    start_datetime = fake.date_time_between(
+        start_date=start_bound,
+        end_date=end_bound,
+        tzinfo=timezone.utc,
+    )
+    end_datetime = start_datetime + timedelta(minutes=fake.random_int(min=5, max=30))
+
+    meal_types = config.meal_types or list(DEFAULT_MEAL_TYPES)
+    meal_type = fake.random.choice(meal_types)
+    title = fake.random.choice(MEAL_TITLES.get(meal_type, MEAL_TITLES["snack"]))
+
+    calories = fake.random_int(min=config.calories_range[0], max=config.calories_range[1])
+    protein_pct = fake.random.uniform(0.15, 0.30)
+    fat_pct = fake.random.uniform(0.20, 0.35)
+    carbs_pct = max(0.0, 1 - protein_pct - fat_pct)
+
+    protein_g = round(calories * protein_pct / 4, 1)
+    fat_g = round(calories * fat_pct / 9, 1)
+    carbs_g = round(calories * carbs_pct / 4, 1)
+    fiber_g = round(carbs_g * fake.random.uniform(0.08, 0.15), 1)
+
+    meal_id = uuid4()
+    prov_config = PROVIDER_CONFIGS[provider]
+
+    device_name: str | None = None
+    sw_version: str | None = None
+    if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
+        device_name = fake.random.choice(prov_config["devices"])
+        sw_version = fake.random.choice(prov_config["os_versions"])
+
+    record = EventRecordCreate(
+        id=meal_id,
+        source=provider.value,
+        user_id=user_id,
+        category="meal",
+        type=None,
+        duration_seconds=int((end_datetime - start_datetime).total_seconds()),
+        source_name=prov_config["source_name"],
+        device_model=device_name,
+        provider=provider.value,
+        software_version=sw_version,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+
+    detail = MealDetailCreate(record_id=meal_id, title=title, meal_type=meal_type)
+
+    nutrient_values: dict[SeriesType, float] = {
+        SeriesType.dietary_energy_consumed: float(calories),
+        SeriesType.dietary_protein: protein_g,
+        SeriesType.dietary_carbohydrates: carbs_g,
+        SeriesType.dietary_fat_total: fat_g,
+        SeriesType.dietary_fiber: fiber_g,
+        SeriesType.hydration: float(fake.random_int(min=100, max=500)),
+    }
+
+    samples = [
+        TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            source=record.source,
+            device_model=device_name,
+            provider=provider.value,
+            software_version=sw_version,
+            recorded_at=start_datetime,
+            value=Decimal(str(value)),
+            series_type=series_type,
+            event_record_id=meal_id,
+        )
+        for series_type, value in nutrient_values.items()
+    ]
+
+    return record, detail, samples
