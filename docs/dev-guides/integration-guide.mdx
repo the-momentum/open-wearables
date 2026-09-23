@@ -254,13 +254,16 @@ class OpenWearablesClient:
             f"/api/v1/oauth/{provider}/authorize",
             params={"user_id": user_id, "redirect_uri": redirect_uri},
         )
+        resp.raise_for_status()
         return resp.json()["authorization_url"]
 
     async def get_all(self, path: str, **params) -> list[dict]:
         """Walk a cursor-paginated endpoint, e.g. /api/v1/users/{id}/summaries/sleep."""
         items: list[dict] = []
         while True:
-            payload = (await self.client.get(path, params=params)).json()
+            resp = await self.client.get(path, params=params)
+            resp.raise_for_status()
+            payload = resp.json()
             items.extend(payload["data"])
             if not payload["pagination"]["has_more"]:
                 return items

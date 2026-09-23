@@ -139,7 +139,7 @@ Call `requestAuthorization(types)` with only the types you need - long permissio
 
 Call `startBackgroundSync(syncDaysBack)` after permissions:
 
-- **`syncDaysBack`** limits how much history is uploaded - from midnight that many days ago. Omitting it or passing `0` means **no limit**: the user's entire history. The smallest window is `1` (since yesterday). The value is persisted until sign-out. Widening it later requires `resetAnchors()` while sync is stopped.
+- **`syncDaysBack`** limits how much history is uploaded - from midnight that many days ago. `0` means **no limit**: the user's entire history. The value is persisted until sign-out, and omitting it keeps the stored value - which is `0` if it was never set. The smallest window is `1` (since yesterday). Widening it later requires `resetAnchors()` while sync is stopped.
 - **It returns `false` instead of throwing** when it can't start - the SDK isn't configured, no user is signed in, or (iOS) no types are authorized.
 - **There is no manual sync call.** The SDK syncs in the background and resumes an interrupted sync when the app returns to the foreground.
 - **Track progress** with `getSyncStatus()`. Until the first historical upload finishes, `initialExportDone` is `false` - a good moment to ask the user to keep the app open.

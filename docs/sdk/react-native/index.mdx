@@ -83,7 +83,11 @@ On iOS, the React Native SDK is a **wrapper around the [native iOS SDK](/sdk/ios
   </Step>
 
   <Step title="Add the config plugin">
-    Required for Expo projects - it sets the iOS HealthKit entitlements, `Info.plist` keys and background modes, and the Android Health Connect activity aliases. Set the Android `minSdkVersion` in the same file:
+    Required for Expo projects - it sets the iOS HealthKit entitlements, `Info.plist` keys and background modes, and the Android Health Connect activity aliases. Set the Android `minSdkVersion` in the same file, which needs `expo-build-properties`:
+
+    ```bash
+    npx expo install expo-build-properties
+    ```
 
     ```json app.json
     {

@@ -468,7 +468,7 @@ class HealthSyncService {
     }
   }
 
-  /// Force a full re-sync of all data
+  /// Re-sync the last 90 days (syncDaysBack: 0 for the full history)
   Future<void> resyncAllData() async {
     await OpenWearablesHealthSdk.stopBackgroundSync();
     await OpenWearablesHealthSdk.resetAnchors();

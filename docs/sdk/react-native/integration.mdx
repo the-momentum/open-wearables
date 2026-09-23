@@ -56,8 +56,12 @@ When token refresh fails, get new tokens and call `updateTokens()` - not `signIn
 
 ```ts
 const sub = OpenWearablesHealthSDK.addListener("onAuthError", async () => {
-  const { accessToken, refreshToken } = await fetchTokensFromYourBackend();
-  OpenWearablesHealthSDK.updateTokens(accessToken, refreshToken);
+  try {
+    const { accessToken, refreshToken } = await fetchTokensFromYourBackend();
+    OpenWearablesHealthSDK.updateTokens(accessToken, refreshToken);
+  } catch {
+    // sync stays unauthenticated - ask the user to reconnect
+  }
 });
 ```
 
@@ -93,7 +97,7 @@ See [Supported Health Data Types](/sdk/react-native#supported-health-data-types)
 ## Start Background Sync
 
 ```ts
-const started = await OpenWearablesHealthSDK.startBackgroundSync(90); // days of history; 0 or omitted = all history
+const started = await OpenWearablesHealthSDK.startBackgroundSync(90); // days of history; 0 = all history
 if (!started) {
   // not configured, not signed in, or (iOS) no authorized types
 }
@@ -123,11 +127,20 @@ const sub = OpenWearablesHealthSDK.addListener("onLog", ({ message }) => console
 // SDK provider id -> Open Wearables provider slug
 const PROVIDER_SLUGS: Record<string, string> = { apple: "apple", google: "health_connect", samsung: "samsung" };
 
-const { userId, accessToken, provider } = OpenWearablesHealthSDK.getStoredCredentials();
-await fetch(`${OW_HOST}/api/v1/users/${userId}/connections/${PROVIDER_SLUGS[provider!]}`, {
+const { userId, provider } = OpenWearablesHealthSDK.getStoredCredentials();
+// The stored access token may have expired, so get a fresh one from your backend
+const { accessToken } = await fetchTokensFromYourBackend();
+
+const res = await fetch(`${OW_HOST}/api/v1/users/${userId}/connections/${PROVIDER_SLUGS[provider!]}`, {
   method: "DELETE",
   headers: { Authorization: `Bearer ${accessToken}` },
 });
+// 404 means there was no connection to revoke. On any other error keep the
+// session, so the user can retry - after signOut() the SDK has no credentials left.
+if (!res.ok && res.status !== 404) {
+  throw new Error(`Disconnect failed: ${res.status}`);
+}
+
 await OpenWearablesHealthSDK.stopBackgroundSync();
 OpenWearablesHealthSDK.signOut();
 ```
@@ -168,8 +181,12 @@ export function useHealthSync(authToken: string) {
     setConnected(OpenWearablesHealthSDK.isSessionValid());
 
     const sub = OpenWearablesHealthSDK.addListener("onAuthError", async () => {
-      const { accessToken, refreshToken } = await fetchTokens(authToken);
-      OpenWearablesHealthSDK.updateTokens(accessToken, refreshToken);
+      try {
+        const { accessToken, refreshToken } = await fetchTokens(authToken);
+        OpenWearablesHealthSDK.updateTokens(accessToken, refreshToken);
+      } catch {
+        setConnected(false); // the user has to reconnect
+      }
     });
     return () => sub.remove();
   }, [authToken]);

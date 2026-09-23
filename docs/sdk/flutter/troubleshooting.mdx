@@ -180,7 +180,7 @@ keywords: ["flutter healthkit troubleshooting", "flutter health connect issues",
     3. **Check date range:**
        The SDK syncs data incrementally. New data may not exist yet.
 
-    4. **Reset anchors for full sync:**
+    4. **Reset anchors to re-sync the last 90 days** (`syncDaysBack: 0` for the full history):
        ```dart
        await OpenWearablesHealthSdk.stopBackgroundSync();
        await OpenWearablesHealthSdk.resetAnchors();
