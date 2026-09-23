@@ -2259,6 +2259,24 @@
             }
           },
           {
+            "name": "is_nap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only naps; when false, only main sleep. Omit to return both.",
+              "title": "Is Nap"
+            },
+            "description": "When true, return only naps; when false, only main sleep. Omit to return both."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,

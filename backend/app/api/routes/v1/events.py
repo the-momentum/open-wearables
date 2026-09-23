@@ -82,6 +82,10 @@ def list_sleep_sessions(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
+    is_nap: Annotated[
+        bool | None,
+        Query(description="When true, return only naps; when false, only main sleep. Omit to return both."),
+    ] = None,
     filter_by_priority: Annotated[
         bool,
         Query(
@@ -100,6 +104,7 @@ def list_sleep_sessions(
         source=source,
         device_model=device_model,
         data_source_id=data_source_id,
+        is_nap=is_nap,
     )
     return event_record_service.get_sleep_sessions(
         db, user_id, params, filter_by_priority=filter_by_priority, include=include
