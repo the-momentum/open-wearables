@@ -12,7 +12,8 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 
 from app.config import settings
-from app.constants.withings_requests import ACTIVITY, MEASURES, SLEEP_SUMMARY
+from app.constants.series_types.withings import SLEEP_STATE_STAGE_MAP
+from app.constants.withings_requests import ACTIVITY, MEASURES, SLEEP_SERIES, SLEEP_SUMMARY
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -20,6 +21,7 @@ from app.schemas.enums import SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    SleepStage,
     TimeSeriesSampleCreate,
 )
 from app.schemas.providers.withings import (
@@ -27,11 +29,12 @@ from app.schemas.providers.withings import (
     WithingsMeasureGroup,
     WithingsSleepSummary,
 )
+from app.schemas.providers.withings.imports import WithingsSleepSeriesEntry
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP, MEASURE_UNIT_FACTOR
-from app.services.providers.withings.handlers.rpc_client import paginate, scale_measure
+from app.services.providers.withings.handlers.rpc_client import paginate, scale_measure, withings_request
 from app.services.providers.withings.handlers.timezone import local_day_start, zone_offset_at
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import parse_datetime_or_default
@@ -312,6 +315,55 @@ class Withings247Data(Base247DataTemplate):
                 )
         return processed
 
+    def _fetch_sleep_stages(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[SleepStage] | None:
+        """Fetch the hypnogram for one night. Returns None when it is unavailable."""
+        try:
+            body = withings_request(
+                db=db,
+                user_id=user_id,
+                connection_repo=self.connection_repo,
+                oauth=self.oauth,
+                service_path=SLEEP_SERIES.service_path,
+                action=SLEEP_SERIES.action,
+                params={"startdate": int(start_dt.timestamp()), "enddate": int(end_dt.timestamp())},
+            )
+        except Exception as e:
+            log_and_capture_error(
+                e,
+                logger,
+                "Withings sleep series fetch failed",
+                level="warning",
+                extra={"provider": "withings", "user_id": str(user_id)},
+            )
+            return None
+
+        rows = body.get(SLEEP_SERIES.list_key) or []
+        if isinstance(rows, dict):
+            rows = [rows]
+        stages: list[SleepStage] = []
+        for row in rows:
+            try:
+                entry = WithingsSleepSeriesEntry.model_validate(row)
+            except ValidationError:
+                continue
+            stage = SLEEP_STATE_STAGE_MAP.get(entry.state)
+            if stage is None:
+                continue
+            stages.append(
+                SleepStage(
+                    stage=stage,
+                    start_time=datetime.fromtimestamp(entry.startdate, tz=timezone.utc),
+                    end_time=datetime.fromtimestamp(entry.enddate, tz=timezone.utc),
+                )
+            )
+        return sorted(stages, key=lambda s: s.start_time) or None
+
     def _save_sleep_row(
         self,
         db: DbSession,
@@ -382,6 +434,7 @@ class Withings247Data(Base247DataTemplate):
             sleep_rem_minutes=data.remsleepduration // 60 if data.remsleepduration is not None else None,
             sleep_awake_minutes=data.wakeupduration // 60 if data.wakeupduration is not None else None,
             is_nap=False,
+            sleep_stages=self._fetch_sleep_stages(db, user_id, start_dt, end_dt),
         )
         try:
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)

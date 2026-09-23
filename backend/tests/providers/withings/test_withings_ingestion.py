@@ -148,3 +148,53 @@ def test_workout_window_widens_by_a_local_day_on_each_edge(mock_paginate: MagicM
     params = mock_paginate.call_args.kwargs["params"]
     assert params["startdateymd"] == "2026-03-01"
     assert params["enddateymd"] == "2026-03-05"
+
+
+# ---------------------------- sleep ----------------------------
+
+SLEEP_ROW = {
+    "startdate": 1594159200,
+    "enddate": 1594188000,
+    "id": 12345,
+    "timezone": "Europe/Warsaw",
+    "data": {
+        "total_timeinbed": 28800,
+        "total_sleep_time": 25200,
+        "deepsleepduration": 7200,
+        "lightsleepduration": 14400,
+        "remsleepduration": 3600,
+        "wakeupduration": 3600,
+        "sleep_efficiency": 0.875,
+    },
+}
+SERIES_BODY = {
+    "series": [
+        {"startdate": 1594159200, "enddate": 1594160100, "state": 1},
+        {"startdate": 1594160100, "enddate": 1594163700, "state": 2},
+        {"startdate": 1594163700, "enddate": 1594164600, "state": 0},
+        {"startdate": 1594164600, "enddate": 1594167300, "state": 5},
+        {"startdate": 1594167300, "enddate": 1594168200, "state": 15},
+    ]
+}
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request", return_value=SERIES_BODY)
+def test_sleep_row_stores_the_hypnogram(mock_request: MagicMock, mock_event: MagicMock) -> None:
+    assert _data_247()._save_sleep_row(MagicMock(), uuid4(), SLEEP_ROW, None) is True
+
+    detail = mock_event.create_or_merge_sleep.call_args.args[3]
+    # Manual and unspecified states are sleep without stage detail; out of bed is awake.
+    assert [stage.stage.value for stage in detail.sleep_stages] == ["light", "deep", "awake", "sleeping", "awake"]
+    assert mock_request.call_args.kwargs["service_path"] == "/v2/sleep"
+    assert mock_request.call_args.kwargs["action"] == "get"
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request", side_effect=RuntimeError("boom"))
+def test_sleep_row_is_saved_when_the_hypnogram_call_fails(mock_request: MagicMock, mock_event: MagicMock) -> None:
+    assert _data_247()._save_sleep_row(MagicMock(), uuid4(), SLEEP_ROW, None) is True
+
+    detail = mock_event.create_or_merge_sleep.call_args.args[3]
+    assert detail.sleep_stages is None
+    assert detail.sleep_deep_minutes == 120
