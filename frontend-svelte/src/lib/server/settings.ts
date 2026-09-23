@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './api';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPublicPost, apiPut } from './api';
 import { byName } from '$lib/providers/labels';
 import type {
 	ApiKey,
@@ -83,6 +83,14 @@ export const resendInvitation = (id: string, accessToken: string) =>
 
 export const revokeInvitation = (id: string, accessToken: string) =>
 	apiDelete(`${INVITATIONS}/${id}`, accessToken);
+
+/** Public: the person accepting has no account until this returns one. */
+export const acceptInvitation = (body: {
+	token: string;
+	first_name: string;
+	last_name: string;
+	password: string;
+}) => apiPublicPost<Developer>(`${INVITATIONS}/accept`, body);
 
 export const changePassword = (
 	body: { current_password: string; new_password: string; confirm_password: string },

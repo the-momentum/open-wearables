@@ -7,7 +7,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
-	import { MICRO } from '$lib/components/ui/typography';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import DeliveryFilters from '$lib/components/webhooks/DeliveryFilters.svelte';
 	import DeliveryRow from '$lib/components/webhooks/DeliveryRow.svelte';
 	import { grouped } from '$lib/utils/collect';
@@ -29,11 +29,11 @@
 </script>
 
 <div class="flex flex-col gap-5">
-	<div class="flex flex-col gap-1">
-		<BackLink href={resolve('/webhooks')}>Webhook subscriptions</BackLink>
-		<h1 class="text-lg font-semibold text-foreground">Deliveries</h1>
-		<p class="{MICRO} truncate">{data.subscription.url}</p>
-	</div>
+	<PageHeader title="Deliveries" description={data.subscription.url} truncate>
+		{#snippet above()}
+			<BackLink href={resolve('/webhooks')}>Webhook subscriptions</BackLink>
+		{/snippet}
+	</PageHeader>
 
 	<div class="border-t border-border pt-5">
 		<DeliveryFilters

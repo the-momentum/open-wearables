@@ -23,8 +23,6 @@
 
 <div class="flex flex-col gap-4">
 	<Figures {figures} label="Syncs in the window" />
-	<!-- The whole mix, so the figures above can be read against it: most syncs
-	     find nothing new, and that is what "skipped" means. -->
 	<ShareBar
 		parts={mix}
 		format={(part, total) => `${formatNumber(part.value)} · ${formatPercent(part.value, total)}`}

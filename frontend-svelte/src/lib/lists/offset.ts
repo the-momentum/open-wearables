@@ -11,5 +11,10 @@ export function offsetHrefs(url: URL) {
 	const pageHref = (at: number) => withParams(url, { page: at === 1 ? null : String(at) });
 	const sizeHref = (size: PageSize) => hrefFor({ size: String(size) });
 
-	return { hrefFor, pageHref, sizeHref };
+	const stepHrefs = (page: number, pages: number) => ({
+		previousHref: page > 1 ? pageHref(page - 1) : null,
+		nextHref: page < pages ? pageHref(page + 1) : null
+	});
+
+	return { hrefFor, pageHref, sizeHref, stepHrefs };
 }

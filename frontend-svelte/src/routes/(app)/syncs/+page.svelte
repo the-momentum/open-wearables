@@ -4,6 +4,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import SyncFilters from '$lib/components/syncs/SyncFilters.svelte';
 	import SyncOverview from '$lib/components/syncs/SyncOverview.svelte';
 	import SyncRunItem from '$lib/components/syncs/SyncRunItem.svelte';
@@ -11,7 +12,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import Pagination from '$lib/components/ui/Pagination.svelte';
-	import { FOOTNOTE, MICRO } from '$lib/components/ui/typography';
+	import { FOOTNOTE, INLINE_LINK, MICRO } from '$lib/components/ui/typography';
 	import { providerLabel } from '$lib/providers/labels';
 	import { offsetHrefs } from '$lib/lists/offset';
 	import { filtered, SYNC_WINDOW } from '$lib/syncs/runs';
@@ -23,38 +24,41 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const { hrefFor, pageHref, sizeHref } = $derived(offsetHrefs(page.url));
+	const { hrefFor, pageHref, sizeHref, stepHrefs } = $derived(offsetHrefs(page.url));
 
 	const label = (provider: string) => providerLabel(data.providers, provider);
 	const pages = $derived(Math.max(Math.ceil(data.total / data.size), 1));
+	const isFiltered = $derived(filtered(data.filters));
 	const refresh = createSubmitFlag();
 </script>
 
 <div class="flex flex-col gap-5">
-	<div class="flex flex-wrap items-start justify-between gap-3">
-		<div class="flex flex-col gap-0.5">
-			<h1 class="text-lg font-semibold text-foreground">Syncs</h1>
-			<!-- Where the list comes from, said up front: it is a rolling buffer, so a
-			     quiet list means a quiet day, not a broken integration. -->
-			<p class={MICRO}>Every user's syncs from the last 24 hours, as Redis holds them.</p>
-		</div>
-
-		<form
-			method="POST"
-			action="?/refresh"
-			use:enhance={refresh.enhance}
-			class="flex items-center gap-3"
-		>
-			{#each Object.entries(data.filters) as [name, value] (name)}
-				<input type="hidden" {name} {value} />
-			{/each}
-			<span class={MICRO}>Updated {formatRelativeTime(data.fetchedAt).toLowerCase()}</span>
-			<Button type="submit" variant="outline" size="sm" disabled={refresh.submitting}>
-				<RefreshCw size={13} aria-hidden="true" class={refresh.submitting ? 'animate-spin' : ''} />
-				Refresh
-			</Button>
-		</form>
-	</div>
+	<PageHeader
+		title="Syncs"
+		description="Every user's syncs from the last 24 hours, as Redis holds them."
+	>
+		{#snippet actions()}
+			<form
+				method="POST"
+				action="?/refresh"
+				use:enhance={refresh.enhance}
+				class="flex items-center gap-3"
+			>
+				{#each Object.entries(data.filters) as [name, value] (name)}
+					<input type="hidden" {name} {value} />
+				{/each}
+				<span class={MICRO}>Updated {formatRelativeTime(data.fetchedAt).toLowerCase()}</span>
+				<Button type="submit" variant="outline" size="sm" disabled={refresh.submitting}>
+					<RefreshCw
+						size={13}
+						aria-hidden="true"
+						class={refresh.submitting ? 'animate-spin' : ''}
+					/>
+					Refresh
+				</Button>
+			</form>
+		{/snippet}
+	</PageHeader>
 
 	<Card>
 		<div class="flex flex-col gap-3">
@@ -73,10 +77,8 @@
 		<Card>
 			<EmptyState
 				icon={RefreshCcwDot}
-				title={filtered(data.filters)
-					? 'No syncs match these filters'
-					: 'No syncs in the last 24 hours'}
-				description={filtered(data.filters)
+				title={isFiltered ? 'No syncs match these filters' : 'No syncs in the last 24 hours'}
+				description={isFiltered
 					? 'Clear a filter, or widen the one on the user.'
 					: 'Nothing has synced in the last day. Runs older than that have left the buffer.'}
 			/>
@@ -94,18 +96,16 @@
 			page={data.page}
 			size={data.size}
 			total={data.total}
-			previousHref={data.page > 1 ? pageHref(data.page - 1) : null}
-			nextHref={data.page < pages ? pageHref(data.page + 1) : null}
+			{...stepHrefs(data.page, pages)}
 			hrefFor={pageHref}
 			sizeHrefFor={sizeHref}
 			noun="syncs"
 		/>
 	{/if}
 
-	<!-- The one thing this page cannot show, and where it is instead. -->
 	<p class={FOOTNOTE}>
 		Backfills are also stored in Postgres with no time limit, but only per user: open a run above
 		for its stored record, or a user in
-		<a href={resolve('/users')} class="text-primary hover:underline">Users</a> for their whole history.
+		<a href={resolve('/users')} class={INLINE_LINK}>Users</a> for their whole history.
 	</p>
 </div>

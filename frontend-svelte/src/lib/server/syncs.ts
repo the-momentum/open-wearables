@@ -1,6 +1,5 @@
 import { ApiError, apiGet } from './api';
-import { keep, recall } from './cache';
-import { redis } from './redis';
+import { forget, keep, recall } from './cache';
 import { SYNC_WINDOW, type RunFilters } from '$lib/syncs/runs';
 import type { SyncRun, SyncRunDetail, SyncRunSummary } from '$lib/syncs/types';
 
@@ -16,35 +15,34 @@ export type RunWindow = { runs: SyncRunSummary[]; fetchedAt: string };
 
 const TTL_SECONDS = 20;
 
-const windowKey = (filters: RunFilters) =>
-	`ow:syncs:${filters.user}:${filters.provider}:${filters.status}:${filters.source}`;
+const windowKey = (filters: RunFilters) => `ow:syncs:${Object.values(filters).join(':')}`;
+
+const PARAM: Record<keyof RunFilters, string> = {
+	user: 'user_id',
+	provider: 'provider',
+	status: 'status',
+	source: 'source'
+};
 
 /**
- * Every user's runs, newest first — Redis, so the last 24 hours. The endpoint
- * scans every user's buffer on each call whatever the limit, so the window is
- * kept for twenty seconds: paging through it, or coming back to the tab, does
- * not scan again. The filters go to the backend, since it applies them before
- * it cuts to the limit, and a filter done here would search only the window.
+ * Every user's runs from the last 24 hours. The endpoint scans every buffer
+ * whatever the limit, so one window is kept briefly and paged through here.
+ * Filters go to the backend: it applies them before cutting to the limit.
  */
 export async function fetchRunWindow(filters: RunFilters, accessToken: string): Promise<RunWindow> {
 	const hit = await recall<RunWindow>(windowKey(filters));
 	if (hit) return hit;
 
 	const params = new URLSearchParams({ limit: String(SYNC_WINDOW) });
-	if (filters.user) params.set('user_id', filters.user);
-	if (filters.provider) params.set('provider', filters.provider);
-	if (filters.status) params.set('status', filters.status);
-	if (filters.source) params.set('source', filters.source);
+	for (const [key, value] of Object.entries(filters)) {
+		if (value) params.set(PARAM[key as keyof RunFilters], value);
+	}
 
 	const runs = await apiGet<SyncRunSummary[]>(`/api/v1/sync/runs?${params}`, accessToken);
 	return keep(windowKey(filters), { runs, fetchedAt: new Date().toISOString() }, TTL_SECONDS);
 }
 
-/** What the Refresh button does: the next read goes to the backend. */
-export const forgetRunWindow = (filters: RunFilters) =>
-	redis()
-		.del(windowKey(filters))
-		.catch(() => {});
+export const forgetRunWindow = (filters: RunFilters) => forget(windowKey(filters));
 
 /** Postgres. Null for a live run, which is only ever in the 24-hour buffer. */
 export async function fetchStoredRun(runKey: string, accessToken: string) {

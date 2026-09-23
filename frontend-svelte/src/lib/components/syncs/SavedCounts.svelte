@@ -5,9 +5,10 @@
 	let { inserted, updated }: { inserted: number; updated: number } = $props();
 </script>
 
-{#if inserted === 0 && updated === 0}
-	<span>Nothing saved</span>
-{:else}
+<span class="inline-flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+	{#if inserted === 0 && updated === 0}
+		Nothing saved
+	{/if}
 	{#if inserted > 0}
 		<span class="flex items-center gap-1" title="Records created">
 			<Plus size={12} aria-hidden="true" class="text-muted-foreground/60" />
@@ -22,4 +23,4 @@
 			updated
 		</span>
 	{/if}
-{/if}
+</span>

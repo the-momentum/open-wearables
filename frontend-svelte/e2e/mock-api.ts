@@ -369,6 +369,21 @@ const server = Bun.serve({
 			}
 		}
 
+		if (pathname === '/api/v1/invitations/accept' && request.method === 'POST') {
+			const { token } = await request.json();
+			// The real endpoint's own answers, detail strings included: the page reads them.
+			if (token === 'invite-expired') return json({ detail: 'Invitation has expired' }, 400);
+			if (token === 'invite-used') return json({ detail: 'Invitation is accepted' }, 400);
+			if (token === 'invite-down')
+				return json({ detail: 'Failed to create developer account' }, 500);
+			if (token === 'invite-new') {
+				return json({ ...DEVELOPER, id: 'dev-new', email: 'ada@example.com' }, 201);
+			}
+			if (token !== 'invite-ok') return json({ detail: 'Invitation not found' }, 404);
+			// The mock only signs in its one developer, so this "new" account is them.
+			return json(DEVELOPER, 201);
+		}
+
 		if (pathname === '/api/v1/invitations') {
 			if (request.method === 'POST') {
 				const { email } = await request.json();

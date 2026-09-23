@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { attempt, describe, field } from '$lib/server/form';
 import { requireToken } from '$lib/server/guard';
+import { newPasswordProblem } from '$lib/settings/password';
 import {
 	changePassword,
 	createInvitation,
@@ -22,8 +23,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	return { developers, invitations };
 };
-
-const MIN_PASSWORD_LENGTH = 8;
 
 export const actions: Actions = {
 	invite: async ({ request, locals }) => {
@@ -61,18 +60,9 @@ export const actions: Actions = {
 			confirm_password: String(form.get('confirm_password') ?? '')
 		};
 
-		// Checked here as well as by the API: a mismatch comes back from FastAPI
-		// as a validation array with no `detail` string, which reads as nothing.
 		const action = 'changePassword';
-		if (body.new_password.length < MIN_PASSWORD_LENGTH) {
-			return fail(400, {
-				action,
-				message: `The new password must be at least ${MIN_PASSWORD_LENGTH} characters.`
-			});
-		}
-		if (body.new_password !== body.confirm_password) {
-			return fail(400, { action, message: 'The confirmation does not match the new password.' });
-		}
+		const problem = newPasswordProblem(body.new_password, body.confirm_password);
+		if (problem) return fail(400, { action, message: problem });
 
 		try {
 			await changePassword(body, accessToken);

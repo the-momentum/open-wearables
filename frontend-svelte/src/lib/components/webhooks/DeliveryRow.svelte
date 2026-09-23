@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
 	import { TONE } from '$lib/components/ui/tone';
 	import { MICRO, MONO } from '$lib/components/ui/typography';
 	import { formatLocalTime } from '$lib/utils/format';
@@ -63,11 +63,7 @@
 			class={ROW}
 		>
 			{@render summary()}
-			<ChevronDown
-				size={14}
-				aria-hidden="true"
-				class="shrink-0 text-muted-foreground transition-transform {open ? 'rotate-180' : ''}"
-			/>
+			<ExpandChevron {open} />
 		</button>
 	{:else}
 		<div class={ROW}>{@render summary()}</div>

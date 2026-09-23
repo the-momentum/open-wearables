@@ -5,7 +5,7 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
-	import { MICRO } from '$lib/components/ui/typography';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import SubscriptionCard from '$lib/components/webhooks/SubscriptionCard.svelte';
 	import SubscriptionDialog from '$lib/components/webhooks/SubscriptionDialog.svelte';
 	import type { Subscription } from '$lib/webhooks/types';
@@ -30,19 +30,19 @@
 </script>
 
 <div class="flex flex-col gap-5">
-	<div class="flex flex-wrap items-start justify-between gap-3">
-		<div class="flex flex-col gap-0.5">
-			<h1 class="text-lg font-semibold text-foreground">Webhook subscriptions</h1>
-			<!-- Named for what it is: a standing request to be told about events.
-			     "Webhooks" alone reads as something already running. -->
-			<p class={MICRO}>Each one asks us to POST events to a URL of yours as they happen.</p>
-		</div>
-
-		<Button onclick={() => open(null)}>
-			<Plus size={15} aria-hidden="true" />
-			New subscription
-		</Button>
-	</div>
+	<!-- Named for what it is: a standing request to be told about events.
+	     "Webhooks" alone reads as something already running. -->
+	<PageHeader
+		title="Webhook subscriptions"
+		description="Each one asks us to POST events to a URL of yours as they happen."
+	>
+		{#snippet actions()}
+			<Button onclick={() => open(null)}>
+				<Plus size={15} aria-hidden="true" />
+				New subscription
+			</Button>
+		{/snippet}
+	</PageHeader>
 
 	{#if data.subscriptions.length === 0}
 		<Card>

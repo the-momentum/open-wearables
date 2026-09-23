@@ -22,6 +22,12 @@ export function keep<T>(key: string, value: T, ttlSeconds: number): T {
 	return value;
 }
 
+/** Drops an entry, so the next read goes to the API. */
+export const forget = (key: string) =>
+	redis()
+		.del(key)
+		.catch(() => {});
+
 export async function cached<T>(
 	key: string,
 	ttlSeconds: number,

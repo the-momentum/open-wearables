@@ -1,11 +1,7 @@
 import { SYNC_SOURCES } from './source';
 import type { SyncRunSummary, SyncStatus } from './types';
 
-/**
- * The newest runs fetched at once. `/sync/runs` scans every user's buffer
- * whatever `limit` says, so one fetch of a window and paging inside it costs
- * a scan per window, not a scan per page.
- */
+/** Runs fetched at once; `/sync/runs` scans every buffer whatever the limit. */
 export const SYNC_WINDOW = 500;
 
 /** Mirrors backend `SyncStatus`, for the filter. */
@@ -24,11 +20,7 @@ export type RunFilters = { user: string; provider: string; status: string; sourc
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * Only what the endpoint can match: a user id that is not a UUID would come
- * back as a 422, and a status it does not know as an empty list that reads as
- * "nothing synced".
- */
+/** Only what the endpoint can match: a non-UUID user is a 422, an unknown status an empty list. */
 export function runFilters(params: URLSearchParams): RunFilters {
 	const asked = (key: string) => params.get(key)?.trim() ?? '';
 	const user = asked('user');
@@ -64,7 +56,6 @@ const SHADE: Record<SyncStatus, string> = {
 	cancelled: 'bg-border'
 };
 
-/** What the window adds up to, read off the runs already fetched. */
 export function overview(runs: SyncRunSummary[]) {
 	const count = (...statuses: SyncStatus[]) =>
 		runs.filter((run) => statuses.includes(run.status)).length;

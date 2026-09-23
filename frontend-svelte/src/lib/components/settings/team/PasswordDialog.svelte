@@ -5,6 +5,7 @@
 	import PasswordField from '$lib/components/ui/PasswordField.svelte';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import { MICRO } from '$lib/components/ui/typography';
+	import { MIN_PASSWORD_LENGTH } from '$lib/settings/password';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 
 	let {
@@ -42,7 +43,7 @@
 			name="new_password"
 			label="New password"
 			autocomplete="new-password"
-			placeholder="At least 8 characters"
+			placeholder="At least {MIN_PASSWORD_LENGTH} characters"
 		/>
 		<PasswordField
 			name="confirm_password"

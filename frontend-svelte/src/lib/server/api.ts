@@ -106,13 +106,13 @@ export async function apiGet<T>(path: string, accessToken?: string): Promise<T> 
 async function apiWrite<T>(
 	method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
 	path: string,
-	accessToken: string,
+	accessToken: string | null,
 	body?: unknown
 ): Promise<T> {
 	const response = await fetch(apiUrl(path), {
 		method,
 		headers: {
-			Authorization: `Bearer ${accessToken}`,
+			...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
 			...(body === undefined ? {} : { 'Content-Type': 'application/json' })
 		},
 		body: body === undefined ? undefined : JSON.stringify(body)
@@ -124,6 +124,10 @@ async function apiWrite<T>(
 
 export const apiPost = <T>(path: string, accessToken: string, body?: unknown) =>
 	apiWrite<T>('POST', path, accessToken, body);
+
+/** For the few endpoints that are public: there is nobody signed in to ask as. */
+export const apiPublicPost = <T>(path: string, body: unknown) =>
+	apiWrite<T>('POST', path, null, body);
 
 export const apiPut = <T>(path: string, accessToken: string, body: unknown) =>
 	apiWrite<T>('PUT', path, accessToken, body);

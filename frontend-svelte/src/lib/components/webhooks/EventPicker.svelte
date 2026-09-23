@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
 	import { tagClass } from '$lib/components/ui/chip';
 	import { MICRO, MONO, TEXT_LINK } from '$lib/components/ui/typography';
 	import { cn } from '$lib/utils/cn';
@@ -42,11 +42,7 @@
 				aria-expanded={open}
 				class="flex items-center gap-2 px-3 py-2 text-left"
 			>
-				<ChevronDown
-					size={14}
-					aria-hidden="true"
-					class="shrink-0 text-muted-foreground transition-transform {open ? 'rotate-180' : ''}"
-				/>
+				<ExpandChevron {open} />
 				<span class="flex-1 text-xs font-medium text-foreground">{group.label}</span>
 				<span class={MICRO}>{picked > 0 ? `${picked} of ${names.length}` : names.length}</span>
 			</button>

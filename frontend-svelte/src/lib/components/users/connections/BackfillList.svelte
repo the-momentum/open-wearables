@@ -1,11 +1,10 @@
 <script lang="ts">
-	import Badge from '$lib/components/ui/Badge.svelte';
+	import RunStatus from '$lib/components/syncs/RunStatus.svelte';
 	import SavedCounts from '$lib/components/syncs/SavedCounts.svelte';
 	import SourceGlyph from '$lib/components/syncs/SourceGlyph.svelte';
-	import { formatDuration, formatWindow, statusTone } from '$lib/syncs/format';
+	import { formatDuration, formatWindow } from '$lib/syncs/format';
 	import type { SyncRun } from '$lib/syncs/types';
-	import { formatRelativeTime } from '$lib/utils/datetime';
-	import { humanise } from '$lib/utils/text';
+	import { formatDateTime, formatRelativeTime } from '$lib/utils/datetime';
 
 	let { runs }: { runs: SyncRun[] } = $props();
 </script>
@@ -17,10 +16,10 @@
 		<li class="rounded-lg border border-border bg-background px-3 py-2">
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<div class="flex items-center gap-2">
-					<Badge tone={statusTone(run.status)}>{humanise(run.status)}</Badge>
+					<RunStatus {run} />
 					<SourceGlyph source={run.source} />
 				</div>
-				<span class="text-xs text-muted-foreground" title={run.started_at}>
+				<span class="text-xs text-muted-foreground" title={formatDateTime(run.started_at)}>
 					{formatRelativeTime(run.started_at)}
 				</span>
 			</div>

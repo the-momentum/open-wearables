@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
 	import type { Component, Snippet } from 'svelte';
 	import { togglesCard } from './accordion';
 
@@ -92,7 +92,7 @@
 				text-muted-foreground transition-colors group-hover:border-primary/40
 				group-hover:bg-primary/10 group-hover:text-primary"
 		>
-			<ChevronDown size={15} class="transition-transform {expanded ? 'rotate-180' : ''}" />
+			<ExpandChevron open={expanded} size={15} class="text-current" />
 		</span>
 	</div>
 

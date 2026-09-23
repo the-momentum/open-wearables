@@ -40,9 +40,7 @@
 		{#if run.error}
 			<p class="mt-0.5 truncate text-xs text-danger" title={run.error}>{run.error}</p>
 		{:else if saved}
-			<div class="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-				<SavedCounts inserted={saved.inserted} updated={saved.updated} />
-			</div>
+			<div class="mt-0.5"><SavedCounts inserted={saved.inserted} updated={saved.updated} /></div>
 		{:else if run.message}
 			<p class="mt-0.5 truncate text-xs text-muted-foreground" title={run.message}>{run.message}</p>
 		{/if}

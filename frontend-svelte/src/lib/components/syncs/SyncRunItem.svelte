@@ -1,10 +1,11 @@
 <script lang="ts">
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ExpandChevron from '$lib/components/ui/ExpandChevron.svelte';
 	import { resolve } from '$app/paths';
 	import { togglesCard } from '$lib/components/events/accordion';
 	import ProviderMark from '$lib/components/providers/ProviderMark.svelte';
 	import CopyableId from '$lib/components/ui/CopyableId.svelte';
 	import Fact from '$lib/components/ui/Fact.svelte';
+	import Facts from '$lib/components/ui/Facts.svelte';
 	import { MICRO, MONO } from '$lib/components/ui/typography';
 	import { formatDuration, isRunning, itemsLabel } from '$lib/syncs/format';
 	import type { SyncRunSummary } from '$lib/syncs/types';
@@ -30,8 +31,6 @@
 	};
 </script>
 
-<!-- The whole row opens it, as a card does; the user link and the header button
-     are what the keyboard reaches. -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <li onclick={toggle} class="flex cursor-pointer flex-col gap-3 px-4 py-3 sm:px-5">
@@ -74,11 +73,7 @@
 			</a>
 		</div>
 
-		<ChevronDown
-			size={14}
-			aria-hidden="true"
-			class="mt-1 shrink-0 text-muted-foreground transition-transform {open ? 'rotate-180' : ''}"
-		/>
+		<ExpandChevron {open} class="mt-1" />
 	</div>
 
 	{#if open}
@@ -89,13 +84,12 @@
 			class="flex cursor-auto flex-col gap-3 pl-9"
 			onclick={(event) => event.stopPropagation()}
 		>
-			<!-- What the 24-hour buffer knows, then what Postgres kept. -->
-			<dl class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+			<Facts>
 				<Fact label="Started">{formatDateTime(run.started_at)}</Fact>
 				<Fact label="Took">{took}</Fact>
 				<Fact label="Items">{itemsLabel(run) ?? DASH}</Fact>
 				<Fact label="Run"><CopyableId value={run.run_id} label="Run ID" visible={12} /></Fact>
-			</dl>
+			</Facts>
 			{#if run.error}
 				<p class="text-sm break-words text-danger">{run.error}</p>
 			{/if}

@@ -21,7 +21,7 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const { hrefFor, pageHref, sizeHref } = $derived(offsetHrefs(page.url));
+	const { hrefFor, pageHref, sizeHref, stepHrefs } = $derived(offsetHrefs(page.url));
 
 	const label = (entry: string) => providerLabel(data.providers, entry);
 
@@ -89,8 +89,7 @@
 				size={data.perPage}
 				total={data.total}
 				noun="days"
-				previousHref={data.page > 1 ? pageHref(data.page - 1) : null}
-				nextHref={data.page < data.pages ? pageHref(data.page + 1) : null}
+				{...stepHrefs(data.page, data.pages)}
 				hrefFor={pageHref}
 				sizeHrefFor={sizeHref}
 			/>

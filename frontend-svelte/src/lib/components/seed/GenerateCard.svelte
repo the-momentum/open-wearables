@@ -7,7 +7,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import CopyButton from '$lib/components/ui/CopyButton.svelte';
-	import { MICRO, MONO } from '$lib/components/ui/typography';
+	import { INLINE_LINK, MICRO, MONO } from '$lib/components/ui/typography';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 
 	let {
@@ -61,7 +61,7 @@
 				{/if}
 				<a
 					href={resolve('/users')}
-					class="inline-flex items-center gap-1.5 text-primary hover:underline sm:ml-auto"
+					class="inline-flex items-center gap-1.5 sm:ml-auto {INLINE_LINK}"
 				>
 					<Users size={14} aria-hidden="true" />
 					They appear in Users as the job runs

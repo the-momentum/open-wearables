@@ -11,6 +11,9 @@ export const FOOTNOTE = `${TINY} text-muted-foreground/80`;
 export const MONO = `${TINY} font-mono`;
 
 /** A small action set in running text — a group's "all", a "select all". */
+/** A link inside a sentence, in the accent so it reads as one. */
+export const INLINE_LINK = 'text-primary hover:underline';
+
 export const TEXT_LINK = `${MICRO} underline-offset-2 hover:text-foreground hover:underline`;
 
 /** The micro heading used above a figure, a pane or a filter group. */

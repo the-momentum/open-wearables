@@ -8,7 +8,14 @@ reaches parity; only then does `frontend/` get deleted.
 of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
 Women's Health — the Dashboard, Data Coverage, Webhook subscriptions and
 Settings are built — Credentials, Providers, Priorities, Data Lifecycle, Team
-and Seed Data — and Syncs. Every tab of the old dashboard now has a counterpart.
+and Seed Data — and Syncs. Every tab of the old dashboard now has a counterpart,
+and so does `/accept-invite`, the one public page the backend links to (it
+writes `/accept-invite?token=` into every invitation email, so the path and the
+parameter are fixed). The old `/register`, `/forgot-password`,
+`/reset-password`, `/widget/connect` and `/users/$id/pair/error` were left out on
+purpose: the first three call auth endpoints the API does not have, the widget
+simulates OAuth with `Math.random()`, and nothing redirects to the pairing error
+page (OAuth failures land on the API's own `/api/v1/oauth/error`).
 Read "Current state" before assuming anything exists.
 
 ## Non-negotiable: latest SvelteKit, Svelte 5 runes
@@ -703,6 +710,18 @@ them before writing a control by hand:
   on the icon below it, which is the trade the bottom bar already makes.
 - **`settings/SettingRow.svelte`** — lead glyph, title, small print, actions.
   Four settings rows had it pasted, and had already drifted on padding.
+- **`layout/PageHeader.svelte`** — the page's `h1`, its one-line description, an
+  optional `above` (a back link) and `actions`. Four pages had it pasted.
+  `layout/PublicPage.svelte` is the signed-out equivalent, for sign-in and
+  accepting an invitation.
+- **`ui/ExpandChevron.svelte`** — the chevron that turns over when a row opens,
+  in every accordion row and card.
+- **`ui/Fact.svelte` / `ui/Facts.svelte`** — a label over a value, and the
+  wrapping `<dl>` of them.
+- **`syncs/RunStatus.svelte`** — every sync status badge, stored or live; a
+  running one shows its stage instead. `SavedCounts` owns its own row, so it
+  can sit anywhere without a wrapper to line its parts up.
+- **`INLINE_LINK`** in `ui/typography.ts` — a link inside a sentence.
 
 ### Mutations go through form actions
 
