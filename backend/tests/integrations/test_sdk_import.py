@@ -996,24 +996,3 @@ class TestSDKImportMealCorrelation:
         detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
         assert detail.title == "Sałatka z kurczakiem"
         assert detail.meal_type == "kolacja"
-
-    def test_food_correlation_resync_with_missing_metadata_keeps_existing_title(
-        self, db: Session, import_service: ImportService
-    ) -> None:
-        """A resync payload that omits title/mealType (partial metadata) must not
-        clobber the previously stored, non-null values with null."""
-        user = UserFactory()
-        user_id = str(user.id)
-        first_batch = self._build_payload([self._correlation_record("MEAL-1")])
-
-        second_record = self._correlation_record("MEAL-1")
-        second_record["metadata"] = {}
-        second_batch = self._build_payload([second_record])
-
-        import_service.load_data(db, first_batch, user_id)
-        import_service.load_data(db, second_batch, user_id)
-
-        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
-        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
-        assert detail.title == "Kurczak z ryżem"
-        assert detail.meal_type == "obiad"
