@@ -38,9 +38,9 @@ The example app demonstrates the complete integration flow:
 8. **Log Viewer** - Browse SDK logs with search
 
 <Note>
-  **Heads-up - this example uses the invitation code flow, which is not the standard way to integrate the SDK.** The example app has no backend of its own, so it redeems a single-use invitation code directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/mobile-sdk/redeem-invitation-code) endpoint to get a session. That is fine for this self-contained demo: you generate the code in your own dashboard and enter it in the app yourself, it is single-use, and the resulting token is write-only to `/sdk/*`, so your `app_secret` never touches the device.
+  **Heads-up - this example uses the invitation code flow, which is not the standard way to integrate the SDK.** The example app has no backend of its own, so it redeems a single-use invitation code directly against the public [`POST /api/v1/invitation-code/redeem`](/api-reference/external:-mobile-sdk/redeem-invitation-code) endpoint to get a session. That is fine for this self-contained demo: you generate the code in your own dashboard and enter it in the app yourself, it is single-use, and the resulting token is write-only to `/sdk/*`, so your `app_secret` never touches the device.
 
-  When you build your own app, use the **backend token flow** instead, where your backend mints and forwards the token. See the [Integration Guide](/sdk/react-native/integration#authentication-architecture) and [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
+  When you build your own app, use the **backend token flow** instead, where your backend mints and forwards the token. See the [Integration Guide](/sdk/integration#authentication-architecture) and [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
 </Note>
 
 <Card title="See the full flow in action" icon="play" href="/app/introduction#see-it-in-action">
@@ -98,7 +98,7 @@ The example app demonstrates the complete integration flow:
   </Step>
 
   <Step title="Run on Android">
-    The Android SDK is distributed via Maven Local. First, generate the native project:
+    The Android native SDK is currently distributed via Maven Local (this step goes away once it's served from a public repository). First, generate the native project:
 
     ```bash
     npx expo prebuild
@@ -109,7 +109,7 @@ The example app demonstrates the complete integration flow:
     ```bash
     git clone https://github.com/the-momentum/open_wearables_android_sdk
     cd open_wearables_android_sdk
-    git checkout v0.6.0
+    git checkout v0.11.2
     ./gradlew publishToMavenLocal
     ```
 
@@ -149,7 +149,7 @@ example/
 ├── App.tsx                    # Main app entry, SDK init & session state
 ├── components/
 │   ├── SessionGroup.tsx       # Connect form (host URL + invitation code)
-│   ├── ActionsGroup.tsx       # Sync controls (start/stop/sync now)
+│   ├── ActionsGroup.tsx       # Sync controls (start/stop)
 │   ├── ProvidersGroup.tsx     # Android provider selection
 │   └── StatusBanner.tsx       # Sync status display
 ├── screens/
@@ -206,17 +206,11 @@ const granted = await OpenWearablesHealthSDK.requestAuthorization(
 **Start / Stop Background Sync:**
 
 ```ts
-// Start
-await OpenWearablesHealthSDK.startBackgroundSync();
+// Start, uploading up to 90 days of history on the first sync
+await OpenWearablesHealthSDK.startBackgroundSync(90);
 
 // Stop
 await OpenWearablesHealthSDK.stopBackgroundSync();
-```
-
-**Sync Now:**
-
-```ts
-await OpenWearablesHealthSDK.syncNow();
 ```
 
 **Listen for SDK Events:**
@@ -266,7 +260,7 @@ subscription.remove();
   </Step>
 
   <Step title="Trigger sync and verify">
-    1. In the example app, tap **Sync Now**
+    1. In the example app, tap **Start Sync** (or bring the app to the foreground if sync is already running)
     2. Check the Open Wearables dashboard
     3. Your health data should appear under the user's timeseries!
   </Step>
@@ -289,7 +283,7 @@ subscription.remove();
   <Accordion title="No data syncing">
     - Confirm health permissions were granted (check iOS Settings → Privacy → Health, or Android Settings → Health Connect)
     - Make sure there's actual health data in Apple Health / Health Connect
-    - Try tapping **Sync Now** to trigger an immediate sync
+    - Bring the app to the foreground - the SDK resumes an interrupted sync
     - Check the Logs page in the app for errors
   </Accordion>
 

@@ -75,6 +75,7 @@
             "group": "Mobile SDK",
             "pages": [
               "sdk/index",
+              "sdk/integration",
               {
                 "group": "iOS (Swift)",
                 "pages": [

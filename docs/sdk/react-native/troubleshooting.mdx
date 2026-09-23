@@ -54,9 +54,9 @@ keywords: ["react native healthkit troubleshooting", "react native health connec
           HealthDataType.HeartRate,
           HealthDataType.Sleep
        ]);
-       // authorized === true  → permissions dialog was shown and accepted
-       // authorized === false → user denied or dialog failed to appear
-       console.log("Permissions granted:", authorized);
+       // Android: true only if every requested permission was granted.
+       // A partial grant returns false, but the granted types still sync.
+       console.log("All permissions granted:", authorized);
        ```
 
     3. **Check minSdk version:**
@@ -116,36 +116,16 @@ keywords: ["react native healthkit troubleshooting", "react native health connec
        ```
   </Accordion>
 
-  <Accordion title="Sign-in fails with error">
-    **Symptoms:** `SignInException` when calling `signIn()`.
+  <Accordion title="Sync doesn't start">
+    **Symptoms:** `startBackgroundSync()` resolves `false`. It never throws - check the return value.
 
     **Solutions:**
 
-    1. **Check token expiration:**
-       Access tokens expire. Ensure your backend generates fresh tokens.
-
-    2. **Verify credentials:**
-       Ensure you're providing either (`accessToken` + `refreshToken`) or `apiKey`:
+    1. **Call `configure()` on every app launch**, before any other SDK call.
+    2. **Check that a user is signed in** - `isSessionValid()` must be `true`.
+    3. **iOS: request authorization first.** Sync won't start without at least one authorized type.
+    4. **Listen for auth errors.** `signIn()` doesn't validate the tokens - an invalid token shows up later as an `onAuthError` event during sync:
        ```ts
-       // Token-based (recommended)
-       await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
-
-       // OR API key-based
-       await OpenWearablesHealthSDK.signIn(userId, null, null, apiKey);
-       ```
-
-    3. **Check network connectivity:**
-       Ensure the device can reach your Open Wearables host.
-
-    4. **Handle sign-in errors:**
-       ```ts
-       try {
-         await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
-       } catch (e: any) {
-         console.error("Sign-in error:", e?.message ?? String(e));
-       }
-
-       // Or listen for auth errors via the event emitter
        OpenWearablesHealthSDK.addListener("onAuthError", ({ statusCode, message }) => {
          console.error(`Auth error ${statusCode}: ${message}`);
        });
@@ -169,49 +149,19 @@ keywords: ["react native healthkit troubleshooting", "react native health connec
     3. **Check date range:**
        The SDK syncs data incrementally. New data may not exist yet.
 
-    4. **Reset anchors for full sync:**
+    4. **Reset anchors for a full re-sync** (while sync is stopped):
        ```ts
+       await OpenWearablesHealthSDK.stopBackgroundSync();
        OpenWearablesHealthSDK.resetAnchors();
-       await OpenWearablesHealthSDK.syncNow();
+       await OpenWearablesHealthSDK.startBackgroundSync(90);
        ```
 
     5. **Check permissions:**
        Users may have denied specific data types even if they approved the overall request.
   </Accordion>
 
-  <Accordion title="NotConfiguredException thrown">
-    **Symptoms:** Exception when calling SDK methods.
-
-    **Solution:**
-    Ensure `configure()` is called before any other SDK methods:
-
-    ```ts
-    // ✅ Correct order
-    OpenWearablesHealthSDK.configure('https://api.openwearables.io');
-    await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
-    await OpenWearablesHealthSDK.startBackgroundSync();
-
-    // ❌ Wrong - signIn before configure
-    await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null); // Throws
-    ```
-  </Accordion>
-
-  <Accordion title="NotSignedInException thrown">
-    **Symptoms:** Exception when starting sync without signing in.
-
-    **Solution:**
-    Check sign-in status before sync operations:
-
-    ```ts
-    if (!OpenWearablesHealthSDK.isSessionValid()) {
-      OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
-    }
-    await OpenWearablesHealthSDK.startBackgroundSync();
-    ```
-  </Accordion>
-
   <Accordion title="Samsung Health not available">
-    **Symptoms:** Samsung Health provider not found on `getAvailableProviders()`.
+    **Symptoms:** The `samsung` entry from `getAvailableProviders()` has `isAvailable: false`, or `setProvider("samsung")` returns `false`.
 
     **Solutions:**
 
@@ -250,7 +200,7 @@ iOS has strict limits on background execution:
 | Network | Background tasks require network connectivity |
 
 <Tip>
-  For critical sync operations, prompt users to open the app and trigger `syncNow()` manually.
+  There is no manual sync call. If data is urgent, ask users to open the app - the SDK resumes an interrupted sync when the app comes to the foreground.
 </Tip>
 
 ## Testing Background Sync
@@ -324,13 +274,13 @@ console.log("Created at:", status.createdAt);
 If things are in a bad state:
 
 ```ts
-// Clear everything and start fresh
-OpenWearablesHealthSDK.stopBackgroundSync();
+// Clears credentials, anchors and the sync session
+await OpenWearablesHealthSDK.stopBackgroundSync();
 OpenWearablesHealthSDK.signOut();
-OpenWearablesHealthSDK.resetAnchors();
 
-// Re-initialize
-OpenWearablesHealthSDK.configure('https://api.openwearables.io');
+// Then sign in again - the next sync re-uploads history within syncDaysBack
+await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+await OpenWearablesHealthSDK.startBackgroundSync(90);
 ```
 
 ## Getting Help
