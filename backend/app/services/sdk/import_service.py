@@ -45,6 +45,7 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -274,6 +275,7 @@ class ImportService:
             case _:
                 return value
 
+    @handle_exceptions
     def _build_statistic_bundles(
         self,
         request: SDKSyncRequest,
