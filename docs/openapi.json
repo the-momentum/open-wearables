@@ -13771,6 +13771,30 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name (e.g., 'Apple Health', 'Garmin')."
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url",
+            "description": "Relative URL to provider icon (e.g., '/static/provider-icons/garmin.svg'). Resolve against the API base URL."
           }
         },
         "type": "object",
