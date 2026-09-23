@@ -5,11 +5,12 @@ from sqlalchemy import CursorResult, and_, asc, delete, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.constants.devices_map import infer_device_type
 from app.database import DbSession
 from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas.enums import DeviceType, ProviderName, infer_device_type_from_model, infer_device_type_from_source_name
+from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
 
 
@@ -72,7 +73,7 @@ class DataSourceRepository(
                 object.__setattr__(existing, "original_source_name", original_source_name)
                 updated = True
             if existing.device_type is None:
-                device_type = self._infer_device_type(device_model, original_source_name)
+                device_type = infer_device_type(provider, device_model, original_source_name)
                 if device_type != DeviceType.UNKNOWN:
                     object.__setattr__(existing, "device_type", device_type.value)
                     updated = True
@@ -83,7 +84,7 @@ class DataSourceRepository(
         provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         provider_priority_repo.ensure_provider_exists(db_session, provider)
 
-        device_type = self._infer_device_type(device_model, original_source_name)
+        device_type = infer_device_type(provider, device_model, original_source_name)
 
         create_payload = DataSourceCreate(
             id=uuid4(),
@@ -99,16 +100,6 @@ class DataSourceRepository(
         result = self.create(db_session, create_payload)
         assert result is not None
         return result
-
-    def _infer_device_type(
-        self,
-        device_model: str | None,
-        original_source_name: str | None,
-    ) -> DeviceType:
-        dt = infer_device_type_from_model(device_model)
-        if dt != DeviceType.UNKNOWN:
-            return dt
-        return infer_device_type_from_source_name(original_source_name)
 
     def batch_ensure_data_sources(
         self,
@@ -139,7 +130,7 @@ class DataSourceRepository(
         if missing:
             values = []
             for user_id, device_model, source in missing:
-                device_type = self._infer_device_type(device_model, None)
+                device_type = infer_device_type(provider, device_model)
                 values.append(
                     {
                         "id": uuid4(),

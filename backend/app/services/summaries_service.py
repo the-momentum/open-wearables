@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
+from app.constants.devices_map import infer_device_type_from_model
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
@@ -24,7 +25,6 @@ from app.schemas.enums import (
     ProviderName,
     SeriesType,
     get_series_type_id,
-    infer_device_type_from_model,
 )
 from app.schemas.responses.activity import (
     ActivitySummary,
