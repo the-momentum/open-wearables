@@ -974,3 +974,46 @@ class TestSDKImportMealCorrelation:
         samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
         samples_by_external_id = {s.external_id: s for s in samples}
         assert samples_by_external_id["protein-1"].event_record_id == meals[0].id
+
+    def test_food_correlation_resync_refreshes_title_and_meal_type(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """A resync of the same meal (same external id / window) with an edited
+        title/mealType - e.g. the user renamed it in the Health app - must update
+        the existing MealDetails row instead of silently dropping the change."""
+        user = UserFactory()
+        user_id = str(user.id)
+        first_batch = self._build_payload([self._correlation_record("MEAL-1")])
+
+        second_record = self._correlation_record("MEAL-1")
+        second_record["metadata"] = {"title": "Sałatka z kurczakiem", "mealType": "kolacja"}
+        second_batch = self._build_payload([second_record])
+
+        import_service.load_data(db, first_batch, user_id)
+        import_service.load_data(db, second_batch, user_id)
+
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        assert detail.title == "Sałatka z kurczakiem"
+        assert detail.meal_type == "kolacja"
+
+    def test_food_correlation_resync_with_missing_metadata_keeps_existing_title(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """A resync payload that omits title/mealType (partial metadata) must not
+        clobber the previously stored, non-null values with null."""
+        user = UserFactory()
+        user_id = str(user.id)
+        first_batch = self._build_payload([self._correlation_record("MEAL-1")])
+
+        second_record = self._correlation_record("MEAL-1")
+        second_record["metadata"] = {}
+        second_batch = self._build_payload([second_record])
+
+        import_service.load_data(db, first_batch, user_id)
+        import_service.load_data(db, second_batch, user_id)
+
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        assert detail.title == "Kurczak z ryżem"
+        assert detail.meal_type == "obiad"

@@ -493,8 +493,6 @@ class ImportService:
             meals_saved = len(inserted_meal_ids)
 
             details_to_insert = [meal_details_by_id[m] for m in inserted_meal_ids if m in meal_details_by_id]
-            if details_to_insert:
-                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="meal")
 
             for record in meal_records:
                 if not record.external_id:
@@ -508,8 +506,15 @@ class ImportService:
                 existing = self.event_record_service.crud.get_by_external_id(
                     db_session, user_uuid, record.external_id, provider=record.provider
                 )
-                if existing:
-                    correlation_id_map[record.external_id] = existing.id
+                if not existing:
+                    continue
+                correlation_id_map[record.external_id] = existing.id
+                detail = meal_details_by_id.get(record.id)
+                if detail:
+                    details_to_insert.append(detail.model_copy(update={"record_id": existing.id}))
+
+            if details_to_insert:
+                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="meal")
 
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))

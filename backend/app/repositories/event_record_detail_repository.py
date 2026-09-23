@@ -2,7 +2,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Table, update
+from sqlalchemy import Table, func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
@@ -125,7 +125,9 @@ class EventRecordDetailRepository(
         # must not be reset to now() when an existing row is re-synced.
         immutable_on_upsert = {"record_id", "created_at"}
         update_dict = {
-            col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name not in immutable_on_upsert
+            col_name: func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
+            for col_name in valid_columns
+            if col_name not in immutable_on_upsert
         }
         child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
         db_session.execute(child_stmt)
