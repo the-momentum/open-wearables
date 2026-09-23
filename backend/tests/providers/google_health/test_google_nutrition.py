@@ -144,6 +144,24 @@ class TestGrouping:
 
         assert {g.device_model for g in groups} == {"Pixel Fold", "Pixel Watch"}
 
+    def test_items_with_different_meal_types_at_the_same_start_stay_separate_meals(
+        self, nutrition: GoogleHealthApiNutrition
+    ) -> None:
+        """A food logger can record two distinct meals (e.g. breakfast and a snack) with the
+        same source and start instant - their nutrients must not be summed into one meal."""
+        lunch = _point("a", mealType="LUNCH", foodDisplayName="Chicken", energy={"kcal": 165})
+        snack = _point("b", mealType="SNACK", foodDisplayName="Chips", energy={"kcal": 150})
+
+        groups = nutrition._group_entries([lunch, snack], *WINDOW)
+
+        assert len(groups) == 2
+        by_type = {g.meal_type: g for g in groups}
+        assert by_type.keys() == {"lunch", "snack"}
+        assert by_type["lunch"].title == "Chicken"
+        assert by_type["lunch"].nutrients[SeriesType.dietary_energy_consumed] == Decimal("165")
+        assert by_type["snack"].title == "Chips"
+        assert by_type["snack"].nutrients[SeriesType.dietary_energy_consumed] == Decimal("150")
+
     def test_meal_end_is_the_latest_item_end(self, nutrition: GoogleHealthApiNutrition) -> None:
         longer = _point("b", interval=_interval(START, minutes=45))
 

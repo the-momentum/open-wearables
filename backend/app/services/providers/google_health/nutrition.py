@@ -7,8 +7,8 @@ model the SDK/HealthKit meal-correlation import path already uses (see
 ``app/services/sdk/import_service.py``). Composed into GoogleHealth247Data.load_and_save_all.
 
 Google emits one DataPoint per *food item* (``foodDisplayName``), and food loggers give
-every item of a meal the same interval. Items sharing a source and start time are folded
-into one meal here - titles joined, nutrients summed - because both ``EventRecord``
+every item of a meal the same interval and meal type. Items sharing a source, start time and
+meal type are folded into one meal here - titles joined, nutrients summed - because both ``EventRecord``
 (unique on data source + interval) and ``DataPointSeries`` (unique on data source +
 series + time) can hold only one row per such key; stored one-by-one, later items would
 silently overwrite earlier ones.
@@ -189,8 +189,8 @@ class GoogleHealthApiNutrition:
         return points
 
     def _group_entries(self, points: list[dict[str, Any]], start_time: datetime, end_time: datetime) -> list[MealGroup]:
-        """Keep entries starting in the window and fold same-source, same-start items into one meal."""
-        groups: dict[tuple[str | None, datetime], MealGroup] = {}
+        """Keep entries starting in the window and fold same-source, same-start, same-type items into one meal."""
+        groups: dict[tuple[str | None, datetime, str | None], MealGroup] = {}
         # Sorted by resource name so which item lends the meal its external_id/offset is stable across syncs.
         for point in sorted(points, key=lambda p: str(p.get("name") or "")):
             nutrition = point.get("nutritionLog")
@@ -201,8 +201,10 @@ class GoogleHealthApiNutrition:
             if start is None or end is None or not (start_time <= start < end_time):
                 continue
             source_name, device_model = extract_source(point.get("dataSource"))
+            meal_type = (nutrition.get("mealType") or "").lower() or None
 
-            group = groups.get((device_model, start))
+            key = (device_model, start, meal_type)
+            group = groups.get(key)
             if group is None:
                 group = MealGroup(
                     source_name=source_name,
@@ -211,15 +213,14 @@ class GoogleHealthApiNutrition:
                     end=end,
                     zone_offset=zone_offset_from(interval.get("startUtcOffset")),
                     external_id=point.get("name"),
+                    meal_type=meal_type,
                 )
-                groups[(device_model, start)] = group
+                groups[key] = group
 
             group.end = max(group.end, end)
             title = nutrition.get("foodDisplayName")
             if title and title not in group.titles:
                 group.titles.append(title)
-            if group.meal_type is None:
-                group.meal_type = (nutrition.get("mealType") or "").lower() or None
             for series_type, value in self._nutrients(nutrition).items():
                 group.nutrients[series_type] = group.nutrients.get(series_type, Decimal(0)) + value
         return list(groups.values())
