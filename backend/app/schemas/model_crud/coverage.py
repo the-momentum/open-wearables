@@ -33,6 +33,8 @@ class MenstrualCycleField(BaseModel):
 
 
 class MealField(BaseModel):
+    """Coverage entry for a meal-detail field, and which providers report it."""
+
     code: str
     providers: list[str]
 
