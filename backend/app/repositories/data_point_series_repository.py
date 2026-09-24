@@ -1,4 +1,5 @@
 import contextlib
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import LiteralString, NamedTuple
@@ -913,6 +914,35 @@ class DataPointSeriesRepository(
 
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
+
+    def get_by_event_record_ids(
+        self,
+        db_session: DbSession,
+        event_record_ids: list[UUID],
+    ) -> list[DataPointSeries]:
+        """Fetch every sample correlated to one of the given EventRecords (e.g. a meal's nutrients)."""
+        if not event_record_ids:
+            return []
+        return db_session.query(self.model).filter(self.model.event_record_id.in_(event_record_ids)).all()
+
+    def delete_stale_for_event_record(
+        self,
+        db_session: DbSession,
+        event_record_id: UUID,
+        keep: Iterable[SeriesType],
+    ) -> int:
+        """Drop the samples linked to ``event_record_id`` whose series is not in ``keep``.
+
+        An upsert only touches the series present in the latest payload, so a nutrient the
+        provider stopped reporting for a meal would otherwise stay attached. Flushes only.
+        """
+        keep_ids = [get_series_type_id(t) for t in keep]
+        query = db_session.query(self.model).filter(self.model.event_record_id == event_record_id)
+        if keep_ids:
+            query = query.filter(self.model.series_type_definition_id.not_in(keep_ids))
+        deleted = query.delete(synchronize_session=False)
+        db_session.flush()
+        return deleted
 
     def get_daily_activity_aggregates(
         self,

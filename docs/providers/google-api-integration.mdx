@@ -40,6 +40,7 @@ The Google Health API is an **aggregation layer**: it surfaces data from *every*
 | Weight, body fat, core body temperature, blood glucose | 24/7 metrics |
 | Workouts (Exercise sessions) | Sessions |
 | Sleep (with stages) | Sessions |
+| Meals (nutrition-log: energy, macros, sodium/potassium/cholesterol, meal type, food name) | Sessions |
 
 ### Data delivery
 
@@ -436,7 +437,7 @@ curl -X POST \
   -d '{
     "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google_health/webhooks",
     "subscriberConfigs": [
-      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
+      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise", "nutrition-log"], "subscriptionCreatePolicy": "AUTOMATIC"}
     ],
     "endpointAuthorization": {"secret": "Bearer YOUR_GOOGLE_WEBHOOK_SECRET"}
   }'
@@ -461,8 +462,8 @@ curl -X DELETE \
 `dataTypes` above is an abbreviated example — use the set the app supports for webhooks
 (steps, distance, hydration-log, heart-rate, run-vo2-max, daily-resting-heart-rate,
 heart-rate-variability, daily-heart-rate-variability, weight, body-fat, blood-glucose,
-daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise). Registering a data type
-the app doesn't handle just means its notifications are ignored.
+daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise, nutrition-log). Registering
+a data type the app doesn't handle just means its notifications are ignored.
 </Note>
 
 ## Next Steps
