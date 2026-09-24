@@ -139,6 +139,83 @@ class TestInsideTheSyncSavepoint:
         assert [type(c.args[0]) for c in capture.call_args_list] == [RuntimeError]
         assert [m.meal_detail.title for m in _meals(db)] == ["Good", "Later"]
 
+    def test_meal_webhook_waits_for_the_real_commit_not_the_per_meal_savepoint(self, db: Session) -> None:
+        """Each meal gets its own begin_nested() savepoint inside load_and_save. SAVEPOINT
+        release dispatches after_commit just like a real commit does (SessionTransaction.commit()
+        fires it whenever self.nested or self._parent is None), so meal.created must not fire
+        the moment a per-meal savepoint releases - only once the sync's real commit lands."""
+        user = UserFactory()
+        _existing_source(user)
+        db.commit()
+        real = event_record_service.create_or_update_meal
+        call_order: list[str] = []
+
+        def tracking(db_: Session, record, detail, **kwargs):  # noqa: ANN001, ANN202, ANN003
+            call_order.append(f"save:{detail.title}")
+            return real(db_, record, detail, **kwargs)
+
+        nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
+        points = [_point("Lunch"), _point("Snack", START + timedelta(hours=2))]
+        with (
+            patch(
+                "app.services.providers.google_health.nutrition.make_authenticated_request",
+                return_value={"dataPoints": points},
+            ),
+            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch(
+                "app.services.event_record_service.on_meal_created",
+                side_effect=lambda **kw: call_order.append(f"webhook:{kw['title']}"),
+            ) as mock_meal,
+            patch.object(event_record_service, "create_or_update_meal", side_effect=tracking),
+        ):
+            with db.begin_nested():
+                count = nutrition.load_and_save(db, user.id, *WINDOW)
+            assert mock_meal.call_count == 0  # per-meal savepoints already released, real commit hasn't
+            db.commit()
+
+        assert count == 2
+        assert call_order == ["save:Lunch", "save:Snack", "webhook:Lunch", "webhook:Snack"]
+
+    def test_failed_meal_does_not_leave_a_stray_webhook_for_a_later_commit(self, db: Session) -> None:
+        """meal.created for 'Bad' gets scheduled before its savepoint rolls back. That
+        listener must be dropped with the savepoint, not linger and fire on the next
+        meal's savepoint (or the sync's real commit) as if 'Bad' had been saved."""
+        user = UserFactory()
+        _existing_source(user)
+        db.commit()
+        real = event_record_service.create_or_update_meal
+
+        def flaky(db_: Session, record, detail, **kwargs):  # noqa: ANN001, ANN202, ANN003
+            result = real(db_, record, detail, **kwargs)  # schedules meal.created before failing
+            if detail.title == "Bad":
+                raise RuntimeError("boom")
+            return result
+
+        nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
+        points = [
+            _point("Good"),
+            _point("Bad", START + timedelta(hours=1)),
+            _point("Later", START + timedelta(hours=2)),
+        ]
+        with (
+            patch(
+                "app.services.providers.google_health.nutrition.make_authenticated_request",
+                return_value={"dataPoints": points},
+            ),
+            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
+            patch("app.services.providers.google_health.nutrition.log_and_capture_error"),
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+            patch.object(event_record_service, "create_or_update_meal", side_effect=flaky),
+        ):
+            with db.begin_nested():
+                count = nutrition.load_and_save(db, user.id, *WINDOW)
+            db.commit()
+
+        assert count == 2
+        assert [c.kwargs["title"] for c in mock_meal.call_args_list] == ["Good", "Later"]
+
 
 class TestResync:
     def test_nutrients_google_stopped_reporting_are_removed(self, db: Session) -> None:
