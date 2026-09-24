@@ -1169,7 +1169,8 @@ class EventRecordService(
             series_type = id_to_series_type.get(sample.series_type_definition_id)
             if series_type is None or sample.event_record_id is None:
                 continue
-            result.setdefault(sample.event_record_id, {})[series_type] = sample.value
+            bucket = result.setdefault(sample.event_record_id, {})
+            bucket[series_type] = bucket.get(series_type, Decimal("0")) + sample.value
         return result
 
     def delete_event_record(

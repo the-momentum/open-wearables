@@ -15,8 +15,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, HealthScore
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.models import DataSource, EventRecord, HealthScore, SeriesTypeDefinition
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -26,7 +26,13 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.event_record_service import event_record_service
-from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
+from tests.factories import (
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    SleepDetailsFactory,
+    UserFactory,
+)
 
 
 class TestEventRecordServiceCreateDetail:
@@ -472,6 +478,52 @@ class TestCreateOrUpdateMeal:
 
         assert inserted is True
         assert saved.data_source_id == watch.id
+
+
+class TestGetMealsNutrients:
+    """get_meals sums the correlated DataPointSeries samples per meal instead of overwriting them."""
+
+    START = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+
+    def test_two_samples_of_the_same_nutrient_are_summed_not_overwritten(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="meal",
+            source_name="Google Health",
+            source=data_source.source,
+            user_id=data_source.user_id,
+            data_source_id=data_source.id,
+            start_datetime=self.START,
+            end_datetime=self.START + timedelta(minutes=30),
+            duration_seconds=30 * 60,
+        )
+        event_record_service.create_or_update_meal(
+            db, record, MealDetailCreate(record_id=record.id, title="Chicken, then rice", meal_type="lunch")
+        )
+        db.commit()
+
+        protein_type = db.get(SeriesTypeDefinition, get_series_type_id(SeriesType.dietary_protein))
+        DataPointSeriesFactory(
+            data_source=data_source,
+            series_type=protein_type,
+            event_record_id=record.id,
+            recorded_at=self.START,
+            value=Decimal("10"),
+        )
+        DataPointSeriesFactory(
+            data_source=data_source,
+            series_type=protein_type,
+            event_record_id=record.id,
+            recorded_at=self.START + timedelta(minutes=10),
+            value=Decimal("21"),
+        )
+        db.commit()
+
+        response = event_record_service.get_meals(db, data_source.user_id, EventRecordQueryParams())
+
+        assert len(response.data) == 1
+        assert response.data[0].macros.protein_g == 31.0
 
 
 class TestCreateOrMergeSleep:
