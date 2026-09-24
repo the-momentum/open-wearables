@@ -33,6 +33,8 @@ class MenstrualCycleField(BaseModel):
 
 
 class MealField(BaseModel):
+    """A meal/nutrition field and the providers that report it, for the /meta/coverage response."""
+
     code: str
     providers: list[str]
 

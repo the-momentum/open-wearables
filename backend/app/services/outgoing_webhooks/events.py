@@ -118,6 +118,7 @@ def on_meal_created(
     macros: dict[str, float | None] | None = None,
     water_ml: float | None = None,
 ) -> None:
+    """Dispatch the meal.created webhook for a newly saved meal."""
     _dispatch(
         WebhookEventType.MEAL_CREATED,
         {

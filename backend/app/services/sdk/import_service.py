@@ -75,6 +75,8 @@ class InvalidRecord(TypedDict):
 
 
 class LoadDataResult(TypedDict):
+    """Per-batch counters returned by `ImportService.load_data`, surfaced in `UploadDataResponse`."""
+
     workouts_saved: int
     meals_saved: int  # meal correlations inserted
     records_saved: int  # samples submitted

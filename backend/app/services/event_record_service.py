@@ -754,6 +754,7 @@ class EventRecordService(
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_meal_webhook(_session: DbSession) -> None:
+            """Fire meal.created now that the meal and its nutrient samples are committed."""
             on_meal_created(
                 record_id=record_id,
                 user_id=record.user_id,
@@ -832,6 +833,7 @@ class EventRecordService(
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
+            """Fire one webhook per detail now that the whole batch is committed."""
             for record, data_source, detail, nutrients in dispatches:
                 self._emit_event_record_webhook(record, data_source, detail, nutrients)
 
@@ -1183,6 +1185,12 @@ class EventRecordService(
         user_id: UUID,
         params: EventRecordQueryParams,
     ) -> PaginatedResponse[Meal]:
+        """List meals for the /events/meals endpoint, with nutrient totals joined in separately.
+
+        Nutrients live in DataPointSeries, not on MealDetails, so they are fetched in one
+        extra query via `_nutrients_by_meal` and merged into each `Meal` after pagination,
+        rather than joined into the paginated query itself.
+        """
         params.category = "meal"
         records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
 
