@@ -107,7 +107,11 @@ class DataSourceRepository(
             result = self.create(db_session, create_payload)
             assert result is not None
             return result
-        creation = self.model(**create_payload.model_dump())
+        return self.create_and_flush(db_session, create_payload)
+
+    def create_and_flush(self, db_session: DbSession, creator: DataSourceCreate) -> DataSource:
+        """Like create() but flushes instead of committing; caller is responsible for the commit."""
+        creation = self.model(**creator.model_dump())
         db_session.add(creation)
         db_session.flush()
         return creation
