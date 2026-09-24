@@ -172,6 +172,85 @@ class SDKMetricType(StrEnum):
     # Nike Fuel (deprecated but included for backwards compatibility)
     NIKE_FUEL = "HKQuantityTypeIdentifierNikeFuel"
 
+    # Dietary / Nutrition
+    APPLE_DIETARY_ENERGY_CONSUMED = "HKQuantityTypeIdentifierDietaryEnergyConsumed"
+    ANDROID_DIETARY_ENERGY_CONSUMED = "ENERGY_TOTAL"
+    APPLE_DIETARY_CARBOHYDRATES = "HKQuantityTypeIdentifierDietaryCarbohydrates"
+    ANDROID_DIETARY_CARBOHYDRATES = "TOTAL_CARBOHYDRATE_TOTAL"
+    APPLE_DIETARY_FIBER = "HKQuantityTypeIdentifierDietaryFiber"
+    ANDROID_DIETARY_FIBER = "DIETARY_FIBER_TOTAL"
+    APPLE_DIETARY_SUGAR = "HKQuantityTypeIdentifierDietarySugar"
+    ANDROID_DIETARY_SUGAR = "SUGAR_TOTAL"
+    APPLE_DIETARY_FAT_TOTAL = "HKQuantityTypeIdentifierDietaryFatTotal"
+    ANDROID_DIETARY_FAT_TOTAL = "TOTAL_FAT_TOTAL"
+    APPLE_DIETARY_FAT_SATURATED = "HKQuantityTypeIdentifierDietaryFatSaturated"
+    ANDROID_DIETARY_FAT_SATURATED = "SATURATED_FAT_TOTAL"
+    APPLE_DIETARY_FAT_MONOUNSATURATED = "HKQuantityTypeIdentifierDietaryFatMonounsaturated"
+    ANDROID_DIETARY_FAT_MONOUNSATURATED = "MONOUNSATURATED_FAT_TOTAL"
+    APPLE_DIETARY_FAT_POLYUNSATURATED = "HKQuantityTypeIdentifierDietaryFatPolyunsaturated"
+    ANDROID_DIETARY_FAT_POLYUNSATURATED = "POLYUNSATURATED_FAT_TOTAL"
+    APPLE_DIETARY_CHOLESTEROL = "HKQuantityTypeIdentifierDietaryCholesterol"
+    ANDROID_DIETARY_CHOLESTEROL = "CHOLESTEROL_TOTAL"
+    APPLE_DIETARY_PROTEIN = "HKQuantityTypeIdentifierDietaryProtein"
+    ANDROID_DIETARY_PROTEIN = "PROTEIN_TOTAL"
+    APPLE_DIETARY_SODIUM = "HKQuantityTypeIdentifierDietarySodium"
+    ANDROID_DIETARY_SODIUM = "SODIUM_TOTAL"
+    APPLE_DIETARY_POTASSIUM = "HKQuantityTypeIdentifierDietaryPotassium"
+    ANDROID_DIETARY_POTASSIUM = "POTASSIUM_TOTAL"
+    APPLE_DIETARY_CALCIUM = "HKQuantityTypeIdentifierDietaryCalcium"
+    ANDROID_DIETARY_CALCIUM = "CALCIUM_TOTAL"
+    APPLE_DIETARY_IRON = "HKQuantityTypeIdentifierDietaryIron"
+    ANDROID_DIETARY_IRON = "IRON_TOTAL"
+    APPLE_DIETARY_MAGNESIUM = "HKQuantityTypeIdentifierDietaryMagnesium"
+    ANDROID_DIETARY_MAGNESIUM = "MAGNESIUM_TOTAL"
+    APPLE_DIETARY_PHOSPHORUS = "HKQuantityTypeIdentifierDietaryPhosphorus"
+    ANDROID_DIETARY_PHOSPHORUS = "PHOSPHORUS_TOTAL"
+    APPLE_DIETARY_ZINC = "HKQuantityTypeIdentifierDietaryZinc"
+    ANDROID_DIETARY_ZINC = "ZINC_TOTAL"
+    APPLE_DIETARY_COPPER = "HKQuantityTypeIdentifierDietaryCopper"
+    ANDROID_DIETARY_COPPER = "COPPER_TOTAL"
+    APPLE_DIETARY_MANGANESE = "HKQuantityTypeIdentifierDietaryManganese"
+    ANDROID_DIETARY_MANGANESE = "MANGANESE_TOTAL"
+    APPLE_DIETARY_SELENIUM = "HKQuantityTypeIdentifierDietarySelenium"
+    ANDROID_DIETARY_SELENIUM = "SELENIUM_TOTAL"
+    APPLE_DIETARY_CHROMIUM = "HKQuantityTypeIdentifierDietaryChromium"
+    ANDROID_DIETARY_CHROMIUM = "CHROMIUM_TOTAL"
+    APPLE_DIETARY_MOLYBDENUM = "HKQuantityTypeIdentifierDietaryMolybdenum"
+    ANDROID_DIETARY_MOLYBDENUM = "MOLYBDENUM_TOTAL"
+    APPLE_DIETARY_IODINE = "HKQuantityTypeIdentifierDietaryIodine"
+    ANDROID_DIETARY_IODINE = "IODINE_TOTAL"
+    APPLE_DIETARY_CHLORIDE = "HKQuantityTypeIdentifierDietaryChloride"
+    ANDROID_DIETARY_CHLORIDE = "CHLORIDE_TOTAL"
+    APPLE_DIETARY_VITAMIN_A = "HKQuantityTypeIdentifierDietaryVitaminA"
+    ANDROID_DIETARY_VITAMIN_A = "VITAMIN_A_TOTAL"
+    APPLE_DIETARY_VITAMIN_B6 = "HKQuantityTypeIdentifierDietaryVitaminB6"
+    ANDROID_DIETARY_VITAMIN_B6 = "VITAMIN_B6_TOTAL"
+    APPLE_DIETARY_VITAMIN_B12 = "HKQuantityTypeIdentifierDietaryVitaminB12"
+    ANDROID_DIETARY_VITAMIN_B12 = "VITAMIN_B12_TOTAL"
+    APPLE_DIETARY_VITAMIN_C = "HKQuantityTypeIdentifierDietaryVitaminC"
+    ANDROID_DIETARY_VITAMIN_C = "VITAMIN_C_TOTAL"
+    APPLE_DIETARY_VITAMIN_D = "HKQuantityTypeIdentifierDietaryVitaminD"
+    ANDROID_DIETARY_VITAMIN_D = "VITAMIN_D_TOTAL"
+    APPLE_DIETARY_VITAMIN_E = "HKQuantityTypeIdentifierDietaryVitaminE"
+    ANDROID_DIETARY_VITAMIN_E = "VITAMIN_E_TOTAL"
+    APPLE_DIETARY_VITAMIN_K = "HKQuantityTypeIdentifierDietaryVitaminK"
+    ANDROID_DIETARY_VITAMIN_K = "VITAMIN_K_TOTAL"
+    APPLE_DIETARY_THIAMIN = "HKQuantityTypeIdentifierDietaryThiamin"
+    ANDROID_DIETARY_THIAMIN = "THIAMIN_TOTAL"
+    APPLE_DIETARY_RIBOFLAVIN = "HKQuantityTypeIdentifierDietaryRiboflavin"
+    ANDROID_DIETARY_RIBOFLAVIN = "RIBOFLAVIN_TOTAL"
+    APPLE_DIETARY_NIACIN = "HKQuantityTypeIdentifierDietaryNiacin"
+    ANDROID_DIETARY_NIACIN = "NIACIN_TOTAL"
+    APPLE_DIETARY_FOLATE = "HKQuantityTypeIdentifierDietaryFolate"
+    ANDROID_DIETARY_FOLATE = "FOLATE_TOTAL"
+    APPLE_DIETARY_PANTOTHENIC_ACID = "HKQuantityTypeIdentifierDietaryPantothenicAcid"
+    ANDROID_DIETARY_PANTOTHENIC_ACID = "PANTOTHENIC_ACID_TOTAL"
+    APPLE_DIETARY_BIOTIN = "HKQuantityTypeIdentifierDietaryBiotin"
+    ANDROID_DIETARY_BIOTIN = "BIOTIN_TOTAL"
+    APPLE_DIETARY_CAFFEINE = "HKQuantityTypeIdentifierDietaryCaffeine"
+    ANDROID_DIETARY_CAFFEINE = "CAFFEINE_TOTAL"
+    APPLE_DIETARY_WATER = "HKQuantityTypeIdentifierDietaryWater"
+
 
 METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Heart & Cardiovascular
@@ -308,6 +387,84 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.INSULIN_DELIVERY: SeriesType.insulin_delivery,
     # Nike Fuel
     SDKMetricType.NIKE_FUEL: SeriesType.distance_other,
+    # Dietary / Nutrition
+    SDKMetricType.APPLE_DIETARY_ENERGY_CONSUMED: SeriesType.dietary_energy_consumed,
+    SDKMetricType.ANDROID_DIETARY_ENERGY_CONSUMED: SeriesType.dietary_energy_consumed,
+    SDKMetricType.APPLE_DIETARY_CARBOHYDRATES: SeriesType.dietary_carbohydrates,
+    SDKMetricType.ANDROID_DIETARY_CARBOHYDRATES: SeriesType.dietary_carbohydrates,
+    SDKMetricType.APPLE_DIETARY_FIBER: SeriesType.dietary_fiber,
+    SDKMetricType.ANDROID_DIETARY_FIBER: SeriesType.dietary_fiber,
+    SDKMetricType.APPLE_DIETARY_SUGAR: SeriesType.dietary_sugar,
+    SDKMetricType.ANDROID_DIETARY_SUGAR: SeriesType.dietary_sugar,
+    SDKMetricType.APPLE_DIETARY_FAT_TOTAL: SeriesType.dietary_fat_total,
+    SDKMetricType.ANDROID_DIETARY_FAT_TOTAL: SeriesType.dietary_fat_total,
+    SDKMetricType.APPLE_DIETARY_FAT_SATURATED: SeriesType.dietary_fat_saturated,
+    SDKMetricType.ANDROID_DIETARY_FAT_SATURATED: SeriesType.dietary_fat_saturated,
+    SDKMetricType.APPLE_DIETARY_FAT_MONOUNSATURATED: SeriesType.dietary_fat_monounsaturated,
+    SDKMetricType.ANDROID_DIETARY_FAT_MONOUNSATURATED: SeriesType.dietary_fat_monounsaturated,
+    SDKMetricType.APPLE_DIETARY_FAT_POLYUNSATURATED: SeriesType.dietary_fat_polyunsaturated,
+    SDKMetricType.ANDROID_DIETARY_FAT_POLYUNSATURATED: SeriesType.dietary_fat_polyunsaturated,
+    SDKMetricType.APPLE_DIETARY_CHOLESTEROL: SeriesType.dietary_cholesterol,
+    SDKMetricType.ANDROID_DIETARY_CHOLESTEROL: SeriesType.dietary_cholesterol,
+    SDKMetricType.APPLE_DIETARY_PROTEIN: SeriesType.dietary_protein,
+    SDKMetricType.ANDROID_DIETARY_PROTEIN: SeriesType.dietary_protein,
+    SDKMetricType.APPLE_DIETARY_SODIUM: SeriesType.dietary_sodium,
+    SDKMetricType.ANDROID_DIETARY_SODIUM: SeriesType.dietary_sodium,
+    SDKMetricType.APPLE_DIETARY_POTASSIUM: SeriesType.dietary_potassium,
+    SDKMetricType.ANDROID_DIETARY_POTASSIUM: SeriesType.dietary_potassium,
+    SDKMetricType.APPLE_DIETARY_CALCIUM: SeriesType.dietary_calcium,
+    SDKMetricType.ANDROID_DIETARY_CALCIUM: SeriesType.dietary_calcium,
+    SDKMetricType.APPLE_DIETARY_IRON: SeriesType.dietary_iron,
+    SDKMetricType.ANDROID_DIETARY_IRON: SeriesType.dietary_iron,
+    SDKMetricType.APPLE_DIETARY_MAGNESIUM: SeriesType.dietary_magnesium,
+    SDKMetricType.ANDROID_DIETARY_MAGNESIUM: SeriesType.dietary_magnesium,
+    SDKMetricType.APPLE_DIETARY_PHOSPHORUS: SeriesType.dietary_phosphorus,
+    SDKMetricType.ANDROID_DIETARY_PHOSPHORUS: SeriesType.dietary_phosphorus,
+    SDKMetricType.APPLE_DIETARY_ZINC: SeriesType.dietary_zinc,
+    SDKMetricType.ANDROID_DIETARY_ZINC: SeriesType.dietary_zinc,
+    SDKMetricType.APPLE_DIETARY_COPPER: SeriesType.dietary_copper,
+    SDKMetricType.ANDROID_DIETARY_COPPER: SeriesType.dietary_copper,
+    SDKMetricType.APPLE_DIETARY_MANGANESE: SeriesType.dietary_manganese,
+    SDKMetricType.ANDROID_DIETARY_MANGANESE: SeriesType.dietary_manganese,
+    SDKMetricType.APPLE_DIETARY_SELENIUM: SeriesType.dietary_selenium,
+    SDKMetricType.ANDROID_DIETARY_SELENIUM: SeriesType.dietary_selenium,
+    SDKMetricType.APPLE_DIETARY_CHROMIUM: SeriesType.dietary_chromium,
+    SDKMetricType.ANDROID_DIETARY_CHROMIUM: SeriesType.dietary_chromium,
+    SDKMetricType.APPLE_DIETARY_MOLYBDENUM: SeriesType.dietary_molybdenum,
+    SDKMetricType.ANDROID_DIETARY_MOLYBDENUM: SeriesType.dietary_molybdenum,
+    SDKMetricType.APPLE_DIETARY_IODINE: SeriesType.dietary_iodine,
+    SDKMetricType.ANDROID_DIETARY_IODINE: SeriesType.dietary_iodine,
+    SDKMetricType.APPLE_DIETARY_CHLORIDE: SeriesType.dietary_chloride,
+    SDKMetricType.ANDROID_DIETARY_CHLORIDE: SeriesType.dietary_chloride,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_A: SeriesType.dietary_vitamin_a,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_A: SeriesType.dietary_vitamin_a,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_B6: SeriesType.dietary_vitamin_b6,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_B6: SeriesType.dietary_vitamin_b6,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_B12: SeriesType.dietary_vitamin_b12,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_B12: SeriesType.dietary_vitamin_b12,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_C: SeriesType.dietary_vitamin_c,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_C: SeriesType.dietary_vitamin_c,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_D: SeriesType.dietary_vitamin_d,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_D: SeriesType.dietary_vitamin_d,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_E: SeriesType.dietary_vitamin_e,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_E: SeriesType.dietary_vitamin_e,
+    SDKMetricType.APPLE_DIETARY_VITAMIN_K: SeriesType.dietary_vitamin_k,
+    SDKMetricType.ANDROID_DIETARY_VITAMIN_K: SeriesType.dietary_vitamin_k,
+    SDKMetricType.APPLE_DIETARY_THIAMIN: SeriesType.dietary_thiamin,
+    SDKMetricType.ANDROID_DIETARY_THIAMIN: SeriesType.dietary_thiamin,
+    SDKMetricType.APPLE_DIETARY_RIBOFLAVIN: SeriesType.dietary_riboflavin,
+    SDKMetricType.ANDROID_DIETARY_RIBOFLAVIN: SeriesType.dietary_riboflavin,
+    SDKMetricType.APPLE_DIETARY_NIACIN: SeriesType.dietary_niacin,
+    SDKMetricType.ANDROID_DIETARY_NIACIN: SeriesType.dietary_niacin,
+    SDKMetricType.APPLE_DIETARY_FOLATE: SeriesType.dietary_folate,
+    SDKMetricType.ANDROID_DIETARY_FOLATE: SeriesType.dietary_folate,
+    SDKMetricType.APPLE_DIETARY_PANTOTHENIC_ACID: SeriesType.dietary_pantothenic_acid,
+    SDKMetricType.ANDROID_DIETARY_PANTOTHENIC_ACID: SeriesType.dietary_pantothenic_acid,
+    SDKMetricType.APPLE_DIETARY_BIOTIN: SeriesType.dietary_biotin,
+    SDKMetricType.ANDROID_DIETARY_BIOTIN: SeriesType.dietary_biotin,
+    SDKMetricType.APPLE_DIETARY_CAFFEINE: SeriesType.dietary_caffeine,
+    SDKMetricType.ANDROID_DIETARY_CAFFEINE: SeriesType.dietary_caffeine,
+    SDKMetricType.APPLE_DIETARY_WATER: SeriesType.hydration,
 }
 
 

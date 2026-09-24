@@ -20,7 +20,7 @@ from app.models import DataPointSeries, DataSource
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
-from tests.factories import DataSourceFactory, UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 
 
 class TestDataPointSeriesRepository:
@@ -772,6 +772,75 @@ class TestDataPointSeriesRepository:
         # Assert
         stored = db.query(DataPointSeries.value).filter(DataPointSeries.recorded_at == ts).scalar()
         assert stored == 2000
+
+    def test_bulk_create_resync_without_correlation_keeps_existing_event_link(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """A resync that arrives without a resolved meal correlation must not sever a
+        link a previous batch already established (see COALESCE in the merge SET).
+        """
+        user = UserFactory()
+        ts = datetime(2099, 1, 4, tzinfo=timezone.utc)
+        meal = EventRecordFactory(category="meal")
+
+        def sample(value: int, event_record_id: UUID | None) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="apple",
+                recorded_at=ts,
+                value=value,
+                series_type=SeriesType.hydration,
+                event_record_id=event_record_id,
+                data_source_id=None,
+            )
+
+        # First batch: nutrient sample arrives already linked to its meal.
+        series_repo.bulk_create(db, [sample(500, meal.id)])
+        db.commit()
+
+        # Retry/resync of the same instant arrives without a resolved parentId
+        # (e.g. the meal correlation wasn't available in this batch) - the value
+        # legitimately changes, but the link must survive.
+        series_repo.bulk_create(db, [sample(600, None)])
+        db.commit()
+
+        stored = db.query(DataPointSeries).filter(DataPointSeries.recorded_at == ts).one()
+        assert stored.value == 600
+        assert stored.event_record_id == meal.id
+
+    def test_bulk_create_loose_sample_can_still_be_promoted_to_linked(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """A loose sample must still gain its meal link once a later batch resolves it -
+        the COALESCE guard must not make the link one-way in the wrong direction.
+        """
+        user = UserFactory()
+        ts = datetime(2099, 1, 5, tzinfo=timezone.utc)
+        meal = EventRecordFactory(category="meal")
+
+        def sample(event_record_id: UUID | None) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="apple",
+                recorded_at=ts,
+                value=500,
+                series_type=SeriesType.hydration,
+                event_record_id=event_record_id,
+                data_source_id=None,
+            )
+
+        # First batch: correlation not resolved yet -> loose sample.
+        series_repo.bulk_create(db, [sample(None)])
+        db.commit()
+
+        # Later batch: the meal correlation resolves -> the sample gets linked.
+        series_repo.bulk_create(db, [sample(meal.id)])
+        db.commit()
+
+        stored = db.query(DataPointSeries).filter(DataPointSeries.recorded_at == ts).one()
+        assert stored.event_record_id == meal.id
 
     def test_bulk_create_null_fields_round_trip_through_copy(
         self, db: Session, series_repo: DataPointSeriesRepository

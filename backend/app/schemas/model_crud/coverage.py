@@ -32,6 +32,13 @@ class MenstrualCycleField(BaseModel):
     providers: list[str]
 
 
+class MealField(BaseModel):
+    """Coverage entry for a meal-detail field, and which providers report it."""
+
+    code: str
+    providers: list[str]
+
+
 class HealthScore(BaseModel):
     code: str
     description: str = Field(default="", description=_DESCRIPTION_DOC)
@@ -44,4 +51,5 @@ class CoverageResponse(BaseModel):
     workout_fields: list[WorkoutField]
     sleep_fields: list[SleepField]
     menstrual_cycle_fields: list[MenstrualCycleField]
+    meal_fields: list[MealField]
     health_scores: list[HealthScore]

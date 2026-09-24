@@ -15,6 +15,7 @@ from app.schemas.enums.series_types import (
 from app.schemas.model_crud.coverage import (
     CoverageResponse,
     HealthScore,
+    MealField,
     MenstrualCycleField,
     SleepField,
     TimeseriesCategory,
@@ -100,6 +101,14 @@ def _build_coverage() -> CoverageResponse:
         for f, prov_list in sorted(menstrual_to_providers.items())
     ]
 
+    # --- Meal fields ---
+    meal_to_providers: dict[str, list[str]] = {}
+    for provider, cov in coverage_by_provider.items():
+        for f in cov.meal_fields:
+            meal_to_providers.setdefault(f, []).append(provider)
+
+    meal_fields = [MealField(code=f, providers=sorted(prov_list)) for f, prov_list in sorted(meal_to_providers.items())]
+
     # --- Health scores ---
     score_to_providers: dict[str, list[str]] = {}
     for provider, cov in coverage_by_provider.items():
@@ -121,6 +130,7 @@ def _build_coverage() -> CoverageResponse:
         workout_fields=workout_fields,
         sleep_fields=sleep_fields,
         menstrual_cycle_fields=menstrual_cycle_fields,
+        meal_fields=meal_fields,
         health_scores=health_scores,
     )
 
