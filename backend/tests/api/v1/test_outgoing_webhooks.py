@@ -569,6 +569,23 @@ class TestSvixDeliveryContent:
         assert svix.list_message_attempts.call_args.args[2].with_content is True
 
 
+class TestSvixPayloadRetention:
+    """Svix keeps payloads for 90 days unless told otherwise; payloads are health data."""
+
+    def test_send_sets_payload_retention(self, mock_client: MagicMock) -> None:
+        with patch.object(svix_service.settings, "outgoing_webhook_payload_retention_days", 12):
+            svix_service.send("workout.created", "app_1", {"type": "workout.created"})
+
+        assert mock_client.message.create.call_args.args[1].payload_retention_period == 12
+
+    def test_send_test_message_sets_payload_retention(self, mock_client: MagicMock) -> None:
+        mock_client.endpoint.get.return_value = MagicMock(event_types=None)
+        with patch.object(svix_service.settings, "outgoing_webhook_payload_retention_days", 12):
+            svix_service.send_test_message("app_1", "ep_1", "workout.created")
+
+        assert mock_client.message.create.call_args.args[1].payload_retention_period == 12
+
+
 # ---------------------------------------------------------------------------
 # PATCH /endpoints/{id} — clearing semantics, pinned against regressions
 # ---------------------------------------------------------------------------

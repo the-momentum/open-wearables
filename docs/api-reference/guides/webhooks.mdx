@@ -649,7 +649,12 @@ Open Wearables (via Svix) retries failed deliveries automatically with exponenti
 
 <AccordionGroup>
   <Accordion title="Retry schedule">
-    Svix retries each failed message at increasing intervals. If all retries are exhausted the message is marked as failed in delivery history — you can inspect it and manually trigger a resend from the Svix dashboard.
+    Svix retries each failed message at increasing intervals. If all retries are exhausted the message is marked as failed in delivery history — you can inspect it and manually trigger a resend from the Svix dashboard, as long as its payload is still retained (see below).
+  </Accordion>
+  <Accordion title="Payload retention">
+    Svix stores each message payload for **7 days** by default, then deletes it. The message itself stays in delivery history, without the payload. Self-hosters can change this with `OUTGOING_WEBHOOK_PAYLOAD_RETENTION_DAYS` in the backend `.env` (5-90 days). The setting applies to messages sent after the change.
+
+    Keep the retention above the automatic retry window, which is about 28 hours and can stretch to roughly 3 days when your endpoint returns `Retry-After`. Once a payload is gone, Svix drops any pending retry without recording an attempt, and the message can no longer be resent.
   </Accordion>
   <Accordion title="Expected endpoint behaviour">
     - Respond with a `2xx` status code as quickly as possible (before doing any heavy processing).

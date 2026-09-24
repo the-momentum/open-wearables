@@ -304,6 +304,10 @@ class Settings(BaseSettings):
     svix_jwt_secret: SecretStr | None = None
     # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
     svix_auth_token: SecretStr | None = None
+    # How long Svix keeps each message payload (health data). Svix accepts 5-90 days.
+    # Must outlast the retry schedule (~28h, up to ~66h with Retry-After): Svix silently
+    # drops a retry once the payload is gone.
+    outgoing_webhook_payload_retention_days: int = Field(7, ge=5, le=90)
 
     @model_validator(mode="after")
     def derive_access_log_level(self) -> "Settings":
