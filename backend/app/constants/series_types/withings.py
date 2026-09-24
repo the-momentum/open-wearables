@@ -1,7 +1,6 @@
 from app.constants.sleep import SleepStageType
 
-# Withings Sleep v2 - Get `state`. 4 (manual) and 5 (unspecified) mean asleep with no
-# stage detail; 15 (out of bed) counts as awake, since the user is not asleep.
+# Withings Sleep v2 - Get `state`. 4 and 5 are sleep without stage detail; 15 is awake.
 SLEEP_STATE_STAGE_MAP: dict[int, SleepStageType] = {
     0: SleepStageType.AWAKE,
     1: SleepStageType.LIGHT,

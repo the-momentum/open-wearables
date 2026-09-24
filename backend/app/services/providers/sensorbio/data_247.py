@@ -136,8 +136,6 @@ class SensorBio247Data(Base247DataTemplate):
                 response = self._make_api_request(db, user_id, "/v1/sleep", params={"date": current_date.isoformat()})
                 records = response.get("data", []) if isinstance(response, dict) else []
                 if isinstance(records, list):
-                    # One details call per day; each session picks its own intervals
-                    # out of the day's list during normalization.
                     intervals = self._get_stage_intervals(db, user_id, current_date)
                     if intervals:
                         records = [{**record, "stage_intervals": intervals} for record in records]
@@ -155,11 +153,7 @@ class SensorBio247Data(Base247DataTemplate):
         return all_sleep_data
 
     def _get_stage_intervals(self, db: DbSession, user_id: UUID, day: date) -> list[dict[str, Any]] | None:
-        """Fetch the day's stage intervals. Returns None when there are none to store.
-
-        ``/v1/sleep/details/day`` returns one stage list for the whole day; sessions are
-        split out in ``normalize_sleep`` by their own windows.
-        """
+        """Fetch the day's stage intervals; sessions take their own in normalize_sleep."""
         try:
             response = self._make_api_request(db, user_id, "/v1/sleep/details/day", params={"date": day.isoformat()})
         except Exception as e:
@@ -174,8 +168,7 @@ class SensorBio247Data(Base247DataTemplate):
         if not isinstance(response, dict):
             return None
         intervals = response.get("sleep_stages")
-        # Left as raw dicts: each one is validated in _extract_sleep_stages, and the
-        # payload stays JSON-serialisable while it travels with the sleep record.
+        # Raw dicts: validated in _extract_sleep_stages, and they stay JSON-serialisable.
         return intervals if isinstance(intervals, list) and intervals else None
 
     def _extract_sleep_stages(

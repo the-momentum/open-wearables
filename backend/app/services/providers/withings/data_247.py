@@ -299,8 +299,7 @@ class Withings247Data(Base247DataTemplate):
             },
             list_key=SLEEP_SUMMARY.list_key,
         ).rows
-        # One hypnogram request for the whole window: the free plan allows 120 requests
-        # a minute for the whole application, and a year of backfill is ~300 nights.
+        # One request per window, not per night: the free plan caps the app at 120/min.
         window_stages = self._fetch_sleep_stages(db, user_id, start, end)
         processed = 0
         for row in rows:
@@ -325,12 +324,8 @@ class Withings247Data(Base247DataTemplate):
         user_id: UUID,
         start_dt: datetime,
         end_dt: datetime,
-    ) -> list[SleepStage] | None:
-        """Fetch the hypnogram for a window. Returns None when the call itself failed.
-
-        An empty list means the window holds no stages, which is worth telling apart: it
-        stops the per-night fallback from repeating a request that has nothing to give.
-        """
+    ) -> list[SleepStage]:
+        """Fetch the hypnogram for a window. Empty when it is unavailable."""
         try:
             body = withings_request(
                 db=db,
@@ -349,7 +344,7 @@ class Withings247Data(Base247DataTemplate):
                 level="warning",
                 extra={"provider": "withings", "user_id": str(user_id)},
             )
-            return None
+            return []
 
         rows = body.get(SLEEP_SERIES.list_key) or []
         if isinstance(rows, dict):
@@ -384,7 +379,7 @@ class Withings247Data(Base247DataTemplate):
         user_id: UUID,
         row: dict,
         user_connection_id: UUID | None,
-        window_stages: list[SleepStage] | None = None,
+        window_stages: list[SleepStage],
     ) -> bool:
         summary = WithingsSleepSummary.model_validate(row)
         start_dt = datetime.fromtimestamp(summary.startdate, tz=timezone.utc)
@@ -423,9 +418,6 @@ class Withings247Data(Base247DataTemplate):
         efficiency = data.sleep_efficiency
 
         record_id = uuid4()
-        if window_stages is None:
-            # The window request failed, so this night gets its own attempt.
-            window_stages = self._fetch_sleep_stages(db, user_id, start_dt, end_dt) or []
         sleep_stages = self._stages_within(window_stages, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,

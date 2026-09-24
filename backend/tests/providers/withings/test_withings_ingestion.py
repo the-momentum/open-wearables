@@ -179,13 +179,22 @@ SERIES_BODY = {
 }
 
 
+def _save_one_night(mock_paginate: MagicMock) -> None:
+    mock_paginate.return_value = MagicMock(rows=[SLEEP_ROW])
+    _data_247().save_sleep(
+        MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 7, 8, tzinfo=timezone.utc)
+    )
+
+
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.withings_request", return_value=SERIES_BODY)
-def test_sleep_row_stores_the_hypnogram(mock_request: MagicMock, mock_event: MagicMock) -> None:
-    assert _data_247()._save_sleep_row(MagicMock(), uuid4(), SLEEP_ROW, None) is True
+@patch("app.services.providers.withings.data_247.paginate")
+def test_sleep_row_stores_the_hypnogram(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+) -> None:
+    _save_one_night(mock_paginate)
 
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
-    # Manual and unspecified states are sleep without stage detail; out of bed is awake.
     assert [stage.stage.value for stage in detail.sleep_stages] == ["light", "deep", "awake", "sleeping", "awake"]
     assert mock_request.call_args.kwargs["service_path"] == "/v2/sleep"
     assert mock_request.call_args.kwargs["action"] == "get"
@@ -193,8 +202,11 @@ def test_sleep_row_stores_the_hypnogram(mock_request: MagicMock, mock_event: Mag
 
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.withings_request", side_effect=RuntimeError("boom"))
-def test_sleep_row_is_saved_when_the_hypnogram_call_fails(mock_request: MagicMock, mock_event: MagicMock) -> None:
-    assert _data_247()._save_sleep_row(MagicMock(), uuid4(), SLEEP_ROW, None) is True
+@patch("app.services.providers.withings.data_247.paginate")
+def test_night_is_saved_when_the_hypnogram_call_fails(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+) -> None:
+    _save_one_night(mock_paginate)
 
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
     assert detail.sleep_stages is None
@@ -221,7 +233,6 @@ def test_two_nights_share_one_hypnogram_request(
     )
 
     assert saved == 2
-    # A year of backfill would otherwise be one request per night against a 120/min cap.
     assert mock_request.call_count == 1
     first, second = (call.args[3] for call in mock_event.create_or_merge_sleep.call_args_list)
     assert [stage.stage.value for stage in first.sleep_stages] == ["deep"]
