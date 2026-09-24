@@ -15,6 +15,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.height,  # /v2/user/measurement/body
         SeriesType.weight,  # /v2/user/measurement/body
         SeriesType.active_energy,  # /v2/cycle, daily total from kilojoule
+        SeriesType.steps,  # /v2/cycle, daily total from step_count
     }
 )
 
