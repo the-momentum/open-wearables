@@ -1,11 +1,11 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
+import contextlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
-from app.constants.devices_map import infer_device_type_from_model
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
@@ -22,6 +22,7 @@ from app.repositories.device_type_priority_repository import DeviceTypePriorityR
 from app.repositories.health_score_repository import HealthScoreRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
+    DeviceType,
     ProviderName,
     SeriesType,
     get_series_type_id,
@@ -142,12 +143,10 @@ class SummariesService:
 
                 provider_priority = provider_order.get(provider, 99)
 
-                # Parse device type
                 device_model = entry.get("device_model")
                 device_type_priority = 99
-                if device_model:
-                    device_type = infer_device_type_from_model(device_model)
-                    device_type_priority = device_type_order.get(device_type, 99)
+                with contextlib.suppress(ValueError):
+                    device_type_priority = device_type_order.get(DeviceType(entry.get("device_type")), 99)
 
                 return (provider_priority, device_type_priority, device_model or "")
 

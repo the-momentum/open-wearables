@@ -58,6 +58,12 @@ echo 'Running Whoop strain event_record backfill...'
 uv run python scripts/data_migrations/backfill_whoop_strain_event_record.py \
     || echo "Warning: Whoop strain backfill failed — will retry on next startup."
 
+# Re-resolves data_source.device_type for NULL/'other' rows with the current mappings;
+# never overwrites a concrete type. Idempotent, picks up newly added mappings on startup.
+echo 'Running device type backfill...'
+uv run python scripts/data_migrations/backfill_device_types.py \
+    || echo "Warning: device type backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
