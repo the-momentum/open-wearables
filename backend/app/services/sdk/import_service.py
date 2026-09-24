@@ -270,10 +270,10 @@ class ImportService:
         """
         result: dict[UUID, dict[SeriesType, Decimal]] = {}
         for sample in samples:
-            if sample.event_record_id is None or sample.event_record_id not in meal_ids:
-                continue
-            value = sample.value if isinstance(sample.value, Decimal) else Decimal(str(sample.value))
-            result.setdefault(sample.event_record_id, {})[sample.series_type] = value
+            if sample.event_record_id in meal_ids:
+                value = sample.value if isinstance(sample.value, Decimal) else Decimal(str(sample.value))
+                bucket = result.setdefault(sample.event_record_id, {})
+                bucket[sample.series_type] = bucket.get(sample.series_type, Decimal("0")) + value
         return result
 
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
