@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
-/* Theme follows the OS by default. Putting `light` or `dark` on <html> wins,
-   which is the hook a manual toggle will use later. */
+/* Theme follows the OS by default. `light` or `dark` on <html>, set from the
+   theme cookie, wins. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ---------------------------------------------------------------------------
@@ -120,6 +120,15 @@
 	html {
 		background-color: var(--ow-background);
 		color-scheme: light dark;
+	}
+
+	/* Native controls and scrollbars follow the chosen theme, not the OS. */
+	html.light {
+		color-scheme: light;
+	}
+
+	html.dark {
+		color-scheme: dark;
 	}
 
 	body {

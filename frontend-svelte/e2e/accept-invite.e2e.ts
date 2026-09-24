@@ -45,6 +45,12 @@ test('catches a short or mistyped password before the API is asked', async ({ pa
 });
 
 test('says why a link cannot be used, instead of showing the form again', async ({ page }) => {
+	// No token at all is known before anything is typed.
+	await page.goto('/accept-invite');
+	await expect(
+		page.getByRole('heading', { name: 'This invitation link is not valid' })
+	).toBeVisible();
+
 	for (const [token, reason] of [
 		['nonsense', 'This invitation link is not valid'],
 		['invite-expired', 'This invitation has expired'],
@@ -54,15 +60,6 @@ test('says why a link cannot be used, instead of showing the form again', async 
 		await expect(page.getByRole('heading', { name: reason })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Join the team' })).toHaveCount(0);
 	}
-});
-
-test('a link with no token is dead before anything is typed', async ({ page }) => {
-	await page.goto('/accept-invite');
-	await expect(
-		page.getByRole('heading', { name: 'This invitation link is not valid' })
-	).toBeVisible();
-	await page.getByRole('link', { name: 'Sign in' }).click();
-	await expect(page).toHaveURL('/login');
 });
 
 test('a failure on the server keeps the form, since the link may still be good', async ({

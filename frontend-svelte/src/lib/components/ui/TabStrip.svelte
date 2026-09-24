@@ -55,7 +55,7 @@
 							href={tab.href}
 							aria-current={current ? 'page' : undefined}
 							class={cn(
-								'-mb-px inline-flex snap-center items-center gap-2 border-b-2 px-3 py-2.5 text-sm whitespace-nowrap transition-colors',
+								'inline-flex snap-center items-center gap-2 border-b-2 px-3 py-2.5 text-sm whitespace-nowrap transition-colors',
 								current
 									? 'border-primary font-medium text-primary'
 									: 'border-transparent text-muted-foreground hover:text-foreground'

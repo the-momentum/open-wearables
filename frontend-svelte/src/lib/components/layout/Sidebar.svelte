@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { NAV_ITEMS, isNavItemActive } from '$lib/config/nav';
+	import AccountFooter from './AccountFooter.svelte';
 	import NavLink from './NavLink.svelte';
-	import AccountBadge from './AccountBadge.svelte';
-	import LogoutButton from './LogoutButton.svelte';
-	import AppVersion from './AppVersion.svelte';
 	import Wordmark from './Wordmark.svelte';
 </script>
 
@@ -26,11 +24,5 @@
 		</ul>
 	</nav>
 
-	<div class="mx-3 border-t border-border/60"></div>
-
-	<div class="p-3">
-		<AccountBadge />
-		<LogoutButton />
-		<AppVersion />
-	</div>
+	<AccountFooter class="py-3" />
 </aside>

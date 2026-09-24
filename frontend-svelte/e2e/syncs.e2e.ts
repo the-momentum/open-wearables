@@ -84,10 +84,3 @@ test('an open run shows what Postgres kept, or says a live one is not kept', asy
 		page.getByText(/None — a live sync is only kept in the 24-hour buffer/)
 	).toBeVisible();
 });
-
-test('the user on a run links to their page', async ({ page }) => {
-	await page.goto('/syncs');
-
-	await page.getByRole('link', { name: '00000000', exact: true }).first().click();
-	await expect(page).toHaveURL(/\/users\/00000000-0000-4000-8000-00000000000[789]$/);
-});

@@ -19,6 +19,30 @@ test('sends the root path to the dashboard', async ({ page }) => {
 test.describe('desktop', () => {
 	test.use({ viewport: DESKTOP });
 
+	test('switches the theme at once, and the server renders it after a reload', async ({ page }) => {
+		await page.goto('/dashboard');
+		const theme = page.getByRole('complementary').getByRole('group', { name: 'Theme' });
+		const html = page.locator('html');
+
+		await theme.getByRole('button', { name: 'Dark' }).click();
+		await expect(html).toHaveClass('dark');
+
+		// In the HTML the server sends, so a reload never flashes the other theme.
+		const served = await (await page.request.get('/dashboard')).text();
+		expect(served).toContain('<html lang="en" class="dark">');
+		await page.reload();
+		await expect(theme.getByRole('button', { name: 'Dark' })).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+
+		// Auto hands it back to the OS: no class, and no cookie left to override it.
+		await theme.getByRole('button', { name: 'Auto' }).click();
+		await expect(html).not.toHaveClass(/dark|light/);
+		const cookies = await page.context().cookies();
+		expect(cookies.some((cookie) => cookie.name === 'ow-theme')).toBe(false);
+	});
+
 	test('navigates from the sidebar and hides the mobile bar', async ({ page }) => {
 		await page.goto('/dashboard');
 
@@ -123,6 +147,22 @@ test.describe('mobile', () => {
 			expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 		});
 	}
+
+	// Scrolling one axis turns the other on too, so a pixel of overflow made a
+	// sideways swipe along the tabs wobble them up and down.
+	test('a tab strip scrolls sideways only', async ({ page }) => {
+		await page.goto(`/users/${CONNECTED}`);
+
+		const scroller = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+		const { overflowY, scrollHeight, clientHeight } = await scroller.evaluate((el) => ({
+			overflowY: getComputedStyle(el).overflowY,
+			scrollHeight: el.scrollHeight,
+			clientHeight: el.clientHeight
+		}));
+
+		expect(overflowY).toBe('hidden');
+		expect(scrollHeight).toBeLessThanOrEqual(clientHeight);
+	});
 
 	test('content clears the fixed bottom bar', async ({ page }) => {
 		await page.goto('/dashboard');

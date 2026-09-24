@@ -30,7 +30,13 @@
 <svelte:window onresize={track} />
 
 <div class="relative">
-	<div bind:this={scroller} onscroll={track} class={cn('scroller flex overflow-x-auto', className)}>
+	<!-- Horizontal only: overflow-x alone makes the other axis scroll too, and a
+	     pixel of overflow is enough for a sideways swipe to wobble it. -->
+	<div
+		bind:this={scroller}
+		onscroll={track}
+		class={cn('scroller flex overflow-x-auto overflow-y-hidden overscroll-x-contain', className)}
+	>
 		{@render children()}
 	</div>
 

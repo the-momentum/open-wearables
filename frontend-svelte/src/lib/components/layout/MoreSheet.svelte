@@ -2,10 +2,8 @@
 	import { page } from '$app/state';
 	import { SECONDARY_NAV_ITEMS, isNavItemActive } from '$lib/config/nav';
 	import Sheet from '$lib/components/ui/Sheet.svelte';
+	import AccountFooter from './AccountFooter.svelte';
 	import NavLink from './NavLink.svelte';
-	import AccountBadge from './AccountBadge.svelte';
-	import LogoutButton from './LogoutButton.svelte';
-	import AppVersion from './AppVersion.svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 </script>
@@ -26,10 +24,5 @@
 	</nav>
 
 	<!-- The sidebar is desktop-only, so this is the only way out on a phone. -->
-	<div class="mx-3 mt-1 border-t border-border/60"></div>
-	<div class="px-3 pt-2">
-		<AccountBadge />
-		<LogoutButton />
-		<AppVersion />
-	</div>
+	<div class="mt-1"><AccountFooter class="pt-2" /></div>
 </Sheet>
