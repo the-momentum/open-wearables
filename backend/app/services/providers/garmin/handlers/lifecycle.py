@@ -118,6 +118,8 @@ def process_deregistrations(
             logger,
             "info",
             "Revoked connection via deregistration webhook",
+            action="connection_revoked",
+            reason="deregistration",
             provider="garmin",
             trace_id=trace_id,
             garmin_user_id=garmin_user_id,

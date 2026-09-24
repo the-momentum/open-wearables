@@ -203,6 +203,16 @@ class BaseOAuthTemplate(ABC):
         if not connection or connection.status == ConnectionStatus.REVOKED:
             return
         self.connection_repo.mark_as_revoked(db, connection)
+        log_structured(
+            logger,
+            "info",
+            "Connection revoked",
+            action="connection_revoked",
+            reason=reason,
+            provider=self.provider_name,
+            user_id=str(user_id),
+            connection_id=str(connection.id),
+        )
         on_connection_revoked(
             user_id=user_id,
             provider=self.provider_name,
