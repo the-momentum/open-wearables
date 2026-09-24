@@ -187,7 +187,7 @@ def _save_one_night(mock_paginate: MagicMock) -> None:
 
 
 @patch("app.services.providers.withings.data_247.event_record_service")
-@patch("app.services.providers.withings.data_247.withings_request", return_value=SERIES_BODY)
+@patch("app.services.providers.withings.data_247.withings_request", side_effect=[SERIES_BODY, {"series": []}])
 @patch("app.services.providers.withings.data_247.paginate")
 def test_sleep_row_stores_the_hypnogram(
     mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
@@ -221,19 +221,46 @@ def test_two_nights_share_one_hypnogram_request(
 ) -> None:
     second_night = {**SLEEP_ROW, "id": 12346, "startdate": 1594245600, "enddate": 1594274400}
     mock_paginate.return_value = MagicMock(rows=[SLEEP_ROW, second_night])
-    mock_request.return_value = {
-        "series": [
-            {"startdate": 1594160100, "enddate": 1594163700, "state": 2},
-            {"startdate": 1594246500, "enddate": 1594250100, "state": 1},
-        ]
-    }
+    mock_request.side_effect = [
+        {
+            "series": [
+                {"startdate": 1594160100, "enddate": 1594163700, "state": 2},
+                {"startdate": 1594246500, "enddate": 1594250100, "state": 1},
+            ]
+        },
+        {"series": []},
+    ]
 
     saved = _data_247().save_sleep(
         MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 7, 9, tzinfo=timezone.utc)
     )
 
     assert saved == 2
-    assert mock_request.call_count == 1
+    # The window is walked until a page adds nothing, never once per night.
+    assert mock_request.call_count == 2
+    first_call = mock_request.call_args_list[0].kwargs["params"]
+    assert first_call["startdate"] <= SLEEP_ROW["startdate"]
+    assert first_call["enddate"] >= second_night["enddate"]
     first, second = (call.args[3] for call in mock_event.create_or_merge_sleep.call_args_list)
     assert [stage.stage.value for stage in first.sleep_stages] == ["deep"]
     assert [stage.stage.value for stage in second.sleep_stages] == ["light"]
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.paginate")
+def test_minute_by_minute_states_are_folded_into_one_interval(mock_paginate: MagicMock, mock_event: MagicMock) -> None:
+    minute_states = {
+        "series": [
+            {"startdate": 1594159200 + 60 * i, "enddate": 1594159200 + 60 * (i + 1), "state": 0} for i in range(8)
+        ]
+        + [{"startdate": 1594159680, "enddate": 1594163700, "state": 1}]
+    }
+    with patch(
+        "app.services.providers.withings.data_247.withings_request",
+        side_effect=[minute_states, {"series": []}],
+    ):
+        _save_one_night(mock_paginate)
+
+    detail = mock_event.create_or_merge_sleep.call_args.args[3]
+    assert [stage.stage.value for stage in detail.sleep_stages] == ["awake", "light"]
+    assert detail.sleep_stages[0].end_time == detail.sleep_stages[1].start_time

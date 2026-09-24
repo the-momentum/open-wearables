@@ -53,6 +53,9 @@ _REQUESTED_MEASTYPES = ",".join(str(code) for code in MEASURE_TYPE_MAP)
 
 
 class Withings247Data(Base247DataTemplate):
+    # Sleep v2 - Get truncates long ranges, so a window may need several passes.
+    _MAX_SLEEP_SERIES_PAGES = 60
+
     """Withings continuous-data handler."""
 
     def __init__(self, provider_name: str, api_base_url: str, oauth: BaseOAuthTemplate) -> None:
@@ -300,7 +303,19 @@ class Withings247Data(Base247DataTemplate):
             list_key=SLEEP_SUMMARY.list_key,
         ).rows
         # One request per window, not per night: the free plan caps the app at 120/min.
-        window_stages = self._fetch_sleep_stages(db, user_id, start, end)
+        # Keyed on the nights themselves, since getsummary works on whole local days and
+        # returns nights that start after the requested window ends.
+        nights = [row for row in rows if row.get("startdate")]
+        window_stages: list[SleepStage] = []
+        if nights:
+            first = min(int(row["startdate"]) for row in nights)
+            last = max(int(row.get("enddate") or row["startdate"]) for row in nights)
+            window_stages = self._fetch_sleep_stages(
+                db,
+                user_id,
+                datetime.fromtimestamp(first, tz=timezone.utc),
+                datetime.fromtimestamp(last, tz=timezone.utc),
+            )
         processed = 0
         for row in rows:
             # Tolerate a malformed night without dropping the rest of the batch.
@@ -325,47 +340,84 @@ class Withings247Data(Base247DataTemplate):
         start_dt: datetime,
         end_dt: datetime,
     ) -> list[SleepStage]:
-        """Fetch the hypnogram for a window. Empty when it is unavailable."""
-        try:
-            body = withings_request(
-                db=db,
-                user_id=user_id,
-                connection_repo=self.connection_repo,
-                oauth=self.oauth,
-                service_path=SLEEP_SERIES.service_path,
-                action=SLEEP_SERIES.action,
-                params={"startdate": int(start_dt.timestamp()), "enddate": int(end_dt.timestamp())},
-            )
-        except Exception as e:
-            log_and_capture_error(
-                e,
-                logger,
-                "Withings sleep series fetch failed",
-                level="warning",
-                extra={"provider": "withings", "user_id": str(user_id)},
-            )
-            return []
+        """Fetch the hypnogram for a window. Empty when it is unavailable.
 
-        rows = body.get(SLEEP_SERIES.list_key) or []
-        if isinstance(rows, dict):
-            rows = [rows]
+        The endpoint truncates long ranges without setting `more`, so the window is
+        walked with a cursor: each response continues from the last interval it returned.
+        """
         stages: list[SleepStage] = []
-        for row in rows:
+        seen: set[tuple[int, int]] = set()
+        cursor = start_dt
+        for _ in range(self._MAX_SLEEP_SERIES_PAGES):
             try:
-                entry = WithingsSleepSeriesEntry.model_validate(row)
-            except ValidationError:
-                continue
-            stage = SLEEP_STATE_STAGE_MAP.get(entry.state)
-            if stage is None:
-                continue
-            stages.append(
-                SleepStage(
-                    stage=stage,
-                    start_time=datetime.fromtimestamp(entry.startdate, tz=timezone.utc),
-                    end_time=datetime.fromtimestamp(entry.enddate, tz=timezone.utc),
+                body = withings_request(
+                    db=db,
+                    user_id=user_id,
+                    connection_repo=self.connection_repo,
+                    oauth=self.oauth,
+                    service_path=SLEEP_SERIES.service_path,
+                    action=SLEEP_SERIES.action,
+                    params={"startdate": int(cursor.timestamp()), "enddate": int(end_dt.timestamp())},
                 )
-            )
-        return sorted(stages, key=lambda s: s.start_time)
+            except Exception as e:
+                log_and_capture_error(
+                    e,
+                    logger,
+                    "Withings sleep series fetch failed",
+                    level="warning",
+                    extra={"provider": "withings", "user_id": str(user_id)},
+                )
+                break
+
+            rows = body.get(SLEEP_SERIES.list_key) or []
+            if isinstance(rows, dict):
+                rows = [rows]
+            if not rows:
+                break
+
+            newest = cursor
+            for row in rows:
+                try:
+                    entry = WithingsSleepSeriesEntry.model_validate(row)
+                except ValidationError:
+                    continue
+                interval_end = datetime.fromtimestamp(entry.enddate, tz=timezone.utc)
+                newest = max(newest, interval_end)
+                stage = SLEEP_STATE_STAGE_MAP.get(entry.state)
+                # A page starts on the previous one's last interval, so it repeats it.
+                if stage is None or (entry.startdate, entry.enddate) in seen:
+                    continue
+                seen.add((entry.startdate, entry.enddate))
+                stages.append(
+                    SleepStage(
+                        stage=stage,
+                        start_time=datetime.fromtimestamp(entry.startdate, tz=timezone.utc),
+                        end_time=interval_end,
+                    )
+                )
+
+            if newest <= cursor or newest >= end_dt:
+                break
+            cursor = newest
+
+        return self._merge_adjacent(sorted(stages, key=lambda s: s.start_time))
+
+    @staticmethod
+    def _merge_adjacent(stages: list[SleepStage]) -> list[SleepStage]:
+        """Fold runs of one stage into a single interval.
+
+        The endpoint returns minute-by-minute states for the first night of a range and
+        merged blocks for the rest, so a night's shape would otherwise depend on where
+        it fell in the request.
+        """
+        merged: list[SleepStage] = []
+        for stage in stages:
+            previous = merged[-1] if merged else None
+            if previous and previous.stage == stage.stage and previous.end_time >= stage.start_time:
+                previous.end_time = max(previous.end_time, stage.end_time)
+                continue
+            merged.append(stage.model_copy())
+        return merged
 
     @staticmethod
     def _stages_within(stages: list[SleepStage], start_dt: datetime, end_dt: datetime) -> list[SleepStage] | None:
