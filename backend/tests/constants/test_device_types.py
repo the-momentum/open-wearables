@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.constants.devices_map import infer_device_type, infer_device_type_from_model
+from app.constants.devices_map import infer_device_type, infer_device_type_from_model, map_sdk_device_type
 from app.schemas.enums import DeviceType, ProviderName
 
 
@@ -67,3 +67,36 @@ class TestInferDeviceType:
     def test_provider_default_replaces_other(self) -> None:
         assert infer_device_type(ProviderName.SUUNTO, "Ambit3") == DeviceType.WATCH
         assert infer_device_type(ProviderName.GARMIN, "Garmin Edge 1030") == DeviceType.OTHER
+
+
+class TestReportedDeviceType:
+    @pytest.mark.parametrize(
+        ("sdk_value", "expected"),
+        [
+            ("fitness_band", DeviceType.BAND),
+            ("chest_strap", DeviceType.OTHER),
+            ("unknown", None),
+            (None, None),
+        ],
+    )
+    def test_map_sdk_device_type(self, sdk_value: str | None, expected: DeviceType | None) -> None:
+        assert map_sdk_device_type(sdk_value) == expected
+
+    def test_sdk_type_wins_over_inference(self) -> None:
+        assert infer_device_type(ProviderName.SAMSUNG, "cybert-model", "cybert", DeviceType.PHONE) == DeviceType.PHONE
+        assert infer_device_type(ProviderName.HEALTH_CONNECT, "Pixel 8", None, DeviceType.WATCH) == DeviceType.WATCH
+
+    def test_unknown_sdk_type_falls_back_to_inference(self) -> None:
+        assert infer_device_type(ProviderName.HEALTH_CONNECT, "Pixel 8", None, DeviceType.UNKNOWN) == DeviceType.PHONE
+
+    @pytest.mark.parametrize(
+        ("device_model", "name"),
+        [
+            ("SM-L315F", "Galaxy Watch7"),
+            ("SM-R930", "Galaxy Watch6"),
+        ],
+    )
+    def test_samsung_watch_resolves_same_before_and_after_sdk_fix(self, device_model: str, name: str) -> None:
+        old_sdk = infer_device_type(ProviderName.SAMSUNG, device_model, name, DeviceType.PHONE)
+        new_sdk = infer_device_type(ProviderName.SAMSUNG, device_model, name, DeviceType.WATCH)
+        assert old_sdk == new_sdk == DeviceType.WATCH

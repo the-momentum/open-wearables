@@ -19,7 +19,7 @@ from app.constants.series_types.sdk import (
 from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import SeriesType, daily_total_flag
+from app.schemas.enums import DeviceType, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -46,7 +46,7 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
-from .device_resolution import extract_device_info
+from .device_resolution import extract_device_info, extract_device_type
 from .sleep_service import handle_sleep_data
 
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
@@ -153,6 +153,7 @@ class ImportService:
             external_id = wjson.id if wjson.id else None
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
+            device_type = extract_device_type(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
@@ -163,6 +164,7 @@ class ImportService:
                 wjson.zoneOffset,
                 provider,
                 original_source_name,
+                device_type,
             )
 
             if duration is None:
@@ -184,6 +186,7 @@ class ImportService:
                 external_id=external_id,
                 source=original_source_name,
                 software_version=software_version,
+                device_type=device_type,
                 provider=provider,
                 user_id=user_uuid,
             )
@@ -251,6 +254,7 @@ class ImportService:
                 source=original_source_name,
                 device_model=device_model,
                 software_version=software_version,
+                device_type=extract_device_type(rjson.source),
                 provider=provider,
                 recorded_at=rjson.startDate,
                 zone_offset=rjson.zoneOffset,
@@ -287,6 +291,7 @@ class ImportService:
         zone_offset: str | None,
         provider: str,
         source_name: str | None,
+        device_type: DeviceType | None = None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
         Returns a tuple with the metrics, time series samples, and duration.
@@ -314,6 +319,7 @@ class ImportService:
                         source=source_name,
                         device_model=device_model,
                         software_version=software_version,
+                        device_type=device_type,
                         provider=provider,
                         recorded_at=end_date,
                         zone_offset=zone_offset,

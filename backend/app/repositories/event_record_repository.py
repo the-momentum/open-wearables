@@ -30,7 +30,7 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository, source_filter_conditions, utc_bucket_start
-from app.schemas.enums import ProviderName, SeriesType, TimelineBucket, get_series_type_id
+from app.schemas.enums import DeviceType, ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
@@ -74,6 +74,7 @@ class EventRecordRepository(
                 source=creator.source,
                 software_version=creator.software_version,
                 original_source_name=creator.source,
+                reported_type=creator.device_type,
             )
             data_source_id = data_source.id
 
@@ -86,6 +87,7 @@ class EventRecordRepository(
             "provider",
             "user_connection_id",
             "software_version",
+            "device_type",
         ):
             creation_data.pop(redundant_key, None)
         return data_source_id, self.model(**creation_data)
@@ -205,12 +207,16 @@ class EventRecordRepository(
 
         for provider, provider_creators in by_provider.items():
             unique_identities: set[DataSourceIdentity] = set()
+            reported_types: dict[DataSourceIdentity, DeviceType] = {}
             user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
             for c in provider_creators:
-                unique_identities.add((c.user_id, c.device_model, c.source))
+                identity = (c.user_id, c.device_model, c.source)
+                unique_identities.add(identity)
+                if c.device_type:
+                    reported_types.setdefault(identity, c.device_type)
 
             batch_result = self.data_source_repo.batch_ensure_data_sources(
-                db_session, provider, user_connection_id, unique_identities
+                db_session, provider, user_connection_id, unique_identities, reported_types
             )
             identity_to_source_id.update(batch_result)
 

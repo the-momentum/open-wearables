@@ -16,6 +16,18 @@ PROVIDER_DEFAULT_DEVICE_TYPE: dict[ProviderName, DeviceType] = {
     ProviderName.SUUNTO: DeviceType.WATCH,
 }
 
+# Device type reported by the mobile SDKs (Health Connect / Samsung / HealthKit)
+SDK_DEVICE_TYPE_MAP: dict[str, DeviceType] = {
+    "phone": DeviceType.PHONE,
+    "watch": DeviceType.WATCH,
+    "ring": DeviceType.RING,
+    "scale": DeviceType.SCALE,
+    "fitness_band": DeviceType.BAND,
+    "chest_strap": DeviceType.OTHER,
+    "head_mounted": DeviceType.OTHER,
+    "smart_display": DeviceType.OTHER,
+}
+
 # Apple productType codes, case-sensitive; iPad is treated as phone for priority purposes
 APPLE_PRODUCT_TYPE_PREFIXES: list[tuple[str, DeviceType]] = [
     ("Watch", DeviceType.WATCH),
@@ -30,6 +42,8 @@ SAMSUNG_MODEL_PREFIX_DEVICE_TYPE: dict[str, DeviceType] = {
     "Q": DeviceType.RING,
     **dict.fromkeys("SAMGFNEXTP", DeviceType.PHONE),
 }
+
+WEARABLE_DEVICE_TYPES = frozenset({DeviceType.WATCH, DeviceType.BAND, DeviceType.RING, DeviceType.SCALE})
 
 # Substrings of the lowercased model; first match wins, so order matters
 DEVICE_MODEL_KEYWORDS: list[tuple[tuple[str, ...], DeviceType]] = [
@@ -102,23 +116,46 @@ def infer_device_type_from_model(device_model: str | None) -> DeviceType:
 
 
 def infer_device_type_from_source_name(source_name: str | None) -> DeviceType:
-    """Infer device type from original source name (e.g. Zepp Life via Apple Health)."""
+    """Infer device type from a source/device name (e.g. "Galaxy Watch5", or Zepp Life via Apple Health)."""
     if not source_name:
         return DeviceType.UNKNOWN
-    return _match_keywords(source_name.lower(), SOURCE_NAME_KEYWORDS) or DeviceType.UNKNOWN
+    name_lower = source_name.lower()
+    return (
+        _match_keywords(name_lower, SOURCE_NAME_KEYWORDS)
+        or _match_keywords(name_lower, DEVICE_MODEL_KEYWORDS)
+        or DeviceType.UNKNOWN
+    )
+
+
+def map_sdk_device_type(sdk_device_type: str | None) -> DeviceType | None:
+    """Map a mobile SDK deviceType to DeviceType; unknown or unmapped values yield None."""
+    if not sdk_device_type:
+        return None
+    return SDK_DEVICE_TYPE_MAP.get(str(sdk_device_type).lower())
 
 
 def infer_device_type(
     provider: ProviderName,
     device_model: str | None,
     original_source_name: str | None = None,
+    reported_type: DeviceType | None = None,
 ) -> DeviceType:
-    """Infer device type from the provider's only form factor, then the model, then the source name."""
+    """Resolve device type: single-device provider, then the SDK-reported type, then inference."""
     if provider in SINGLE_DEVICE_PROVIDER_TYPE:
         return SINGLE_DEVICE_PROVIDER_TYPE[provider]
-    device_type = infer_device_type_from_model(device_model)
-    if device_type in (DeviceType.UNKNOWN, DeviceType.OTHER) and provider in PROVIDER_DEFAULT_DEVICE_TYPE:
+
+    inferred = infer_device_type_from_model(device_model)
+    if inferred in (DeviceType.UNKNOWN, DeviceType.OTHER):
+        from_name = infer_device_type_from_source_name(original_source_name)
+        if from_name != DeviceType.UNKNOWN:
+            inferred = from_name
+
+    if reported_type and reported_type != DeviceType.UNKNOWN:
+        # SDKs before the Samsung fix report Galaxy watches as phone
+        if reported_type == DeviceType.PHONE and inferred in WEARABLE_DEVICE_TYPES:
+            return inferred
+        return reported_type
+
+    if inferred in (DeviceType.UNKNOWN, DeviceType.OTHER) and provider in PROVIDER_DEFAULT_DEVICE_TYPE:
         return PROVIDER_DEFAULT_DEVICE_TYPE[provider]
-    if device_type != DeviceType.UNKNOWN:
-        return device_type
-    return infer_device_type_from_source_name(original_source_name)
+    return inferred

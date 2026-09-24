@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.series_types.sdk import SleepPhase
 from app.constants.sleep import SleepStageType
+from app.schemas.enums import DeviceType
 
 
 class SleepStateStage(BaseModel):
@@ -18,6 +19,7 @@ class SleepState(BaseModel):
     uuid: str
     source_name: str | None = None
     device_model: str | None = None
+    device_type: DeviceType | None = None
     provider: str | None = None
     zone_offset: str | None = None
 
