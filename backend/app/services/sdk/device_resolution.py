@@ -1,5 +1,7 @@
 """Device resolution utilities for mobile SDK data (HealthKit, Health Connect, Samsung Health)."""
 
+from app.constants.devices_map import map_sdk_device_type
+from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import OSVersion, SourceInfo
 
 
@@ -53,3 +55,8 @@ def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | No
     original_source_name = _get_original_source_name(source)  # e.g. "Apple Watch (Jan)" or "Zepp Life"
 
     return device_model, software_version, original_source_name
+
+
+def extract_device_type(source: SourceInfo | None) -> DeviceType | None:
+    """Device type reported by the SDK, or None when absent or unknown."""
+    return map_sdk_device_type(source.device_type) if source else None

@@ -59,6 +59,7 @@ class DataSourceRepository(
         software_version: str | None = None,
         source: str | None = None,
         original_source_name: str | None = None,
+        reported_type: DeviceType | None = None,
     ) -> DataSource:
         existing = self.get_by_identity(db_session, user_id, provider, device_model, source)
         if existing:
@@ -72,11 +73,13 @@ class DataSourceRepository(
             if original_source_name and existing.original_source_name is None:
                 object.__setattr__(existing, "original_source_name", original_source_name)
                 updated = True
-            if existing.device_type is None:
-                device_type = infer_device_type(provider, device_model, original_source_name)
-                if device_type != DeviceType.UNKNOWN:
-                    object.__setattr__(existing, "device_type", device_type.value)
-                    updated = True
+            device_type = self._upgraded_device_type(
+                existing.device_type,
+                infer_device_type(provider, device_model, original_source_name, reported_type),
+            )
+            if device_type:
+                object.__setattr__(existing, "device_type", device_type.value)
+                updated = True
             if updated:
                 db_session.flush()
             return existing
@@ -84,7 +87,7 @@ class DataSourceRepository(
         provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         provider_priority_repo.ensure_provider_exists(db_session, provider)
 
-        device_type = infer_device_type(provider, device_model, original_source_name)
+        device_type = infer_device_type(provider, device_model, original_source_name, reported_type)
 
         create_payload = DataSourceCreate(
             id=uuid4(),
@@ -101,12 +104,20 @@ class DataSourceRepository(
         assert result is not None
         return result
 
+    @staticmethod
+    def _upgraded_device_type(current: str | None, resolved: DeviceType) -> DeviceType | None:
+        """New type for a stored row; only unset or "other" rows are upgraded so types never flip-flop."""
+        if current not in (None, DeviceType.OTHER) or resolved in (DeviceType.UNKNOWN, current):
+            return None
+        return resolved
+
     def batch_ensure_data_sources(
         self,
         db_session: DbSession,
         provider: ProviderName,
         user_connection_id: UUID | None,
         identities: set[tuple[UUID, str | None, str | None]],
+        reported_types: dict[tuple[UUID, str | None, str | None], DeviceType] | None = None,
     ) -> dict[tuple[UUID, str | None, str | None], UUID]:
         if not identities:
             return {}
@@ -121,16 +132,30 @@ class DataSourceRepository(
 
         existing = db_session.query(self.model).filter(or_(*conditions)).all()
 
+        reported_types = reported_types or {}
         result: dict[tuple[UUID, str | None, str | None], UUID] = {}
+        upgraded = False
         for ds in existing:
-            result[(ds.user_id, ds.device_model, ds.source)] = ds.id
+            identity = (ds.user_id, ds.device_model, ds.source)
+            result[identity] = ds.id
+            device_type = self._upgraded_device_type(
+                ds.device_type,
+                infer_device_type(provider, ds.device_model, ds.source, reported_types.get(identity)),
+            )
+            if device_type:
+                object.__setattr__(ds, "device_type", device_type.value)
+                upgraded = True
+        if upgraded:
+            db_session.flush()
 
         missing = [i for i in identities_list if i not in result]
 
         if missing:
             values = []
             for user_id, device_model, source in missing:
-                device_type = infer_device_type(provider, device_model)
+                device_type = infer_device_type(
+                    provider, device_model, source, reported_types.get((user_id, device_model, source))
+                )
                 values.append(
                     {
                         "id": uuid4(),

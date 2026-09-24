@@ -49,6 +49,7 @@ from app.repositories.repositories import (
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
+    DeviceType,
     ProviderName,
     Resolution,
     SeriesType,
@@ -186,6 +187,7 @@ class DataPointSeriesRepository(
             "provider",
             "user_connection_id",
             "software_version",
+            "device_type",
             "series_type",
             "data_source_id",
         ):
@@ -234,12 +236,16 @@ class DataPointSeriesRepository(
 
         for provider, provider_creators in by_provider.items():
             unique_identities: set[DataSourceIdentity] = set()
+            reported_types: dict[DataSourceIdentity, DeviceType] = {}
             user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
             for c in provider_creators:
-                unique_identities.add((c.user_id, c.device_model, c.source))
+                identity = (c.user_id, c.device_model, c.source)
+                unique_identities.add(identity)
+                if c.device_type:
+                    reported_types.setdefault(identity, c.device_type)
 
             batch_result = self.data_source_repo.batch_ensure_data_sources(
-                db_session, provider, user_connection_id, unique_identities
+                db_session, provider, user_connection_id, unique_identities, reported_types
             )
             identity_to_source_id.update(batch_result)
 
@@ -397,6 +403,7 @@ class DataPointSeriesRepository(
             device_model=creator.device_model,
             software_version=creator.software_version,
             source=creator.source,
+            reported_type=creator.device_type,
         )
 
     def get_samples(
