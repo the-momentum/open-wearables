@@ -1104,7 +1104,7 @@ requires-dist = [
     { name = "redis", specifier = ">=8.1.0" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "resend", specifier = ">=2.46.0" },
-    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.69.1" },
+    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.69.2" },
     { name = "sqlalchemy", specifier = ">=2.0.54" },
     { name = "svix", specifier = ">=2.5.0" },
 ]
