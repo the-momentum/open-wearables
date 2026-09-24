@@ -179,11 +179,12 @@ SERIES_BODY = {
 }
 
 
+_WINDOW = (datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 7, 8, tzinfo=timezone.utc))
+
+
 def _save_one_night(mock_paginate: MagicMock) -> None:
     mock_paginate.return_value = MagicMock(rows=[SLEEP_ROW])
-    _data_247().save_sleep(
-        MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 7, 8, tzinfo=timezone.utc)
-    )
+    _data_247().save_sleep(MagicMock(), uuid4(), *_WINDOW)
 
 
 @patch("app.services.providers.withings.data_247.event_record_service")
@@ -264,3 +265,26 @@ def test_minute_by_minute_states_are_folded_into_one_interval(mock_paginate: Mag
     detail = mock_event.create_or_merge_sleep.call_args.args[3]
     assert [stage.stage.value for stage in detail.sleep_stages] == ["awake", "light"]
     assert detail.sleep_stages[0].end_time == detail.sleep_stages[1].start_time
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request", side_effect=[SERIES_BODY, {"series": []}])
+@patch("app.services.providers.withings.data_247.paginate")
+def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+) -> None:
+    mock_paginate.return_value = MagicMock(rows=[{**SLEEP_ROW, "id": 1, "startdate": "broken"}, SLEEP_ROW])
+
+    assert _data_247().save_sleep(MagicMock(), uuid4(), *_WINDOW) == 1
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.paginate")
+def test_a_stage_running_past_the_night_is_clipped(mock_paginate: MagicMock, mock_event: MagicMock) -> None:
+    # Last state starts inside the night and runs an hour past its end.
+    overrunning = {"series": [{"startdate": 1594187700, "enddate": 1594191600, "state": 1}]}
+    with patch("app.services.providers.withings.data_247.withings_request", side_effect=[overrunning, {"series": []}]):
+        _save_one_night(mock_paginate)
+
+    detail = mock_event.create_or_merge_sleep.call_args.args[3]
+    assert detail.sleep_stages[0].end_time == datetime.fromtimestamp(SLEEP_ROW["enddate"], tz=timezone.utc)

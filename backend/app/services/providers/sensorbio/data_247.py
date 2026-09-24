@@ -138,7 +138,10 @@ class SensorBio247Data(Base247DataTemplate):
                 if isinstance(records, list):
                     intervals = self._get_stage_intervals(db, user_id, current_date)
                     if intervals:
-                        records = [{**record, "stage_intervals": intervals} for record in records]
+                        records = [
+                            {**record, "stage_intervals": intervals} if isinstance(record, dict) else record
+                            for record in records
+                        ]
                     all_sleep_data.extend(records)
             except Exception as e:
                 log_structured(
@@ -189,6 +192,11 @@ class SensorBio247Data(Base247DataTemplate):
             if stage is None or start is None or end is None:
                 continue
             if (start_dt and start < start_dt) or (end_dt and start >= end_dt):
+                continue
+            # A day's list can hold an interval that runs past the session it starts in.
+            if end_dt and end > end_dt:
+                end = end_dt
+            if end <= start:
                 continue
             stages.append(SleepStage(stage=stage, start_time=start, end_time=end))
         return sorted(stages, key=lambda s: s.start_time) or None

@@ -305,16 +305,20 @@ class Withings247Data(Base247DataTemplate):
         # One request per window, not per night: the free plan caps the app at 120/min.
         # Keyed on the nights themselves, since getsummary works on whole local days and
         # returns nights that start after the requested window ends.
-        nights = [row for row in rows if row.get("startdate")]
+        # A row the window cannot be read from is left to _save_sleep_row to report,
+        # rather than failing the whole batch here.
+        edges = [
+            (start, self._epoch_or_none(row.get("enddate")) or start)
+            for row in rows
+            if isinstance(row, dict) and (start := self._epoch_or_none(row.get("startdate"))) is not None
+        ]
         window_stages: list[SleepStage] = []
-        if nights:
-            first = min(int(row["startdate"]) for row in nights)
-            last = max(int(row.get("enddate") or row["startdate"]) for row in nights)
+        if edges:
             window_stages = self._fetch_sleep_stages(
                 db,
                 user_id,
-                datetime.fromtimestamp(first, tz=timezone.utc),
-                datetime.fromtimestamp(last, tz=timezone.utc),
+                datetime.fromtimestamp(min(edge[0] for edge in edges), tz=timezone.utc),
+                datetime.fromtimestamp(max(edge[1] for edge in edges), tz=timezone.utc),
             )
         processed = 0
         for row in rows:
@@ -420,9 +424,23 @@ class Withings247Data(Base247DataTemplate):
         return merged
 
     @staticmethod
+    def _epoch_or_none(value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _stages_within(stages: list[SleepStage], start_dt: datetime, end_dt: datetime) -> list[SleepStage] | None:
-        """Take one night out of a window hypnogram, keyed on where each stage starts."""
-        night = [stage for stage in stages if start_dt <= stage.start_time < end_dt]
+        """Take one night out of a window hypnogram, clipped to that night."""
+        night = []
+        for stage in stages:
+            if not start_dt <= stage.start_time < end_dt:
+                continue
+            end = min(stage.end_time, end_dt)
+            if end <= stage.start_time:
+                continue
+            night.append(stage.model_copy(update={"end_time": end}))
         return night or None
 
     def _save_sleep_row(

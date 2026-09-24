@@ -830,3 +830,19 @@ class TestSensorBio247SleepStageIntervals:
             records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
 
         assert records[0].get("stage_intervals") is None
+
+    def test_a_malformed_entry_does_not_drop_the_day(self, data_247: SensorBio247Data) -> None:
+        def fake_request(db: Any, user_id: UUID, endpoint: str, params: dict | None = None) -> Any:
+            return {"data": ["nonsense", NIGHT]} if endpoint == "/v1/sleep" else DETAILS_DAY
+
+        with patch.object(SensorBio247Data, "_make_api_request", side_effect=fake_request):
+            records = data_247.get_sleep_data(DB, USER_ID, _SEPT_10, _SEPT_10)
+
+        assert [record for record in records if isinstance(record, dict)][0]["id"] == "night"
+
+    def test_an_interval_running_past_the_session_is_clipped(self, data_247: SensorBio247Data) -> None:
+        overrunning = [{"start_time": "2026-09-10T02:50:00Z", "end_time": "2026-09-10T04:00:00Z", "status": "awake"}]
+        normalized = data_247.normalize_sleep({**NIGHT, "stage_intervals": overrunning}, USER_ID)
+
+        assert normalized is not None
+        assert normalized["stage_timestamps"][0].end_time == datetime(2026, 9, 10, 3, tzinfo=timezone.utc)
