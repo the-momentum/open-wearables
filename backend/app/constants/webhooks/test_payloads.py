@@ -116,6 +116,27 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "is_nap": False,
         },
     },
+    WebhookEventType.MEAL_CREATED: {
+        "type": WebhookEventType.MEAL_CREATED,
+        "data": {
+            "id": _RECORD_ID,
+            "user_id": _USER_ID,
+            "title": "Grilled Chicken Breast",
+            "meal_type": "lunch",
+            "start_time": "2024-01-01T12:30:00+00:00",
+            "end_time": "2024-01-01T12:30:00+00:00",
+            "zone_offset": "+00:00",
+            "source": _SOURCE_APPLE,
+            "calories_kcal": 550.0,
+            "macros": {
+                "protein_g": 38.2,
+                "carbohydrates_g": 42.0,
+                "fat_g": 18.5,
+                "fiber_g": 4.0,
+            },
+            "water_ml": None,
+        },
+    },
     # ------------------------------------------------------------------
     # Timeseries — GROUP events
     # ------------------------------------------------------------------

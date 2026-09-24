@@ -1019,3 +1019,36 @@ class TestSDKImportMealCorrelation:
         detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
         assert detail.title == "Kurczak z ryżem"
         assert detail.meal_type == "obiad"
+
+    def test_food_correlation_fires_meal_created_with_nutrient_totals(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Before this, meals saved via bulk_create + bulk_create_details never fired a
+        webhook - meal.created must land with the nutrient totals from this same batch."""
+        user = UserFactory()
+        user_id = str(user.id)
+        payload = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+                self._nutrient_record("protein-1", "HKQuantityTypeIdentifierDietaryProtein", 38.2, "g", "MEAL-1"),
+            ]
+        )
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            import_service.load_data(db, payload, user_id)
+
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+
+        mock_meal.assert_called_once()
+        kwargs = mock_meal.call_args.kwargs
+        assert kwargs["record_id"] == meal.id
+        assert kwargs["title"] == "Kurczak z ryżem"
+        assert kwargs["meal_type"] == "obiad"
+        assert kwargs["calories_kcal"] == 550.0
+        assert kwargs["macros"]["protein_g"] == 38.2

@@ -268,7 +268,7 @@ class GoogleHealthApiNutrition:
             user_id=user_id,
         )
         detail = MealDetailCreate(record_id=record.id, title=group.title, meal_type=group.meal_type)
-        saved, inserted = event_record_service.create_or_update_meal(db, record, detail)
+        saved, inserted = event_record_service.create_or_update_meal(db, record, detail, nutrients=group.nutrients)
 
         if not inserted:
             # A nutrient the provider stopped reporting must not linger from the previous sync.
