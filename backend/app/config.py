@@ -309,16 +309,12 @@ class Settings(BaseSettings):
     # TELEMETRY SETTINGS
     # Anonymous usage telemetry: aggregate counts and config flags only, never
     # user data - see docs/dev-guides/telemetry.mdx for the full payload.
-    # Disable with TELEMETRY_ENABLED=false (or the standard DO_NOT_TRACK=1).
-    telemetry_enabled: bool = True
+    telemetry_enabled: bool = True  # also off with DO_NOT_TRACK=1
     telemetry_endpoint_url: str = "https://telemetry.openwearables.io/api/v1/pings"
-    # How often the beat due-check task runs; it only sends when a ping is due.
-    telemetry_beat_interval_seconds: float = 3600.0
-    # Minimum time between "daily" pings / debounce window for "startup" pings.
-    telemetry_send_interval_seconds: float = 86400.0
-    telemetry_startup_debounce_seconds: float = 43200.0
-    # How often each API process flushes its in-memory endpoint usage counters to Redis.
-    telemetry_usage_flush_interval_seconds: float = 30.0
+    telemetry_beat_interval_seconds: float = 3600.0  # how often to check if a ping is due
+    telemetry_send_interval_seconds: float = 86400.0  # min gap between "daily" pings
+    telemetry_startup_debounce_seconds: float = 43200.0  # min gap before a "startup" ping
+    telemetry_usage_flush_interval_seconds: float = 30.0  # endpoint counters -> Redis
 
     @model_validator(mode="after")
     def honor_do_not_track(self) -> "Settings":
