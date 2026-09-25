@@ -5,6 +5,8 @@ import unicodedata
 
 from app.schemas.enums import DeviceType, ProviderName
 
+from .samsung import SAMSUNG_DEVICE_NAMES
+
 # Providers that only ship a single form factor; model matching is skipped
 SINGLE_DEVICE_PROVIDER_TYPE: dict[ProviderName, DeviceType] = {
     ProviderName.OURA: DeviceType.RING,
@@ -127,6 +129,14 @@ def _normalize(value: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", value.lower()) if not unicodedata.combining(c))
 
 
+# Longest code first, so a regional suffix ("SM-R860N") still finds its base code
+_SAMSUNG_CODES = sorted(SAMSUNG_DEVICE_NAMES, key=len, reverse=True)
+
+
+def _samsung_marketing_name(model_code: str) -> str | None:
+    return next((SAMSUNG_DEVICE_NAMES[code] for code in _SAMSUNG_CODES if model_code.startswith(code)), None)
+
+
 def _match_keywords(value: str, rules: list[tuple[re.Pattern[str], DeviceType]]) -> DeviceType | None:
     for pattern, device_type in rules:
         if pattern.search(value):
@@ -143,10 +153,12 @@ def infer_device_type_from_model(device_model: str | None) -> DeviceType:
         if device_model.startswith(prefix):
             return device_type
 
-    if (match := SAMSUNG_MODEL_CODE.match(device_model.upper())) and (
-        device_type := SAMSUNG_MODEL_PREFIX_DEVICE_TYPE.get(match.group(1))
-    ):
-        return device_type
+    if match := SAMSUNG_MODEL_CODE.match(device_model.upper()):
+        if device_type := SAMSUNG_MODEL_PREFIX_DEVICE_TYPE.get(match.group(1)):
+            return device_type
+        # Unmapped prefixes (SM-R) mix watches, bands and buds; resolve listed codes by name
+        if name := _samsung_marketing_name(device_model.upper()):
+            return _match_keywords(_normalize(name), _MODEL_PATTERNS) or DeviceType.OTHER
 
     return _match_keywords(_normalize(device_model), _MODEL_PATTERNS) or DeviceType.OTHER
 

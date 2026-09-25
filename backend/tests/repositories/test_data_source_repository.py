@@ -59,14 +59,14 @@ class TestDataSourceRepository:
         assert stored.source == APPLE_HEALTH_SOURCE
         assert len(stored.source) == len(APPLE_HEALTH_SOURCE)
 
-    def test_device_type_upgrades_from_other_but_never_flips(self, db: Session) -> None:
+    def test_sdk_device_type_upgrades_from_other_but_never_flips(self, db: Session) -> None:
         user = UserFactory()
         repo = DataSourceRepository(DataSource)
         identity = {
             "user_id": user.id,
-            "provider": ProviderName.GARMIN,
-            "device_model": "Garmin Edge 1030",
-            "source": "garmin",
+            "provider": ProviderName.SAMSUNG,
+            "device_model": "unlisted-model",
+            "source": "tab",
         }
         created = repo.ensure_data_source(db, **identity)
         assert created.device_type == DeviceType.OTHER
@@ -76,12 +76,28 @@ class TestDataSourceRepository:
 
         repo.batch_ensure_data_sources(
             db,
-            ProviderName.GARMIN,
+            ProviderName.SAMSUNG,
             None,
-            {(user.id, "Garmin Edge 1030", "garmin")},
-            {(user.id, "Garmin Edge 1030", "garmin"): DeviceType.BAND},
+            {(user.id, "unlisted-model", "tab")},
+            {(user.id, "unlisted-model", "tab"): DeviceType.BAND},
         )
         assert repo.get_by_identity(db, **identity).device_type == DeviceType.WATCH
+
+    def test_cloud_device_type_is_corrected_on_sync(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        identity = {
+            "user_id": user.id,
+            "provider": ProviderName.GARMIN,
+            "device_model": "Garmin Index BPM",
+            "source": "garmin",
+        }
+        stored = repo.ensure_data_source(db, **identity)
+        object.__setattr__(stored, "device_type", DeviceType.SCALE.value)
+        db.flush()
+
+        repo.ensure_data_source(db, **identity)
+        assert repo.get_by_identity(db, **identity).device_type == DeviceType.OTHER
 
     def test_batch_upgrades_unset_device_type(self, db: Session) -> None:
         user = UserFactory()
