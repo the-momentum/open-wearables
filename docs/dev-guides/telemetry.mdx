@@ -19,13 +19,13 @@ enabled, the API logs a notice at startup so it is never running silently.
 
 ## Why we collect it
 
-Open Wearables is self-hosted, so without telemetry we have no idea how it is used. The data answers
-two questions:
+Open Wearables is self-hosted, so without telemetry we have no way of knowing how it's used. We use the
+data for two things:
 
-- **What to build next.** Which providers, data types and features are actually used tells us where to
-  invest and what is safe to deprecate.
-- **How big deployments are.** Whether instances serve a handful of test users or thousands of real
-  ones tells us what to optimise for: import performance, sync cadence, storage.
+- **What to build next.** Knowing which providers, data types and features people actually use shows us
+  where to put our time and what we can safely deprecate.
+- **How big deployments are.** Whether an instance has a handful of test users or thousands of real ones
+  changes what we optimise for, like sync frequency, how incoming data is processed, or storage.
 
 ## What is collected
 
