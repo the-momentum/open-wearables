@@ -40,13 +40,16 @@ from app.schemas.providers.google import (
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    chunk_range,
     civil_interval,
     extract_source,
+    next_page_token,
     parse_date,
     parse_page,
     parse_rfc3339,
     physical_interval,
     read_number,
+    time_filter,
     zone_offset_from,
 )
 from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
@@ -239,7 +242,7 @@ class GoogleHealth247Data(Base247DataTemplate):
 
         endpoint = ROLLUP_ENDPOINT.format(data_type=metric.data_type)
         samples: list[TimeSeriesSampleCreate] = []
-        for chunk_start, chunk_end in self._chunk_range(start_time, end_time, spec.max_range_days):
+        for chunk_start, chunk_end in chunk_range(start_time, end_time, spec.max_range_days):
             body = {
                 "range": physical_interval(chunk_start, chunk_end),
                 "windowSize": f"{window_seconds}s",
@@ -274,6 +277,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
             response = make_authenticated_request(
                 db=db,
@@ -295,20 +299,10 @@ class GoogleHealth247Data(Base247DataTemplate):
             )
             page = parse_page(response, endpoint)
             points.extend(page.rollup_data_points)
-            page_token = page.next_page_token
+            page_token = next_page_token(page, seen, endpoint)
             if not page_token:
                 break
         return points
-
-    @staticmethod
-    def _chunk_range(start: datetime, end: datetime, max_days: int) -> Iterator[tuple[datetime, datetime]]:
-        """Split [start, end) into consecutive windows no longer than max_days."""
-        window = timedelta(days=max_days)
-        cursor = start
-        while cursor < end:
-            nxt = min(cursor + window, end)
-            yield cursor, nxt
-            cursor = nxt
 
     # -- dailyRollUp operation -------------------------------------------------
 
@@ -357,7 +351,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         end = datetime.combine(end_time.date() + timedelta(days=1), time.min, tzinfo=timezone.utc)
 
         totals: dict[datetime, Decimal] = {}
-        for chunk_start, chunk_end in self._chunk_range(start, end, spec.max_range_days):
+        for chunk_start, chunk_end in chunk_range(start, end, spec.max_range_days):
             body = {
                 "range": civil_interval(chunk_start.date(), chunk_end.date()),
                 "windowSizeDays": 1,
@@ -400,10 +394,10 @@ class GoogleHealth247Data(Base247DataTemplate):
         reconcile = settings.google_use_reconcile
         template = RECONCILE_ENDPOINT if reconcile else LIST_ENDPOINT
         endpoint = template.format(data_type=metric.data_type)
-        time_filter = self._time_filter(metric.data_type, spec.time, start_time, end_time, spec.session_interval)
+        point_filter = time_filter(metric.data_type, spec.time, start_time, end_time, spec.session_interval)
 
         samples: list[TimeSeriesSampleCreate] = []
-        for point in self._fetch_points(db, user_id, endpoint, time_filter):
+        for point in self._fetch_points(db, user_id, endpoint, point_filter):
             # Both operations nest the payload under the type's union key.
             value_obj = point.get(metric.value_key)
             if not isinstance(value_obj, dict):
@@ -450,7 +444,7 @@ class GoogleHealth247Data(Base247DataTemplate):
 
     @staticmethod
     def _in_window(shape: TimeShape, recorded_at: datetime, start_time: datetime, end_time: datetime) -> bool:
-        """Whether a point belongs to this sync window, matching :meth:`_time_filter`.
+        """Whether a point belongs to this sync window, matching :func:`time_filter`.
 
         Daily points are stamped midnight, so an intraday window would never contain one;
         they are compared by date instead, reaching back a day for a total published late.
@@ -459,32 +453,8 @@ class GoogleHealth247Data(Base247DataTemplate):
             return (start_time.date() - timedelta(days=1)) <= recorded_at.date() <= end_time.date()
         return start_time <= recorded_at < end_time
 
-    @staticmethod
-    def _time_filter(
-        data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime, session_interval: bool = False
-    ) -> str:
-        """AIP-160 filter bounding the fetch to [start_time, end_time) for the type's time shape."""
-        field = data_type.replace("-", "_")
-        match shape:
-            case TimeShape.INTERVAL if session_interval:
-                # SessionTimeInterval types (excl. sleep/ECG) filter on civil start time, not physical.
-                member = f"{field}.interval.civil_start_time"
-                low = (start_time.date() - timedelta(days=1)).isoformat()
-                high = (end_time.date() + timedelta(days=1)).isoformat()
-            case TimeShape.DATE:
-                # A daily total is published once its day closes.
-                member = f"{field}.date"
-                low = (start_time.date() - timedelta(days=1)).isoformat()
-                high = (end_time.date() + timedelta(days=1)).isoformat()
-            case TimeShape.INTERVAL | TimeShape.SAMPLE:
-                suffix = "interval.start_time" if shape is TimeShape.INTERVAL else "sample_time.physical_time"
-                member = f"{field}.{suffix}"
-                window = physical_interval(start_time, end_time)
-                low, high = window["startTime"], window["endTime"]
-        return f'{member} >= "{low}" AND {member} < "{high}"'
-
     def _fetch_points(
-        self, db: DbSession, user_id: UUID, endpoint: str, time_filter: str | None = None
+        self, db: DbSession, user_id: UUID, endpoint: str, point_filter: str | None = None
     ) -> list[dict[str, Any]]:
         """GET a native-resolution endpoint (list or reconcile), following pageToken.
 
@@ -492,10 +462,11 @@ class GoogleHealth247Data(Base247DataTemplate):
         """
         points: list[dict[str, Any]] = []
         page_token: str | None = None
+        seen: set[str] = set()
         while True:
             params: dict[str, Any] = {"pageSize": self.LIST_PAGE_SIZE}
-            if time_filter:
-                params["filter"] = time_filter
+            if point_filter:
+                params["filter"] = point_filter
             if page_token:
                 params["pageToken"] = page_token
             response = make_authenticated_request(
@@ -518,7 +489,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             )
             page = parse_page(response, endpoint)
             points.extend(page.data_points)
-            page_token = page.next_page_token
+            page_token = next_page_token(page, seen, endpoint)
             if not page_token:
                 break
         return points
