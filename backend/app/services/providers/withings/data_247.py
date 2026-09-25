@@ -432,10 +432,13 @@ class Withings247Data(Base247DataTemplate):
 
     @staticmethod
     def _epoch_or_none(value: Any) -> int | None:
+        """Epoch seconds a datetime can hold, or None — a nonsense value belongs to its own row."""
         try:
-            return int(value)
-        except (TypeError, ValueError):
+            epoch = int(value)
+            datetime.fromtimestamp(epoch, tz=timezone.utc)
+        except (TypeError, ValueError, OverflowError, OSError):
             return None
+        return epoch
 
     @staticmethod
     def _stages_within(stages: list[SleepStage], start_dt: datetime, end_dt: datetime) -> list[SleepStage] | None:

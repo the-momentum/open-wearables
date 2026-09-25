@@ -304,7 +304,14 @@ def test_minute_by_minute_states_are_folded_into_one_interval(mock_paginate: Mag
 def test_a_night_with_unreadable_timestamps_does_not_drop_the_batch(
     mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
 ) -> None:
-    mock_paginate.return_value = MagicMock(rows=[{**SLEEP_ROW, "id": 1, "startdate": "broken"}, SLEEP_ROW])
+    mock_paginate.return_value = MagicMock(
+        rows=[
+            {**SLEEP_ROW, "id": 1, "startdate": "broken"},
+            # A number Withings could never mean: past the range datetime can represent.
+            {**SLEEP_ROW, "id": 2, "startdate": 10**13},
+            SLEEP_ROW,
+        ]
+    )
 
     assert _data_247().save_sleep(MagicMock(), uuid4(), *_WINDOW) == 1
 
