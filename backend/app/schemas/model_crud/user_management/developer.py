@@ -15,7 +15,6 @@ class DeveloperRead(BaseModel):
     email: EmailStr
     created_at: datetime
     updated_at: datetime
-    welcome_dialog_seen_at: datetime | None = None
 
 
 class DeveloperCreate(BaseModel):
@@ -40,7 +39,6 @@ class DeveloperUpdate(BaseModel):
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr | None = None
     password: str | None = Field(None, min_length=settings.min_password_length)
-    welcome_dialog_seen_at: datetime | None = None
 
 
 class DeveloperUpdateInternal(BaseModel):
@@ -48,7 +46,6 @@ class DeveloperUpdateInternal(BaseModel):
     last_name: str | None = None
     email: EmailStr | None = None
     hashed_password: str | None = None
-    welcome_dialog_seen_at: datetime | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

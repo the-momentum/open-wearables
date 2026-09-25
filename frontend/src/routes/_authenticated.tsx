@@ -1,5 +1,4 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
-import { UsageSurveyDialog } from '@/components/common/usage-survey-dialog';
 import { SimpleSidebar } from '@/components/layout/simple-sidebar';
 import { isAuthenticated } from '@/lib/auth/session';
 import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
@@ -25,7 +24,6 @@ function AuthenticatedLayout() {
       <main className="flex-1 overflow-auto bg-zinc-950 md:border-l md:border-zinc-800/50">
         <Outlet />
       </main>
-      <UsageSurveyDialog />
     </div>
   );
 }

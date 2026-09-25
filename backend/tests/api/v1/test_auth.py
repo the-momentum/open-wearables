@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Developer
 from app.schemas.model_crud.user_management import DeveloperUpdate
 from app.services import developer_service
 from tests.factories import DeveloperFactory
@@ -636,29 +635,6 @@ class TestPasswordChangeRevokesRefreshTokens:
         response = client.post(f"{api_v1_prefix}/token/refresh", json={"refresh_token": old_refresh_token})
         assert response.status_code == 401
         assert response.json()["detail"] == "Invalid or revoked refresh token"
-
-    def test_me_reports_welcome_dialog_not_seen_for_new_developer(
-        self, client: TestClient, api_v1_prefix: str, auth_headers: dict[str, str]
-    ) -> None:
-        response = client.get(f"{api_v1_prefix}/auth/me", headers=auth_headers)
-
-        assert response.status_code == 200
-        assert response.json()["welcome_dialog_seen_at"] is None
-
-    def test_update_me_marks_welcome_dialog_seen(
-        self, client: TestClient, db: Session, api_v1_prefix: str, developer: Developer, auth_headers: dict[str, str]
-    ) -> None:
-        response = client.patch(
-            f"{api_v1_prefix}/auth/me",
-            json={"welcome_dialog_seen_at": "2026-09-22T10:00:00+00:00"},
-            headers=auth_headers,
-        )
-
-        assert response.status_code == 200
-        assert response.json()["welcome_dialog_seen_at"] == "2026-09-22T10:00:00Z"
-        db.refresh(developer)
-        assert developer.welcome_dialog_seen_at is not None
-        assert developer.hashed_password  # untouched by a non-password update
 
     def test_update_me_with_password_revokes_refresh_tokens(
         self, client: TestClient, db: Session, api_v1_prefix: str
