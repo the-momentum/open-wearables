@@ -79,6 +79,23 @@ from app.utils.pagination import decode_bucket_cursor, decode_cursor
 DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
+class TypeCounts(NamedTuple):
+    """One series type's share of a bulk upsert."""
+
+    inserted: int
+    updated: int
+    covered_start: datetime
+    covered_end: datetime
+
+    def merged_with(self, other: "TypeCounts") -> "TypeCounts":
+        return TypeCounts(
+            self.inserted + other.inserted,
+            self.updated + other.updated,
+            min(self.covered_start, other.covered_start),
+            max(self.covered_end, other.covered_end),
+        )
+
+
 class WriteCounts(int):
     """Result of a bulk upsert: total rows written, split into new vs updated.
 
@@ -98,6 +115,9 @@ class WriteCounts(int):
     updated: int
     covered_start: datetime | None
     covered_end: datetime | None
+    # Keyed by canonical SeriesType slug, so run tracking can report per type rather
+    # than per provider fetch task.
+    by_type: dict[str, TypeCounts]
 
     def __new__(
         cls,
@@ -105,12 +125,14 @@ class WriteCounts(int):
         updated: int,
         covered_start: datetime | None = None,
         covered_end: datetime | None = None,
+        by_type: dict[str, TypeCounts] | None = None,
     ) -> "WriteCounts":
         obj = super().__new__(cls, inserted + updated)
         obj.inserted = inserted
         obj.updated = updated
         obj.covered_start = covered_start
         obj.covered_end = covered_end
+        obj.by_type = by_type or {}
         return obj
 
     def __add__(self, other: int) -> "WriteCounts":
@@ -120,14 +142,21 @@ class WriteCounts(int):
         total, so any caller accumulating counts across batches keeps the detail.
         """
         if not isinstance(other, WriteCounts):
-            return WriteCounts(self.inserted + int(other), self.updated, self.covered_start, self.covered_end)
+            return WriteCounts(
+                self.inserted + int(other), self.updated, self.covered_start, self.covered_end, self.by_type
+            )
         starts = [d for d in (self.covered_start, other.covered_start) if d is not None]
         ends = [d for d in (self.covered_end, other.covered_end) if d is not None]
+        by_type = dict(self.by_type)
+        for series_type, counts in other.by_type.items():
+            existing = by_type.get(series_type)
+            by_type[series_type] = counts if existing is None else existing.merged_with(counts)
         return WriteCounts(
             self.inserted + other.inserted,
             self.updated + other.updated,
             min(starts) if starts else None,
             max(ends) if ends else None,
+            by_type,
         )
 
     __radd__ = __add__
@@ -362,22 +391,45 @@ class DataPointSeriesRepository(
                            OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
                            OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
                            OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
-                        RETURNING (xmax = 0) AS was_insert
+                        RETURNING (xmax = 0) AS was_insert, series_type_definition_id
                     )
-                    SELECT count(*) FILTER (WHERE was_insert) FROM merged
+                    SELECT
+                        series_type_definition_id,
+                        count(*) FILTER (WHERE was_insert) AS inserted,
+                        count(*) FILTER (WHERE NOT was_insert) AS updated
+                    FROM merged
+                    GROUP BY series_type_definition_id
                 """
             )
-            merge_result = cursor.fetchone()
-            assert merge_result is not None, "count(*) always returns exactly one row"
-            inserted = merge_result[0]
-        # One pass over rows already in memory, so the span costs no extra query. This is
+            written_by_type_id = {type_id: (inserted, updated) for type_id, inserted, updated in cursor.fetchall()}
+        # One pass over rows already in memory, so the spans cost no extra query. This is
         # the span of the data staged for the merge, which is what the sync covered.
         recorded = [row.recorded_at for row in rows if row.recorded_at is not None]
+        spans: dict[int, tuple[datetime, datetime]] = {}
+        for row in rows:
+            if row.recorded_at is None:
+                continue
+            span = spans.get(row.series_type_definition_id)
+            spans[row.series_type_definition_id] = (
+                (row.recorded_at, row.recorded_at)
+                if span is None
+                else (min(span[0], row.recorded_at), max(span[1], row.recorded_at))
+            )
+
+        by_type: dict[str, TypeCounts] = {}
+        for type_id, (start, end) in spans.items():
+            inserted_for_type, updated_for_type = written_by_type_id.get(type_id, (0, 0))
+            by_type[get_series_type_from_id(type_id).value] = TypeCounts(
+                inserted_for_type, updated_for_type, start, end
+            )
+
+        inserted = sum(counts.inserted for counts in by_type.values())
         return WriteCounts(
             inserted,
             len(rows) - inserted,
             min(recorded, default=None),
             max(recorded, default=None),
+            by_type,
         )
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
