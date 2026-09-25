@@ -131,6 +131,9 @@ class Settings(BaseSettings):
     default_data_granularity: DataGranularity = DataGranularity.RAW
 
     # SCORE SETTINGS
+    # Compute OW's own (provider="internal") sleep and resilience scores. Device-reported scores
+    # from providers are stored regardless. The fill tasks are idempotent, so re-enabling backfills the gap.
+    ow_scores_enabled: bool = True
     score_backfill_days: int = 30  # How far back the missing-score query looks
     sleep_score_interval_seconds: int = 600  # How often to run the fill-missing-scores task (default: 10 min)
     resilience_score_interval_seconds: int = (
@@ -282,6 +285,11 @@ class Settings(BaseSettings):
     )
 
     xml_chunk_size: int = 50_000
+
+    # DATA LIFECYCLE
+    # Master switch for time-series archival and retention: the admin panel tab, the
+    # /settings/archival endpoints and the daily archival task.
+    data_lifecycle_enabled: bool = True
 
     # RAW PAYLOAD STORAGE
     raw_payload_storage: str = "disabled"  # disabled | log | s3

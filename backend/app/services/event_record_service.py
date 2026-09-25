@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import event as sa_event
 from sqlalchemy.orm import Query
 
+from app.config import settings
 from app.database import DbSession
 from app.models import (
     DataPointSeries,
@@ -186,6 +187,9 @@ class EventRecordService(
         on, so a second convention here produces a duplicate score instead of
         replacing the existing one.
         """
+        if not settings.ow_scores_enabled:
+            return
+
         # Widened by a day either side so a session whose local start lands on a target
         # date is still inside the window whatever its zone offset.
         window_start = datetime.combine(min(sleep_dates), time.min, tzinfo=timezone.utc) - timedelta(days=1)

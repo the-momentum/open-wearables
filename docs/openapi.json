@@ -11135,11 +11135,16 @@
           "outgoing_webhooks_enabled": {
             "type": "boolean",
             "title": "Outgoing Webhooks Enabled"
+          },
+          "data_lifecycle_enabled": {
+            "type": "boolean",
+            "title": "Data Lifecycle Enabled"
           }
         },
         "type": "object",
         "required": [
-          "outgoing_webhooks_enabled"
+          "outgoing_webhooks_enabled",
+          "data_lifecycle_enabled"
         ],
         "title": "ConfigResponse",
         "description": "Instance feature flags for the admin panel. Additive-only: append new flags,\nnever remove or repurpose, so the frontend stays backward compatible."
