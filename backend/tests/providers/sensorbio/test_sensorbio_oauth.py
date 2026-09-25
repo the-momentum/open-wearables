@@ -4,7 +4,7 @@ import pytest
 
 from app.schemas.enums import ProviderName
 from app.services.providers.sensorbio.oauth import SensorBioOAuth
-from app.services.providers.templates.base_oauth import AuthenticationMethod
+from app.services.providers.templates.base_oauth import AuthenticationMethod, BaseOAuthTemplate
 
 
 @pytest.fixture
@@ -29,3 +29,21 @@ def test_uses_body_auth(sensorbio_oauth: SensorBioOAuth) -> None:
 
 def test_uses_no_pkce(sensorbio_oauth: SensorBioOAuth) -> None:
     assert sensorbio_oauth.use_pkce is False
+
+
+def test_sensorbio_enables_http2_for_oauth_client(
+    sensorbio_oauth: SensorBioOAuth,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    constructed_clients: list[dict[str, object]] = []
+
+    def capture_client(**kwargs: object) -> MagicMock:
+        constructed_clients.append(kwargs)
+        return MagicMock()
+
+    monkeypatch.setattr("app.services.providers.templates.base_oauth.httpx.Client", capture_client)
+
+    assert BaseOAuthTemplate.use_http2 is False
+    sensorbio_oauth._http_client()
+
+    assert constructed_clients == [{"http2": True, "timeout": 30.0}]
