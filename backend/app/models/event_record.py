@@ -27,6 +27,13 @@ class EventRecord(BaseDbModel):
     __table_args__ = (
         Index("ix_event_record_source_category", "data_source_id", "category"),
         Index("ix_event_record_source_time", "data_source_id", "start_datetime", "end_datetime", unique=True),
+        Index(
+            "ix_event_record_meal_source_start",
+            "data_source_id",
+            "start_datetime",
+            unique=True,
+            postgresql_where="category = 'meal'",
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]
