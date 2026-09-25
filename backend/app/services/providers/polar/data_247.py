@@ -489,12 +489,16 @@ class Polar247Data(Base247DataTemplate):
         response = self._make_api_request(db, user_id, "/v3/users/nightly-recharge")
         return (response or {}).get("recharges", [])
 
+    NightlyRechargeNormalized = tuple[list[HealthScoreCreate], list[TimeSeriesSampleCreate]]
+
     def normalize_nightly_recharge(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[HealthScoreCreate]:
+    ) -> NightlyRechargeNormalized:
+        """HRV and breathing rate are four-hour averages from early sleep, so one sample per night."""
         scores: list[HealthScoreCreate] = []
+        samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, NightlyRechargeJSON, user_id, "nightly_recharge")) is None:
                 continue
@@ -515,6 +519,23 @@ class Polar247Data(Base247DataTemplate):
                     value=parsed.ans_charge_status,
                     qualifier=ANS_CHARGE_STATUS_LABELS.get(parsed.ans_charge_status),
                 )
+            recorded_at = datetime.fromisoformat(parsed.date)
+            for value, series_type in (
+                (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),
+                (parsed.breathing_rate_avg, SeriesType.respiratory_rate),
+            ):
+                if value is not None:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            provider=ProviderName.POLAR,
+                            source=ProviderName.POLAR,
+                            recorded_at=recorded_at,
+                            value=value,
+                            series_type=series_type,
+                        )
+                    )
             scores.append(
                 HealthScoreCreate(
                     id=uuid4(),
@@ -523,11 +544,11 @@ class Polar247Data(Base247DataTemplate):
                     category=HealthScoreCategory.RECOVERY,
                     value=parsed.nightly_recharge_status,
                     qualifier=NIGHTLY_RECHARGE_STATUS_LABELS.get(parsed.nightly_recharge_status),
-                    recorded_at=datetime.fromisoformat(parsed.date),
+                    recorded_at=recorded_at,
                     components=components or None,
                 )
             )
-        return scores
+        return scores, samples
 
     # -------------------------------------------------------------------------
     # SleepWise — Alertness: GET /v3/users/sleepwise/alertness
@@ -904,6 +925,19 @@ class Polar247Data(Base247DataTemplate):
                 )
                 return {}
 
+    def _save_nightly_recharge(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        scores, samples = self.normalize_nightly_recharge(
+            self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
+        )
+        self._save_timeseries(db, samples)
+        return self._save_scores(db, scores)
+
     def _save_sleep(
         self,
         db: DbSession,
@@ -972,12 +1006,7 @@ class Polar247Data(Base247DataTemplate):
             "cardio_load": lambda: self._save_scores(
                 db, self.normalize_cardio_load(self.get_cardio_load_data(db, user_id, start_time, end_time), user_id)
             ),
-            "nightly_recharge": lambda: self._save_scores(
-                db,
-                self.normalize_nightly_recharge(
-                    self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
-                ),
-            ),
+            "nightly_recharge": lambda: self._save_nightly_recharge(db, user_id, start_time, end_time),
             "alertness": lambda: self._save_scores(
                 db, self.normalize_alertness(self.get_alertness_data(db, user_id, start_time, end_time), user_id)
             ),
