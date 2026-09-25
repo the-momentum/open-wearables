@@ -393,20 +393,21 @@ class DataPointSeriesRepository(
                            OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
                         RETURNING (xmax = 0) AS was_insert, series_type_definition_id
                     )
-                    SELECT
-                        series_type_definition_id,
-                        count(*) FILTER (WHERE was_insert) AS inserted,
-                        count(*) FILTER (WHERE NOT was_insert) AS updated
+                    SELECT series_type_definition_id, count(*) FILTER (WHERE was_insert) AS inserted
                     FROM merged
                     GROUP BY series_type_definition_id
                 """
             )
-            written_by_type_id = {type_id: (inserted, updated) for type_id, inserted, updated in cursor.fetchall()}
+            inserted_by_type_id = dict(cursor.fetchall())
         # One pass over rows already in memory, so the spans cost no extra query. This is
         # the span of the data staged for the merge, which is what the sync covered.
         recorded = [row.recorded_at for row in rows if row.recorded_at is not None]
         spans: dict[int, tuple[datetime, datetime]] = {}
+        staged_by_type_id: dict[int, int] = {}
         for row in rows:
+            staged_by_type_id[row.series_type_definition_id] = (
+                staged_by_type_id.get(row.series_type_definition_id, 0) + 1
+            )
             if row.recorded_at is None:
                 continue
             span = spans.get(row.series_type_definition_id)
@@ -416,14 +417,16 @@ class DataPointSeriesRepository(
                 else (min(span[0], row.recorded_at), max(span[1], row.recorded_at))
             )
 
+        # updated is staged minus inserted, matching the run-level split: a conflict whose
+        # values were unchanged never reaches RETURNING, and still counts as written.
         by_type: dict[str, TypeCounts] = {}
         for type_id, (start, end) in spans.items():
-            inserted_for_type, updated_for_type = written_by_type_id.get(type_id, (0, 0))
+            inserted_for_type = inserted_by_type_id.get(type_id, 0)
             by_type[get_series_type_from_id(type_id).value] = TypeCounts(
-                inserted_for_type, updated_for_type, start, end
+                inserted_for_type, staged_by_type_id[type_id] - inserted_for_type, start, end
             )
 
-        inserted = sum(counts.inserted for counts in by_type.values())
+        inserted = sum(inserted_by_type_id.values())
         return WriteCounts(
             inserted,
             len(rows) - inserted,

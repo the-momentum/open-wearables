@@ -961,6 +961,23 @@ class TestPerTypeWriteCounts:
         assert counts.by_type["heart_rate"].inserted == 0
         assert counts.by_type["heart_rate"].updated == 1
 
+    def test_unchanged_resync_still_counts_as_updated(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """An identical row never reaches RETURNING, so it must be counted from staging."""
+        user = UserFactory()
+        now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        sample = self._sample(user.id, now, SeriesType.heart_rate)
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        counts = series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        assert counts.by_type["heart_rate"].inserted == 0
+        assert counts.by_type["heart_rate"].updated == 1
+        assert sum(c.updated for c in counts.by_type.values()) == counts.updated
+
     def test_breakdowns_merge_when_counts_are_summed(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Providers accumulate counts across batches; the per-type spans must widen."""
         user = UserFactory()

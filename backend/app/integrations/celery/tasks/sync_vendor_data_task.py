@@ -91,7 +91,7 @@ def _task_outcomes(task: str, count: Any) -> list[DataTypeOutcome]:
                 data_type=series_type,
                 kind=DataTypeKind.SERIES,
                 native_type=task,
-                status=SyncStatus.SUCCESS,
+                status=SyncStatus.SUCCESS if counts.inserted or counts.updated else SyncStatus.SKIPPED,
                 items_inserted=counts.inserted,
                 items_updated=counts.updated,
                 covered_start=counts.covered_start,
