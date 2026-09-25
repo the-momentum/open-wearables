@@ -248,6 +248,37 @@ def test_two_nights_share_one_hypnogram_request(
 
 
 @patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request")
+@patch("app.services.providers.withings.data_247.paginate")
+def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+) -> None:
+    ten_days = 10 * 86400
+    later_night = {
+        **SLEEP_ROW,
+        "id": 12347,
+        "startdate": SLEEP_ROW["startdate"] + ten_days,
+        "enddate": SLEEP_ROW["enddate"] + ten_days,
+    }
+    mock_paginate.return_value = MagicMock(rows=[SLEEP_ROW, later_night])
+    mock_request.side_effect = [
+        {"series": [{"startdate": 1594160100, "enddate": 1594163700, "state": 2}]},
+        # Nothing for the stretch after the first night, the way Withings answers an empty range.
+        {"series": []},
+        {"series": [{"startdate": later_night["startdate"], "enddate": later_night["startdate"] + 3600, "state": 1}]},
+        {"series": []},
+    ]
+
+    _data_247().save_sleep(
+        MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 7, 20, tzinfo=timezone.utc)
+    )
+
+    first, second = (call.args[3] for call in mock_event.create_or_merge_sleep.call_args_list)
+    assert [stage.stage.value for stage in first.sleep_stages] == ["deep"]
+    assert [stage.stage.value for stage in second.sleep_stages] == ["light"]
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_minute_by_minute_states_are_folded_into_one_interval(mock_paginate: MagicMock, mock_event: MagicMock) -> None:
     minute_states = {

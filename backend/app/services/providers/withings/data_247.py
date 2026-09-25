@@ -7,7 +7,7 @@ metrics become ``DataPointSeries`` samples; sleep becomes an ``EventRecord`` +
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, NoReturn
+from typing import Any, NamedTuple, NoReturn
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -43,6 +43,14 @@ from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
+
+
+class _Night(NamedTuple):
+    """A sleep session's window, in epoch seconds as Withings reports it."""
+
+    start: int
+    end: int
+
 
 # Trailing window used when a caller supplies no bounds.
 _DEFAULT_SYNC_WINDOW = timedelta(days=30)
@@ -307,19 +315,12 @@ class Withings247Data(Base247DataTemplate):
         # returns nights that start after the requested window ends.
         # A row the window cannot be read from is left to _save_sleep_row to report,
         # rather than failing the whole batch here.
-        edges = [
-            (start, self._epoch_or_none(row.get("enddate")) or start)
+        nights = [
+            _Night(start, self._epoch_or_none(row.get("enddate")) or start)
             for row in rows
             if isinstance(row, dict) and (start := self._epoch_or_none(row.get("startdate"))) is not None
         ]
-        window_stages: list[SleepStage] = []
-        if edges:
-            window_stages = self._fetch_sleep_stages(
-                db,
-                user_id,
-                datetime.fromtimestamp(min(edge[0] for edge in edges), tz=timezone.utc),
-                datetime.fromtimestamp(max(edge[1] for edge in edges), tz=timezone.utc),
-            )
+        window_stages = self._fetch_sleep_stages(db, user_id, nights) if nights else []
         processed = 0
         for row in rows:
             # Tolerate a malformed night without dropping the rest of the batch.
@@ -341,17 +342,19 @@ class Withings247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        start_dt: datetime,
-        end_dt: datetime,
+        nights: list[_Night],
     ) -> list[SleepStage]:
-        """Fetch the hypnogram for a window. Empty when it is unavailable.
+        """Fetch the hypnogram covering the given nights. Empty when it is unavailable.
 
-        The endpoint truncates long ranges without setting `more`, so the window is
-        walked with a cursor: each response continues from the last interval it returned.
+        The endpoint truncates long ranges without setting `more`, so the nights are walked
+        with a cursor. A page that adds nothing means an empty stretch, not the end of the
+        data, so the cursor moves on to the next night.
         """
         stages: list[SleepStage] = []
         seen: set[tuple[int, int]] = set()
-        cursor = start_dt
+        starts = sorted(datetime.fromtimestamp(night.start, tz=timezone.utc) for night in nights)
+        end_dt = datetime.fromtimestamp(max(night.end for night in nights), tz=timezone.utc)
+        cursor = starts[0]
         for _ in range(self._MAX_SLEEP_SERIES_PAGES):
             try:
                 body = withings_request(
@@ -376,8 +379,6 @@ class Withings247Data(Base247DataTemplate):
             rows = body.get(SLEEP_SERIES.list_key) or []
             if isinstance(rows, dict):
                 rows = [rows]
-            if not rows:
-                break
 
             newest = cursor
             for row in rows:
@@ -400,9 +401,15 @@ class Withings247Data(Base247DataTemplate):
                     )
                 )
 
-            if newest <= cursor or newest >= end_dt:
+            if newest >= end_dt:
                 break
-            cursor = newest
+            if newest > cursor:
+                cursor = newest
+                continue
+            next_night = next((start for start in starts if start > cursor), None)
+            if next_night is None:
+                break
+            cursor = next_night
 
         return self._merge_adjacent(sorted(stages, key=lambda s: s.start_time))
 
