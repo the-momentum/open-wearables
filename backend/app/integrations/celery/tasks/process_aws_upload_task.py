@@ -27,6 +27,7 @@ from app.services.sync_status_service import (
 )
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
+from app.utils.context import sync_run_context
 from app.utils.exceptions import ResourceNotFoundError
 from app.utils.sentry_helpers import log_and_capture_error
 
@@ -189,7 +190,8 @@ def _run_import_task(
         ):
             _ensure_upload_completed(bucket_name, object_key, upload_id, parts, user_id)
             _store_upload_completion(bucket_name, object_key, user_id)
-        result = _process_aws_upload(bucket_name, object_key, user_id)
+        with sync_run_context(run_id=run_id, source=SyncSource.XML_IMPORT, scope=SyncScope.HISTORICAL):
+            result = _process_aws_upload(bucket_name, object_key, user_id)
         _store_completed_import(bucket_name, object_key, user_id, result)
         if user_uuid is not None:
             emit_sync_completed(

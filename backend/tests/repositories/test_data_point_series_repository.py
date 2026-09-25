@@ -902,3 +902,101 @@ class TestDataPointSeriesRepository:
         by_source = {r["source"]: r["steps_sum"] for r in result}
         assert by_source["garmin"] == 10000
         assert by_source["apple"] == 8000
+
+
+class TestPerTypeWriteCounts:
+    """bulk_create reports per canonical series type, not per provider fetch task."""
+
+    @pytest.fixture
+    def series_repo(self) -> DataPointSeriesRepository:
+        return DataPointSeriesRepository(DataPointSeries)
+
+    @staticmethod
+    def _sample(user_id: UUID, recorded_at: datetime, series_type: SeriesType) -> TimeSeriesSampleCreate:
+        return TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            source="oura",
+            provider="oura",
+            recorded_at=recorded_at,
+            value=60,
+            series_type=series_type,
+        )
+
+    def test_breakdown_is_keyed_by_series_type_with_its_own_span(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        user = UserFactory()
+        now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+
+        counts = series_repo.bulk_create(
+            db,
+            [
+                self._sample(user.id, now, SeriesType.heart_rate),
+                self._sample(user.id, now + timedelta(hours=3), SeriesType.heart_rate),
+                self._sample(user.id, now + timedelta(hours=1), SeriesType.steps),
+            ],
+        )
+        db.commit()
+
+        assert set(counts.by_type) == {"heart_rate", "steps"}
+        assert counts.by_type["heart_rate"].inserted == 2
+        assert counts.by_type["heart_rate"].covered_start == now
+        assert counts.by_type["heart_rate"].covered_end == now + timedelta(hours=3)
+        assert counts.by_type["steps"].inserted == 1
+        assert counts.inserted == 3
+
+    def test_rewriting_a_sample_counts_as_updated_for_its_type(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        user = UserFactory()
+        now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        first = self._sample(user.id, now, SeriesType.heart_rate)
+        series_repo.bulk_create(db, [first])
+        db.commit()
+
+        counts = series_repo.bulk_create(db, [first.model_copy(update={"value": 99})])
+        db.commit()
+
+        assert counts.by_type["heart_rate"].inserted == 0
+        assert counts.by_type["heart_rate"].updated == 1
+
+    def test_unchanged_resync_still_counts_as_updated(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """An identical row never reaches RETURNING, so it must be counted from staging."""
+        user = UserFactory()
+        now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        sample = self._sample(user.id, now, SeriesType.heart_rate)
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        counts = series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        assert counts.by_type["heart_rate"].inserted == 0
+        assert counts.by_type["heart_rate"].updated == 1
+        assert sum(c.updated for c in counts.by_type.values()) == counts.updated
+
+    def test_breakdowns_merge_when_counts_are_summed(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """Providers accumulate counts across batches; the per-type spans must widen."""
+        user = UserFactory()
+        now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+
+        first = series_repo.bulk_create(db, [self._sample(user.id, now, SeriesType.heart_rate)])
+        db.commit()
+        second = series_repo.bulk_create(
+            db,
+            [
+                self._sample(user.id, now + timedelta(days=1), SeriesType.heart_rate),
+                self._sample(user.id, now, SeriesType.steps),
+            ],
+        )
+        db.commit()
+
+        total = first + second
+
+        assert set(total.by_type) == {"heart_rate", "steps"}
+        assert total.by_type["heart_rate"].inserted == 2
+        assert total.by_type["heart_rate"].covered_start == now
+        assert total.by_type["heart_rate"].covered_end == now + timedelta(days=1)

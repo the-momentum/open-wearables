@@ -34,6 +34,8 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.database import DbSession, SessionLocal
 from app.integrations.redis_client import get_redis_client
+from app.models import SyncRun
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import (
     DataTypeOutcome,
@@ -47,6 +49,7 @@ from app.schemas.sync_status import (
     SyncStatus,
     SyncStatusEvent,
 )
+from app.services.outgoing_webhooks import events as outgoing_events
 from app.utils.context import trace_id_var
 from app.utils.sse import format_comment, format_event
 from app.utils.structured_logging import log_structured
@@ -93,6 +96,13 @@ def new_run_id(prefix: str = "run") -> str:
 
 _PERSISTED_STAGES = frozenset(
     {SyncStage.STARTED, SyncStage.COMPLETED, SyncStage.FAILED, SyncStage.CANCELLED},
+)
+
+# A type we know went wrong, as opposed to one that simply ended with nothing to write.
+# STALE and UNFINISHED mean we lost track of it, which is a failure from the consumer's
+# side too: the history they were promised is not there.
+_FAILED_DATA_TYPE_STATUSES = frozenset(
+    {SyncStatus.FAILED, SyncStatus.STALE, SyncStatus.UNFINISHED, SyncStatus.CANCELLED},
 )
 
 # Metadata keys that are only the transport for a column, so they are not stored twice.
@@ -191,6 +201,7 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
                 outcomes=outcomes,
                 updated_at=datetime.now(timezone.utc),
             )
+            _dispatch_data_type_webhooks(db, run, outcomes)
     except Exception as exc:
         log_structured(
             logger,
@@ -200,6 +211,59 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
             run_id=run_key,
             error=str(exc),
         )
+
+
+def _dispatch_data_type_webhooks(db: DbSession, run: SyncRun, outcomes: list[DataTypeOutcome]) -> None:
+    """Forward the per-data-type outcomes that reached a verdict.
+
+    IN_PROGRESS outcomes are skipped: an SDK export reports its types once per batch long
+    before they are done, and only the log's end event knows how each one turned out.
+
+    Fires per outcome rather than per run, so a consumer learns a type's history is in
+    without waiting for the whole backfill. The idempotency key is the run and type, so a
+    type reporting the same verdict twice is delivered once.
+    """
+    terminal = [o for o in outcomes if o.status != SyncStatus.IN_PROGRESS]
+    if not terminal:
+        return
+
+    coverage = {
+        row.data_type: row
+        for row in data_type_coverage_repository.list_for_user(
+            db,
+            run.user_id,
+            provider=run.provider,
+            data_types=[o.data_type for o in terminal],
+        )
+    }
+
+    for outcome in terminal:
+        held = coverage.get(outcome.data_type)
+        outgoing_events.on_sync_data_type_finished(
+            user_id=run.user_id,
+            provider=run.provider,
+            source=str(run.source),
+            scope=str(run.scope),
+            run_id=run.run_key,
+            data_type=outcome.data_type,
+            kind=str(outcome.kind),
+            status=str(outcome.status),
+            succeeded=outcome.status not in _FAILED_DATA_TYPE_STATUSES,
+            native_data_type=outcome.native_type,
+            reported_records=outcome.reported_records,
+            items_inserted=outcome.items_inserted,
+            items_updated=outcome.items_updated,
+            covered_start=_iso(outcome.covered_start),
+            covered_end=_iso(outcome.covered_end),
+            coverage_start=_iso(held.coverage_start) if held else None,
+            coverage_end=_iso(held.coverage_end) if held else None,
+            error_code=outcome.error_code,
+            error=outcome.error,
+        )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def list_stored_runs(
