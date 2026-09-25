@@ -296,11 +296,14 @@ class Withings247Data(Base247DataTemplate):
             list_key=SLEEP_SUMMARY.list_key,
         ).rows
         processed = 0
+        samples: list[TimeSeriesSampleCreate] = []
         for row in rows:
             # Tolerate a malformed night without dropping the rest of the batch.
             try:
-                if self._save_sleep_row(db, user_id, row, user_connection_id):
+                night_samples = self._save_sleep_row(db, user_id, row, user_connection_id)
+                if night_samples is not None:
                     processed += 1
+                    samples.extend(night_samples)
             except Exception as e:
                 db.rollback()
                 log_and_capture_error(
@@ -310,6 +313,9 @@ class Withings247Data(Base247DataTemplate):
                     level="warning",
                     extra={"provider": "withings", "user_id": str(user_id)},
                 )
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
         return processed
 
     def _save_sleep_row(
@@ -318,7 +324,8 @@ class Withings247Data(Base247DataTemplate):
         user_id: UUID,
         row: dict,
         user_connection_id: UUID | None,
-    ) -> bool:
+    ) -> list[TimeSeriesSampleCreate] | None:
+        """Save one night and return its samples, or None when the night was not saved."""
         summary = WithingsSleepSummary.model_validate(row)
         start_dt = datetime.fromtimestamp(summary.startdate, tz=timezone.utc)
         end_dt = datetime.fromtimestamp(summary.enddate, tz=timezone.utc)
@@ -385,7 +392,6 @@ class Withings247Data(Base247DataTemplate):
         )
         try:
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
-            return True
         except Exception as e:
             db.rollback()
             log_and_capture_error(
@@ -394,7 +400,24 @@ class Withings247Data(Base247DataTemplate):
                 "Withings sleep save error",
                 extra={"provider": "withings", "user_id": str(user_id)},
             )
-            return False
+            return None
+
+        # Withings publishes no resting heart rate; the night's lowest is what Oura and Suunto map too.
+        if data.hr_min is None:
+            return []
+        return [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=self.provider_name,
+                source=self.provider_name,
+                user_connection_id=user_connection_id,
+                recorded_at=start_dt,
+                zone_offset=zone_offset,
+                value=data.hr_min,
+                series_type=SeriesType.resting_heart_rate,
+            )
+        ]
 
     # ---------------------- Combined load ----------------------
 
