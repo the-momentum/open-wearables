@@ -36,7 +36,20 @@ class TestBackfillDeviceTypes:
         assert watch.device_type == "watch"
         assert whoop.device_type == "band"
 
-    def test_never_overwrites_concrete_type(self, db: Session) -> None:
+    def test_recomputes_cloud_provider_types(self, db: Session) -> None:
+        bpm = DataSourceFactory(
+            provider=ProviderName.GARMIN, device_model="Garmin Index BPM", source="garmin", device_type="scale"
+        )
+        gearless = DataSourceFactory(
+            provider=ProviderName.SUUNTO, device_model=None, source="suunto", device_type="watch"
+        )
+
+        backfill_device_types(db, dry_run=False)
+
+        assert bpm.device_type == "other"
+        assert gearless.device_type is None
+
+    def test_never_overwrites_concrete_sdk_type(self, db: Session) -> None:
         ds = DataSourceFactory(
             provider=ProviderName.APPLE, device_model="Watch6,12", source="AirPods Pro", device_type="phone"
         )

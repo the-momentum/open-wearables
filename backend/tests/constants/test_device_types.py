@@ -41,6 +41,17 @@ class TestInferDeviceTypeFromModel:
             ("HRM-Pro Plus", DeviceType.OTHER),
             ("Garmin Index S2", DeviceType.SCALE),
             ("Suunto Race 2", DeviceType.WATCH),
+            ("Moto 360", DeviceType.WATCH),
+            ("Suunto Wing 2 Bone Conduction Headphone", DeviceType.OTHER),
+            ("Garmin Index BPM", DeviceType.OTHER),
+            ("Garmin Index Sleep Monitor", DeviceType.BAND),
+            ("Garmin fēnix 8", DeviceType.WATCH),
+            ("Garmin vívoactive 6", DeviceType.WATCH),
+            ("Garmin Approach G80", DeviceType.OTHER),
+            ("Garmin Approach S70", DeviceType.WATCH),
+            ("Huawei Watch Buds", DeviceType.WATCH),
+            ("Galaxy Ring", DeviceType.RING),
+            ("Suunto Smart Heart Rate Belt", DeviceType.OTHER),
         ],
     )
     def test_infers_type(self, device_model: str | None, expected: DeviceType) -> None:
@@ -54,7 +65,7 @@ class TestInferDeviceType:
             (ProviderName.OURA, DeviceType.RING),
             (ProviderName.ULTRAHUMAN, DeviceType.RING),
             (ProviderName.WHOOP, DeviceType.BAND),
-            (ProviderName.SUUNTO, DeviceType.WATCH),
+            (ProviderName.SUUNTO, DeviceType.UNKNOWN),
             (ProviderName.GARMIN, DeviceType.UNKNOWN),
         ],
     )
@@ -64,8 +75,18 @@ class TestInferDeviceType:
     def test_single_device_provider_skips_model_matching(self) -> None:
         assert infer_device_type(ProviderName.OURA, "Galaxy Watch7") == DeviceType.RING
 
-    def test_provider_default_replaces_other(self) -> None:
-        assert infer_device_type(ProviderName.SUUNTO, "Ambit3") == DeviceType.WATCH
+    def test_suunto_resolves_from_gear_model(self) -> None:
+        assert infer_device_type(ProviderName.SUUNTO, "Suunto Race 2") == DeviceType.WATCH
+        assert infer_device_type(ProviderName.SUUNTO, "Polar H10") == DeviceType.OTHER
+
+    @pytest.mark.parametrize("source_name", ["Loop", "Pacer", "Sleep Monitoring", "Bracelet"])
+    def test_app_and_word_substrings_are_not_devices(self, source_name: str) -> None:
+        assert infer_device_type(ProviderName.APPLE, None, source_name) == DeviceType.UNKNOWN
+
+    def test_provider_slug_source_is_not_a_device_name(self) -> None:
+        assert infer_device_type(ProviderName.SUUNTO, None, "suunto") == DeviceType.UNKNOWN
+
+    def test_unmatched_model_stays_other(self) -> None:
         assert infer_device_type(ProviderName.GARMIN, "Garmin Edge 1030") == DeviceType.OTHER
 
 
