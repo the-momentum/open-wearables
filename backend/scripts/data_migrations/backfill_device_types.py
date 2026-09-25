@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Re-resolve ``data_source.device_type`` with the current device mappings.
+"""One-off: re-resolve ``data_source.device_type`` for rows written before the new mappings.
 
-Cloud providers never report a device type, so their stored type is pure inference and
-is recomputed outright - this also corrects rows the old keywords got wrong (e.g. Garmin
-Index BPM stored as scale). Mobile SDK providers may have stored the SDK-reported type,
-which is not kept elsewhere, so their rows only get the ingestion upgrade rule: NULL or
-``other`` becomes concrete, a concrete type is never overwritten.
+Applies the same rule as live sync (``DataSourceRepository.next_device_type``): cloud-provider
+rows are recomputed outright, which also corrects types the old keywords got wrong (e.g. Garmin
+Index BPM stored as scale); SDK-provider rows only upgrade NULL/``other`` to a concrete type.
+Later mapping changes reach existing rows on their next sync, so this only needs to run once.
 
-Idempotent: a second run finds nothing to change. Safe to run on every startup; newly
-added mappings are picked up automatically.
+Idempotent: a second run finds nothing to change. Safe to run on every startup until removed.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/backfill_device_types.py --dry-run
@@ -21,11 +19,10 @@ from collections import Counter
 from sqlalchemy.orm import Session
 
 from app.constants.devices_map import infer_device_type
-from app.constants.sdk_providers import sdk_providers
 from app.database import SessionLocal
 from app.models import DataSource
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import DeviceType, ProviderName
+from app.schemas.enums import ProviderName
 
 
 def backfill_device_types(db: Session, *, dry_run: bool) -> Counter[str]:
@@ -33,7 +30,6 @@ def backfill_device_types(db: Session, *, dry_run: bool) -> Counter[str]:
 
     Returns a count of changes keyed by ``"<provider>: <old> -> <new>"``.
     """
-    sdk = sdk_providers()
     changes: Counter[str] = Counter()
     for ds in db.query(DataSource).all():
         try:
@@ -41,11 +37,7 @@ def backfill_device_types(db: Session, *, dry_run: bool) -> Counter[str]:
         except ValueError:
             continue
         resolved = infer_device_type(provider, ds.device_model, ds.original_source_name or ds.source)
-        if provider.value in sdk:
-            upgraded = DataSourceRepository._upgraded_device_type(ds.device_type, resolved)
-            new_type = upgraded.value if upgraded else ds.device_type
-        else:
-            new_type = resolved.value if resolved != DeviceType.UNKNOWN else None
+        new_type = DataSourceRepository.next_device_type(provider, ds.device_type, resolved)
         if new_type == ds.device_type:
             continue
         changes[f"{provider.value}: {ds.device_type} -> {new_type}"] += 1

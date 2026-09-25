@@ -19,6 +19,8 @@ class TestInferDeviceTypeFromModel:
             ("SM-M127F", DeviceType.PHONE),
             ("SM-S911B", DeviceType.PHONE),
             ("SM-R390", DeviceType.OTHER),
+            ("SM-R860", DeviceType.WATCH),
+            ("SM-R860N", DeviceType.WATCH),
             ("Pixel 8", DeviceType.PHONE),
             ("Pixel Watch 2", DeviceType.WATCH),
             ("Galaxy Watch7", DeviceType.WATCH),

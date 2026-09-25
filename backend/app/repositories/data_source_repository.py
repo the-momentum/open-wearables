@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.constants.devices_map import infer_device_type
+from app.constants.sdk_providers import sdk_providers
 from app.database import DbSession
 from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
@@ -73,12 +74,13 @@ class DataSourceRepository(
             if original_source_name and existing.original_source_name is None:
                 object.__setattr__(existing, "original_source_name", original_source_name)
                 updated = True
-            device_type = self._upgraded_device_type(
+            device_type = self.next_device_type(
+                provider,
                 existing.device_type,
                 infer_device_type(provider, device_model, original_source_name, reported_type),
             )
-            if device_type:
-                object.__setattr__(existing, "device_type", device_type.value)
+            if device_type != existing.device_type:
+                object.__setattr__(existing, "device_type", device_type)
                 updated = True
             if updated:
                 db_session.flush()
@@ -105,11 +107,13 @@ class DataSourceRepository(
         return result
 
     @staticmethod
-    def _upgraded_device_type(current: str | None, resolved: DeviceType) -> DeviceType | None:
-        """New type for a stored row; only unset or "other" rows are upgraded so types never flip-flop."""
-        if current not in (None, DeviceType.OTHER) or resolved in (DeviceType.UNKNOWN, current):
-            return None
-        return resolved
+    def next_device_type(provider: ProviderName, current: str | None, resolved: DeviceType) -> str | None:
+        """Cloud rows take the inferred type; SDK rows only upgrade from unset/"other"."""
+        if provider.value not in sdk_providers():
+            return resolved.value if resolved != DeviceType.UNKNOWN else None
+        if current in (None, DeviceType.OTHER) and resolved not in (DeviceType.UNKNOWN, current):
+            return resolved.value
+        return current
 
     def batch_ensure_data_sources(
         self,
@@ -138,12 +142,13 @@ class DataSourceRepository(
         for ds in existing:
             identity = (ds.user_id, ds.device_model, ds.source)
             result[identity] = ds.id
-            device_type = self._upgraded_device_type(
+            device_type = self.next_device_type(
+                provider,
                 ds.device_type,
                 infer_device_type(provider, ds.device_model, ds.source, reported_types.get(identity)),
             )
-            if device_type:
-                object.__setattr__(ds, "device_type", device_type.value)
+            if device_type != ds.device_type:
+                object.__setattr__(ds, "device_type", device_type)
                 upgraded = True
         if upgraded:
             db_session.flush()

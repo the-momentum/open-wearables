@@ -67,8 +67,10 @@ echo 'Running Whoop cycle day re-key...'
 uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
     || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
 
-# Re-resolves data_source.device_type for NULL/'other' rows with the current mappings;
-# never overwrites a concrete type. Idempotent, picks up newly added mappings on startup.
+# TODO: Remove this after ~2026-12-01 once all deployments have migrated.
+# Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
+# recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
+# the same rule afterwards.
 echo 'Running device type backfill...'
 uv run python scripts/data_migrations/backfill_device_types.py \
     || echo "Warning: device type backfill failed — will retry on next startup."
