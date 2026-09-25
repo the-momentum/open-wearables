@@ -14,7 +14,6 @@ from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import daily_total_flag
-from app.schemas.enums.series_types import SeriesType
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
@@ -23,7 +22,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES
+from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES, DAILY_SCALAR_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
@@ -603,39 +602,22 @@ class Ultrahuman247Data(Base247DataTemplate):
                         normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
                         daily_samples.extend(self._build_activity_samples(user_id, normalized_samples))
 
-                    if "vo2_max" in items_by_type:
-                        vo2_obj = items_by_type["vo2_max"]
-                        vo2_value = vo2_obj.get("value")
-                        vo2_ts = vo2_obj.get("day_start_timestamp")
-                        if vo2_value and vo2_ts:
-                            daily_samples.append(
-                                TimeSeriesSampleCreate(
-                                    id=uuid4(),
-                                    user_id=user_id,
-                                    provider=self.provider_name,
-                                    recorded_at=datetime.fromtimestamp(vo2_ts, tz=timezone.utc),
-                                    value=Decimal(str(vo2_value)),
-                                    series_type=SeriesType.vo2_max,
-                                )
+                    for key, series_type in DAILY_SCALAR_SERIES.items():
+                        scalar = items_by_type.get(key) or {}
+                        value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
+                        if value is None or not day_start:
+                            continue
+                        daily_samples.append(
+                            TimeSeriesSampleCreate(
+                                id=uuid4(),
+                                user_id=user_id,
+                                provider=self.provider_name,
+                                recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
+                                value=Decimal(str(value)),
+                                series_type=series_type,
+                                is_daily_total=daily_total_flag(series_type, True),
                             )
-
-                    # Active time (single daily value in minutes, like vo2_max)
-                    if "active_minutes" in items_by_type:
-                        active_obj = items_by_type["active_minutes"]
-                        active_value = active_obj.get("value")
-                        active_ts = active_obj.get("day_start_timestamp")
-                        if active_value is not None and active_ts:
-                            daily_samples.append(
-                                TimeSeriesSampleCreate(
-                                    id=uuid4(),
-                                    user_id=user_id,
-                                    provider=self.provider_name,
-                                    recorded_at=datetime.fromtimestamp(active_ts, tz=timezone.utc),
-                                    value=Decimal(str(active_value)),
-                                    series_type=SeriesType.active_time,
-                                    is_daily_total=True,
-                                )
-                            )
+                        )
 
                     if daily_samples:
                         counts = timeseries_service.bulk_create_samples(db, daily_samples)
