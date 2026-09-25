@@ -29,8 +29,7 @@ UNMATCHED = "unmatched"
 UNRESOLVED = "unresolved"
 
 _COUNTED_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
-# Routes whose mere usage says something sensitive about an instance's users. The
-# payload's `menstrual_tracking_used` flag already covers the product question.
+# Routes whose mere usage says something sensitive about an instance's users.
 _EXCLUDED_ROUTE_MARKERS = ("/menstrual-cycles",)
 # `{provider}` is the one path parameter worth keeping: a closed enum, not an ID.
 _PROVIDERS = frozenset(provider.value for provider in ProviderName)

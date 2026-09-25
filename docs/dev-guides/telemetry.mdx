@@ -60,7 +60,6 @@ count or a configuration flag.
 | `data_points_by_provider` | Rows in `data_point_series` per provider | `{"garmin": 1284932}` | Data volume per provider, drives storage and import performance work |
 | `workouts_by_provider` | Workout event records per provider | `{"garmin": 2101}` | Which providers' workout pipelines matter most |
 | `sleep_sessions_by_provider` | Sleep event records per provider | `{"garmin": 1730}` | Same, for sleep |
-| `menstrual_tracking_used` | Whether any menstrual cycle record exists on the instance. A boolean, never a count | `true` | Decide whether to invest in menstrual health features |
 
 ### Provider configuration
 
@@ -142,7 +141,6 @@ counters come from a scripted set of calls made to that instance on the day show
     "unknown": 16,
     "apple": 7
   },
-  "menstrual_tracking_used": false,
   "providers": [
     { "provider": "apple", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
     { "provider": "samsung", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },

@@ -89,15 +89,14 @@ class TestBuildPayload:
 
         assert payload["workouts_by_provider"] == {"garmin": 1}
         assert payload["sleep_sessions_by_provider"] == {"garmin": 1, "oura": 1}
-        assert payload["menstrual_tracking_used"] is True
 
-    def test_menstrual_tracking_flag_false_without_records(self, db: Session) -> None:
-        EventRecordFactory(data_source=DataSourceFactory(provider="garmin"), category="workout")
+    def test_menstrual_cycle_records_leave_no_trace_in_the_payload(self, db: Session) -> None:
+        EventRecordFactory(data_source=DataSourceFactory(provider="oura"), category="menstrual_cycle")
         db.flush()
 
         payload = telemetry_service.build_payload(db, event="daily")
 
-        assert payload["menstrual_tracking_used"] is False
+        assert "menstrual" not in json.dumps(payload)
 
     def test_payload_is_json_serializable_and_contains_no_pii(self, db: Session) -> None:
         user = UserFactory(email="jane.doe@example.com", first_name="Jane", last_name="Doe")
