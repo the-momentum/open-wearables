@@ -9,25 +9,14 @@ docs/dev-guides/telemetry.mdx for the full payload reference and opt-out.
 import platform
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
-from uuid import uuid4
 
 import httpx
-from sqlalchemy import distinct, func, or_, select, update
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import __version__
 from app.config import settings
-from app.models import (
-    DataPointSeries,
-    DataSource,
-    EventRecord,
-    ProviderSetting,
-    TelemetryState,
-    User,
-    UserConnection,
-)
-from app.schemas.auth import ConnectionStatus
+from app.models import TelemetryState
+from app.repositories.telemetry_repository import TelemetryRepository
 from app.services.endpoint_usage import endpoint_usage, usage_bucket
 
 logger = getLogger(__name__)
@@ -46,28 +35,16 @@ def count_bucket(count: int | None) -> str:
     return "0" if not count else usage_bucket(count)
 
 
-class TelemetryService:
-    def get_or_create_state(self, db: Session) -> TelemetryState:
-        state = db.get(TelemetryState, 1)
-        if state is not None:
-            return state
+def _bucket_values(counts: dict[str, int]) -> dict[str, str]:
+    return {key: count_bucket(count) for key, count in counts.items()}
 
-        state = TelemetryState(
-            id=1,
-            instance_id=uuid4(),
-            created_at=datetime.now(timezone.utc),
-            last_sent_at=None,
-        )
-        db.add(state)
-        try:
-            db.commit()
-        except IntegrityError:
-            # Another worker created the row concurrently - use theirs.
-            db.rollback()
-            state = db.get(TelemetryState, 1)
-            if state is None:  # pragma: no cover - only on DB failure
-                raise
-        return state
+
+class TelemetryService:
+    def __init__(self) -> None:
+        self.repo = TelemetryRepository()
+
+    def get_or_create_state(self, db: Session) -> TelemetryState:
+        return self.repo.get_or_create_state(db)
 
     def build_payload(self, db: Session, event: str) -> dict:
         state = self.get_or_create_state(db)
@@ -76,13 +53,7 @@ class TelemetryService:
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
 
-        active = UserConnection.status == ConnectionStatus.ACTIVE
-        connections_by_provider = {
-            provider: count
-            for provider, count in db.execute(
-                select(UserConnection.provider, func.count()).where(active).group_by(UserConnection.provider)
-            )
-        }
+        connections_by_provider = self.repo.count_active_connections_by_provider(db)
 
         return {
             "schema_version": TELEMETRY_SCHEMA_VERSION,
@@ -94,20 +65,14 @@ class TelemetryService:
             "platform": platform.platform(),
             "environment": settings.environment.value,
             "instance_age_days": max((now - created_at).days, 0),
-            "total_users": count_bucket(db.scalar(select(func.count()).select_from(User))),
-            "users_with_active_connection": count_bucket(
-                db.scalar(select(func.count(distinct(UserConnection.user_id))).where(active))
-            ),
+            "total_users": count_bucket(self.repo.count_users(db)),
+            "users_with_active_connection": count_bucket(self.repo.count_users_with_active_connection(db)),
             "active_connections": count_bucket(sum(connections_by_provider.values())),
-            "inactive_connections": count_bucket(
-                db.scalar(select(func.count()).select_from(UserConnection).where(~active))
-            ),
-            "connections_by_provider": {
-                provider: count_bucket(count) for provider, count in connections_by_provider.items()
-            },
-            "data_points_by_provider": self._count_by_provider(db, DataPointSeries),
-            "workouts_by_provider": self._count_by_provider(db, EventRecord, category="workout"),
-            "sleep_sessions_by_provider": self._count_by_provider(db, EventRecord, category="sleep"),
+            "inactive_connections": count_bucket(self.repo.count_inactive_connections(db)),
+            "connections_by_provider": _bucket_values(connections_by_provider),
+            "data_points_by_provider": _bucket_values(self.repo.count_data_points_by_provider(db)),
+            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "workout")),
+            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "sleep")),
             "providers": [
                 {
                     "provider": provider_setting.provider,
@@ -115,7 +80,7 @@ class TelemetryService:
                     "live_sync_mode": provider_setting.live_sync_mode,
                     "data_granularity": provider_setting.data_granularity,
                 }
-                for provider_setting in db.scalars(select(ProviderSetting)).all()
+                for provider_setting in self.repo.get_provider_settings(db)
             ],
             "features": {
                 "sentry_enabled": settings.SENTRY_ENABLED,
@@ -138,8 +103,8 @@ class TelemetryService:
         if not settings.telemetry_enabled:
             return "disabled"
 
-        previous_sent_at = self.get_or_create_state(db).last_sent_at
-        claimed_at = self._claim(db, event)
+        previous_sent_at = self.repo.get_or_create_state(db).last_sent_at
+        claimed_at = self.repo.claim_send(db, self._send_interval(event))
         if claimed_at is None:
             return "not_due"
 
@@ -148,56 +113,22 @@ class TelemetryService:
             response = httpx.post(settings.telemetry_endpoint_url, json=payload, timeout=SEND_TIMEOUT_SECONDS)
             response.raise_for_status()
         except Exception:
-            self._release(db, claimed_at, previous_sent_at)
+            # Release the slot so the next hourly run retries.
+            self.repo.release_claim(db, claimed_at, previous_sent_at)
             raise
 
         logger.info("Telemetry ping delivered (event=%s)", event)
         return "sent"
 
     @staticmethod
-    def _claim(db: Session, event: str) -> datetime | None:
-        """Reserve the next delivery, or return None when a ping is not due.
-
-        A conditional UPDATE, committed before the request goes out, so that
-        concurrent callers (several workers enqueueing the startup ping, or a
-        startup ping racing the hourly beat) cannot all pass the check: the
-        row lock makes the second UPDATE re-check against the first one's
-        timestamp and match nothing.
-        """
-        interval_seconds = (
+    def _send_interval(event: str) -> timedelta:
+        """Minimum gap since the last delivery: the startup debounce or the daily interval."""
+        seconds = (
             settings.telemetry_startup_debounce_seconds
             if event == "startup"
             else settings.telemetry_send_interval_seconds
         )
-        now = datetime.now(timezone.utc)
-        claimed = db.execute(
-            update(TelemetryState)
-            .where(
-                TelemetryState.id == 1,
-                or_(
-                    TelemetryState.last_sent_at.is_(None),
-                    TelemetryState.last_sent_at <= now - timedelta(seconds=interval_seconds),
-                ),
-            )
-            .values(last_sent_at=now)
-            .returning(TelemetryState.id)
-        ).scalar_one_or_none()
-        db.commit()
-        return now if claimed is not None else None
-
-    @staticmethod
-    def _release(db: Session, claimed_at: datetime, previous_sent_at: datetime | None) -> None:
-        """Undo a claim after a failed delivery, so the next hourly run retries.
-
-        Only restores the previous value if no other caller has claimed since.
-        """
-        db.rollback()
-        db.execute(
-            update(TelemetryState)
-            .where(TelemetryState.id == 1, TelemetryState.last_sent_at == claimed_at)
-            .values(last_sent_at=previous_sent_at)
-        )
-        db.commit()
+        return timedelta(seconds=seconds)
 
     @staticmethod
     def _endpoint_usage(now: datetime) -> dict | None:
@@ -213,25 +144,6 @@ class TelemetryService:
             logger.debug("Could not read endpoint usage counters", exc_info=True)
             return None
         return {"date": day.isoformat(), "routes": routes}
-
-    @staticmethod
-    def _count_by_provider(
-        db: Session,
-        model: type[DataPointSeries] | type[EventRecord],
-        category: str | None = None,
-    ) -> dict:
-        query = (
-            select(DataSource.provider, func.count())
-            .select_from(model)
-            .join(DataSource, model.data_source_id == DataSource.id)
-            .group_by(DataSource.provider)
-        )
-        if category is not None:
-            query = query.where(EventRecord.category == category)
-        rows = db.execute(query).all()
-        return {
-            provider.value if hasattr(provider, "value") else provider: count_bucket(count) for provider, count in rows
-        }
 
 
 telemetry_service = TelemetryService()
