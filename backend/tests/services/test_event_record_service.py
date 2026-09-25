@@ -15,13 +15,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
-<<<<<<< HEAD
 from app.models import DataSource, EventRecord, HealthScore, SeriesTypeDefinition
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
-=======
-from app.models import DataSource, EventRecord, HealthScore
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
->>>>>>> 083558c3 (implement payloads for meals and nutritions)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
