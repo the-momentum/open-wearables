@@ -48,6 +48,8 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
+        *,
+        quiet_statuses: tuple[int, ...] = (),
     ) -> Any:
         """Make an authenticated request using HTTP/2 and store raw payload.
 
@@ -71,6 +73,7 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
             headers=headers,
             json_data=json_data,
             http2=True,
+            quiet_statuses=quiet_statuses,
         )
         store_raw_payload(
             source="api_response",
