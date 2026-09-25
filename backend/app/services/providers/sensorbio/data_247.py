@@ -1,17 +1,18 @@
 """Sensor Bio 247 data implementation for sleep, recovery, biometrics, and daily activity."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
 
+from app.constants.series_types.sensorbio import SLEEP_STATUS_STAGE_MAP
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName
-from app.schemas.model_crud.activities import HealthScoreCreate
+from app.schemas.model_crud.activities import HealthScoreCreate, SleepStage
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
@@ -19,6 +20,7 @@ from app.schemas.providers.sensorbio import (
     BiometricsRecord,
     ScoresRecord,
     SleepRecord,
+    SleepStageIntervalRecord,
     StepDetailsResponse,
 )
 from app.services.event_record_service import event_record_service
@@ -33,6 +35,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import as_utc
 from app.utils.structured_logging import log_structured
 
 _SchemaT = TypeVar("_SchemaT", bound=BaseModel)
@@ -133,6 +136,12 @@ class SensorBio247Data(Base247DataTemplate):
                 response = self._make_api_request(db, user_id, "/v1/sleep", params={"date": current_date.isoformat()})
                 records = response.get("data", []) if isinstance(response, dict) else []
                 if isinstance(records, list):
+                    intervals = self._get_stage_intervals(db, user_id, current_date)
+                    if intervals:
+                        records = [
+                            {**record, "stage_intervals": intervals} if isinstance(record, dict) else record
+                            for record in records
+                        ]
                     all_sleep_data.extend(records)
             except Exception as e:
                 log_structured(
@@ -145,6 +154,52 @@ class SensorBio247Data(Base247DataTemplate):
             current_date += timedelta(days=1)
 
         return all_sleep_data
+
+    def _get_stage_intervals(self, db: DbSession, user_id: UUID, day: date) -> list[dict[str, Any]] | None:
+        """Fetch the day's stage intervals; sessions take their own in normalize_sleep."""
+        try:
+            response = self._make_api_request(db, user_id, "/v1/sleep/details/day", params={"date": day.isoformat()})
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                f"Error fetching Sensor Bio sleep details for {day}: {e}",
+                provider="sensorbio",
+                task="get_sleep_data",
+            )
+            return None
+        if not isinstance(response, dict):
+            return None
+        intervals = response.get("sleep_stages")
+        # Raw dicts: validated in _extract_sleep_stages, and they stay JSON-serialisable.
+        return intervals if isinstance(intervals, list) and intervals else None
+
+    def _extract_sleep_stages(
+        self,
+        raw_sleep: dict[str, Any],
+        user_id: UUID,
+        start_dt: datetime | None,
+        end_dt: datetime | None,
+    ) -> list[SleepStage] | None:
+        """Keep the day's stage intervals that start inside this session's window."""
+        stages: list[SleepStage] = []
+        for interval in raw_sleep.get("stage_intervals") or []:
+            parsed = self._parse(interval, SleepStageIntervalRecord, "sleep_stage", user_id)
+            if parsed is None:
+                continue
+            stage = SLEEP_STATUS_STAGE_MAP.get((parsed.status or "").lower())
+            start, end = as_utc(parsed.start_time), as_utc(parsed.end_time)
+            if stage is None or start is None or end is None:
+                continue
+            if (start_dt and start < start_dt) or (end_dt and start >= end_dt):
+                continue
+            # A day's list can hold an interval that runs past the session it starts in.
+            if end_dt and end > end_dt:
+                end = end_dt
+            if end <= start:
+                continue
+            stages.append(SleepStage(stage=stage, start_time=start, end_time=end))
+        return sorted(stages, key=lambda s: s.start_time) or None
 
     def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
         """Validate + normalise a single /v1/sleep record.
@@ -179,6 +234,7 @@ class SensorBio247Data(Base247DataTemplate):
             "duration_seconds": duration_seconds,
             "efficiency_percent": score.value if score else None,
             "is_nap": False,
+            "stage_timestamps": self._extract_sleep_stages(raw_sleep, user_id, start_dt, end_dt),
             "stages": {
                 "deep_seconds": int((parsed.deep_sleep_mins or 0) * 60),
                 "light_seconds": int((parsed.light_sleep_mins or 0) * 60),
@@ -241,6 +297,7 @@ class SensorBio247Data(Base247DataTemplate):
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_stages=normalized_sleep.get("stage_timestamps"),
             is_nap=normalized_sleep.get("is_nap", False),
         )
 

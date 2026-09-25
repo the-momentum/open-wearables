@@ -8,6 +8,7 @@ marked required; optional/supplementary fields use Optional with None defaults.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -27,6 +28,14 @@ class ScoreInSleep(BaseModel):
     """Sleep score nested inside a /v1/sleep record (efficiency 0-100)."""
 
     value: float | int | None = Field(default=None, ge=0, le=100)
+
+
+class SleepStageIntervalRecord(BaseModel):
+    """One entry of ``sleep_stages`` from /v1/sleep/details/day."""
+
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    status: str | None = None
 
 
 class SleepRecord(BaseModel):

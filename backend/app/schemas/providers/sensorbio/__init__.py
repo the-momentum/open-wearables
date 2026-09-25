@@ -10,6 +10,7 @@ from .models import (
     BiometricsRecord,
     ScoresRecord,
     SleepRecord,
+    SleepStageIntervalRecord,
     StepDetailMetric,
     StepDetailsResponse,
     WorkoutStats,
@@ -17,6 +18,7 @@ from .models import (
 
 __all__ = [
     "SleepRecord",
+    "SleepStageIntervalRecord",
     "ScoresRecord",
     "BiometricsRecord",
     "StepDetailMetric",

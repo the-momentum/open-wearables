@@ -87,6 +87,14 @@ class WithingsSleepSummary(BaseModel):
     data: WithingsSleepData = Field(default_factory=WithingsSleepData)
 
 
+class WithingsSleepSeriesEntry(BaseModel):
+    """One interval of ``/v2/sleep`` action ``get``: the hypnogram."""
+
+    startdate: int
+    enddate: int
+    state: int
+
+
 class WithingsWorkoutData(BaseModel):
     """``workout_object.data`` — the fields we request via ``data_fields``."""
 
