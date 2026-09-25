@@ -58,6 +58,14 @@ echo 'Running Whoop strain event_record backfill...'
 uv run python scripts/data_migrations/backfill_whoop_strain_event_record.py \
     || echo "Warning: Whoop strain backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2026-12-01 once all deployments have migrated.
+# Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
+# recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
+# the same rule afterwards.
+echo 'Running device type backfill...'
+uv run python scripts/data_migrations/backfill_device_types.py \
+    || echo "Warning: device type backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

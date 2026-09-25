@@ -5,11 +5,13 @@ from sqlalchemy import CursorResult, and_, asc, delete, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.constants.devices_map import infer_device_type
+from app.constants.sdk_providers import sdk_providers
 from app.database import DbSession
 from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas.enums import DeviceType, ProviderName, infer_device_type_from_model, infer_device_type_from_source_name
+from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
 
 
@@ -58,6 +60,7 @@ class DataSourceRepository(
         software_version: str | None = None,
         source: str | None = None,
         original_source_name: str | None = None,
+        reported_type: DeviceType | None = None,
     ) -> DataSource:
         existing = self.get_by_identity(db_session, user_id, provider, device_model, source)
         if existing:
@@ -71,11 +74,14 @@ class DataSourceRepository(
             if original_source_name and existing.original_source_name is None:
                 object.__setattr__(existing, "original_source_name", original_source_name)
                 updated = True
-            if existing.device_type is None:
-                device_type = self._infer_device_type(device_model, original_source_name)
-                if device_type != DeviceType.UNKNOWN:
-                    object.__setattr__(existing, "device_type", device_type.value)
-                    updated = True
+            device_type = self.next_device_type(
+                provider,
+                existing.device_type,
+                infer_device_type(provider, device_model, original_source_name, reported_type),
+            )
+            if device_type != existing.device_type:
+                object.__setattr__(existing, "device_type", device_type)
+                updated = True
             if updated:
                 db_session.flush()
             return existing
@@ -83,7 +89,7 @@ class DataSourceRepository(
         provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         provider_priority_repo.ensure_provider_exists(db_session, provider)
 
-        device_type = self._infer_device_type(device_model, original_source_name)
+        device_type = infer_device_type(provider, device_model, original_source_name, reported_type)
 
         create_payload = DataSourceCreate(
             id=uuid4(),
@@ -100,15 +106,14 @@ class DataSourceRepository(
         assert result is not None
         return result
 
-    def _infer_device_type(
-        self,
-        device_model: str | None,
-        original_source_name: str | None,
-    ) -> DeviceType:
-        dt = infer_device_type_from_model(device_model)
-        if dt != DeviceType.UNKNOWN:
-            return dt
-        return infer_device_type_from_source_name(original_source_name)
+    @staticmethod
+    def next_device_type(provider: ProviderName, current: str | None, resolved: DeviceType) -> str | None:
+        """Cloud rows take the inferred type; SDK rows only upgrade from unset/"other"."""
+        if provider.value not in sdk_providers():
+            return resolved.value if resolved != DeviceType.UNKNOWN else None
+        if current in (None, DeviceType.OTHER) and resolved not in (DeviceType.UNKNOWN, current):
+            return resolved.value
+        return current
 
     def batch_ensure_data_sources(
         self,
@@ -116,6 +121,7 @@ class DataSourceRepository(
         provider: ProviderName,
         user_connection_id: UUID | None,
         identities: set[tuple[UUID, str | None, str | None]],
+        reported_types: dict[tuple[UUID, str | None, str | None], DeviceType] | None = None,
     ) -> dict[tuple[UUID, str | None, str | None], UUID]:
         if not identities:
             return {}
@@ -130,16 +136,31 @@ class DataSourceRepository(
 
         existing = db_session.query(self.model).filter(or_(*conditions)).all()
 
+        reported_types = reported_types or {}
         result: dict[tuple[UUID, str | None, str | None], UUID] = {}
+        upgraded = False
         for ds in existing:
-            result[(ds.user_id, ds.device_model, ds.source)] = ds.id
+            identity = (ds.user_id, ds.device_model, ds.source)
+            result[identity] = ds.id
+            device_type = self.next_device_type(
+                provider,
+                ds.device_type,
+                infer_device_type(provider, ds.device_model, ds.source, reported_types.get(identity)),
+            )
+            if device_type != ds.device_type:
+                object.__setattr__(ds, "device_type", device_type)
+                upgraded = True
+        if upgraded:
+            db_session.flush()
 
         missing = [i for i in identities_list if i not in result]
 
         if missing:
             values = []
             for user_id, device_model, source in missing:
-                device_type = self._infer_device_type(device_model, None)
+                device_type = infer_device_type(
+                    provider, device_model, source, reported_types.get((user_id, device_model, source))
+                )
                 values.append(
                     {
                         "id": uuid4(),

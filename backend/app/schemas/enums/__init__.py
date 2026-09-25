@@ -12,8 +12,6 @@ from .data_granularity import (
 from .device_type import (
     DEFAULT_DEVICE_TYPE_PRIORITY,
     DeviceType,
-    infer_device_type_from_model,
-    infer_device_type_from_source_name,
 )
 from .entry_source import EntrySource
 from .health_score_category import HealthScoreCategory
@@ -43,8 +41,6 @@ from .workout_types import (
 __all__ = [
     "DeviceType",
     "DEFAULT_DEVICE_TYPE_PRIORITY",
-    "infer_device_type_from_model",
-    "infer_device_type_from_source_name",
     "AggregationMethod",
     "AGGREGATION_METHOD_BY_TYPE",
     "daily_total_flag",

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import EntrySource, WorkoutIntensity, WorkoutType
+from app.schemas.enums import DeviceType, EntrySource, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -84,6 +84,7 @@ class EventRecordCreate(EventRecordBase):
     user_connection_id: UUID | None = None
     data_source_id: UUID | None = None
     software_version: str | None = None
+    device_type: DeviceType | None = None
 
 
 class EventRecordUpdate(EventRecordBase):

@@ -1,4 +1,10 @@
 from .apple import APPLE_DEVICE_NAMES
+from .device_types import (
+    infer_device_type,
+    infer_device_type_from_model,
+    infer_device_type_from_source_name,
+    map_sdk_device_type,
+)
 from .samsung import SAMSUNG_DEVICE_NAMES
 
 DEVICE_NAMES: dict[str, str] = {**APPLE_DEVICE_NAMES, **SAMSUNG_DEVICE_NAMES}
@@ -20,5 +26,9 @@ __all__ = [
     "APPLE_DEVICE_NAMES",
     "DEVICE_NAMES",
     "SAMSUNG_DEVICE_NAMES",
+    "infer_device_type",
+    "infer_device_type_from_model",
+    "infer_device_type_from_source_name",
+    "map_sdk_device_type",
     "resolve_device_name",
 ]
