@@ -15,7 +15,7 @@ class TelemetryState(BaseDbModel):
 
     - instance_id: random UUID generated on first use. Identifies this
       installation anonymously; survives restarts and secret rotations.
-    - created_at: when telemetry first ran here (approximates instance age).
+    - created_at (from BaseDbModel): when telemetry first ran here (approximates instance age).
     - last_sent_at: last successful ping delivery, used for debouncing.
     """
 
@@ -24,5 +24,4 @@ class TelemetryState(BaseDbModel):
 
     id: Mapped[PrimaryKey[int]]
     instance_id: Mapped[UUID]
-    created_at: Mapped[datetime]
     last_sent_at: Mapped[datetime | None]
