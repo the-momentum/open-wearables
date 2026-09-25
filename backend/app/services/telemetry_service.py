@@ -12,7 +12,7 @@ from logging import getLogger
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import distinct, exists, func, select
+from sqlalchemy import distinct, exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -128,18 +128,66 @@ class TelemetryService:
         if not settings.telemetry_enabled:
             return "disabled"
 
-        state = self.get_or_create_state(db)
-        if not self._is_due(state, event):
+        previous_sent_at = self.get_or_create_state(db).last_sent_at
+        claimed_at = self._claim(db, event)
+        if claimed_at is None:
             return "not_due"
 
-        payload = self.build_payload(db, event)
-        response = httpx.post(settings.telemetry_endpoint_url, json=payload, timeout=SEND_TIMEOUT_SECONDS)
-        response.raise_for_status()
+        try:
+            payload = self.build_payload(db, event)
+            response = httpx.post(settings.telemetry_endpoint_url, json=payload, timeout=SEND_TIMEOUT_SECONDS)
+            response.raise_for_status()
+        except Exception:
+            self._release(db, claimed_at, previous_sent_at)
+            raise
 
-        state.last_sent_at = datetime.now(timezone.utc)
-        db.commit()
         logger.info("Telemetry ping delivered (event=%s)", event)
         return "sent"
+
+    @staticmethod
+    def _claim(db: Session, event: str) -> datetime | None:
+        """Reserve the next delivery, or return None when a ping is not due.
+
+        A conditional UPDATE, committed before the request goes out, so that
+        concurrent callers (several workers enqueueing the startup ping, or a
+        startup ping racing the hourly beat) cannot all pass the check: the
+        row lock makes the second UPDATE re-check against the first one's
+        timestamp and match nothing.
+        """
+        interval_seconds = (
+            settings.telemetry_startup_debounce_seconds
+            if event == "startup"
+            else settings.telemetry_send_interval_seconds
+        )
+        now = datetime.now(timezone.utc)
+        claimed = db.execute(
+            update(TelemetryState)
+            .where(
+                TelemetryState.id == 1,
+                or_(
+                    TelemetryState.last_sent_at.is_(None),
+                    TelemetryState.last_sent_at <= now - timedelta(seconds=interval_seconds),
+                ),
+            )
+            .values(last_sent_at=now)
+            .returning(TelemetryState.id)
+        ).scalar_one_or_none()
+        db.commit()
+        return now if claimed is not None else None
+
+    @staticmethod
+    def _release(db: Session, claimed_at: datetime, previous_sent_at: datetime | None) -> None:
+        """Undo a claim after a failed delivery, so the next hourly run retries.
+
+        Only restores the previous value if no other caller has claimed since.
+        """
+        db.rollback()
+        db.execute(
+            update(TelemetryState)
+            .where(TelemetryState.id == 1, TelemetryState.last_sent_at == claimed_at)
+            .values(last_sent_at=previous_sent_at)
+        )
+        db.commit()
 
     @staticmethod
     def _endpoint_usage(now: datetime) -> dict | None:
@@ -155,20 +203,6 @@ class TelemetryService:
             logger.debug("Could not read endpoint usage counters", exc_info=True)
             return None
         return {"date": day.isoformat(), "routes": routes}
-
-    @staticmethod
-    def _is_due(state: TelemetryState, event: str) -> bool:
-        if state.last_sent_at is None:
-            return True
-        last_sent_at = state.last_sent_at
-        if last_sent_at.tzinfo is None:
-            last_sent_at = last_sent_at.replace(tzinfo=timezone.utc)
-        interval_seconds = (
-            settings.telemetry_startup_debounce_seconds
-            if event == "startup"
-            else settings.telemetry_send_interval_seconds
-        )
-        return datetime.now(timezone.utc) - last_sent_at >= timedelta(seconds=interval_seconds)
 
     @staticmethod
     def _count_by_provider(

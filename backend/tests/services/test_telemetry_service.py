@@ -231,3 +231,37 @@ class TestSendPing:
 
         state = telemetry_service.get_or_create_state(db)
         assert state.last_sent_at is None
+
+    def test_call_during_an_in_flight_delivery_is_not_due(self, db: Session) -> None:
+        # Simulates a second worker checking while the first ping is still being sent:
+        # the claim is committed before the request, so the second caller must back off.
+        nested_results: list[str] = []
+
+        def deliver(*args: object, **kwargs: object) -> MagicMock:
+            nested_results.append(telemetry_service.send_ping(db, event="startup"))
+            return MagicMock()
+
+        with patch("app.services.telemetry_service.httpx.post", side_effect=deliver) as mock_post:
+            result = telemetry_service.send_ping(db, event="startup")
+
+        assert result == "sent"
+        assert nested_results == ["not_due"]
+        mock_post.assert_called_once()
+
+    def test_failed_delivery_restores_the_previous_send_time(self, db: Session) -> None:
+        previous = datetime.now(timezone.utc) - timedelta(days=2)
+        state = telemetry_service.get_or_create_state(db)
+        state.last_sent_at = previous
+        db.commit()
+
+        with (
+            patch(
+                "app.services.telemetry_service.httpx.post",
+                side_effect=httpx.ConnectError("connection refused"),
+            ),
+            pytest.raises(httpx.ConnectError),
+        ):
+            telemetry_service.send_ping(db, event="daily")
+
+        db.expire_all()
+        assert telemetry_service.get_or_create_state(db).last_sent_at == previous
