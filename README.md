@@ -181,6 +181,12 @@ Built with:
 
 The platform is designed for self-hosting, meaning each deployment serves a single organization. No multi-tenancy complexity.
 
+## Telemetry
+
+Open Wearables sends a small anonymous usage ping once a day (plus one on startup) to help us plan the roadmap and see which providers and features are used. It contains only aggregate, bucketed counts and configuration flags, never health data, user data or credentials. The API logs a notice at startup while telemetry is on.
+
+To turn it off, set `TELEMETRY_ENABLED=false` (or `DO_NOT_TRACK=1`) on the backend containers. See the [telemetry docs](https://openwearables.io/docs/dev-guides/telemetry) for every field we collect and why.
+
 ## Join the Discord
 
 Join our Discord community to connect with other developers, get help, share ideas, and stay updated on the latest developments:
