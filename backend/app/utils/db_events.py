@@ -37,6 +37,7 @@ def defer_until_commit(db_session: DbSession) -> Callable[[Callable[[], None]], 
     """
 
     def decorator(func: Callable[[], None]) -> Callable[[], None]:
+        """Record `func` against the current (possibly nested) transaction and return it unchanged."""
         owner = db_session.get_nested_transaction() or db_session.get_transaction()
         pending: list[tuple[SessionTransaction | None, Callable[[], None]]] = db_session.info.setdefault(
             _PENDING_KEY, []
@@ -53,8 +54,16 @@ def defer_until_commit(db_session: DbSession) -> Callable[[Callable[[], None]], 
 
 
 def _install_dispatchers(db_session: DbSession) -> None:
+    """Wire the after_commit/after_soft_rollback listeners that flush or drop pending callbacks.
+
+    Installed once per session (guarded by `_INSTALLED_KEY`) rather than once per
+    `defer_until_commit` call, since SQLAlchemy would otherwise re-run the pending
+    list once per registered listener.
+    """
+
     @sa_event.listens_for(db_session, "after_commit")
     def _run_pending(session: DbSession) -> None:
+        """Run and clear all pending callbacks once the outermost transaction commits."""
         if session.in_nested_transaction():
             return
         for _, pending_callback in session.info.pop(_PENDING_KEY, []):
@@ -62,6 +71,7 @@ def _install_dispatchers(db_session: DbSession) -> None:
 
     @sa_event.listens_for(db_session, "after_soft_rollback")
     def _drop_rolled_back(session: DbSession, previous_transaction: SessionTransaction) -> None:
+        """Discard callbacks whose owning transaction was rolled back, keeping the rest pending."""
         still_pending = session.info.get(_PENDING_KEY)
         if not still_pending:
             return
@@ -73,6 +83,7 @@ def _install_dispatchers(db_session: DbSession) -> None:
 
 
 def _is_or_descends_from(transaction: SessionTransaction | None, ancestor: SessionTransaction) -> bool:
+    """Return whether `transaction` is `ancestor` or was nested (directly or transitively) inside it."""
     while transaction is not None:
         if transaction is ancestor:
             return True
