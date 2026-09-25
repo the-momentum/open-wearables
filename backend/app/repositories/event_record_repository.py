@@ -52,8 +52,8 @@ class EventRecordRepository(
     def _resolve_data_source_id(self, db_session: DbSession, creator: EventRecordCreate) -> UUID:
         """The data source this record belongs to, created (flushed, not committed) if missing.
 
-        Never commits: create_and_flush and find_by_start promise their caller owns the
-        transaction, and the committing create() commits the source together with the record.
+        Never commits: create_and_flush and create_and_flush_meal promise their caller owns
+        the transaction, and the committing create() commits the source together with the record.
         """
         if creator.data_source_id:
             return creator.data_source_id
@@ -91,20 +91,17 @@ class EventRecordRepository(
             creation_data.pop(redundant_key, None)
         return data_source_id, self.model(**creation_data)
 
-    def find_by_start(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord | None:
-        """The record of ``creator``'s category that starts at its start time on its data source.
-
-        Unlike the unique index, this ignores the end time - for records whose end moves
-        between syncs (a meal gaining items) it finds the row to update rather than a
-        duplicate to insert.
-        """
-        data_source_id = self._resolve_data_source_id(db_session, creator)
+    def _find_by_start(
+        self, db_session: DbSession, data_source_id: UUID, category: str, start_datetime: datetime
+    ) -> EventRecord | None:
+        """Ignores end time, unlike the (source, start, end) unique index - a meal's end moves
+        between syncs, so this is what finds the row to update rather than insert a duplicate."""
         return (
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
-                self.model.category == creator.category,
-                self.model.start_datetime == creator.start_datetime,
+                self.model.category == category,
+                self.model.start_datetime == start_datetime,
             )
             .order_by(self.model.end_datetime.desc())
             .first()
@@ -201,6 +198,29 @@ class EventRecordRepository(
             nested.rollback()
             if existing := self._fetch_existing(db_session, data_source_id, creation):
                 return existing
+            raise
+
+    def create_and_flush_meal(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[EventRecord, bool]:
+        """Like create_and_flush, but resolves a conflict via the meal's (source, start) key.
+
+        A meal's end moves between syncs (see _find_by_start), so ix_event_record_meal_source_start
+        - not the general (source, start, end) index - is what actually catches two concurrent
+        callers (e.g. a pull sync and a webhook) racing to save the same meal. Inserting
+        optimistically and falling back to that row on conflict closes the check-then-insert
+        window a plain find-then-create would leave open. Returns (record, inserted).
+        """
+        data_source_id, creation = self._build_creation(db_session, creator)
+        nested = db_session.begin_nested()
+        try:
+            db_session.add(creation)
+            db_session.flush()
+            nested.commit()
+            return creation, True
+        except IntegrityError:
+            nested.rollback()
+            existing = self._find_by_start(db_session, data_source_id, creator.category, creator.start_datetime)
+            if existing is not None:
+                return existing, False
             raise
 
     @handle_exceptions

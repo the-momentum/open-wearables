@@ -266,26 +266,29 @@ class EventRecordService(
         extended meal into a duplicate. Matching on start alone keeps one record per meal and
         lets its end, title and meal type follow the latest sync.
 
+        Inserts optimistically and lets ix_event_record_meal_source_start settle a conflict,
+        so a pull sync and a webhook racing to save the same meal serialize on that unique
+        index instead of both passing a plain existence check and duplicating the meal.
+
         Flushes only - the caller commits, so the meal's nutrient samples can share the
         transaction. Returns (record, inserted).
         """
-        existing = self.crud.find_by_start(db_session, record)
-        if existing is None:
-            created = self.crud.create_and_flush(db_session, record)
+        saved, inserted = self.crud.create_and_flush_meal(db_session, record)
+        if inserted:
             self.event_record_detail_repo.create_and_flush(
-                db_session, detail.model_copy(update={"record_id": created.id}), detail_type="meal"
+                db_session, detail.model_copy(update={"record_id": saved.id}), detail_type="meal"
             )
-            return created, created.id == record.id
+            return saved, True
 
-        existing.end_datetime = record.end_datetime
-        existing.duration_seconds = record.duration_seconds
-        existing.zone_offset = record.zone_offset
+        saved.end_datetime = record.end_datetime
+        saved.duration_seconds = record.duration_seconds
+        saved.zone_offset = record.zone_offset
         db_session.flush()
-        self.event_record_detail_repo.delete_by_record_id(db_session, existing.id, "meal")
+        self.event_record_detail_repo.delete_by_record_id(db_session, saved.id, "meal")
         self.event_record_detail_repo.create_and_flush(
-            db_session, detail.model_copy(update={"record_id": existing.id}), detail_type="meal"
+            db_session, detail.model_copy(update={"record_id": saved.id}), detail_type="meal"
         )
-        return existing, False
+        return saved, False
 
     def create_or_merge_sleep(
         self,

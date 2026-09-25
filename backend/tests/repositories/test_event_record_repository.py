@@ -508,3 +508,64 @@ class TestEventRecordRepository:
         assert event.type is not None
         assert "running" in event.type
         assert mapping_result.device_model == "watch1"
+
+
+class TestCreateAndFlushMeal:
+    """Two callers (e.g. a pull sync and a webhook) can race to save the same meal - see
+    EventRecordService.create_or_update_meal. These cover the repository half of that fix:
+    ix_event_record_meal_source_start must be what a losing insert collides with, and the
+    conflict must resolve to the winner's row instead of raising or duplicating it."""
+
+    @pytest.fixture
+    def event_repo(self) -> EventRecordRepository:
+        return EventRecordRepository(EventRecord)
+
+    def _meal(self, user_id: object, data_source_id: object, start: datetime, end: datetime) -> EventRecordCreate:
+        return EventRecordCreate(
+            id=uuid4(),
+            user_id=user_id,
+            data_source_id=data_source_id,
+            category="meal",
+            source_name="Google Health",
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=int((end - start).total_seconds()),
+        )
+
+    def test_first_save_inserts(self, db: Session, event_repo: EventRecordRepository) -> None:
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="google_health_api", device_model="Pixel Fold")
+        start = datetime.now(timezone.utc)
+
+        saved, inserted = event_repo.create_and_flush_meal(
+            db, self._meal(user.id, mapping.id, start, start + timedelta(minutes=10))
+        )
+
+        assert inserted is True
+        assert saved.start_datetime == start
+
+    def test_conflicting_save_returns_the_existing_row_instead_of_duplicating(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        """Same (data source, start) but a different end - what a second sync sees mid-meal.
+
+        Simulates the losing side of the race: by the time this insert runs, the other
+        caller's row is already there, so it must hit ix_event_record_meal_source_start
+        and fall back to that row rather than raise or land a duplicate.
+        """
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="google_health_api", device_model="Pixel Fold")
+        start = datetime.now(timezone.utc)
+        winner, _ = event_repo.create_and_flush_meal(
+            db, self._meal(user.id, mapping.id, start, start + timedelta(minutes=10))
+        )
+        db.flush()
+
+        saved, inserted = event_repo.create_and_flush_meal(
+            db, self._meal(user.id, mapping.id, start, start + timedelta(minutes=25))
+        )
+
+        assert inserted is False
+        assert saved.id == winner.id
+        meals = db.query(EventRecord).filter(EventRecord.category == "meal").all()
+        assert len(meals) == 1
