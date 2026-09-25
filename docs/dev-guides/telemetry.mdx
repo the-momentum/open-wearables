@@ -1,0 +1,285 @@
+---
+title: "Anonymous Telemetry"
+description: "What anonymous usage data Open Wearables collects, why each field is there, and how to opt out with a single environment variable."
+keywords: ["open wearables telemetry", "usage telemetry opt out", "anonymous usage statistics", "self-hosted telemetry"]
+"og:title": "Anonymous Telemetry | Open Wearables"
+"og:description": "What anonymous usage data Open Wearables collects, why each field is there, and how to opt out."
+"og:url": "https://docs.openwearables.io/dev-guides/telemetry"
+"og:type": "article"
+"twitter:title": "Anonymous Telemetry | Open Wearables"
+"twitter:description": "What anonymous usage data Open Wearables collects and how to opt out with a single environment variable."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+Open Wearables collects **anonymous usage telemetry** from self-hosted instances. Telemetry is
+**enabled by default** and can be disabled at any time with a single environment variable. When it is
+enabled, the API logs a notice at startup so it is never running silently.
+
+## Why we collect it
+
+Open Wearables is self-hosted, so without telemetry we have no way of knowing how it's used. We use the
+data for two things:
+
+- **What to build next.** Knowing which providers, data types and features people actually use shows us
+  where to put our time and what we can safely deprecate.
+- **How big deployments are.** Whether an instance has a handful of test users or thousands of real ones
+  changes what we optimise for, like sync frequency, how incoming data is processed, or storage.
+
+## What is collected
+
+One small JSON document ("ping"), at most once per 24 hours, plus one on startup (debounced to at most
+one per 12 hours, so restarts and redeploys don't send extra data). Every field is either an aggregate
+count, reported as an order-of-magnitude bucket rather than an exact number, or a configuration flag.
+
+### Instance and runtime
+
+| Field | What it is | Example | Why we track it |
+|-------|------------|---------|-----------------|
+| `instance_id` | Random UUID generated locally on first run and stored in the `telemetry_state` table. Not derived from any secret, hostname or account. | `f11594b65f92...` | Count distinct instances and tell a new install from a restart |
+| `event` | What triggered the ping: `daily` or `startup` | `daily` | Separate scheduled pings from restart pings |
+| `sent_at` | Time the ping was built, UTC | `2026-07-23T04:12:00+00:00` | Order pings and detect gaps |
+| `schema_version` | Version of this payload format | `1` | Parse old and new payloads correctly |
+| `app_version` | Open Wearables version | `0.6.3` | See how fast releases are adopted and which versions are still in use |
+| `python_version` | Python interpreter version | `3.13.1` | Know when it is safe to drop a Python version |
+| `platform` | OS and architecture string from Python's `platform.platform()` | `Linux-6.1.0-x86_64-with-glibc2.36` | Know which OS and CPU targets to test and support |
+| `environment` | The `ENVIRONMENT` setting: `local`, `test`, `staging` or `production` | `production` | Filter dev and CI instances out of usage stats |
+| `instance_age_days` | Days since telemetry first ran on this instance | `41` | Measure retention: how many installs are still alive after a week, a month |
+
+### Usage counts
+
+Counts are sent as order-of-magnitude buckets, never exact numbers: `0`, `1-10`, `11-100`, `101-1k`,
+`1k-10k`, `10k-100k`, `100k-1M` or `1M+`. An exact count sent every day would let anyone holding the
+pings of a small instance read day-to-day activity off the differences, or match a total against a
+public profile. A bucket only moves when the count crosses an order of magnitude.
+
+| Field | What it is | Example | Why we track it |
+|-------|------------|---------|-----------------|
+| `total_users` | Number of rows in the `users` table | `"11-100"` | Deployment size |
+| `users_with_active_connection` | Users with at least one active provider connection | `"11-100"` | How many users are actually syncing data |
+| `active_connections` | Provider connections with status `active` | `"11-100"` | Deployment size and connections per user |
+| `inactive_connections` | Provider connections with status `revoked` or `expired` | `"1-10"` | How often connections break, which drives reconnect and token refresh work |
+| `connections_by_provider` | Active connections per provider | `{"garmin": "11-100", "oura": "11-100"}` | Which providers to prioritise |
+| `data_points_by_provider` | Rows in `data_point_series` per provider | `{"garmin": "1M+"}` | Data volume per provider, drives storage and import performance work |
+| `workouts_by_provider` | Workout event records per provider | `{"garmin": "1k-10k"}` | Which providers' workout pipelines matter most |
+| `sleep_sessions_by_provider` | Sleep event records per provider | `{"garmin": "1k-10k"}` | Same, for sleep |
+
+### Provider configuration
+
+One entry per row in the `provider_settings` table.
+
+| Field | What it is | Example | Why we track it |
+|-------|------------|---------|-----------------|
+| `provider` | Provider name | `garmin` | Key for the fields below |
+| `is_enabled` | Whether the provider is enabled on this instance | `true` | Configured vs actually used providers |
+| `live_sync_mode` | `webhook` or `pull` | `webhook` | Whether pull-based sync is worth maintaining |
+| `data_granularity` | Per-provider override of 24/7 data granularity: `raw`, `hourly`, `daily` or `null` | `null` | Whether anyone uses the rollup modes |
+
+### Feature flags
+
+| Field | What it is | Example | Why we track it |
+|-------|------------|---------|-----------------|
+| `sentry_enabled` | Whether Sentry error reporting is on | `true` | Know what share of instances we get error reports from |
+| `ingest_workout_samples` | Whether per-second workout samples are stored | `false` | Whether this storage-heavy feature is used |
+| `store_fit_files` | Whether raw FIT files are stored in S3 | `false` | Same, for FIT storage |
+| `historical_sync_on_connect` | Whether historical sync auto-runs after connect | `true` | This flag is scheduled to change its default; tells us when that is safe |
+| `raw_payload_storage` | `disabled`, `log` or `s3` | `s3` | Whether raw payload archival is worth keeping |
+| `outgoing_webhooks_enabled` | Whether outgoing webhooks (Svix) are on | `true` | Adoption of outgoing webhooks |
+| `default_data_granularity` | Instance-wide default granularity: `raw`, `hourly` or `daily` | `raw` | Whether the rollup modes are used |
+
+### API usage
+
+How often each API endpoint is called, for the last complete UTC day. This is the only part of the ping that describes activity rather than state.
+
+| Field | What it is | Example | Why we track it |
+|-------|------------|---------|-----------------|
+| `endpoint_usage.date` | The UTC day the counters cover. Always yesterday, so a `startup` and a `daily` ping sent on the same day carry the same data | `2026-07-22` | Lets the collector drop duplicates |
+| `endpoint_usage.routes` | Request counts keyed by route, then caller type, then status class | see below | Which endpoints are used, which are safe to deprecate, and where clients hit errors |
+
+Each level is deliberately coarse:
+
+- **Route** is the route template from the API's own route table, such as `GET /api/v1/users/{user_id}/timeseries`. The raw request path, query string and any ID in it are never recorded. The one path parameter kept is `{provider}`, and only when it is a known provider name. Requests that match no route are counted together as `unmatched`.
+- **Caller type** is which kind of credential the request presented: `developer_jwt` (the dashboard), `api_key` (a backend integration), `sdk_token` (the mobile SDK) or `none`. It tells us whether an endpoint is used through the dashboard or through the API. No key, token or identity is recorded.
+- **Status class** is `2xx`, `3xx`, `4xx` or `5xx`.
+- **Count** is an order-of-magnitude bucket, never the exact number: `1-10`, `11-100`, `101-1k`, `1k-10k`, `10k-100k`, `100k-1M` or `1M+`.
+
+Endpoints for menstrual cycle data are excluded entirely. User agents are not recorded, and there is no per-hour breakdown.
+
+Counting happens in memory and is flushed to Redis every 30 seconds, off the request path. The cost is a few microseconds per request.
+
+<Accordion title="Full example payload">
+An example payload:
+
+```json
+{
+  "schema_version": 1,
+  "instance_id": "e0aaddaff6e648e0b1fbed12d9b73152",
+  "event": "daily",
+  "sent_at": "2026-09-23T09:02:16.598747+00:00",
+  "app_version": "0.8.0",
+  "python_version": "3.13.15",
+  "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.41",
+  "environment": "local",
+  "instance_age_days": 5,
+  "total_users": "1-10",
+  "users_with_active_connection": "1-10",
+  "active_connections": "1-10",
+  "inactive_connections": "1-10",
+  "connections_by_provider": {
+    "apple": "1-10",
+    "garmin": "1-10"
+  },
+  "data_points_by_provider": {},
+  "workouts_by_provider": {
+    "suunto": "11-100",
+    "garmin": "11-100",
+    "unknown": "11-100",
+    "apple": "11-100"
+  },
+  "sleep_sessions_by_provider": {
+    "suunto": "1-10",
+    "garmin": "1-10",
+    "unknown": "11-100",
+    "apple": "1-10"
+  },
+  "providers": [
+    { "provider": "apple", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
+    { "provider": "samsung", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
+    { "provider": "garmin", "is_enabled": true, "live_sync_mode": "webhook", "data_granularity": null },
+    { "provider": "polar", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "suunto", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "whoop", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "strava", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "oura", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "fitbit", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "ultrahuman", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "sensorbio", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "withings", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "google_health", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null },
+    { "provider": "health_connect", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
+    { "provider": "google", "is_enabled": true, "live_sync_mode": "pull", "data_granularity": null }
+  ],
+  "features": {
+    "sentry_enabled": false,
+    "ingest_workout_samples": false,
+    "store_fit_files": false,
+    "historical_sync_on_connect": true,
+    "raw_payload_storage": "s3",
+    "outgoing_webhooks_enabled": false,
+    "default_data_granularity": "raw"
+  },
+  "endpoint_usage": {
+    "date": "2026-09-22",
+    "routes": {
+      "GET /api/v1/dashboard/stats": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/auth/me": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/config": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/users": {
+        "developer_jwt": { "2xx": "1-10" },
+        "api_key": { "4xx": "11-100" }
+      },
+      "GET /api/v1/users/{user_id}": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/users/{user_id}/summaries/sleep": {
+        "developer_jwt": { "2xx": "1-10" }
+      },
+      "GET /api/v1/users/{user_id}/events/workouts": {
+        "developer_jwt": { "4xx": "1-10" }
+      },
+      "GET /api/v1/users/{user_id}/timeseries": {
+        "developer_jwt": { "4xx": "1-10" },
+        "api_key": { "4xx": "11-100" }
+      },
+      "POST /api/v1/sdk/users/{user_id}/sync": {
+        "sdk_token": { "4xx": "11-100" }
+      },
+      "POST /api/v1/providers/garmin/webhooks": {
+        "none": { "4xx": "1-10" }
+      },
+      "GET /api/v1/meta/coverage": {
+        "none": { "2xx": "1-10" }
+      },
+      "unmatched": {
+        "none": { "4xx": "1-10" }
+      }
+    }
+  }
+}
+```
+</Accordion>
+
+## What is never collected
+
+- No user data of any kind: no names, emails, IDs, or health data
+- No credentials, tokens, API keys, or secrets
+- No hostnames, IP addresses, or URLs of your deployment
+- No per-user or per-request information, only instance-wide aggregate counts
+- No raw request paths, query strings or user agents
+- No exact numbers of users, connections, records or requests, only order-of-magnitude buckets
+- No commit hash, which could point to a custom build or a fork
+
+Pings are sent to `https://telemetry.openwearables.io`, a collector operated by the Open Wearables team. The
+sending code lives in `backend/app/services/telemetry_service.py` and the request counters in
+`backend/app/services/endpoint_usage.py`. Both are easy to audit.
+
+## What we do with the data
+
+The data is aggregated across instances and used only to decide what to build, what to optimise and
+what to deprecate. It is not sold, shared with third parties, or used to identify or contact anyone.
+
+## Why opt-out and not opt-in
+
+Opt-in telemetry is almost never enabled, so the resulting data represents a tiny, unrepresentative
+slice of users and is useless for the decisions above. We chose opt-out with a single, well-documented
+switch, a startup log notice so it is never silent, and a payload small enough to review in a minute.
+
+## Opting out
+
+Set one environment variable in your backend `.env` and restart:
+
+```bash
+TELEMETRY_ENABLED=false
+```
+
+Open Wearables also honors the [`DO_NOT_TRACK`](https://donottrack.sh) convention shared by many
+developer tools:
+
+```bash
+DO_NOT_TRACK=1
+```
+
+Either one fully disables telemetry: no scheduled task, no startup ping, no HTTP calls, no request
+counting.
+
+Set it on every backend container (API, Celery worker and Celery beat): the API counts requests, the
+worker builds and sends the ping, and beat schedules it.
+
+### Verifying it is disabled
+
+When telemetry is enabled, the API logs this line at startup:
+
+```
+Anonymous usage telemetry is enabled (aggregate counts only, no user data). See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false.
+```
+
+If the line is absent, telemetry is off. You can also confirm that the Celery beat schedule has no
+`send-telemetry-ping` entry.
+
+### Blocking at the network level
+
+If you want a guarantee that does not depend on configuration, block outbound traffic to
+`telemetry.openwearables.io` in your firewall. Telemetry is best-effort, so a blocked request is logged at
+`WARNING` and never affects the instance.
+
+## Failure behavior
+
+Telemetry can never affect your instance: delivery uses a 5-second timeout, failures are logged at
+`WARNING` and swallowed, and the ping is simply retried on the next hourly due-check.
