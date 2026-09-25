@@ -28,12 +28,22 @@ from app.models import (
     UserConnection,
 )
 from app.schemas.auth import ConnectionStatus
-from app.services.endpoint_usage import endpoint_usage
+from app.services.endpoint_usage import endpoint_usage, usage_bucket
 
 logger = getLogger(__name__)
 
 TELEMETRY_SCHEMA_VERSION = 1
 SEND_TIMEOUT_SECONDS = 5.0
+
+
+def count_bucket(count: int | None) -> str:
+    """Order-of-magnitude label for a count, so exact numbers never leave the instance.
+
+    Exact counts sent daily would let anyone holding the pings of a small instance
+    read day-to-day activity off the differences, or match a total against a public
+    profile. "0" stays separate from "1-10" so an empty install is still visible.
+    """
+    return "0" if not count else usage_bucket(count)
 
 
 class TelemetryService:
@@ -80,18 +90,21 @@ class TelemetryService:
             "event": event,
             "sent_at": now.isoformat(),
             "app_version": __version__,
-            "git_sha": settings.GIT_SHA,
             "python_version": platform.python_version(),
             "platform": platform.platform(),
             "environment": settings.environment.value,
             "instance_age_days": max((now - created_at).days, 0),
-            "total_users": db.scalar(select(func.count()).select_from(User)),
-            "users_with_active_connection": db.scalar(
-                select(func.count(distinct(UserConnection.user_id))).where(active)
+            "total_users": count_bucket(db.scalar(select(func.count()).select_from(User))),
+            "users_with_active_connection": count_bucket(
+                db.scalar(select(func.count(distinct(UserConnection.user_id))).where(active))
             ),
-            "active_connections": sum(connections_by_provider.values()),
-            "inactive_connections": db.scalar(select(func.count()).select_from(UserConnection).where(~active)),
-            "connections_by_provider": connections_by_provider,
+            "active_connections": count_bucket(sum(connections_by_provider.values())),
+            "inactive_connections": count_bucket(
+                db.scalar(select(func.count()).select_from(UserConnection).where(~active))
+            ),
+            "connections_by_provider": {
+                provider: count_bucket(count) for provider, count in connections_by_provider.items()
+            },
             "data_points_by_provider": self._count_by_provider(db, DataPointSeries),
             "workouts_by_provider": self._count_by_provider(db, EventRecord, category="workout"),
             "sleep_sessions_by_provider": self._count_by_provider(db, EventRecord, category="sleep"),
@@ -216,7 +229,9 @@ class TelemetryService:
         if category is not None:
             query = query.where(EventRecord.category == category)
         rows = db.execute(query).all()
-        return {provider.value if hasattr(provider, "value") else provider: count for provider, count in rows}
+        return {
+            provider.value if hasattr(provider, "value") else provider: count_bucket(count) for provider, count in rows
+        }
 
 
 telemetry_service = TelemetryService()

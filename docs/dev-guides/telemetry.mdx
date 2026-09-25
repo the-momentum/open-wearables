@@ -31,7 +31,7 @@ two questions:
 
 One small JSON document ("ping"), at most once per 24 hours, plus one on startup (debounced to at most
 one per 12 hours, so restarts and redeploys don't send extra data). Every field is either an aggregate
-count or a configuration flag.
+count, reported as an order-of-magnitude bucket rather than an exact number, or a configuration flag.
 
 ### Instance and runtime
 
@@ -42,7 +42,6 @@ count or a configuration flag.
 | `sent_at` | Time the ping was built, UTC | `2026-07-23T04:12:00+00:00` | Order pings and detect gaps |
 | `schema_version` | Version of this payload format | `1` | Parse old and new payloads correctly |
 | `app_version` | Open Wearables version | `0.6.3` | See how fast releases are adopted and which versions are still in use |
-| `git_sha` | Git commit the instance was built from | `abc1234` | Tell releases from custom builds |
 | `python_version` | Python interpreter version | `3.13.1` | Know when it is safe to drop a Python version |
 | `platform` | OS and architecture string from Python's `platform.platform()` | `Linux-6.1.0-x86_64-with-glibc2.36` | Know which OS and CPU targets to test and support |
 | `environment` | The `ENVIRONMENT` setting: `local`, `test`, `staging` or `production` | `production` | Filter dev and CI instances out of usage stats |
@@ -50,16 +49,21 @@ count or a configuration flag.
 
 ### Usage counts
 
+Counts are sent as order-of-magnitude buckets, never exact numbers: `0`, `1-10`, `11-100`, `101-1k`,
+`1k-10k`, `10k-100k`, `100k-1M` or `1M+`. An exact count sent every day would let anyone holding the
+pings of a small instance read day-to-day activity off the differences, or match a total against a
+public profile. A bucket only moves when the count crosses an order of magnitude.
+
 | Field | What it is | Example | Why we track it |
 |-------|------------|---------|-----------------|
-| `total_users` | Number of rows in the `users` table | `42` | Deployment size |
-| `users_with_active_connection` | Users with at least one active provider connection | `30` | How many users are actually syncing data |
-| `active_connections` | Provider connections with status `active` | `57` | Deployment size and connections per user |
-| `inactive_connections` | Provider connections with status `revoked` or `expired` | `4` | How often connections break, which drives reconnect and token refresh work |
-| `connections_by_provider` | Active connections per provider | `{"garmin": 20, "oura": 15}` | Which providers to prioritise |
-| `data_points_by_provider` | Rows in `data_point_series` per provider | `{"garmin": 1284932}` | Data volume per provider, drives storage and import performance work |
-| `workouts_by_provider` | Workout event records per provider | `{"garmin": 2101}` | Which providers' workout pipelines matter most |
-| `sleep_sessions_by_provider` | Sleep event records per provider | `{"garmin": 1730}` | Same, for sleep |
+| `total_users` | Number of rows in the `users` table | `"11-100"` | Deployment size |
+| `users_with_active_connection` | Users with at least one active provider connection | `"11-100"` | How many users are actually syncing data |
+| `active_connections` | Provider connections with status `active` | `"11-100"` | Deployment size and connections per user |
+| `inactive_connections` | Provider connections with status `revoked` or `expired` | `"1-10"` | How often connections break, which drives reconnect and token refresh work |
+| `connections_by_provider` | Active connections per provider | `{"garmin": "11-100", "oura": "11-100"}` | Which providers to prioritise |
+| `data_points_by_provider` | Rows in `data_point_series` per provider | `{"garmin": "1M+"}` | Data volume per provider, drives storage and import performance work |
+| `workouts_by_provider` | Workout event records per provider | `{"garmin": "1k-10k"}` | Which providers' workout pipelines matter most |
+| `sleep_sessions_by_provider` | Sleep event records per provider | `{"garmin": "1k-10k"}` | Same, for sleep |
 
 ### Provider configuration
 
@@ -115,31 +119,30 @@ counters come from a scripted set of calls made to that instance on the day show
   "event": "daily",
   "sent_at": "2026-09-23T09:02:16.598747+00:00",
   "app_version": "0.8.0",
-  "git_sha": "",
   "python_version": "3.13.15",
   "platform": "Linux-7.0.12-linuxkit-aarch64-with-glibc2.41",
   "environment": "local",
   "instance_age_days": 5,
-  "total_users": 2,
-  "users_with_active_connection": 1,
-  "active_connections": 2,
-  "inactive_connections": 2,
+  "total_users": "1-10",
+  "users_with_active_connection": "1-10",
+  "active_connections": "1-10",
+  "inactive_connections": "1-10",
   "connections_by_provider": {
-    "apple": 1,
-    "garmin": 1
+    "apple": "1-10",
+    "garmin": "1-10"
   },
   "data_points_by_provider": {},
   "workouts_by_provider": {
-    "suunto": 36,
-    "garmin": 46,
-    "unknown": 55,
-    "apple": 23
+    "suunto": "11-100",
+    "garmin": "11-100",
+    "unknown": "11-100",
+    "apple": "11-100"
   },
   "sleep_sessions_by_provider": {
-    "suunto": 7,
-    "garmin": 10,
-    "unknown": 16,
-    "apple": 7
+    "suunto": "1-10",
+    "garmin": "1-10",
+    "unknown": "11-100",
+    "apple": "1-10"
   },
   "providers": [
     { "provider": "apple", "is_enabled": true, "live_sync_mode": null, "data_granularity": null },
@@ -220,7 +223,9 @@ counters come from a scripted set of calls made to that instance on the day show
 - No credentials, tokens, API keys, or secrets
 - No hostnames, IP addresses, or URLs of your deployment
 - No per-user or per-request information, only instance-wide aggregate counts
-- No raw request paths, query strings, user agents or exact request volumes
+- No raw request paths, query strings or user agents
+- No exact numbers of users, connections, records or requests, only order-of-magnitude buckets
+- No commit hash, which could point to a custom build or a fork
 
 Pings are sent to `https://telemetry.openwearables.io`, a collector operated by the Open Wearables team. The
 sending code lives in `backend/app/services/telemetry_service.py` and the request counters in

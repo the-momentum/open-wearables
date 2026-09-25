@@ -13,7 +13,7 @@ from app.config import Settings, settings
 from app.integrations.redis_client import get_redis_client
 from app.models import ProviderSetting
 from app.schemas.auth import ConnectionStatus, LiveSyncMode
-from app.services.telemetry_service import telemetry_service
+from app.services.telemetry_service import count_bucket, telemetry_service
 from tests.factories import DataSourceFactory, EventRecordFactory, UserConnectionFactory, UserFactory
 
 FEATURE_KEYS = {
@@ -37,6 +37,31 @@ class TestTelemetryState:
         assert first.instance_id == second.instance_id
         assert first.created_at is not None
         assert first.last_sent_at is None
+
+
+class TestCountBucket:
+    @pytest.mark.parametrize(
+        ("count", "bucket"),
+        [(None, "0"), (0, "0"), (1, "1-10"), (10, "1-10"), (11, "11-100"), (1_000, "101-1k"), (2_000_000, "1M+")],
+    )
+    def test_counts_become_order_of_magnitude_labels(self, count: int | None, bucket: str) -> None:
+        assert count_bucket(count) == bucket
+
+    def test_payload_carries_no_exact_counts(self, db: Session) -> None:
+        for _ in range(3):
+            UserFactory()
+        db.flush()
+
+        payload = telemetry_service.build_payload(db, event="daily")
+
+        count_fields = (
+            "total_users",
+            "users_with_active_connection",
+            "active_connections",
+            "inactive_connections",
+        )
+        assert all(isinstance(payload[field], str) for field in count_fields)
+        assert payload["total_users"] == "1-10"
 
 
 class TestBuildPayload:
@@ -64,11 +89,12 @@ class TestBuildPayload:
         assert payload["app_version"]
         assert payload["environment"]
         assert payload["sent_at"]
-        assert payload["total_users"] == 2
-        assert payload["active_connections"] == 1
-        assert payload["inactive_connections"] == 1
-        assert payload["users_with_active_connection"] == 1
-        assert payload["connections_by_provider"] == {"garmin": 1}
+        assert payload["total_users"] == "1-10"
+        assert payload["active_connections"] == "1-10"
+        assert payload["inactive_connections"] == "1-10"
+        assert payload["users_with_active_connection"] == "1-10"
+        assert payload["connections_by_provider"] == {"garmin": "1-10"}
+        assert "git_sha" not in payload
 
         garmin = next(p for p in payload["providers"] if p["provider"] == "garmin")
         assert garmin["is_enabled"] is True
@@ -87,8 +113,8 @@ class TestBuildPayload:
 
         payload = telemetry_service.build_payload(db, event="daily")
 
-        assert payload["workouts_by_provider"] == {"garmin": 1}
-        assert payload["sleep_sessions_by_provider"] == {"garmin": 1, "oura": 1}
+        assert payload["workouts_by_provider"] == {"garmin": "1-10"}
+        assert payload["sleep_sessions_by_provider"] == {"garmin": "1-10", "oura": "1-10"}
 
     def test_menstrual_cycle_records_leave_no_trace_in_the_payload(self, db: Session) -> None:
         EventRecordFactory(data_source=DataSourceFactory(provider="oura"), category="menstrual_cycle")
