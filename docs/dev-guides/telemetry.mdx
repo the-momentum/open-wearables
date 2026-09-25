@@ -74,7 +74,7 @@ One entry per row in the `provider_settings` table.
 | `provider` | Provider name | `garmin` | Key for the fields below |
 | `is_enabled` | Whether the provider is enabled on this instance | `true` | Configured vs actually used providers |
 | `live_sync_mode` | `webhook` or `pull` | `webhook` | Whether pull-based sync is worth maintaining |
-| `data_granularity` | Per-provider override of 24/7 data granularity: `raw`, `hourly` or `daily`, or `null` when not set and the instance default applies. Only Google Health reads it at the moment | `null` | Whether anyone uses the rollup modes |
+| `data_granularity` | Per-provider override of 24/7 data granularity: `raw`, `hourly` or `daily`, or `null` when not set and the instance default applies. Only the Google Health 24/7 sync uses it at the moment | `null` | Whether anyone uses the rollup modes |
 
 ### Feature flags
 
@@ -86,7 +86,7 @@ One entry per row in the `provider_settings` table.
 | `historical_sync_on_connect` | Whether historical sync auto-runs after connect | `true` | This flag is scheduled to change its default; tells us when that is safe |
 | `raw_payload_storage` | `disabled`, `log` or `s3` | `s3` | Whether raw payload archival is worth keeping |
 | `outgoing_webhooks_enabled` | Whether outgoing webhooks (Svix) are on | `true` | Adoption of outgoing webhooks |
-| `default_data_granularity` | Instance-wide default granularity: `raw`, `hourly` or `daily`. Only Google Health reads it at the moment | `raw` | Whether the rollup modes are used |
+| `default_data_granularity` | Instance-wide default granularity: `raw`, `hourly` or `daily`. Only the Google Health 24/7 sync uses it at the moment | `raw` | Whether the rollup modes are used |
 
 ### API usage
 
