@@ -279,6 +279,58 @@ def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
 
 
 @patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request")
+@patch("app.services.providers.withings.data_247.paginate")
+def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+) -> None:
+    # Withings documents a 24h cap on this endpoint, which makes a long sync one page per night.
+    nights = [
+        {
+            **SLEEP_ROW,
+            "id": 100 + day,
+            "startdate": SLEEP_ROW["startdate"] + day * 86400,
+            "enddate": SLEEP_ROW["enddate"] + day * 86400,
+        }
+        for day in range(70)
+    ]
+    mock_paginate.return_value = MagicMock(rows=nights)
+    mock_request.side_effect = [
+        {"series": [{"startdate": night["startdate"] + 900, "enddate": night["startdate"] + 4500, "state": 2}]}
+        for night in nights
+    ]
+
+    _data_247().save_sleep(
+        MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 9, 20, tzinfo=timezone.utc)
+    )
+
+    stored = [call.args[3].sleep_stages for call in mock_event.create_or_merge_sleep.call_args_list]
+    assert len(stored) == len(nights)
+    assert all(stages for stages in stored), "a night was saved without stages"
+
+
+@patch("app.services.providers.withings.data_247.log_structured")
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.withings_request")
+@patch("app.services.providers.withings.data_247.paginate")
+def test_a_walk_that_runs_out_of_requests_says_so(
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_log: MagicMock
+) -> None:
+    # A page that creeps forward a minute at a time never reaches the end of the night.
+    def one_minute(**kwargs: dict) -> dict:
+        start = kwargs["params"]["startdate"]
+        return {"series": [{"startdate": start, "enddate": start + 60, "state": 1}]}
+
+    mock_paginate.return_value = MagicMock(rows=[SLEEP_ROW])
+    mock_request.side_effect = one_minute
+
+    _data_247().save_sleep(MagicMock(), uuid4(), *_WINDOW)
+
+    levels = [call.args[1] for call in mock_log.call_args_list]
+    assert "warning" in levels
+
+
+@patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_minute_by_minute_states_are_folded_into_one_interval(mock_paginate: MagicMock, mock_event: MagicMock) -> None:
     minute_states = {

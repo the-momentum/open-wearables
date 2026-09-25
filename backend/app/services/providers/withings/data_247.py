@@ -61,9 +61,6 @@ _REQUESTED_MEASTYPES = ",".join(str(code) for code in MEASURE_TYPE_MAP)
 
 
 class Withings247Data(Base247DataTemplate):
-    # Sleep v2 - Get truncates long ranges, so a window may need several passes.
-    _MAX_SLEEP_SERIES_PAGES = 60
-
     """Withings continuous-data handler."""
 
     def __init__(self, provider_name: str, api_base_url: str, oauth: BaseOAuthTemplate) -> None:
@@ -355,7 +352,9 @@ class Withings247Data(Base247DataTemplate):
         starts = sorted(datetime.fromtimestamp(night.start, tz=timezone.utc) for night in nights)
         end_dt = datetime.fromtimestamp(max(night.end for night in nights), tz=timezone.utc)
         cursor = starts[0]
-        for _ in range(self._MAX_SLEEP_SERIES_PAGES):
+        # A page reaches at least a day and a night is shorter, so a night costs at most
+        # two: one for its stages, one for the empty stretch that follows it.
+        for _ in range(2 * len(nights)):
             try:
                 body = withings_request(
                     db=db,
@@ -410,6 +409,16 @@ class Withings247Data(Base247DataTemplate):
             if next_night is None:
                 break
             cursor = next_night
+        else:
+            log_structured(
+                logger,
+                "warning",
+                "Withings sleep series walk ran out of requests; later nights keep no stages",
+                provider="withings",
+                user_id=str(user_id),
+                nights=len(nights),
+                stopped_at=cursor.isoformat(),
+            )
 
         return self._merge_adjacent(sorted(stages, key=lambda s: s.start_time))
 
