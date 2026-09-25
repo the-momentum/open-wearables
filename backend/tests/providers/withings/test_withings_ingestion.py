@@ -193,6 +193,28 @@ def test_the_night_low_heart_rate_becomes_a_resting_heart_rate_sample(
 @patch("app.services.providers.withings.data_247.timeseries_service")
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.paginate")
+def test_the_sample_carries_the_offset_in_force_when_the_night_began(
+    mock_paginate: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
+) -> None:
+    # Warsaw goes from +02:00 to +01:00 at 03:00 local on 2020-10-25, mid-night.
+    dst_night = {
+        **SLEEP_ROW,
+        "startdate": int(datetime(2020, 10, 24, 21, tzinfo=timezone.utc).timestamp()),
+        "enddate": int(datetime(2020, 10, 25, 6, tzinfo=timezone.utc).timestamp()),
+    }
+    mock_paginate.return_value = MagicMock(rows=[dst_night])
+
+    _data_247().save_sleep(
+        MagicMock(), uuid4(), datetime(2020, 10, 24, tzinfo=timezone.utc), datetime(2020, 10, 26, tzinfo=timezone.utc)
+    )
+
+    sample = mock_timeseries.bulk_create_samples.call_args.args[1][0]
+    assert sample.zone_offset == "+02:00"
+
+
+@patch("app.services.providers.withings.data_247.timeseries_service")
+@patch("app.services.providers.withings.data_247.event_record_service")
+@patch("app.services.providers.withings.data_247.paginate")
 def test_a_night_without_a_low_heart_rate_is_still_saved(
     mock_paginate: MagicMock, mock_event: MagicMock, mock_timeseries: MagicMock
 ) -> None:

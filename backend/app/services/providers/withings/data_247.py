@@ -413,7 +413,16 @@ class Withings247Data(Base247DataTemplate):
                 source=self.provider_name,
                 user_connection_id=user_connection_id,
                 recorded_at=start_dt,
-                zone_offset=zone_offset,
+                # The record keys on the night's end; a sample stamped at its start can sit
+                # on the other side of a DST change.
+                zone_offset=zone_offset_at(
+                    summary.timezone,
+                    start_dt,
+                    logger,
+                    action="sleep_timezone_invalid",
+                    user_id=str(user_id),
+                    sleep_id=summary.id,
+                ),
                 value=data.hr_min,
                 series_type=SeriesType.resting_heart_rate,
             )
