@@ -1,0 +1,218 @@
+import { expect, test } from '@playwright/test';
+import { signIn } from './support';
+
+const CONNECTED = '00000000-0000-4000-8000-000000000007';
+
+// Every destination now sits behind the auth guard.
+test.beforeEach(async ({ page }) => {
+	await signIn(page);
+});
+
+const MOBILE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 800 };
+
+test('sends the root path to the dashboard', async ({ page }) => {
+	await page.goto('/');
+	await expect(page).toHaveURL('/dashboard');
+});
+
+test.describe('desktop', () => {
+	test.use({ viewport: DESKTOP });
+
+	test('switches the theme at once, and the server renders it after a reload', async ({ page }) => {
+		await page.goto('/dashboard');
+		const theme = page.getByRole('complementary').getByRole('group', { name: 'Theme' });
+		const html = page.locator('html');
+
+		await theme.getByRole('button', { name: 'Dark' }).click();
+		await expect(html).toHaveClass('dark');
+
+		// In the HTML the server sends, so a reload never flashes the other theme.
+		const served = await (await page.request.get('/dashboard')).text();
+		expect(served).toContain('<html lang="en" class="dark">');
+		await page.reload();
+		await expect(theme.getByRole('button', { name: 'Dark' })).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+
+		// Auto hands it back to the OS: no class, and no cookie left to override it.
+		await theme.getByRole('button', { name: 'Auto' }).click();
+		await expect(html).not.toHaveClass(/dark|light/);
+		const cookies = await page.context().cookies();
+		expect(cookies.some((cookie) => cookie.name === 'ow-theme')).toBe(false);
+	});
+
+	test('navigates from the sidebar and hides the mobile bar', async ({ page }) => {
+		await page.goto('/dashboard');
+
+		const sidebar = page.getByRole('navigation', { name: 'Main' });
+		await expect(sidebar).toBeVisible();
+		await expect(page.getByRole('navigation', { name: 'Primary' })).toBeHidden();
+
+		await sidebar.getByRole('link', { name: 'Users' }).click();
+
+		await expect(page).toHaveURL('/users');
+		await expect(sidebar.getByRole('link', { name: 'Users' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
+	});
+
+	test('shows the package version, not SvelteKit’s build timestamp', async ({ page }) => {
+		await page.goto('/dashboard');
+
+		await expect(page.getByRole('complementary').getByText(/^\d+\.\d+\.\d+$/)).toBeVisible();
+	});
+});
+
+test.describe('mobile', () => {
+	test.use({ viewport: MOBILE });
+
+	test('navigates from the bottom bar and hides the sidebar', async ({ page }) => {
+		await page.goto('/dashboard');
+
+		const bottomNav = page.getByRole('navigation', { name: 'Primary' });
+		await expect(bottomNav).toBeVisible();
+		await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden();
+
+		await bottomNav.getByRole('link', { name: 'Syncs' }).click();
+
+		await expect(page).toHaveURL('/syncs');
+	});
+
+	test('reaches a secondary destination through the More sheet and closes it', async ({ page }) => {
+		await page.goto('/dashboard');
+
+		const more = page.getByRole('button', { name: 'More' });
+		await more.click();
+
+		const sheet = page.getByRole('dialog', { name: 'More' });
+		await expect(sheet).toBeVisible();
+
+		await sheet.getByRole('link', { name: 'Settings' }).click();
+
+		await expect(page).toHaveURL('/settings');
+		await expect(sheet).toBeHidden();
+	});
+
+	test('keeps logout and the version reachable, since the sidebar is desktop-only', async ({
+		page
+	}) => {
+		await page.goto('/dashboard');
+		await page.getByRole('button', { name: 'More' }).click();
+
+		const sheet = page.getByRole('dialog', { name: 'More' });
+		await expect(sheet.getByRole('button', { name: 'Logout' })).toBeVisible();
+		await expect(sheet.getByText(/^\d+\.\d+\.\d+$/)).toBeVisible();
+	});
+
+	test('closes the More sheet with Escape', async ({ page }) => {
+		await page.goto('/dashboard');
+		await page.getByRole('button', { name: 'More' }).click();
+
+		const sheet = page.getByRole('dialog', { name: 'More' });
+		await expect(sheet).toBeVisible();
+
+		await page.keyboard.press('Escape');
+
+		await expect(sheet).toBeHidden();
+	});
+
+	// A row too wide for a phone must scroll inside its own box, the way the user
+	// tabs do. Left to a flex item's `min-width: auto` it pushes the whole page
+	// sideways instead, which is how the coverage filters shipped.
+	const PHONE_ROUTES = [
+		'/dashboard',
+		'/users',
+		'/coverage',
+		'/syncs',
+		'/webhooks',
+		'/webhooks/ep_live/deliveries',
+		`/users/${CONNECTED}`,
+		`/users/${CONNECTED}/data`,
+		`/users/${CONNECTED}/scores`
+	];
+
+	for (const route of PHONE_ROUTES) {
+		test(`nothing on ${route} scrolls the page sideways`, async ({ page }) => {
+			await page.goto(route);
+			await page.waitForLoadState('networkidle');
+
+			const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+				scrollWidth: document.documentElement.scrollWidth,
+				clientWidth: document.documentElement.clientWidth
+			}));
+
+			expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+		});
+	}
+
+	// Scrolling one axis turns the other on too, so a pixel of overflow made a
+	// sideways swipe along the tabs wobble them up and down.
+	test('a tab strip scrolls sideways only', async ({ page }) => {
+		await page.goto(`/users/${CONNECTED}`);
+
+		const scroller = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+		const { overflowY, scrollHeight, clientHeight } = await scroller.evaluate((el) => ({
+			overflowY: getComputedStyle(el).overflowY,
+			scrollHeight: el.scrollHeight,
+			clientHeight: el.clientHeight
+		}));
+
+		expect(overflowY).toBe('hidden');
+		expect(scrollHeight).toBeLessThanOrEqual(clientHeight);
+	});
+
+	test('content clears the fixed bottom bar', async ({ page }) => {
+		await page.goto('/dashboard');
+
+		// Scrolled to the end, which is the only place a fixed bar can cover
+		// anything. Comparing the unscrolled box only ever tested that the page
+		// was shorter than the window, which stopped being true the moment a real
+		// page replaced the placeholder.
+		await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+		const contentBottom = await page
+			.getByRole('main')
+			.evaluate((el) => (el.lastElementChild ?? el).getBoundingClientRect().bottom);
+		const navTop = await page
+			.getByRole('navigation', { name: 'Primary' })
+			.evaluate((el) => el.getBoundingClientRect().top);
+
+		expect(contentBottom).toBeLessThanOrEqual(navTop);
+	});
+});
+
+// A control inside a control is not HTML: the parser closes a <button> at the
+// next <button>, so the server's markup arrives broken before hydration starts.
+// Nothing else here catches it — svelte-check ignores nesting and the build
+// strips Svelte's dev warning — and a switch in an accordion header shipped
+// that way, where it quietly broke the preset the card was showing.
+const CONTROLS = 'a[href], button, input, select, textarea';
+const NESTED_ROUTES = [
+	'/syncs',
+	'/webhooks',
+	'/settings/seed-data',
+	'/settings/team',
+	'/settings/providers',
+	`/users/${CONNECTED}/workouts`,
+	`/users/${CONNECTED}/sleep`
+];
+
+for (const route of NESTED_ROUTES) {
+	test(`no control on ${route} sits inside another`, async ({ page }) => {
+		await page.goto(route);
+		await page.waitForLoadState('networkidle');
+
+		const nested = await page.evaluate(
+			(selector) =>
+				[...document.querySelectorAll(selector)]
+					.filter((element) => element.parentElement?.closest(selector))
+					.map((element) => element.outerHTML.slice(0, 80)),
+			CONTROLS
+		);
+
+		expect(nested).toEqual([]);
+	});
+}

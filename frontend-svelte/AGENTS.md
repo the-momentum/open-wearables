@@ -1,0 +1,2400 @@
+# Svelte Frontend — Development Guide
+
+Ground-up rewrite of the React dashboard in SvelteKit. Lives on the
+`feat/svelte-frontend` branch and runs alongside the existing frontend until it
+reaches parity; only then does `frontend/` get deleted.
+
+**Status:** the shell, the `/users` list, the user detail page with **all seven**
+of its data tabs — Data Summary, Workouts, Activity, Sleep, Body, Scores and
+Women's Health — the Dashboard, Data Coverage, Webhook subscriptions and
+Settings are built — Credentials, Providers, Priorities, Data Lifecycle, Team
+and Seed Data — and Syncs. Every tab of the old dashboard now has a counterpart,
+and so does `/accept-invite`, the one public page the backend links to (it
+writes `/accept-invite?token=` into every invitation email, so the path and the
+parameter are fixed). The old `/register`, `/forgot-password`,
+`/reset-password`, `/widget/connect` and `/users/$id/pair/error` were left out on
+purpose: the first three call auth endpoints the API does not have, the widget
+simulates OAuth with `Math.random()`, and nothing redirects to the pairing error
+page (OAuth failures land on the API's own `/api/v1/oauth/error`).
+Read "Current state" before assuming anything exists.
+
+## Non-negotiable: latest SvelteKit, Svelte 5 runes
+
+This is the single easiest thing to get wrong here, because most Svelte material
+in circulation — blog posts, Stack Overflow answers, model training data —
+describes **Svelte 4**, and it looks superficially correct.
+
+**Always use the newest SvelteKit and Svelte 5.** Verify before assuming:
+
+```bash
+bun pm ls | grep -E 'svelte@|@sveltejs'      # what is installed
+bun pm view svelte version                    # what is current
+```
+
+Verified current as of 2026-09-02 — all four at latest:
+
+| Package                        | Installed |
+| ------------------------------ | --------- |
+| `svelte`                       | 5.57.0    |
+| `@sveltejs/kit`                | 2.70.3    |
+| `@sveltejs/adapter-node`       | 5.5.7     |
+| `@sveltejs/vite-plugin-svelte` | 7.3.0     |
+
+Runes mode is **forced on** in [vite.config.ts](vite.config.ts) for every file
+outside `node_modules`, so the Svelte 4 component API is not merely discouraged
+— it does not compile.
+
+### Svelte 4 → 5 translation
+
+If you catch yourself writing anything in the left column, stop.
+
+| Svelte 4 (do not write)                | Svelte 5 runes                                            |
+| -------------------------------------- | --------------------------------------------------------- |
+| `export let foo`                       | `let { foo } = $props()`                                  |
+| `let count = 0` (reactive by position) | `let count = $state(0)`                                   |
+| `$: doubled = count * 2`               | `const doubled = $derived(count * 2)`                     |
+| `$: { sideEffect() }`                  | `$effect(() => { sideEffect() })`                         |
+| `on:click={handler}`                   | `onclick={handler}`                                       |
+| `createEventDispatcher()`              | callback props: `let { onsave } = $props()`               |
+| `<slot />`                             | `{@render children()}` with `let { children } = $props()` |
+| `<slot name="header" />`               | snippet prop: `{@render header?.()}`                      |
+| `writable()` + `$store`                | `$state` inside a `.svelte.ts` module                     |
+
+Two mechanical traps:
+
+- Runes only work in `.svelte` files and in modules named **`.svelte.ts`**. A
+  plain `.ts` file cannot use `$state`; the rune is a compiler feature, not an
+  import.
+- `svelte/store` still exists and still works. That is a compatibility path, not
+  a reason to reach for it. Prefer runes for new state.
+
+### Documentation for agent sessions
+
+`svelte.dev` publishes machine-readable docs — prefer these over recalled
+knowledge, which skews Svelte 4:
+
+- <https://svelte.dev/llms.txt> — index of the available sets
+- <https://svelte.dev/llms-medium.txt> — abridged, legacy notes stripped
+- <https://svelte.dev/docs/kit/llms.txt> — SvelteKit only
+- <https://svelte.dev/docs/svelte/llms.txt> — Svelte only
+
+## Relationship to `frontend/` (React)
+
+`frontend/` is the live product and stays on `main`. Do not change it from this
+branch.
+
+This is **not a 1:1 port**. The React app is ~29k LOC across 175 files and
+carries dead weight: unused SSR infrastructure, endpoint constants for routes
+that were never built, three 800+ line components. Reproducing it faithfully
+would reproduce that.
+
+What to reuse and what to rethink:
+
+| Layer                              | Approach                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `src/lib/api/*`, `src/lib/utils/*` | Plain TypeScript, no React. Port selectively — copy what a slice needs, leave the rest.                           |
+| Type definitions (`api/types.ts`)  | Copy the types a slice touches. Don't bulk-import all 881 lines.                                                  |
+| Endpoint constants                 | Copy per slice. Several in the React version are marked "may not exist in backend yet" — do not carry those over. |
+| Components                         | Rewrite. Do not transliterate JSX.                                                                                |
+| Data fetching hooks                | Rewrite. See "Open decisions".                                                                                    |
+
+The backend contract is unchanged, so `frontend/src/lib/api/` is the reference
+for endpoint shapes and response types. Read it; don't copy it wholesale.
+
+## Working agreements
+
+These came from the project owner and override general habit.
+
+1. **Just-in-time dependencies.** Do not install a package before the code that
+   needs it exists. No "we'll want this later" installs. When you do add one,
+   say what it buys and what the alternative was.
+2. **Small increments.** One element at a time. Land it, show it, then move on.
+   Do not batch a shell, an auth layer and three pages into one change.
+3. **Tests alongside the code**, not in a cleanup pass afterwards. The React app
+   has three test files, all on utils, and that is the single biggest risk in
+   retiring it — do not repeat it here.
+4. **Mobile-first.** The React dashboard is effectively unusable on a phone.
+   Every layout starts at the small breakpoint and grows, never the reverse.
+5. **Explain new concepts** rather than introducing them silently.
+
+## Tech stack
+
+Scaffolded with `sv create` (official Svelte CLI), not hand-written config.
+
+| Concern                   | Choice                                        |
+| ------------------------- | --------------------------------------------- |
+| Framework                 | SvelteKit 2 / Svelte 5 (runes mode forced on) |
+| Build                     | Vite 8                                        |
+| Language                  | TypeScript 6, `strict`                        |
+| Styling                   | Tailwind CSS v4 (no plugins)                  |
+| Adapter                   | `@sveltejs/adapter-node`                      |
+| Package manager / runtime | Bun 1.4                                       |
+| Unit + component tests    | Vitest 4                                      |
+| E2E                       | Playwright                                    |
+| Lint / format             | ESLint 10 + Prettier                          |
+
+### Config lives in `vite.config.ts`
+
+There is **no `svelte.config.js`**. This scaffold puts SvelteKit options —
+including `adapter` and `compilerOptions` — inside the `sveltekit()` plugin call
+in [vite.config.ts](vite.config.ts). Most SvelteKit documentation and older
+answers assume a separate file; they are describing an older layout.
+
+Runes are forced on for all non-`node_modules` files, so `$state`/`$props`/
+`$derived` are always available and the legacy `export let` API is not.
+
+## Commands
+
+```bash
+bun run dev          # dev server on :3001
+bun run build        # production build into build/
+bun run preview      # serve the production build
+bun run check        # svelte-check — run this before calling anything done
+bun run lint         # prettier --check + eslint
+bun run format       # prettier --write
+bun run test:unit    # vitest (unit + component)
+bun run test:e2e     # playwright
+bun run test         # both
+```
+
+## Component granularity
+
+**Components are atomic.** Split one as soon as any logic starts to grow — do
+not wait for a line count. When a category directory fills up, split it into
+subdirectories too. The target is a deep tree of small components, which is the
+opposite of what `frontend/` became (`-seed-data-tab.tsx` is 1335 lines,
+`connection-card.tsx` 830).
+
+**This limit does not apply to test files** — see below.
+
+## Testing
+
+Three tiers, distinguished **by filename**. Getting the suffix wrong sends a
+test to the wrong runner.
+
+| Pattern             | Runner                                            | Use for                                               |
+| ------------------- | ------------------------------------------------- | ----------------------------------------------------- |
+| `*.spec.ts`         | Vitest, node environment                          | Pure logic: formatters, parsers, API request building |
+| `*.browser.spec.ts` | Vitest, real Chromium via `vitest-browser-svelte` | Component rendering and interaction                   |
+| `*.e2e.ts`          | Playwright against a production build on :4173    | Full flows: sign-in, navigation, a page loading data  |
+
+`*.browser.spec.ts` is a deliberate rename from the scaffold's
+`*.svelte.spec.ts`. The patterns are wired in [vite.config.ts](vite.config.ts)
+— the `client` project's `include` **and** the `server` project's `exclude`. If
+you change one, change both, or browser tests will also run under node and fail.
+
+### Few, fat test files — one per category
+
+A test file covers a whole directory and is named after it:
+`components/layout/layout.browser.spec.ts` covers every component in
+`components/layout/`. Colocated, so it moves with the code.
+
+Optimise for **fewer test files, not smaller ones**. A large category spec is
+fine; one spec file per component is not — it doubles the file list and buries
+the component tree.
+
+### Test the contract, not the rendering
+
+A component test earns its place only when it guards behaviour that (a) can
+break silently and (b) is not already covered by e2e. **Most components get no
+test at all** — `PagePlaceholder`, `TopBar` and `Sidebar` have no contract worth
+guarding.
+
+Worth a test: `aria-current` on the active nav link; `rel="noreferrer"` on
+external links. Not worth a test: that a component renders its label, or that an
+`href` lands in the DOM — you would see that break instantly.
+
+Push the weight onto pure-logic unit tests (fast, node) and e2e flows. Component
+tests are the thin middle layer.
+
+Component tests run in an actual browser, not jsdom — assert through
+`page.getByRole(...)` and await the assertions:
+
+```ts
+import { page } from 'vitest/browser';
+import { render } from 'vitest-browser-svelte';
+
+render(MyComponent, { label: 'Save' });
+await expect.element(page.getByRole('button', { name: 'Save' })).toBeVisible();
+```
+
+`expect.requireAssertions` is on: a test with no assertion fails.
+
+### Invalid HTML nesting is not caught by anything here
+
+Svelte reports it as `node_invalid_placement_ssr`, at **runtime and only in
+dev**. A `<ul>` inside a `<p>` shipped once — the scope bubble inside the
+provider name — and nothing caught it:
+
+- `svelte-check` does not look at nesting.
+- The browser component tests render on the client only, so an **SSR** warning
+  cannot fire, and there is no hydration to mismatch.
+- `svelte/server`'s `render()` in the node project emits nothing either.
+- The e2e suite runs a **production build**, where the warning is stripped.
+
+So `bun run dev` and the browser console are the only general detector. Green
+does not mean the markup is valid. When a component can hold caller-supplied
+content, check what element it sits in: `Hint`'s bubble takes a snippet, so a
+`<p>` wrapper around it is a trap.
+
+One case does have a guard, because it breaks behaviour and not just markup:
+**a control inside a control**. The parser closes a `<button>` at the next
+`<button>`, so the server's HTML arrives broken and hydration has to repair
+it. A `Switch` in `AccordionCard`'s `aside` — which renders inside the header
+button — shipped that way on Seed Data and stopped the preset highlighting.
+`navigation.e2e.ts` now checks the pages with accordions for any `a`, `button`,
+`input`, `select` or `textarea` inside another, and `AccordionCard` has a
+`control` snippet, outside the button, for exactly this.
+
+### `signIn` is on the critical path of every test
+
+It asserts the redirect landed on `/dashboard`, which now spans the login POST,
+a session written to Redis, the redirect itself and the dashboard's own three
+requests — the dashboard used to be a static placeholder, so this resolved
+immediately. Locally the whole hop is 30–80ms; on a shared CI runner it once
+exceeded Playwright's default five seconds and took one unrelated test with it.
+
+The assertion carries an explicit 20-second timeout for that reason. It is not a
+retry and it hides nothing: a login that is genuinely broken still fails, just
+later. Nothing else in the suite should need a raised timeout — if something
+does, the thing being waited for is probably wrong.
+
+### `getByText` with a regex does not normalize whitespace
+
+A **string** matcher collapses whitespace; a **regex** matches the raw text.
+Prettier reflows markup, so `{count}\n{noun} scored` renders with a newline
+between the number and the word and `/\d+ days scored/` silently never matches
+— while `getByText('24 days scored')` does. Build the sentence in the script and
+interpolate it once, rather than writing a regex that tolerates the wrapping:
+the string the reader sees should be one string in the code too.
+
+### End-to-end tests sign in for real
+
+[e2e/mock-api.ts](e2e/mock-api.ts) stands in for FastAPI, started by
+[playwright.config.ts](playwright.config.ts) alongside the app. Tests therefore
+walk the true path — form action, session creation, cookie, guard, list query —
+without the full stack, and without knowing anything about the session's
+internal shape.
+
+It serves `/auth/login`, `/auth/me`, `/token/refresh`, `/token/revoke`,
+`/oauth/providers` and `/users`, the last honouring `search`, `provider`,
+`sort_by`, `sort_order`, `page`, `limit` and `include`. Under a user id it also
+serves the detail, `/connections`, `/sync/history` and `/sync/runs`. **It rotates
+refresh tokens like the real backend**, so failing to persist a rotated token
+turns the suite red rather than logging users out an hour later in production.
+
+**The suite runs on one worker, and that is not a performance oversight.**
+Playwright parallelises across _files_ by default, and every file shares one
+mock process whose user list is mutable and reset with `/__reset` in
+`beforeEach`. With two mutating files in flight, one file's reset lands in the
+middle of the other's test and the failure surfaces somewhere unrelated — a
+pagination total reading 46 instead of 47. `workers: 1` in the config is what
+keeps that from coming back.
+
+Fixtures live in [e2e/fixtures.ts](e2e/fixtures.ts) — 47 users, enough for three
+pages at 20 and a memorable one to search for. Add data there, not inline in a
+test.
+
+They do need a **running Redis** (`redis://localhost:6379/15`, a throwaway
+database). CI provides one as a service container.
+
+When the config has an array of `webServer` entries, Playwright stops inferring
+`baseURL`, so it is set explicitly in `use`.
+
+## Design tokens
+
+Defined once in [src/app.css](src/app.css). Components reference semantic names
+(`bg-surface`, `text-muted-foreground`), never raw colours.
+
+Colours are **OKLCH**, unlike the React app's HSL. OKLCH lightness is
+perceptual, so `0.55` reads as the same brightness at every hue — contrast
+becomes predictable and hover/muted states are derived by nudging L rather than
+picking a new hex by eye.
+
+Structure:
+
+1. `:root` — light values on `--ow-*` variables.
+2. `@media (prefers-color-scheme: dark) :root:not(.light)` — dark overrides.
+3. `.dark` — same overrides again, so an explicit class beats the OS setting.
+   This is the hook a manual theme toggle will use.
+4. `@theme inline` — maps `--ow-*` onto Tailwind's `--color-*` so utilities are
+   generated. `inline` matters: it keeps utilities pointing at the variable
+   rather than baking in the resolved value.
+
+**The set is deliberately small.** The React app has ~60 colour variables with
+`-glow`/`-muted`/`-hover` variants, many unused. Add a token when a component
+needs it, and add it to all three theme blocks.
+
+## Docker
+
+| Service            | Port | Notes        |
+| ------------------ | ---- | ------------ |
+| `frontend` (React) | 3000 | unchanged    |
+| `frontend-svelte`  | 3001 | this project |
+
+```bash
+docker compose watch          # both frontends + backend, with sync
+docker compose build frontend-svelte
+```
+
+- [Dockerfile.dev](Dockerfile.dev) — Vite dev server, driven by compose sync.
+  Sets `DOCKER=1`, which switches Vite's watcher to polling (inotify does not
+  fire reliably across the compose sync boundary).
+- [Dockerfile](Dockerfile) — two stage, runs `bun ./build/index.js`.
+
+### Environment
+
+| Variable    | Purpose                                             |
+| ----------- | --------------------------------------------------- |
+| `API_URL`   | Backend base URL, used by the SvelteKit server only |
+| `REDIS_URL` | Session store (database 2; backend uses 0, svix 1)  |
+
+Both are **private**, read through `$env/dynamic/private`. Dynamic, never
+`static`, keeps them **runtime** values, so one prebuilt image can be pointed at
+any backend without a rebuild — a property the React app has and we must not
+lose. Private rather than `PUBLIC_` because with cookie sessions the browser
+never calls FastAPI directly; only this server does.
+
+## Navigation
+
+[src/lib/config/nav.ts](src/lib/config/nav.ts) is the only place destinations
+are declared. `Sidebar`, `BottomNav` and `MoreSheet` all derive from it — adding
+a destination means editing that array and nothing else.
+
+Internal hrefs go through `resolve()` from `$app/paths`, which type-checks the
+path against the real route tree and applies `base`. A typo becomes a build
+error, not a dead link. `NavLink` and `BottomNav` carry an
+`eslint-disable svelte/no-navigation-without-resolve`, because the rule cannot
+see that a dynamic `item.href` was already resolved upstream.
+
+The `primary` flag decides what appears in the mobile bottom bar. At most four:
+the fifth slot is "More", and a unit test enforces that.
+
+`navLabelFor(pathname)` is the single derivation of "which section am I in". It
+feeds both the desktop header in `TopBar` and the `<title>` in
+`routes/(app)/+layout.svelte`, so a new destination gets a heading and a browser
+tab title without touching either file.
+
+`TopBar` shows the **centred logotype on mobile** and the section heading on
+desktop, where the sidebar already carries the brand. The bar is `h-20` below
+`lg` and `h-14` above it: the logotype stacks "Open / Wearables" on two lines and
+is illegible in a 56px bar. Do not swap it for the bare mark — the brand belongs
+there.
+
+### Responsive shell
+
+`AppShell` composes the whole thing. Breakpoint is `lg` (1024px):
+
+- **below `lg`** — sticky `TopBar` + fixed `BottomNav` (4 destinations + More).
+  `MoreSheet` is a bottom sheet holding the rest.
+- **`lg` and up** — fixed `Sidebar` with every destination; `BottomNav` is
+  removed from the DOM, not just hidden.
+
+Details worth preserving:
+
+- `min-h-dvh`, never `min-h-screen` — `vh` ignores mobile browser chrome and
+  leaves a gap or a scroll jump as the address bar collapses.
+- `ui/Sheet.svelte` is a native `<dialog>` opened with `showModal()`, which
+  supplies the focus trap, Esc-to-close, inert background and `::backdrop` for
+  free. This is why `bits-ui` is not a dependency yet. It knows nothing about
+  navigation — `MoreSheet` supplies the content.
+- The sheet is pinned with `inset-x-0 top-auto bottom-0`. Setting both `top` and
+  `bottom` (i.e. `inset-0`) stretches it to full height even with `h-auto`.
+- `BottomNav`'s column count is computed from `PRIMARY_NAV_ITEMS.length + 1` via
+  an inline style. A hardcoded `grid-cols-5` would leave a gap if a primary
+  destination were removed, and Tailwind cannot generate a class from a runtime
+  value.
+- `main` reserves `4.5rem + env(safe-area-inset-bottom)` so content clears the
+  bottom bar and the home indicator. An e2e test asserts they do not overlap.
+- Sidebar and bottom bar carry **different** `aria-label`s (`Main` / `Primary`).
+  Two landmarks with the same name is an accessibility smell.
+- `LogoutButton` appears in **both** the sidebar footer and the More sheet. The
+  sidebar is desktop-only, so without the sheet copy there is no way to log out
+  on a phone. It is inert until auth lands — wiring it means passing an
+  `onclick` at those two call sites.
+
+### App version
+
+The sidebar footer shows `v{version}` from `$app/environment`.
+[vite.config.ts](vite.config.ts) sets `version: { name: version }` from
+`package.json`; without it SvelteKit defaults to a build **timestamp**, which
+would render as `v1788389600520` and look plausible enough to miss. An e2e test
+asserts the string is semver-shaped.
+
+Keep `package.json`'s version in step with `frontend/package.json` while both
+frontends ship. It renders in the sidebar footer on desktop and in the More
+sheet on mobile.
+
+## Brand assets
+
+Copied from `frontend/` — the same files the React app ships, so both frontends
+look identical in a browser tab.
+
+| Where                              | What                                                                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [static/](static/)                 | `favicon.ico`, light/dark 16px + 32px PNGs, `apple-touch-icon.png`, `android-chrome-*.png`, `manifest.json` |
+| [src/lib/assets/](src/lib/assets/) | `logo.svg` (mark only), `logotype.svg` (mark + wordmark)                                                    |
+
+Icons are wired in [src/app.html](src/app.html), not per route — they never
+change, so they belong in the static shell. Light and dark variants are selected
+with `media="(prefers-color-scheme: …)"`, with `favicon.ico` as the fallback for
+browsers that ignore it.
+
+### The logos were edited on the way in
+
+The originals carry a hardcoded `<rect fill="black"/>` background and paint
+their paths `fill="white"`. That works in the React app, which is dark-only with
+a black sidebar. Here it rendered as a black tile on the light theme, and even on
+dark it did not match `--ow-surface`.
+
+Both files now have the rect removed, `fill="currentColor"` on the paths, and a
+viewBox tightened to the real content bounds (measured with `getBBox()`, not by
+eye). They inherit the theme's text colour and can be tinted anywhere.
+
+**If either logo is ever re-exported from a design tool, redo those three
+edits** — otherwise the black tile comes back.
+
+`Wordmark.svelte` inlines the SVG via a `?raw` import rather than using `<img
+src>`, because an `<img>` cannot inherit `currentColor`. It carries a targeted
+`eslint-disable` for `svelte/no-at-html-tags`: the content is a build-time asset,
+never user input. Callers set the height; the SVG keeps its aspect ratio.
+
+Not copied: `tanstack-circle-logo.png` and `tanstack-word-logo-white.svg` are
+leftovers from the React scaffold. The provider marks (`garmin.svg`,
+`polar.svg`, `suunto.svg`) stay in `frontend/` until a page here needs them.
+
+## Authentication
+
+Sessions are server-side. The browser holds **only an opaque session id** in an
+`HttpOnly` cookie; the access and refresh tokens never leave this server.
+
+```
+browser --cookie: ow_session=<uuid>--> SvelteKit --Bearer--> FastAPI
+                                           |
+                                         Redis  ow:sess:<uuid>
+```
+
+Why, in short: `localStorage` is readable by any script on the page, so one
+compromised npm dependency exfiltrates a working credential. The refresh token
+matters most here — it is long-lived and, per `RefreshToken` in the backend, has
+no expiry column at all, only `revoked_at`.
+
+### Files
+
+| File                                                                       | Role                            |
+| -------------------------------------------------------------------------- | ------------------------------- |
+| [src/lib/server/redis.ts](src/lib/server/redis.ts)                         | Connection, created lazily      |
+| [src/lib/server/api.ts](src/lib/server/api.ts)                             | Raw calls to FastAPI            |
+| [src/lib/server/session.ts](src/lib/server/session.ts)                     | Cookie + Redis record + refresh |
+| [src/lib/server/auth.ts](src/lib/server/auth.ts)                           | Per-request context, memoised   |
+| [src/hooks.server.ts](src/hooks.server.ts)                                 | Puts that context on `locals`   |
+| [src/routes/login/+page.server.ts](src/routes/login/+page.server.ts)       | Sign-in form action             |
+| [src/routes/logout/+page.server.ts](src/routes/logout/+page.server.ts)     | Sign-out action                 |
+| [src/routes/(app)/+layout.server.ts](<src/routes/(app)/+layout.server.ts>) | The guard                       |
+
+Anything under `$lib/server` can never be imported into client code — SvelteKit
+fails the build if you try. That is the safety net keeping tokens off the
+browser; do not defeat it by re-exporting from elsewhere.
+
+### Things that will bite
+
+- **The backend rotates refresh tokens.** `/token/refresh` revokes the old one
+  and issues a new one, so the whole response must be persisted, not just the
+  access token. Dropping the new refresh token logs the user out an hour later.
+- **`ioredis`, not Bun's built-in Redis client.** Bun ships one, but the Vite
+  binary carries a `#!/usr/bin/env node` shebang, so dev, preview and build all
+  run server code under **node** — only production `bun ./build/index.js` is
+  Bun. A Bun-only API would work in production and nowhere else.
+- **The guard does not call `/auth/me` per navigation.** The developer profile
+  is captured at sign-in and stored in the session. Revocation is therefore
+  noticed within the access token's 60 minute life rather than instantly, which
+  is the trade a short access token exists to make. A profile edited elsewhere
+  stays stale until the next sign-in.
+- **`readSession` fails closed.** An unreachable Redis returns null — "not
+  signed in" — never a valid session.
+- **The sign-in error message is identical for a wrong email and a wrong
+  password.** Distinguishing them tells an attacker which accounts exist.
+
+### One session read per request
+
+`locals.auth` is a lazy, memoised context: `session()` and `accessToken()` each
+resolve once per request however many loaders ask.
+
+This matters because the layout guard and a page `load` run **concurrently** for
+one render. Without memoisation that is two Redis reads and, worse, two
+simultaneous refresh attempts — and since the backend rotates refresh tokens,
+the second would invalidate the first.
+
+`hooks.server.ts` was removed once as speculative, when its only two consumers
+could never run together, and came back when `/users` made the overlap real.
+That is the just-in-time rule working, not indecision.
+
+### The React app got this wrong — do not copy it
+
+Worth knowing, because the old code looks authoritative:
+
+1. `refresh_token` is never used anywhere in `frontend/src`.
+2. `expires_in` is never passed to `setSession`, so it assumes a 24 hour
+   session while the token dies after 60 minutes. That is the cause of the
+   apparently random logouts.
+3. `setSession(data.access_token, data.developer_id)` reads a field that
+   `TokenResponse` does not have. Harmless only because `getDeveloperId()` is
+   never called.
+
+## List pages
+
+`/users` is the reference implementation. Copy its shape rather than inventing a
+second one.
+
+**State lives in the URL**, not in a component:
+`?search=…&page=2&size=50&sort=name&provider=garmin&provider=oura`. The server
+`load` re-runs on every change, so Back works, a filtered view is a shareable
+link, and the first paint is server-rendered. No client-side data fetching,
+which is why neither `@tanstack/svelte-query` nor a browser-facing API proxy
+exists yet.
+
+[users/query.ts](src/lib/users/query.ts) is the single translator between the
+URL and the API. It parses defensively — a hand-edited or stale parameter falls
+back to a default rather than erroring — and serialises **only non-default
+values**, so a plain `/users` URL stays clean.
+
+Two rules live in it that are easy to get wrong:
+
+- **Changing a filter returns to page 1.** Searching from page 5 would otherwise
+  land on an empty page 5 of the new result set.
+- **Changing the page size does not.** `withPageSize` recomputes the page to keep
+  the first visible row visible: rows 81–100 at 20 per page become page 2 at 50
+  per page. Resetting to page 1 discards the reader's place, which matters most
+  on exactly the deep pages where anyone bothers to change the size.
+
+### The history rule
+
+Getting this wrong is invisible until someone tries to leave a search.
+
+| Interaction                       | Navigation                                           | Why                                                    |
+| --------------------------------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| Pagination, sorting, filter chips | plain `<a href>`, so `pushState`                     | A deliberate click; Back should undo it                |
+| Applying the provider panel       | `goto()`, so `pushState`                             | Same, but the selection is assembled first             |
+| Typing in the search box          | `goto(..., { replaceState: true })`, debounced 300ms | Otherwise eight characters leave eight history entries |
+
+`ui/SearchField.svelte` owns both the debounce and `replaceState` so no future
+list can get it wrong. SvelteKit aborts a superseded navigation, so a slow
+response cannot overwrite a newer one.
+
+An e2e test guards this by typing three characters **slower** than the debounce,
+so each really navigates, then asserting that one Back leaves the page entirely.
+With `pushState` it would take three.
+
+**Never default a list to `sort=last_synced_at`.** It is the one sort that makes
+the backend aggregate across all matched users before `LIMIT`; fine as a
+deliberate choice, wasteful on every render. `created_at desc` is the default.
+
+### What is generic and what is not
+
+| Generic — reuse                                                             | Users-specific       |
+| --------------------------------------------------------------------------- | -------------------- |
+| `lists/types.ts` — `Page`, `Paginated<T>`, `SortOrder`                      | `users/types.ts`     |
+| `lists/pagination.ts` — page window, `PAGE_SIZES`, `pageForSize`            | `users/query.ts`     |
+| `ui/Pagination`, `ui/PageSizeSelect`, `ui/SearchField`, `ui/SortableHeader` | `users/avatar.ts`    |
+| `ui/FilterChip`, `ui/ToggleChip`, `ui/CopyableId`, `ui/Sheet`               | `components/users/*` |
+
+The `ui/` components take an `hrefFor` callback rather than a query object, so
+they know nothing about users.
+
+`users/query.ts` is deliberately **not** generalised yet: parsing, omitting
+defaults from the URL, and resetting to page 1 when a filter changes are all
+generic concerns, but one example is not enough to fix the shape. Generalise
+when the second list page lands and the two can be compared.
+
+### Filters
+
+Provider filtering is one control at every width: a `Provider` button with a
+count, opening `ui/Sheet` — a bottom sheet on a phone, a centred panel from
+`sm` up. Inline chips were tried first and abandoned: the backend enables up to
+fourteen providers, which wraps into several rows on a phone and eventually on a
+desktop too.
+
+**The provider list is never hardcoded.** It comes from
+`GET /api/v1/oauth/providers?enabled_only=true`, fetched alongside the users in
+the same `load`. The query layer treats provider names as opaque strings, so
+nothing in `src/` needs updating when the backend gains a provider.
+
+Inside the panel the chips are **buttons that build a local draft**, applied by
+an `Apply` button. They used to be links, which navigated on every click and so
+closed the panel — picking three providers meant three round trips and three
+reopenings. The draft also means one navigation instead of three.
+
+Selected providers appear as removable chips under the toolbar, because the
+panel hides them once closed. `SelectedProviders` falls back to the raw name for
+a provider the backend no longer returns, so a filter can never become
+invisible-but-active.
+
+### Pagination
+
+The same bar renders **above and below** the list, so the page size can be
+changed without scrolling past a full page of rows. Both are `<nav>`s, given
+distinct labels ("Pagination above the list" / "…below the list") — two
+identically named landmarks is an accessibility smell, and it also makes every
+control ambiguous to `getByRole`. Tests use the `pager()` helper in
+[e2e/support.ts](e2e/support.ts) to scope to the lower one.
+
+`paginationItems` computes the number window; a gap that would hide a single
+page renders that page instead, since "1 … 3 … 5" spends an ellipsis to hide one
+number. Numbers appear from `sm` up; below that the bar keeps a plain `2 / 5`
+counter.
+
+Page size is a native `<select>`, not a row of links: it collapses to one
+control on a phone and hands over to the OS picker. **This is the one list
+control that needs JavaScript** — a `<select>` change cannot submit on its own —
+whereas paging and sorting stay plain links. Its `id` comes from `$props.id()`
+because the component renders twice on the page.
+
+`users/+page.server.ts` clamps a page past the end of the data and redirects to
+the last real page. Without it a stale bookmark, or a size change made when the
+list was longer, renders a dead empty page. Only the loader can do this: the
+pure helper does not know the total.
+
+### Rows open the user
+
+There is no View action. The whole row is clickable, done without JavaScript:
+the name link in `UserIdentity` carries `after:absolute after:inset-0` and the
+row is `relative`, so one real link covers the row. Keyboard and screen-reader
+users get an ordinary link.
+
+Anything interactive inside the row needs `relative z-10` to sit above that
+overlay — `UserActions` and `CopyableId` both do, and a test asserts that
+copying the id does **not** navigate.
+
+Row actions are edit, copy pairing link and delete, and all three work. Edit
+and delete open the page-level dialogs through the `row-actions` context, so
+there is one dialog per page rather than one per row.
+
+`pairingLink()` builds `/users/{id}/pair` against this app's origin, which is a
+real page — see "The pairing pages are public".
+
+### Shared styling, not copied styling
+
+These exist because the same markup had been pasted more than once. Reach for
+them before writing a control by hand:
+
+- **`ui/chip.ts`** — `FilterChip` (a link, `aria-current`) and `ToggleChip` (a
+  button, `aria-pressed`) differ only in element and ARIA. The class string
+  lives in `chipClass()` so they cannot drift.
+- **`ui/Badge.svelte`** — reach for it for any small pill. Two count pills had
+  been hand-rolled instead (the provider filter's, and the scope count), which is
+  how they ended up with different padding and opacity for the same thing.
+- **`ui/button.ts`** — `buttonClass()`, shared by `Button.svelte` (a button) and
+  `LinkButton.svelte` (an anchor). The pairing success page needs button-shaped
+  links, and hand-rolling them re-declared the variant classes a third time.
+  Both components **spread `...rest`**, and that is not cosmetic: the first
+  `Button` took a fixed prop list and silently dropped `aria-haspopup` and
+  `aria-expanded` from the provider trigger. An e2e test now asserts both.
+- **`ui/tone.ts`** — one tinted-background map for badges, status pills and tile
+  icons. It had been written out three times, with the same colour under two
+  names (`info` in the badge, `primary` in the dashboard tile).
+- **`ui/TextField.svelte`** — label, box, and a hint tied on with
+  `aria-describedby`. A hint _inside_ the `<label>` becomes part of the field's
+  accessible name, which is how three settings dialogs ended up with fields
+  called "Name A name you will recognise…". `ui/PasswordField.svelte` is this
+  plus the show/hide eye; `ui/field.ts` holds the box the search field shares.
+- **`ui/DialogActions.svelte`** — the Cancel/confirm footer, once, for all six
+  dialogs. Cancel first so the destructive button is not where a thumb lands.
+- **`ui/IconButton.svelte`** — the glyph-only row action, with `danger` for the
+  ones that delete. Ten of them had been hand-rolled, five carrying the same
+  `hover:border-danger/40` string.
+- **`ui/CopyButton.svelte`** — copy-with-confirmation, in the three places it
+  sits: `inline` beside a code chip, `field` beside a read-only input, `action`
+  in a row of buttons.
+- **`ui/TabStrip.svelte`** — the scrolling tab strip, shared by the user detail
+  tabs and Settings. It puts the Beta word pill up from `sm` and the circled β
+  on the icon below it, which is the trade the bottom bar already makes.
+- **`settings/SettingRow.svelte`** — lead glyph, title, small print, actions.
+  Four settings rows had it pasted, and had already drifted on padding.
+- **`layout/PageHeader.svelte`** — the page's `h1`, its one-line description, an
+  optional `above` (a back link) and `actions`. Four pages had it pasted.
+  `layout/PublicPage.svelte` is the signed-out equivalent, for sign-in and
+  accepting an invitation.
+- **`ui/ExpandChevron.svelte`** — the chevron that turns over when a row opens,
+  in every accordion row and card.
+- **`ui/Fact.svelte` / `ui/Facts.svelte`** — a label over a value, and the
+  wrapping `<dl>` of them.
+- **`syncs/RunStatus.svelte`** — every sync status badge, stored or live; a
+  running one shows its stage instead. `SavedCounts` owns its own row, so it
+  can sit anywhere without a wrapper to line its parts up.
+- **`INLINE_LINK`** in `ui/typography.ts` — a link inside a sentence.
+- **`layout/PendingOutlet.svelte`** — a `load` holds the page until its data
+  arrives, which for a user with years of data is seconds of a dead click. Around
+  a tabbed layout's content it shows `TabSkeleton` while another tab loads and
+  dims the content while a filter reloads it; `TabStrip` lights the clicked tab
+  at once and `NavigationProgress` draws a bar for any slow navigation. The
+  skeleton and the bar wait `slowNavigation()`'s 150 ms, so a fast one does not
+  flash; the tab does not wait.
+
+### Mutations go through form actions
+
+Create, edit and delete post to named actions in
+[users/+page.server.ts](<src/routes/(app)/users/+page.server.ts>) — `?/create`,
+`?/update`, `?/delete`. The server holds the token, so no browser-facing API
+client is needed, `use:enhance` refreshes the list on success, and **the forms
+work without JavaScript**.
+
+`describe()` turns API failures into readable text — a 409 becomes "A user with
+that email already exists", not the raw `detail`. `attempt()` echoes the
+submitted values back into `fail()`, so a rejected form keeps what was typed.
+
+Three things that bit while building this:
+
+- **`enhance` resets the form on success by default**, restoring inputs to their
+  _attribute_ defaults. Svelte sets the _property_, so a reopened dialog showed
+  blank fields. Both dialogs pass `update({ reset: false })` and bind their
+  fields to local state re-seeded on open.
+- **Dialogs live once per page, not once per row** — at 100 rows the alternative
+  is 200 dialogs in the DOM. `users/row-actions.ts` carries the openers down via
+  context rather than threading props through list, table and card.
+- **Openness is separate from the subject.** `editOpen` plus `editing` avoids the
+  effect-driven syncing that a single `editing: User | null` needs to null
+  itself on close.
+
+### Shared behaviour, not copied behaviour
+
+Extracted after the same code appeared twice or more:
+
+| Helper                      | Replaces                                           |
+| --------------------------- | -------------------------------------------------- |
+| `utils/clipboard.svelte.ts` | copy-and-confirm in `CopyableId` and `UserActions` |
+| `utils/forms.svelte.ts`     | the `enhance` handler in both dialogs              |
+| `ui/Alert.svelte`           | the error box in both dialogs and the sign-in form |
+| `requireToken` / `attempt`  | per-action token check and error handling          |
+
+Runes only work in `.svelte` and `.svelte.ts` files — that is why the two
+helpers carry the double extension.
+
+### Cached API answers go through `server/cache.ts`
+
+`recall`, `keep` and `cached` are the one Redis cache, and unlike the session
+store it fails **open** — an unreachable Redis costs an API call, not a login.
+Two things use it, for different reasons:
+
+- **The provider list**, 60s. Near-static, but the call is not rare: every
+  search keystroke, sort, page change and mutation re-runs the loader, and
+  `enhance` invalidates everything on success.
+- **The data lifecycle estimate**, 60s. Both its GET and its PUT scan the whole
+  of `data_point_series` for MIN/MAX(`recorded_at`) — no index leads with that
+  column — so on a customer's database each call is a pass over the largest
+  table. The PUT refills the cache, so the reload after a save is a hit; a miss
+  is streamed, so the tab opens on a skeleton instead of waiting. The e2e suite
+  counts the backend's scans and fails if either path starts paying twice.
+
+### Contract details that bite
+
+- `connections` is `null` when `include=connections` was not requested and `[]`
+  when the user has none. **Do not collapse that with `?? []`** — the UI renders
+  `—` for the first and "No connections" for the second.
+- `search` matches a pasted UUID against the id server-side, so there is no
+  "looks like an id" branch in the frontend. `GET /users/{id}` must not be used
+  as a substitute: it returns an unpopulated row (`last_synced_at`,
+  `has_active_connection` and `connections` are always empty).
+- Provider metadata (icons, display names) lives at `GET /api/v1/oauth/providers`
+  and `icon_url` is relative to the **API** base. The browser cannot reach the
+  API directly under cookie sessions, so provider badges are text until
+  something proxies those assets.
+- Parameter validation errors come back as **400**, not 422.
+
+### Both layouts render at once
+
+`UsersList` emits the table and the cards, hiding one with CSS, so every row is
+in the DOM twice. Picking in JS would need the viewport width, which the server
+does not have. Harmless at 20 rows; worth revisiting now that 100 is selectable.
+
+It also means a bare `getByText('Zofia')` matches twice — scope list assertions
+to `getByRole('table')` or to a card.
+
+### Four CSS traps already paid for
+
+Each of these was written, shipped into a screenshot or a red test, and fixed.
+
+- **`sticky` inside an `overflow-x` wrapper anchors to the wrapper, not the
+  viewport.** A sticky table header with `top-14` dropped onto the first row and
+  silently swallowed its clicks — invisible in a screenshot, caught by a click
+  test. The table header is deliberately not sticky: the page is the vertical
+  scroller, so it could not work there anyway.
+- **Setting both `top` and `bottom` stretches a box.** `inset-0` with `h-auto`
+  fills the gap and `margin: auto` then has nothing to centre. The bottom sheet
+  pins with `top-auto bottom-0`; the centred panel needs `h-fit`.
+- **`min-h-*` does nothing on an inline element.** A row of size links had a box
+  only around the selected one. Use `inline-flex` with a height.
+- **`capitalize` lifts every word.** On `via garmin` it produces "Via Garmin";
+  wrap just the value.
+
+### ARIA on a link is not ARIA on a button
+
+`aria-sort` and `aria-pressed` are invalid on `<a>` and `svelte-check` rejects
+them. The fixes are worth copying rather than rediscovering:
+
+| Want            | On a link                               | On a button    |
+| --------------- | --------------------------------------- | -------------- |
+| Sorted column   | `aria-sort` on the `<th>`, not the link | —              |
+| Selected filter | `aria-current="true"`                   | `aria-pressed` |
+| Current page    | `aria-current="page"`                   | —              |
+
+## User detail page
+
+### The layout owns the user; tabs are routes
+
+[`[id]/+layout.server.ts`](<src/routes/(app)/users/[id]/+layout.server.ts>) is the
+only place that fetches the user, so every tab shares one request. Tabs are real
+sub-routes rather than a query parameter, which gives each one its **own loader**
+— and that is the point, not a preference:
+
+Connections loads four cheap indexed calls. Data Summary will load two
+aggregates that scan the user's slice of `data_point_series`. As a section
+inside it,
+that scan would run every time anyone opened a user to check an email. As its own
+route, it runs when someone asks for it.
+
+[`src/lib/users/tabs.ts`](src/lib/users/tabs.ts) is the single source of the tab
+list. [`src/params/usertab.ts`](src/params/usertab.ts) matches against the same
+array, so one `[tab=usertab]` route serves every tab not built yet and an
+invented slug 404s instead of rendering an empty shell. Building a tab for real
+means adding its own directory, which wins over the matcher automatically.
+
+`Women's Health` is gated on `has_womens_health_data`, which the detail endpoint
+now returns directly. **Do not reach for `/summaries/data` to get it** — the
+React app did, which meant the heaviest per-user aggregate in the system ran on
+every page load to decide whether to draw a tab label.
+
+### Capability flags are not the live configuration
+
+`rest_pull`, `webhook_stream`, `webhook_ping` and `webhook_callback` come from
+the **provider strategy** — what that provider can do, identical for every user.
+`live_sync_mode` comes from `ProviderSetting` — how it is wired up **right now**,
+and only ever `pull` or `webhook`.
+
+Rendered as sibling badges they read as one list of equivalent facts, which made
+`REST pull` and `Live: Pull` look like near-duplicates when they answer different
+questions. Suunto's own strategy comment says it plainly: _"Historical sync uses
+REST (rest_pull); live data via webhooks (webhook_stream)."_ — the REST flag is
+about **backfill**, not live sync.
+
+[`src/lib/connections/delivery.ts`](src/lib/connections/delivery.ts) turns them
+into two sentences under two labels, `Live` and `History`. Add a capability flag
+there, not as another badge.
+
+**The wording tracks the API vocabulary, not a plain-language paraphrase.**
+This is an operator's screen: `Pulled on a schedule` maps onto
+`live_sync_mode: pull`, which is the thing the reader configures. A rewrite into
+customer-facing prose ("We collect it from Oura on request") was tried and
+rejected — it obscured the mapping without helping anyone.
+
+The two routes share verbs so the pair reads as one story: `Pulled on a
+schedule` / `Pulled on demand`, `Pushed by the provider` / `Pushed by the
+provider on demand`.
+
+**The control carries the description; there is no separate line of prose.** A
+pane is a centred heading (`LIVE SYNC`, `HISTORICAL BACKFILL`) over exactly one
+thing: either a real button, or a
+[`StatePlate`](src/lib/components/ui/StatePlate.svelte) — button-shaped, dashed,
+and a `<p>` rather than a disabled `<button>`, because a disabled control is
+announced as a control that is broken, when what it actually is is information.
+So a webhook-only live route reads `Pushed by the provider` in place of a button
+instead of leaving half the box empty.
+
+Where a button _does_ exist it says what it does, and the route it belongs to
+moves into a [`Hint`](src/lib/components/ui/Hint.svelte) beside the heading —
+along with any provider limit, which used to be a line of its own and made one
+pane taller than the other. The hint toggles on click as well as hover, because
+`:hover` never fires on a phone.
+
+Two things `Hint` gets wrong if you rebuild it: it must carry **no `title`**, or
+the browser draws its own tooltip with the same text on top of the bubble; and
+it must reset `normal-case font-normal tracking-normal`, because it lives inside
+an uppercase micro-heading and inherits it. It opens **leftwards** (`right-0`) —
+every hint icon here sits in the right half of its pane, so anchoring left spilled
+the bubble across the neighbouring card.
+
+Headings are centred over their control from `sm` up. Left-aligning a heading
+above a centred pair of controls read as two unrelated things. They are **not**
+rotated 90°: vertical text is slow to scan, and it breaks the moment a label
+gets longer.
+
+**On a phone the pane is a row instead** — heading left, control right. Stacked
+full-width panes left the card empty sideways and twice as tall as it needed to
+be. The row carries `flex-wrap`, because it genuinely cannot always hold both:
+the split control needs ~215px and a 390px screen leaves under 200 beside the
+heading, so it drops to its own line rather than overflowing the card.
+
+The same module decides what can be triggered, so the buttons cannot contradict
+the description:
+
+- `canSyncHistory` — either backfill route exists.
+- `canForceLiveSync` — `rest_pull` **and** live sync is not webhook-driven. A
+  webhook connection has nothing to pull; data arrives when the provider sends
+  it. `frontend/` gates `Force Live Sync` the same way, and dropping that gate
+  would offer a button that cannot do anything.
+
+- `historyRanges` — which windows are worth offering. No cap means all of
+  7/30/90/180/365, the set `frontend/` offered. A cap means everything below it
+  plus the cap itself — **except** for a callback backfill, which gets only the
+  cap, because `start_historical_sync` in the Garmin strategy drops `days`
+  entirely and always covers its full 30. Offering 7 there would promise a
+  window the backend throws away. The day that changes, deleting the
+  `webhook_callback` branch is the whole fix.
+
+Every connection gets the same select, even when it holds one option — the
+control staying put is what makes the above a one-line change later.
+
+The range and `Sync history` are **one** control, not two beside each other:
+the wrapper owns the outer border and the children round only their own outer
+corners. Two details matter:
+
+- The separator is an **inset** `<span>` (`my-2 w-px`), not a `border-r`. A rule
+  touching both edges cut the control in half instead of joining its halves.
+- No `overflow-hidden` and no `focus-within` ring. Both were wrong: the ring lit
+  the whole control when only the select had focus, and the clipping would have
+  swallowed a keyboard outline. Each half now shows its own `:focus-visible`
+  outline, and a mouse click on the select shows none, which is what
+  `:focus-visible` is for.
+
+**Each trigger sits under the route it triggers**: `Sync now` in the live pane,
+the range and `Sync history` in the backfill pane. There is no fill behind the
+panes; with controls inside them a tinted box competed with its own contents, so
+a top rule and a divider carry the structure instead.
+
+Buttons only render while the connection is `active`. Syncing stays **on the
+card**: it is routine, and burying it in the menu was wrong. Only the
+destructive pair lives in the menu.
+
+On a phone the panes stack and each keeps its controls underneath. Putting them
+beside the text does not fit: the History pane is a select **and** a button, and
+inlining only the Live one would leave the two panes misaligned.
+
+### One tab strip, with edges that say there is more
+
+Eight tabs do not fit a phone. A plain scrolling strip hides most of them with
+**no signal that they exist**, which is the reason a sheet-based picker was
+tried first; the strip won because it keeps an adjacent section one tap away
+instead of two.
+
+The scrolling half is [`ui/ScrollFade`](src/lib/components/ui/ScrollFade.svelte),
+generic because a wide table or the Data Summary calendar will want the same:
+
+- **Gradient fades** at whichever edge has content past it, driven by a scroll
+  handler rather than a breakpoint — when everything fits, both ends are reached
+  and both fades hide themselves. They stop a pixel short of the bottom
+  (`bottom-px`) so a rule on the scroller stays unbroken.
+- Scrollbar hidden in a scoped `<style>` — Tailwind v4 has no utility, and the
+  bar would sit on top of that rule.
+- `scroller` is `$bindable`, which is how `UserTabs` **scrolls the active tab
+  into view**: landing on `/users/{id}/scores` with the strip parked at the left
+  would hide the section you just opened.
+
+The index tab is **`Connections`**, not `Profile`: the profile is the header,
+which is visible above every tab, so a tab named after it was naming the wrong
+thing.
+
+### A sync row: one colour, the rest glyphs
+
+The status badge is the only coloured thing in a row, and everything competing
+with it was turned into a muted glyph:
+
+- **Source is an icon**, mapped in [`syncs/source.ts`](src/lib/syncs/source.ts) and
+  rendered by [`SourceGlyph`](src/lib/components/syncs/SourceGlyph.svelte)
+  with a fallback for a source the backend adds later. The word cost a whole
+  line on a phone; the icon keeps the row to one, and the accessible name is
+  still the slug's own wording (`sr-only` plus `title`).
+- **Progress is a bar only while the run is moving**, and `max-w-48`. On a
+  finished run it would sit at 100% saying nothing the badge has not; stretched
+  across a desktop row it pulled the eye off the badge.
+
+**The created/updated split is shared, and one source of it is still prose.**
+[`SavedCounts`](src/lib/components/syncs/SavedCounts.svelte) renders
+`+ 8,421 new · ↻ 12 updated` for both the backfill log and a sync row, split
+rather than summed — a run that only refreshed rows it already had is a
+different outcome from one that found data, and a single total hides it. Zero of
+both reads `Nothing saved`, not two zeroes.
+
+The backfill log gets the numbers as columns (`SyncRunRecord.items_inserted` /
+`items_updated`). **Recent sync activity does not, yet.** The emitting task
+writes them to `metadata["inserted"]`/`["updated"]` _and_ appends them to the
+message
+([sync_vendor_data_task.py](../backend/app/integrations/celery/tasks/sync_vendor_data_task.py)),
+but `SyncRunSummary` projects `message` and drops `metadata` — so the only way
+they reach the UI today is inside a sentence.
+
+`SyncRunSummary` in [`syncs/types.ts`](src/lib/syncs/types.ts) therefore declares
+`items_inserted` / `items_updated` as **optional**, and a row shows the counts
+when they are present and the message when they are not. Do not parse the
+message: the numbers are structured one layer up, and the fix belongs in the
+schema. Both paths are covered by e2e, so adding the two fields backend-side
+needs no frontend change at all.
+
+### The Syncs tab: Redis lists, Postgres explains
+
+Two stores hold runs, and the tab keeps them apart rather than merging them:
+
+- **The list is Redis** (`GET /sync/runs`): every user, every source, only the
+  last 24 hours. The endpoint scans every user's buffer on each call whatever
+  `limit` says, so [`fetchRunWindow`](src/lib/server/syncs.ts) takes one window
+  of `SYNC_WINDOW` (500) runs per filter set, caches it for 20 s, and the page
+  pages inside it. Refresh drops the cache. Filters go to the backend, since it
+  applies them before cutting to the limit.
+- **The stored record is Postgres** (`GET /sync/history/{run_key}`), fetched
+  when a row opens, never for the list. Only historical runs (backfills, XML
+  imports) are stored unless the backend runs with `PERSIST_LIVE_SYNC_RUNS`, so
+  a live run says "None" there.
+- **Older backfills are not on this tab.** There is no global history endpoint,
+  only a per-user one, so they live on the user's connection cards.
+
+The status and source lists the filters offer are guarded against the enums in
+`docs/openapi.json` ([`format.spec.ts`](src/lib/syncs/format.spec.ts)).
+
+### Chart rows share one set of column widths
+
+[`ui/ChartRow`](src/lib/components/ui/ChartRow.svelte) owns the
+label / track / value widths, and every chart row goes through it — the heatmap
+rows, the ranking bars, **and the month axis**, which is a `ChartRow` with an
+empty label and value. That is not tidiness: the axis has to line up with the
+rows beneath it, and keeping the three widths written out in both places drifted
+once already and put the month labels over the wrong columns.
+
+Alongside it, [`ui/typography.ts`](src/lib/components/ui/typography.ts) holds
+`CAPTION` (the uppercase micro heading, in four places before this) and `NOTE`
+(the one-line stand-in for absent content, in three).
+
+### Numbers are printed plainly
+
+No thousands separator anywhere. `Intl.NumberFormat('en-GB')` renders `19,058`,
+which a reader outside the anglosphere parses as a decimal. The app is
+international, so counts render as bare digits.
+
+### Recent activity filters in the browser, not on the server
+
+The per-user `/sync/runs` endpoint takes no provider filter, so the loader reads
+a window of `RECENT_WINDOW = 100` runs and the whole window goes to the client,
+which narrows it and slices to `RECENT_SHOWN = 20`. Slicing to 20 first would
+let a busy provider crowd a quiet one out entirely, and the filter would then
+report "nothing" for a provider that did run.
+
+**Changing the filter must not re-run the page.** Nothing needs refetching — the
+window is already here — so it uses `pushState`, and that has one trap worth
+knowing:
+
+> `pushState` deliberately does **not** update `page.url`. It writes the address
+> bar and sets `page.state`, but the URL SvelteKit reports stays the one the load
+> was for. A `$derived` reading `page.url.searchParams` therefore never fires.
+
+So the selection lives in `page.state.syncProvider` (declared in
+[`src/app.d.ts`](src/app.d.ts)), which is what back and forward restore. The
+query string is written alongside it for sharing and reload, and read **only**
+on arrival, when `page.state` is empty.
+
+Options come from **this user's connections**, not the full provider list.
+[`FilterSelect`](src/lib/components/ui/FilterSelect.svelte) is the shared
+control and takes an `onselect` callback rather than an href, precisely so one
+caller can navigate (`PageSizeSelect`, whose value changes what the server
+returns) and another can change state in place.
+
+### The header carries the identity, not a copy of it
+
+There is no `User information` card. A panel repeating the name, email and id of
+the person already named at the top of the page was the same duplication the
+React app has, so the header holds one wrapping meta line — email, id with copy,
+created, last sync — and `Edit` is a pencil beside the name rather than a button
+in the action row, because it edits those details.
+
+`external_user_id` is **not displayed**. It is deprecated in the API, it means
+nothing to anyone but the customer's own systems, and it was pushing the meta
+line onto a second row. It lives in the edit form, which is the only place it is
+useful.
+
+The action row is `flex` without `flex-wrap`, and the identity block is
+`min-w-0`: the identity shrinks so the actions stay on the name's row instead of
+dropping to a line of their own. Below `sm` only the menu remains there, and the
+pencil sits **before** the badge so a narrow screen wraps the badge onto its own
+line rather than stranding a lone pencil.
+
+### Actions live where their form action does
+
+A form action resolves against **the route currently showing**, so anything in
+the shared header must exist on every tab. `userActions` in
+[`src/lib/server/user-actions.ts`](src/lib/server/user-actions.ts) is spread into
+both the profile's `+page.server.ts` and the placeholder tab's — one line each.
+The header reads its result through `page.form` from `$app/state`, because a
+layout is not given `form`.
+
+Connection actions (sync, revoke, purge) are profile-only, so they stay in the
+profile's own actions.
+
+**`attempt()` must not wrap anything that redirects.** `redirect()` throws, and
+`attempt`'s catch would turn a successful delete into a 400. `delete` is written
+out longhand for that reason.
+
+### Never invent an environment variable
+
+Customers set these in their own deployments, so a new name is a compatibility
+break. **Check what `frontend/` already uses and reuse it.**
+
+The browser-facing backend address has always been `VITE_API_URL`
+(`frontend/src/lib/api/runtime-config.ts`). SvelteKit only exposes variables
+matching `publicPrefix`, so the kit config sets `env: { publicPrefix: 'VITE_' }`
+and `$env/dynamic/public` serves the customer's existing variable. `API_URL` and
+`REDIS_URL` match neither that nor the empty private prefix, so they stay
+server-only.
+
+`VITE_API_URL` is the only variable a deployment must set — it is what a browser
+or a phone dials, and the server falls back to it. `API_URL` is an optional
+shortcut for the server's own hop, which is the one case where a shorter route
+exists (`http://app:8000` inside Docker). The "Connect mobile app" dialog shows
+`VITE_API_URL`, never `API_URL` — inside Docker that resolves to a hostname no
+device can reach.
+
+### Three sync sources, three questions
+
+They look interchangeable and are not. Merging them into one list would silently
+drop live runs older than a day.
+
+| Question                                   | Source                      | Cost                           |
+| ------------------------------------------ | --------------------------- | ------------------------------ |
+| Does live sync work at all?                | `connection.last_synced_at` | free — connections load anyway |
+| What ran in the last 24 hours?             | `/sync/runs` (Redis)        | one call, buffer expires       |
+| When did we backfill, and did it cover it? | `/sync/history` (Postgres)  | indexed, unbounded in time     |
+
+Only **historical** runs reach Postgres. `persist_live_sync_runs` exists on the
+backend and is off deliberately — one row per webhook and per SDK batch is
+hundreds a day for an active user. So the backfill panel on a provider card and
+the recent-activity list are different data with different retention, and the
+empty states say so rather than implying nothing ever happened.
+
+Sync activity loads through `optional()` in the page's loader: it is reporting,
+not the subject of the page, so Redis being down costs the section rather than
+the whole profile. Connections and the user itself are not wrapped — without
+them there is no page to render.
+
+### Granted scopes come as one string in three shapes
+
+`connection.scope` is whatever the provider reported, and the shapes do not
+agree: space separated (`activity heartrate sleep`), comma separated (Strava's
+`activity:read_all,profile:read_all`), or full URLs (Google's
+`https://www.googleapis.com/auth/googlehealth.sleep.readonly`).
+[`connections/scopes.ts`](src/lib/connections/scopes.ts) splits on both
+separators and reduces a URL to its last path segment, which is where an OAuth
+scope carries its meaning.
+
+Rendered as small mono tags, **not** through `chipClass`: that capitalises, and
+`Read:cycles` is wrong. Garmin and Suunto configure an empty scope, so an empty
+list says "Not reported by the provider" rather than leaving a blank row —
+nothing granted and nothing told apart.
+
+## Data Summary
+
+Its own route (`/users/[id]/data`) because both aggregates it needs scan this
+user's slice of `data_point_series`. It fetches **three** timelines — grouped by
+`series_type`, by `provider` and by `workout_type` — so each dimension has its
+own section rather than sharing one toggled card.
+
+### Two heatmaps, no toggle, no ranking repeating them
+
+`Series types` plots the types over time — `sleep stopped arriving in July while
+heart rate kept coming` is the question this page answers. Providers over time
+sit inside `Data collected`, beside the share bar they explain.
+
+There is **no rows toggle**: it made one card show either dimension while a
+ranking below listed the very same series types again. Each dimension has its
+own section and appears once.
+
+`Workout types` is a heatmap too, on the `workout_type` grouping. It was a
+ranking for as long as the timeline endpoint knew nothing about event records.
+
+Three things it took a rewrite to get right:
+
+- **Cells flex; they do not scroll.** A fixed 12px cell means 90 columns always
+  overflow a phone, and the first attempt did — silently, because the scroller's
+  child shrank while its own children overflowed a descendant, so `scrollWidth`
+  never grew and the strip was simply clipped.
+- **No gaps between cells.** 90 columns of 2px gaps come to 178px, most of a
+  phone's width, and the strip slid under the totals column. Contiguous bands
+  read fine — the ramp separates them.
+- **The ramp is square-rooted.** Linear intensity let one busy day flatten every
+  other into the palest step. Step 0 is the border colour, not the surface, so an
+  empty bucket reads as a bucket with nothing in it rather than a hole.
+
+### Both filters navigate, and that is a reversal
+
+The period has always navigated, because it changes what the API aggregates.
+The provider used to be **client state** — `shallowParam` over `pushState` — on
+the reasoning that everything it touched was already on the page.
+
+That reasoning died when the timeline gained its `provider` parameter. The
+heatmaps can only be narrowed by the server, so the choice has to reach a load,
+and both filters are now plain links. Both carry
+`noScroll`/`data-sveltekit-noscroll`: throwing the reader back to the header on
+a filter change is not a page load anyone asked for, and that — not the absence
+of a fetch — was always the thing worth protecting.
+
+The e2e test that asserted no `__data.json` request follows the change is gone
+with it. Keeping it would have been keeping a guarantee we deliberately
+withdrew.
+
+Both are [`Segmented`](src/lib/components/ui/Segmented.svelte) controls — one
+recessed track with a raised active segment — not rows of loose chips, which is
+what they were and what made them read as noise. It still takes buttons as well
+as links; `RecentSyncsCard` is the remaining `shallowParam` caller, where the
+filter really is a view over data already fetched. The two date inputs share one
+bordered box with no borders of their own, so the pair reads as a single field.
+
+Both filters sit **outside the cards** in
+[`SummaryFilters`](src/lib/components/summary/SummaryFilters.svelte): they govern
+every card, and a control tucked inside one is a control nobody finds. The
+provider filter started life as the share-bar legend on the argument that a
+second list of the same names would be duplication — it was, but it was also
+undiscoverable, which is worse. The legend is a legend again.
+
+### Period is All time / Day / Range, like `frontend/`
+
+`?from=…&to=…` inclusive; both absent is all time, equal is a day. `parsePeriod`
+sorts an inverted pair and ignores anything that is not a date, so a hand-edited
+URL cannot ask for nothing. `periodBucket` switches to weeks past 120 days.
+
+A single day has one column, which is not a timeline, so `plottable()` sends
+those panels to `CountRanking` instead — bars, no month axis, no colour ramp.
+The summary is already scoped to the period, so the bars need no extra fetch.
+
+### The provider filter lists connections, not the period's providers
+
+Deriving it from `summary.by_provider` made it **vanish and reappear** as the
+period changed: a single day with one provider's data has one entry, so the
+control disappeared. It reads `fetchConnections` instead, which is stable
+whatever the period holds — and a connected provider with nothing this month is
+exactly what an admin wants to be able to select. With one connection there is
+nothing to choose, so the group is not rendered at all.
+
+### Per-type counts come from the timelines, never from the summary
+
+`UserDataSummaryResponse` carries `workout_type_counts`, but only across every
+provider — `ProviderDataCount` has a `workout_count` total and no per-type
+breakdown. So a narrowed `Workout types` could never be answered from the
+summary, whatever the period.
+
+`series_type_counts` _could_ be, through `by_provider[…].series_counts`, and for
+a while was — which left the page narrowing per-type counts two different ways
+depending on the card. Both now read their own **timeline**: the heatmap over a
+range, `totalsFromTimeline()` for a single day. One mechanism, and the one that
+generalises to the tabs still to come.
+
+So the summary is read for the totals row and the share bar only.
+`series_type_counts` and `workout_type_counts` stay in the type because the API
+returns them; nothing here touches either.
+
+[`TimelinePanel`](src/lib/components/summary/TimelinePanel.svelte) owns that
+choice — plot it, or rank it when the period holds one bucket — so `Series types`
+and `Workout types` are one line each and cannot drift apart. `narrowToProvider`
+returns a `Totals` of the three figures rather than a whole `DataSummary`, which
+is all that was ever read back out of it.
+
+### Every panel narrows
+
+With a provider chosen:
+
+| Panel             | Behaviour                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| Totals            | narrowed from `by_provider`                                                         |
+| Share bar         | keeps both segments, **dims the others** — it still answers "how big is this slice" |
+| Provider timeline | server-filtered to that one row                                                     |
+| Series types      | server-filtered, still a heatmap                                                    |
+| Workout types     | server-filtered, still a heatmap                                                    |
+
+The first version narrowed only the totals, so three panels showed every
+provider's data under a heading naming one. The second narrowed what it could
+and labelled the rest. Only now that the API takes `provider` does the honest
+answer stop needing a caveat — and the caveats came out with it, because a
+description explaining a limit that no longer exists is worse than none.
+
+The heatmap's `only` prop went the same way: it filtered a series client-side
+and became dead the moment the server did it.
+
+`Heatmap`'s own "nothing to plot" branch survives, but not its advice. A chosen
+day no longer reaches it, so the one case left is an all-time history that fits
+in a single bucket — where "pick a range" was telling the reader to widen a
+period that is already as wide as it goes.
+
+The heatmaps also state **what they count**: the timeline endpoint counts
+`data_point_series` rows only, so workouts and sleep are in the totals above and
+not in any band.
+
+### An unknown provider is dropped, not forwarded
+
+The API takes a `ProviderName` enum, so `?provider=nonsense` would 422 all three
+timelines and take the page down with them. The loader fetches connections
+first and keeps the parameter only if this user actually has that connection —
+which is also the list the filter offers, so the guard and the control cannot
+disagree. A hand-edited URL falls back to `All`.
+
+This costs one sequential step before the expensive queries fan out.
+`fetchProviders` is Redis-cached and `fetchConnections` is a small indexed read,
+so the wave that matters is still fully parallel.
+
+### `end_date` is sent as a timestamp on purpose
+
+The backend's `parse_query_end_datetime` widens a **date-only** `end_date` to the
+next midnight, so `end_date=2026-07-13` covers all of 13 July. `windowParams`
+sends a full ISO timestamp from `periodWindow`'s already half-open `[from, to)`,
+which that rule leaves alone. Switching to bare dates here would hand the same
+day to both and push every window one day long.
+
+## Workouts
+
+Cards over a table, because a workout is a thing with a shape rather than a row
+of columns, and the shape is what an admin is looking for. Each card opens for
+everything the provider sent, a chart of the readings inside the window, the
+zone distribution, and delete.
+
+### Four metrics with dashes, and everything else only where it exists
+
+The collapsed row always shows the same four — duration, distance, calories,
+average heart rate — dashes and all. A dash says "this provider sent nothing",
+and a card that sheds columns is a card you cannot scan down a column of.
+
+Expanded, the rule inverts: absent fields are **dropped**, not dashed. One dash
+carries information; twelve carry none. `detailGroups()` groups what is left by
+subject so a reader scans a topic rather than an alphabet, and a group with
+nothing in it never appears.
+
+`average_speed` and `max_speed` are deliberately never rendered. Their unit is
+not consistent across providers — Suunto stores km/h where Garmin, Strava and
+Google store m/s — so there is no one formula, and a wrong one is worse than a
+gap. `avg_pace_sec_per_km` is safe: the backend derives it from distance and
+moving time.
+
+### The clock belongs to the workout, not the reader
+
+Every time on a card is shifted by the workout's own `zone_offset` and then
+formatted in UTC, so the formatter cannot add the reader's zone on top. A run at
+09:12 in Warsaw must not read as 07:12 because the admin sits in London — the
+customers being debugged are mostly not in the same timezone as the person
+debugging them. No offset means the provider never sent one, and the time says
+`UTC` out loud rather than passing an instant off as a local morning.
+
+### One line per type _and device_
+
+`/timeseries` at any resolution but `raw` returns one row per **(bucket, data
+source, series type)**. Two watches worn the same hour therefore arrive
+interleaved under one type, and merging them by timestamp draws a saw between
+two devices instead of either one's curve — which is exactly what the first
+version did. `toSeries()` keys on type **and** device, names the device in the
+legend only when it disambiguates, and dashes the second line so two identical
+strokes cannot be mistaken for one.
+
+### Readings are fetched raw first, and say when they are not
+
+`resolutionFor()` exists, but the first attempt is always `raw`: a minute average
+smooths precisely the spikes somebody opened the chart to look at. Only when the
+window will not fit in one page does it fall back to buckets, and then the chart
+**says** it is showing averages and over what. The old dashboard asked for
+`resolution=1min`, was silently handed the first hundred raw samples — the
+parameter was accepted and ignored — and drew them as the whole session.
+
+### Zones band the line they describe
+
+One kind of zone at a time, picked by a switch that drives **both** the strip and
+the shading. Two strips side by side left the bands unattributed, which was the
+one question the chart could not answer.
+
+Bands are mapped on their own series' scale and clipped to the frame: a zone
+whose ceiling sits above anything recorded maps to a negative `y`, and an HTML
+label at that position escapes the chart instead of being cropped like the rect.
+A band too short to hold its label goes unlabelled rather than colliding with its
+neighbour.
+
+Zones can exist without the readings they describe — Whoop reports time in zones
+and **no heart-rate samples at all** — so a kind is offered whenever its zone
+data is there, and the bands simply do not appear when there is no line to shade.
+The reverse also bit: seeded and hand-written power zones on providers that
+record no watts produced a switch that did nothing, which is a data problem and
+was fixed in the data.
+
+### Two things fetch themselves
+
+The curve and the figures above the list are their own requests, not part of the
+page load:
+
+- **Samples** load when a card opens. Ten cards' worth of curves would be ten
+  timeseries scans for the nine nobody expands.
+- **Totals** load beside the list. There is no workout aggregate endpoint, so
+  they are summed from every record in the period, and the cards must not queue
+  behind that. An e2e test holds the summary back 600 ms and asserts the cards
+  are on screen while the figures are not.
+
+Both use [`resource()`](src/lib/utils/resource.svelte.ts), which owns the one
+subtlety: a card closed mid-flight must not write into a component that is gone.
+
+Streaming the totals from `load` was tried first and measured — the shell did not
+render before the promise settled, so it bought nothing and the request moved out
+instead.
+
+### Page one is the bare URL
+
+Keyset paging has no page numbers, so `Pagination` takes `hrefFor` as **optional**:
+given it, numbered links; without, the same chip marking the position and nothing
+to jump to. One bar, two kinds of paging.
+
+Coming back to page one must land on the URL with no cursor at all. Reached by a
+`prev_` cursor, page one has nothing before it, so the API reports `has_more`
+false and — because the same flag gates `next_cursor` — withholds the way forward
+too, stranding the reader with both arrows dead. The mock reproduces that quirk
+deliberately, and the walk-the-list test fails without the fix.
+
+### What the backend could take back
+
+A workout aggregate — `count`, `duration_seconds`, `calories_kcal`,
+`distance_meters` for the same filters as the list — would delete the totals
+endpoint here and the 1000-record cap with it. Suunto zones and a per-second
+Suunto curve both need the same thing: its FIT files, which `fit_parser.py`
+already reads for Garmin. Suunto's JSON API carries neither — its only intraday
+heart rate is the 24/7 stream at one sample per ten minutes.
+
+## Activity, and what the three tabs now share
+
+Activity reads like Workouts and Sleep, but its data is a different shape and
+three differences follow from that rather than from taste.
+
+**It is an aggregate, not a record.** `/summaries/activity` sums the time series
+by date, so a row has no `id` and there is nothing to delete.
+
+**No provider filter, and that is not an omission.** `_filter_by_priority`
+([summaries_service.py:100](../backend/app/services/summaries_service.py#L100))
+runs unconditionally: for each date it keeps one source, ranked by provider then
+device type. There is no `provider` parameter because there is nothing left to
+filter. Each card names the source it used instead, and a line above the list
+says so — a control that did nothing would be worse.
+
+Worth knowing while reading those numbers: the losing source's data for that day
+is **discarded, not merged**. If Oura recorded steps and Suunto did not, the
+Suunto row shows none and Oura's are gone. Oura is also absent from
+`DEFAULT_PROVIDER_PRIORITY` entirely, so it falls to 99 and loses to everything.
+
+**Newest first, against the endpoint's own default.** It sorts `asc`; every list
+on this site reads the other way.
+
+### An uncounted list must not claim a last page
+
+This endpoint builds its `Pagination` with `has_more` and the cursors and **no
+`total_count`**. `Pagination` therefore takes `total: number | null`: without a
+count there is no last page, so the bar shows a range and a position and no
+"of N". Substituting the page length there made it claim one page while its own
+next arrow still worked.
+
+The same gap hit the totals strip. `partial` used to compare what was summed
+against `total_count`, which on this endpoint is never anything — so it could not
+have fired however many days were held back. All three tabs now read the API's
+own `has_more`, which is the direct answer to "was there more".
+
+### The shared layer under all three
+
+What the third tab made obvious, in `src/lib/events/` and
+`src/lib/components/events/`:
+
+| Piece                      | What it owns                                                         |
+| -------------------------- | -------------------------------------------------------------------- |
+| `AccordionCard`            | the accordion shell: header, chevron, click-to-open, click-to-select |
+| `EventCard`                | that shell filled in for one record from one device                  |
+| `MetricRow` / `MetricCell` | the fixed four-metric grid, and a cell for what a number cannot say  |
+| `EventTotals`              | the figures strip, its own fetch, and the partial note               |
+| `CursorBar`                | pagination wiring, and passing `total_count` through untouched       |
+| `SamplesChart`             | fetch-on-open, skeleton, empty note, chart, bucket note              |
+| `events/fields.ts`         | dropping absent fields and then empty groups                         |
+| `events/totals.ts`         | `sumOf`, `meanOf`, `isPartial`                                       |
+| `server/events.ts`         | the window params, the provider guard, `summaryOf`                   |
+| `lists/cursor.ts`          | `at`, `hrefFor`, and the page-one rule                               |
+
+Each tab is then its own `*Card`, `*Metrics`, `*Details`, `*Summary` and a
+domain module — a few dozen lines each. Two of those extractions started as
+duplication I had already written twice and only noticed on the third.
+
+## Body
+
+A snapshot, not a list: `/summaries/body` answers with one object and no
+pagination. The old dashboard showed only that — current weight, height, body
+fat, BMI, resting pulse — as a row of cards. What makes the tab worth opening is
+underneath, and it was not there.
+
+### Trends, because the vitals are dense and the composition is not
+
+In a real database the shape is lopsided: HRV arrives fourteen thousand times,
+resting heart rate and blood oxygen about twice a day, and **weight exactly
+once**. So the tab is three layers — the composition snapshot, a trend panel per
+vital over the chosen period, and the rest of the summary in detail columns.
+
+**Dashes in the snapshot, omissions in the columns.** The reverse of the other
+tabs, and deliberate: the snapshot is a fixed shape where "no weight on record"
+is one of the things somebody opened the tab to learn. A column of dashes in the
+detail groups says nothing, so those drop what never arrived.
+
+**A vital with one reading gets no line.** One point draws nothing, and a lone
+dot says less than the figure above it.
+
+**Trends are averaged to one point a day.** `dailyMeans()` exists because HRV
+alone would arrive four thousand times in a ninety-day window — four times what
+one page carries — and be silently cut. Averaging first makes the point count
+depend on days rather than on how often a device samples. `resolutionFor()`
+gained a `1hour` step for the same reason: a month of quarter-hours is three
+thousand buckets.
+
+**The period governs the trends, not the snapshot.** The snapshot is the latest
+reading whatever window is chosen, and "All time" is refused as a default — a
+decade of readings draws a line nobody can read, so the loader falls back to the
+ninety-day range.
+
+### Shared out of it
+
+- `charts/geometry.ts` — `scaleY`, `linePath`, `extent`. The scale had been
+  deduplicated _inside_ `LineChart` once already; the trend panel then copied it
+  into a second file. Two charts disagreeing about where a value sits is exactly
+  what a pure, tested module prevents.
+- `formatDecimal` — the `toFixed().replace(/\.0$/)` trim existed in three places
+  by the time the tab was finished.
+- `unitLabel` — the backend names units for machines (`percent`, `ml_kg_min`).
+  The first version rendered "94 percent"; the hover readout on every other
+  chart had the same bug.
+
+One thing deliberately **not** extracted: the fetch-and-render scaffold shared
+by `SamplesChart` and `VitalTrends`. Its two instances differ in their
+placeholder — one chart against a grid of three — so the wrapper would need the
+skeleton as a snippet, and a loading scaffold parameterised that far reads worse
+than the ten lines it saves.
+
+### Month labels thin themselves out
+
+A year of weekly columns has twelve month starts, which on a phone collide into
+one smear. `MonthAxis` keeps every third start at any width and reveals the rest
+from `sm` up, unless there are four or fewer, in which case they all stay.
+
+### A derived span must keep the API's own bucket dates
+
+`toRows` aligns a week grid to Monday only for a window the **caller** chose.
+Dates that came back from the API are already on the backend's boundary, and
+snapping them again shifts every key so nothing matches — which is exactly what
+happened: the all-time view rendered every count as zero, and it took a mobile
+screenshot to notice, because the layout was perfect. A unit test now covers it.
+
+### Granted scopes are a count, not a row
+
+`connection.scope` is one string, and the shapes do not agree: space separated
+(`activity heartrate sleep`), comma separated (Strava's
+`activity:read_all,profile:read_all`), or full URLs (Google's
+`https://www.googleapis.com/auth/googlehealth.sleep.readonly`).
+[`connections/scopes.ts`](src/lib/connections/scopes.ts) splits on both
+separators and reduces a URL to its last path segment, where an OAuth scope
+carries its meaning.
+
+It renders as a **count beside the provider name**, with the list behind a
+hover-or-tap bubble. A row under the name cost every card its height for
+something only read when data is missing. `Hint` grew a `trigger` snippet and an
+`align` prop for this rather than the bubble mechanics being written twice, and
+it dismisses on a `pointerdown` anywhere outside itself or on Escape — pinned by
+touch, the only way out was otherwise finding the same small target again.
+
+Garmin and Suunto configure an empty scope, so there is **no badge at all** —
+`0` next to a name would read as "nothing granted" when it means "nothing
+reported".
+
+### No SSE while nothing is running
+
+The stream is not opened on load. Each open stream costs the backend a pooled DB
+connection, an anyio worker thread and a Redis pubsub connection for as long as
+the tab stays open, and the React app held one on every user page regardless of
+which tab was showing. The snapshot from `/sync/runs` covers the resting case;
+the stream is for later, opened only when a run is actually in progress.
+
+## Scores
+
+The old dashboard's version of this tab was two gradient panels, a hardcoded
+warning banner, `limit: 1000` with no paging at all, and a day card listing
+every category as a row of grey chips. Three of its numbers were also wrong.
+
+### A page is ten days, not twenty records
+
+`/users/{id}/health-scores` takes `start_date`, `end_date`, `category`,
+`provider`, `limit` and `offset`, and returns a real `total_count` — the only
+list endpoint here that counts what it is holding back. The first version paged
+by record because of that, and the bar read **"1–20 of 312"** while showing two
+cards: a card is a day, and Suunto scores recovery every half hour.
+
+So the page is a **window of days**. `paging.ts` cuts it — page one is the
+newest stretch, page N steps back, the last one clips to the start of the period
+— and the bar counts what the reader sees: `1–10 of 110 days`. `Pagination`
+gained a `noun`, because "of 110" with no unit invites the reader to guess.
+
+Each page fetch is bounded by its own ten-day window and asks for
+`SUMMARY_CAP`, since how many records sit behind a day is the provider's
+business and not something to page over.
+
+**A window can come back empty**, where nobody scored anything for ten days.
+That is the truth about those days, and it reads the same way a calendar does.
+
+### "All time" finds its own first day
+
+Paging by day needs a first day to count back from, and this endpoint only ever
+answers newest-first. The first attempt dodged that by quietly replacing All
+time with the ninety-day range preset — the control offered something it then
+refused to do, which is worse than not offering it.
+
+`scoreDays()` finds the bound instead: a `limit=1` request carries
+`total_count`, and the record at `offset = total_count - 1` is the oldest one
+there is. Two small requests, and only for All time. There is a test that fails
+if the snap-back ever returns.
+
+### Three numbers the old tab got wrong
+
+**Resilience is not `value`.** `fill_missing_resilience_scores_task` stores the
+HRV coefficient of variation in `value` (0.036–0.187 in this database) and the
+readable 0-100 score in `components.resilience_score`. Reading `value` as the
+score is wrong by a factor of five hundred. `scoreOf()` is where that lives, and
+`rawReading()` puts the fraction back on screen under its own name — the old tab
+printed "15.7%" beside "74" and never said what the percentage was.
+
+**A category's scale depends on the provider, not the category.** From
+`backend/app/constants/health_scores.py`: readiness is 1-100 from Oura and
+**0-10 from Polar**, recovery is 0-100 from Whoop and **1-6 from Polar**, strain
+is 0-21 from Whoop. The old chart used one `maxScale` per category, so a Polar
+readiness of 6 out of 10 drew along the floor as if it were a 6 out of 100.
+`LineChart` gained a `shared` flag for this: one scale across every line,
+computed from the observed values. That table is not exposed by the API and is
+**not** copied here — the axis comes from the data. The reason lives in this
+file rather than on the page: the screen carries labels, not rationale.
+
+**A "day" of Suunto recovery is thirty-five rows.** Suunto's stress-recovery
+stream arrives every half hour — 14,547 rows for two users locally, against 168
+for a whole year of Oura sleep. Grouping by day and picking "the highest score"
+the way the old tab did threw away the other thirty-four. `groupScores()`
+collapses a provider to that day's mean and shows the span it hides, and it
+decides whether a provider streams by **counting its readings**, not by knowing
+which providers stream.
+
+### A card is a day, with a row per measure
+
+Which is how the question arrives: not "show me score row 41" but "what did
+Tuesday look like" — and the answer worth having is every provider's answer side
+by side, Open Wearables' own among them. The first version made a card per day
+**and category**, which put the same date on five cards in a row down the page.
+
+So: the day is the card, each measure is a row inside it, and the providers sit
+along that row. The card wears no icon of its own — five rows would all carry
+the same calendar — and the icons belong to the rows, where they tell the
+measures apart. Expanding gives a section per measure: its components, one
+column per provider, and the day's own curve where a provider streamed.
+
+`AccordionCard` lost its required `icon` and `when` for this. A day card's title
+already says when.
+
+### Categories come from the data, and cannot come from coverage
+
+`/v1/meta/coverage` lists which provider produces which score, and `internal` is
+not a provider strategy — so resilience, which only Open Wearables computes,
+does not appear in coverage **at all**. The category list is therefore built
+from whatever the period actually holds. `knownCategory()` is the allowlist for
+the filter itself, because the API takes a `HealthScoreCategory` enum and 422s
+the whole page on anything else.
+
+### No provider filter, deliberately
+
+A score is worth looking at next to the other providers' answer for the same
+day, and filtering to one is exactly what destroys that. The chart's legend
+already hides a line without reloading, which is the control an admin actually
+wants. Activity and Body have no provider filter either, for their own reasons.
+
+### The trends fetch is scoped to the period alone
+
+Not to the whole query. Choosing a category narrows the list below and redraws
+one tile as a chart — refetching every trend to do that would throw away the
+chart the reader is looking at, and would empty the chooser it was chosen from.
+
+### `zone_offset` is in the contract and has never been filled
+
+Null in all 15,417 rows locally. So `localDayKey` and `formatLocalTime` fall
+back to UTC and say so — the intraday chart's axis reads "01:00 UTC", which is
+all a row without an offset can honestly claim. The code reads the offset
+anyway; the day a score is grouped under is the day its owner lived, and that
+matters as soon as a provider starts sending one.
+
+### Shared out of it
+
+| Piece                     | Why it moved                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `events/AccordionCard`    | `EventCard` hardcoded one provider and one device; a score card names several and no device        |
+| `charts/Sparkline`        | `VitalTrend` drew its own SVG; a score tile needs the same one with several lines                  |
+| `charts/palette.ts`       | colour by position, never by hash — a hash eventually gives two lines on one chart the same colour |
+| `geometry.ts` `Line`      | what a chart actually needs; `Series` is now `Line` plus the device that recorded it               |
+| `LineChart` `colourFor`   | a line's `type` means a sensor on one chart and a provider on another                              |
+| `utils/collect.ts`        | group-by, hand-rolled five times over three files, twice by copying the group per item             |
+| `timeseries/daily.ts`     | one point a day at **midday** — two implementations of the same convention                         |
+| `geometry.ts` spans       | `spanOf`, `windowOf`, `CHART_BOX`, `SPARK_BOX`: the extent of a set of lines, worked out four ways |
+| `format.ts` `showDecimal` | `formatDecimal(…) ?? DASH` at four sites, and `?? ''` where null could not arrive                  |
+| `typography.ts` `HEADING` | the card title, spelled out in five files                                                          |
+| `period.ts` `DAY_MS`      | one day in milliseconds, in three files, one of them twice                                         |
+
+The palette is assigned once for the whole page and passed down, because the
+first version let each component derive its own: Suunto came out green in the
+tile and blue inside the card — one provider, two colours, one screen.
+
+### Split so the derivation is testable, not so the tree is deep
+
+`scores/details.ts` holds what an opened card shows — which providers earned a
+curve (more than one reading), and which sections have nothing to show at all.
+It came out of a 99-line component, and those rules are now unit-tested rather
+than only reachable by clicking.
+
+The same pass split `ProviderScore` (one provider's answer), `ScoreSection` (one
+measure, expanded), `CategoryChart` (a category at full size) and
+`CategoryFilter` out of components that had grown to do two jobs. What did
+**not** move is `ScoreRow`: it is nine lines of layout over `ProviderScore`, and
+a component that thin earns its place only because a row is a real thing on the
+page.
+
+### Two bugs this tab turned up
+
+**Open Wearables' own scores read as "Internal".** They are stored under
+`provider = 'internal'`, which is a `ProviderName` but never an OAuth
+connection, so `/oauth/providers` does not list it and `providerLabel()` fell
+through to `humanise()`. 517 sleep scores and 35 resilience scores in this
+database were sitting there under a name nobody would look for. `labels.ts` now
+names the unlisted providers, and `internal` is **OW** — what the React
+dashboard called it.
+
+**The header's actions 404'd on five tabs.** `userActions` are resolved against
+whichever route is showing, and only
+`[id]/` and the placeholder had them. On Workouts, Activity, Sleep, Body and
+Data Summary the header's **Edit user**, **Delete user** and **Pairing link**
+posted to a route with no such action and 404'd. Fixed on all five, with a test
+per tab so the next one cannot ship without them.
+
+## Women's Health
+
+The last tab, and the one whose data is most plainly **unified**: every provider
+that sends cycles writes into `menstrual_cycle_details`, so the columns are the
+same whoever filled them. The local database is seeded against the Oura demo
+user for exactly that reason — Oura sends no MCT, and nothing about the shape
+belongs to whoever did.
+
+### No period control, because half of one would be a lie
+
+`get_menstrual_cycles` sets `params.end_datetime = None` before it queries, with
+its own comment: a cycle running now ends in the future, and filtering on
+`end_datetime` would hide the cycle a reader came for. So the endpoint honours
+the lower bound of a window and silently ignores the upper one. A Range picker
+over that narrows one end and not the other, which is worse than not offering
+it. The list is every cycle, newest first, paged by cursor.
+
+### The bar is built from the fields, not from the provider's phase names
+
+`current_phase_type` is a **snapshot** — where the cycle stood when the provider
+last looked, which for a closed cycle is wherever it ended. Reading the list by
+it gives a column of "Luteal" saying nothing.
+
+What is worth drawing is the cycle itself, so `phaseSpans()` lays the phases
+along its own days out of `period_length`, `fertile_window_start` and
+`length_of_fertile_window`. Follicular and luteal are only what is left either
+side of the fertile window — **without one they cannot be told apart**, and the
+bar then carries the period and stops rather than inventing a boundary.
+
+Every bar on the page is drawn against the longest cycle on it, so a
+twenty-six-day cycle is visibly shorter than a thirty-day one. The running cycle
+carries a marker at the day it stands on; `currentDay()` returns one only while
+the cycle is open, because a closed cycle's `day_in_cycle` is where it ended and
+not a place to write "today".
+
+### What is deliberately not shown
+
+`current_phase` is the provider's own integer code for the phase. There is no
+table anywhere saying what 3 means, so printing it would be printing a number
+nobody can read. The tab shows `current_phase_type` and leaves the code in the
+API.
+
+Predicted cycles are kept out of the averages: a forecast length would make
+"average cycle" describe the provider's model rather than the person.
+
+### Shared out of it
+
+| Piece                              | Why it moved                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events/types.ts` `SourceMetadata` | it was `WorkoutSource` in `workouts/types.ts`, imported by sleep, body, activity, cycles and the shared card — five of the six had nothing to do with workouts |
+| `events/fields.ts` `maybe`         | the same null-or-format helper stood in three field modules, and cycles had it inlined twice                                                                   |
+| `charts/SpanBar`                   | a track of coloured spans on a shared scale — the cycle bar is one, and so is anything else counted in whole units                                             |
+| `events/DeleteEventDialog`         | three pages carried the same dialog and the same sentence, differing only in a noun                                                                            |
+| `events/DeleteAction`              | and the same quiet trash button in three `*Details` components                                                                                                 |
+| `format.ts` `formatDays`           | "N day(s)" was spelled out three times, and one of them said "1 days"                                                                                          |
+
+What stayed put is the `removing` / `removeOpen` pair the three lists each
+declare. It is two lines of `$state` and a callback; a rune wrapping it would
+save twelve lines across the app and cost every reader a hop to find out what
+`ask()` does.
+
+### The demo rows in the local database
+
+Fifteen chained cycles were written straight into the local Postgres against the
+Oura data source — fourteen lived, the newest still running, one ahead of it
+predicted. Two things to get right when writing more:
+
+- **Each cycle ends exactly where the next begins.** A cycle's `end_datetime` is
+  its start plus its own length, so chaining backwards has to subtract _its_
+  length, not the previous one's. Off by one index and every cycle overlaps its
+  neighbour by the difference between their lengths.
+- **The fertile window sits about fourteen days before the next period**, so
+  `fertile_window_start` is roughly `cycle_length - 18` with a length of six.
+  Put it anywhere else and the bar draws ovulation in the wrong half.
+
+The e2e fixture builds the same shape, so it is the one to read.
+
+## Dashboard
+
+The landing page, and the one where a query written carelessly is paid for by
+every client with a lot of data. The rule here is that **nothing on this page
+grows with how much data a client has**.
+
+### One cached aggregate, and what that means for the numbers
+
+`GET /stats` answers the whole page. The backend deliberately does not count
+`data_point_series` on request: the total is served from Redis, stale while it
+revalidates, and falls back to the planner's `reltuples` on a cold cache, with
+the exact recount done in a Celery task. The archive figure is always a planner
+estimate.
+
+So two of the five figures are **approximate, and the response does not say
+which**. That decides how they are shown:
+
+- **Users and active connections** are cheap exact counts of small tables, so
+  they are spelled out — `1,247`.
+- **Data points and event records** are aggregates, one of them an estimate, so
+  they are compact — `1.5M`. Seven digits would claim a precision the number has
+  not got, and would not fit the tile either.
+
+The data-points tile is marked `estimated` beside its figure, because a number
+set in that size invites the reader to believe every digit of it.
+
+**A tile's sub-metrics are always rendered, zero included.** The first version
+put the archive count in a proportion bar that drops empty parts, so an empty
+archive read as no archive at all. "Archived 0" is a fact; a missing row is not.
+
+### What was left behind
+
+The React dashboard made three requests. Two were cheap; the third asked
+`/users?sort_by=last_synced_at`, and that sort is resolved in the repository as
+a correlated `SELECT max(last_synced_at) FROM user_connection WHERE user_id =
+user.id` in the ORDER BY of the outer query — evaluated for every user row
+before the LIMIT.
+
+Measured on 200,000 synthetic users with 72% of them connected, returning six
+rows:
+
+| ORDER BY              | time   | buffers | index searches |
+| --------------------- | ------ | ------- | -------------- |
+| `created_at`          | 9 ms   | 1,274   | —              |
+| `max(last_synced_at)` | 370 ms | 745,262 | 200,000        |
+
+The plan says `loops=200000` out loud. Neither sort is free — **`user.created_at`
+has no index**, so both are a sequential scan and a top-N heapsort — but one of
+them adds an index lookup per user row on top of that, and it is forty times
+slower for it.
+
+This page does not ask for it. "Newest users" sorts by `created_at`, and the
+recently-synced list is gone rather than replaced with something equally
+expensive. `/sync/runs` looks like a cheap substitute because it is Redis-backed,
+but it `SCAN`s for every user with recent activity and merges their runs in
+Python, which is a fan-out of its own.
+
+The three requests it does make are the cached aggregate, one indexed page of
+users, and the static provider catalogue. None of them touches a user's data.
+
+### What else it shows without asking for anything
+
+Two things were already in hand and going unused:
+
+- **The last sync per listed user.** `/users` computes it in a lateral summary
+  **for the rows on the page**, which is a different query from ordering every
+  user by it. So the six newest carry "19 days ago, via Suunto" for free, and
+  the expensive global sort still is not made.
+- **Each provider's share of live connections.** `top_providers` and
+  `active_conn` are both in the response; one division turns "480" into "480 ·
+  53%", which is the difference between a number and a proportion.
+
+One idea that does **not** work: naming the providers that are enabled but
+unused. `top_providers` is capped at six and only lists providers with at least
+one active connection, so a provider missing from it might have none — or might
+be seventh. The response cannot tell the two apart.
+
+### Shared out of it
+
+| Piece                                | Why it moved                                                                                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dashboard/stats.ts` `statTiles`     | forty lines of tile content sat in the page; as a function it is testable, and the exact-versus-compact rule lives with the thing it governs |
+| `format.ts` `formatShare`            | "480 · 53%" was written twice, once with `toFixed` and once with `Math.round`                                                                |
+| `UserIdentity` `secondary`           | the dashboard row hand-rolled avatar + name and lost the "Unnamed" case the shared one already handled                                       |
+| `charts/ShareBar`                    | was `summary/ProviderShare`, typed to one summary's shape; it is a stacked proportion with a legend, and the dashboard needed the same       |
+| `CountRanking` `labelFor` / `format` | a provider has a catalogue name rather than a humanised slug, and a count can carry its share                                                |
+
+`ChartRow`'s value column went from `w-12 sm:w-14` to `w-14 sm:w-20`, because a
+count and its share no longer fit and wrapped onto two lines. It is one constant
+for a reason — the heatmap's axis row has to line up with the rows under it — so
+widening it moves both together.
+
+### The mock will happily answer a path that does not exist
+
+This page shipped calling `/api/v1/stats`, because the route is declared
+`@router.get("/stats")` — and mounted with `prefix="/dashboard"`. Every test
+passed: the e2e mock was written from the same misreading, so it answered the
+wrong path too. Only the real backend said 404.
+
+[endpoints.spec.ts](src/lib/server/endpoints.spec.ts) now reads every
+`/api/v1/...` literal out of `src/lib/server/` and checks it against
+`docs/openapi.json`, which pre-commit regenerates from the app. A router's
+decorator is half the path; the prefix it is mounted under is the other half.
+
+### `formatCompact` is pinned to en-US on purpose
+
+The rest of this codebase formats in en-GB. Compact notation there renders
+`2.3bn` and a lowercase `1m`, and an "m" beside a metric reads as a unit. en-US
+gives `1.5M` and `2.3B`. `Intl` also rolls the boundary correctly — 999,999 is
+`1M`, never `1000K` — which a hand-rolled divide-by-a-million does not.
+
+Compact is for counts. A step count, a distance or a duration has a precision
+worth keeping, and `formatNumber` keeps it.
+
+## Data Coverage
+
+What every provider can deliver, built in the backend from the provider
+strategies and served from `/meta/coverage` — one request, about 15 KB,
+`lru_cache`d and changing only on deploy. Nothing on this page is scoped to a
+user, so nothing on it grows with anything.
+
+### The matrix was the wrong shape
+
+The old page was a table: 144 capabilities down, 14 providers across, a green
+dot in each cell. To fit, it hid the rows behind **two levels of tabs** — a
+layer, and then one of thirteen timeseries categories — so at most fourteen rows
+were ever on screen, and the columns scrolled sideways on a phone.
+
+It could answer "does Garmin support heart rate" if you already knew which tab
+heart rate lived in. It could not answer anything else.
+
+So the row names its own supporters instead. Each capability carries the marks
+of the providers that can send it, plus `9 of 14`. No fixed columns, so nothing
+scrolls sideways, and a row is readable on its own.
+
+### What it can be asked now
+
+- **Search across every layer at once.** 144 codes, one box, no need to know
+  which category a metric was filed under.
+- **How much of the matrix each provider covers.** `providerTotals` is a count
+  over rows the response already contains: Apple 94 of 144, Fitbit 6. Nothing on
+  the old page said which integrations are rich and which are a formality.
+- **What a provider _cannot_ send.** The `missing` flag inverts the provider
+  filter. This is the half that decides whether one integration can stand in for
+  another, and a grid of dots cannot be asked it at all.
+- **Which capabilities hang on a single provider.** A row with one supporter is
+  badged `only`. In the real matrix that is a long list — `blood_alcohol_content`,
+  `breathing_disturbance_index`, `walking_heart_rate_average` — and each one is
+  something a customer loses outright if that integration goes.
+
+### A strip that scrolls has to be allowed to shrink
+
+Wrapping the layer tabs in `ScrollFade` was not enough. `FilterGroup` sits in a
+flex row, a flex item keeps `min-width: auto`, and so it refused to shrink below
+its content: `overflow-x-auto` had nothing to scroll inside and **the whole page
+went sideways** — 519px in a 390px window — instead of the strip.
+
+Measured one class at a time on the live page: `min-w-0` alone brings it back to
+390, and `w-full` alone does too by forcing a wrap. They do different jobs, so
+the wrapper keeps both — `min-w-0` is the fix, `w-full` is the layout that gives
+the strip its own row on a phone. The user tabs never hit this because their
+`ScrollFade` is a block child of a full-width container.
+
+`ScrollFade` itself cannot carry the fix: the constraint applies to the flex
+item, which is an ancestor of it.
+
+`navigation.e2e.ts` now walks the main routes at phone width and asserts
+`documentElement.scrollWidth <= clientWidth`, which fails if this comes back
+anywhere.
+
+### Every filter is in the URL
+
+Search, layer, provider and side all navigate, so a particular question — "what
+can Whoop not do" — is a link someone can send. An unknown provider is dropped
+rather than forwarded, the same rule the event tabs use: a typo should show the
+whole matrix, not an empty page that reads as a fault.
+
+## Webhook subscriptions
+
+Named for what a row is: a standing request to be told about events. "Webhooks"
+alone reads as something already running, and people went looking for it.
+
+### The row is the page
+
+The old dashboard opened a second screen with two tabs — Overview to edit, and
+Deliveries. Here the row carries both: **Edit** opens the same dialog the
+subscription was created in, **Deliveries** goes to the full list, and opening
+the row shows the last five inline. The list never loads them: each expansion
+fetches its own, or a page of ten subscriptions would be ten Svix round trips
+for the nine nobody opens.
+
+Those three controls cannot live in `AccordionCard`'s header, which is itself a
+button — so they sit in the metrics row and stop the click from reaching the
+card.
+
+### A test event offers only what the subscription listens for
+
+`POST /endpoints/{id}/test` takes an event type, and the picker in the expansion
+is narrowed to that subscription's own `filter_types` — testing something it
+filters out would be delivered nowhere and read as a failure. A subscription
+that filters nothing gets the whole list.
+
+It sits above the recent deliveries, because that is where what you send turns
+up. Svix queues it, so the row says it will appear rather than pretending it
+already has.
+
+### Svix 2.x returns an empty payload, and that is a backend fix
+
+Delivery payloads and response bodies arrive as `{}` — on the React dashboard
+too. The cause is in the SDK, not in either frontend:
+
+```
+MessageGetOptions.with_content / MessageAttemptListByEndpointOptions.with_content
+  "Defaults to false in v2+ of the Svix SDKs, true in v1 …"
+```
+
+`_query_params` then sends `with_content=false` explicitly. Neither
+`svix_service.get_message` nor `list_message_attempts` passes the flag, so the
+service is asked not to return the content and obliges. **Not changed here** —
+it is two keyword arguments in `app/services/outgoing_webhooks/svix.py`.
+
+What the frontend can do is not lie about it. `hasContent()` treats `{}` and
+`""` as nothing to show, and the panel says "Not returned by the webhook
+service" rather than printing an empty object, because "nobody asked" and "the
+provider sent nothing" are different facts.
+
+### Eighty event names do not go in one list
+
+`/webhooks/event-types` answers flat, but two shapes hide in it: a time-series
+group event declares its granular `series.*` children, and everything else
+falls into a family by the word before the dot. `groupEvents()` recovers both,
+and the picker folds each family, saying how many of it are on while closed.
+
+A child never appears loose as well — it already sits under its group, and
+offering the same event twice is offering a choice that is not one.
+
+**"Select all" is a separate control from the group event**, and deliberately.
+`heart_rate.created` is its own subscription — one event covering the whole
+category — while `series.heart_rate` and friends are the granular ones; the
+backend says you may take either level or both. Wiring the parent chip to tick
+its children would collapse two different subscriptions into one and take the
+choice away.
+
+### Deliveries page
+
+Filters navigate, so a question is a link. Svix pages by an opaque iterator, so
+`Pagination` gets `total: null` — it marks the position and steps, and never
+claims a last page. `cursorHrefs` took a parameter name for this: the event
+lists call it `cursor`, Svix calls it `iterator`, and the page-one rule is the
+same either way.
+
+The first attempt put the word "Older" inside `STEP`, which is the 40×40 square
+a chevron lives in. It rendered as a box with the text jammed in it, and there
+was no way back at all.
+
+Rows group by the day they went out — forty timestamps in one column is a wall,
+and the question asked of it is usually "did anything go out yesterday". The
+HTTP code wears the status colour rather than sitting in grey beside a dot that
+repeats it.
+
+An opened delivery puts the payload and the response **side by side** from `lg`
+up, each capped at `max-h-64` and scrolling, because a round trip is read by
+comparing the two halves and a large payload should not push the next row off
+the screen.
+
+## The pairing pages are public
+
+`/users/[id]/pair` lives **outside the `(app)` group**, so the auth guard never
+runs on it. That is the point: whoever opens a pairing link has no account here.
+Both endpoints it needs are unauthenticated backend-side —
+`GET /oauth/providers` and `GET /oauth/{provider}/authorize` take no API key —
+so `apiGet`'s token argument is optional and these calls pass none.
+
+The flow, all server-side:
+
+1. The page lists `enabled_only=true&cloud_only=true` providers.
+2. A choice posts to `?/connect`, which asks the backend for an authorization
+   URL and `redirect(303)`s the browser to the provider.
+3. The provider returns to the backend callback, which exchanges tokens, stamps
+   `last_synced_at`, kicks off a backfill, and redirects to the `redirect_uri`
+   we supplied: `/users/{id}/pair/success?provider=…`.
+
+No `fetch` from the browser and no CORS, unlike `frontend/`, which called the
+API directly from the client.
+
+### Providers are sorted here, not by the API
+
+`GET /oauth/providers` returns them in `ProviderName` enum order — the order
+they were added to the codebase (`apple, samsung, garmin, google, polar, …`),
+which means nothing to a reader picking their device. `cached()` in
+[`server/providers.ts`](src/lib/server/providers.ts) sorts by display name on
+the way out, so every consumer — pairing list, admin filter — gets the same
+order without remembering to ask.
+
+### Two traps in this flow
+
+**`?/connect` replaces the whole query string.** A form action is a URL, so
+posting to `?/connect` from `/pair?redirect_url=…` loses `redirect_url`
+entirely. It travels as a hidden field instead. This cost a failing test to
+find, and it applies to every action on a page whose query string matters.
+
+**`redirect_url` is attacker-controlled.** The pairing link is public, so anyone
+can craft one, and the success page renders that value as a `Continue` link.
+`safeReturnUrl` in [`users/pairing.ts`](src/lib/users/pairing.ts) admits only
+`http:`/`https:` — `javascript:` would otherwise be a one-click XSS on a page
+end users are told to open. It is applied **twice**: in the loader, so the page
+never holds a value it could render, and again when building the success URL,
+because by then it has been through a form post. It is never a redirect, always
+a link the reader chooses.
+
+### Provider logos work here, and only here
+
+The admin pages use letter marks because the API's `icon_url` is relative to a
+base the browser cannot reach under cookie sessions. This page is public and the
+browser talks to the address `publicApiUrl()` returns
+([`config/public-api.ts`](src/lib/config/public-api.ts) — the one place
+`VITE_API_URL` is read on the client), so
+[`ProviderLogo`](src/lib/components/pairing/ProviderLogo.svelte) uses the real
+file — falling back to the letter mark on an `onerror` or when `VITE_API_URL` is
+unset.
+
+### What the backend still owns
+
+- **A denied consent shows raw JSON.** The callback redirects OAuth errors to
+  `/api/v1/oauth/error?message=…`, which is a JSON endpoint, not a page. The
+  frontend cannot intercept it; the backend would have to accept an error URL
+  the way it already accepts `redirect_uri`.
+- **`authorize` does not check that the user exists**, so any UUID in a pairing
+  link starts a real OAuth flow. Nothing here can validate it either: reading
+  the user requires a developer token this page does not have.
+
+## Styling is scoped — do not reach for global CSS
+
+A `<style>` block inside a `.svelte` file is scoped by the compiler. It rewrites
+both selectors and `@keyframes` names with a per-component hash, so
+`animation: slide-up` in `Sheet.svelte` compiles to:
+
+```css
+dialog[open].svelte-11ek6gv {
+	animation: 0.2s cubic-bezier(0.32, 0.72, 0, 1) svelte-11ek6gv-slide-up;
+}
+```
+
+Nothing leaks and nothing collides, so component styles never need registering
+in [src/app.css](src/app.css). `app.css` is only for **tokens and base
+element styles** — things that are global by definition.
+
+Tailwind utility classes are global, but that is the point: they are generated
+on demand from the class names found in source, and each does exactly one thing.
+
+## The .json ignore trap
+
+The **repo root** `.gitignore` blanket-ignores `*.json` (line 167) to keep
+provider data dumps out of the tree, and ignores `.vscode` outright. New JSON
+config here is therefore ignored **silently** — `package.json` and
+`tsconfig.json` were both missing from git until this was caught.
+
+[.gitignore](.gitignore) re-includes them; a deeper `.gitignore` wins. **Adding
+a new tracked `.json` file means adding a `!` line there too.** Verify rather
+than assume:
+
+```bash
+git check-ignore -v frontend-svelte/<file>    # prints the rule, or nothing
+```
+
+Re-including a file inside an ignored _directory_ needs the directory
+un-ignored first — git does not descend into an excluded directory.
+
+## Current state
+
+```
+src/
+├── app.css                          # design tokens + base styles
+├── app.html                         # favicons + manifest live here
+├── hooks.server.ts                  # per-request auth context into locals
+├── lib/
+│   ├── components/
+│   │   ├── PagePlaceholder.svelte
+│   │   ├── layout/                  # shell: AppShell, TopBar, Sidebar,
+│   │   │                            # BottomNav, MoreSheet, NavLink,
+│   │   │                            # Wordmark, AppVersion, LogoutButton
+│   │   │                            # + layout.browser.spec.ts
+│   │   ├── ui/                      # nothing here knows about users
+│   │   │   ├── Sheet.svelte         # bottom sheet / centred panel
+│   │   │   ├── Pagination.svelte    # counter, numbers, size select
+│   │   │   ├── PageSizeSelect.svelte
+│   │   │   ├── SearchField.svelte   # debounce + replaceState live here
+│   │   │   ├── SortableHeader.svelte
+│   │   │   ├── FilterChip.svelte    # link: navigates
+│   │   │   ├── ToggleChip.svelte    # button: edits a local draft
+│   │   │   └── CopyableId.svelte
+│   │   ├── events/                  # AccordionCard, EventCard, MetricRow,
+│   │   │                            # MetricCell, EventTotals, CursorBar
+│   │   ├── charts/                  # LineChart, Sparkline, SamplesChart,
+│   │   │                            # IntervalChart, DistributionBar,
+│   │   │                            # SeriesLegend, HoverReadout
+│   │   ├── filters/                 # FilterBar, FilterGroup, PeriodFilter
+│   │   ├── providers/               # ProviderMark — a letter mark, since the
+│   │   │                            # API's icon_url is unreachable from the browser
+│   │   ├── syncs/                   # provider-agnostic: SyncRunRow, SyncRunItem,
+│   │   │                            # RunStatus, RunProgress, StoredRun, SavedCounts,
+│   │   │                            # SourceGlyph, RecentSyncsCard, SyncOverview
+│   │   └── users/                   # UsersList, UsersTable, UserCard,
+│   │                                # UserIdentity, UserAvatar, SyncCell,
+│   │                                # ConnectionBadges, UserActions,
+│   │                                # ProviderFilter, SelectedProviders,
+│   │                                # AddUserButton
+│   ├── config/nav.ts                # single source of truth for destinations
+│   ├── lists/                       # generic list plumbing
+│   │   ├── types.ts                 # Page, Paginated<T>, SortOrder
+│   │   └── pagination.ts            # page window, PAGE_SIZES, pageForSize
+│   ├── users/                       # types.ts, query.ts, avatar.ts, tabs.ts
+│   ├── charts/                      # geometry.ts (scaleY, linePath, extent),
+│   │                                # palette.ts — pure, and tested as such
+│   ├── events/                      # fields.ts, totals.ts — shared by the tabs
+│   ├── {workouts,sleep,activity,body,scores,cycles}/  # one module per tab
+│   ├── timeseries/samples.ts        # Sample → Series, colours, units
+│   ├── filters/period.ts            # All time / Day / Range, and its windows
+│   ├── server/                      # never reaches the browser
+│   │   ├── api.ts  redis.ts  session.ts  auth.ts
+│   │   ├── events.ts  timeseries.ts  user-actions.ts
+│   │   └── users.ts  providers.ts  {workouts,sleep,activity,body,scores,cycles}.ts
+│   └── utils/                       # cn.ts, datetime.ts, format.ts, resource.svelte.ts
+├── routes/
+│   ├── +layout.svelte               # imports app.css
+│   ├── +page.ts                     # redirects / → /dashboard
+│   ├── login/    +page.svelte + +page.server.ts
+│   ├── logout/   +page.server.ts    # action only
+│   ├── users/[id]/pair/             # public: no session, outside (app)
+│   │   └── success/
+│   └── (app)/
+│       ├── +layout.server.ts        # the auth guard
+│       ├── +layout.svelte           # wraps children in AppShell
+│       ├── users/  +page.svelte + +page.server.ts
+│       ├── users/[id]/              # +layout owns the user; +page is Connections
+│       │   └── {data,workouts,activity,sleep,body,scores,womens-health}/
+│       │                            # each with +page.server.ts and, where it
+│       │                            # needs one, totals/ samples/ trends/ +server.ts
+│       └── {dashboard,syncs,webhooks,coverage,settings}/+page.svelte
+└── e2e/  auth  navigation  users  user-detail  pairing  data-summary
+       workouts  activity  sleep  body  scores  womens-health (.e2e.ts)
+       + mock-api  support  fixtures
+```
+
+Every `.spec.ts` sits beside what it covers; `*.browser.spec.ts` files aggregate
+a whole component directory.
+
+**Real:** the shell, theming, cookie authentication, the `/users` list with
+search, provider filters, sorting, pagination and page size, its create / edit /
+delete actions, the user detail page's Connections tab — identity, connected
+providers with capabilities and backfill history, and the last 24 hours of sync
+activity with a provider filter — and the public pairing pages.
+
+**Not real:** every other page under `(app)` is a `PagePlaceholder`; every user
+tab other than Connections renders the shared "not built yet" placeholder; and
+the Apple Health XML import is a disabled menu entry — it is a multipart S3
+upload (presign, sign parts, complete or abort) and needs its own increment, not
+a menu item.
+
+Only `/users` fetches domain data, and it does so from a server `load` via
+`apiGet`. There is still **no browser-facing API proxy** — a `/api/[...path]`
+route becomes necessary only when a component has to call the backend from the
+browser, which URL-driven lists never need.
+
+## Open decisions
+
+Do not settle these unilaterally; they are the owner's calls.
+
+### Data fetching
+
+Still not chosen, and `/users` shipped without it: a URL-driven list needs no
+client cache, because the server `load` is the cache key.
+
+`@tanstack/svelte-query` becomes justified at the first need a `load` cannot
+serve — polling sync status, optimistic updates on a mutation, or state shared
+between two routes. The React app has 16 hook files on react-query, so this will
+likely be revisited; wait for that concrete trigger rather than the next page.
+
+### Component primitives
+
+`bits-ui` + `shadcn-svelte` are the equivalents of Radix + shadcn/ui, and the
+component mapping is close to 1:1. **Still not installed**, and the platform has
+covered every case so far: `ui/Sheet` is a native `<dialog>` (focus trap, Esc,
+inert background, `::backdrop`), and the page-size control is a native
+`<select>`.
+
+`cn()` is named for the shadcn convention so its generator would work unmodified
+if they are added later. Buttons, cards, inputs, chips and badges are plain
+styled elements.
+
+The trigger to reconsider is a control the platform genuinely lacks: a combobox
+with typeahead, a menu needing roving focus, or a popover that must be anchored
+to its trigger — the last is why the provider panel is centred rather than
+anchored.
+
+## Decision log
+
+Choices already made, with reasons, so they are not re-litigated.
+
+- **SvelteKit over plain Svelte** — 33 route files, nested layouts, an auth
+  guard and dynamic segments. Plain Svelte means bolting on a router and losing
+  typed routes.
+- **`adapter-node`** — matches the container deployment model. Revisit only if
+  the app becomes fully static.
+- **No `experimental` add-on** (async / remote functions) — moving target, and
+  this project is meant to be developed slowly over months.
+- **Playwright from day zero** — e2e is the safety net for deleting `frontend/`.
+- **Bun** — package manager and runtime. Build still goes through Vite, so the
+  gain is install and boot speed, not bundle output.
+- **System font stack, not Google Fonts** — the React app blocks first render on
+  a `fonts.googleapis.com` stylesheet. If the Inter brand face is wanted,
+  self-host it (`@fontsource-variable/inter`) rather than reintroducing the
+  external request.
+- **Native `<dialog>` over a headless overlay library** — `showModal()` gives
+  focus trap, Esc, inert background and `::backdrop` with no dependency.
+- **Mobile navigation is a bottom bar, not a hamburger drawer** — thumb-reachable
+  and always visible. The overflow sheet holds only secondary destinations.
+- **Server-side sessions in Redis, `HttpOnly` cookie** over `localStorage` —
+  keeps both tokens off the browser, makes SSR viable, and preserves
+  "one image, any backend" by turning the API URL into a server-side variable.
+  The cost accepted: the node server is load-bearing, so the dashboard can no
+  longer be served as static files.
+- **URL-driven list state** over component state — Back, shareable links and
+  server-rendered first paint, and it removes the need for a data-fetching
+  library on list pages.
+- **Native `<dialog>` again for the provider panel** rather than a popover
+  anchored to its trigger: anchor positioning is not evenly supported yet, and a
+  centred panel works everywhere.
+- **Draft-then-apply for the provider filter**, not navigate-per-chip, so
+  several providers cost one round trip.
+- **A native `<select>` for page size**, accepting that it needs JavaScript,
+  because a row of links did not fit a phone and could not grow.
+- **Avatar tones from a fixed six-token palette**, not a hash to hex, so avatars
+  cannot break contrast or clash with the theme.
+- **`cn` kept as the helper name** despite being opaque, so `shadcn-svelte` can
+  generate components without edits if it is ever added.
+
+## Baseline measurements
+
+Taken 2026-09-02, for judging whether the rewrite is paying off. React figures
+are a full application; Svelte figures are near-empty. They are not a
+feature-for-feature comparison — they measure the **floor** each framework
+imposes, which is the part that never goes away.
+
+|           | React (`frontend/`)     | Svelte (foundations only) |
+| --------- | ----------------------- | ------------------------- |
+| Client JS | 532 KB gzip, 93 chunks  | 31 KB gzip, 9 chunks      |
+| CSS       | 137 KB raw / 20 KB gzip | 9.6 KB raw / 2.8 KB gzip  |
+
+Re-measure at parity before declaring a win:
+
+```bash
+find .svelte-kit/output/client -name '*.js' -exec cat {} + | wc -c
+```

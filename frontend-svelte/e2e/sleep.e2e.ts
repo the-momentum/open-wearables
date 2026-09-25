@@ -1,0 +1,136 @@
+import { expect, test } from '@playwright/test';
+import { signIn } from './support';
+
+const USER = '00000000-0000-4000-8000-000000000007';
+const SLEEP = `/users/${USER}/sleep`;
+
+/**
+ * The fixtures are built relative to today, so the newest row is always today's.
+ * Spelling a weekday or a date into the assertion made these tests pass only on
+ * the day they were written.
+ */
+const today = new Date();
+const named = (options: Intl.DateTimeFormatOptions) =>
+	new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' }).format(today);
+
+test.beforeEach(async ({ page, request }) => {
+	await request.post('http://localhost:8787/__reset');
+	await signIn(page);
+});
+
+test('lists sessions newest first, dated by the morning they ended', async ({ page }) => {
+	await page.goto(SLEEP);
+
+	const cards = page.getByRole('article');
+	await expect(cards).toHaveCount(10);
+
+	// The kind titles the card, as the type does on a workout, and the day it was
+	// woken up in sits under it — which is how anyone looks for "last night".
+	const first = cards.first().getByRole('heading');
+	await expect(first).toContainText('Night sleep');
+	await expect(first).toContainText(named({ weekday: 'short' }));
+	await expect(first).toContainText(named({ day: 'numeric', month: 'short', year: 'numeric' }));
+	// Bedtime and wake time read as two times, not as one grey run of characters.
+	await expect(first).toContainText('00:40');
+	await expect(first).toContainText('08:20');
+
+	const pager = page.getByRole('navigation', { name: 'Pagination' });
+	await expect(pager).toContainText('1–10 of 17');
+
+	// Naps are sessions too, and the title is where that shows.
+	await expect(cards.filter({ hasText: 'Nap' }).first()).toBeVisible();
+
+	// The fourth slot is the whole stage mix, not one stage promoted above the
+	// others: four segments, each naming itself.
+	await expect(cards.first().getByTitle(/^Deep · /)).toBeVisible();
+	await expect(cards.first().getByTitle(/^REM · /)).toBeVisible();
+});
+
+test('sums the whole period beside the list, not the page in front of you', async ({ page }) => {
+	await page.goto(SLEEP);
+
+	const figures = page.locator('[aria-label="Sleep totals"]');
+	await expect(figures.getByText('17', { exact: true })).toBeVisible();
+	await expect(figures.getByText('Avg efficiency')).toBeVisible();
+});
+
+test('draws the stages through the night where the provider sent intervals', async ({ page }) => {
+	await page.goto(SLEEP);
+
+	// Oura reports intervals, so its card gets a lane per stage.
+	const oura = page.getByRole('article').filter({ hasText: 'Oura' }).first();
+	await oura.getByText('Asleep').click();
+
+	const lanes = oura.getByRole('img', { name: 'Sleep stages across the session' });
+	await expect(lanes).toBeVisible();
+	await expect(lanes.getByText('Deep')).toBeVisible();
+	await expect(lanes.getByText('REM')).toBeVisible();
+
+	// And the strip below counts the same stages, from the minute totals.
+	await expect(oura.getByText('Time in each stage')).toBeVisible();
+});
+
+test('says so when a provider reports stage minutes but not when they happened', async ({
+	page
+}) => {
+	await page.goto(SLEEP);
+
+	// Suunto sends the per-stage minutes and no intervals: the strip is there, the
+	// hypnogram cannot be, and a bare gap would read as missing data.
+	const suunto = page.getByRole('article').filter({ hasText: 'Suunto' }).first();
+	await suunto.getByText('Asleep').click();
+
+	await expect(suunto.getByText('but not when')).toBeVisible();
+	await expect(suunto.getByRole('img', { name: 'Sleep stages across the session' })).toHaveCount(0);
+	await expect(suunto.getByText('Time in each stage')).toBeVisible();
+});
+
+test('keeps only the winning source per night when asked', async ({ page }) => {
+	await page.goto(SLEEP);
+	await expect(page.getByRole('article').filter({ hasText: 'Suunto' }).first()).toBeVisible();
+
+	// Two watches can both claim one night; this is the ranking summaries use.
+	await page.getByRole('link', { name: 'Highest priority' }).click();
+
+	await expect(page).toHaveURL(`${SLEEP}?top=1`);
+	await expect(page.getByRole('article').filter({ hasText: 'Suunto' })).toHaveCount(0);
+	await expect(page.getByRole('article').first()).toContainText('Oura');
+});
+
+test('deletes a session after confirming, and the list agrees afterwards', async ({ page }) => {
+	await page.goto(SLEEP);
+	const pager = page.getByRole('navigation', { name: 'Pagination' });
+	await expect(pager).toContainText('of 17');
+
+	await page.getByRole('article').first().getByRole('button').first().click();
+	await page.getByRole('button', { name: 'Delete session' }).click();
+	await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+	await expect(pager).toContainText('of 16');
+});
+
+test('shows only naps, or only night sleep, and the totals follow', async ({ page }) => {
+	await page.goto(SLEEP);
+	const cards = page.getByRole('article');
+	const sessions = page.getByRole('group', { name: 'Sessions' });
+
+	await sessions.getByRole('link', { name: 'Naps' }).click();
+	await expect(page).toHaveURL(/kind=nap/);
+	// Three of the seventeen are naps, and every card left says so.
+	await expect(cards).toHaveCount(3);
+	await expect(cards.filter({ hasText: 'Night sleep' })).toHaveCount(0);
+	// The totals are asked with the same filter, so they count the same three.
+	const figures = page.locator('[aria-label="Sleep totals"]');
+	await expect(figures.getByText('3', { exact: true }).first()).toBeVisible();
+	await expect(figures.getByText('17', { exact: true })).toHaveCount(0);
+
+	await sessions.getByRole('link', { name: 'Night sleep' }).click();
+	await expect(cards.filter({ hasText: 'Nap' })).toHaveCount(0);
+	// Filtered by the backend, not per page: the pager counts the fourteen that match.
+	await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText('of 14');
+});
+
+test('says so when a period has no naps', async ({ page }) => {
+	await page.goto(`${SLEEP}?kind=nap&from=2020-01-01&to=2020-01-31`);
+	await expect(page.getByText('No naps in this period')).toBeVisible();
+});
