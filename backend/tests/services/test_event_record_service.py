@@ -15,8 +15,13 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+<<<<<<< HEAD
 from app.models import DataSource, EventRecord, HealthScore, SeriesTypeDefinition
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
+=======
+from app.models import DataSource, EventRecord, HealthScore
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+>>>>>>> 083558c3 (implement payloads for meals and nutritions)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -230,6 +235,42 @@ class TestEventRecordServiceBulkCreateDetails:
             db.commit()
 
         mock_workout.assert_not_called()
+
+    def test_bulk_create_details_emits_meal_webhook_with_nutrients(self, db: Session) -> None:
+        """Meal correlations saved via the SDK import path (bulk_create + bulk_create_details)
+        must fire meal.created with the nutrient totals the caller recorded against the meal.
+
+        MealDetailCreate itself carries no nutrient fields (those live in DataPointSeries),
+        so the caller passes them separately via nutrients_by_record.
+        """
+        data_source = DataSourceFactory(source="apple")
+        meal = EventRecordFactory(mapping=data_source, category="meal", type_=None)
+        details = [MealDetailCreate(record_id=meal.id, title="Chicken Salad", meal_type="lunch")]
+        nutrients_by_record = {
+            meal.id: {
+                SeriesType.dietary_energy_consumed: Decimal("650.0"),
+                SeriesType.dietary_protein: Decimal("40.0"),
+                SeriesType.hydration: Decimal("250.0"),
+            }
+        }
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            event_record_service.bulk_create_details(
+                db, details, detail_type="meal", nutrients_by_record=nutrients_by_record
+            )
+            db.commit()
+
+        mock_meal.assert_called_once()
+        kwargs = mock_meal.call_args.kwargs
+        assert kwargs["record_id"] == meal.id
+        assert kwargs["title"] == "Chicken Salad"
+        assert kwargs["meal_type"] == "lunch"
+        assert kwargs["calories_kcal"] == 650.0
+        assert kwargs["macros"]["protein_g"] == 40.0
+        assert kwargs["water_ml"] == 250.0
 
 
 class TestEventRecordServiceGetRecordsResponse:
@@ -478,6 +519,67 @@ class TestCreateOrUpdateMeal:
 
         assert inserted is True
         assert saved.data_source_id == watch.id
+
+    def test_new_meal_dispatches_webhook_after_commit_with_nutrients(self, db: Session) -> None:
+        """Google Health nutrition sync writes the meal, then its nutrient samples, and only
+        the caller commits - meal.created must wait for that commit before firing."""
+        data_source = DataSourceFactory()
+        record = self._record(data_source, self.START + timedelta(minutes=30))
+        detail = MealDetailCreate(record_id=record.id, title="Chicken", meal_type="lunch")
+        nutrients = {SeriesType.dietary_energy_consumed: Decimal("480.0")}
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            event_record_service.create_or_update_meal(db, record, detail, nutrients=nutrients)
+            mock_meal.assert_not_called()  # not yet committed
+
+            db.commit()
+
+        mock_meal.assert_called_once()
+        kwargs = mock_meal.call_args.kwargs
+        assert kwargs["record_id"] == record.id
+        assert kwargs["user_id"] == data_source.user_id
+        assert kwargs["title"] == "Chicken"
+        assert kwargs["meal_type"] == "lunch"
+        assert kwargs["calories_kcal"] == 480.0
+
+    def test_meal_webhook_not_fired_when_refreshing_an_existing_meal(self, db: Session) -> None:
+        """No update/patch flow for outgoing webhooks - only the initial insert fires meal.created."""
+        data_source = DataSourceFactory()
+        first = self._record(data_source, self.START + timedelta(minutes=30))
+        event_record_service.create_or_update_meal(
+            db, first, MealDetailCreate(record_id=first.id, title="Chicken", meal_type="lunch")
+        )
+        db.commit()
+
+        extended = self._record(data_source, self.START + timedelta(minutes=45))
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            event_record_service.create_or_update_meal(
+                db, extended, MealDetailCreate(record_id=extended.id, title="Chicken, Rice", meal_type="lunch")
+            )
+            db.commit()
+
+        mock_meal.assert_not_called()
+
+    def test_meal_webhook_silent_when_svix_disabled(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        record = self._record(data_source, self.START + timedelta(minutes=30))
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=False),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            event_record_service.create_or_update_meal(
+                db, record, MealDetailCreate(record_id=record.id, title="Chicken")
+            )
+            db.commit()
+
+        mock_meal.assert_not_called()
 
 
 class TestGetMealsNutrients:

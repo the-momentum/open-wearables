@@ -234,7 +234,7 @@ class TestLoadAndSave:
             patch("app.services.providers.google_health.nutrition.timeseries_service"),
         ):
             # A fresh insert: the service hands back the record it was given.
-            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail: (
+            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail, **_kwargs: (
                 MagicMock(id=record.id),
                 True,
             )
@@ -259,7 +259,7 @@ class TestLoadAndSave:
             patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
             patch("app.services.providers.google_health.nutrition.timeseries_service") as timeseries_service,
         ):
-            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail: (
+            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail, **_kwargs: (
                 MagicMock(id=record.id),
                 True,
             )
@@ -312,7 +312,9 @@ class TestLoadAndSave:
         ):
             calls: list[int] = []
 
-            def create_or_update_meal(_db: object, record: object, _detail: object) -> tuple[MagicMock, bool]:
+            def create_or_update_meal(
+                _db: object, record: object, _detail: object, **_kwargs: object
+            ) -> tuple[MagicMock, bool]:
                 # First meal fails, the rest insert normally.
                 calls.append(1)
                 if len(calls) == 1:
@@ -341,7 +343,7 @@ class TestLoadAndSave:
             patch("app.services.providers.google_health.nutrition.timeseries_service") as timeseries_service,
             patch("app.services.providers.google_health.nutrition.log_and_capture_error"),
         ):
-            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail: (
+            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail, **_kwargs: (
                 MagicMock(id=record.id),
                 True,
             )

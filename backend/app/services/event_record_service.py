@@ -34,6 +34,7 @@ from app.schemas.model_crud.activities import (
     EventRecordQueryParams,
     EventRecordResponse,
     EventRecordUpdate,
+    MealDetailCreate,
     MenstrualCycleDetailCreate,
     SleepInclude,
     WorkoutInclude,
@@ -57,7 +58,12 @@ from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
 from app.services.outgoing_webhooks import svix as svix_service
-from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on_sleep_created, on_workout_created
+from app.services.outgoing_webhooks.events import (
+    on_meal_created,
+    on_menstrual_cycle_created,
+    on_sleep_created,
+    on_workout_created,
+)
 from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
@@ -258,6 +264,7 @@ class EventRecordService(
         db_session: DbSession,
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
+        nutrients: dict[SeriesType, Decimal] | None = None,
     ) -> tuple[EventRecord, bool]:
         """Insert a meal, or refresh the one already stored for its data source and start time.
 
@@ -271,13 +278,16 @@ class EventRecordService(
         index instead of both passing a plain existence check and duplicating the meal.
 
         Flushes only - the caller commits, so the meal's nutrient samples can share the
-        transaction. Returns (record, inserted).
+        transaction. Returns (record, inserted). ``nutrients`` (the same values the caller is
+        about to write as DataPointSeries samples) is only used for the meal.created webhook,
+        fired once that commit lands - see _schedule_meal_webhook.
         """
         saved, inserted = self.crud.create_and_flush_meal(db_session, record)
         if inserted:
             self.event_record_detail_repo.create_and_flush(
                 db_session, detail.model_copy(update={"record_id": saved.id}), detail_type="meal"
             )
+            self._schedule_meal_webhook(db_session, saved.id, record, detail, nutrients)
             return saved, True
 
         saved.end_datetime = record.end_datetime
@@ -592,11 +602,12 @@ class EventRecordService(
         db_session.commit()
         return created_record, True, new_detail
 
-    @staticmethod
     def _emit_event_record_webhook(
+        self,
         record: EventRecord,
         data_source: DataSource,
         detail: EventRecordDetailCreate,
+        nutrients: dict[SeriesType, Decimal] | None = None,
     ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
         if not svix_service.is_enabled():
@@ -688,6 +699,73 @@ class EventRecordService(
                     else None,
                     avg_pace_sec_per_km=round(avg_pace) if avg_pace is not None else None,
                 )
+            case "meal":
+                mdc = detail if isinstance(detail, MealDetailCreate) else None
+                on_meal_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    title=mdc.title if mdc else None,
+                    meal_type=mdc.meal_type if mdc else None,
+                    **self._meal_webhook_fields(nutrients),
+                )
+
+    @staticmethod
+    def _meal_webhook_fields(nutrients: dict[SeriesType, Decimal] | None) -> dict:
+        """Calories/macros/water for a meal's webhook payload, summarized like the /events/meals response.
+
+        Takes the nutrient totals rather than querying for them: both meal webhook call
+        sites fire from an ``after_commit`` hook, where the triggering Session is in a
+        committed state and SQLAlchemy refuses to emit further SQL on it until the *next*
+        transaction - which here would be one that never comes.
+        """
+        nutrients = nutrients or {}
+        macros = {
+            "protein_g": as_float(nutrients.get(SeriesType.dietary_protein)),
+            "carbohydrates_g": as_float(nutrients.get(SeriesType.dietary_carbohydrates)),
+            "fat_g": as_float(nutrients.get(SeriesType.dietary_fat_total)),
+            "fiber_g": as_float(nutrients.get(SeriesType.dietary_fiber)),
+        }
+        return {
+            "calories_kcal": as_float(nutrients.get(SeriesType.dietary_energy_consumed)),
+            "macros": macros if any(v is not None for v in macros.values()) else None,
+            "water_ml": as_float(nutrients.get(SeriesType.hydration)),
+        }
+
+    def _schedule_meal_webhook(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+        nutrients: dict[SeriesType, Decimal] | None,
+    ) -> None:
+        """Defer meal.created until the caller's commit, mirroring bulk_create_details.
+
+        create_or_update_meal only flushes - the caller commits the meal alongside its
+        nutrient samples - so firing here would race a transaction that might still roll back.
+        """
+        if not svix_service.is_enabled():
+            return
+
+        @sa_event.listens_for(db_session, "after_commit", once=True)
+        def _dispatch_meal_webhook(_session: DbSession) -> None:
+            on_meal_created(
+                record_id=record_id,
+                user_id=record.user_id,
+                provider=record.provider or record.source_name,
+                device=record.device_model,
+                start_time=record.start_datetime.isoformat(),
+                end_time=record.end_datetime.isoformat(),
+                zone_offset=record.zone_offset,
+                title=detail.title if isinstance(detail, MealDetailCreate) else None,
+                meal_type=detail.meal_type if isinstance(detail, MealDetailCreate) else None,
+                **self._meal_webhook_fields(nutrients),
+            )
 
     def bulk_create(
         self,
@@ -704,8 +782,14 @@ class EventRecordService(
         db_session: DbSession,
         details: list[EventRecordDetailCreate],
         detail_type: str = "workout",
+        nutrients_by_record: dict[UUID, dict[SeriesType, Decimal]] | None = None,
     ) -> None:
-        """Bulk create event record details and fire one webhook per detail on commit."""
+        """Bulk create event record details and fire one webhook per detail on commit.
+
+        ``nutrients_by_record`` carries the dietary DataPointSeries totals per meal, keyed by
+        record id - needed for meal.created, since MealDetailCreate itself has no nutrient
+        fields (those live in DataPointSeries, inserted separately by the caller).
+        """
         self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)  # ty:ignore[invalid-argument-type]
 
         if not details or not svix_service.is_enabled():
@@ -724,7 +808,7 @@ class EventRecordService(
         )
         data_sources_by_id = {ds.id: ds for ds in data_sources}
 
-        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
+        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate, dict[SeriesType, Decimal] | None]] = []
         for detail in details:
             record = records_by_id.get(detail.record_id)
             if record is None or record.data_source_id is None:
@@ -732,7 +816,8 @@ class EventRecordService(
             data_source = data_sources_by_id.get(record.data_source_id)
             if data_source is None:
                 continue
-            dispatches.append((record, data_source, detail))
+            nutrients = (nutrients_by_record or {}).get(detail.record_id)
+            dispatches.append((record, data_source, detail, nutrients))
 
         if not dispatches:
             return
@@ -747,8 +832,8 @@ class EventRecordService(
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
-            for record, data_source, detail in dispatches:
-                self._emit_event_record_webhook(record, data_source, detail)
+            for record, data_source, detail, nutrients in dispatches:
+                self._emit_event_record_webhook(record, data_source, detail, nutrients)
 
     @handle_exceptions
     def _get_records_with_filters(
