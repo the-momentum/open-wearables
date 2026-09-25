@@ -278,11 +278,12 @@ def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
     assert [stage.stage.value for stage in second.sleep_stages] == ["light"]
 
 
+@patch("app.services.providers.withings.data_247.log_and_capture_error")
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
 def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
-    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock
+    mock_paginate: MagicMock, mock_request: MagicMock, mock_event: MagicMock, mock_error: MagicMock
 ) -> None:
     # Withings documents a 24h cap on this endpoint, which makes a long sync one page per night.
     nights = [
@@ -298,7 +299,7 @@ def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
     mock_request.side_effect = [
         {"series": [{"startdate": night["startdate"] + 900, "enddate": night["startdate"] + 4500, "state": 2}]}
         for night in nights
-    ]
+    ] + [{"series": []}]
 
     _data_247().save_sleep(
         MagicMock(), uuid4(), datetime(2020, 7, 7, tzinfo=timezone.utc), datetime(2020, 9, 20, tzinfo=timezone.utc)
@@ -307,6 +308,8 @@ def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
     stored = [call.args[3].sleep_stages for call in mock_event.create_or_merge_sleep.call_args_list]
     assert len(stored) == len(nights)
     assert all(stages for stages in stored), "a night was saved without stages"
+    # The walk ends because it covered the nights, not because a request blew up.
+    mock_error.assert_not_called()
 
 
 @patch("app.services.providers.withings.data_247.log_structured")
