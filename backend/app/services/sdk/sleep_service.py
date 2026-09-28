@@ -169,7 +169,7 @@ def _apply_transition(
 
     if zone_offset and not state.zone_offset:
         state.zone_offset = zone_offset
-    if device_type and not state.device_type:
+    if device_type and not state.device_type and (source_name or "unknown") == state.source_name:
         state.device_type = device_type
 
     duration_seconds = (end_time - start_time).total_seconds()
