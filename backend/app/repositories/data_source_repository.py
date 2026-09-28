@@ -113,8 +113,8 @@ class DataSourceRepository(
 
     @staticmethod
     def next_device_type(provider: ProviderName, current: str | None, resolved: DeviceType) -> str | None:
-        """Reported-type rows (SDK, Google) only upgrade from unset/"other"; others take the inferred type."""
-        if provider.value not in sdk_providers() and provider != ProviderName.GOOGLE_HEALTH:
+        """Cloud rows take the inferred type; SDK rows only upgrade from unset/"other"."""
+        if provider.value not in sdk_providers():
             return resolved.value if resolved != DeviceType.UNKNOWN else None
         if current in (None, DeviceType.OTHER) and resolved not in (DeviceType.UNKNOWN, current):
             return resolved.value

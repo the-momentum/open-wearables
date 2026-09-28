@@ -4,6 +4,7 @@
 Applies the same rule as live sync (``DataSourceRepository.next_device_type``): cloud-provider
 rows are recomputed outright, which also corrects types the old keywords got wrong (e.g. Garmin
 Index BPM stored as scale); SDK-provider rows only upgrade NULL/``other`` to a concrete type.
+iPad rows stored as phone move to tablet: that phone came from the same productType, not the SDK.
 Later mapping changes reach existing rows on their next sync, so this only needs to run once.
 
 Idempotent: a second run finds nothing to change. Safe to run on every startup until removed.
@@ -22,7 +23,7 @@ from app.constants.devices_map import infer_device_type
 from app.database import SessionLocal
 from app.models import DataSource
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import DeviceType, ProviderName
 
 
 def backfill_device_types(db: Session, *, dry_run: bool) -> Counter[str]:
@@ -37,7 +38,16 @@ def backfill_device_types(db: Session, *, dry_run: bool) -> Counter[str]:
         except ValueError:
             continue
         resolved = infer_device_type(provider, ds.device_model, ds.original_source_name or ds.source)
+        # Google formFactor isn't stored, so recomputing here would undo it; live sync recomputes Google rows
+        if provider == ProviderName.GOOGLE_HEALTH and ds.device_type not in (None, DeviceType.OTHER):
+            continue
         new_type = DataSourceRepository.next_device_type(provider, ds.device_type, resolved)
+        if (
+            ds.device_type == DeviceType.PHONE
+            and resolved == DeviceType.TABLET
+            and (ds.device_model or "").startswith("iPad")
+        ):
+            new_type = DeviceType.TABLET.value
         if new_type == ds.device_type:
             continue
         changes[f"{provider.value}: {ds.device_type} -> {new_type}"] += 1
