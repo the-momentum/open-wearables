@@ -77,7 +77,12 @@ class DataSourceRepository(
             device_type = self.next_device_type(
                 provider,
                 existing.device_type,
-                infer_device_type(provider, device_model, original_source_name, reported_type),
+                infer_device_type(
+                    provider,
+                    device_model,
+                    original_source_name or existing.original_source_name or existing.source,
+                    reported_type,
+                ),
             )
             if device_type != existing.device_type:
                 object.__setattr__(existing, "device_type", device_type)
@@ -89,7 +94,7 @@ class DataSourceRepository(
         provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         provider_priority_repo.ensure_provider_exists(db_session, provider)
 
-        device_type = infer_device_type(provider, device_model, original_source_name, reported_type)
+        device_type = infer_device_type(provider, device_model, original_source_name or source, reported_type)
 
         create_payload = DataSourceCreate(
             id=uuid4(),
@@ -145,7 +150,9 @@ class DataSourceRepository(
             device_type = self.next_device_type(
                 provider,
                 ds.device_type,
-                infer_device_type(provider, ds.device_model, ds.source, reported_types.get(identity)),
+                infer_device_type(
+                    provider, ds.device_model, ds.original_source_name or ds.source, reported_types.get(identity)
+                ),
             )
             if device_type != ds.device_type:
                 object.__setattr__(ds, "device_type", device_type)
