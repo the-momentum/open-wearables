@@ -46,7 +46,7 @@ class TestBackfillDeviceTypes:
 
         backfill_device_types(db, dry_run=False)
 
-        assert bpm.device_type == "other"
+        assert bpm.device_type == "bp_monitor"
         assert gearless.device_type is None
 
     def test_never_overwrites_concrete_sdk_type(self, db: Session) -> None:

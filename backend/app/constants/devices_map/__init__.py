@@ -3,7 +3,7 @@ from .device_types import (
     infer_device_type,
     infer_device_type_from_model,
     infer_device_type_from_source_name,
-    map_sdk_device_type,
+    map_reported_device_type,
 )
 from .samsung import SAMSUNG_DEVICE_NAMES
 
@@ -29,6 +29,6 @@ __all__ = [
     "infer_device_type",
     "infer_device_type_from_model",
     "infer_device_type_from_source_name",
-    "map_sdk_device_type",
+    "map_reported_device_type",
     "resolve_device_name",
 ]

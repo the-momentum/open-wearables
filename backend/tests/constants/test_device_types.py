@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.constants.devices_map import infer_device_type, infer_device_type_from_model, map_sdk_device_type
+from app.constants.devices_map import infer_device_type, infer_device_type_from_model, map_reported_device_type
 from app.schemas.enums import DeviceType, ProviderName
 
 
@@ -25,7 +25,7 @@ class TestInferDeviceTypeFromModel:
             ("Pixel Watch 2", DeviceType.WATCH),
             ("Galaxy Watch7", DeviceType.WATCH),
             ("Galaxy Fit3", DeviceType.BAND),
-            ("Galaxy Buds2 Pro", DeviceType.OTHER),
+            ("Galaxy Buds2 Pro", DeviceType.HEADPHONES),
             ("motorola edge 60 pro", DeviceType.PHONE),
             ("Charge 4", DeviceType.BAND),
             ("Inspire 3", DeviceType.BAND),
@@ -35,17 +35,22 @@ class TestInferDeviceTypeFromModel:
             ("Polar Loop Gen 2", DeviceType.BAND),
             ("Polar 360", DeviceType.BAND),
             ("Polar Vantage M3", DeviceType.WATCH),
-            ("Polar H10", DeviceType.OTHER),
-            ("Polar Verity Sense", DeviceType.OTHER),
+            ("Polar H10", DeviceType.CHEST_STRAP),
+            ("Polar Verity Sense", DeviceType.HR_SENSOR),
             ("Garmin fenix 8 Pro", DeviceType.WATCH),
             ("Garmin vivoactive 5", DeviceType.WATCH),
-            ("Garmin Edge 1030", DeviceType.OTHER),
-            ("HRM-Pro Plus", DeviceType.OTHER),
+            ("Garmin Edge 1030", DeviceType.BIKE_COMPUTER),
+            ("HRM-Pro Plus", DeviceType.CHEST_STRAP),
             ("Garmin Index S2", DeviceType.SCALE),
             ("Suunto Race 2", DeviceType.WATCH),
             ("Moto 360", DeviceType.WATCH),
-            ("Suunto Wing 2 Bone Conduction Headphone", DeviceType.OTHER),
-            ("Garmin Index BPM", DeviceType.OTHER),
+            ("H10", DeviceType.CHEST_STRAP),
+            ("Edge 540", DeviceType.BIKE_COMPUTER),
+            ("iPad13,1", DeviceType.TABLET),
+            ("SM-X710", DeviceType.TABLET),
+            ("Galaxy Tab S9", DeviceType.TABLET),
+            ("Suunto Wing 2 Bone Conduction Headphone", DeviceType.HEADPHONES),
+            ("Garmin Index BPM", DeviceType.BP_MONITOR),
             ("Garmin Index Sleep Monitor", DeviceType.BAND),
             ("Garmin fēnix 8", DeviceType.WATCH),
             ("Garmin vívoactive 6", DeviceType.WATCH),
@@ -53,7 +58,7 @@ class TestInferDeviceTypeFromModel:
             ("Garmin Approach S70", DeviceType.WATCH),
             ("Huawei Watch Buds", DeviceType.WATCH),
             ("Galaxy Ring", DeviceType.RING),
-            ("Suunto Smart Heart Rate Belt", DeviceType.OTHER),
+            ("Suunto Smart Heart Rate Belt", DeviceType.CHEST_STRAP),
         ],
     )
     def test_infers_type(self, device_model: str | None, expected: DeviceType) -> None:
@@ -79,7 +84,7 @@ class TestInferDeviceType:
 
     def test_suunto_resolves_from_gear_model(self) -> None:
         assert infer_device_type(ProviderName.SUUNTO, "Suunto Race 2") == DeviceType.WATCH
-        assert infer_device_type(ProviderName.SUUNTO, "Polar H10") == DeviceType.OTHER
+        assert infer_device_type(ProviderName.SUUNTO, "Polar H10") == DeviceType.CHEST_STRAP
 
     @pytest.mark.parametrize("source_name", ["Loop", "Pacer", "Sleep Monitoring", "Bracelet"])
     def test_app_and_word_substrings_are_not_devices(self, source_name: str) -> None:
@@ -89,7 +94,7 @@ class TestInferDeviceType:
         assert infer_device_type(ProviderName.SUUNTO, None, "suunto") == DeviceType.UNKNOWN
 
     def test_unmatched_model_stays_other(self) -> None:
-        assert infer_device_type(ProviderName.GARMIN, "Garmin Edge 1030") == DeviceType.OTHER
+        assert infer_device_type(ProviderName.GARMIN, "Garmin Varia RTL515") == DeviceType.OTHER
 
 
 class TestReportedDeviceType:
@@ -97,13 +102,16 @@ class TestReportedDeviceType:
         ("sdk_value", "expected"),
         [
             ("fitness_band", DeviceType.BAND),
-            ("chest_strap", DeviceType.OTHER),
+            ("chest_strap", DeviceType.CHEST_STRAP),
+            ("hearable", DeviceType.HEADPHONES),
+            ("TABLET", DeviceType.TABLET),
+            ("FORM_FACTOR_UNSPECIFIED", None),
             ("unknown", None),
             (None, None),
         ],
     )
-    def test_map_sdk_device_type(self, sdk_value: str | None, expected: DeviceType | None) -> None:
-        assert map_sdk_device_type(sdk_value) == expected
+    def test_map_reported_device_type(self, sdk_value: str | None, expected: DeviceType | None) -> None:
+        assert map_reported_device_type(sdk_value) == expected
 
     def test_sdk_type_wins_over_inference(self) -> None:
         assert infer_device_type(ProviderName.SAMSUNG, "cybert-model", "cybert", DeviceType.PHONE) == DeviceType.PHONE

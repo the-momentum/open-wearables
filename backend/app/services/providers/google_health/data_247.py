@@ -26,7 +26,7 @@ from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, SeriesType
+from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, DeviceType, SeriesType
 from app.schemas.enums.aggregation_method import daily_total_flag
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.schemas.providers.google import (
@@ -41,6 +41,7 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     civil_interval,
+    extract_form_factor,
     extract_source,
     parse_date,
     parse_page,
@@ -413,13 +414,21 @@ class GoogleHealth247Data(Base247DataTemplate):
                 continue
             # Only list points carry a dataSource; reconciled points are already merged.
             device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
+            device_type = None if reconcile else extract_form_factor(point.get("dataSource"))
             for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
                 value = read_number(value_obj, field, subfield, scale)
                 if value is None or value == 0:
                     continue
                 samples.append(
                     self._sample(
-                        user_id, recorded_at, value, series_type, spec.is_daily_total, zone_offset, device_model
+                        user_id,
+                        recorded_at,
+                        value,
+                        series_type,
+                        spec.is_daily_total,
+                        zone_offset,
+                        device_model,
+                        device_type,
                     )
                 )
         return samples
@@ -532,6 +541,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         is_daily_total: bool,
         zone_offset: str | None = None,
         device_model: str | None = None,
+        device_type: DeviceType | None = None,
     ) -> TimeSeriesSampleCreate:
         return TimeSeriesSampleCreate(
             id=uuid4(),
@@ -539,6 +549,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             source=GOOGLE_HEALTH_API_SOURCE,
             provider=self.provider_name,
             device_model=device_model,
+            device_type=device_type,
             recorded_at=recorded_at,
             zone_offset=zone_offset,
             value=value,

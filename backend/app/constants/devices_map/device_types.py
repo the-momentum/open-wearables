@@ -14,23 +14,32 @@ SINGLE_DEVICE_PROVIDER_TYPE: dict[ProviderName, DeviceType] = {
     ProviderName.WHOOP: DeviceType.BAND,
 }
 
-# Device type reported by the mobile SDKs (Health Connect / Samsung / HealthKit)
-SDK_DEVICE_TYPE_MAP: dict[str, DeviceType] = {
+# Reported device types: mobile SDK deviceType (Health Connect Device.type, incl. extended
+# types) and Google Health dataSource.device.formFactor, lowercased
+REPORTED_DEVICE_TYPE_MAP: dict[str, DeviceType] = {
     "phone": DeviceType.PHONE,
     "watch": DeviceType.WATCH,
     "ring": DeviceType.RING,
     "scale": DeviceType.SCALE,
     "fitness_band": DeviceType.BAND,
-    "chest_strap": DeviceType.OTHER,
-    "head_mounted": DeviceType.OTHER,
-    "smart_display": DeviceType.OTHER,
+    "chest_strap": DeviceType.CHEST_STRAP,
+    "head_mounted": DeviceType.HEAD_MOUNTED,
+    "smart_display": DeviceType.SMART_DISPLAY,
+    "tablet": DeviceType.TABLET,
+    "hearable": DeviceType.HEADPHONES,
+    "glasses": DeviceType.GLASSES,
+    "fitness_machine": DeviceType.FITNESS_MACHINE,
+    "fitness_equipment": DeviceType.FITNESS_MACHINE,
+    "consumer_medical_device": DeviceType.OTHER,
+    "meter": DeviceType.OTHER,
+    "portable_computer": DeviceType.OTHER,
 }
 
-# Apple productType codes, case-sensitive; iPad is treated as phone for priority purposes
+# Apple productType codes, case-sensitive
 APPLE_PRODUCT_TYPE_PREFIXES: list[tuple[str, DeviceType]] = [
     ("Watch", DeviceType.WATCH),
     ("iPhone", DeviceType.PHONE),
-    ("iPad", DeviceType.PHONE),
+    ("iPad", DeviceType.TABLET),
 ]
 
 # Samsung model code prefix (SM-X...); SM-R is skipped as it mixes watches, bands and buds
@@ -38,31 +47,20 @@ SAMSUNG_MODEL_CODE = re.compile(r"^SM-([A-Z])\d")
 SAMSUNG_MODEL_PREFIX_DEVICE_TYPE: dict[str, DeviceType] = {
     "L": DeviceType.WATCH,
     "Q": DeviceType.RING,
-    **dict.fromkeys("SAMGFNEXTP", DeviceType.PHONE),
+    **dict.fromkeys("SAMGFNE", DeviceType.PHONE),
+    **dict.fromkeys("XTP", DeviceType.TABLET),
 }
 
-WEARABLE_DEVICE_TYPES = frozenset({DeviceType.WATCH, DeviceType.BAND, DeviceType.RING, DeviceType.SCALE})
-
 # Substrings of the normalized model (lowercased, accents stripped); first match wins, so
-# order matters. A leading \b anchors the keyword to a word start ("ring" vs "monitoring").
+# order matters. Keywords starting with \b or ^ are regexes anchored to a word or string start.
 DEVICE_MODEL_KEYWORDS: list[tuple[tuple[str, ...], DeviceType]] = [
-    # Sensors, straps, earbuds, headphones and Garmin non-scale Index devices
-    (
-        (
-            "verity sense",
-            "polar h",
-            "oh1",
-            "hrm",
-            "heart rate belt",
-            "headphone",
-            "earphone",
-            "suunto wing",
-            "index bpm",
-        ),
-        DeviceType.OTHER,
-    ),
+    ((r"\bpolar h", r"^h(7|9|10)\b", "hrm", "heart rate belt"), DeviceType.CHEST_STRAP),
+    (("verity sense", "oh1"), DeviceType.HR_SENSOR),
+    (("headphone", "earphone", "suunto wing", "airpods"), DeviceType.HEADPHONES),
+    (("index bpm", "blood pressure"), DeviceType.BP_MONITOR),
+    (("garmin edge", r"^edge \d"), DeviceType.BIKE_COMPUTER),
     (("watch", "moto 360"), DeviceType.WATCH),
-    (("buds",), DeviceType.OTHER),
+    (("buds",), DeviceType.HEADPHONES),
     (
         (
             "band",
@@ -81,6 +79,7 @@ DEVICE_MODEL_KEYWORDS: list[tuple[tuple[str, ...], DeviceType]] = [
         DeviceType.BAND,
     ),
     ((r"\bring", "oura"), DeviceType.RING),
+    (("ipad", "galaxy tab", "pixel tablet"), DeviceType.TABLET),
     (("phone", "pixel", "galaxy", "motorola", "moto "), DeviceType.PHONE),
     (("scale", "index s2"), DeviceType.SCALE),
     # Garmin
@@ -117,7 +116,7 @@ SOURCE_NAME_KEYWORDS: list[tuple[tuple[str, ...], DeviceType]] = [
 
 
 def _keyword_pattern(keywords: tuple[str, ...]) -> re.Pattern[str]:
-    return re.compile("|".join(k if k.startswith(r"\b") else re.escape(k) for k in keywords))
+    return re.compile("|".join(k if k.startswith((r"\b", "^")) else re.escape(k) for k in keywords))
 
 
 _MODEL_PATTERNS = [(_keyword_pattern(k), t) for k, t in DEVICE_MODEL_KEYWORDS]
@@ -171,11 +170,11 @@ def infer_device_type_from_source_name(source_name: str | None) -> DeviceType:
     return _match_keywords(name, _SOURCE_PATTERNS) or _match_keywords(name, _MODEL_PATTERNS) or DeviceType.UNKNOWN
 
 
-def map_sdk_device_type(sdk_device_type: str | None) -> DeviceType | None:
-    """Map a mobile SDK deviceType to DeviceType; unknown or unmapped values yield None."""
-    if not sdk_device_type:
+def map_reported_device_type(reported: str | None) -> DeviceType | None:
+    """Map an SDK deviceType or Google formFactor to DeviceType; unknown or unmapped values yield None."""
+    if not reported:
         return None
-    return SDK_DEVICE_TYPE_MAP.get(str(sdk_device_type).lower())
+    return REPORTED_DEVICE_TYPE_MAP.get(str(reported).lower())
 
 
 def infer_device_type(
@@ -184,7 +183,7 @@ def infer_device_type(
     original_source_name: str | None = None,
     reported_type: DeviceType | None = None,
 ) -> DeviceType:
-    """Resolve device type: single-device provider, then the SDK-reported type, then inference."""
+    """Resolve device type: single-device provider, then the reported type, then inference."""
     if provider in SINGLE_DEVICE_PROVIDER_TYPE:
         return SINGLE_DEVICE_PROVIDER_TYPE[provider]
 
@@ -196,8 +195,8 @@ def infer_device_type(
             inferred = from_name
 
     if reported_type and reported_type != DeviceType.UNKNOWN:
-        # SDKs before the Samsung fix report Galaxy watches as phone
-        if reported_type == DeviceType.PHONE and inferred in WEARABLE_DEVICE_TYPES:
+        # SDKs before the Samsung fix report Galaxy watches as phone; iOS reports iPads as phone
+        if reported_type == DeviceType.PHONE and inferred not in (DeviceType.UNKNOWN, DeviceType.OTHER):
             return inferred
         return reported_type
 

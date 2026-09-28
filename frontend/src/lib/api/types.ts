@@ -351,7 +351,26 @@ export interface SleepStage {
 }
 
 export type DeviceType =
-  'watch' | 'band' | 'ring' | 'phone' | 'scale' | 'other' | 'unknown';
+  | 'watch'
+  | 'band'
+  | 'ring'
+  | 'phone'
+  | 'scale'
+  | 'tablet'
+  | 'chest_strap'
+  | 'hr_sensor'
+  | 'headphones'
+  | 'head_mounted'
+  | 'glasses'
+  | 'smart_display'
+  | 'bp_monitor'
+  | 'glucose_meter'
+  | 'thermometer'
+  | 'sleep_monitor'
+  | 'bike_computer'
+  | 'fitness_machine'
+  | 'other'
+  | 'unknown';
 
 export interface SourceMetadata {
   provider: string;

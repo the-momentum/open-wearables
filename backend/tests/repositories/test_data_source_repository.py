@@ -97,7 +97,7 @@ class TestDataSourceRepository:
         db.flush()
 
         repo.ensure_data_source(db, **identity)
-        assert repo.get_by_identity(db, **identity).device_type == DeviceType.OTHER
+        assert repo.get_by_identity(db, **identity).device_type == DeviceType.BP_MONITOR
 
     def test_batch_upgrades_unset_device_type(self, db: Session) -> None:
         user = UserFactory()

@@ -1,6 +1,6 @@
 """Device resolution utilities for mobile SDK data (HealthKit, Health Connect, Samsung Health)."""
 
-from app.constants.devices_map import map_sdk_device_type
+from app.constants.devices_map import map_reported_device_type
 from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import OSVersion, SourceInfo
 
@@ -59,4 +59,4 @@ def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | No
 
 def extract_device_type(source: SourceInfo | None) -> DeviceType | None:
     """Device type reported by the SDK, or None when absent or unknown."""
-    return map_sdk_device_type(source.device_type) if source else None
+    return map_reported_device_type(source.device_type) if source else None
