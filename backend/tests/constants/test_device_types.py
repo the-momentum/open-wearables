@@ -117,6 +117,12 @@ class TestReportedDeviceType:
         assert infer_device_type(ProviderName.SAMSUNG, "cybert-model", "cybert", DeviceType.PHONE) == DeviceType.PHONE
         assert infer_device_type(ProviderName.HEALTH_CONNECT, "Pixel 8", None, DeviceType.WATCH) == DeviceType.WATCH
 
+    def test_specific_inference_overrides_reported_other(self) -> None:
+        assert (
+            infer_device_type(ProviderName.SAMSUNG, "Garmin Index BPM", None, DeviceType.OTHER) == DeviceType.BP_MONITOR
+        )
+        assert infer_device_type(ProviderName.SAMSUNG, "unlisted-model", None, DeviceType.OTHER) == DeviceType.OTHER
+
     def test_unknown_sdk_type_falls_back_to_inference(self) -> None:
         assert infer_device_type(ProviderName.HEALTH_CONNECT, "Pixel 8", None, DeviceType.UNKNOWN) == DeviceType.PHONE
 

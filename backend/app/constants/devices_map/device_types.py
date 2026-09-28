@@ -195,8 +195,11 @@ def infer_device_type(
             inferred = from_name
 
     if reported_type and reported_type != DeviceType.UNKNOWN:
-        # SDKs before the Samsung fix report Galaxy watches as phone; iOS reports iPads as phone
-        if reported_type == DeviceType.PHONE and inferred not in (DeviceType.UNKNOWN, DeviceType.OTHER):
+        # Old Samsung SDKs report watches as phone, iOS reports iPads as phone; "other" is only a vague category
+        if reported_type in (DeviceType.PHONE, DeviceType.OTHER) and inferred not in (
+            DeviceType.UNKNOWN,
+            DeviceType.OTHER,
+        ):
             return inferred
         return reported_type
 
