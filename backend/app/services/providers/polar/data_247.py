@@ -509,7 +509,7 @@ class Polar247Data(Base247DataTemplate):
                 continue
             if not parsed.date:
                 continue
-            # A date with no offset: the night is anchored to UTC midnight, like every other sample.
+            # Polar sends a bare date, so anchor the night to UTC midnight instead of leaving it naive.
             recorded_at = datetime.fromisoformat(parsed.date).replace(tzinfo=timezone.utc)
             for value, series_type in (
                 (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),

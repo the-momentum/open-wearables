@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, SeriesType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
@@ -400,8 +401,13 @@ class TestPolar247NightlyRechargeNormalization:
             patch.object(data_247, "get_nightly_recharge_data", return_value=[sample_recharge]),
             patch("app.services.providers.polar.data_247.timeseries_service") as timeseries,
         ):
-            timeseries.bulk_create_samples.return_value = 2
-            saved = data_247._save_nightly_recharge(MagicMock(), uuid4(), None, None)
+            timeseries.bulk_create_samples.return_value = WriteCounts(inserted=2, updated=0)
+            saved = data_247._save_nightly_recharge(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 31, tzinfo=timezone.utc),
+            )
 
         assert saved == 2
 
