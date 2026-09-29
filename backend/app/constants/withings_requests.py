@@ -49,6 +49,7 @@ SLEEP_SUMMARY = WithingsDataRequest(
         "remsleepduration",
         "wakeupduration",
         "sleep_efficiency",
+        "hr_min",
     ),
 )
 

@@ -55,7 +55,7 @@ This guide gives an overview of data type support across the integrated wearable
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ |
 | `heart_rate_variability_sdnn` | ms | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `resting_heart_rate` | bpm | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
+| `resting_heart_rate` | bpm | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Blood & Respiratory
@@ -114,7 +114,7 @@ This guide gives an overview of data type support across the integrated wearable
 | `flights_climbed` | count | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `physical_effort` | score | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `stand_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `steps` | count | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ |
+| `steps` | count | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 
 ### Activity - Distance
 
@@ -370,7 +370,7 @@ Key differences and limitations to be aware of when working with each provider:
   - Workout types are matched on Whoop's lowercase hyphenated `sport_name` slug (e.g. `hiking-rucking`), falling back to the deprecated numeric `sport_id` for unlisted slugs
   - Workout metrics include: avg/max heart rate, calories, distance, elevation gain, moving time
   - Continuous heart rate data is **not available** via API (only during workouts)
-  - Does not track steps (device limitation)
+  - Daily step count from the cycle's `step_count` (null when there is no step data, e.g. the device was not worn)
   - Sleep data fully implemented with all stages and efficiency
   - Recovery data fully implemented: recovery score, resting heart rate, HRV (RMSSD), SpO2, skin temperature
   - Body measurements (height, weight) synced from user profile

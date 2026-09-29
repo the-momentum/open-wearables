@@ -1,7 +1,7 @@
 ---
 title: "Google Health API Integration"
 description: "Connect Google Health via OAuth 2.0 to sync 24/7 metrics, workouts, and sleep. Choose reconcile (app-accurate merged totals) or list (per-device) fetch modes. Notify-only webhooks supported."
-keywords: ["google health api integration", "google health oauth", "google health connect api", "reconcile vs list", "google health webhooks"]
+keywords: ["google health api integration", "google health oauth", "google health connect api", "reconcile vs list", "google health webhooks", "google oauth verification", "casa security assessment", "restricted scopes"]
 "og:title": "Google Health API Integration | Open Wearables"
 "og:description": "Connect Google Health via OAuth 2.0. Syncs 24/7 metrics, workouts, and sleep. Reconcile or list fetch modes; notify-only webhooks."
 "og:url": "https://docs.openwearables.io/providers/google-api-integration"
@@ -93,6 +93,7 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
 - **OAuth client credentials** (Client ID + Secret) with the Google Health scopes
 - **Redirect URI** registered in your OAuth client
 - *(Webhooks only)* A **service account** for project-level subscriber registration
+- *(Production only)* A **verified OAuth app** and a CASA **Letter of Validation** — see [Verification and security assessment](#verification-and-security-assessment)
 
 ## Prerequisites
 
@@ -200,6 +201,133 @@ GOOGLE_USE_RECONCILE=true
     If data is returned, your Google Health API integration is working end-to-end.
   </Step>
 </Steps>
+
+## Verification and security assessment
+
+Every `googlehealth.*` scope Open Wearables requests is a **restricted** scope, and Google gates those behind two independent reviews. Both run against **your** Google Cloud project — the OAuth client, consent screen and privacy policy are yours, so nobody can be verified on your behalf. Start early: the security assessment alone runs weeks, and it has to be redone every year.
+
+| Review | Run by | Cost | Typical duration |
+|--------|--------|------|------------------|
+| [Brand verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/brand-verification) | Google, mostly automated | free | minutes; 2-3 business days if a human looks |
+| [OAuth app verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification) | Google Trust and Safety | free | several weeks — it does not close until the CASA result lands |
+| [CASA security assessment](https://developers.google.com/health/app-verification) | a third-party [authorized lab](https://www.appdefensealliance.org/certification/authorized-labs) | $500-$4,500 USD | 2-3 weeks (tier 2), 4-6 weeks (tier 3) |
+
+<Warning>
+Google publishes no end-to-end figure. The parts it does publish — days for branding, "several weeks" for the scope review, 2-6 weeks for the assessment — put a realistic first pass at **one to two months**, so start well before you need it. The assessment is annual, so set a reminder a month before each anniversary rather than letting restricted-scope access lapse.
+</Warning>
+
+### Does this apply to you?
+
+| Your situation | What you need |
+|----------------|---------------|
+| Local development, internal testing, a pilot with a handful of known users | Nothing. Leave the app in **Testing** and add each person as a test user — but read *Running unverified* below first. |
+| Production, or anything open to the public | All three reviews above. |
+| Only people inside your own Google Workspace organization | Set the OAuth client's user type to **Internal**. Verification does not apply. |
+| Only the Health Connect mobile SDK (provider `health_connect`) | Not this process at all — that path never touches Google OAuth. It is governed by the Play Console health apps declaration for your Android app. |
+
+<Note>
+Verification attaches to the **Google Cloud project** — its consent screen and branding — not to an individual OAuth client, so every client in a verified project rides on the same submission. Keep a separate project for staging: Google exempts apps in the development, testing or staging phases, so that one stays in **Testing** and is never reviewed even though it requests the same restricted scopes.
+</Note>
+
+<AccordionGroup>
+  <Accordion icon="clipboard-check" title="Before you submit: branding, policy and in-app disclosure">
+    Most rejections happen on branding and policy grounds, before anyone looks at your scopes. Have all four ready first.
+
+    **Verified domain ownership.** Every domain used in your consent screen links must be verified in [Google Search Console](https://search.google.com/search-console) by an account with owner permission — the same account that submits the app. Google verifies the **top private domain**, so `example.com` covers `https://app.example.com/connect`.
+
+    **A public home page.** Reachable without logging in, and clearly about the app being verified. A parked domain or a generic company landing page is rejected.
+
+    **A privacy policy that names Google user data.** Hosted on a verified domain, linked from the consent screen, and explicit about how you access, use, store and share Google user data. It must also commit to the [Limited Use requirements](https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes): the data only powers user-facing features, is not transferred except as permitted, is not read by humans without the user's affirmative agreement, and is never used for advertising, retargeting, data brokerage or credit decisions.
+
+    **An in-app prominent disclosure.** A separate requirement from the privacy policy, and a common reason for a second review round. Google requires that it:
+
+    - is **in the app itself**, not only in the app description or on a website
+    - appears **in normal usage**, without the user navigating into a menu or settings
+    - describes the data being accessed or collected, and how it is used or shared
+    - is not bundled with disclosures unrelated to Google Health API data
+
+    Google's suggested shape: `{App name} collects health and fitness data to enable {feature}, {feature}, and {feature}.`
+  </Accordion>
+
+  <Accordion icon="circle-check" title="OAuth app verification: branding, scopes, demo video">
+    <Steps>
+      <Step title="Publish your branding">
+        Fill in the Branding page in the Cloud Console (app name, logo, support email, home page, privacy policy, authorized domains), click **Verify branding**, then **Publish branding**.
+
+        <Warning>
+        A passing branding result is valid for **7 days**. If you don't publish inside that window you have to run the whole check again.
+        </Warning>
+      </Step>
+
+      <Step title="Declare and justify every scope">
+        In the Verification Center, declare each scope and say specifically what breaks without it. Vague justifications are the main cause of delay.
+
+        | Scope | What it powers in Open Wearables |
+        |-------|----------------------------------|
+        | `activity_and_fitness.readonly` | Steps, distance, calories, VO₂ max, and workouts (Exercise sessions) |
+        | `health_metrics_and_measurements.readonly` | Heart rate, resting heart rate, HRV, SpO₂, respiratory rate, weight, body fat, core body temperature, blood glucose |
+        | `nutrition.readonly` | Hydration |
+        | `sleep.readonly` | Sleep sessions and stages |
+        | `settings.readonly` | The user's Health account settings. Open Wearables also reads `/v4/users/me/identity` during the OAuth callback to resolve the stable `healthUserId` that inbound webhooks are matched against |
+        | `openid`, `email` | Sign-in only — neither is sensitive or restricted |
+
+        <Tip>
+        Trim `GOOGLE_DEFAULT_SCOPE` to the data types you actually surface before you submit. Every extra restricted scope is another justification to defend, and unused ones are reviewed just as hard as the rest.
+        </Tip>
+      </Step>
+
+      <Step title="Record the demonstration video">
+        An unlisted YouTube video, narrated or captioned in English, showing the full OAuth grant flow: your app name on the consent screen, your OAuth client ID visible in the browser address bar, and what each requested scope enables once consent is given.
+
+        <Tip>
+        Record the Open Wearables connect view end to end — **Connect** on Google Health → Google consent → the callback landing back on the user page → synced data appearing. That single take covers the grant flow and the per-scope functionality in one pass.
+        </Tip>
+      </Step>
+
+      <Step title="Submit and answer follow-ups">
+        Trust and Safety reviews your app's identity, scopes and justifications. Expect at least one round of questions; restricted-scope submissions are not finished until the security assessment below also lands.
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion icon="shield-halved" title="CASA security assessment: labs, cost, Letter of Validation">
+    Any app that can reach restricted data *from or through a third-party server* must be assessed — which is exactly what a self-hosted Open Wearables deployment is, since it holds the OAuth tokens and stores the synced data server-side. There is no configuration that avoids this.
+
+    The assessment follows the App Defense Alliance's [CASA framework](https://appdefensealliance.dev/casa), built on the OWASP Application Security Verification Standard. Your assurance level is assigned from your scopes, user count and other risk signals, and it can rise year over year as you grow.
+
+    <Steps>
+      <Step title="Pick an authorized lab">
+        The free tier-2 self-scan no longer exists; assessments go through an [authorized lab](https://www.appdefensealliance.org/certification/authorized-labs) — Bishop Fox, DEKRA, Eydle, Leviathan Security, NCC Group, Netsentries, NowSecure, Prescient Security, TAC Security or ValueMentor. Prices vary; developers have reported the low end of the tier-2 range at a few hundred dollars a year.
+      </Step>
+
+      <Step title="Pass the assessment">
+        Beyond the usual application-security checks, the assessor confirms that you handle user data securely and **can delete a user's data on request**. Open Wearables covers that last point out of the box:
+
+        | Action | Endpoint |
+        |--------|----------|
+        | Disconnect a provider | `DELETE /api/v1/users/{user_id}/connections/{provider}` |
+        | Delete the data synced from a provider | `DELETE /api/v1/users/{user_id}/connections/{provider}/data` |
+        | Delete the user entirely | `DELETE /api/v1/users/{user_id}` |
+
+        Retention is configurable too — see [Data lifecycle](/developer-portal/settings/data-lifecycle).
+      </Step>
+
+      <Step title="Submit the Letter of Validation">
+        Passing earns a **Letter of Validation (LOV)** from the assessor. Send it to Google's Trust and Safety team to close out the security assessment.
+
+        <Note>
+        Google does not run the assessment and cannot speed it up. If it stalls, escalate to your assessor, not to Google.
+        </Note>
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion icon="triangle-exclamation" title="Running unverified: the 100-user cap and 7-day refresh tokens">
+    An unverified app is capped at **100 users**, which is enough for development and a closed pilot. The sharper limit is token lifetime: with the publishing status set to **Testing** and an external user type, Google issues refresh tokens that **expire after 7 days**.
+
+    When that happens, Open Wearables' next token refresh gets a 400/401 from Google, marks the connection **revoked**, and emits a `connection.revoked` webhook with reason `refresh_failed`. The user has to run the OAuth flow again. That is workable for a demo and unusable in production — which is the practical deadline for finishing verification.
+  </Accordion>
+</AccordionGroup>
 
 ## Webhooks
 

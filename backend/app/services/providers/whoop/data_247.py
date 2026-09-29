@@ -966,7 +966,7 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         cycle_id: str,
     ) -> int:
-        """Fetch one cycle by ID, normalize, and save its energy sample and strain score.
+        """Fetch one cycle by ID, normalize, and save its daily samples and strain score.
 
         Driven by sleep.updated: waking is what closes a cycle, so that webhook is the
         only signal Whoop gives that a cycle is final. Whoop emits no cycle event of its
@@ -979,11 +979,11 @@ class Whoop247Data(Base247DataTemplate):
         if not raw:
             return 0
         try:
-            energy_sample, strain_score = self.normalize_cycle(raw, user_id)
-            if not energy_sample and not strain_score:
+            daily_samples, strain_score = self.normalize_cycle(raw, user_id)
+            if not daily_samples and not strain_score:
                 return 0
-            if energy_sample:
-                timeseries_service.bulk_create_samples(db, [energy_sample])
+            if daily_samples:
+                timeseries_service.bulk_create_samples(db, daily_samples)
             if strain_score:
                 health_score_service.bulk_create(db, [strain_score])
             db.commit()
@@ -1003,45 +1003,56 @@ class Whoop247Data(Base247DataTemplate):
         self,
         raw_cycle: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[TimeSeriesSampleCreate | None, HealthScoreCreate | None]:
-        """Normalize one cycle into a daily energy sample and a daily strain score.
+    ) -> tuple[list[TimeSeriesSampleCreate], HealthScoreCreate | None]:
+        """Normalize one cycle into daily energy/steps samples and a daily strain score.
 
-        Returns (None, None) for cycles Whoop has not scored yet, and for the one still
+        Returns ([], None) for cycles Whoop has not scored yet, and for the one still
         in progress. SCORED does not mean final: Whoop scores the ongoing cycle too, and
         its strain climbs all day. A missing end is what marks it as still running, so
         both checks are needed — health scores are written with on_conflict_do_nothing,
         so an early partial value would win permanently over the real one.
         """
         if raw_cycle.get("score_state") != "SCORED" or not raw_cycle.get("end"):
-            return None, None
+            return [], None
 
         score = raw_cycle.get("score") or {}
         start = raw_cycle.get("start")
         if not start:
-            return None, None
+            return [], None
 
         try:
             recorded_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
-            return None, None
+            return [], None
 
         zone_offset = raw_cycle.get("timezone_offset")
         kilojoule = score.get("kilojoule")
         strain = score.get("strain")
 
+        # Null step_count means no step data for the cycle (e.g. device not worn throughout).
+        step_count = raw_cycle.get("step_count")
+
         energy_kcal = kilojoules_to_kcal(kilojoule) if kilojoule is not None else None
-        energy_sample = None
+
+        daily_values: list[tuple[SeriesType, Decimal | int]] = []
         if energy_kcal is not None:
-            energy_sample = TimeSeriesSampleCreate(
+            daily_values.append((SeriesType.active_energy, energy_kcal))
+        if step_count is not None:
+            daily_values.append((SeriesType.steps, step_count))
+
+        daily_samples = [
+            TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user_id,
                 source=self.provider_name,
                 recorded_at=recorded_at,
                 zone_offset=zone_offset,
-                value=energy_kcal,
-                series_type=SeriesType.active_energy,
+                value=value,
+                series_type=series_type,
                 is_daily_total=True,
             )
+            for series_type, value in daily_values
+        ]
 
         strain_score = None
         if strain is not None:
@@ -1061,7 +1072,7 @@ class Whoop247Data(Base247DataTemplate):
                 components=components or None,
             )
 
-        return energy_sample, strain_score
+        return daily_samples, strain_score
 
     def load_and_save_cycles(
         self,
@@ -1070,9 +1081,9 @@ class Whoop247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> tuple[int, bool]:
-        """Load cycles from API and save daily energy and strain.
+        """Load cycles from API and save daily energy, steps and strain.
 
-        Returns (daily energy samples saved, partial).
+        Returns (daily samples saved, partial).
         """
         raw_data, truncated = self._fetch_paginated(db, user_id, _CYCLE_ENDPOINT, start_time, end_time, "cycle")
         samples: list[TimeSeriesSampleCreate] = []
@@ -1080,9 +1091,8 @@ class Whoop247Data(Base247DataTemplate):
 
         for item in raw_data:
             try:
-                energy_sample, strain_score = self.normalize_cycle(item, user_id)
-                if energy_sample:
-                    samples.append(energy_sample)
+                daily_samples, strain_score = self.normalize_cycle(item, user_id)
+                samples.extend(daily_samples)
                 if strain_score:
                     health_scores.append(strain_score)
             except Exception as e:
