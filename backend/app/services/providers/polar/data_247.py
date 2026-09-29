@@ -887,11 +887,7 @@ class Polar247Data(Base247DataTemplate):
                 return {"daily_activity": self._save_timeseries(db, self.normalize_daily_activity([raw], user_id))}
 
             case PolarWebhookEventType.CONTINUOUS_HEART_RATE:
-                return {
-                    "continuous_hr": self._save_timeseries(
-                        db, self.normalize_continuous_hr(raw.get("heart_rates", []), user_id)
-                    )
-                }
+                return {"continuous_hr": self._save_timeseries(db, self.normalize_continuous_hr([raw], user_id))}
 
             case PolarWebhookEventType.SLEEP_WISE_ALERTNESS:
                 return {"alertness": self._save_scores(db, self.normalize_alertness([raw], user_id))}

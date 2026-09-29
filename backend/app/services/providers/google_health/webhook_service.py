@@ -26,7 +26,6 @@ from app.config import settings
 from app.constants.google_health_endpoints import SUBSCRIBERS_ENDPOINT
 from app.schemas.responses.incoming_webhooks import (
     GoogleWebhookSubscription,
-    ProviderWebhookSubscription,
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
@@ -156,7 +155,11 @@ class GoogleWebhookService(BaseWebhookService):
 
         return [{"status": "created", "subscriber_id": SUBSCRIBER_ID, "response": response.json()}]
 
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete the subscriber registered under our fixed id, leaving any other one alone."""
+        return [await self.delete_subscription(SUBSCRIBER_ID)]
+
+    async def list_subscriptions(self) -> list[GoogleWebhookSubscription]:
         """List the project's Health API subscribers."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
         try:
@@ -174,9 +177,9 @@ class GoogleWebhookService(BaseWebhookService):
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            return []
+            raise
 
-        result: list[ProviderWebhookSubscription] = []
+        result: list[GoogleWebhookSubscription] = []
         for item in raw.get("subscribers", []):
             try:
                 result.append(GoogleWebhookSubscription.model_validate(item))
@@ -229,11 +232,15 @@ class GoogleWebhookService(BaseWebhookService):
         return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.UPDATED)
 
     async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
-        """Delete a subscriber by id."""
+        """Delete a subscriber by id; a 404 is reported as skipped, not as a failure."""
         headers = {"Authorization": f"Bearer {self._project_token()}"}
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.delete(f"{_subscribers_url()}/{subscription_id}", headers=headers, timeout=30.0)
+                if response.status_code == 404:
+                    return WebhookOperationResult(
+                        subscription_id=subscription_id, status=WebhookSubscriptionStatus.SKIPPED
+                    )
                 response.raise_for_status()
         except httpx.HTTPError as e:
             return _error_result(subscription_id, "delete", e)

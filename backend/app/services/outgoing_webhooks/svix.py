@@ -29,6 +29,7 @@ from svix.api import (
     ListResponseMessageAttemptOut,
     ListResponseMessageOut,
     MessageAttemptListByEndpointOptions,
+    MessageGetOptions,
     MessageIn,
     MessageListOptions,
     MessageOut,
@@ -331,7 +332,7 @@ def get_endpoint_secret(app_id: str, endpoint_id: str) -> str:
 def get_message(app_id: str, msg_id: str) -> MessageOut | None:
     assert _client is not None
     try:
-        return _client.message.get(app_id, msg_id)
+        return _client.message.get(app_id, msg_id, MessageGetOptions(with_content=True))
     except Exception:
         logger.debug("Could not fetch message %s for app %s", msg_id, app_id)
         return None

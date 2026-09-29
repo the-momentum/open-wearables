@@ -127,7 +127,7 @@ def _service() -> WithingsWebhookService:
     return service
 
 
-def test_register_user_subscriptions_subscribes_every_missing_appli() -> None:
+def test_reconcile_user_subscribes_every_missing_appli() -> None:
     service = _service()
     with (
         patch.object(service, "_list_subscriptions", return_value=[]),
@@ -139,7 +139,7 @@ def test_register_user_subscriptions_subscribes_every_missing_appli() -> None:
     assert {call.args[2] for call in mock_change.call_args_list} == {"subscribe"}
 
 
-def test_register_user_subscriptions_revokes_our_own_profiles_when_switched_to_pull() -> None:
+def test_reconcile_user_revokes_our_own_profiles_when_switched_to_pull() -> None:
     service = _service()
     existing = [SimpleNamespace(appli=1, callbackurl=CALLBACK_URL, comment="open-wearables")]
     with (
@@ -151,7 +151,7 @@ def test_register_user_subscriptions_revokes_our_own_profiles_when_switched_to_p
     assert mock_change.call_args.args[2] == "revoke"
 
 
-def test_register_user_subscriptions_leaves_profiles_registered_by_another_host_alone() -> None:
+def test_reconcile_user_leaves_profiles_registered_by_another_host_alone() -> None:
     service = _service()
     existing = [SimpleNamespace(appli=1, callbackurl="https://other.example/webhooks?token=x", comment=None)]
     with (
@@ -163,7 +163,7 @@ def test_register_user_subscriptions_leaves_profiles_registered_by_another_host_
     mock_change.assert_not_called()
 
 
-def test_register_user_subscriptions_skips_when_the_webhook_token_is_unconfigured(
+def test_reconcile_user_skips_when_the_webhook_token_is_unconfigured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("app.config.settings.withings_webhook_token", None)

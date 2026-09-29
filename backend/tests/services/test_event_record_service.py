@@ -1074,6 +1074,78 @@ class TestGetSleepSessions:
         assert session.duration_seconds == 28800
         assert session.sleep_duration_seconds is None
 
+    def _nap_mix(self, mapping: DataSource) -> dict[str, EventRecord]:
+        """One nap plus main sleeps flagged False, flagged NULL and without a detail row."""
+        base = datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc)
+        records = {
+            key: EventRecordFactory(
+                mapping=mapping,
+                category="sleep",
+                type_="sleep",
+                start_datetime=base + timedelta(days=day),
+                end_datetime=base + timedelta(days=day, hours=1),
+            )
+            for day, key in enumerate(("nap", "main", "unflagged", "no_details"))
+        }
+        SleepDetailsFactory(event_record=records["nap"], is_nap=True)
+        SleepDetailsFactory(event_record=records["main"], is_nap=False)
+        SleepDetailsFactory(event_record=records["unflagged"], is_nap=None)
+        return records
+
+    def test_is_nap_filter_splits_naps_from_main_sleep(self, db: Session) -> None:
+        """Omitted returns everything; true/false partition it, treating NULL or missing details as main sleep."""
+        user = UserFactory()
+        records = self._nap_mix(DataSourceFactory(user=user, source="oura"))
+
+        def fetch(**overrides) -> set[UUID]:
+            params = EventRecordQueryParams(
+                start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                **overrides,
+            )
+            response = event_record_service.get_sleep_sessions(db, user.id, params)
+            assert response.pagination.total_count == len(response.data)
+            return {s.id for s in response.data}
+
+        ids = {key: record.id for key, record in records.items()}
+        assert fetch() == set(ids.values())
+        assert fetch(is_nap=True) == {ids["nap"]}
+        assert fetch(is_nap=False) == {ids["main"], ids["unflagged"], ids["no_details"]}
+
+    def test_is_nap_filter_applies_before_priority(self, db: Session) -> None:
+        """A nap from the top source must not hide another source's main sleep that night, and vice versa."""
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        oura = DataSourceFactory(user=user, provider="oura", source="oura")
+        garmin_nap = EventRecordFactory(
+            mapping=garmin,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 11, 13, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 11, 14, 0, tzinfo=timezone.utc),
+        )
+        SleepDetailsFactory(event_record=garmin_nap, is_nap=True)
+        oura_night = self._sleep_record(oura)
+        SleepDetailsFactory(event_record=oura_night, is_nap=False)
+
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
+
+        def fetch(is_nap: bool) -> set[UUID]:
+            params = EventRecordQueryParams(
+                start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+                is_nap=is_nap,
+            )
+            return {
+                s.id for s in event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True).data
+            }
+
+        assert fetch(is_nap=False) == {oura_night.id}
+        assert fetch(is_nap=True) == {garmin_nap.id}
+
     def _sleep_record(self, mapping: DataSource) -> EventRecord:
         """Create a sleep session ending 2026-04-11 (UTC) for the given source."""
         return EventRecordFactory(

@@ -24,11 +24,12 @@ from app.database import DbSession, SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.auth import LiveSyncMode
+from app.schemas.responses.incoming_webhooks import WebhookOperationResult
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
 from app.services.providers.withings.handlers.rpc_client import withings_request
-from app.services.providers.withings.handlers.tasks import REGISTER_USER_WEBHOOKS_TASK
+from app.services.providers.withings.handlers.tasks import SYNC_USER_SUBSCRIPTIONS_TASK
 from app.services.providers.withings.oauth import WithingsTokenError
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -120,11 +121,19 @@ class WithingsWebhookService(BaseWebhookService):
         self._default_live_sync_mode = default_live_sync_mode
 
     async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
-        """Fan out one reconciliation task per active connection.
-
-        ``callback_url`` is ignored: each subscription carries the shared-secret
-        callback built per request by ``_callback_url``.
+        """Queue one ``sync_user_subscriptions`` task per connection, since every
+        subscription needs that connection's own token. ``callback_url`` is unused —
+        each task builds its own — and nothing is subscribed here to report.
         """
+        self._fan_out()
+        return []
+
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Same fan-out: each task reconciles toward the stored mode, so ``pull`` revokes."""
+        self._fan_out()
+        return []
+
+    def _fan_out(self) -> list[dict[str, Any]]:
         with SessionLocal() as db:
             connections = self.connection_repo.get_all_active_by_provider(db, "withings")
 
@@ -143,8 +152,8 @@ class WithingsWebhookService(BaseWebhookService):
         for user_id in subscription_owners.values():
             try:
                 celery_app.send_task(
-                    REGISTER_USER_WEBHOOKS_TASK,
-                    args=["withings", user_id],
+                    SYNC_USER_SUBSCRIPTIONS_TASK,
+                    args=[user_id],
                     queue="webhook_sync",
                 )
                 results.append({"status": "dispatched", "user_id": user_id})
@@ -165,14 +174,20 @@ class WithingsWebhookService(BaseWebhookService):
             action="notify_fan_out",
             dispatched=sum(1 for result in results if result["status"] == "dispatched"),
         )
+
+        failed = [result for result in results if result["status"] == "error"]
+        if failed:
+            # Raised only after every owner was attempted. Retrying re-dispatches all of
+            # them, which is safe: each per-connection task reconciles idempotently.
+            raise RuntimeError(f"Withings fan-out failed to dispatch {len(failed)} of {len(results)} connections")
         return results
 
-    def register_user_subscriptions(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:
+    def reconcile_user(self, db: DbSession, user_id: UUID) -> list[dict[str, Any]]:
         """Bring one user's subscriptions in line with the configured live-sync mode.
 
-        The per-user counterpart of ``register_subscriptions`` and idempotent in
-        the same way, so a mode of ``pull`` revokes rather than creates. Entry
-        point of the ``register_user_webhooks`` task.
+        Resolves the stored mode and defers to ``sync_user``, so a mode of ``pull``
+        revokes rather than creates. Entry point of the ``sync_user_subscriptions``
+        task, which carries no mode of its own.
         """
         mode = self.provider_settings_repo.get_live_sync_mode(db, "withings") or self._default_live_sync_mode
         if mode is None:

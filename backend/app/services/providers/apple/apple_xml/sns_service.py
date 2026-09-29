@@ -14,7 +14,7 @@ from app.config import settings
 from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
 from app.schemas.providers.apple.apple_xml import SNSNotification
 from app.schemas.responses.upload import UploadDataResponse
-from app.services.apple.apple_xml.aws_service import get_sns_client
+from app.services.providers.apple.apple_xml.aws_service import get_sns_client
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)

@@ -40,8 +40,10 @@ SDK_PROVIDERS = {"apple", "samsung", "health_connect"}
 SDK_SHARED_FILES = (
     Path("app/services/sdk/import_service.py"),
     Path("app/services/sdk/sleep_service.py"),
-    Path("app/services/apple/apple_xml/xml_service.py"),
 )
+
+# Apple alone also ingests the Health XML export.
+EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_service.py"),)}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
 STRUCTURAL_DETAIL_FIELDS = {"record_id"}
@@ -77,6 +79,7 @@ def _impl_source(provider: str) -> str:
     paths = [PROVIDERS_DIR / provider / fname for fname in IMPL_FILES]
     if provider in SDK_PROVIDERS:
         paths += list(SDK_SHARED_FILES)
+    paths += list(EXTRA_IMPL_FILES.get(provider, ()))
     return "\n".join(p.read_text() for p in paths if p.exists())
 
 

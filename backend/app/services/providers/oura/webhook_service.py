@@ -17,7 +17,6 @@ from pydantic import ValidationError
 from app.config import settings
 from app.schemas.responses.incoming_webhooks import (
     OuraWebhookSubscription,
-    ProviderWebhookSubscription,
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
@@ -207,7 +206,12 @@ class OuraWebhookService(BaseWebhookService):
 
         return results
 
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete every subscription (one per data type x event type)."""
+        subscriptions = await self.list_subscriptions()
+        return [await self.delete_subscription(sub.id) for sub in subscriptions]
+
+    async def list_subscriptions(self) -> list[OuraWebhookSubscription]:
         """List active Oura webhook subscriptions."""
         headers = self._get_client_headers()
 
@@ -219,7 +223,7 @@ class OuraWebhookService(BaseWebhookService):
             )
             response.raise_for_status()
             raw = response.json() or []
-            result: list[ProviderWebhookSubscription] = []
+            result: list[OuraWebhookSubscription] = []
             for item in raw if isinstance(raw, list) else []:
                 try:
                     result.append(OuraWebhookSubscription.model_validate(item))

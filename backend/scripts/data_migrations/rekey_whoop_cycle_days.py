@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Re-key existing Whoop whole-day strain and energy onto the day the cycle covers.
+"""Re-key existing Whoop whole-day strain, energy and steps onto the day the cycle covers.
 
-Both were written with recorded_at = the cycle's start. A Whoop cycle runs from one
+All were written with recorded_at = the cycle's start. A Whoop cycle runs from one
 sleep onset to the next, so for anyone who falls asleep before local midnight the start
 sits on the previous day: the value lands a day early, and when bedtime drifts across
 midnight two cycles collapse onto one date -- that day double-counts and the next is
@@ -65,12 +65,12 @@ _HEALTH_SCORE = _Table(
 
 _DATA_POINT_SERIES = _Table(
     name="data_point_series",
-    label="data_point_series (active_energy)",
+    label="data_point_series (active_energy, steps)",
     eligible=(
         "t.is_daily_total IS TRUE"
         " AND EXISTS (SELECT 1 FROM data_source ds WHERE ds.id = t.data_source_id AND ds.provider = 'whoop')"
         " AND EXISTS (SELECT 1 FROM series_type_definition std"
-        "             WHERE std.id = t.series_type_definition_id AND std.code = 'active_energy')"
+        "             WHERE std.id = t.series_type_definition_id AND std.code IN ('active_energy', 'steps'))"
     ),
     user_id="(SELECT ds.user_id FROM data_source ds WHERE ds.id = t.data_source_id)",
     key="t.data_source_id, t.series_type_definition_id",

@@ -125,6 +125,9 @@ class EventRecordQueryParams(SourceFilterParams):
     # Source filtering (provider, source, device_model, data_source_id come from SourceFilterParams)
     source_name: str | None = Field(None, description="Filter by source/app name")
 
+    # Sleep filtering
+    is_nap: bool | None = Field(None, description="Sleep only: true for naps, false for main sleep, None for both")
+
     # Duration filtering
     min_duration: int | None = Field(None, description="Minimum duration in seconds")
     max_duration: int | None = Field(None, description="Maximum duration in seconds")

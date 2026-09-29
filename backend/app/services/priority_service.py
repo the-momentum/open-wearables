@@ -1,3 +1,4 @@
+import contextlib
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -26,13 +27,26 @@ class PriorityService:
         self.device_type_priority_repo = DeviceTypePriorityRepository()
         self.data_source_repo = DataSourceRepository(DataSource)
 
+    def _to_provider_response(self, priority: ProviderPriority) -> ProviderPriorityResponse:
+        """Enrich a priority row with the strategy's display name and icon, like provider settings do."""
+        # Imported here: provider strategies import event_record_service, which imports this
+        # module, so a top-level import of the factory would be a circular import.
+        from app.services.providers.factory import ProviderFactory
+
+        response = ProviderPriorityResponse.model_validate(priority)
+        with contextlib.suppress(ValueError):
+            strategy = ProviderFactory().get_provider(str(priority.provider))
+            response.name = strategy.display_name
+            response.icon_url = strategy.icon_url
+        return response
+
     @handle_exceptions
     def get_provider_priorities(
         self,
         db_session: DbSession,
     ) -> ProviderPriorityListResponse:
         priorities = self.priority_repo.get_all_ordered(db_session)
-        return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in priorities])
+        return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in priorities])
 
     @handle_exceptions
     def update_provider_priority(
@@ -43,7 +57,7 @@ class PriorityService:
     ) -> ProviderPriorityResponse:
         result = self.priority_repo.upsert(db_session, provider, priority)
         db_session.commit()
-        return ProviderPriorityResponse.model_validate(result)
+        return self._to_provider_response(result)
 
     @handle_exceptions
     def bulk_update_priorities(
@@ -54,7 +68,7 @@ class PriorityService:
         priorities_tuples = [(p.provider, p.priority) for p in update.priorities]
         results = self.priority_repo.bulk_update(db_session, priorities_tuples)
         db_session.commit()
-        return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in results])
+        return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in results])
 
     @handle_exceptions
     def get_user_data_sources(

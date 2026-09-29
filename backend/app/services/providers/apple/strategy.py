@@ -1,14 +1,13 @@
 from app.services.providers.apple.coverage import HEALTH_SCORES, SLEEP_FIELDS, TIMESERIES, WORKOUT_FIELDS
-from app.services.providers.apple.workouts import AppleWorkouts
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities, ProviderCoverage
 
 
 class AppleStrategy(BaseProviderStrategy):
-    """Apple Health provider implementation."""
+    """Apple Health provider implementation.
 
-    def __init__(self):
-        super().__init__()
-        self.workouts = AppleWorkouts(self.workout_repo, self.connection_repo)
+    Metadata only: ingestion runs through the shared SDK pipeline
+    (``app/services/sdk/``) and the XML import under ``apple_xml/``.
+    """
 
     @property
     def name(self) -> str:

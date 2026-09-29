@@ -7,7 +7,7 @@ from app.schemas.providers.apple.apple_xml import (
     PresignedURLRequest,
     PresignedURLResponse,
 )
-from app.services.apple.apple_xml.aws_service import (
+from app.services.providers.apple.apple_xml.aws_service import (
     build_object_key,
     get_public_s3_client,
     get_s3_client,

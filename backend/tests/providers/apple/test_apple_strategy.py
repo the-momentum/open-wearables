@@ -5,7 +5,6 @@ Tests cover:
 - Strategy initialization
 - Property implementations (name, display_name, api_base_url)
 - Repository setup
-- Workouts component integration
 - Cloud API capabilities
 - Apple-specific behavior
 """
@@ -15,7 +14,6 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.providers.apple.strategy import AppleStrategy
-from app.services.providers.apple.workouts import AppleWorkouts
 from app.services.providers.base_strategy import BaseProviderStrategy
 
 
@@ -87,36 +85,6 @@ class TestAppleStrategy:
 
         # Assert
         assert strategy.icon_url == "/static/provider-icons/apple.svg"
-
-    def test_workouts_component_initialized(self) -> None:
-        """Should initialize AppleWorkouts component."""
-        # Act
-        strategy = AppleStrategy()
-
-        # Assert
-        assert strategy.workouts is not None
-        assert isinstance(strategy.workouts, AppleWorkouts)
-
-    def test_workouts_uses_same_repositories(self) -> None:
-        """Should pass repositories to workouts component."""
-        # Act
-        strategy = AppleStrategy()
-
-        # Assert
-        assert strategy.workouts is not None
-        assert strategy.workouts.workout_repo is strategy.workout_repo
-        assert strategy.workouts.connection_repo is strategy.connection_repo
-
-    def test_workouts_configured_for_apple(self) -> None:
-        """Should configure workouts component for Apple provider."""
-        # Act
-        strategy = AppleStrategy()
-
-        # Assert
-        assert strategy.workouts is not None
-        assert strategy.workouts.provider_name == "apple_health_sdk"
-        assert strategy.workouts.api_base_url == ""
-        assert strategy.workouts.oauth is None
 
     def test_multiple_instances_have_separate_repositories(self) -> None:
         """Should create separate repository instances for each strategy."""

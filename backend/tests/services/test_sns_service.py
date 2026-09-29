@@ -7,7 +7,7 @@ import pytest
 
 from app.config import settings
 from app.schemas.providers.apple.apple_xml import SNSNotification
-from app.services.apple.apple_xml.sns_service import SNSService
+from app.services.providers.apple.apple_xml.sns_service import SNSService
 
 S3_RECORDS = {
     "Records": [
@@ -48,7 +48,7 @@ class TestProcessS3Notification:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "client")
         service = _service()
 
-        with patch("app.services.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
+        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
             result = service._process_s3_notification(_notification(S3_RECORDS))
 
         assert result.status_code == 200
@@ -59,7 +59,7 @@ class TestProcessS3Notification:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "sns")
         service = _service()
 
-        with patch("app.services.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
+        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
             result = service._process_s3_notification(_notification(S3_RECORDS))
 
         assert result.status_code == 202
@@ -71,7 +71,7 @@ class TestProcessS3Notification:
         monkeypatch.setattr(settings, "apple_xml_upload_completion_mode", "sns")
         service = _service()
 
-        with patch("app.services.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
+        with patch("app.services.providers.apple.apple_xml.sns_service.process_aws_upload") as mock_task:
             result = service._process_s3_notification(_notification({"Event": "s3:TestEvent"}))
 
         assert result.status_code == 200

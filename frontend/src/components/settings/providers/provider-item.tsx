@@ -78,7 +78,8 @@ export function ProviderItem({
                     <button
                       key={mode}
                       type="button"
-                      disabled={isPending}
+                      disabled={isPending || currentMode === mode}
+                      aria-pressed={currentMode === mode}
                       onClick={() => updateLiveSyncMode(mode)}
                       className={cn(
                         'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150',

@@ -159,13 +159,17 @@ class TestProviderFactory:
         assert strategy.oauth is None
         assert strategy.has_cloud_api is False
 
-    def test_provider_apple_has_workouts(self, factory: ProviderFactory) -> None:
-        """Should initialize workouts component for Apple."""
-        # Act
-        strategy = factory.get_provider("apple")
+    def test_sdk_providers_have_no_components(self, factory: ProviderFactory) -> None:
+        """SDK-only providers are metadata; ingestion runs through app/services/sdk/."""
+        for name in ("apple", "samsung", "health_connect"):
+            # Act
+            strategy = factory.get_provider(name)
 
-        # Assert
-        assert strategy.workouts is not None
+            # Assert
+            assert strategy.workouts is None
+            assert strategy.data_247 is None
+            assert strategy.webhooks is None
+            assert strategy.capabilities.client_sdk is True
 
     def test_provider_polar_has_oauth(
         self,

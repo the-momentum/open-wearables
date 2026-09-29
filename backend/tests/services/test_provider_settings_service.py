@@ -8,6 +8,8 @@ Tests cover:
 - Validation of provider names
 """
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,8 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
+
+_RECONCILE_TASK = "app.integrations.celery.tasks.provider_webhooks_task.reconcile_provider_webhooks"
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -356,3 +360,44 @@ class TestProviderSettingsServiceLiveSyncMode:
 
         with pytest.raises(ValidationError, match="live_sync_mode cannot be set to null"):
             ProviderSettingUpdate(live_sync_mode=None)
+
+
+class TestProviderSettingsServiceWebhookDispatch:
+    """Test the webhook reconciliation triggered by a live_sync_mode change."""
+
+    @pytest.mark.parametrize("mode", [LiveSyncMode.WEBHOOK, LiveSyncMode.PULL])
+    def test_mode_change_reconciles_subscriptions(self, db: Session, mode: LiveSyncMode) -> None:
+        """Should hand the new mode to the provider's strategy in both directions."""
+        service = ProviderSettingsService()
+
+        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+            service.update_provider_setting(db, "oura", ProviderSettingUpdate(live_sync_mode=mode))
+
+        send_task.assert_called_once_with(_RECONCILE_TASK, args=["oura", mode], queue="webhook_sync")
+
+    def test_mode_change_reconciles_per_user_provider_the_same_way(self, db: Session) -> None:
+        """Per-user providers take the same path; their fan-out handles the revoke."""
+        service = ProviderSettingsService()
+
+        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+            service.update_provider_setting(db, "withings", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.PULL))
+
+        send_task.assert_called_once_with(_RECONCILE_TASK, args=["withings", LiveSyncMode.PULL], queue="webhook_sync")
+
+    def test_provider_without_registration_api_dispatches_nothing(self, db: Session) -> None:
+        """Should stay quiet for providers whose subscriptions are not managed by API."""
+        service = ProviderSettingsService()
+
+        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+            service.update_provider_setting(db, "suunto", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK))
+
+        send_task.assert_not_called()
+
+    def test_enable_change_alone_dispatches_nothing(self, db: Session) -> None:
+        """Should leave subscriptions alone when live_sync_mode is unchanged."""
+        service = ProviderSettingsService()
+
+        with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
+            service.update_provider_setting(db, "oura", ProviderSettingUpdate(is_enabled=False))
+
+        send_task.assert_not_called()

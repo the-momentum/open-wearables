@@ -71,6 +71,7 @@ class WithingsSleepData(BaseModel):
     wakeupduration: int | None = Field(default=None, ge=0)
     # Ratio of total sleep time over time in bed.
     sleep_efficiency: float | None = Field(default=None, ge=0, le=1)
+    hr_min: int | None = Field(default=None, gt=0)
 
 
 class WithingsSleepSummary(BaseModel):

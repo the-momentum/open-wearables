@@ -155,7 +155,7 @@ services:
 
   svix-server:
     container_name: svix-server__open-wearables
-    image: svix/svix-server:v1
+    image: svix/svix-server:v1.101.0
     entrypoint:
       - sh
       - -c

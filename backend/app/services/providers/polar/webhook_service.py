@@ -87,9 +87,9 @@ class PolarWebhookService(BaseWebhookService):
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            return None
+            raise
 
-    async def register_subscriptions(self, callback_url: str) -> dict[str, Any]:
+    async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
         """Create or verify the Polar webhook subscription.
 
         Calls ``get_webhook`` to check for an existing registration:
@@ -98,7 +98,7 @@ class PolarWebhookService(BaseWebhookService):
         - No existing webhook: calls ``_create_webhook``; Polar returns
           ``signature_secret_key`` on creation which is not retrievable afterwards.
 
-        Returns a result dict describing the outcome.
+        Returns the single result entry, listed to match the other providers.
         """
         if not callback_url:
             raise ValueError("callback_url is required")
@@ -119,10 +119,10 @@ class PolarWebhookService(BaseWebhookService):
                     action="polar_webhook_skipped",
                     subscription_id=subscription_id,
                 )
-                return {"status": "skipped", "subscription_id": subscription_id}
+                return [{"status": "skipped", "subscription_id": subscription_id}]
 
             # URL changed — patch in place
-            return (await self._patch_webhook(auth, subscription_id, callback_url)).model_dump()
+            return [(await self._patch_webhook(auth, subscription_id, callback_url)).model_dump()]
 
         result = await self._create_webhook(auth, callback_url)
         if result.get("status") == "created":
@@ -131,7 +131,12 @@ class PolarWebhookService(BaseWebhookService):
                 raise ValueError("Polar webhook registration succeeded but no signature_secret_key was returned.")
             with SessionLocal() as db:
                 ProviderSettingsRepository().save_webhook_secret(db, ProviderName.POLAR, secret)
-        return result
+        return [result]
+
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete the single app-level webhook, if one is registered."""
+        webhook = await self.get_webhook()
+        return [await self.delete_subscription(webhook.id)] if webhook else []
 
     async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
         """Update the URL of an existing Polar webhook (PATCH /v3/webhooks/{id})."""

@@ -1,11 +1,14 @@
 from app.schemas.enums import EntrySource
 
-# Oura's PublicWorkoutSource enum (closed), so UNKNOWN below is purely defensive.
+# Oura's PublicWorkoutSource enum. Oura extends it without a changelog (1.40 added the two
+# live_* values), so keep the UNKNOWN fallback for values we have not mapped yet.
 OURA_SOURCE_TO_UNIFIED: dict[str, EntrySource] = {
     "manual": EntrySource.MANUAL,
     "autodetected": EntrySource.AUTOMATIC,
     "confirmed": EntrySource.AUTOMATIC,
     "workout_heart_rate": EntrySource.AUTOMATIC,
+    "live_third_party_heart_rate": EntrySource.AUTOMATIC,
+    "live_oura_heart_rate": EntrySource.AUTOMATIC,
 }
 
 
