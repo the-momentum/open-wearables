@@ -496,7 +496,12 @@ class Polar247Data(Base247DataTemplate):
         raw_items: list[dict[str, Any]],
         user_id: UUID,
     ) -> NightlyRechargeNormalized:
-        """HRV and breathing rate are four-hour averages from early sleep, so one sample per night."""
+        """HRV and breathing rate are four-hour averages from early sleep, so one sample per night.
+
+        Samples are emitted only for records processed by future syncs; existing database rows
+        are not updated. Historical records not processed again by a sync require a separate
+        backfill or replay to populate their time-series samples.
+        """
         scores: list[HealthScoreCreate] = []
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
