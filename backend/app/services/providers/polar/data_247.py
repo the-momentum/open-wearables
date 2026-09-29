@@ -941,10 +941,16 @@ class Polar247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> int:
+        """Save the night's score and samples, reporting the series writes.
+
+        The sync report splits inserts from updates, which only the series write can tell it:
+        health scores are inserted with on_conflict_do_nothing and report nothing back.
+        """
         scores, samples = self.normalize_nightly_recharge(
             self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
         )
-        return self._save_timeseries(db, samples) + self._save_scores(db, scores)
+        self._save_scores(db, scores)
+        return self._save_timeseries(db, samples)
 
     def _save_sleep(
         self,
