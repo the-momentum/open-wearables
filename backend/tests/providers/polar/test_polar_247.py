@@ -346,10 +346,19 @@ class TestPolar247NightlyRechargeNormalization:
             score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0][0]
             assert score.qualifier == label
 
-    def test_missing_status_skipped(self, data_247: Polar247Data, sample_recharge: dict) -> None:
+    def test_a_night_without_a_status_still_yields_its_measurements(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        # Polar withholds the status for the first three nights while it builds a baseline,
+        # but it already reports HRV and breathing rate for them.
         sample_recharge.pop("nightly_recharge_status")
-        user_id = uuid4()
-        assert data_247.normalize_nightly_recharge([sample_recharge], user_id) == ([], [])
+
+        scores, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4())
+
+        assert scores == []
+        by_type = {sample.series_type: sample for sample in samples}
+        assert float(by_type[SeriesType.heart_rate_variability_rmssd].value) == 48
+        assert float(by_type[SeriesType.respiratory_rate].value) == 14.5
 
     def test_nightly_averages_become_samples_dated_to_the_night(
         self, data_247: Polar247Data, sample_recharge: dict

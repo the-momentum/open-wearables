@@ -502,23 +502,8 @@ class Polar247Data(Base247DataTemplate):
         for raw in raw_items:
             if (parsed := self._parse(raw, NightlyRechargeJSON, user_id, "nightly_recharge")) is None:
                 continue
-            if parsed.nightly_recharge_status is None or not parsed.date:
+            if not parsed.date:
                 continue
-            components: dict[str, ScoreComponent] = {}
-            for key, val in {
-                "heart_rate_avg": parsed.heart_rate_avg,
-                "beat_to_beat_avg": parsed.beat_to_beat_avg,
-                "heart_rate_variability_avg": parsed.heart_rate_variability_avg,
-                "breathing_rate_avg": parsed.breathing_rate_avg,
-                "ans_charge": parsed.ans_charge,
-            }.items():
-                if val is not None:
-                    components[key] = ScoreComponent(value=val)
-            if parsed.ans_charge_status is not None:
-                components["ans_charge_status"] = ScoreComponent(
-                    value=parsed.ans_charge_status,
-                    qualifier=ANS_CHARGE_STATUS_LABELS.get(parsed.ans_charge_status),
-                )
             recorded_at = datetime.fromisoformat(parsed.date)
             for value, series_type in (
                 (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),
@@ -536,6 +521,24 @@ class Polar247Data(Base247DataTemplate):
                             series_type=series_type,
                         )
                     )
+            # Polar withholds the status until it has three nights to compare against.
+            if parsed.nightly_recharge_status is None:
+                continue
+            components: dict[str, ScoreComponent] = {}
+            for key, val in {
+                "heart_rate_avg": parsed.heart_rate_avg,
+                "beat_to_beat_avg": parsed.beat_to_beat_avg,
+                "heart_rate_variability_avg": parsed.heart_rate_variability_avg,
+                "breathing_rate_avg": parsed.breathing_rate_avg,
+                "ans_charge": parsed.ans_charge,
+            }.items():
+                if val is not None:
+                    components[key] = ScoreComponent(value=val)
+            if parsed.ans_charge_status is not None:
+                components["ans_charge_status"] = ScoreComponent(
+                    value=parsed.ans_charge_status,
+                    qualifier=ANS_CHARGE_STATUS_LABELS.get(parsed.ans_charge_status),
+                )
             scores.append(
                 HealthScoreCreate(
                     id=uuid4(),
