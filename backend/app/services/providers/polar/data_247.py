@@ -509,7 +509,8 @@ class Polar247Data(Base247DataTemplate):
                 continue
             if not parsed.date:
                 continue
-            recorded_at = datetime.fromisoformat(parsed.date)
+            # A date with no offset: the night is anchored to UTC midnight, like every other sample.
+            recorded_at = datetime.fromisoformat(parsed.date).replace(tzinfo=timezone.utc)
             for value, series_type in (
                 (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),
                 (parsed.breathing_rate_avg, SeriesType.respiratory_rate),
@@ -943,8 +944,7 @@ class Polar247Data(Base247DataTemplate):
         scores, samples = self.normalize_nightly_recharge(
             self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
         )
-        self._save_timeseries(db, samples)
-        return self._save_scores(db, scores)
+        return self._save_timeseries(db, samples) + self._save_scores(db, scores)
 
     def _save_sleep(
         self,

@@ -1,6 +1,7 @@
 """Tests for Polar247Data normalization."""
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -346,6 +347,12 @@ class TestPolar247NightlyRechargeNormalization:
             score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0][0]
             assert score.qualifier == label
 
+    def test_samples_are_stamped_in_utc(self, data_247: Polar247Data, sample_recharge: dict) -> None:
+        # Nightly Recharge dates carry no offset, and a naive timestamp reaches webhooks as-is.
+        _, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4())
+
+        assert samples[0].recorded_at == datetime(2024, 1, 15, tzinfo=timezone.utc)
+
     def test_a_night_without_a_status_still_yields_its_measurements(
         self, data_247: Polar247Data, sample_recharge: dict
     ) -> None:
@@ -382,6 +389,21 @@ class TestPolar247NightlyRechargeNormalization:
 
         assert samples == []
         assert len(scores) == 1
+
+    def test_saving_an_unscored_night_reports_the_samples_it_wrote(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        # A run that writes only samples must not report zero, or the sync counts it as a no-op.
+        sample_recharge.pop("nightly_recharge_status")
+
+        with (
+            patch.object(data_247, "get_nightly_recharge_data", return_value=[sample_recharge]),
+            patch("app.services.providers.polar.data_247.timeseries_service") as timeseries,
+        ):
+            timeseries.bulk_create_samples.return_value = 2
+            saved = data_247._save_nightly_recharge(MagicMock(), uuid4(), None, None)
+
+        assert saved == 2
 
     def test_empty_input(self, data_247: Polar247Data) -> None:
         assert data_247.normalize_nightly_recharge([], uuid4()) == ([], [])
