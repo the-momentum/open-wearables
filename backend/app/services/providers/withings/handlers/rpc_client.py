@@ -3,10 +3,12 @@
 Withings exposes one endpoint per service and names the operation in an
 ``action`` form field, answering with a ``{status, body}`` envelope where
 ``status != 0`` is a failure on HTTP 200. This unwraps that for the four
-callers; the HTTP transport, token refresh and retries stay in ``api_client``.
+callers; the HTTP transport, token refresh and HTTP 429 retries stay in
+``api_client``, while the envelope's own throttle status is retried here.
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -17,7 +19,7 @@ from fastapi import HTTPException
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.providers.withings import WithingsMeasure
-from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.api_client import MAX_RETRIES, RETRY_BASE_DELAY, make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.structured_logging import log_structured
 
@@ -77,25 +79,43 @@ def withings_request(
 ) -> dict[str, Any]:
     """POST an action to a Withings service and return the unwrapped ``body``.
 
-    Raises ``HTTPException`` on a non-zero ``status`` (Withings reports
-    errors in the envelope, not via the HTTP status or an ``error`` field).
+    Raises ``HTTPException`` on a non-zero ``status``. Withings answers HTTP 200 with the
+    status in the envelope next to an ``error`` message, so the shared client must not raise
+    on that message; a throttle (601) is retried with the backoff it applies to HTTP 429.
     """
     request_params = {"action": action, **params}
-    envelope = make_authenticated_request(
-        db=db,
-        user_id=user_id,
-        connection_repo=connection_repo,
-        oauth=oauth,
-        api_base_url=api_base_url,
-        provider_name="withings",
-        endpoint=service_path,
-        method="POST",
-        form_data=request_params,
-    )
-
-    status = envelope.get("status") if isinstance(envelope, dict) else None
-    if status == 0:
-        return envelope.get("body", {}) or {}
+    status: Any = None
+    for attempt in range(MAX_RETRIES + 1):
+        envelope = make_authenticated_request(
+            db=db,
+            user_id=user_id,
+            connection_repo=connection_repo,
+            oauth=oauth,
+            api_base_url=api_base_url,
+            provider_name="withings",
+            endpoint=service_path,
+            method="POST",
+            form_data=request_params,
+            check_body_errors=False,
+        )
+        status = envelope.get("status") if isinstance(envelope, dict) else None
+        if status == 0:
+            return envelope.get("body", {}) or {}
+        if status != _RATE_LIMIT_STATUS or attempt == MAX_RETRIES:
+            break
+        backoff_delay = RETRY_BASE_DELAY * (2**attempt)
+        log_structured(
+            logger,
+            "warning",
+            "Withings throttled the request, retrying",
+            provider="withings",
+            action=action,
+            attempt=attempt + 1,
+            max_retries=MAX_RETRIES,
+            backoff_delay=backoff_delay,
+            user_id=str(user_id),
+        )
+        time.sleep(backoff_delay)
     log_structured(
         logger,
         "error",
