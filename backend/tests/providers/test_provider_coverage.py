@@ -21,6 +21,7 @@ import pytest
 from app.constants.series_types.sdk.metric_types import (
     ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
     APPLE_METRIC_TYPE_TO_SERIES_TYPE,
+    SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
 )
 from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
 from app.schemas.enums import SeriesType
@@ -134,7 +135,7 @@ def test_set_detail_fields_are_declared(provider: str) -> None:
 
 _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
-    "samsung": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+    "samsung": SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
     "health_connect": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
 }
 

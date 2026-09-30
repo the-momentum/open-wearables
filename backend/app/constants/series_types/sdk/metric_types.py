@@ -319,6 +319,14 @@ ANDROID_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     k: v for k, v in METRIC_TYPE_TO_SERIES_TYPE.items() if not k.value.startswith("HK")
 }
 
+# Samsung Health Data SDK has no resting heart rate or HRV data type (and no IBI
+# in HeartRate), so the SDK's SamsungHealthManager never emits these.
+SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
+    k: v
+    for k, v in ANDROID_METRIC_TYPE_TO_SERIES_TYPE.items()
+    if k not in {SDKMetricType.ANDROID_RESTING_HEART_RATE, SDKMetricType.ANDROID_HEART_RATE_VARIABILITY}
+}
+
 
 def get_series_type_from_metric_type(metric_type: SDKMetricType | str) -> SeriesType | None:
     """
