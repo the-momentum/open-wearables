@@ -119,6 +119,11 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "totalSteps": SeriesType.steps,
 }
 
+# Of the above, only these exist on Samsung's ExerciseSession; the rest are HealthKit-only.
+SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
+    k: v for k, v in WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.items() if k in {"meanCadence", "maxCadence", "vo2Max"}
+}
+
 
 def get_detail_field_from_workout_statistic_type(workout_statistic_type: str) -> str | None:
     """
