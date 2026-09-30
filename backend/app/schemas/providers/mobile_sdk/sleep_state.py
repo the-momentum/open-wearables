@@ -34,6 +34,9 @@ class SleepState(BaseModel):
     deep_seconds: float = 0
     rem_seconds: float = 0
 
+    # Provider-computed sleep score sent in the SDK sleep entry `values` (Samsung `sleepScore`)
+    sleep_score: float | None = None
+
     stages: list[SleepStateStage] = Field(default_factory=list)
 
 

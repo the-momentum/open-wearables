@@ -1,7 +1,7 @@
 from app.constants.series_types.sdk.metric_types import SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE
 from app.constants.series_types.sdk.workout_statistics import SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
-from app.schemas.enums import SeriesType
-from app.services.providers.apple.coverage import HEALTH_SCORES, SLEEP_FIELDS
+from app.schemas.enums import HealthScoreCategory, SeriesType
+from app.services.providers.apple.coverage import SLEEP_FIELDS
 
 # Samsung Health Data SDK exposes a narrower set than Health Connect, so Samsung
 # declares exactly what SamsungHealthManager emits instead of reusing Android/Apple.
@@ -27,5 +27,8 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "elev_low",
     }
 )
+
+# SamsungHealthManager forwards SleepType.SLEEP_SCORE as a `sleepScore` value on each sleep entry
+HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset({HealthScoreCategory.SLEEP})
 
 __all__ = ["HEALTH_SCORES", "SLEEP_FIELDS", "TIMESERIES", "WORKOUT_FIELDS"]
