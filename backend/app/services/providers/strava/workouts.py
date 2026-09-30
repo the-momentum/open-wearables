@@ -262,6 +262,10 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             user_id,
             f"/api/v3/activities/{strava_activity_id}/streams",
             params={"keys": STREAM_KEYS_PARAM, "key_by_type": "true"},
+            # A manual activity has no streams and Strava answers 404. The caller
+            # already treats that as "no samples"; this stops api_client logging it
+            # at error level before the exception ever reaches the caller.
+            quiet_statuses=(404,),
         )
 
         # key_by_type=true returns an object keyed by stream type, not a list.
