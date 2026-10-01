@@ -312,7 +312,8 @@ def handle_sleep_data(
             )
 
             sleep_score = _extract_sleep_score(sjson.values)
-            if sleep_score is not None:
+            # The state is per user, so it may belong to another provider's open session
+            if sleep_score is not None and current_state.provider == provider:
                 current_state.sleep_score = sleep_score
 
         # Persist the accumulated state to Redis only once after processing the entire batch

@@ -919,6 +919,28 @@ class TestProviderSleepScore:
         finished_state: SleepState = mock_finish.call_args[0][2]
         assert finished_state.sleep_score == 82
 
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.sdk.sleep_service.event_record_service")
+    @patch("app.services.sdk.sleep_service.get_redis_client")
+    def test_sleep_score_is_not_attached_to_other_provider_state(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = self._state("apple", None).model_dump_json()
+        mock_redis_func.return_value = mock_redis
+        mock_event_service.find_adjacent_sleep_record.return_value = None
+
+        with patch("app.services.sdk.sleep_service.finish_sleep") as mock_finish:
+            handle_sleep_data(db, SyncRequest.model_validate(self.SAMSUNG_PAYLOAD), user_id=str(uuid4()))
+
+        finished_state: SleepState = mock_finish.call_args[0][2]
+        assert finished_state.provider == "apple"
+        assert finished_state.sleep_score is None
+
     @patch("app.services.sdk.sleep_service.health_score_service")
     @patch("app.services.sdk.sleep_service.event_record_service")
     @patch("app.services.sdk.sleep_service.delete_sleep_state")
