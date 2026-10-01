@@ -454,6 +454,8 @@ export function ScoresSection({
   });
 
   const scores = useMemo(() => scoresData?.data ?? [], [scoresData?.data]);
+  // Driven by the data, not OW_SCORES_ENABLED: scores computed before the flag was turned off are still shown.
+  const hasOwScores = scores.some((s) => s.provider === 'internal');
 
   // Categories that have data, in defined order
   const availableCategories = useMemo(() => {
@@ -515,12 +517,14 @@ export function ScoresSection({
           onDateRangeChange={onDateRangeChange}
         />
 
-        <div className="px-6 pt-4">
-          <p className="text-xs text-yellow-300/90 bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
-            Scores calculated by Open Wearables (OW) are in an experimental
-            phase and may change as the algorithm is refined.
-          </p>
-        </div>
+        {hasOwScores && (
+          <div className="px-6 pt-4">
+            <p className="text-xs text-yellow-300/90 bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
+              Scores calculated by Open Wearables (OW) are in an experimental
+              phase and may change as the algorithm is refined.
+            </p>
+          </div>
+        )}
 
         <div className="p-6">
           {isLoading ? (
