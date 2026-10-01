@@ -170,11 +170,13 @@ def test_second_signal_does_not_cut_a_slow_shutdown_short(run_worker_script: Cal
     assert "io stopped" in _events(events_log)
 
 
-def test_cpu_worker_exit_stops_the_io_worker_and_the_container(run_worker_script: Callable) -> None:
-    process, events_log = run_worker_script(EXIT_NOW_cpu="2", EXIT_DELAY="0.5", SHUTDOWN_DELAY_io="0.5")
+@pytest.mark.parametrize("cpu_status", [2, 127, 255])
+def test_cpu_worker_exit_stops_the_io_worker_and_the_container(run_worker_script: Callable, cpu_status: int) -> None:
+    """The worker's own exit code is kept, including 127 and 255 that bash 5 also uses for a lost status."""
+    process, events_log = run_worker_script(EXIT_NOW_cpu=str(cpu_status), EXIT_DELAY="0.5", SHUTDOWN_DELAY_io="0.5")
     _wait_for(events_log, "io started", "cpu started")
 
-    assert process.wait(timeout=_TIMEOUT_S) == 2
+    assert process.wait(timeout=_TIMEOUT_S) == cpu_status
     assert "io stopped" in _events(events_log)
 
 
