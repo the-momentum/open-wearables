@@ -54,6 +54,7 @@ class TestSendInvitationEmail:
         assert params["from"] == "Open Wearables <invites@example.com>"
         assert params["to"] == ["dev@example.com"]
         assert INVITE_URL in params["html"]
+        assert INVITE_URL in params["text"]
 
     def test_smtp_takes_precedence_over_resend(self) -> None:
         with (
@@ -91,6 +92,22 @@ class TestSendInvitationEmail:
         html = html_part.get_content()
         assert INVITE_URL in html
         assert "admin@example.com" in html
+
+        text_part = msg.get_body(preferencelist=("plain",))
+        assert text_part is not None
+        assert INVITE_URL in text_part.get_content()
+
+    def test_from_name_with_special_characters_is_not_html_escaped(self) -> None:
+        with (
+            patch.object(settings, "email_from_name", "R&D, Acme"),
+            patch.object(settings, "smtp_host", "smtp.example.com"),
+            patch.object(email_client.smtplib, "SMTP") as smtp,
+        ):
+            assert send_invitation_email("dev@example.com", INVITE_URL) is True
+
+        msg: EmailMessage = smtp.return_value.send_message.call_args.args[0]
+        assert msg["From"] == '"R&D, Acme" <invites@example.com>'
+        assert msg["Subject"] == "You've been invited to join R&D, Acme"
 
     def test_smtp_ssl_uses_implicit_tls(self) -> None:
         with (
