@@ -35,6 +35,14 @@ class WebhookEventType(StrEnum):
     SYNC_FAILED = "sync.failed"
 
     # -------------------------------------------------------------------------
+    # Per-data-type sync outcomes (one per data type within a run)
+    # Subscribe to learn when a single type's history is fully in, rather than
+    # waiting for the whole run.
+    # -------------------------------------------------------------------------
+    SYNC_DATA_TYPE_COMPLETED = "sync.data_type.completed"
+    SYNC_DATA_TYPE_FAILED = "sync.data_type.failed"
+
+    # -------------------------------------------------------------------------
     # EventRecord-based (discrete sessions)
     # -------------------------------------------------------------------------
     WORKOUT_CREATED = "workout.created"
@@ -202,6 +210,13 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SYNC_STARTED: "A sync run started for a user (live, historical, backfill, SDK or XML).",
     WebhookEventType.SYNC_COMPLETED: "A sync run completed successfully (terminal state).",
     WebhookEventType.SYNC_FAILED: "A sync run failed (terminal state, includes error message).",
+    WebhookEventType.SYNC_DATA_TYPE_COMPLETED: (
+        "One data type finished within a sync run. On a historical run this is the signal that "
+        "the type's backfill is in; the payload carries the range now held for it."
+    ),
+    WebhookEventType.SYNC_DATA_TYPE_FAILED: (
+        "One data type failed or was lost within a sync run, while others may have succeeded."
+    ),
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
     WebhookEventType.MENSTRUAL_CYCLE_CREATED: "A new menstrual cycle record was saved.",

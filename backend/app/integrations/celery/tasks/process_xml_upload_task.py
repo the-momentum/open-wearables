@@ -29,6 +29,7 @@ from app.services.sync_status_service import (
     try_record_data_types,
 )
 from app.services.timeseries_service import timeseries_service
+from app.utils.context import sync_run_context
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -98,7 +99,10 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
             metadata={"filename": filename},
         )
 
-    with SessionLocal() as db:
+    with (
+        sync_run_context(run_id=run_id, source=SyncSource.XML_IMPORT, scope=SyncScope.HISTORICAL),
+        SessionLocal() as db,
+    ):
         try:
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
