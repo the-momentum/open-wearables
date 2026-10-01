@@ -69,7 +69,8 @@ export function TeamTab() {
   } = useInvitations();
 
   const config = useConfig();
-  // Treat "still loading" as enabled so the dialog doesn't flash the no-email variant
+  // Treat "still loading" as enabled so the dialog doesn't flash the no-email variant;
+  // creating an invitation waits for the config, so the success flow matches the instance
   const emailEnabled = config.data?.email_enabled !== false;
 
   const deleteMutation = useDeleteDeveloper();
@@ -96,6 +97,7 @@ export function TeamTab() {
   };
 
   const handleInvite = () => {
+    if (config.isPending || createInvitationMutation.isPending) return;
     const email = inviteEmail.trim();
     if (!email || !isValidEmail(email)) {
       toast.error('Invalid email address');
@@ -456,6 +458,8 @@ export function TeamTab() {
       <Dialog
         open={isInviteModalOpen}
         onOpenChange={(open) => {
+          // Keep the dialog open until creation finishes, so its result lands in the dialog
+          if (!open && createInvitationMutation.isPending) return;
           if (!open) closeInviteModal();
           else setIsInviteModalOpen(true);
         }}
@@ -571,6 +575,7 @@ export function TeamTab() {
                 <Button
                   onClick={handleInvite}
                   disabled={
+                    config.isPending ||
                     createInvitationMutation.isPending ||
                     !inviteEmail.trim() ||
                     !isValidEmail(inviteEmail.trim())
