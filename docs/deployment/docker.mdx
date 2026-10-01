@@ -158,7 +158,7 @@ The defaults in `.env.example` are development values. Override at least these f
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
 | `VITE_API_URL` | URL of the API as reached from the browser |
-| `LOG_FORMAT` | `json` if a log collector reads the container output, otherwise remove it (see [Logs](#logs)) |
+| `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
 
@@ -202,7 +202,7 @@ The backend writes its application logs to stdout (in `legacy`, uvicorn's own li
 |-------|--------|
 | `legacy` (default) | Structured app logs as JSON lines, framework and library logs as plain text (`[time - logger] (LEVEL) message`) |
 | `json` | Every line is one JSON object, for log collectors such as Loki, Datadog, CloudWatch or Azure Monitor |
-| `text` | Readable lines for development; `backend/config/.env.example` sets this |
+| `text` | Readable lines, for local development |
 
 Structured app log lines keep the same fields in `legacy` and `json`: `timestamp`, `level`, `message`, `provider`, then the attributes of the event (`user_id`, `action`, ...). Other lines in `json` carry `timestamp`, `level`, `message`, `logger` and, for errors, `exception`.
 
