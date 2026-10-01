@@ -21,8 +21,12 @@ import pytest
 from app.constants.series_types.sdk.metric_types import (
     ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
     APPLE_METRIC_TYPE_TO_SERIES_TYPE,
+    SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
 )
-from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.workout_statistics import (
+    SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+)
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.schemas.model_crud.activities import EventRecordDetailCreate
@@ -44,6 +48,10 @@ SDK_SHARED_FILES = (
 
 # Apple alone also ingests the Health XML export.
 EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_service.py"),)}
+
+# Fields the shared SDK pipeline sets, but only from inputs this provider never sends:
+# Samsung has no `stepCount`/`recordingMethod`, and nothing yields moving time.
+SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "moving_time_seconds", "entry_source"}}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
 STRUCTURAL_DETAIL_FIELDS = {"record_id"}
@@ -127,22 +135,28 @@ def test_set_detail_fields_are_declared(provider: str) -> None:
     declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)
 
     used = {field for field in TRACKED_DETAIL_FIELDS if re.search(rf"\b{field}=", source) or f'"{field}"' in source}
-    undeclared = used - declared
+    undeclared = used - declared - SDK_UNREACHABLE_DETAIL_FIELDS.get(provider, set())
 
     assert not undeclared, f"{provider}: sets EventRecordDetail fields not declared in coverage: {sorted(undeclared)}"
 
 
 _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
-    "samsung": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+    "samsung": SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
     "health_connect": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+}
+
+_SDK_WORKOUT_STATISTIC_MAP = {
+    "apple": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    "samsung": SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    "health_connect": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
 }
 
 
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
+    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(_SDK_WORKOUT_STATISTIC_MAP[provider].values())
     assert _timeseries(cov) == expected, (
         f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
     )

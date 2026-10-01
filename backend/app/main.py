@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import logging
 import sys
 from collections.abc import AsyncGenerator
@@ -17,8 +19,9 @@ from app.api import head_router
 from app.config import settings
 from app.integrations.celery import create_celery
 from app.integrations.sentry import init_sentry
-from app.middlewares import add_access_log_middleware, add_cors_middleware
+from app.middlewares import add_access_log_middleware, add_cors_middleware, add_endpoint_usage_middleware
 from app.services import raw_payload_storage
+from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
@@ -52,6 +55,9 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     logging.getLogger("uvicorn.access").disabled = True
     svix_service.register_event_types()
     yield
+    # Hand the last partial interval of telemetry counters to Redis before exiting.
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(endpoint_usage.flush)
 
 
 api = FastAPI(title=settings.api_name, version=version("open-wearables"), lifespan=_lifespan)
@@ -69,6 +75,13 @@ raw_payload_storage.configure(
 
 add_cors_middleware(api)
 add_access_log_middleware(api)
+add_endpoint_usage_middleware(api)
+
+if settings.telemetry_enabled:
+    logging.getLogger(__name__).info(
+        "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
+        "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
+    )
 
 # Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"

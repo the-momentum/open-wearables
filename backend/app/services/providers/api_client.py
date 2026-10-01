@@ -110,6 +110,7 @@ def make_authenticated_request(
     json_data: dict[str, Any] | None = None,
     expect_json: bool = True,
     http2: bool = False,
+    check_body_errors: bool = True,
 ) -> Any:
     """Make authenticated request to provider API.
 
@@ -134,6 +135,9 @@ def make_authenticated_request(
         http2: Enable HTTP/2 for this request (default False). Requires the h2
             package (installed via httpx[http2]).  Use for providers that require
             HTTP/2, e.g. Sensor Bio.  Other providers are unaffected.
+        check_body_errors: Raise when a 200 body carries an ``error`` or a non-200 ``code``
+            (default True). Set to False for providers whose envelope carries its own
+            status, e.g. Withings, so the caller can tell a throttle from a failure.
 
     Returns:
         Any: API response JSON, or dict with status_code if expect_json=False
@@ -212,7 +216,7 @@ def make_authenticated_request(
             result = response.json()
 
             # Some APIs (like Suunto) return 200 OK but include error in response body
-            if isinstance(result, dict):
+            if check_body_errors and isinstance(result, dict):
                 # Check for common error patterns
                 # Only treat as error if "error" field has a value (not None/null)
                 has_error = result.get("error") is not None and result.get("error")

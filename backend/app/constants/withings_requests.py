@@ -49,6 +49,7 @@ SLEEP_SUMMARY = WithingsDataRequest(
         "remsleepduration",
         "wakeupduration",
         "sleep_efficiency",
+        "hr_min",
     ),
 )
 
@@ -64,4 +65,10 @@ WORKOUTS = WithingsDataRequest(
         "hr_min",
         "hr_max",
     ),
+)
+
+SLEEP_SERIES = WithingsDataRequest(
+    service_path="/v2/sleep",
+    action="get",
+    list_key="series",
 )

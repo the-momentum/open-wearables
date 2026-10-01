@@ -203,8 +203,9 @@ keywords: ["android health connect troubleshooting", "health connect permissions
 
     4. **Reset anchors for full sync:**
        ```kotlin
+       sdk.stopBackgroundSync()
        sdk.resetAnchors()
-       sdk.syncNow()
+       sdk.startBackgroundSync()
        ```
 
     5. **Check permissions:**
@@ -280,16 +281,14 @@ Android's battery optimization can significantly impact background sync. Here's 
 
 ## Testing
 
-### Manual Sync Test
+### Sync Status Check
 
 ```kotlin
-// Trigger immediate sync and check results
-sdk.syncNow()
-
-// Check status after sync
+// Check sync status
 val status = sdk.getSyncStatus()
 Log.d("SDK", "Sent count: ${status["sentCount"]}")
 Log.d("SDK", "Completed types: ${status["completedTypes"]}")
+Log.d("SDK", "Is syncing: ${status["isSyncing"]}")
 ```
 
 ### Check Stored State
@@ -348,7 +347,7 @@ for (p in providers) {
 If you're still experiencing issues:
 
 <CardGroup cols={2}>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/open-wearables-android-sdk/issues">
+  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/open_wearables_android_sdk/issues">
     Report bugs or request features on the SDK repository.
   </Card>
   <Card title="Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">

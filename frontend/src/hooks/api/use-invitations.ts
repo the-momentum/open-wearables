@@ -16,7 +16,7 @@ export function useInvitations() {
   });
 }
 
-export function useCreateInvitation() {
+export function useCreateInvitation(emailEnabled = true) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -24,15 +24,20 @@ export function useCreateInvitation() {
       invitationsService.createInvitation(data),
     onSuccess: (createdInvitation) => {
       // Optimistically set status to 'sent' since email sending usually succeeds
-      // On page refresh, the real status will be fetched (sent or failed)
+      // On page refresh, the real status will be fetched (sent or failed).
+      // Without email delivery the invitation stays pending until accepted.
       queryClient.setQueryData(
         queryKeys.invitations.list(),
         (old: Invitation[] = []) => [
           ...old,
-          { ...createdInvitation, status: 'sent' },
+          emailEnabled
+            ? { ...createdInvitation, status: 'sent' }
+            : createdInvitation,
         ]
       );
-      toast.success('Invitation sent successfully');
+      toast.success(
+        emailEnabled ? 'Invitation sent successfully' : 'Invitation created'
+      );
     },
     onError: (error) => {
       toast.error(`Failed to send invitation: ${getErrorMessage(error)}`);
@@ -55,14 +60,18 @@ export function useRevokeInvitation() {
   });
 }
 
-export function useResendInvitation() {
+export function useResendInvitation(emailEnabled = true) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) => invitationsService.resendInvitation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invitations.list() });
-      toast.success('Invitation resent successfully');
+      toast.success(
+        emailEnabled
+          ? 'Invitation resent successfully'
+          : 'Invite link regenerated'
+      );
     },
     onError: (error) => {
       toast.error(`Failed to resend invitation: ${getErrorMessage(error)}`);

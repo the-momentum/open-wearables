@@ -11139,12 +11139,17 @@
           "data_lifecycle_enabled": {
             "type": "boolean",
             "title": "Data Lifecycle Enabled"
+          },
+          "email_enabled": {
+            "type": "boolean",
+            "title": "Email Enabled"
           }
         },
         "type": "object",
         "required": [
           "outgoing_webhooks_enabled",
-          "data_lifecycle_enabled"
+          "data_lifecycle_enabled",
+          "email_enabled"
         ],
         "title": "ConfigResponse",
         "description": "Instance feature flags for the admin panel. Additive-only: append new flags,\nnever remove or repurpose, so the frontend stays backward compatible."

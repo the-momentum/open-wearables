@@ -25,174 +25,13 @@ This guide walks you through the complete integration of the Open Wearables Andr
   <Step title="Start background sync" />
 </Steps>
 
-## Authentication Architecture
-
-The SDK supports two authentication modes: **token-based** (recommended) and **API key**. The token-based flow keeps your App credentials safe on your backend:
-
-<Steps>
-  <Step title="Your Backend generates token" icon="server">
-    Your backend calls the Open Wearables API with your **App credentials** (`app_id` + `app_secret`) to generate a user-scoped token (server-to-server, HTTPS) via [Create User Token](/api-reference/mobile-sdk/create-user-token) endpoint. Open Wearables returns `access_token` + `refresh_token`.
-  </Step>
-  <Step title="Your Backend returns tokens to the app" icon="key">
-    Your backend exposes its own custom endpoint that forwards the `access_token` and `refresh_token` to the mobile app. **Never expose `app_id` or `app_secret` to the client.**
-  </Step>
-  <Step title="Mobile App calls SDK signIn" icon="mobile">
-    The Android app receives the tokens and passes them to `sdk.signIn(accessToken, refreshToken)`.
-  </Step>
-  <Step title="SDK stores & syncs" icon="lock">
-    Android SDK stores credentials in EncryptedSharedPreferences and uses `accessToken` to sync health data directly to Open Wearables.
-  </Step>
-</Steps>
-
-```mermaid
-%%{init: {'flowchart': {'rankSpacing': 120, 'nodeSpacing': 40, 'padding': 20}}}%%
-graph TD
-    B["Your Backend"] -->|"&nbsp; POST /api/v1/users/{user_id}/token &nbsp;&nbsp; (app_id and app_secret) &nbsp;"| OW["Open Wearables API"]
-    OW -->|"&nbsp; access_token &nbsp;<br/>&nbsp; refresh_token &nbsp;"| B
-    B -->|"&nbsp; Forward tokens &nbsp;"| App["Mobile SDK"]
-    App -->|"&nbsp; Refresh token &nbsp;"| OW
-    App -->|"&nbsp; Sync health data &nbsp;"| OW
-```
-
-<Warning>
-  **Never embed your `app_id` / `app_secret` in the mobile app.** App credentials should only exist on your backend server. Only the `access_token` and `refresh_token` are passed to the mobile app.
-</Warning>
-
-<Note>
-  **Building a standalone app with no backend of your own?** Invitation codes are an alternative - a single-use code the app redeems directly, no backend channel required. This is **not** the standard flow; it exists mainly for the [Open Wearables app](/app/introduction) and the [example apps](/sdk/flutter/example-app). If your app authenticates users against your own backend (the normal case), use the backend token flow above. See [Choosing an onboarding flow](/sdk#choosing-an-onboarding-flow).
-</Note>
+<Info>
+  Read the [Mobile SDK Integration Guide](/sdk/integration) first. It covers what is the same on every platform: authentication, the backend token endpoint, the SDK lifecycle, and the production checklist. This page shows the Kotlin code for each step.
+</Info>
 
 ## Step 1: Backend Setup
 
-Your backend needs a single endpoint that generates access tokens for your users by calling the Open Wearables API and forwarding the tokens.
-
-### Generate Access Token
-
-When a user wants to connect their health data, your backend should:
-
-1. Authenticate the user (your own auth system)
-2. Call Open Wearables API at [`POST /api/v1/users/{user_id}/token`](/api-reference/mobile-sdk/create-user-token) with your App credentials
-3. Return the `access_token` and `refresh_token` to the mobile app
-
-<Tabs>
-  <Tab title="Node.js">
-```javascript
-// Express.js example — runs on YOUR backend (e.g. https://api.yourapp.com)
-const express = require('express');
-const app = express();
-
-app.post('/api/health/connect', authenticateUser, async (req, res) => {
-  try {
-    const owUserId = req.user.openWearablesUserId;
-    
-    // Call Open Wearables API to generate a user-scoped token
-    const response = await fetch(
-      `${process.env.OPENWEARABLES_HOST}/api/v1/users/${owUserId}/token`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          app_id: process.env.OPENWEARABLES_APP_ID,
-          app_secret: process.env.OPENWEARABLES_APP_SECRET,
-        }),
-      }
-    );
-    
-    if (!response.ok) {
-      throw new Error('Failed to generate token');
-    }
-    
-    const { access_token, refresh_token } = await response.json();
-    
-    // Return tokens to the mobile app (NOT the app credentials!)
-    res.json({ 
-      userId: owUserId, 
-      accessToken: access_token,
-      refreshToken: refresh_token,
-    });
-  } catch (error) {
-    console.error('Health connect error:', error);
-    res.status(500).json({ error: 'Failed to connect health' });
-  }
-});
-```
-  </Tab>
-
-  <Tab title="Python">
-```python
-# FastAPI example — runs on YOUR backend (e.g. https://api.yourapp.com)
-from fastapi import FastAPI, Depends, HTTPException
-import httpx
-import os
-
-app = FastAPI()
-
-@app.post("/api/health/connect")
-async def connect_health(current_user = Depends(get_current_user)):
-    ow_user_id = current_user.open_wearables_user_id
-
-    # Call Open Wearables API to generate a user-scoped token
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{os.environ['OPENWEARABLES_HOST']}/api/v1/users/{ow_user_id}/token",
-            json={
-                "app_id": os.environ["OPENWEARABLES_APP_ID"],
-                "app_secret": os.environ["OPENWEARABLES_APP_SECRET"],
-            },
-        )
-        
-        if response.status_code != 200:
-            raise HTTPException(500, "Failed to generate token")
-        
-        data = response.json()
-    
-    # Return tokens to the mobile app
-    return {
-        "userId": str(ow_user_id),
-        "accessToken": data["access_token"],
-        "refreshToken": data["refresh_token"],
-    }
-```
-  </Tab>
-
-  <Tab title="Ruby">
-```ruby
-# Rails controller example — runs on YOUR backend (e.g. https://api.yourapp.com)
-class HealthController < ApplicationController
-  before_action :authenticate_user!
-
-  def connect
-    ow_user_id = current_user.open_wearables_user_id
-
-    # Call Open Wearables API to generate a user-scoped token
-    response = HTTParty.post(
-      "#{ENV['OPENWEARABLES_HOST']}/api/v1/users/#{ow_user_id}/token",
-      headers: { 'Content-Type' => 'application/json' },
-      body: {
-        app_id: ENV['OPENWEARABLES_APP_ID'],
-        app_secret: ENV['OPENWEARABLES_APP_SECRET']
-      }.to_json
-    )
-
-    if response.success?
-      # Return tokens to the mobile app
-      render json: {
-        userId: ow_user_id,
-        accessToken: response['access_token'],
-        refreshToken: response['refresh_token']
-      }
-    else
-      render json: { error: 'Failed to connect' }, status: 500
-    end
-  end
-end
-```
-  </Tab>
-</Tabs>
-
-<Note>
-  The `user_id` in the URL is the Open Wearables User ID (UUID). You should store this mapping in your database when you first [Create User](/api-reference/users/create-user) via the Open Wearables API.
-</Note>
+Your backend exchanges your app credentials for user-scoped SDK tokens and forwards them to the app - the app never sees `app_id` / `app_secret`. See [Backend Endpoint](/sdk/integration#backend-endpoint) for the setup and example code.
 
 ## Step 2: SDK Initialization & Configuration
 
@@ -218,8 +57,8 @@ class MyApplication : Application() {
         sdk.logLevel = OWLogLevel.ALWAYS
 
         // Optional: Handle auth errors (e.g. token expired)
-        sdk.authErrorListener = { error ->
-            Log.e("HealthSDK", "Auth error: $error")
+        sdk.authErrorListener = { statusCode, message ->
+            Log.e("HealthSDK", "Auth error $statusCode: $message")
         }
 
         // Configure with your backend host
@@ -263,7 +102,7 @@ if (sdk.isSessionValid()) {
 After getting credentials from your backend, sign in with the SDK.
 
 <Info>
-  The `userId` parameter is the **Open Wearables User ID** (UUID) — the `id` returned by the [Create User](/api-reference/users/create-user) endpoint. Do **not** pass your own `external_user_id` here.
+  The `userId` parameter is the **Open Wearables User ID** (UUID) — the `id` returned by the [Create User](/api-reference/external:-users/create-user) endpoint. Do **not** pass your own `external_user_id` here.
 </Info>
 
 ### Token-Based Authentication (Recommended)
@@ -440,16 +279,8 @@ sdk.startBackgroundSync()
 | Mechanism | Description |
 |-----------|-------------|
 | WorkManager | Periodic background sync with system-managed scheduling |
-| Foreground Service | Used during active sync for reliability (`dataSync` type) |
+| Foreground Service | Used during active sync for reliability (`health` type) |
 | Notification | Shows a notification during active sync (Android 13+ requires permission) |
-
-### Manual Sync
-
-Trigger an immediate sync:
-
-```kotlin
-sdk.syncNow()
-```
 
 ### Stop Sync
 
@@ -593,12 +424,6 @@ class HealthViewModel : ViewModel() {
         }
     }
 
-    fun syncNow() {
-        viewModelScope.launch {
-            sdk.syncNow()
-        }
-    }
-
     fun checkAndResumeSync() {
         viewModelScope.launch {
             if (sdk.hasResumableSyncSession()) {
@@ -611,8 +436,9 @@ class HealthViewModel : ViewModel() {
 
     fun resyncAllData() {
         viewModelScope.launch {
+            sdk.stopBackgroundSync()
             sdk.resetAnchors()
-            sdk.syncNow()
+            sdk.startBackgroundSync()
         }
     }
 
@@ -658,10 +484,6 @@ class HealthActivity : AppCompatActivity() {
         disconnectButton.setOnClickListener {
             viewModel.disconnect()
         }
-
-        syncNowButton.setOnClickListener {
-            viewModel.syncNow()
-        }
     }
 
     override fun onDestroy() {
@@ -684,7 +506,7 @@ The payload includes a `provider` field (`"samsung"` or `"google"`) and the SDK 
 ```json
 {
   "provider": "google",
-  "sdkVersion": "0.5.0",
+  "sdkVersion": "0.12.0",
   "syncTimestamp": "2025-01-15T10:30:00Z",
   "data": {
     "records": [...],

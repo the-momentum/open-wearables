@@ -180,10 +180,11 @@ keywords: ["flutter healthkit troubleshooting", "flutter health connect issues",
     3. **Check date range:**
        The SDK syncs data incrementally. New data may not exist yet.
 
-    4. **Reset anchors for full sync:**
+    4. **Reset anchors to re-sync the last 90 days** (`syncDaysBack: 0` for the full history):
        ```dart
+       await OpenWearablesHealthSdk.stopBackgroundSync();
        await OpenWearablesHealthSdk.resetAnchors();
-       await OpenWearablesHealthSdk.syncNow();
+       await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: 90);
        ```
 
     5. **Check permissions:**
@@ -273,7 +274,7 @@ iOS has strict limits on background execution:
 | Network | Background tasks require network connectivity |
 
 <Tip>
-  For critical sync operations, prompt users to open the app and trigger `syncNow()` manually.
+  For critical sync operations, prompt users to open the app — the SDK resumes an interrupted sync when the app returns to the foreground.
 </Tip>
 
 ## Testing Background Sync
@@ -302,7 +303,7 @@ In Xcode, you can simulate background fetch:
 ### Enable Debug Logging
 
 ```dart
-import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 
 // Listen to SDK logs
 MethodChannelOpenWearablesHealthSdk.logStream.listen((message) {

@@ -77,6 +77,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         *MEASURE_TYPE_MAP.values(),
         *ACTIVITY_FIELD_MAP.values(),
         SeriesType.basal_energy,
+        SeriesType.resting_heart_rate,  # /v2/sleep getsummary (hr_min)
     }
 )
 
@@ -103,6 +104,7 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
         "sleep_rem_minutes",
         "sleep_awake_minutes",
         "is_nap",
+        "sleep_stages",
     }
 )
 

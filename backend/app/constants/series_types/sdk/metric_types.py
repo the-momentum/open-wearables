@@ -319,6 +319,36 @@ ANDROID_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     k: v for k, v in METRIC_TYPE_TO_SERIES_TYPE.items() if not k.value.startswith("HK")
 }
 
+# Metric types the Android SDK's SamsungHealthManager actually emits. Samsung Health
+# Data SDK exposes far fewer types than Health Connect (e.g. no resting heart rate,
+# HRV, respiratory rate or distance), so Samsung can't reuse the Android map.
+_SAMSUNG_METRIC_TYPES: frozenset[SDKMetricType] = frozenset(
+    {
+        SDKMetricType.ANDROID_HEART_RATE,
+        SDKMetricType.ANDROID_STEP_COUNT,
+        SDKMetricType.ANDROID_OXYGEN_SATURATION,
+        SDKMetricType.ANDROID_BLOOD_GLUCOSE,
+        SDKMetricType.ANDROID_BLOOD_PRESSURE_SYSTOLIC,
+        SDKMetricType.ANDROID_BLOOD_PRESSURE_DIASTOLIC,
+        SDKMetricType.ANDROID_BODY_TEMPERATURE,
+        SDKMetricType.ANDROID_FLOORS_CLIMBED,
+        SDKMetricType.ANDROID_HYDRATION,
+        SDKMetricType.ANDROID_ACTIVE_CALORIES_BURNED,
+        SDKMetricType.ANDROID_WEIGHT,
+        SDKMetricType.ANDROID_HEIGHT,
+        SDKMetricType.ANDROID_BODY_FAT_PERCENTAGE,
+        SDKMetricType.ANDROID_BODY_FAT_MASS,
+        SDKMetricType.ANDROID_LEAN_BODY_MASS,
+        SDKMetricType.ANDROID_SKELETAL_MUSCLE_MASS,
+        SDKMetricType.ANDROID_BODY_MASS_INDEX,
+        SDKMetricType.ANDROID_BASAL_METABOLIC_RATE,
+    }
+)
+
+SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
+    k: v for k, v in METRIC_TYPE_TO_SERIES_TYPE.items() if k in _SAMSUNG_METRIC_TYPES
+}
+
 
 def get_series_type_from_metric_type(metric_type: SDKMetricType | str) -> SeriesType | None:
     """
