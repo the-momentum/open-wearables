@@ -1,16 +1,23 @@
 """Shared value/timestamp helpers for the Google Health API handlers."""
 
-from datetime import date, datetime, timezone
+from collections.abc import Iterator
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
 from pydantic import ValidationError
 
-from app.schemas.providers.google import DataPointsPage
+from app.schemas.providers.google import DataPointsPage, TimeShape
 from app.utils.conversion import to_decimal
 from app.utils.dates import offset_to_iso, to_rfc3339
 
 GOOGLE_HEALTH_API_SOURCE = "google_health_api"
+
+# Google truncates pageSize to 25 for the session data types; larger values are ignored.
+SESSION_PAGE_SIZE = 25
+
+# Per-fetch backstop against a window that never exhausts.
+MAX_PAGES = 200
 
 
 def parse_page(response: Any, endpoint: str) -> DataPointsPage:
@@ -23,6 +30,56 @@ def parse_page(response: Any, endpoint: str) -> DataPointsPage:
         return DataPointsPage.model_validate(response)
     except ValidationError as e:
         raise RuntimeError(f"Malformed {endpoint} response: {type(response).__name__}") from e
+
+
+def next_page_token(page: DataPointsPage, seen: set[str], endpoint: str) -> str | None:
+    """Token for the next page, or None when the fetch is exhausted.
+
+    Raises on a repeated token or a runaway page count rather than looping forever (#1518).
+    """
+    token = page.next_page_token
+    if not token:
+        return None
+    if token in seen:
+        raise RuntimeError(f"{endpoint} returned a repeated page token")
+    if len(seen) >= MAX_PAGES:
+        raise RuntimeError(f"{endpoint} exceeded {MAX_PAGES} pages")
+    seen.add(token)
+    return token
+
+
+def chunk_range(start: datetime, end: datetime, max_days: int) -> Iterator[tuple[datetime, datetime]]:
+    """Split [start, end) into consecutive windows no longer than max_days."""
+    window = timedelta(days=max_days)
+    cursor = start
+    while cursor < end:
+        nxt = min(cursor + window, end)
+        yield cursor, nxt
+        cursor = nxt
+
+
+def time_filter(
+    data_type: str, shape: TimeShape, start_time: datetime, end_time: datetime, session_interval: bool = False
+) -> str:
+    """AIP-160 filter bounding the fetch to [start_time, end_time) for the type's time shape."""
+    field = data_type.replace("-", "_")
+    match shape:
+        case TimeShape.INTERVAL if session_interval:
+            # SessionTimeInterval types (excl. sleep/ECG) filter on civil start time, not physical.
+            member = f"{field}.interval.civil_start_time"
+            low = (start_time.date() - timedelta(days=1)).isoformat()
+            high = (end_time.date() + timedelta(days=1)).isoformat()
+        case TimeShape.DATE:
+            # A daily total is published once its day closes.
+            member = f"{field}.date"
+            low = (start_time.date() - timedelta(days=1)).isoformat()
+            high = (end_time.date() + timedelta(days=1)).isoformat()
+        case TimeShape.INTERVAL | TimeShape.SAMPLE:
+            suffix = "interval.start_time" if shape is TimeShape.INTERVAL else "sample_time.physical_time"
+            member = f"{field}.{suffix}"
+            window = physical_interval(start_time, end_time)
+            low, high = window["startTime"], window["endTime"]
+    return f'{member} >= "{low}" AND {member} < "{high}"'
 
 
 def physical_interval(start: datetime, end: datetime) -> dict[str, str]:
