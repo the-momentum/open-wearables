@@ -21,6 +21,8 @@ The single backend image covers every backend role. The start command selects wh
 | `scripts/start/beat.sh` | Celery beat (scheduler) |
 | `scripts/start/flower.sh` | Flower (Celery monitoring UI, port `5555`) |
 
+Once the service is running, the start commands pass `SIGTERM` on to it, so `docker stop` shuts down cleanly. The worker container stops taking new tasks and finishes the ones already running. If that takes longer than the stop timeout (10 seconds by default), Docker kills the remaining tasks; raise `stop_grace_period` on the worker service if your syncs or imports run longer. A stop during startup, while `app.sh` applies migrations and seed scripts or `flower.sh` waits for the workers, is not passed on, so the container may keep running until the stop timeout runs out.
+
 ## Image tags
 
 Both images share the same tag scheme. Choose a tag based on how much stability you need:
