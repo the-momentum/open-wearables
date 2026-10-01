@@ -1,4 +1,6 @@
 import logging
+import smtplib
+from email.message import EmailMessage
 from html import escape
 from typing import Any, cast
 
@@ -10,6 +12,8 @@ from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 _email_validator = TypeAdapter(EmailStr)
+
+SMTP_TIMEOUT_SECONDS = 30
 
 
 def is_valid_email(email: str) -> bool:
@@ -28,11 +32,11 @@ def _get_from_address() -> str:
 
 def _is_email_configured() -> bool:
     """Check if email sending is properly configured."""
-    if not settings.resend_api_key:
+    if not settings.smtp_host and not settings.resend_api_key:
         log_structured(
             logger,
             "warning",
-            "RESEND_API_KEY not configured, skipping email send",
+            "Neither SMTP_HOST nor RESEND_API_KEY configured, skipping email send",
             provider="email",
             task="is_email_configured",
         )
@@ -58,14 +62,45 @@ def _is_email_configured() -> bool:
     return True
 
 
-def _configure_resend() -> None:
-    """Configure Resend API key.
+def _send_via_resend(to_email: str, subject: str, html: str) -> None:
+    """Send an email through the Resend API.
 
     Note: The Resend library uses module-level configuration.
     Since we use a single API key for the entire application,
     this is safe even in concurrent environments.
     """
     resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[unresolved-attribute]
+    params = cast(Any, {"from": _get_from_address(), "to": [to_email], "subject": subject, "html": html})
+    result = resend.Emails.send(params)
+    logger.info(f"Email sent via Resend, result: {result}")
+
+
+def _send_via_smtp(to_email: str, subject: str, html: str) -> None:
+    """Send an email through the configured SMTP server."""
+    msg = EmailMessage()
+    msg["From"] = _get_from_address()
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content("This email requires an HTML-capable email client.")
+    msg.add_alternative(html, subtype="html")
+
+    host = cast(str, settings.smtp_host)
+    smtp_cls = smtplib.SMTP_SSL if settings.smtp_security == "ssl" else smtplib.SMTP
+    with smtp_cls(host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS) as server:
+        if settings.smtp_security == "starttls":
+            server.starttls()
+        if settings.smtp_username and settings.smtp_password:
+            server.login(settings.smtp_username, settings.smtp_password.get_secret_value())
+        server.send_message(msg)
+    logger.info(f"Email sent via SMTP ({host}:{settings.smtp_port})")
+
+
+def _send_email(to_email: str, subject: str, html: str) -> None:
+    """Send an email using SMTP when SMTP_HOST is set, otherwise Resend."""
+    if settings.smtp_host:
+        _send_via_smtp(to_email, subject, html)
+    else:
+        _send_via_resend(to_email, subject, html)
 
 
 def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str | None = None) -> bool:
@@ -88,20 +123,14 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
     if not _is_email_configured():
         return False
 
-    _configure_resend()
     invited_by_text = f" by {escape(invited_by_email)}" if invited_by_email else ""
 
     try:
-        from_addr = _get_from_address()
-        logger.info(f"Sending invitation email from '{from_addr}'")
-
-        params = cast(
-            Any,
-            {
-                "from": from_addr,
-                "to": [to_email],
-                "subject": f"You've been invited to join {escape(settings.email_from_name)}",
-                "html": f"""
+        logger.info(f"Sending invitation email from '{_get_from_address()}'")
+        _send_email(
+            to_email,
+            subject=f"You've been invited to join {escape(settings.email_from_name)}",
+            html=f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2>You're Invited!</h2>
                     <p>You've been invited{invited_by_text} to join the team.</p>
@@ -120,10 +149,7 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
                     </p>
                 </div>
             """,
-            },
         )
-        result = resend.Emails.send(params)
-        logger.info(f"Invitation email sent successfully, result: {result}")
         return True
     except Exception as e:
         log_structured(

@@ -245,8 +245,13 @@ class Settings(BaseSettings):
     withings_webhook_token: SecretStr | None = None
     withings_default_scope: str = "user.info,user.metrics,user.activity"
 
-    # EMAIL SETTINGS (Resend)
+    # EMAIL SETTINGS (SMTP is used when SMTP_HOST is set, otherwise Resend)
     resend_api_key: SecretStr | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
     email_from_address: str | None = None
     email_from_name: str = "Open Wearables"
     frontend_url: str = "http://localhost:3000"
