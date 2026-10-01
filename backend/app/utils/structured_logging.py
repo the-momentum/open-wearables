@@ -9,6 +9,7 @@ from typing import Any, NamedTuple
 from uuid import UUID
 
 from app.config import settings
+from app.integrations.otel import export_structured
 from app.utils.config_utils import LogFormat
 from app.utils.context import trace_id_var
 from app.utils.logging_setup import format_text_line, level_number, min_log_level
@@ -102,13 +103,15 @@ def log_structured(
     # same TypeError whatever LOG_FORMAT and LOG_LEVEL are set to.
     json_str = json.dumps(log_entry, default=json_serial)
 
+    levelno = level_number(level)
     threshold = min_log_level()
-    if threshold is not None and level_number(level) < threshold:
+    if threshold is not None and levelno < threshold:
         return
 
     if settings.log_format is LogFormat.TEXT:
         line = format_text_line(time.time(), level, logger.name, message, {"provider": provider, **attributes})
         print(line, file=sys.stdout, flush=True)
+        export_structured(logger, levelno, message, provider, attributes)
         return
 
     # Always use stdout to avoid Railway's automatic level conversion
@@ -117,3 +120,4 @@ def log_structured(
     # By using stdout, platforms sets level.info by default, but our JSON level
     # field in the structured log should take precedence.
     print(json_str, file=sys.stdout, flush=True)
+    export_structured(logger, levelno, message, provider, attributes)

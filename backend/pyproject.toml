@@ -32,6 +32,15 @@ dependencies = [
     "google-auth>=2.58.1",
 ]
 
+[project.optional-dependencies]
+# OpenTelemetry log export, used only with OTEL_ENABLED=true. The published image includes it.
+otel = [
+    "fastapi[opentelemetry]>=0.142.2",
+    "opentelemetry-sdk>=1.45.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.0",
+    "opentelemetry-instrumentation-logging>=0.66b0",
+]
+
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.6.1",

@@ -1,0 +1,142 @@
+---
+title: "Exporting logs with OpenTelemetry"
+description: "Send backend logs to an OTLP collector in addition to stdout"
+---
+
+The backend can send its logs to any collector that accepts OTLP over HTTP (the OpenTelemetry Collector, Grafana Alloy, Datadog Agent, and others). Export is off by default. When it is on, the container output does not change: every line still goes to stdout in the format chosen with `LOG_FORMAT` (see [Logs](/deployment/docker#logs)).
+
+Only logs are exported. Traces and metrics are not.
+
+## Requirements
+
+Export needs the `otel` extra, which the published Docker images include. For a source install:
+
+```bash
+cd backend
+uv sync --extra otel
+```
+
+With `OTEL_ENABLED=true` and the extra missing, every backend process stops at startup with:
+
+```
+RuntimeError: OTEL_ENABLED=true needs the 'otel' extra (uv sync --extra otel); missing: opentelemetry.sdk, ...
+```
+
+## Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OTEL_ENABLED` | Turn log export on | `false` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector base URL; logs go to `<endpoint>/v1/logs` | `http://localhost:4318` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Extra request headers, e.g. `Authorization=Basic <base64>` | none |
+| `OTEL_SERVICE_NAME` | Overrides the service name of every process | see below |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra or overriding resource attributes, e.g. `deployment.environment.name=eu-prod` | none |
+| `OTEL_EXPORT_REDACT_KEYS` | Comma-separated attribute names whose values are replaced with `REDACTED`, in addition to the built-in rules | none |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | Timeout of one export request, in seconds (the Python exporter reads seconds, not the milliseconds of the OpenTelemetry specification) | `10` |
+| `OTEL_SDK_DISABLED` | `true` turns export off even when `OTEL_ENABLED=true` | `false` |
+
+`OTEL_ENABLED` and `OTEL_EXPORT_REDACT_KEYS` can also be set in `backend/config/.env`. All other `OTEL_*` variables are read by the OpenTelemetry SDK from the process environment only. Docker Compose passes every entry of its `env_file` to the container, so there it makes no difference; when you start the backend with `uv run`, export them in the shell instead.
+
+Only `http/protobuf` is supported. If `OTEL_EXPORTER_OTLP_PROTOCOL` is set to anything else, the backend logs a warning and still uses HTTP. Batching can be tuned with the standard `OTEL_BLRP_*` variables.
+
+Example `.env` entries for a collector on the same Compose network:
+
+```bash
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OTEL_EXPORTER_OTLP_TIMEOUT=2
+```
+
+## What is exported
+
+Each process reports itself with its own `service.name`, in the `open-wearables` service namespace:
+
+| Process | `service.name` |
+|---------|----------------|
+| API (`scripts/start/app.sh`) | `open-wearables-api` |
+| I/O worker (`io@...`) | `open-wearables-worker-io` |
+| CPU worker (`cpu@...`) | `open-wearables-worker-cpu` |
+| Beat | `open-wearables-beat` |
+
+`service.version` and `deployment.environment.name` (from `ENVIRONMENT`) are set as well. Values in `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` take precedence.
+
+Structured app logs (`log_structured`) keep their message as the log body; their fields become attributes under `app.`, for example `app.user_id`, `app.provider` and `app.trace_id` (the app's own correlation id, not an OpenTelemetry trace id). Fields that app code passes with `extra=` to standard loggers keep their names. Extra fields of library loggers are not exported: they are not part of the log line on stdout either, and Celery uses them to attach task arguments, keyword arguments and return values to its task records. Celery also formats task results into its own `succeeded` messages; in the exported copy they read `<omitted>` (stdout is unchanged). Its `Received unregistered task` and invalid-task errors, which only occur with a misconfiguration, still contain the full task message.
+
+Before export, an attribute value is replaced with `REDACTED` when its name, converted to snake_case (`X-Api-Key` and `xApiKey` both become `x_api_key`), contains `password`, `passwd`, `secret`, `token`, `authorization`, `api_key`, `apikey`, `cookie`, `signature`, `credential`, `private_key`, `bearer`, `session` or one of the entries in `OTEL_EXPORT_REDACT_KEYS`, or is `response_body` or `body_preview`. This also applies to keys inside nested objects and to the fields of pydantic models and dataclasses, which are read field by field. Other objects, exceptions included, are exported as their type name only (`<ClassName>`), never as their text.
+
+<Warning>
+  Text is exported as it is, without redaction: the log message, the exception message and stack trace of error logs, and string attribute values whose names are not sensitive, such as `error=str(exc)`. This is the same text the backend prints to stdout, but it now also reaches your collector.
+</Warning>
+
+<Note>
+  Log attributes are high-cardinality (user and record ids). Keep them as attributes in your log backend and do not turn them into index labels, for example Loki labels.
+</Note>
+
+Not exported:
+
+- Raw payloads printed with `RAW_PAYLOAD_STORAGE=log`. They go to stdout only.
+- Logs of the CPU worker's main process (task receipt and pool management). Its child processes, which run the tasks, export their logs.
+- The last uvicorn lines after the API has stopped (`Application shutdown complete.`, `Finished server process`), and beat's `beat: Starting...` line, which Celery logs before export starts.
+- Output that does not go through logging: Celery's startup banner and `worker: Warm shutdown` lines.
+
+On shutdown each process waits up to 3 seconds for queued logs to be sent and drops what is left after that. Keep `OTEL_EXPORTER_OTLP_TIMEOUT` well below your container stop timeout.
+
+When the collector is unreachable or rejects the request, the exporter logs the failure (`Failed to export logs batch ...`). These lines go to stdout like other logs but do not become Sentry events or breadcrumbs. (Sentry Logs, which this project does not turn on, is not covered by that.)
+
+## Example: OpenTelemetry Collector
+
+A collector that prints what it receives, useful to check the setup. `otel-collector-config.yaml`:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+Add it to the Compose file next to the backend services:
+
+```yaml
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+```
+
+After `docker compose up -d` and one API request, `docker compose logs otel-collector` shows records such as:
+
+```
+Resource attributes:
+     -> service.name: Str(open-wearables-api)
+     -> service.namespace: Str(open-wearables)
+...
+SeverityText: ERROR
+Body: Str(http_request)
+Attributes:
+     -> app.method: Str(GET)
+     -> app.path: Str(/api/v1/does-not-exist)
+     -> app.status: Int(404)
+```
+
+Replace the `debug` exporter with the one for your log backend.
+
+## Without exporting from the app
+
+If your platform can read container logs (Grafana Alloy, the OpenTelemetry Collector `filelog` receiver, Azure Monitor Agent, Datadog Agent), `LOG_FORMAT=json` is often enough: every stdout line is then one JSON object that these agents parse without app-side export.
+
+## Related settings
+
+- FastAPI's built-in OpenTelemetry support (traces, metrics, exception logs) stays off; `OTEL_*` variables do not turn it on.
+- The OpenTelemetry API reads `OTEL_PROPAGATORS` when the backend starts. A propagator that is not installed (for example `b3`) stops the backend at import, whether export is on or not. Leave the variable unset unless you install the propagator package.
