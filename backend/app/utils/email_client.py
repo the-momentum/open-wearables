@@ -1,5 +1,6 @@
 import logging
 import smtplib
+import ssl
 from email.message import EmailMessage
 from html import escape
 from typing import Any, cast
@@ -37,6 +38,15 @@ def _is_email_configured() -> bool:
             logger,
             "warning",
             "Neither SMTP_HOST nor RESEND_API_KEY configured, skipping email send",
+            provider="email",
+            task="is_email_configured",
+        )
+        return False
+    if settings.smtp_host and settings.smtp_security == "none" and settings.smtp_username and settings.smtp_password:
+        log_structured(
+            logger,
+            "warning",
+            "SMTP_SECURITY=none does not allow sending SMTP_USERNAME/SMTP_PASSWORD unencrypted, skipping email send",
             provider="email",
             task="is_email_configured",
         )
@@ -85,10 +95,15 @@ def _send_via_smtp(to_email: str, subject: str, html: str) -> None:
     msg.add_alternative(html, subtype="html")
 
     host = cast(str, settings.smtp_host)
-    smtp_cls = smtplib.SMTP_SSL if settings.smtp_security == "ssl" else smtplib.SMTP
-    with smtp_cls(host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS) as server:
+    # smtplib skips certificate verification unless given a context
+    tls_context = ssl.create_default_context()
+    if settings.smtp_security == "ssl":
+        server = smtplib.SMTP_SSL(host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS, context=tls_context)
+    else:
+        server = smtplib.SMTP(host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
+    with server:
         if settings.smtp_security == "starttls":
-            server.starttls()
+            server.starttls(context=tls_context)
         if settings.smtp_username and settings.smtp_password:
             server.login(settings.smtp_username, settings.smtp_password.get_secret_value())
         server.send_message(msg)

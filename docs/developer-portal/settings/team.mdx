@@ -50,8 +50,8 @@ SMTP_SECURITY=starttls
 
 - `SMTP_HOST` - SMTP server hostname. Setting it switches delivery to SMTP.
 - `SMTP_PORT` - default `587`.
-- `SMTP_USERNAME`, `SMTP_PASSWORD` - credentials. Leave both empty for a server that doesn't require authentication.
-- `SMTP_SECURITY` - `starttls` (default, usually port 587), `ssl` for implicit TLS (usually port 465), or `none` for an unencrypted connection, e.g. a local [Mailpit](https://mailpit.axllent.org) on port 1025.
+- `SMTP_USERNAME`, `SMTP_PASSWORD` - credentials. Leave both empty for a server that doesn't require authentication, e.g. a relay that allows your server by IP address (a Postfix container next to the backend, a Microsoft 365 connector, Google Workspace SMTP relay).
+- `SMTP_SECURITY` - `starttls` (default, usually port 587), `ssl` for implicit TLS (usually port 465), or `none` for an unencrypted connection, e.g. a local [Mailpit](https://mailpit.axllent.org) on port 1025. With `none`, `SMTP_USERNAME` and `SMTP_PASSWORD` must be empty: Open Wearables won't send credentials over an unencrypted connection and skips sending with a warning instead. With `starttls` and `ssl`, the server certificate is verified.
 
 Cloud email services:
 

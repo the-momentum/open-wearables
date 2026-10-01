@@ -1,5 +1,6 @@
 """Tests for invitation email delivery over SMTP and Resend."""
 
+import ssl
 from collections.abc import Iterator
 from email.message import EmailMessage
 from unittest.mock import MagicMock, patch
@@ -76,8 +77,10 @@ class TestSendInvitationEmail:
             assert send_invitation_email("dev@example.com", INVITE_URL, invited_by_email="admin@example.com") is True
 
         smtp.assert_called_once_with("smtp.example.com", 587, timeout=email_client.SMTP_TIMEOUT_SECONDS)
-        server = smtp.return_value.__enter__.return_value
-        server.starttls.assert_called_once()
+        server = smtp.return_value
+        context = server.starttls.call_args.kwargs["context"]
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
         server.login.assert_called_once_with("user", "pass")
 
         msg: EmailMessage = server.send_message.call_args.args[0]
@@ -100,8 +103,11 @@ class TestSendInvitationEmail:
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
         smtp.assert_not_called()
-        smtp_ssl.assert_called_once_with("smtp.example.com", 465, timeout=email_client.SMTP_TIMEOUT_SECONDS)
-        smtp_ssl.return_value.__enter__.return_value.starttls.assert_not_called()
+        assert smtp_ssl.call_args.args == ("smtp.example.com", 465)
+        context = smtp_ssl.call_args.kwargs["context"]
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        smtp_ssl.return_value.starttls.assert_not_called()
 
     def test_smtp_none_without_credentials_skips_tls_and_login(self) -> None:
         with (
@@ -112,10 +118,22 @@ class TestSendInvitationEmail:
         ):
             assert send_invitation_email("dev@example.com", INVITE_URL) is True
 
-        server = smtp.return_value.__enter__.return_value
+        server = smtp.return_value
         server.starttls.assert_not_called()
         server.login.assert_not_called()
         server.send_message.assert_called_once()
+
+    def test_smtp_none_with_credentials_skips_send(self) -> None:
+        with (
+            patch.object(settings, "smtp_host", "smtp.example.com"),
+            patch.object(settings, "smtp_security", "none"),
+            patch.object(settings, "smtp_username", "user"),
+            patch.object(settings, "smtp_password", SecretStr("pass")),
+            patch.object(email_client.smtplib, "SMTP") as smtp,
+        ):
+            assert send_invitation_email("dev@example.com", INVITE_URL) is False
+
+        smtp.assert_not_called()
 
     def test_smtp_error_returns_false(self) -> None:
         smtp = MagicMock(side_effect=OSError("connection refused"))
