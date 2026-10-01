@@ -410,11 +410,22 @@ class Settings(BaseSettings):
     @field_validator("log_level", mode="before")
     @classmethod
     def _parse_log_level(cls, v: Any) -> Any:
-        if isinstance(v, str):
-            name = v.strip().upper()
-            # Aliases the logging module accepts, common in shared LOG_LEVEL variables.
-            return {"WARN": "WARNING", "FATAL": "CRITICAL"}.get(name, name) or None
-        return v
+        if not isinstance(v, str):
+            return v
+        name = v.strip().upper()
+        # Aliases the logging module accepts, common in shared LOG_LEVEL variables.
+        name = {"WARN": "WARNING", "FATAL": "CRITICAL"}.get(name, name)
+        if not name:
+            return None
+        if name not in LogLevel.__members__:
+            # LOG_LEVEL is a common variable name; a value meant for another tool (TRACE,
+            # NOTSET, ...) must not stop the backend from starting.
+            warnings.warn(
+                f"Ignoring LOG_LEVEL={v!r}: expected DEBUG, INFO, WARNING, ERROR or CRITICAL",
+                stacklevel=2,
+            )
+            return None
+        return name
 
     @field_validator("pull_sync_lookback", mode="before")
     @classmethod

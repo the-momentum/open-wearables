@@ -208,7 +208,7 @@ Structured app log lines keep the same fields in `legacy` and `json`: `timestamp
 
 `LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, case-insensitive) drops log lines below that level, structured app logs included. It cannot lower the level of libraries that are kept quieter on purpose (`httpx` and `httpcore` stay at `WARNING`). When it is not set, other logs start at `INFO` and structured app logs are not filtered.
 
-`LOG_LEVEL` also changes what Sentry sees from app, Celery and uvicorn logs: with `CRITICAL`, their logged errors no longer create Sentry events, and above `INFO` their `INFO` lines no longer become breadcrumbs. Libraries with a level of their own (`httpx`, `httpcore`) still report to Sentry as before, and unhandled exceptions always do. `WARN` and `FATAL` are accepted as aliases; any other value stops the backend at startup, so check that your platform does not already set `LOG_LEVEL` for another tool.
+`LOG_LEVEL` also changes what Sentry sees from app, Celery and uvicorn logs: with `CRITICAL`, their logged errors no longer create Sentry events, and above `INFO` their `INFO` lines no longer become breadcrumbs. Libraries with a level of their own (`httpx`, `httpcore`) still report to Sentry as before, and unhandled exceptions always do. `WARN` and `FATAL` are accepted as aliases. Any other value, for example one your platform sets for another tool, is ignored with a warning at startup, as if `LOG_LEVEL` were not set.
 
 <Note>
   The default will change from `legacy` to `text` in a future release. Set `LOG_FORMAT` explicitly if you depend on the current output.

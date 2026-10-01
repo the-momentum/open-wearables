@@ -265,9 +265,9 @@ class TestSettings:
         assert Settings(log_level=raw).log_level == expected
 
     @pytest.mark.parametrize("raw", ["verbose", "NOTSET", "trace"])
-    def test_invalid_log_level_is_rejected(self, raw: str) -> None:
-        with pytest.raises(ValidationError):
-            Settings(log_level=raw)
+    def test_unknown_log_level_is_ignored_with_a_warning(self, raw: str) -> None:
+        with pytest.warns(UserWarning, match="Ignoring LOG_LEVEL"):
+            assert Settings(log_level=raw).log_level is None
 
     @pytest.mark.parametrize(
         ("raw", "expected"), [("JSON", LogFormat.JSON), (" text ", LogFormat.TEXT), ("", LogFormat.LEGACY)]
