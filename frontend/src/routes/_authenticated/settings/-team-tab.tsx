@@ -135,6 +135,7 @@ export function TeamTab() {
   };
 
   const handleResendInvitation = (id: string) => {
+    if (config.isPending) return;
     resendInvitationMutation.mutate(id);
   };
 
@@ -305,7 +306,10 @@ export function TeamTab() {
                           variant="outline"
                           size="icon"
                           onClick={() => handleResendInvitation(invitation.id)}
-                          disabled={resendInvitationMutation.isPending}
+                          disabled={
+                            config.isPending ||
+                            resendInvitationMutation.isPending
+                          }
                           title={
                             emailEnabled
                               ? 'Resend invitation'
