@@ -32,45 +32,22 @@ def _get_from_address() -> str:
     return formataddr((settings.email_from_name, cast(str, settings.email_from_address)))
 
 
-def _is_email_configured() -> bool:
-    """Check if email sending is properly configured."""
+def get_email_config_error() -> str | None:
+    """Return why email cannot be sent, or None when delivery is configured."""
     if not settings.smtp_host and not settings.resend_api_key:
-        log_structured(
-            logger,
-            "warning",
-            "Neither SMTP_HOST nor RESEND_API_KEY configured, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
+        return "Neither SMTP_HOST nor RESEND_API_KEY configured"
     if settings.smtp_host and settings.smtp_security == "none" and settings.smtp_username and settings.smtp_password:
-        log_structured(
-            logger,
-            "warning",
-            "SMTP_SECURITY=none does not allow sending SMTP_USERNAME/SMTP_PASSWORD unencrypted, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
+        return "SMTP_SECURITY=none does not allow sending SMTP_USERNAME/SMTP_PASSWORD unencrypted"
     if not settings.email_from_address:
-        log_structured(
-            logger,
-            "warning",
-            "EMAIL_FROM_ADDRESS not configured, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
+        return "EMAIL_FROM_ADDRESS not configured"
     if not settings.email_from_name:
-        log_structured(
-            logger,
-            "warning",
-            "EMAIL_FROM_NAME not configured, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
-    return True
+        return "EMAIL_FROM_NAME not configured"
+    return None
+
+
+def is_email_configured() -> bool:
+    """Check if email sending is properly configured."""
+    return get_email_config_error() is None
 
 
 def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> None:
@@ -136,7 +113,10 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
             logger, "warning", "Invalid email address provided", provider="email", task="send_invitation_email"
         )
         return False
-    if not _is_email_configured():
+    if config_error := get_email_config_error():
+        log_structured(
+            logger, "warning", f"{config_error}, skipping email send", provider="email", task="send_invitation_email"
+        )
         return False
 
     invited_by_text = f" by {invited_by_email}" if invited_by_email else ""

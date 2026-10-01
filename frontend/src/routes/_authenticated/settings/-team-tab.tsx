@@ -17,6 +17,7 @@ import {
   useRevokeInvitation,
   useResendInvitation,
 } from '@/hooks/api/use-invitations';
+import { useConfig } from '@/hooks/api/use-config';
 import type { Invitation } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/use-auth';
@@ -39,6 +40,9 @@ import { Button } from '@/components/ui/button';
 export function TeamTab() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [createdInvitation, setCreatedInvitation] = useState<Invitation | null>(
+    null
+  );
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -64,10 +68,14 @@ export function TeamTab() {
     refetch: refetchInvitations,
   } = useInvitations();
 
+  const config = useConfig();
+  // Treat "still loading" as enabled so the dialog doesn't flash the no-email variant
+  const emailEnabled = config.data?.email_enabled !== false;
+
   const deleteMutation = useDeleteDeveloper();
-  const createInvitationMutation = useCreateInvitation();
+  const createInvitationMutation = useCreateInvitation(emailEnabled);
   const revokeInvitationMutation = useRevokeInvitation();
-  const resendInvitationMutation = useResendInvitation();
+  const resendInvitationMutation = useResendInvitation(emailEnabled);
 
   const isLoading = isLoadingDevelopers || isLoadingInvitations;
 
@@ -97,12 +105,23 @@ export function TeamTab() {
     createInvitationMutation.mutate(
       { email },
       {
-        onSuccess: () => {
+        onSuccess: (invitation) => {
           setInviteEmail('');
-          setIsInviteModalOpen(false);
+          if (emailEnabled) {
+            setIsInviteModalOpen(false);
+          } else {
+            // No email goes out, so keep the dialog open to hand over the link
+            setCreatedInvitation(invitation);
+          }
         },
       }
     );
+  };
+
+  const closeInviteModal = () => {
+    setIsInviteModalOpen(false);
+    setInviteEmail('');
+    setCreatedInvitation(null);
   };
 
   const handleRevokeInvitation = () => {
@@ -117,10 +136,12 @@ export function TeamTab() {
     resendInvitationMutation.mutate(id);
   };
 
+  const getInviteUrl = (invitation: Invitation) =>
+    `${window.location.origin}${ROUTES.acceptInvite}?token=${encodeURIComponent(invitation.token)}`;
+
   const handleCopyInviteLink = async (invitation: Invitation) => {
-    const inviteUrl = `${window.location.origin}${ROUTES.acceptInvite}?token=${encodeURIComponent(invitation.token)}`;
     const success = await copyToClipboard(
-      inviteUrl,
+      getInviteUrl(invitation),
       'Invite link copied to clipboard'
     );
     if (success) {
@@ -205,7 +226,9 @@ export function TeamTab() {
               Pending Invitations
             </h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Invitations that are waiting to be accepted
+              {emailEnabled
+                ? 'Invitations that are waiting to be accepted'
+                : 'Invitations that are waiting to be accepted. Email delivery is not configured, so share the invite link yourself.'}
             </p>
           </div>
 
@@ -281,7 +304,11 @@ export function TeamTab() {
                           size="icon"
                           onClick={() => handleResendInvitation(invitation.id)}
                           disabled={resendInvitationMutation.isPending}
-                          title="Resend invitation"
+                          title={
+                            emailEnabled
+                              ? 'Resend invitation'
+                              : 'Regenerate invite link'
+                          }
                         >
                           <RotateCw className="h-4 w-4" />
                         </Button>
@@ -429,70 +456,137 @@ export function TeamTab() {
       <Dialog
         open={isInviteModalOpen}
         onOpenChange={(open) => {
-          setIsInviteModalOpen(open);
-          if (!open) setInviteEmail('');
+          if (!open) closeInviteModal();
+          else setIsInviteModalOpen(true);
         }}
       >
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Invite Team Member</DialogTitle>
-            <DialogDescription>
-              Send an invitation to join your team
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5 py-4">
-            <Label
-              htmlFor="invite_email"
-              className="text-xs text-foreground/90"
-            >
-              Email Address
-            </Label>
-            <Input
-              id="invite_email"
-              type="email"
-              placeholder="colleague@example.com"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === 'Enter' &&
-                  inviteEmail.trim() &&
-                  isValidEmail(inviteEmail.trim())
-                ) {
-                  handleInvite();
-                }
-              }}
-              className="bg-muted border-border"
-            />
-            <p className="text-[10px] text-muted-foreground/70">
-              They will receive an email with instructions to join (or send
-              invite link manually)
-            </p>
-          </div>
-          <DialogFooter className="gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsInviteModalOpen(false);
-                setInviteEmail('');
-              }}
-              disabled={createInvitationMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleInvite}
-              disabled={
-                createInvitationMutation.isPending ||
-                !inviteEmail.trim() ||
-                !isValidEmail(inviteEmail.trim())
-              }
-            >
-              {createInvitationMutation.isPending
-                ? 'Sending...'
-                : 'Send Invitation'}
-            </Button>
-          </DialogFooter>
+          {createdInvitation ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Invitation Created</DialogTitle>
+                <DialogDescription>
+                  Share this link with{' '}
+                  <span className="font-medium text-foreground/90">
+                    {createdInvitation.email}
+                  </span>{' '}
+                  so they can create their account.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2 py-4">
+                <Input
+                  readOnly
+                  autoFocus
+                  value={getInviteUrl(createdInvitation)}
+                  onFocus={(e) => e.target.select()}
+                  className="bg-muted border-border font-mono text-xs"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleCopyInviteLink(createdInvitation)}
+                  title="Copy invite link"
+                >
+                  {copiedInviteId === createdInvitation.id ? (
+                    <Check className="h-4 w-4 text-success-muted" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button onClick={closeInviteModal}>Done</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Invite Team Member</DialogTitle>
+                <DialogDescription>
+                  {emailEnabled
+                    ? 'Send an invitation to join your team'
+                    : 'Create an invite link to share with your teammate'}
+                </DialogDescription>
+              </DialogHeader>
+              {!emailEnabled && (
+                <div className="rounded-md border border-warning-muted/40 bg-warning-muted/8 p-3">
+                  <p className="text-xs font-medium text-warning-muted">
+                    Email delivery is not configured on this instance.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No email will be sent. You will get a link to share
+                    yourself. To send invitations by email, configure SMTP or
+                    Resend in the backend environment. See the{' '}
+                    <a
+                      href="https://openwearables.io/docs/developer-portal/settings/team#email-delivery"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline underline-offset-2"
+                    >
+                      team settings guide
+                    </a>
+                    .
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1.5 py-4">
+                <Label
+                  htmlFor="invite_email"
+                  className="text-xs text-foreground/90"
+                >
+                  Email Address
+                </Label>
+                <Input
+                  id="invite_email"
+                  type="email"
+                  placeholder="colleague@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === 'Enter' &&
+                      inviteEmail.trim() &&
+                      isValidEmail(inviteEmail.trim())
+                    ) {
+                      handleInvite();
+                    }
+                  }}
+                  className="bg-muted border-border"
+                />
+                {emailEnabled && (
+                  <p className="text-[10px] text-muted-foreground/70">
+                    They will receive an email with instructions to join (or
+                    send invite link manually)
+                  </p>
+                )}
+              </div>
+              <DialogFooter className="gap-3">
+                <Button
+                  variant="outline"
+                  onClick={closeInviteModal}
+                  disabled={createInvitationMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleInvite}
+                  disabled={
+                    createInvitationMutation.isPending ||
+                    !inviteEmail.trim() ||
+                    !isValidEmail(inviteEmail.trim())
+                  }
+                >
+                  {emailEnabled
+                    ? createInvitationMutation.isPending
+                      ? 'Sending...'
+                      : 'Send Invitation'
+                    : createInvitationMutation.isPending
+                      ? 'Creating...'
+                      : 'Create Invitation'}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

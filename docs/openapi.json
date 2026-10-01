@@ -11135,11 +11135,16 @@
           "outgoing_webhooks_enabled": {
             "type": "boolean",
             "title": "Outgoing Webhooks Enabled"
+          },
+          "email_enabled": {
+            "type": "boolean",
+            "title": "Email Enabled"
           }
         },
         "type": "object",
         "required": [
-          "outgoing_webhooks_enabled"
+          "outgoing_webhooks_enabled",
+          "email_enabled"
         ],
         "title": "ConfigResponse",
         "description": "Instance feature flags for the admin panel. Additive-only: append new flags,\nnever remove or repurpose, so the frontend stays backward compatible."
