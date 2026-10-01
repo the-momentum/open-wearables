@@ -847,6 +847,16 @@ class TestHistoricalBulkUploadMerging:
 class TestProviderSleepScore:
     """Samsung sends SleepType.SLEEP_SCORE as a `sleepScore` value on every sleep entry."""
 
+    # Shaped like SamsungHealthManager.convertSleep output (UnifiedSleep.toMap)
+    SAMSUNG_SOURCE = {
+        "appId": "com.sec.android.app.shealth",
+        "deviceId": "samsung-watch-1",
+        "deviceName": "Galaxy Watch7",
+        "deviceManufacturer": "Samsung",
+        "deviceModel": "SM-L315F",
+        "deviceType": "watch",
+        "recordingMethod": None,
+    }
     SAMSUNG_PAYLOAD = {
         "provider": "samsung",
         "sdkVersion": "1.0.0",
@@ -861,7 +871,10 @@ class TestProviderSleepScore:
                     "stage": "light",
                     "startDate": "2026-03-22T23:00:00Z",
                     "endDate": "2026-03-23T01:00:00Z",
+                    "zoneOffset": "+01:00",
+                    "source": SAMSUNG_SOURCE,
                     "values": [{"type": "sleepScore", "value": 82, "unit": "score"}],
+                    "metadata": None,
                 },
                 {
                     "id": "S1-s0-1",
@@ -869,7 +882,10 @@ class TestProviderSleepScore:
                     "stage": "deep",
                     "startDate": "2026-03-23T01:00:00Z",
                     "endDate": "2026-03-23T06:00:00Z",
+                    "zoneOffset": "+01:00",
+                    "source": SAMSUNG_SOURCE,
                     "values": [{"type": "sleepScore", "value": 82, "unit": "score"}],
+                    "metadata": None,
                 },
             ],
         },
@@ -1000,6 +1016,7 @@ class TestProviderSleepScore:
         score = samsung_scores[0]
         assert score.category == HealthScoreCategory.SLEEP
         assert score.value == 82
+        assert score.zone_offset == "+01:00"
         session = db.get(EventRecord, score.event_record_id)
         assert session is not None
         assert session.category == "sleep"
