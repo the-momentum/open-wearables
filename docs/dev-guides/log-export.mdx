@@ -134,7 +134,7 @@ Replace the `debug` exporter with the one for your log backend.
 
 ## Without exporting from the app
 
-If your platform can read container logs (Grafana Alloy, the OpenTelemetry Collector `filelog` receiver, Azure Monitor Agent, Datadog Agent), `LOG_FORMAT=json` is often enough: every stdout line is then one JSON object that these agents parse without app-side export.
+If your platform can read container logs (Grafana Alloy, the OpenTelemetry Collector `filelog` receiver, Azure Monitor Agent, Datadog Agent), `LOG_FORMAT=json` is often enough: every log record is then one JSON line that these agents parse without app-side export. Some output does not go through logging and stays plain text, such as startup banners and start script output (see [Logs](/deployment/docker#logs)). Configure the agent to keep lines that are not JSON as plain messages instead of rejecting them.
 
 ## Related settings
 
