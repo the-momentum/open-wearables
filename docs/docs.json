@@ -152,6 +152,7 @@
             "pages": [
               "dev-guides/aws-setup",
               "dev-guides/raw-payload-storage",
+              "dev-guides/log-export",
               "dev-guides/telemetry"
             ]
           },

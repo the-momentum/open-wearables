@@ -216,6 +216,8 @@ Structured app log lines keep the same fields in `legacy` and `json`: `timestamp
   The default will change from `legacy` to `text` in a future release. Set `LOG_FORMAT` explicitly if you depend on the current output.
 </Note>
 
+To send logs to an OpenTelemetry collector as well, see [Exporting logs with OpenTelemetry](/dev-guides/log-export).
+
 Output printed outside the logging setup keeps its own format, and some of it goes to stderr:
 
 - startup banners of the FastAPI CLI, Celery workers and Celery beat, and Celery's `worker: Warm shutdown` lines;

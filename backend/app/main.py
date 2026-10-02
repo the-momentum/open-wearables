@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api import head_router
 from app.config import settings
 from app.integrations.celery import create_celery
+from app.integrations.otel import init_otel, shutdown_otel
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_access_log_middleware, add_cors_middleware, add_endpoint_usage_middleware
 from app.services import raw_payload_storage
@@ -58,11 +59,14 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     logging.getLogger("uvicorn.access").disabled = True
     # The same dictConfig resets the uvicorn loggers, so apply LOG_FORMAT/LOG_LEVEL again.
     configure_logging()
+    # Here, not at import: Celery workers import this module too and start their own export.
+    init_otel("open-wearables-api")
     svix_service.register_event_types()
     yield
     # Hand the last partial interval of telemetry counters to Redis before exiting.
     with contextlib.suppress(Exception):
         await asyncio.to_thread(endpoint_usage.flush)
+    await asyncio.to_thread(shutdown_otel)
 
 
 # FastAPI >= 0.142 turns on its own OpenTelemetry by default (request traces, metrics,
