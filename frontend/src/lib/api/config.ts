@@ -61,6 +61,10 @@ export const API_ENDPOINTS = {
   applicationRotateSecret: (appId: string) =>
     `/api/v1/applications/${appId}/rotate-secret`,
 
+  // MCP clients endpoints (connectors that authenticated against the self-hosted MCP server)
+  mcpClients: '/api/v1/mcp-clients',
+  mcpClientDetail: (id: string) => `/api/v1/mcp-clients/${id}`,
+
   // Provider workouts endpoints
   providerSynchronization: (provider: string, userId: string) =>
     `/api/v1/providers/${provider}/users/${userId}/sync`,

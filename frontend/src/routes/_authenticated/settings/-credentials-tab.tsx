@@ -4,6 +4,7 @@ import { API_CONFIG } from '@/lib/api/config';
 import { Button } from '@/components/ui/button';
 import { ApiKeysSection } from './-api-keys-section';
 import { ApplicationsSection } from './-applications-section';
+import { McpClientsSection } from './-mcp-clients-section';
 
 export function CredentialsTab() {
   return (
@@ -43,6 +44,7 @@ export function CredentialsTab() {
 
       <ApiKeysSection />
       <ApplicationsSection />
+      <McpClientsSection />
     </div>
   );
 }

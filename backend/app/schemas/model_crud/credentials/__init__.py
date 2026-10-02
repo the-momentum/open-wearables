@@ -11,6 +11,12 @@ from .application import (
     ApplicationReadWithSecret,
     ApplicationUpdate,
 )
+from .mcp_client import (
+    McpClientCreateInternal,
+    McpClientRead,
+    McpClientTouch,
+    McpClientUpdate,
+)
 from .oauth import (
     AuthorizationURLResponse,
     OAuthState,
@@ -37,6 +43,11 @@ __all__ = [
     "ApplicationRead",
     "ApplicationReadWithSecret",
     "ApplicationUpdate",
+    # McpClient
+    "McpClientCreateInternal",
+    "McpClientRead",
+    "McpClientTouch",
+    "McpClientUpdate",
     # OAuth
     "OAuthState",
     "OAuthTokenResponse",

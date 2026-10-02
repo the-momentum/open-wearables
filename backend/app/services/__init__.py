@@ -6,6 +6,7 @@ from .archival_service import archival_service
 from .developer_service import developer_service
 from .event_record_service import event_record_service
 from .invitation_service import invitation_service
+from .mcp_client_service import mcp_client_service
 from .priority_service import PriorityService
 from .providers.apple.apple_xml.presigned_url_service import presigned_url_service
 from .refresh_token_service import refresh_token_service
@@ -27,6 +28,7 @@ __all__ = [
     "create_sdk_user_token",
     "developer_service",
     "invitation_service",
+    "mcp_client_service",
     "refresh_token_service",
     "user_invitation_code_service",
     "DeveloperDep",

@@ -37,6 +37,12 @@ export const queryKeys = {
     list: () => [...queryKeys.applications.lists()] as const,
   },
 
+  mcpClients: {
+    all: ['mcpClients'] as const,
+    lists: () => [...queryKeys.mcpClients.all, 'list'] as const,
+    list: () => [...queryKeys.mcpClients.lists()] as const,
+  },
+
   automations: {
     all: ['automations'] as const,
     lists: () => [...queryKeys.automations.all, 'list'] as const,

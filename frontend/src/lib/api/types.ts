@@ -554,6 +554,15 @@ export interface ApplicationWithSecret extends Application {
   app_secret: string;
 }
 
+/** An OAuth client that has authenticated against the self-hosted MCP server (e.g. claude.ai). */
+export interface McpClient {
+  id: string;
+  client_id: string;
+  client_name: string | null;
+  last_seen_at: string;
+  created_at: string;
+}
+
 export interface Automation {
   id: string;
   name: string;

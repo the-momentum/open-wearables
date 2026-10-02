@@ -14,6 +14,7 @@ from .events import router as events_router
 from .health_scores import router as health_scores_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
+from .mcp_clients import router as mcp_clients_router
 from .meta import router as meta_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
@@ -63,6 +64,7 @@ v1_router.include_router(developers_router, prefix="/developers", tags=["Interna
 v1_router.include_router(invitations_router, prefix="/invitations", tags=["Internal: Invitations"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: API Keys"])
 v1_router.include_router(applications_router, tags=["Internal: Applications"])
+v1_router.include_router(mcp_clients_router, tags=["Internal: MCP Clients"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Internal: Dashboard"])
 v1_router.include_router(config_router, tags=["Internal: Config"])
 v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
