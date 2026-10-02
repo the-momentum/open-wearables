@@ -56,6 +56,7 @@ _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_we
 # Notification dataTypes that map to a session handler rather than a 24/7 metric.
 _SLEEP_DATA_TYPE = "sleep"
 _EXERCISE_DATA_TYPE = "exercise"
+_NUTRITION_DATA_TYPE = "nutrition-log"
 
 _SUPPORTED_OPERATIONS = ["UPSERT", "DELETE"]
 
@@ -283,6 +284,12 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return self.workouts.load_data(db, user_id, start_date=start, end_date=end)
         if data_type == _SLEEP_DATA_TYPE:
             return self.data_247.sleep.load_and_save(db, user_id, start, end)
+        if data_type == _NUTRITION_DATA_TYPE:
+            # The nutrition handler never commits (it runs under a savepoint in the 24/7 sync);
+            # here nothing wraps it, so the notification's batch is committed once, right after.
+            saved = self.data_247.nutrition.load_and_save(db, user_id, start, end)
+            db.commit()
+            return saved
         try:
             return int(self.data_247.sync_data_type(db, user_id, data_type, start, end) or 0)
         except UnsupportedGranularityError as e:
