@@ -20,6 +20,7 @@ from app.schemas.sync_status import (
     SyncStage,
     SyncStatus,
 )
+from app.services.provider_settings_service import include_in_periodic_pull
 from app.services.providers.factory import ProviderFactory
 from app.services.sync_coordination import (
     bind_primary_lease,
@@ -61,19 +62,6 @@ def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
             "Failed to emit sync status event",
             extra={"detail": str(exc)},
         )
-
-
-def _include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is_historical: bool) -> bool:
-    """True if the provider should be included in this REST pull run.
-
-    Historical backfill always uses REST for all rest_pull providers.
-    For live sync, only providers explicitly in pull mode are polled periodically.
-    """
-    if not caps.rest_pull:
-        return False
-    if is_historical:
-        return True
-    return live_sync_mode == LiveSyncMode.PULL
 
 
 @shared_task
@@ -155,7 +143,7 @@ def sync_vendor_data(
             connections = [
                 c
                 for c in connections
-                if _include_in_periodic_pull(
+                if include_in_periodic_pull(
                     factory.get_provider(c.provider).capabilities,
                     provider_settings[c.provider].live_sync_mode
                     if c.provider in provider_settings

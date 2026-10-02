@@ -31,7 +31,7 @@ class TestSyncAllUsersTask:
         user2 = UserFactory()
         user3 = UserFactory()
 
-        UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user1, provider="whoop", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user2, provider="polar", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user3, provider="suunto", status=ConnectionStatus.ACTIVE)
 
@@ -63,7 +63,7 @@ class TestSyncAllUsersTask:
         """Test syncing all users with specific date range."""
         # Arrange
         user = UserFactory()
-        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -97,7 +97,7 @@ class TestSyncAllUsersTask:
         user2 = UserFactory()
 
         # User 1 has active connection
-        UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user1, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         # User 2 has disconnected connection
         UserConnectionFactory(user=user2, provider="polar", status=ConnectionStatus.REVOKED)
@@ -151,7 +151,7 @@ class TestSyncAllUsersTask:
         user = UserFactory()
 
         # User has multiple active connections
-        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user, provider="polar", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
@@ -182,7 +182,7 @@ class TestSyncAllUsersTask:
         user3 = UserFactory()
 
         # User 1: connected
-        UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user1, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         # User 2: mixed statuses (has at least one connected)
         UserConnectionFactory(user=user2, provider="polar", status=ConnectionStatus.ACTIVE)
@@ -218,7 +218,7 @@ class TestSyncAllUsersTask:
         """Test that sync tasks are queued asynchronously with delay."""
         # Arrange
         user = UserFactory()
-        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -246,7 +246,7 @@ class TestSyncAllUsersTask:
         for i in range(10):
             user = UserFactory()
             users.append(user)
-            UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+            UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)

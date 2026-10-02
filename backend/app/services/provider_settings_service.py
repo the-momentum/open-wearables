@@ -1,11 +1,25 @@
+from typing import Any
+
 from app.database import DbSession
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import (
     ProviderSettingRead,
     ProviderSettingUpdate,
 )
 from app.services.providers.factory import ProviderFactory
+
+_NON_PROVIDER_NAMES = {ProviderName.UNKNOWN, ProviderName.INTERNAL}
+
+
+def include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is_historical: bool) -> bool:
+    """True if the provider belongs in this REST pull run; live sync polls pull mode only."""
+    if not caps.rest_pull:
+        return False
+    if is_historical:
+        return True
+    return live_sync_mode == LiveSyncMode.PULL
 
 
 class ProviderSettingsService:
@@ -14,6 +28,21 @@ class ProviderSettingsService:
     def __init__(self):
         self.factory = ProviderFactory()
         self.repo = ProviderSettingsRepository()
+
+    def get_pull_eligible_providers(self, db: DbSession) -> list[str]:
+        """Providers worth periodic-polling, so push-only ones are never even queried."""
+        provider_settings = self.repo.get_all(db)
+        eligible = []
+        for name in ProviderName:
+            if name in _NON_PROVIDER_NAMES:
+                continue
+            caps = self.factory.get_provider(name.value).capabilities
+            live_sync_mode = (
+                provider_settings[name.value].live_sync_mode if name.value in provider_settings else LiveSyncMode.PULL
+            )
+            if include_in_periodic_pull(caps, live_sync_mode, is_historical=False):
+                eligible.append(name.value)
+        return eligible
 
     def _to_read(self, provider_key: str, setting_map: dict) -> ProviderSettingRead:
         strategy = self.factory.get_provider(provider_key)
