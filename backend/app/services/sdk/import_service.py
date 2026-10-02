@@ -270,6 +270,26 @@ class ImportService:
 
             yield record, detail
 
+    @staticmethod
+    def _nutrients_by_meal(
+        samples: Iterable[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate],
+        meal_ids: set[UUID],
+    ) -> dict[UUID, dict[SeriesType, Decimal]]:
+        """Group this batch's nutrient samples by their linked meal, for the meal.created webhook.
+
+        Samples are matched via `event_record_id` (set in _build_statistic_bundles from
+        correlation_id_map), the same link `_nutrients_by_meal` on EventRecordService reads
+        back from the database for the Google Health path.
+        """
+        result: dict[UUID, dict[SeriesType, Decimal]] = {}
+        for sample in samples:
+            if sample.event_record_id is None or sample.event_record_id not in meal_ids:
+                continue
+            value = sample.value if isinstance(sample.value, Decimal) else Decimal(str(sample.value))
+            bucket = result.setdefault(sample.event_record_id, {})
+            bucket[sample.series_type] = bucket.get(sample.series_type, Decimal("0")) + value
+        return result
+
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
         """Rescale a value into the series' stored unit for series where the SDK unit varies by provider."""
         match series_type:
@@ -529,6 +549,9 @@ class ImportService:
         meal_bundles = list(self._build_meal_bundles(correlation_records, request.provider, user_id))
         correlation_id_map: dict[str, UUID] = {}
         meal_ids: set[UUID] = set()
+        # Meals newly inserted this batch, kept around (record + detail) so meal.created can
+        # be scheduled once their nutrient samples are known below - see _nutrients_by_meal.
+        newly_inserted_meals: dict[UUID, tuple[EventRecordCreate, EventRecordDetailCreate]] = {}
         for record, detail in meal_bundles:
             try:
                 saved, inserted = self.event_record_service.create_or_update_meal(db_session, record, detail)
@@ -548,6 +571,7 @@ class ImportService:
                 continue
             if inserted:
                 meals_saved += 1
+                newly_inserted_meals[saved.id] = (record, detail)
             meal_ids.add(saved.id)
             if record.external_id:
                 correlation_id_map[record.external_id] = saved.id
@@ -592,6 +616,15 @@ class ImportService:
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
+
+        # Schedule meal.created for newly inserted meals now that the nutrient samples built
+        # above are known - create_or_update_meal itself doesn't fire it (see its docstring).
+        if newly_inserted_meals:
+            meal_nutrients = self._nutrients_by_meal(samples, set(newly_inserted_meals.keys()))
+            for meal_id, (meal_record, meal_detail) in newly_inserted_meals.items():
+                self.event_record_service.schedule_meal_webhook(
+                    db_session, meal_id, meal_record, meal_detail, meal_nutrients.get(meal_id)
+                )
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()

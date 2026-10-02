@@ -1264,3 +1264,80 @@ class TestSDKImportAndroidFoodCorrelation:
         assert get_series_type_from_metric_type("DIETARY_ENERGY_FROM_FAT") == SeriesType.dietary_energy_from_fat
         assert get_series_type_from_metric_type("DIETARY_UNSATURATED_FAT") == SeriesType.dietary_fat_unsaturated
         assert get_series_type_from_metric_type("DIETARY_FOLIC_ACID") == SeriesType.dietary_folic_acid
+
+
+class TestSDKImportMealWebhook:
+    """meal.created must fire once a meal (and its nutrient totals from the same batch) is
+    committed - regardless of whether the meal came through the per-meal SDK loop or a
+    single Google Health save, since both funnel through EventRecordService."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _correlation_record(correlation_id: str) -> dict[str, Any]:
+        return {
+            "id": correlation_id,
+            "type": "HKCorrelationTypeIdentifierFood",
+            "startDate": "2026-09-18T12:00:00Z",
+            "endDate": "2026-09-18T12:00:00Z",
+            "zoneOffset": "+02:00",
+            "source": {"name": "MyFitnessPal", "bundleIdentifier": "com.myfitnesspal.mfp"},
+            "metadata": {"title": "Kurczak z ryżem", "mealType": "obiad"},
+            "value": 1,
+            "unit": None,
+        }
+
+    @staticmethod
+    def _nutrient_record(
+        external_id: str, metric_type: str, value: float, unit: str, parent_id: str | None
+    ) -> dict[str, Any]:
+        return {
+            "id": external_id,
+            "parentId": parent_id,
+            "type": metric_type,
+            "value": value,
+            "unit": unit,
+            "startDate": "2026-09-18T12:00:00Z",
+            "endDate": "2026-09-18T12:00:00Z",
+            "source": {"name": "MyFitnessPal", "bundleIdentifier": "com.myfitnesspal.mfp"},
+        }
+
+    def test_food_correlation_fires_meal_created_with_nutrient_totals(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """Before this, meals saved via bulk_create + bulk_create_details never fired a
+        webhook - meal.created must land with the nutrient totals from this same batch."""
+        user = UserFactory()
+        user_id = str(user.id)
+        payload = {
+            "provider": "apple",
+            "sdkVersion": "1.2.0",
+            "syncTimestamp": "2026-09-18T12:00:00Z",
+            "data": {
+                "records": [
+                    self._correlation_record("MEAL-1"),
+                    self._nutrient_record(
+                        "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                    ),
+                    self._nutrient_record("protein-1", "HKQuantityTypeIdentifierDietaryProtein", 38.2, "g", "MEAL-1"),
+                ]
+            },
+        }
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            import_service.load_data(db, payload, user_id)
+
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+
+        mock_meal.assert_called_once()
+        kwargs = mock_meal.call_args.kwargs
+        assert kwargs["record_id"] == meal.id
+        assert kwargs["title"] == "Kurczak z ryżem"
+        assert kwargs["meal_type"] == "obiad"
+        assert kwargs["calories_kcal"] == 550.0
+        assert kwargs["macros"]["protein_g"] == 38.2

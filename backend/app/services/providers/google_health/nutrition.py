@@ -252,6 +252,8 @@ class GoogleHealthApiNutrition:
         )
         detail = MealDetailCreate(record_id=record.id, title=meal.title, meal_type=meal.meal_type)
         saved, inserted = event_record_service.create_or_update_meal(db, record, detail)
+        if inserted:
+            event_record_service.schedule_meal_webhook(db, saved.id, record, detail, meal.nutrients)
 
         if not inserted:
             # A nutrient the provider stopped reporting must not linger from the previous sync.
