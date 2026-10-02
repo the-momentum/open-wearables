@@ -33,6 +33,7 @@ ACTIVITY = WithingsDataRequest(
         "distance",
         "calories",
         "totalcalories",
+        "active",
     ),
 )
 

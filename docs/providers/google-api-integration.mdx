@@ -34,7 +34,7 @@ The Google Health API is an **aggregation layer**: it surfaces data from *every*
 
 | Data type | Path |
 |-----------|------|
-| Steps, distance, calories, hydration | 24/7 metrics |
+| Steps, distance, calories, hydration, moderate and vigorous active minutes | 24/7 metrics |
 | Heart rate, resting heart rate, HRV (RMSSD + SDNN) | 24/7 metrics |
 | VO₂ max, respiratory rate, SpO₂ | 24/7 metrics |
 | Weight, body fat, core body temperature, blood glucose | 24/7 metrics |
@@ -60,10 +60,10 @@ The Health API exposes the same underlying data through three different operatio
 <Warning>
 Windowed `dataPoints:rollUp` aggregates are currently disabled. A rollUp window starts wherever the requested range does, so the same reading came back under a different timestamp on a later sync and was inserted as a duplicate rather than updated.
 
-Because `hourly` and `daily` cannot be honoured without it, Google Health **refuses** them rather than storing raw data under an aggregating setting: a scheduled pull is reported as a failed `data_247` sync, and a webhook notification is reported to the error tracker and dropped (it is not answered with a 5xx, which Google would only retry). Sleep sessions and derived daily totals are unaffected and keep syncing. Set the provider's granularity to `raw` to resume the rest.
+Because `hourly` and `daily` cannot be honoured without it, Google Health **refuses** them rather than storing raw data under an aggregating setting: a scheduled pull is reported as a failed `data_247` sync, and a webhook notification is reported to the error tracker and dropped (it is not answered with a 5xx, which Google would only retry). Sleep sessions and the dailyRollUp totals are unaffected and keep syncing. Set the provider's granularity to `raw` to resume the rest.
 </Warning>
 
-Daily basal energy is the one exception: it is derived from `dataPoints:dailyRollUp`, whose windows are anchored to civil days and so do not drift.
+Daily basal energy and active minutes are the exceptions: they come from `dataPoints:dailyRollUp`, whose windows are anchored to civil days and so do not drift.
 
 ### Reconcile vs. list — why it matters
 

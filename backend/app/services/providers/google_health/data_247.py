@@ -30,6 +30,7 @@ from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, Serie
 from app.schemas.enums.aggregation_method import daily_total_flag
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.schemas.providers.google import (
+    DailyRollupMetric,
     DailyRollupSpec,
     DataTypeMetric,
     DerivedDailyMetric,
@@ -46,10 +47,11 @@ from app.services.providers.google_health.helpers import (
     parse_page,
     parse_rfc3339,
     physical_interval,
+    read_level_sum,
     read_number,
     zone_offset_from,
 )
-from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -141,6 +143,21 @@ class GoogleHealth247Data(Base247DataTemplate):
             succeeded += 1
             if counts is not None:
                 results[derived.name] = counts
+
+        for daily in DAILY_ROLLUP_METRICS:
+            try:
+                with db.begin_nested():
+                    samples = self._daily_rollup_samples(db, user_id, daily, start_time, end_time)
+                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                self._log_metric_failure(daily.name, user_id, e)
+                failures[daily.name] = str(e)
+                continue
+            succeeded += 1
+            if counts is not None:
+                results[daily.name] = counts
 
         try:
             with db.begin_nested():
@@ -337,6 +354,18 @@ class GoogleHealth247Data(Base247DataTemplate):
                 samples.append(self._sample(user_id, day, value, metric.series_type, True))
         return samples
 
+    def _daily_rollup_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        metric: DailyRollupMetric,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """One daily-total sample per civil day the data type reports."""
+        totals = self._daily_totals(db, user_id, metric.spec, start_time, end_time, metric.data_source_family)
+        return [self._sample(user_id, day, value, metric.series_type, True) for day, value in sorted(totals.items())]
+
     def _daily_totals(
         self,
         db: DbSession,
@@ -368,7 +397,11 @@ class GoogleHealth247Data(Base247DataTemplate):
                 value_obj = point.get(spec.value_key)
                 if day is None or not isinstance(value_obj, dict):
                     continue
-                value = read_number(value_obj, spec.field, None, spec.scale)
+                value = (
+                    read_level_sum(value_obj, spec.field, spec.level_sum, spec.scale)
+                    if spec.level_sum
+                    else read_number(value_obj, spec.field, None, spec.scale)
+                )
                 if value is not None:
                     # Windows are disjoint civil days, so two points on one date are
                     # different sources of the same day, never duplicates — sum them.

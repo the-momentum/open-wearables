@@ -246,6 +246,7 @@ class Oura247Data(Base247DataTemplate):
             "energy": [],
             "distance": [],
             "active_time": [],
+            "exercise_time": [],
             "met": [],
         }
 
@@ -291,6 +292,16 @@ class Oura247Data(Base247DataTemplate):
                     {
                         "recorded_at": recorded_at,
                         "value": sum(s or 0 for s in active_seconds) // 60,
+                        "zone_offset": activity_zone_offset,
+                    }
+                )
+            # Exercise time = high + medium activity time.
+            exercise_seconds = [activity.high_activity_time, activity.medium_activity_time]
+            if any(s is not None for s in exercise_seconds):
+                result["exercise_time"].append(
+                    {
+                        "recorded_at": recorded_at,
+                        "value": sum(s or 0 for s in exercise_seconds) // 60,
                         "zone_offset": activity_zone_offset,
                     }
                 )

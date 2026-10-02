@@ -53,6 +53,12 @@ class WithingsActivity(BaseModel):
     distance: float | None = Field(default=None, ge=0)
     calories: float | None = Field(default=None, ge=0)  # active kcal
     totalcalories: float | None = Field(default=None, ge=0)  # active + passive kcal
+    active: int | None = Field(default=None, ge=0)  # moderate + intense activity, seconds
+
+    @property
+    def active_minutes(self) -> int | None:
+        """Moderate plus intense activity time in whole minutes."""
+        return self.active // 60 if self.active is not None else None
 
 
 class WithingsSleepData(BaseModel):

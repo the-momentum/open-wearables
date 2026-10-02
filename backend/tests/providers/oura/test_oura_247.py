@@ -318,6 +318,52 @@ class TestOura247ActivityNormalization:
 
         assert samples["met"] == []
 
+    def test_normalize_activity_samples_exercise_time(self, data_247: Oura247Data) -> None:
+        # High + medium is exercise time; low counts only toward active time.
+        raw = [
+            {
+                "id": "activity-1",
+                "day": "2024-01-15",
+                "timestamp": "2024-01-15T00:00:00+00:00",
+                "high_activity_time": 1830,
+                "medium_activity_time": 1230,
+                "low_activity_time": 3600,
+            },
+        ]
+        samples, _ = data_247.normalize_activity_samples(raw, uuid4())
+
+        assert [s["value"] for s in samples["exercise_time"]] == [51]
+        assert [s["value"] for s in samples["active_time"]] == [111]
+
+    def test_normalize_activity_samples_exercise_time_from_one_field(self, data_247: Oura247Data) -> None:
+        raw = [
+            {
+                "id": "activity-1",
+                "day": "2024-01-15",
+                "timestamp": "2024-01-15T00:00:00+00:00",
+                "medium_activity_time": 610,
+            },
+        ]
+        samples, _ = data_247.normalize_activity_samples(raw, uuid4())
+
+        assert [s["value"] for s in samples["exercise_time"]] == [10]
+
+    def test_normalize_activity_samples_exercise_time_absent(self, data_247: Oura247Data) -> None:
+        raw = [
+            {
+                "id": "activity-1",
+                "day": "2024-01-15",
+                "timestamp": "2024-01-15T00:00:00+00:00",
+                "low_activity_time": 3600,
+            },
+        ]
+        samples, _ = data_247.normalize_activity_samples(raw, uuid4())
+
+        assert samples["exercise_time"] == []
+
+    def test_exercise_time_maps_to_exercise_time_series(self) -> None:
+        assert ACTIVITY_SERIES["exercise_time"] == SeriesType.exercise_time
+
 
 class TestOura247MetSeriesExpansion:
     """Test expansion of the intraday MET series embedded in daily activity records."""

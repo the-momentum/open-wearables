@@ -12,7 +12,7 @@ ACTIVITY_SAMPLE_SERIES: dict[str, SeriesType] = {
 # Single daily values (handler key → SeriesType), each carrying its own day_start_timestamp.
 DAILY_SCALAR_SERIES: dict[str, SeriesType] = {
     "vo2_max": SeriesType.vo2_max,
-    "active_minutes": SeriesType.active_time,
+    "active_minutes": SeriesType.exercise_time,
     "sleep_rhr": SeriesType.resting_heart_rate,
 }
 

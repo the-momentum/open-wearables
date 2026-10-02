@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+from app.constants.withings_requests import ACTIVITY
 from app.schemas.enums import SeriesType
 from app.schemas.enums.workout_types import WorkoutType
 from app.schemas.providers.withings import WithingsWorkout
@@ -104,6 +105,28 @@ def test_externally_sourced_activity_is_dropped() -> None:
     rows = [{"date": "2026-03-01", "brand": 18, "steps": 8000}]
 
     assert _data_247().normalize_activity(rows, uuid4()) == []
+
+
+def test_activity_active_seconds_become_exercise_minutes() -> None:
+    rows = [{"date": "2026-03-01", "timezone": "Europe/Paris", "brand": 1, "steps": 8000, "active": 2730}]
+
+    samples = _data_247().normalize_activity(rows, uuid4())
+
+    by_type = {sample.series_type: sample for sample in samples}
+    assert by_type[SeriesType.exercise_time].value == Decimal("45")
+    assert by_type[SeriesType.exercise_time].is_daily_total is True
+
+
+def test_activity_without_active_has_no_exercise_time() -> None:
+    rows = [{"date": "2026-03-01", "brand": 1, "steps": 8000}]
+
+    samples = _data_247().normalize_activity(rows, uuid4())
+
+    assert SeriesType.exercise_time not in {sample.series_type for sample in samples}
+
+
+def test_activity_request_asks_for_active() -> None:
+    assert "active" in ACTIVITY.data_fields
 
 
 # ---------------------------- workouts ----------------------------

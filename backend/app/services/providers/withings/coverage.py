@@ -65,11 +65,12 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
     229: "electrochemical skin conductance; no core series type",
 }
 
-# Withings ``/v2/measure?action=getactivity`` field -> unified SeriesType.
+# ``WithingsActivity`` attribute (from ``/v2/measure?action=getactivity``) -> unified SeriesType.
 ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "distance": SeriesType.distance_walking_running,
     "calories": SeriesType.active_energy,
+    "active_minutes": SeriesType.exercise_time,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
