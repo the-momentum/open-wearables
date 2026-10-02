@@ -36,6 +36,21 @@ ACTIVITY = WithingsDataRequest(
     ),
 )
 
+# The high-frequency data the daily summaries above are built from. Its rows arrive
+# under ``series`` as an object keyed by the start epoch of each slice, not as a list,
+# so this request cannot go through ``paginate``.
+INTRADAY_ACTIVITY = WithingsDataRequest(
+    service_path="/v2/measure",
+    action="getintradayactivity",
+    list_key="series",
+    # The same measures as the daily rows, so this adds granularity rather than metrics.
+    data_fields=(
+        "steps",
+        "distance",
+        "calories",
+    ),
+)
+
 SLEEP_SUMMARY = WithingsDataRequest(
     service_path="/v2/sleep",
     action="getsummary",

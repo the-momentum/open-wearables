@@ -1,5 +1,6 @@
 from app.schemas.providers.withings.imports import (
     WithingsActivity,
+    WithingsIntradayActivity,
     WithingsMeasure,
     WithingsMeasureGroup,
     WithingsSleepData,
@@ -12,6 +13,7 @@ from app.schemas.providers.withings.notification import PROFILE_CHANGE_APPLI, Wi
 __all__ = [
     "PROFILE_CHANGE_APPLI",
     "WithingsActivity",
+    "WithingsIntradayActivity",
     "WithingsMeasure",
     "WithingsMeasureGroup",
     "WithingsNotification",

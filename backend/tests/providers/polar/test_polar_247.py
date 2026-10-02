@@ -184,6 +184,68 @@ class TestPolar247DailyActivityNormalization:
         user_id = uuid4()
         assert data_247.normalize_daily_activity([sample_activity], user_id) == []
 
+    def test_step_samples_ride_along_with_the_daily_total(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        # The row is requested with steps=true, so the intraday samples arrive with it.
+        sample_activity["samples"] = {
+            "steps": {
+                "interval_ms": 600_000,
+                "total_steps": 9500,
+                "samples": [
+                    {"steps": 120, "timestamp": "2024-01-15T07:10"},
+                    {"steps": 0, "timestamp": "2024-01-15T07:20"},
+                ],
+            }
+        }
+
+        samples = data_247.normalize_daily_activity([sample_activity], uuid4())
+
+        step_samples = [s for s in samples if s.series_type == SeriesType.steps]
+        # Flagging both the same way would let the aggregation add a day to its own parts.
+        assert [s.value for s in step_samples if s.is_daily_total] == [9500]
+        assert [(s.recorded_at.isoformat(), int(s.value)) for s in step_samples if not s.is_daily_total] == [
+            ("2024-01-15T07:10:00", 120),
+            ("2024-01-15T07:20:00", 0),
+        ]
+
+    def test_step_sample_does_not_overwrite_the_daily_total(
+        self, data_247: Polar247Data, sample_activity: dict
+    ) -> None:
+        # Polar's first sample always repeats start_time, where the day's total is stored.
+        # A series row is keyed by its instant alone, so emitting both replaces the total.
+        sample_activity["samples"] = {
+            "steps": {
+                "interval_ms": 60_000,
+                "total_steps": 9500,
+                "samples": [
+                    {"steps": 0, "timestamp": "2024-01-15T00:00:00"},
+                    {"steps": 120, "timestamp": "2024-01-15T07:10"},
+                ],
+            }
+        }
+
+        samples = data_247.normalize_daily_activity([sample_activity], uuid4())
+
+        step_samples = [s for s in samples if s.series_type == SeriesType.steps]
+        assert [s.value for s in step_samples if s.recorded_at == datetime(2024, 1, 15)] == [9500]
+        assert [int(s.value) for s in step_samples if not s.is_daily_total] == [120]
+
+    def test_unreadable_step_sample_timestamp_skipped(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        sample_activity["samples"] = {
+            "steps": {
+                "interval_ms": 600_000,
+                "total_steps": 9500,
+                "samples": [
+                    {"steps": 120, "timestamp": "not-a-timestamp"},
+                    {"steps": 80, "timestamp": "2024-01-15T07:20"},
+                ],
+            }
+        }
+
+        samples = data_247.normalize_daily_activity([sample_activity], uuid4())
+
+        intraday = [s for s in samples if s.series_type == SeriesType.steps and not s.is_daily_total]
+        assert [int(s.value) for s in intraday] == [80]
+
     def test_empty_input(self, data_247: Polar247Data) -> None:
         assert data_247.normalize_daily_activity([], uuid4()) == []
 

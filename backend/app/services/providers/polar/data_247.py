@@ -20,7 +20,7 @@ from app.constants.series_types.polar import (
 )
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -358,9 +358,51 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=series_type,
-                        is_daily_total=True,
+                        is_daily_total=daily_total_flag(series_type, is_daily=True),
                     )
                 )
+            samples.extend(self._build_step_samples(parsed, user_id, recorded_at))
+        return samples
+
+    def _build_step_samples(
+        self,
+        parsed: DailyActivityJSON,
+        user_id: UUID,
+        daily_total_at: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Emit the intraday step samples the daily row already carries.
+
+        ``/v3/users/activities`` is requested with ``steps=true``, so every row arrives with
+        them; only the day's total was read until now. They answer which hours a user moved
+        in, which the total cannot.
+
+        Polar's first sample always repeats ``start_time``, which is where the day's total is
+        stored. A series row is keyed by its instant alone, so emitting both would upsert the
+        total away and leave the day reporting that first minute instead.
+        """
+        if not parsed.samples or not parsed.samples.steps:
+            return []
+        samples: list[TimeSeriesSampleCreate] = []
+        for sample in parsed.samples.steps.samples:
+            try:
+                recorded_at = datetime.fromisoformat(sample.timestamp)
+            except ValueError:
+                self.logger.warning("Skipping Polar step sample with an unreadable timestamp")
+                continue
+            if recorded_at == daily_total_at:
+                continue
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=ProviderName.POLAR,
+                    source=ProviderName.POLAR,
+                    recorded_at=recorded_at,
+                    value=Decimal(sample.steps),
+                    series_type=SeriesType.steps,
+                    is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
+                )
+            )
         return samples
 
     # -------------------------------------------------------------------------
