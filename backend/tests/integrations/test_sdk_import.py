@@ -649,6 +649,27 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.body_fat_percentage
         assert samples[0].value == Decimal("30.400")
 
+    def test_apple_hrv_sdnn_and_rmssd_map_to_separate_series(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """iOS 27 adds RMSSD next to SDNN - each must land in its own series, in ms."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [
+                self._record("HKQuantityTypeIdentifierHeartRateVariabilitySDNN", 48.2, unit="ms"),
+                self._record("HKQuantityTypeIdentifierHeartRateVariabilityRMSSD", 36.7, unit="ms"),
+            ],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        values = {sample.series_type: sample.value for sample in samples}
+        assert values == {
+            SeriesType.heart_rate_variability_sdnn: Decimal("48.200"),
+            SeriesType.heart_rate_variability_rmssd: Decimal("36.700"),
+        }
+
     def test_health_connect_body_fat_percentage_not_scaled(
         self,
         import_service: ImportService,
