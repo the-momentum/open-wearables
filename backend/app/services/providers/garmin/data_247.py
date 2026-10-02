@@ -1819,7 +1819,7 @@ class Garmin247Data(Base247DataTemplate):
         activityDetails). activityDetails is always processed first within the same
         webhook because WELLNESS_TYPES orders it before activityFiles.
         """
-        record = self.event_record_repo.get_by_external_id(db, user_id, activity_id, source=self.provider_name)
+        record = self.event_record_repo.get_by_external_id(db, activity_id, user_id, source=self.provider_name)
         if record is None:
             log_structured(
                 self.logger,

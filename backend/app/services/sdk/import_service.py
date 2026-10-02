@@ -1,5 +1,6 @@
 import json
 import time
+from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
@@ -8,6 +9,7 @@ from uuid import UUID, uuid4
 
 import sentry_sdk
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
@@ -25,6 +27,7 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
+    MealDetailCreate,
     StepSampleCreate,
     TimeSeriesSampleCreate,
 )
@@ -43,6 +46,7 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -52,6 +56,21 @@ from .sleep_service import handle_sleep_data
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
 # in mg/dL round-trip with a ~0.1% offset under this factor.
 MMOL_L_TO_MG_DL = Decimal("18.0182")
+
+# Energy series stored in kcal.
+_KCAL_SERIES = frozenset({SeriesType.dietary_energy_consumed, SeriesType.dietary_energy_from_fat})
+
+# Dietary series types plus hydration.
+_MEAL_NUTRIENT_SERIES_TYPES = frozenset(
+    {st for st in SeriesType if st.value.startswith("dietary_")} | {SeriesType.hydration}
+)
+
+# Correlation types: parent records that carry no measurement of their own, but group
+# sibling records that reference them via their own `parentId`.
+CORRELATION_LINKABLE_SERIES_TYPES: dict[str, frozenset[SeriesType]] = {
+    "HKCorrelationTypeIdentifierFood": _MEAL_NUTRIENT_SERIES_TYPES,
+    "FOOD": _MEAL_NUTRIENT_SERIES_TYPES,
+}
 
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
 
@@ -68,6 +87,7 @@ class InvalidRecord(TypedDict):
 
 class LoadDataResult(TypedDict):
     workouts_saved: int
+    meals_saved: int  # meal correlations inserted
     records_saved: int  # samples submitted
     records_inserted: int  # rows that did not exist
     records_updated: int  # rows refreshed in place
@@ -134,6 +154,7 @@ class ImportService:
         self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
+        """Convert a raw numeric value to `Decimal`, passing `None` through unchanged."""
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
@@ -202,7 +223,55 @@ class ImportService:
 
             yield record, detail, time_series_samples
 
+    def _build_meal_bundles(
+        self,
+        correlation_records: list[MetricRecord],
+        provider: str,
+        user_id: str,
+    ) -> Generator[tuple[EventRecordCreate, EventRecordDetailCreate]]:
+        """Build meal (EventRecordCreate, MealDetailCreate) pairs from HealthKit
+        correlation records (e.g. HKCorrelationTypeIdentifierFood).
+
+        `correlation_records` are the `records[]` entries already classified as meal
+        correlations by `load_data` - a correlation record has no measurement value of its
+        own; its sibling records reference it via their own `parentId`, resolved separately
+        in `_build_statistic_bundles`.
+        """
+        user_uuid = UUID(user_id)
+
+        for rjson in correlation_records:
+            if not rjson.id:
+                continue
+
+            meal_id = uuid4()
+            metadata = rjson.metadata if isinstance(rjson.metadata, dict) else {}
+            device_model, software_version, original_source_name = extract_device_info(rjson.source)
+
+            record = EventRecordCreate(
+                category="meal",
+                type=rjson.type,
+                source_name=original_source_name or "unknown",
+                device_model=device_model,
+                start_datetime=rjson.startDate,
+                end_datetime=rjson.endDate,
+                zone_offset=rjson.zoneOffset,
+                id=meal_id,
+                external_id=rjson.id,
+                source=original_source_name,
+                software_version=software_version,
+                provider=provider,
+                user_id=user_uuid,
+            )
+            detail = MealDetailCreate(
+                record_id=meal_id,
+                title=metadata.get("title"),
+                meal_type=metadata.get("mealType"),
+            )
+
+            yield record, detail
+
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
+        """Rescale a value into the series' stored unit for series where the SDK unit varies by provider."""
         match series_type:
             # meters → cm
             case SeriesType.height | SeriesType.walking_step_length:
@@ -221,19 +290,36 @@ class ImportService:
             case _:
                 return value
 
+    @handle_exceptions
     def _build_statistic_bundles(
         self,
-        request: SDKSyncRequest,
+        records: list[MetricRecord],
+        provider: str,
         user_id: str,
+        correlation_id_map: dict[str, UUID] | None = None,
+        correlation_type_by_external_id: dict[str, str] | None = None,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
+        """Build time series samples from `records[]` (correlation records themselves
+        already excluded by `load_data` - see `_build_meal_bundles`).
+
+        `correlation_id_map` links a sample to its parent (via `parentId`) when that
+        correlation was already resolved earlier in the same batch. `correlation_type_by_
+        external_id` says which correlation type that parent is, so the link is only made
+        when the sample's own series type is one CORRELATION_LINKABLE_SERIES_TYPES allows
+        for that specific correlation type - a heart rate reading whose parentId happens to
+        match a meal's external_id, say, must stay a loose sample. No match, or no
+        `parentId`, is also a loose sample.
+        """
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
-        provider = request.provider
+        correlation_id_map = correlation_id_map or {}
+        correlation_type_by_external_id = correlation_type_by_external_id or {}
 
-        for rjson in request.data.records:
-            value = Decimal(str(rjson.value))
-
+        for rjson in records:
             record_type = rjson.type or ""
+            value = Decimal(str(rjson.value))
+            unit = (rjson.unit or "").strip().lower()
+
             series_type = get_series_type_from_metric_type(record_type)
 
             if not series_type:
@@ -241,11 +327,27 @@ class ImportService:
             value = self._normalize_unit(series_type, value, provider)
 
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
-            if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
+            if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
                 value = value * MMOL_L_TO_MG_DL
+
+            # Convert hydration units to mL
+            if series_type == SeriesType.hydration and unit in ("l", "liter", "liters", "litre", "litres"):
+                value *= 1000
+
+            # Energy is stored in kcal. Case matters: "cal" is a small calorie (1/1000 kcal),
+            # "Cal" is the food Calorie (= kcal).
+            if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
+                value = value / 1000
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
+
+            # Links this sample to its parent correlation, when it has one, its own type is
+            # allowed for THAT correlation's type, and the correlation was resolved in this
+            # same batch. None for a loose sample.
+            parent_type = correlation_type_by_external_id.get(rjson.parentId) if rjson.parentId else None
+            linkable_types = CORRELATION_LINKABLE_SERIES_TYPES.get(parent_type, frozenset())
+            event_record_id = correlation_id_map.get(rjson.parentId) if series_type in linkable_types else None
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -261,6 +363,7 @@ class ImportService:
                 value=value,
                 series_type=series_type,
                 is_daily_total=daily_total_flag(series_type, is_daily=False),
+                event_record_id=event_record_id,
             )
 
             match series_type:
@@ -273,7 +376,35 @@ class ImportService:
 
         return time_series_samples
 
+    def _prune_stale_meal_samples(
+        self,
+        db_session: DbSession,
+        samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate],
+        meal_ids: set[UUID],
+    ) -> None:
+        """Delete a meal's previously-stored samples whose type this batch no longer reports.
+
+        A meal only reports the nutrient types it currently has; an item removed from it
+        (e.g. the user deletes a food from the entry) simply won't be in this set, so this
+        deletes whatever this batch no longer reports for that meal - otherwise a removed
+        item's sample would never get cleaned up. A meal absent from `samples` entirely
+        (this batch says nothing about its nutrients) is left untouched.
+
+        `meal_ids` are the ids this same call just upserted as meals - `sample.event_record_id`
+        is trusted only against that set, not merely "is not None", so a future bug that sets
+        event_record_id on a sample for some other purpose can't get its rows silently swept
+        into meal reconciliation.
+        """
+        meal_sample_types: dict[UUID, set[SeriesType]] = {}
+        for sample in samples:
+            if sample.event_record_id is None or sample.event_record_id not in meal_ids:
+                continue
+            meal_sample_types.setdefault(sample.event_record_id, set()).add(sample.series_type)
+        for meal_id, types in meal_sample_types.items():
+            self.event_record_service.data_point_series_repo.delete_stale_for_event_record(db_session, meal_id, types)
+
     def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
+        """Return (min, max, avg) for `values`, or `(None, None, None)` when empty."""
         if not values:
             return None, None, None
         min_v = min(values)
@@ -369,22 +500,68 @@ class ImportService:
         request, dropped = _parse_sync_request(raw)
         validation_ms = round((time.perf_counter() - started) * 1000, 1)
         workouts_saved = 0
+        meals_saved = 0
         records_saved = 0
         records_inserted = 0
         records_updated = 0
         sleep_saved = 0
         types: set[str] = set()
 
+        # Split records[] once into correlations (meal, and whatever future correlation
+        # types CORRELATION_LINKABLE_SERIES_TYPES grows) vs everything else, instead of each
+        # builder re-scanning the full list and skipping what the other one handles.
+        # correlation_type_by_external_id lets _build_statistic_bundles check a child's own
+        # type against the SPECIFIC correlation it's linking to, not just "some correlation".
+        correlation_records: list[MetricRecord] = []
+        records: list[MetricRecord] = []
+        correlation_type_by_external_id: dict[str, str] = {}
+        for rjson in request.data.records:
+            record_type = rjson.type or ""
+            if record_type in CORRELATION_LINKABLE_SERIES_TYPES:
+                correlation_records.append(rjson)
+                if rjson.id:
+                    correlation_type_by_external_id[rjson.id] = record_type
+            else:
+                records.append(rjson)
+
+        # Process meal correlations first, so
+        # their internal ids exist before nutrient samples try to link to them.
+        meal_bundles = list(self._build_meal_bundles(correlation_records, request.provider, user_id))
+        correlation_id_map: dict[str, UUID] = {}
+        meal_ids: set[UUID] = set()
+        for record, detail in meal_bundles:
+            try:
+                saved, inserted = self.event_record_service.create_or_update_meal(db_session, record, detail)
+            except IntegrityError:
+                log_structured(
+                    self.log,
+                    "warning",
+                    "SDK meal correlation could not be reconciled - skipping",
+                    action="sdk_meal_conflict_skipped",
+                    batch_id=batch_id,
+                    user_id=user_id,
+                    provider=request.provider,
+                    external_id=record.external_id,
+                    start_datetime=record.start_datetime.isoformat(),
+                    end_datetime=record.end_datetime.isoformat(),
+                )
+                continue
+            if inserted:
+                meals_saved += 1
+            meal_ids.add(saved.id)
+            if record.external_id:
+                correlation_id_map[record.external_id] = saved.id
+
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))
         if workout_bundles:
-            records = [record for record, _, _ in workout_bundles]
+            workout_records = [record for record, _, _ in workout_bundles]
             details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
             # Flatten all time series samples from all workouts into a single list
             time_series_samples = [sample for _, _, samples in workout_bundles for sample in samples]
 
             # Bulk create records - returns only IDs that were actually inserted
-            inserted_ids = self.event_record_service.bulk_create(db_session, records)
+            inserted_ids = self.event_record_service.bulk_create(db_session, workout_records)
             db_session.flush()
 
             # Filter details to only those records that were actually inserted (avoid FK violation)
@@ -404,8 +581,12 @@ class ImportService:
                 types.update(sample.series_type.value for sample in time_series_samples)
 
         # Process time series samples (records)
-        samples = self._build_statistic_bundles(request, user_id)
+        samples = self._build_statistic_bundles(
+            records, request.provider, user_id, correlation_id_map, correlation_type_by_external_id
+        )
         if samples:
+            self._prune_stale_meal_samples(db_session, samples, meal_ids)
+
             counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
             records_inserted += counts.inserted
@@ -422,6 +603,7 @@ class ImportService:
 
         return {
             "workouts_saved": workouts_saved,
+            "meals_saved": meals_saved,
             "records_saved": records_saved,
             "records_inserted": records_inserted,
             "records_updated": records_updated,
@@ -439,6 +621,12 @@ class ImportService:
         user_id: str,
         batch_id: str | None = None,
     ) -> UploadDataResponse:
+        """Parse, validate, and load an SDK sync request, returning a best-effort response.
+
+        Always returns a 200/400 `UploadDataResponse` rather than raising - validation and
+        processing failures are caught, logged, reported to Sentry, and turned into a response
+        instead of propagating to the caller.
+        """
         provider = "unknown"
         try:
             # Parse content based on type
@@ -546,6 +734,7 @@ class ImportService:
                 records_updated=saved_counts["records_updated"],
                 types=saved_counts["types"],
                 workouts_saved=saved_counts["workouts_saved"],
+                meals_saved=saved_counts["meals_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
             )
 

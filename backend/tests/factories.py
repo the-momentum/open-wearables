@@ -25,6 +25,7 @@ from app.models import (
     Developer,
     EventRecord,
     HealthScore,
+    MealDetails,
     PersonalRecord,
     ProviderSetting,
     SeriesTypeDefinition,
@@ -578,6 +579,27 @@ class SleepDetailsFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
+class MealDetailsFactory(BaseFactory):
+    """Factory for MealDetails model."""
+
+    class Meta:
+        model = MealDetails
+
+    title = "Grilled Chicken Breast"
+    meal_type = "lunch"
+
+    @classmethod
+    def _create(cls, model_class: type[MealDetails], *args: Any, **kwargs: Any) -> MealDetails:
+        """Override create to handle event_record relationship."""
+        event_record = kwargs.pop("event_record", None)
+        # Remove any stale record_id that might have been set
+        kwargs.pop("record_id", None)
+        if event_record is None:
+            event_record = EventRecordFactory(category="meal")
+        kwargs["record_id"] = event_record.id
+        return super()._create(model_class, *args, **kwargs)
+
+
 __all__ = [
     "BaseFactory",
     "SeriesTypeDefinitionFactory",
@@ -593,4 +615,5 @@ __all__ = [
     "ProviderSettingFactory",
     "WorkoutDetailsFactory",
     "SleepDetailsFactory",
+    "MealDetailsFactory",
 ]

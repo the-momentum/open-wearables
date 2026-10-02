@@ -27,6 +27,9 @@ class TimeSeriesSampleBase(BaseModel):
     # True = daily total. False/None = not a daily total (summable sample); aggregation
     # treats None as False. Set explicitly by the provider save path (Garmin dailies vs epochs).
     is_daily_total: bool | None = None
+    # Groups this sample under an EventRecord (e.g. a meal correlation). None for a
+    # loose sample with no such grouping.
+    event_record_id: UUID | None = None
 
 
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):

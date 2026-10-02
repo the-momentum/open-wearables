@@ -46,4 +46,6 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
     }
 )
 
+MEAL_FIELDS: frozenset[str] = frozenset({"title", "meal_type"})
+
 HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset()
