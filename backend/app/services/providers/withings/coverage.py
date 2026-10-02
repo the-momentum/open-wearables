@@ -72,10 +72,17 @@ ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
     "calories": SeriesType.active_energy,
 }
 
+# Withings ``/v2/sleep?action=get`` HRV field -> unified SeriesType.
+SLEEP_HRV_FIELD_MAP: dict[str, SeriesType] = {
+    "rmssd": SeriesType.heart_rate_variability_rmssd,
+    "sdnn_1": SeriesType.heart_rate_variability_sdnn,
+}
+
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *MEASURE_TYPE_MAP.values(),
         *ACTIVITY_FIELD_MAP.values(),
+        *SLEEP_HRV_FIELD_MAP.values(),  # /v2/sleep get
         SeriesType.basal_energy,
         SeriesType.resting_heart_rate,  # /v2/sleep getsummary (hr_min)
     }
