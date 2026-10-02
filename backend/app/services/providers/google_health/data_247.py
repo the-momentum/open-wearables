@@ -422,6 +422,24 @@ class GoogleHealth247Data(Base247DataTemplate):
                         user_id, recorded_at, value, series_type, spec.is_daily_total, zone_offset, device_model
                     )
                 )
+            # Unlike the readings above, a difference of zero is a measurement: the night sat on
+            # the baseline.
+            for derived in spec.derived or ():
+                left = read_number(value_obj, derived.field, None, derived.scale)
+                right = read_number(value_obj, derived.against, None, derived.scale)
+                if left is None or right is None:
+                    continue
+                samples.append(
+                    self._sample(
+                        user_id,
+                        recorded_at,
+                        left - right,
+                        derived.series_type,
+                        spec.is_daily_total,
+                        zone_offset,
+                        device_model,
+                    )
+                )
         return samples
 
     @staticmethod

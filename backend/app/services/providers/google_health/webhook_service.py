@@ -56,6 +56,7 @@ GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES = frozenset(
         "daily-oxygen-saturation",
         "daily-respiratory-rate",
         "daily-resting-heart-rate",
+        "daily-sleep-temperature-derivations",
         "distance",
         "exercise",
         "floors",

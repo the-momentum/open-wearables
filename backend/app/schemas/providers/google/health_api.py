@@ -58,6 +58,20 @@ class SeriesField:
 
 
 @dataclass(frozen=True)
+class DerivedSeriesField:
+    """A series computed as ``field - against`` within one value object.
+
+    Google publishes a nightly value and the baseline it should be read against, never the
+    difference; providers that do report a deviation report exactly that subtraction.
+    """
+
+    series_type: SeriesType
+    field: str
+    against: str
+    scale: Decimal = Decimal(1)
+
+
+@dataclass(frozen=True)
 class RollupSpec:
     """How to read one data type's value from a dataPoints:rollUp response.
 
@@ -86,6 +100,7 @@ class ListSpec:
     is_daily_total: True for once-per-day summaries (Daily types), False for raw samples.
     session_interval: True for SessionTimeInterval types (filter on interval.civil_start_time).
     extra:          additional series emitted from the same value object, if any.
+    derived:        series computed from two fields of the same value object, if any.
     """
 
     field: str
@@ -95,6 +110,7 @@ class ListSpec:
     is_daily_total: bool = False
     session_interval: bool = False
     extra: tuple[SeriesField, ...] | None = None
+    derived: tuple[DerivedSeriesField, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -166,11 +182,12 @@ class DataTypeMetric:
         return True
 
     def series_types(self) -> frozenset[SeriesType]:
-        """Every series this metric can emit — primary plus any extra bindings."""
+        """Every series this metric can emit — primary, extra bindings and derived ones."""
         extra = (
             sf.series_type
             for spec in (self.rollup_spec, self.list_spec)
             if spec is not None and spec.extra
             for sf in spec.extra
         )
-        return frozenset({self.series_type, *extra})
+        derived = (df.series_type for df in (self.list_spec.derived if self.list_spec else None) or ())
+        return frozenset({self.series_type, *extra, *derived})

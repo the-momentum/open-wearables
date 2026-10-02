@@ -833,6 +833,38 @@ class TestGarmin247Data:
         all_records = mock_bulk_create.call_args[0][1]
         assert len(all_records) == 2
 
+    def test_skin_temp_deviation_becomes_a_sample(self, garmin_247: Garmin247Data) -> None:
+        # The skinTemp payload carries a deviation from baseline, never an absolute reading.
+        raw = {
+            "summaryId": "x60a3665-6abad64b",
+            "calendarDate": "2026-09-29",
+            "avgDeviationCelsius": -0.1,
+            "durationInSeconds": 31200,
+            "startTimeInSeconds": 1790629451,
+            "startTimeOffsetInSeconds": 7200,
+        }
+
+        samples = garmin_247._build_skin_temp_samples(uuid4(), raw)
+
+        assert [sample.series_type for sample in samples] == [SeriesType.skin_temperature_deviation]
+        assert float(samples[0].value) == -0.1
+        assert samples[0].external_id == "x60a3665-6abad64b"
+
+    def test_a_night_measured_before_midnight_keeps_garmins_own_day(self, garmin_247: Garmin247Data) -> None:
+        # Measurement starts at 23:02 local on the 23rd; Garmin calls that night the 24th.
+        raw = {
+            "summaryId": "x60a3665-late",
+            "calendarDate": "2026-09-24",
+            "avgDeviationCelsius": 0.3,
+            "durationInSeconds": 25200,
+            "startTimeInSeconds": 1790197320,
+            "startTimeOffsetInSeconds": 7200,
+        }
+
+        samples = garmin_247._build_skin_temp_samples(uuid4(), raw)
+
+        assert samples[0].recorded_at.date().isoformat() == "2026-09-24"
+
     def test_process_items_batch_empty(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test batch processing empty items returns 0."""
         user = UserFactory()

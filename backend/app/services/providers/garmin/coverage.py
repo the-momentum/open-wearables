@@ -52,7 +52,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.blood_pressure_diastolic,  # /wellness-api/rest/bloodPressures
         SeriesType.vo2_max,  # /wellness-api/rest/userMetrics
         SeriesType.garmin_fitness_age,  # /wellness-api/rest/userMetrics
-        SeriesType.skin_temperature,  # /wellness-api/rest/skinTemp
+        SeriesType.skin_temperature_deviation,  # /wellness-api/rest/skinTemp (avgDeviationCelsius)
     }
 )
 
