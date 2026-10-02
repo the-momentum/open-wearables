@@ -1,10 +1,34 @@
 """Schemas for seed data generation via the dashboard."""
 
 from datetime import date
+from typing import NamedTuple
 
 from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.enums import ProviderName, SeriesType, WorkoutType
+
+
+class IntRange(NamedTuple):
+    """A (min, max) integer range, accessed by name or index."""
+
+    min: int
+    max: int
+
+
+MAX_MEAL_CALORIES = 5000
+"""Upper bound for MealConfig.calories_range, generous for a single meal.
+
+Keeps calories, and the protein/fat/carb grams derived from it in
+_generate_meal, within a range the downstream math can't overflow on.
+"""
+
+MAX_MEAL_COUNT = 10_000
+"""Upper bound for MealConfig.meal_count.
+
+meal_count is used directly as the number of insert + up to ~6 sample rows in
+SeedDataService.generate, so an unbounded value here is a direct row-count
+explosion, not just a bad value.
+"""
 
 
 class WorkoutConfig(BaseModel):
@@ -16,9 +40,9 @@ class WorkoutConfig(BaseModel):
     )
     duration_min_minutes: int = Field(15, ge=5, le=600)
     duration_max_minutes: int = Field(180, ge=5, le=600)
-    hr_min_range: tuple[int, int] = (90, 120)
-    hr_max_range: tuple[int, int] = (140, 180)
-    steps_range: tuple[int, int] = (500, 20_000)
+    hr_min_range: IntRange = IntRange(90, 120)
+    hr_max_range: IntRange = IntRange(140, 180)
+    steps_range: IntRange = IntRange(500, 20_000)
     date_range_months: int = Field(6, ge=1, le=24)
     date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
     date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
@@ -40,9 +64,9 @@ class WorkoutConfig(BaseModel):
 class SleepStageDistribution(BaseModel):
     """Percentage ranges for each sleep stage. Light = remainder (100% - others)."""
 
-    deep_pct_range: tuple[int, int] = (15, 25)
-    rem_pct_range: tuple[int, int] = (20, 25)
-    awake_pct_range: tuple[int, int] = (2, 8)
+    deep_pct_range: IntRange = IntRange(15, 25)
+    rem_pct_range: IntRange = IntRange(20, 25)
+    awake_pct_range: IntRange = IntRange(2, 8)
 
     @model_validator(mode="after")
     def _validate_ranges(self) -> "SleepStageDistribution":
@@ -144,6 +168,43 @@ class SleepConfig(BaseModel):
         return self
 
 
+class MealConfig(BaseModel):
+    """Parameters controlling meal generation.
+
+    Each meal is an EventRecord (category="meal") plus a MealDetails row and a
+    handful of nutrient DataPointSeries samples (calories, protein, carbs, fat,
+    fiber, hydration) correlated to it via event_record_id.
+    """
+
+    meal_count: int = Field(50, ge=0, le=MAX_MEAL_COUNT, description="Total number of meals to generate.")
+    calories_range: IntRange = IntRange(150, 900)
+    date_from: date | None = Field(None, description="Explicit start date. Defaults to a 6-month lookback.")
+    date_to: date | None = Field(None, description="Explicit end date. Defaults to the last synced date.")
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "MealConfig":
+        """Validate calories_range and the date range.
+
+        calories_range has no Field-level ge/le constraints (it's an IntRange, unlike
+        the plain-int fields on WorkoutConfig/SleepConfig), so the check happens here,
+        capped at MAX_MEAL_CALORIES to prevent overflow in the downstream
+        calorie-to-macro math in _generate_meal.
+        """
+        if self.calories_range.min > self.calories_range.max:
+            msg = f"calories_range min ({self.calories_range.min}) must be <= max ({self.calories_range.max})"
+            raise ValueError(msg)
+        if not (self.calories_range.min >= 0 and self.calories_range.max <= MAX_MEAL_CALORIES):
+            msg = (
+                f"calories_range ({self.calories_range.min}, {self.calories_range.max}) "
+                f"must be within [0, {MAX_MEAL_CALORIES}]"
+            )
+            raise ValueError(msg)
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            msg = f"date_from ({self.date_from}) must be <= date_to ({self.date_to})"
+            raise ValueError(msg)
+        return self
+
+
 class TimeSeriesConfig(BaseModel):
     """Parameters controlling continuous time-series generation.
 
@@ -184,11 +245,15 @@ class SeedProfileConfig(BaseModel):
     generate_workouts: bool = True
     generate_sleep: bool = True
     generate_time_series: bool = True
+    generate_meals: bool = Field(
+        False, description="Opt-in: existing presets and defaults stay meal-free unless explicitly enabled."
+    )
     providers: list[ProviderName] | None = Field(None, description="Specific providers. None = random selection.")
     num_connections: int = Field(2, ge=1, le=5)
     workout_config: WorkoutConfig = WorkoutConfig()
     sleep_config: SleepConfig = SleepConfig()
     time_series_config: TimeSeriesConfig = TimeSeriesConfig()
+    meal_config: MealConfig = MealConfig()
 
 
 class SeedDataRequest(BaseModel):
@@ -470,6 +535,20 @@ SEED_PRESETS: dict[str, dict] = {
                 enabled_types=[*_ALL_CONTINUOUS_TYPES, *_WORKOUT_BOUND_TYPES],
                 include_blood_pressure=True,
             ),
+            generate_meals=True,
+        ),
+    },
+    "nutrition_focused": {
+        "label": "Nutrition Focused",
+        "description": "540 logged meals (~3/day over 6 months) of nutrition data, light workouts, no sleep.",
+        "profile": SeedProfileConfig(
+            preset="nutrition_focused",
+            generate_workouts=True,
+            generate_sleep=False,
+            generate_time_series=False,
+            workout_config=WorkoutConfig(count=10),
+            generate_meals=True,
+            meal_config=MealConfig(meal_count=540),
         ),
     },
 }

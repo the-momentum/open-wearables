@@ -1,7 +1,7 @@
 ---
 title: "Seed Data Generator"
 sidebarTitle: "Seed Data Generator"
-description: "Generate synthetic users, workouts, sleep, and time series from the dashboard. Reproducible via a random seed embedded in the user name."
+description: "Generate synthetic users, workouts, sleep, meals, and time series from the dashboard. Reproducible via a random seed embedded in the user name."
 keywords: ["seed data", "synthetic health data", "test data generator", "open wearables dashboard"]
 "og:title": "Seed Data Generator | Open Wearables"
 "og:description": "Generate synthetic users with workouts, sleep, and time series from the dashboard. Reproducible via random seed."
@@ -12,7 +12,7 @@ keywords: ["seed data", "synthetic health data", "test data generator", "open we
 "twitter:card": "summary_large_image"
 ---
 
-The Seed Data Generator creates synthetic users with configurable workouts, sleep records, and time series. Use it to populate a fresh instance for demos, exercise dashboards and API integrations, or reproduce a specific dataset that a teammate shared.
+The Seed Data Generator creates synthetic users with configurable workouts, sleep records, meals, and time series. Use it to populate a fresh instance for demos, exercise dashboards and API integrations, or reproduce a specific dataset that a teammate shared.
 
 Open the dashboard and go to **Settings → Seed Data**. Generation runs in the background via Celery; the dispatch call returns immediately with the seed that was used.
 
@@ -53,7 +53,8 @@ One click fills the whole form with a tuned configuration. Any manual edit clear
 | **Activity Only** | 80 workouts, no sleep. |
 | **Sleep Only** | 40 optimal sleeps, no workouts. |
 | **Minimal (Quick)** | 5 workouts + 5 sleeps, no time series. Fast smoke test. |
-| **Comprehensive** | 150 workouts, 60 sleeps, 5 providers, 80% time series. Large dataset. |
+| **Comprehensive** | 150 workouts, 60 sleeps, 90 meals, 5 providers, 80% time series. Large dataset. |
+| **Nutrition Focused** | 180 meals (3/day), 10 light workouts, no sleep. |
 
 ### Workouts
 
@@ -68,6 +69,13 @@ Toggle to enable. Configure:
 - **Nap chance (%)** - probability a given record is flagged as a nap.
 - **Weekend catch-up** - shorter weekday sleep, longer weekend sleep.
 - **Stage distribution** - pick a named profile (Optimal, Deep Deficit, REM Deprived, Restless, Athlete Recovery) or set custom min/max % for Deep, REM, and Awake. Light sleep fills the remainder (sum of max % must stay ≤95%).
+
+### Meals
+
+Off by default - opt in explicitly (existing presets stay meal-free unless they enable it). Each meal is an `EventRecord` (category `meal`) plus a `MealDetails` row and correlated nutrient samples (calories, protein, carbs, fat, fiber, hydration) linked back to it, mirroring how real HealthKit/Health Connect meal correlations are stored. Configure:
+- **Meal count** (0-1000), **Meal types** - pick from breakfast/lunch/dinner/snack or leave empty for random.
+- **Calories range** - per-meal calorie total; macros are derived from it with a randomized protein/fat/carb split.
+- **Date range** (from/to).
 
 ### Time series
 

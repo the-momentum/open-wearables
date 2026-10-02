@@ -12765,6 +12765,21 @@
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
       },
+      "IntRange": {
+        "prefixItems": [
+          {
+            "type": "integer",
+            "title": "Min"
+          },
+          {
+            "type": "integer",
+            "title": "Max"
+          }
+        ],
+        "type": "array",
+        "maxItems": 2,
+        "minItems": 2
+      },
       "IntensityMinutes": {
         "properties": {
           "light": {
@@ -13116,6 +13131,54 @@
           "source"
         ],
         "title": "Meal"
+      },
+      "MealConfig": {
+        "properties": {
+          "meal_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Meal Count",
+            "description": "Total number of meals to generate.",
+            "default": 50
+          },
+          "calories_range": {
+            "$ref": "#/components/schemas/IntRange",
+            "default": [
+              150,
+              900
+            ]
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From",
+            "description": "Explicit start date. Defaults to a 6-month lookback."
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To",
+            "description": "Explicit end date. Defaults to the last synced date."
+          }
+        },
+        "type": "object",
+        "title": "MealConfig",
+        "description": "Parameters controlling meal generation.\n\nEach meal is an EventRecord (category=\"meal\") plus a MealDetails row and a\nhandful of nutrient DataPointSeries samples (calories, protein, carbs, fat,\nfiber, hydration) correlated to it via event_record_id."
       },
       "MealField": {
         "properties": {
@@ -14778,6 +14841,7 @@
               "generate_workouts": true,
               "generate_sleep": true,
               "generate_time_series": true,
+              "generate_meals": false,
               "num_connections": 2,
               "workout_config": {
                 "count": 80,
@@ -14823,6 +14887,13 @@
                 "date_range_months": 6,
                 "enabled_types": [],
                 "include_blood_pressure": false
+              },
+              "meal_config": {
+                "calories_range": [
+                  150,
+                  900
+                ],
+                "meal_count": 50
               }
             }
           },
@@ -14929,6 +15000,12 @@
             "title": "Generate Time Series",
             "default": true
           },
+          "generate_meals": {
+            "type": "boolean",
+            "title": "Generate Meals",
+            "description": "Opt-in: existing presets and defaults stay meal-free unless explicitly enabled.",
+            "default": false
+          },
           "providers": {
             "anyOf": [
               {
@@ -15003,6 +15080,16 @@
               "enabled_types": [],
               "include_blood_pressure": false,
               "date_range_months": 6
+            }
+          },
+          "meal_config": {
+            "$ref": "#/components/schemas/MealConfig",
+            "default": {
+              "meal_count": 50,
+              "calories_range": [
+                150,
+                900
+              ]
             }
           }
         },
@@ -15496,54 +15583,21 @@
       "SleepStageDistribution": {
         "properties": {
           "deep_pct_range": {
-            "prefixItems": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Deep Pct Range",
+            "$ref": "#/components/schemas/IntRange",
             "default": [
               15,
               25
             ]
           },
           "rem_pct_range": {
-            "prefixItems": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Rem Pct Range",
+            "$ref": "#/components/schemas/IntRange",
             "default": [
               20,
               25
             ]
           },
           "awake_pct_range": {
-            "prefixItems": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Awake Pct Range",
+            "$ref": "#/components/schemas/IntRange",
             "default": [
               2,
               8
@@ -18524,54 +18578,21 @@
             "default": 180
           },
           "hr_min_range": {
-            "prefixItems": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Hr Min Range",
+            "$ref": "#/components/schemas/IntRange",
             "default": [
               90,
               120
             ]
           },
           "hr_max_range": {
-            "prefixItems": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Hr Max Range",
+            "$ref": "#/components/schemas/IntRange",
             "default": [
               140,
               180
             ]
           },
           "steps_range": {
-            "prefixItems": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Steps Range",
+            "$ref": "#/components/schemas/IntRange",
             "default": [
               500,
               20000

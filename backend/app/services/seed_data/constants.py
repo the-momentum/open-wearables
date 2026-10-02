@@ -76,6 +76,21 @@ OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
     }
 )
 
+# Meal generation: default lookback window when MealConfig.date_from/date_to are unset
+# (MealConfig has no date_range_months field - meal_count alone controls volume).
+MEAL_DEFAULT_LOOKBACK_MONTHS = 6
+
+# Types picked at random for each generated meal, and sample titles picked per meal
+# type when building a MealDetails row.
+DEFAULT_MEAL_TYPES: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
+
+MEAL_TITLES: dict[str, list[str]] = {
+    "breakfast": ["Oatmeal with Berries", "Scrambled Eggs & Toast", "Greek Yogurt Bowl", "Avocado Toast"],
+    "lunch": ["Grilled Chicken Salad", "Turkey Sandwich", "Quinoa Bowl", "Vegetable Stir Fry"],
+    "dinner": ["Salmon with Rice", "Pasta Bolognese", "Grilled Steak & Veggies", "Vegetable Curry"],
+    "snack": ["Protein Bar", "Mixed Nuts", "Apple with Peanut Butter", "Greek Yogurt"],
+}
+
 # ---------------------------------------------------------------------------
 # Health score component keys (match real provider API formats)
 # ---------------------------------------------------------------------------
