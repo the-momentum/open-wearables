@@ -2,10 +2,14 @@
 
 import re
 import unicodedata
+from logging import getLogger
 
 from app.schemas.enums import DeviceType, ProviderName
+from app.utils.structured_logging import log_structured
 
 from .samsung import SAMSUNG_DEVICE_NAMES
+
+logger = getLogger(__name__)
 
 # Providers that only ship a single form factor; model matching is skipped
 SINGLE_DEVICE_PROVIDER_TYPE: dict[ProviderName, DeviceType] = {
@@ -58,6 +62,7 @@ DEVICE_MODEL_KEYWORDS: list[tuple[tuple[str, ...], DeviceType]] = [
     (("verity sense", "oh1"), DeviceType.HR_SENSOR),
     (("headphone", "earphone", "suunto wing", "airpods"), DeviceType.HEADPHONES),
     (("index bpm", "blood pressure"), DeviceType.BP_MONITOR),
+    (("index sleep",), DeviceType.SLEEP_MONITOR),
     (("garmin edge", r"^edge \d"), DeviceType.BIKE_COMPUTER),
     (("watch", "moto 360"), DeviceType.WATCH),
     (("buds",), DeviceType.HEADPHONES),
@@ -74,7 +79,6 @@ DEVICE_MODEL_KEYWORDS: list[tuple[tuple[str, ...], DeviceType]] = [
             "galaxy fit",
             "polar loop",
             "polar 360",
-            "index sleep",
         ),
         DeviceType.BAND,
     ),
@@ -184,6 +188,27 @@ def infer_device_type(
     reported_type: DeviceType | None = None,
 ) -> DeviceType:
     """Resolve device type: single-device provider, then the reported type, then inference."""
+    device_type = _resolve_device_type(provider, device_model, original_source_name, reported_type)
+    if device_type == DeviceType.OTHER:
+        log_structured(
+            logger,
+            "warning",
+            f"Device mapped to other: {device_model}",
+            provider=provider.value,
+            action="device_type_other",
+            device_model=device_model,
+            original_source_name=original_source_name,
+            reported_type=reported_type,
+        )
+    return device_type
+
+
+def _resolve_device_type(
+    provider: ProviderName,
+    device_model: str | None,
+    original_source_name: str | None,
+    reported_type: DeviceType | None,
+) -> DeviceType:
     if provider in SINGLE_DEVICE_PROVIDER_TYPE:
         return SINGLE_DEVICE_PROVIDER_TYPE[provider]
 

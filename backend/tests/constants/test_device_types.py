@@ -51,7 +51,7 @@ class TestInferDeviceTypeFromModel:
             ("Galaxy Tab S9", DeviceType.TABLET),
             ("Suunto Wing 2 Bone Conduction Headphone", DeviceType.HEADPHONES),
             ("Garmin Index BPM", DeviceType.BP_MONITOR),
-            ("Garmin Index Sleep Monitor", DeviceType.BAND),
+            ("Garmin Index Sleep Monitor", DeviceType.SLEEP_MONITOR),
             ("Garmin fēnix 8", DeviceType.WATCH),
             ("Garmin vívoactive 6", DeviceType.WATCH),
             ("Garmin Approach G80", DeviceType.OTHER),
