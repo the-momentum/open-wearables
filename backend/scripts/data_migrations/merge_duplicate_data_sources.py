@@ -130,13 +130,27 @@ _MERGE_STEPS = [
 ]
 
 # Duplicate events across a user's sources of one provider, ranked most specific source first.
+# Groups spanning several device ids are different devices' records, not copies, so they are left alone.
 _RANKED_DUPLICATES = """
-    WITH ranked AS (
+    WITH multi_device AS (
+        SELECT ds.user_id, ds.provider, e.category, e.start_datetime, e.end_datetime
+        FROM event_record e
+        JOIN data_source ds ON ds.id = e.data_source_id
+        WHERE ds.device_id IS NOT NULL
+        GROUP BY ds.user_id, ds.provider, e.category, e.start_datetime, e.end_datetime
+        HAVING count(DISTINCT ds.device_id) > 1
+    ),
+    ranked AS (
         SELECT e.id,
                first_value(e.id) OVER w AS keep_id,
                row_number() OVER w AS rn
         FROM event_record e
         JOIN data_source ds ON ds.id = e.data_source_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM multi_device m
+            WHERE m.user_id = ds.user_id AND m.provider = ds.provider AND m.category = e.category
+              AND m.start_datetime = e.start_datetime AND m.end_datetime = e.end_datetime
+        )
         WINDOW w AS (
             PARTITION BY ds.user_id, ds.provider, e.category, e.start_datetime, e.end_datetime
             ORDER BY (ds.device_id IS NOT NULL) DESC, (ds.source_app_id IS NOT NULL) DESC,

@@ -15293,6 +15293,18 @@
             ],
             "example": "phone"
           },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "example": "R9ZW30ABC12"
+          },
           "device_name": {
             "anyOf": [
               {
