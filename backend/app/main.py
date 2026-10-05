@@ -61,6 +61,12 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     # Here, not at import: Celery workers import this module too and start their own export.
     init_otel("open-wearables-api")
+    # After init_otel, so the notice is exported too.
+    if settings.telemetry_enabled:
+        logging.getLogger(__name__).info(
+            "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
+            "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
+        )
     svix_service.register_event_types()
     yield
     # Hand the last partial interval of telemetry counters to Redis before exiting.
@@ -92,12 +98,6 @@ raw_payload_storage.configure(
 add_cors_middleware(api)
 add_access_log_middleware(api)
 add_endpoint_usage_middleware(api)
-
-if settings.telemetry_enabled:
-    logging.getLogger(__name__).info(
-        "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
-        "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
-    )
 
 # Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"
