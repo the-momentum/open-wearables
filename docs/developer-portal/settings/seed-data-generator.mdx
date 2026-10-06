@@ -53,8 +53,8 @@ One click fills the whole form with a tuned configuration. Any manual edit clear
 | **Activity Only** | 80 workouts, no sleep. |
 | **Sleep Only** | 40 optimal sleeps, no workouts. |
 | **Minimal (Quick)** | 5 workouts + 5 sleeps, no time series. Fast smoke test. |
-| **Comprehensive** | 150 workouts, 60 sleeps, 90 meals, 5 providers, 80% time series. Large dataset. |
-| **Nutrition Focused** | 180 meals (3/day), 10 light workouts, no sleep. |
+| **Comprehensive** | 150 workouts, 60 sleeps, 50 meals, 5 providers, 80% time series. Large dataset. |
+| **Nutrition Focused** | 540 meals (~3/day over 6 months) from Apple Health, 10 light workouts, no sleep. |
 
 ### Workouts
 
@@ -72,8 +72,8 @@ Toggle to enable. Configure:
 
 ### Meals
 
-Off by default - opt in explicitly (existing presets stay meal-free unless they enable it). Each meal is an `EventRecord` (category `meal`) plus a `MealDetails` row and correlated nutrient samples (calories, protein, carbs, fat, fiber, hydration) linked back to it, mirroring how real HealthKit/Health Connect meal correlations are stored. Configure:
-- **Meal count** (0-1000), **Meal types** - pick from breakfast/lunch/dinner/snack or leave empty for random.
+Off by default - opt in explicitly. Each meal is an `EventRecord` (category `meal`) plus a `MealDetails` row whose `nutrients` hold calories, protein, carbs, fat, fiber and water - the same shape real meals are stored in. Meals are only generated for connected providers that deliver meals (Apple Health among the seeded ones); the meal type is picked at random. Configure:
+- **Meal count** (0-10000).
 - **Calories range** - per-meal calorie total; macros are derived from it with a randomized protein/fat/carb split.
 - **Date range** (from/to).
 

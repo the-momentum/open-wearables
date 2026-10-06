@@ -14,7 +14,6 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     MealDetailCreate,
     PersonalRecordCreate,
-    TimeSeriesSampleCreate,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.model_crud.activities.zones import HRZone, HRZones, PowerZone, PowerZones
@@ -377,14 +376,7 @@ def _generate_personal_record(user_id: UUID, fake: Faker) -> PersonalRecordCreat
 
 
 def _generate_spread_timestamps(fake: Faker, start: datetime, end: datetime, count: int) -> list[datetime]:
-    """Generate *count* timestamps spread across [start, end] via stratified sampling.
-
-    Splits [start, end] into *count* equal-width, non-overlapping buckets and draws one
-    random timestamp per bucket. This avoids both the clustering that plain i.i.d.
-    uniform sampling can produce and the duplicate-timestamp handling it would need -
-    buckets never overlap, so two draws can never collide (short of astronomically
-    unlikely microsecond ties within the same bucket).
-    """
+    """*count* timestamps, one random draw per equal-width slice of [start, end]."""
     if count <= 0:
         return []
     bucket_width = (end - start) / count
@@ -400,25 +392,17 @@ def _generate_meal(
     provider: ProviderName,
     start_datetime: datetime,
     config: MealConfig,
-) -> tuple[EventRecordCreate, MealDetailCreate, list[TimeSeriesSampleCreate], dict[SeriesType, Decimal]]:
-    """Generate a single meal at *start_datetime*: an EventRecord + MealDetails + correlated nutrient samples.
-
-    Nutrient values (calories, protein, carbs, fat, fiber, hydration) are emitted as
-    DataPointSeries samples linked back to the meal via event_record_id, mirroring how
-    real HealthKit/Health Connect meal correlations are stored (see MealDetails docstring).
-
-    Meal type (breakfast/lunch/dinner/snack) is picked fully at random, independent of
-    *start_datetime*'s time of day - this is seed/test data, not a realism simulation.
-    """
+) -> tuple[EventRecordCreate, MealDetailCreate]:
+    """Generate a single meal at *start_datetime*, its nutrients on the meal detail."""
     meal_type = fake.random.choice(DEFAULT_MEAL_TYPES)
-    title = fake.random.choice(MEAL_TITLES.get(meal_type, MEAL_TITLES["snack"]))
+    title = fake.random.choice(MEAL_TITLES[meal_type])
 
     end_datetime = start_datetime + timedelta(minutes=fake.random_int(min=5, max=30))
 
-    calories = fake.random_int(min=config.calories_range.min, max=config.calories_range.max)
+    calories = fake.random_int(min=config.calories_range[0], max=config.calories_range[1])
     protein_pct = fake.random.uniform(0.15, 0.30)
     fat_pct = fake.random.uniform(0.20, 0.35)
-    carbs_pct = max(0.0, 1 - protein_pct - fat_pct)
+    carbs_pct = 1 - protein_pct - fat_pct
 
     protein_g = round(calories * protein_pct / 4, 1)
     fat_g = round(calories * fat_pct / 9, 1)
@@ -430,12 +414,13 @@ def _generate_meal(
 
     device_name: str | None = None
     sw_version: str | None = None
-    if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
+    if fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
         sw_version = fake.random.choice(prov_config["os_versions"])
 
     record = EventRecordCreate(
         id=meal_id,
+        external_id=str(meal_id),
         source=provider.value,
         user_id=user_id,
         category="meal",
@@ -448,35 +433,17 @@ def _generate_meal(
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
-
-    detail = MealDetailCreate(record_id=meal_id, title=title, meal_type=meal_type)
-
-    nutrient_values: dict[SeriesType, float] = {
-        SeriesType.dietary_energy_consumed: float(calories),
-        SeriesType.dietary_protein: protein_g,
-        SeriesType.dietary_carbohydrates: carbs_g,
-        SeriesType.dietary_fat_total: fat_g,
-        SeriesType.dietary_fiber: fiber_g,
-        SeriesType.hydration: float(fake.random_int(min=100, max=500)),
-    }
-    nutrients: dict[SeriesType, Decimal] = {
-        series_type: Decimal(str(value)) for series_type, value in nutrient_values.items()
-    }
-
-    samples = [
-        TimeSeriesSampleCreate(
-            id=uuid4(),
-            user_id=user_id,
-            source=record.source,
-            device_model=device_name,
-            provider=provider.value,
-            software_version=sw_version,
-            recorded_at=start_datetime,
-            value=value,
-            series_type=series_type,
-            event_record_id=meal_id,
-        )
-        for series_type, value in nutrients.items()
-    ]
-
-    return record, detail, samples, nutrients
+    detail = MealDetailCreate(
+        record_id=meal_id,
+        title=title,
+        meal_type=meal_type,
+        nutrients={
+            SeriesType.dietary_energy_consumed: float(calories),
+            SeriesType.dietary_protein: protein_g,
+            SeriesType.dietary_carbohydrates: carbs_g,
+            SeriesType.dietary_fat_total: fat_g,
+            SeriesType.dietary_fiber: fiber_g,
+            SeriesType.hydration: float(fake.random_int(min=100, max=500)),
+        },
+    )
+    return record, detail

@@ -13300,21 +13300,6 @@
         ],
         "title": "HistoricalDataTypeSyncEndEvent"
       },
-      "IntRange": {
-        "prefixItems": [
-          {
-            "type": "integer",
-            "title": "Min"
-          },
-          {
-            "type": "integer",
-            "title": "Max"
-          }
-        ],
-        "type": "array",
-        "maxItems": 2,
-        "minItems": 2
-      },
       "IntensityMinutes": {
         "properties": {
           "light": {
@@ -13678,7 +13663,18 @@
             "default": 50
           },
           "calories_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Calories Range",
             "default": [
               150,
               900
@@ -13713,7 +13709,7 @@
         },
         "type": "object",
         "title": "MealConfig",
-        "description": "Parameters controlling meal generation.\n\nEach meal is an EventRecord (category=\"meal\") plus a MealDetails row and a\nhandful of nutrient DataPointSeries samples (calories, protein, carbs, fat,\nfiber, hydration) correlated to it via event_record_id."
+        "description": "Parameters controlling meal generation."
       },
       "MealField": {
         "properties": {
@@ -16118,21 +16114,54 @@
       "SleepStageDistribution": {
         "properties": {
           "deep_pct_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Deep Pct Range",
             "default": [
               15,
               25
             ]
           },
           "rem_pct_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Rem Pct Range",
             "default": [
               20,
               25
             ]
           },
           "awake_pct_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Awake Pct Range",
             "default": [
               2,
               8
@@ -19163,21 +19192,54 @@
             "default": 180
           },
           "hr_min_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Hr Min Range",
             "default": [
               90,
               120
             ]
           },
           "hr_max_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Hr Max Range",
             "default": [
               140,
               180
             ]
           },
           "steps_range": {
-            "$ref": "#/components/schemas/IntRange",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Steps Range",
             "default": [
               500,
               20000

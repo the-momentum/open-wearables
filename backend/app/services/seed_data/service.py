@@ -15,6 +15,7 @@ from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCre
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
+from app.services.providers.factory import ProviderFactory
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 
@@ -95,6 +96,7 @@ class SeedDataService:
         Returns a summary dict with counts of created entities.
         """
         profile = request.profile
+        factory = ProviderFactory()
         seed = request.random_seed if request.random_seed is not None else random.randint(0, 2**31 - 1)
         random.seed(seed)
         fake = Faker()
@@ -196,31 +198,20 @@ class SeedDataService:
                     event_record_service.create_detail(db, detail, detail_type="sleep")
                     summary["sleeps"] += 1
 
-            if profile.generate_meals and provider_sync_times:
-                last_synced_at = max(provider_sync_times.values())
+            # Only providers that actually deliver meals, so seed data doesn't claim a capability they lack.
+            meal_providers = [p for p in provider_sync_times if factory.get_provider(p.value).coverage.meal_fields]
+            if profile.generate_meals and meal_providers:
                 meal_start, meal_end = _resolve_date_bounds(
                     profile.meal_config.date_from,
                     profile.meal_config.date_to,
                     MEAL_DEFAULT_LOOKBACK_MONTHS,
-                    last_synced_at,
+                    max(provider_sync_times[p] for p in meal_providers),
                 )
-                meal_timestamps = _generate_spread_timestamps(
-                    fake, meal_start, meal_end, profile.meal_config.meal_count
-                )
-                for start_datetime in meal_timestamps:
-                    prov = fake.random.choice(list(provider_sync_times.keys()))
-                    record, detail, nutrient_samples, nutrients = _generate_meal(
-                        user.id, fake, prov, start_datetime, profile.meal_config
-                    )
-                    saved, inserted = event_record_service.create_or_update_meal(db, record, detail)
-                    summary["meals"] += 1
-
-                    if nutrient_samples:
-                        timeseries_service.bulk_create_samples(db, nutrient_samples)
-                        summary["time_series_samples"] += len(nutrient_samples)
-
-                    if inserted:
-                        event_record_service.schedule_meal_webhook(db, saved.id, record, detail, nutrients)
+                meals = [
+                    _generate_meal(user.id, fake, fake.random.choice(meal_providers), start, profile.meal_config)
+                    for start in _generate_spread_timestamps(fake, meal_start, meal_end, profile.meal_config.meal_count)
+                ]
+                summary["meals"] += event_record_service.upsert_meals(db, meals)
 
             # Continuous time series (independent of workouts)
             if profile.generate_time_series and provider_sync_times:

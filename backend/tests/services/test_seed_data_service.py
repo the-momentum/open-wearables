@@ -357,7 +357,7 @@ class TestSeededDataSourceProviders:
 
 
 class TestMealGeneration:
-    """Meals are opt-in and produce an EventRecord + MealDetails + correlated nutrient samples."""
+    """Meals are opt-in and produce an EventRecord + MealDetails with nutrients."""
 
     def test_meals_disabled_by_default(self, db: Session) -> None:
         """Existing presets/defaults must stay meal-free unless generate_meals is set."""
@@ -376,7 +376,7 @@ class TestMealGeneration:
         assert db.query(EventRecord).filter_by(category="meal").count() == 0
 
     def test_generate_meals(self, db: Session) -> None:
-        """Meals create an EventRecord, a MealDetails row, and correlated nutrient samples."""
+        """Meals create an EventRecord and a MealDetails row carrying the nutrients."""
         request = SeedDataRequest(
             num_users=1,
             random_seed=123,
@@ -408,11 +408,34 @@ class TestMealGeneration:
             assert detail.meal_type in ("breakfast", "lunch", "dinner", "snack")
             assert detail.title is not None
 
-        samples = db.query(DataPointSeries).filter(DataPointSeries.event_record_id.in_(meal_ids)).all()
-        # 6 nutrient types per meal (energy, protein, carbs, fat, fiber, hydration)
-        assert len(samples) == 5 * 6
-        assert summary["time_series_samples"] == 5 * 6
+        for detail in details:
+            assert set(detail.nutrients) == {
+                "dietary_energy_consumed",
+                "dietary_protein",
+                "dietary_carbohydrates",
+                "dietary_fat_total",
+                "dietary_fiber",
+                "hydration",
+            }
+        assert summary["time_series_samples"] == 0
+        assert db.query(DataPointSeries).count() == 0
 
-        # hydration is always included, one sample per meal
-        hydration_samples = _samples_by_series(db, SeriesType.hydration)
-        assert sum(1 for s in hydration_samples if s.event_record_id in meal_ids) == 5
+    def test_meals_are_skipped_for_providers_that_do_not_deliver_them(self, db: Session) -> None:
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=123,
+            profile=SeedProfileConfig(
+                generate_workouts=False,
+                generate_sleep=False,
+                generate_time_series=False,
+                providers=[ProviderName.GARMIN],
+                num_connections=1,
+                generate_meals=True,
+                meal_config=MealConfig(meal_count=5),
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["meals"] == 0
+        assert db.query(EventRecord).filter_by(category="meal").count() == 0
