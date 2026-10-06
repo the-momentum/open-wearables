@@ -76,8 +76,6 @@ OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
     }
 )
 
-# Lookback when MealConfig.date_from/date_to are unset.
-MEAL_DEFAULT_LOOKBACK_MONTHS = 6
 
 DEFAULT_MEAL_TYPES: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
 

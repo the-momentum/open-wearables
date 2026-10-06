@@ -5,6 +5,7 @@
 	import { audienceSummary, perUser, windowSummary } from '$lib/seed/summary';
 	import type { SeedPreset, SleepProfile } from '$lib/seed/types';
 	import GenerateCard from './GenerateCard.svelte';
+	import MealSection from './MealSection.svelte';
 	import PresetPicker from './PresetPicker.svelte';
 	import SeedBasics from './SeedBasics.svelte';
 	import SeriesSection from './SeriesSection.svelte';
@@ -59,6 +60,7 @@
 		<WorkoutSection bind:workouts={draft.workouts} />
 		<SleepSection bind:sleep={draft.sleep} profiles={sleepProfiles} />
 		<SeriesSection bind:series={draft.series} groups={series} workouts={draft.workouts.on} />
+		<MealSection bind:meals={draft.meals} />
 	</div>
 
 	<GenerateCard

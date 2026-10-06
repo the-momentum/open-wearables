@@ -19,7 +19,7 @@ from app.services.providers.factory import ProviderFactory
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 
-from .constants import MEAL_DEFAULT_LOOKBACK_MONTHS, PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
+from .constants import PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
 from .event_generators import (
     _generate_meal,
     _generate_personal_record,
@@ -204,7 +204,7 @@ class SeedDataService:
                 meal_start, meal_end = _resolve_date_bounds(
                     profile.meal_config.date_from,
                     profile.meal_config.date_to,
-                    MEAL_DEFAULT_LOOKBACK_MONTHS,
+                    profile.meal_config.date_range_months,
                     max(provider_sync_times[p] for p in meal_providers),
                 )
                 meals = [

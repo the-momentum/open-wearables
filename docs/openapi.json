@@ -13680,6 +13680,13 @@
               900
             ]
           },
+          "date_range_months": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Date Range Months",
+            "default": 6
+          },
           "date_from": {
             "anyOf": [
               {
@@ -13691,7 +13698,7 @@
               }
             ],
             "title": "Date From",
-            "description": "Explicit start date. Defaults to a 6-month lookback."
+            "description": "Explicit start date. Overrides date_range_months."
           },
           "date_to": {
             "anyOf": [
@@ -13704,7 +13711,7 @@
               }
             ],
             "title": "Date To",
-            "description": "Explicit end date. Defaults to the last synced date."
+            "description": "Explicit end date. Overrides date_range_months."
           }
         },
         "type": "object",
@@ -15424,6 +15431,7 @@
                   150,
                   900
                 ],
+                "date_range_months": 6,
                 "meal_count": 50
               }
             }
@@ -15620,7 +15628,8 @@
               "calories_range": [
                 150,
                 900
-              ]
+              ],
+              "date_range_months": 6
             }
           }
         },

@@ -25,6 +25,7 @@ const profile = (over: Partial<SeedProfile> = {}): SeedProfile => ({
 	generate_workouts: true,
 	generate_sleep: true,
 	generate_time_series: true,
+	generate_meals: false,
 	providers: null,
 	num_connections: 2,
 	workout_config: {
@@ -58,6 +59,13 @@ const profile = (over: Partial<SeedProfile> = {}): SeedProfile => ({
 	time_series_config: {
 		enabled_types: ['heart_rate', 'steps', 'cadence'],
 		include_blood_pressure: false,
+		date_range_months: 6,
+		date_from: null,
+		date_to: null
+	},
+	meal_config: {
+		meal_count: 50,
+		calories_range: [150, 900],
 		date_range_months: 6,
 		date_from: null,
 		date_to: null
@@ -110,7 +118,7 @@ describe('draft and profile', () => {
 	// What a preset says has to come back out unchanged, or picking one and
 	// generating would not generate that preset.
 	it('round-trips a preset', () => {
-		const original = profile({ providers: ['garmin', 'oura'] });
+		const original = profile({ providers: ['garmin', 'oura'], generate_meals: true });
 		expect(profileOf(draftFrom(original, { users: 1, seed: null }), null)).toEqual(original);
 	});
 
@@ -124,10 +132,15 @@ describe('draft and profile', () => {
 		});
 	});
 
-	it('applies one window to all three kinds of data', () => {
+	it('applies one window to every kind of data', () => {
 		const custom = { ...draft(), window: { from: '2026-01-01', to: '2026-03-31' } };
 		const out = profileOf(custom, null);
-		for (const config of [out.workout_config, out.sleep_config, out.time_series_config]) {
+		for (const config of [
+			out.workout_config,
+			out.sleep_config,
+			out.time_series_config,
+			out.meal_config
+		]) {
 			expect(config).toMatchObject({ date_from: '2026-01-01', date_to: '2026-03-31' });
 		}
 	});
@@ -152,6 +165,13 @@ describe('matchingPreset', () => {
 		expect(matchingPreset(edited, presets)).toBeNull();
 		edited.workouts.count = 80;
 		expect(matchingPreset(edited, presets)).toBe('minimal');
+	});
+
+	it('tells presets apart by their meals', () => {
+		const meals = { generate_meals: true };
+		const both = [...presets, preset('meals', meals)];
+		expect(matchingPreset(draft(meals), both)).toBe('meals');
+		expect(matchingPreset(draft(), both)).toBe('minimal');
 	});
 
 	// Chips switched on in a different order ask for the same thing.
