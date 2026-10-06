@@ -118,7 +118,7 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
 
     | Variable | Description |
     |----------|-------------|
-    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/polar/callback`, which must match the Authorization redirect URL registered in your Polar application. Replaces the deprecated `POLAR_REDIRECT_URI` |
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/polar/callback`, which must match the Authorization redirect URL registered in your Polar application |
     | `POLAR_CLIENT_ID` | Client ID from the Polar AccessLink Admin panel |
     | `POLAR_CLIENT_SECRET` | Client Secret from the Polar AccessLink Admin panel |
     | `POLAR_WEBHOOK_SIGNATURE_SECRET` | HMAC-SHA256 signing secret returned by Polar on webhook creation. Returned once — save it immediately. Used to verify incoming webhook payloads. |

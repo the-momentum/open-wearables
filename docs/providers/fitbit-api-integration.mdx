@@ -110,7 +110,7 @@ FITBIT_DEFAULT_SCOPE="activity heartrate sleep profile"
 
     | Variable | Description | Default |
     |----------|-------------|---------|
-    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/fitbit/callback`, which must match the Redirect URL registered in your Fitbit application. Replaces the deprecated `FITBIT_REDIRECT_URI` | `http://localhost:8000` |
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/fitbit/callback`, which must match the Redirect URL registered in your Fitbit application | `http://localhost:8000` |
     | `FITBIT_CLIENT_ID` | Client ID from the Fitbit Developer portal | — |
     | `FITBIT_CLIENT_SECRET` | Client Secret from the Fitbit Developer portal | — |
     | `FITBIT_DEFAULT_SCOPE` | Space-separated list of OAuth scopes to request. Only `activity` is actively synced at this time; reduce the scope to minimize consent surface if desired. | `activity heartrate sleep profile` |
