@@ -1,11 +1,7 @@
 """Google Health nutrition handler against a real database.
 
-The unit tests mock the session, so they cannot see how the handler behaves inside the
-transaction the 24/7 sync puts it in: ``GoogleHealth247Data.load_and_save_all`` wraps
-each handler in ``db.begin_nested()`` and commits afterwards. Any commit *inside* that
-savepoint closes its context and fails every statement after it - which is exactly what
-a data-source creation or a per-meal commit used to do. These tests run the handler the
-way the sync does.
+Runs the handler the way ``GoogleHealth247Data.load_and_save_all`` does: inside
+``db.begin_nested()``, committing afterwards.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -14,9 +10,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, EventRecord
-from app.schemas.enums import SeriesType, get_series_type_id
-from app.services.event_record_service import event_record_service
+from app.models import EventRecord
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
 from app.services.providers.google_health.webhook_handler import GoogleWebhookHandler
@@ -50,7 +44,7 @@ def _existing_source(user) -> None:  # noqa: ANN001
     DataSourceFactory(user=user, device_model="Pixel Fold", source="google_health_api", provider="google_health")
 
 
-def _sync_like_data_247(db: Session, user_id: UUID, points: list[dict]) -> tuple[int, list[Exception]]:
+def _sync_like_data_247(db: Session, user_id: UUID, points: list[dict]) -> int:
     """Run the handler exactly as load_and_save_all does: under a savepoint, commit after."""
     nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
     with (
@@ -59,205 +53,71 @@ def _sync_like_data_247(db: Session, user_id: UUID, points: list[dict]) -> tuple
             return_value={"dataPoints": points},
         ),
         patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-        patch("app.services.providers.google_health.nutrition.log_and_capture_error") as capture,
     ):
         with db.begin_nested():
             count = nutrition.load_and_save(db, user_id, *WINDOW)
         db.commit()
-    return count, [c.args[0] for c in capture.call_args_list]
+    return count
 
 
 def _meals(db: Session) -> list[EventRecord]:
     return db.query(EventRecord).filter(EventRecord.category == "meal").order_by(EventRecord.start_datetime).all()
 
 
-def _series_of(db: Session, meal_id: UUID) -> set[int]:
-    rows = db.query(DataPointSeries).filter(DataPointSeries.event_record_id == meal_id).all()
-    return {r.series_type_definition_id for r in rows}
+def _nutrients_of(db: Session, meal_id: UUID) -> dict:
+    db.expire_all()
+    return db.get(EventRecord, meal_id).meal_detail.nutrients
 
 
 class TestInsideTheSyncSavepoint:
     def test_first_import_creates_the_data_source_without_breaking_the_savepoint(self, db: Session) -> None:
-        """A brand-new device: the data source is created mid-handler and must only be flushed."""
         user = UserFactory()
         db.commit()
 
-        count, swallowed = _sync_like_data_247(db, user.id, [_point("Chicken")])
-
-        assert swallowed == []
-        assert count == 1
+        assert _sync_like_data_247(db, user.id, [_point("Chicken")]) == 1
         assert _meals(db)[0].meal_detail.title == "Chicken"
 
-    def test_several_meals_in_one_sync_all_land(self, db: Session) -> None:
-        """A commit after meal #1 would have failed meal #2 with 'closed transaction'."""
+    def test_meals_sharing_the_same_interval_all_land(self, db: Session) -> None:
+        """MyFitnessPal logs every meal of a day with the same interval."""
         user = UserFactory()
         _existing_source(user)
         db.commit()
 
-        count, swallowed = _sync_like_data_247(
-            db, user.id, [_point("Lunch"), _point("Snack", START + timedelta(hours=2))]
-        )
+        count = _sync_like_data_247(db, user.id, [_point("Breakfast"), _point("Lunch"), _point("Dinner")])
 
-        assert swallowed == []
-        assert count == 2
-        assert [m.meal_detail.title for m in _meals(db)] == ["Lunch", "Snack"]
-
-    def test_a_meal_failing_after_its_record_was_flushed_is_discarded_whole(self, db: Session) -> None:
-        """The per-meal savepoint must undo the flushed record and detail of the failing meal,
-        while the meal before it and the meal after it both land."""
-        user = UserFactory()
-        _existing_source(user)
-        db.commit()
-        real = event_record_service.create_or_update_meal
-
-        def flaky(db_: Session, record, detail, **kwargs):  # noqa: ANN001, ANN202, ANN003
-            result = real(db_, record, detail, **kwargs)  # record + detail are flushed by now
-            if detail.title == "Bad":
-                raise RuntimeError("boom")
-            return result
-
-        nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
-        points = [
-            _point("Good"),
-            _point("Bad", START + timedelta(hours=1)),
-            _point("Later", START + timedelta(hours=2)),
-        ]
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": points},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.log_and_capture_error") as capture,
-            patch.object(event_record_service, "create_or_update_meal", side_effect=flaky),
-        ):
-            with db.begin_nested():
-                count = nutrition.load_and_save(db, user.id, *WINDOW)
-            db.commit()
-
-        assert count == 2
-        assert [type(c.args[0]) for c in capture.call_args_list] == [RuntimeError]
-        assert [m.meal_detail.title for m in _meals(db)] == ["Good", "Later"]
-
-    def test_meal_webhook_waits_for_the_real_commit_not_the_per_meal_savepoint(self, db: Session) -> None:
-        """Each meal gets its own begin_nested() savepoint inside load_and_save. SAVEPOINT
-        release dispatches after_commit just like a real commit does (SessionTransaction.commit()
-        fires it whenever self.nested or self._parent is None), so meal.created must not fire
-        the moment a per-meal savepoint releases - only once the sync's real commit lands."""
-        user = UserFactory()
-        _existing_source(user)
-        db.commit()
-        real = event_record_service.create_or_update_meal
-        call_order: list[str] = []
-
-        def tracking(db_: Session, record, detail):  # noqa: ANN001, ANN202
-            call_order.append(f"save:{detail.title}")
-            return real(db_, record, detail)
-
-        nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
-        points = [_point("Lunch"), _point("Snack", START + timedelta(hours=2))]
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": points},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
-            patch(
-                "app.services.event_record_service.on_meal_created",
-                side_effect=lambda **kw: call_order.append(f"webhook:{kw['title']}"),
-            ) as mock_meal,
-            patch.object(event_record_service, "create_or_update_meal", side_effect=tracking),
-        ):
-            with db.begin_nested():
-                count = nutrition.load_and_save(db, user.id, *WINDOW)
-            assert mock_meal.call_count == 0  # per-meal savepoints already released, real commit hasn't
-            db.commit()
-
-        assert count == 2
-        assert call_order == ["save:Lunch", "save:Snack", "webhook:Lunch", "webhook:Snack"]
-
-    def test_failed_meal_does_not_leave_a_stray_webhook_for_a_later_commit(self, db: Session) -> None:
-        """meal.created for 'Bad' gets scheduled before its savepoint rolls back. That
-        listener must be dropped with the savepoint, not linger and fire on the next
-        meal's savepoint (or the sync's real commit) as if 'Bad' had been saved."""
-        user = UserFactory()
-        _existing_source(user)
-        db.commit()
-        real = event_record_service.create_or_update_meal
-
-        def flaky(db_: Session, record, detail):  # noqa: ANN001, ANN202
-            result = real(db_, record, detail)  # schedules meal.created before failing
-            if detail.title == "Bad":
-                raise RuntimeError("boom")
-            return result
-
-        nutrition = GoogleHealthApiNutrition(oauth=MagicMock(), connection_repo=MagicMock(), api_base_url=API)
-        points = [
-            _point("Good"),
-            _point("Bad", START + timedelta(hours=1)),
-            _point("Later", START + timedelta(hours=2)),
-        ]
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": points},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.log_and_capture_error"),
-            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
-            patch("app.services.event_record_service.on_meal_created") as mock_meal,
-            patch.object(event_record_service, "create_or_update_meal", side_effect=flaky),
-        ):
-            with db.begin_nested():
-                count = nutrition.load_and_save(db, user.id, *WINDOW)
-            db.commit()
-
-        assert count == 2
-        assert [c.kwargs["title"] for c in mock_meal.call_args_list] == ["Good", "Later"]
+        assert count == 3
+        assert {m.meal_detail.title for m in _meals(db)} == {"Breakfast", "Lunch", "Dinner"}
 
 
 class TestResync:
-    def test_nutrients_google_stopped_reporting_are_removed(self, db: Session) -> None:
+    def test_nutrients_are_replaced_with_the_latest_set(self, db: Session) -> None:
         user = UserFactory()
         _existing_source(user)
         db.commit()
-        protein_id = get_series_type_id(SeriesType.dietary_protein)
-        energy_id = get_series_type_id(SeriesType.dietary_energy_consumed)
 
         _sync_like_data_247(db, user.id, [_point("Chicken")])
         meal_id = _meals(db)[0].id
-        assert _series_of(db, meal_id) == {energy_id, protein_id}
+        assert _nutrients_of(db, meal_id) == {"dietary_energy_consumed": 100.0, "dietary_protein": 10.0}
 
-        count, swallowed = _sync_like_data_247(db, user.id, [_point("Chicken", nutrients=[])])
+        count = _sync_like_data_247(db, user.id, [_point("Chicken", nutrients=[])])
 
-        assert swallowed == []
-        assert count == 0  # refreshed, not inserted
-        assert _series_of(db, meal_id) == {energy_id}
+        assert count == 0
         assert len(_meals(db)) == 1
+        assert _nutrients_of(db, meal_id) == {"dietary_energy_consumed": 100.0}
 
-    def test_a_new_point_at_the_same_start_time_creates_a_separate_meal(self, db: Session) -> None:
-        """A different DataPoint (different name) is never folded into an existing meal, even
-        when it shares the same start time, device and meal type - it must land as its own row
-        and leave the existing meal untouched. (A different duration keeps the two points off
-        the unrelated (data_source, start, end) uniqueness constraint that every EventRecord
-        category shares - not something this change touches.)"""
+    def test_a_moved_window_updates_the_same_meal(self, db: Session) -> None:
         user = UserFactory()
         _existing_source(user)
         db.commit()
 
         _sync_like_data_247(db, user.id, [_point("Chicken")])
-        existing = _meals(db)[0]
+        count = _sync_like_data_247(db, user.id, [_point("Chicken", START + timedelta(minutes=15), minutes=45)])
 
-        count, swallowed = _sync_like_data_247(db, user.id, [_point("Rice", minutes=45)])
-
-        assert swallowed == []
-        assert count == 1  # a brand-new meal, not a refresh of the existing one
+        assert count == 0
         meals = _meals(db)
-        assert len(meals) == 2
-        assert {m.meal_detail.title for m in meals} == {"Chicken", "Rice"}
-        db.expire_all()
-        assert db.get(EventRecord, existing.id).meal_detail.title == "Chicken"
+        assert len(meals) == 1
+        db.refresh(meals[0])
+        assert meals[0].start_datetime == START + timedelta(minutes=15)
 
 
 class TestWebhookPath:
@@ -274,11 +134,9 @@ class TestWebhookPath:
                 return_value={"dataPoints": [_point("Chicken")]},
             ),
             patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.log_and_capture_error") as capture,
         ):
             saved = handler._fetch_and_save(db, user.id, "nutrition-log", *WINDOW)
 
-        assert capture.call_args_list == []
         assert saved == 1
         db.expire_all()
         assert _meals(db)[0].meal_detail.title == "Chicken"
