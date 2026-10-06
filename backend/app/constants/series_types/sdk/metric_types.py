@@ -16,6 +16,7 @@ class SDKMetricType(StrEnum):
     APPLE_RESTING_HEART_RATE = "HKQuantityTypeIdentifierRestingHeartRate"
     ANDROID_RESTING_HEART_RATE = "RESTING_HEART_RATE"
     APPLE_HEART_RATE_VARIABILITY_SDNN = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+    APPLE_HEART_RATE_VARIABILITY_RMSSD = "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD"
     ANDROID_HEART_RATE_VARIABILITY = "HEART_RATE_VARIABILITY"
     HEART_RATE_RECOVERY_ONE_MINUTE = "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute"
     WALKING_HEART_RATE_AVERAGE = "HKQuantityTypeIdentifierWalkingHeartRateAverage"
@@ -180,6 +181,7 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.APPLE_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
     SDKMetricType.ANDROID_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
     SDKMetricType.APPLE_HEART_RATE_VARIABILITY_SDNN: SeriesType.heart_rate_variability_sdnn,
+    SDKMetricType.APPLE_HEART_RATE_VARIABILITY_RMSSD: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.ANDROID_HEART_RATE_VARIABILITY: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: SeriesType.heart_rate_recovery_one_minute,
     SDKMetricType.WALKING_HEART_RATE_AVERAGE: SeriesType.walking_heart_rate_average,
