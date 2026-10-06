@@ -1,24 +1,4 @@
-"""Google Health API nutrition handler.
-
-Fetches ``nutrition-log`` sessions via the dataPoints ``list`` operation and stores them
-as ``EventRecord(category="meal")`` + ``MealDetails``, with every present nutrient
-written as a ``DataPointSeries`` sample linked back via ``event_record_id`` - the same
-model the SDK/HealthKit meal-correlation import path already uses (see
-``app/services/sdk/import_service.py``). Composed into GoogleHealth247Data.load_and_save_all.
-
-Google emits one DataPoint per *food item* (``foodDisplayName``), and assigns every
-DataPoint a stable, unique resource ``name`` (e.g.
-``users/123/dataTypes/nutrition-log/dataPoints/3608527872883869712``). Each DataPoint is
-stored as its own, independent meal, with that ``name`` used verbatim as ``external_id`` -
-there is no grouping of multiple DataPoints into one meal.
-
-Google wraps every nutrient value in a typed quantity object (``{"kcal": ...}`` for
-energy, ``{"grams": ...}`` for everything else - including sodium/potassium/cholesterol,
-which the unified series stores in mg). Only the fields Google actually returns are
-mapped; most micronutrients (calcium, iron, vitamins, ...) aren't exposed by this API and
-are simply absent from the payload - see the nutrition-fields matrix in the repo root for
-the full cross-provider comparison.
-"""
+"""Google Health API nutrition-log: each DataPoint is stored as its own meal, nutrients in MealDetails."""
 
 import logging
 from dataclasses import dataclass
@@ -30,8 +10,8 @@ from uuid import UUID, uuid4
 from app.constants.google_health_endpoints import LIST_ENDPOINT as DATAPOINTS_LIST_ENDPOINT
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import ProviderName, SeriesType, daily_total_flag
-from app.schemas.model_crud.activities import EventRecordCreate, MealDetailCreate, TimeSeriesSampleCreate
+from app.schemas.enums import ProviderName, SeriesType, get_series_type_unit
+from app.schemas.model_crud.activities import EventRecordCreate, MealDetailCreate
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
@@ -44,41 +24,62 @@ from app.services.providers.google_health.helpers import (
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
-from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
-
-_G_TO_MG = Decimal(1000)
 
 # MealDetails.title is str_255; a longer foodDisplayName would fail the whole meal on every sync.
 _TITLE_MAX_LEN = 255
 
-# (payload field, quantity subfield, unified series) for the value object's top-level fields.
+# NutritionLog top-level fields: (field, quantity subfield, series).
 NUTRITION_PRIMARY_FIELDS: tuple[tuple[str, str, SeriesType], ...] = (
     ("energy", "kcal", SeriesType.dietary_energy_consumed),
+    ("energyFromFat", "kcal", SeriesType.dietary_energy_from_fat),
     ("totalCarbohydrate", "grams", SeriesType.dietary_carbohydrates),
     ("totalFat", "grams", SeriesType.dietary_fat_total),
 )
 
-# Google's `nutrients` Nutrient enum -> unified series, with the gram->mg scale the
-# unified series needs (Google reports every nutrient mass in grams, regardless of the
-# nutrient's conventional display unit).
-NUTRIENT_FIELDS: dict[str, tuple[SeriesType, Decimal]] = {
-    "FIBER": (SeriesType.dietary_fiber, Decimal(1)),
-    "SUGAR": (SeriesType.dietary_sugar, Decimal(1)),
-    "SATURATED_FAT": (SeriesType.dietary_fat_saturated, Decimal(1)),
-    "MONOUNSATURATED_FAT": (SeriesType.dietary_fat_monounsaturated, Decimal(1)),
-    "POLYUNSATURATED_FAT": (SeriesType.dietary_fat_polyunsaturated, Decimal(1)),
-    "TRANS_FAT": (SeriesType.dietary_fat_trans, Decimal(1)),
-    "CHOLESTEROL": (SeriesType.dietary_cholesterol, _G_TO_MG),
-    "PROTEIN": (SeriesType.dietary_protein, Decimal(1)),
-    "SODIUM": (SeriesType.dietary_sodium, _G_TO_MG),
-    "POTASSIUM": (SeriesType.dietary_potassium, _G_TO_MG),
+# NutrientQuantity.nutrient enum -> series. Google reports every nutrient in grams.
+NUTRIENT_FIELDS: dict[str, SeriesType] = {
+    "BIOTIN": SeriesType.dietary_biotin,
+    "CAFFEINE": SeriesType.dietary_caffeine,
+    "CALCIUM": SeriesType.dietary_calcium,
+    "CARBOHYDRATES": SeriesType.dietary_carbohydrates,
+    "CHLORIDE": SeriesType.dietary_chloride,
+    "CHOLESTEROL": SeriesType.dietary_cholesterol,
+    "CHROMIUM": SeriesType.dietary_chromium,
+    "COPPER": SeriesType.dietary_copper,
+    "DIETARY_FIBER": SeriesType.dietary_fiber,
+    "FOLATE": SeriesType.dietary_folate,
+    "FOLIC_ACID": SeriesType.dietary_folic_acid,
+    "IODINE": SeriesType.dietary_iodine,
+    "IRON": SeriesType.dietary_iron,
+    "MAGNESIUM": SeriesType.dietary_magnesium,
+    "MANGANESE": SeriesType.dietary_manganese,
+    "MOLYBDENUM": SeriesType.dietary_molybdenum,
+    "MONOUNSATURATED_FAT": SeriesType.dietary_fat_monounsaturated,
+    "NIACIN": SeriesType.dietary_niacin,
+    "PANTOTHENIC_ACID": SeriesType.dietary_pantothenic_acid,
+    "PHOSPHORUS": SeriesType.dietary_phosphorus,
+    "POLYUNSATURATED_FAT": SeriesType.dietary_fat_polyunsaturated,
+    "POTASSIUM": SeriesType.dietary_potassium,
+    "PROTEIN": SeriesType.dietary_protein,
+    "RIBOFLAVIN": SeriesType.dietary_riboflavin,
+    "SATURATED_FAT": SeriesType.dietary_fat_saturated,
+    "SELENIUM": SeriesType.dietary_selenium,
+    "SODIUM": SeriesType.dietary_sodium,
+    "SUGAR": SeriesType.dietary_sugar,
+    "THIAMIN": SeriesType.dietary_thiamin,
+    "TRANS_FAT": SeriesType.dietary_fat_trans,
+    "UNSATURATED_FAT": SeriesType.dietary_fat_unsaturated,
+    "VITAMIN_A": SeriesType.dietary_vitamin_a,
+    "VITAMIN_B12": SeriesType.dietary_vitamin_b12,
+    "VITAMIN_B6": SeriesType.dietary_vitamin_b6,
+    "VITAMIN_C": SeriesType.dietary_vitamin_c,
+    "VITAMIN_D": SeriesType.dietary_vitamin_d,
+    "VITAMIN_E": SeriesType.dietary_vitamin_e,
+    "VITAMIN_K": SeriesType.dietary_vitamin_k,
+    "ZINC": SeriesType.dietary_zinc,
 }
 
-NUTRITION_SERIES_TYPES: frozenset[SeriesType] = frozenset(
-    {series_type for _, _, series_type in NUTRITION_PRIMARY_FIELDS}
-    | {series_type for series_type, _ in NUTRIENT_FIELDS.values()}
-)
+_GRAMS_TO_UNIT: dict[str, Decimal] = {"g": Decimal(1), "mg": Decimal(1_000), "mcg": Decimal(1_000_000)}
 
 
 def civil_start_filter(start_time: datetime, end_time: datetime) -> str:
@@ -123,35 +124,16 @@ class GoogleHealthApiNutrition:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
-        """Fetch nutrition-log entries starting in the window and store each as its own meal.
+        """Fetch nutrition-log entries starting in the window and upsert them as meals.
 
-        Never commits or rolls back the session: the 24/7 sync runs this inside its own
-        ``begin_nested()`` savepoint, and a commit in here would close that context and fail
-        every statement after it. Each meal gets a savepoint of its own instead, so one bad
-        meal is discarded without touching the others; the caller commits the batch.
-
-        Returns the number of meals newly inserted; meals that already existed (re-sync)
-        have their end, title, type and nutrient values refreshed but are not counted.
+        Flushes only - the caller's savepoint and commit own the transaction. Returns the number of new meals.
         """
-        count = 0
-        for point in self._fetch(db, user_id, start_time, end_time):
-            meal = self._parse_point(point, start_time, end_time)
-            if meal is None:
-                continue
-            try:
-                with db.begin_nested():
-                    inserted = self._save_meal(db, user_id, meal)
-            except Exception as e:
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Google nutrition sync failed for a meal: {e}",
-                    extra={"user_id": str(user_id), "provider": self.provider_name, "external_id": meal.external_id},
-                )
-                continue
-            if inserted:
-                count += 1
-        return count
+        meals = [
+            self._meal_bundle(user_id, meal)
+            for point in self._fetch(db, user_id, start_time, end_time)
+            if (meal := self._parse_point(point, start_time, end_time)) is not None
+        ]
+        return event_record_service.upsert_meals(db, meals) if meals else 0
 
     def _fetch(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict[str, Any]]:
         points: list[dict[str, Any]] = []
@@ -210,32 +192,23 @@ class GoogleHealthApiNutrition:
 
     @staticmethod
     def _nutrients(nutrition: dict[str, Any]) -> dict[SeriesType, Decimal]:
-        """Read every nutrient Google returned for one item, scaled to the unified series unit."""
+        """Read every nutrient Google returned for one item, scaled to the series unit."""
         values: dict[SeriesType, Decimal] = {}
         for fld, subfield, series_type in NUTRITION_PRIMARY_FIELDS:
             value = read_number(nutrition, fld, subfield=subfield)
             if value is not None:
                 values[series_type] = value
 
-        nutrient_quantities: dict[str, Any] = {
-            entry["nutrient"]: entry.get("quantity")
-            for entry in nutrition.get("nutrients") or []
-            if isinstance(entry, dict) and entry.get("nutrient")
-        }
-        for key, (series_type, scale) in NUTRIENT_FIELDS.items():
-            value = read_number(nutrient_quantities, key, subfield="grams", scale=scale)
+        for entry in nutrition.get("nutrients") or []:
+            if not isinstance(entry, dict) or (series_type := NUTRIENT_FIELDS.get(entry.get("nutrient") or "")) is None:
+                continue
+            scale = _GRAMS_TO_UNIT[get_series_type_unit(series_type)]
+            value = read_number(entry, "quantity", subfield="grams", scale=scale)
             if value is not None:
-                values[series_type] = value
+                values.setdefault(series_type, value)
         return values
 
-    def _save_meal(self, db: DbSession, user_id: UUID, meal: "_Meal") -> bool:
-        """Write (or refresh) the meal record, its detail, and its nutrient samples.
-
-        Only flushes - the caller's savepoint makes the three writes stand or fall together,
-        so a failure partway through never leaves an orphaned meal without detail or nutrients.
-
-        Returns True when the meal was newly inserted, False when an existing one was refreshed.
-        """
+    def _meal_bundle(self, user_id: UUID, meal: "_Meal") -> tuple[EventRecordCreate, MealDetailCreate]:
         record = EventRecordCreate(
             id=uuid4(),
             category="meal",
@@ -250,31 +223,10 @@ class GoogleHealthApiNutrition:
             zone_offset=meal.zone_offset,
             user_id=user_id,
         )
-        detail = MealDetailCreate(record_id=record.id, title=meal.title, meal_type=meal.meal_type)
-        saved, inserted = event_record_service.create_or_update_meal(db, record, detail)
-
-        if not inserted:
-            # A nutrient the provider stopped reporting must not linger from the previous sync.
-            timeseries_service.crud.delete_stale_for_event_record(db, saved.id, meal.nutrients.keys())
-        samples = self._build_samples(user_id, saved.id, meal)
-        if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return inserted
-
-    def _build_samples(self, user_id: UUID, meal_id: UUID, meal: "_Meal") -> list[TimeSeriesSampleCreate]:
-        return [
-            TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=self.provider_name,
-                source=GOOGLE_HEALTH_API_SOURCE,
-                device_model=meal.device_model,
-                recorded_at=meal.start,
-                zone_offset=meal.zone_offset,
-                value=value,
-                series_type=series_type,
-                is_daily_total=daily_total_flag(series_type, is_daily=False),
-                event_record_id=meal_id,
-            )
-            for series_type, value in meal.nutrients.items()
-        ]
+        detail = MealDetailCreate(
+            record_id=record.id,
+            title=meal.title,
+            meal_type=meal.meal_type,
+            nutrients={series_type: float(value) for series_type, value in meal.nutrients.items()},
+        )
+        return record, detail
