@@ -1,22 +1,13 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import Redis from 'ioredis';
-import { signIn } from './support';
-
-// The page caches the estimate in Redis, and /__reset only resets the mock:
-// without this a save in one test would be what the next one reads.
-const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379/15');
+import { resetAppCache, signIn } from './support';
 
 const scans = async (request: APIRequestContext) =>
 	(await (await request.get('http://localhost:8787/__lifecycle-scans')).json()).scans as number;
 
 test.beforeEach(async ({ page, request }) => {
 	await request.post('http://localhost:8787/__reset');
-	await redis.del('ow:lifecycle');
+	await resetAppCache(request);
 	await signIn(page);
-});
-
-test.afterAll(async () => {
-	await redis.quit();
 });
 
 test('shows where the storage goes, in the units the API uses', async ({ page }) => {

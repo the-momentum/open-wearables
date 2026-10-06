@@ -24,8 +24,8 @@ that app, which lives on only in git history.
 
 - **No new environment variables.** Customers set them in their deployments, so a new
   name breaks compatibility. The only ones are `VITE_API_URL`
-  (required; browser-facing, also the server's fallback), `API_URL` (optional
-  server-side shortcut) and `REDIS_URL`. All are read via `$env/dynamic/*`, so one
+  (required; browser-facing, also the server's fallback) and `API_URL` (optional
+  server-side shortcut). Both are read via `$env/dynamic/*`, so one
   image fits any backend.
 - **No dependency before the code that needs it.** Say what it buys over the
   platform. `bits-ui`, `shadcn-svelte` and `svelte-query` are deliberately absent.
@@ -45,27 +45,26 @@ bun run dev                    # :3000
 bun run format                 # prettier --write
 ```
 
-E2E needs a local Redis (`redis://localhost:6379/15`).
-
 ## Architecture
 
 ```
-browser --cookie ow_session--> SvelteKit server --Bearer--> FastAPI
-                                    |
-                                  Redis (sessions, cache)
+browser --cookie ow_session (HttpOnly)--> SvelteKit server --Bearer--> FastAPI
 ```
 
-**Sessions are server-side.** The browser holds only an opaque `HttpOnly` session
-id. The access and refresh tokens stay in Redis (`server/session.ts`) and never reach the
-client. Anything in `$lib/server` cannot be imported by client code, and the build
-enforces that: never re-export around it.
+**The portal is stateless.** The session (tokens and developer profile) lives in
+one `HttpOnly` cookie (`server/session.ts`), so no script on the page can read it.
+Nothing needs Redis or a database, and **no new environment variable may be
+required** to run it. Anything in `$lib/server` cannot be imported by client code,
+and the build enforces that: never re-export around it.
 
-- The backend **rotates refresh tokens**: persist the whole refresh response.
+- The backend **rotates refresh tokens and revokes the old one on first use**.
+  `rotate()` shares one refresh between concurrent requests (and for 30s after),
+  so a second request cannot sign the user out. Persist the whole response.
 - `locals.auth` is memoised per request: the layout guard and page `load` run
-  concurrently, and a second refresh would revoke the first.
-- `readSession` fails closed. `server/cache.ts` (`recall`/`keep`/`cached`/`forget`)
-  fails open.
-- Use `ioredis`, not Bun's Redis. Dev, preview and build run under node.
+  concurrently.
+- `server/cache.ts` (`recall`/`keep`/`cached`/`forget`) is an in-process cache with
+  TTLs. The e2e suite empties it via `/__e2e/reset`, which exists only with
+  `OW_E2E=1` (set by `playwright.config.ts`).
 
 **Data flow**
 

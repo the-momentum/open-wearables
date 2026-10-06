@@ -10,7 +10,7 @@ import type { Actions, PageServerLoad } from './$types';
 // The backend writes this path and `token` into every invitation email.
 
 export const load: PageServerLoad = async ({ url, locals }) => {
-	if (await locals.auth.session()) redirect(303, resolve('/dashboard'));
+	if (locals.auth.session()) redirect(303, resolve('/dashboard'));
 	return { token: url.searchParams.get('token') ?? '' };
 };
 
@@ -57,7 +57,7 @@ export const actions: Actions = {
 		// Signed straight in; if that fails the account still exists, so point to sign-in.
 		try {
 			const tokens = await login(developer.email, password);
-			await createSession(cookies, tokens, await apiGet<Developer>(API.me, tokens.access_token));
+			createSession(cookies, tokens, await apiGet<Developer>(API.me, tokens.access_token));
 		} catch {
 			return { joined: developer.email };
 		}

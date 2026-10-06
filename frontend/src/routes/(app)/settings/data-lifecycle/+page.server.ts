@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	if (!(await parent()).features.lifecycle) redirect(303, resolve('/settings'));
 	const accessToken = await requireToken(locals);
 
-	return { lifecycle: (await cachedLifecycle()) ?? fetchLifecycle(accessToken) };
+	return { lifecycle: cachedLifecycle() ?? fetchLifecycle(accessToken) };
 };
 
 export const actions: Actions = {

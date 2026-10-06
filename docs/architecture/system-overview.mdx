@@ -80,7 +80,7 @@ open-wearables/
 - Charts are hand-drawn SVG; dialogs are native `<dialog>` elements
 
 **Sessions:**
-- The browser holds only an `HttpOnly` session cookie; API tokens stay on the frontend server, in Redis
+- API tokens live in an `HttpOnly` cookie that page scripts cannot read; only the frontend server calls the API
 
 **Testing:**
 - **Vitest** - Unit tests, and component tests in a real browser
@@ -148,7 +148,7 @@ The platform is designed for **self-hosting** with Docker. For production, use t
 **Services:**
 - `app` - FastAPI application server
 - `db` - PostgreSQL database
-- `redis` - Redis cache, message broker and portal sessions
+- `redis` - Redis cache and message broker
 - `celery-worker` - Background task processor
 - `celery-beat` - Scheduled task scheduler
 - `flower` - Celery monitoring dashboard

@@ -27,8 +27,8 @@ export default defineConfig({
 			// The dashboard has always exposed the backend address as
 			// VITE_API_URL, and customers set it in their own deployments. Making
 			// VITE_ the public prefix reuses that variable instead of inventing a
-			// second name for the same value. API_URL and REDIS_URL match neither
-			// this nor a private prefix of "", so they stay server-only.
+			// second name for the same value. API_URL matches neither this nor a
+			// private prefix of "", so it stays server-only.
 			env: { publicPrefix: 'VITE_' },
 			// Makes `version` from $app/environment the package version rather than
 			// SvelteKit's default build timestamp, so the sidebar can show it.

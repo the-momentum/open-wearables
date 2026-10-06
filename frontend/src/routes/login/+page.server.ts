@@ -5,7 +5,7 @@ import { createSession } from '$lib/server/session';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	if (await locals.auth.session()) redirect(303, resolve('/dashboard'));
+	if (locals.auth.session()) redirect(303, resolve('/dashboard'));
 };
 
 export const actions: Actions = {
@@ -21,7 +21,7 @@ export const actions: Actions = {
 		try {
 			const tokens = await login(email, password);
 			const developer = await apiGet<Developer>(API.me, tokens.access_token);
-			await createSession(cookies, tokens, developer);
+			createSession(cookies, tokens, developer);
 		} catch (error) {
 			// One message for both: naming the wrong field reveals which accounts exist.
 			if (error instanceof ApiError && error.status === 401) {

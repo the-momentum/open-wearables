@@ -1,10 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import Redis from 'ioredis';
-import { signIn } from './support';
-
-// The window is cached in Redis for twenty seconds, and /__reset only resets the
-// mock: without this one test's scan would be what the next one reads.
-const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379/15');
+import { resetAppCache, signIn } from './support';
 
 const scans = async (request: APIRequestContext) =>
 	(await (await request.get('http://localhost:8787/__sync-scans')).json()).scans as number;
@@ -13,13 +8,8 @@ const rows = (page: Page) => page.locator('[data-accordion-toggle]');
 
 test.beforeEach(async ({ page, request }) => {
 	await request.post('http://localhost:8787/__reset');
-	const cached = await redis.keys('ow:syncs:*');
-	if (cached.length) await redis.del(...cached);
+	await resetAppCache(request);
 	await signIn(page);
-});
-
-test.afterAll(async () => {
-	await redis.quit();
 });
 
 test('adds the window up, then pages through it', async ({ page }) => {

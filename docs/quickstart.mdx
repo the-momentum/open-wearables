@@ -47,7 +47,6 @@ Get Open Wearables running locally and start integrating wearable device data.
     
     Edit `./frontend/.env` with your frontend configuration:
     - `VITE_API_URL` - Backend API URL (default: `http://localhost:8000`)
-    - `REDIS_URL` - Redis for developer portal sessions (default: `redis://localhost:6379/2`; Docker Compose sets it for you)
     
     <Tip>Default credentials are provided in the `.env.example` files for local development.</Tip>
 
@@ -126,7 +125,7 @@ Get Open Wearables running locally and start integrating wearable device data.
        bun install
        ```
     
-    6. Start the frontend development server (it needs the same Redis as the backend):
+    6. Start the frontend development server:
        ```bash
        bun run dev
        ```

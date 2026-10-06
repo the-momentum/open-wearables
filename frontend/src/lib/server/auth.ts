@@ -1,25 +1,20 @@
 import type { Cookies } from '@sveltejs/kit';
-import { readSession, validAccessToken, type SessionRecord } from './session';
+import { readSession, validAccessToken, type Session } from './session';
 
 export type AuthContext = {
-	session(): Promise<SessionRecord | null>;
+	session(): Session | null;
 	accessToken(): Promise<string | null>;
 };
 
-/**
- * Lazy and memoised per request: the layout guard and the page load both run
- * for one render, and neither should cause a second Redis read or a second
- * token refresh.
- */
+/** The layout guard and the page load both ask for a token; only the first may refresh it. */
 export function createAuthContext(cookies: Cookies): AuthContext {
-	let session: Promise<SessionRecord | null> | undefined;
 	let token: Promise<string | null> | undefined;
 
-	const getSession = () => (session ??= readSession(cookies));
-
 	return {
-		session: getSession,
-		accessToken: () =>
-			(token ??= getSession().then((record) => (record ? validAccessToken(record) : null)))
+		session: () => readSession(cookies),
+		accessToken: () => {
+			const session = readSession(cookies);
+			return (token ??= session ? validAccessToken(cookies, session) : Promise.resolve(null));
+		}
 	};
 }

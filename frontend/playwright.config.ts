@@ -26,9 +26,8 @@ export default defineConfig({
 				// What the "Connect mobile app" dialog shows. Same value here, but it
 				// is the public variable, not the server's own hop.
 				VITE_API_URL: `http://localhost:${MOCK_API_PORT}`,
-				// A throwaway database: sessions created here must not collide with
-				// a developer's own.
-				REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379/15'
+				// Opens /__e2e/reset, which empties the in-process cache between tests.
+				OW_E2E: '1'
 			}
 		}
 	]
