@@ -1,12 +1,12 @@
 # Open Wearables
 
-Open Wearables is a health/wearable data aggregation platform with a Python/FastAPI backend and React/TypeScript frontend.
+Open Wearables is a health/wearable data aggregation platform with a Python/FastAPI backend and a SvelteKit developer portal.
 
 ## Documentation Structure
 
 - **This file** - Project overview, development workflow, general guidelines
 - **[backend/AGENTS.md](backend/AGENTS.md)** - Backend-specific patterns and code examples
-- **[frontend/AGENTS.md](frontend/AGENTS.md)** - Frontend-specific patterns and code examples
+- **[frontend/AGENTS.md](frontend/AGENTS.md)** - Frontend architecture, testing, and review rules
 - **[mcp/README.md](mcp/README.md)** - MCP server setup and available tools
 - **[docs/dev-guides/how-to-add-new-provider.mdx](docs/dev-guides/how-to-add-new-provider.mdx)** - Adding wearable providers
 
@@ -15,7 +15,7 @@ Open Wearables is a health/wearable data aggregation platform with a Python/Fast
 ```
 open-wearables/
 ├── backend/           # Python/FastAPI backend
-├── frontend/          # React/TypeScript frontend
+├── frontend/          # SvelteKit developer portal
 ├── mcp/               # MCP server for AI assistants
 └── docs/              # Documentation (Mintlify)
 ```
@@ -24,12 +24,12 @@ open-wearables/
 
 | Backend | Frontend | MCP |
 |---------|----------|-----|
-| Python 3.14+ | React 19 + TypeScript | Python 3.13+ |
-| FastAPI | TanStack Router/Query | FastMCP |
-| SQLAlchemy 2.0 | React Hook Form + Zod | httpx |
-| PostgreSQL | Tailwind + shadcn/ui | |
-| Celery + Redis | Vitest | |
-| Ruff + ty | oxlint + Prettier | Ruff + ty |
+| Python 3.14+ | SvelteKit 2 + Svelte 5 + TypeScript | Python 3.13+ |
+| FastAPI | Bun | FastMCP |
+| SQLAlchemy 2.0 | Tailwind CSS v4 | httpx |
+| PostgreSQL | | |
+| Celery + Redis | Vitest + Playwright | |
+| Ruff + ty | ESLint + Prettier | Ruff + ty |
 
 ## Development Workflow
 
@@ -69,6 +69,7 @@ make stop
 | `make migrate` | Apply database migrations |
 | `make create_migration m="..."` | Create new migration |
 | `make seed` | Seed sample data |
+| `make frontend_verify` | Run every frontend check CI runs |
 
 ### Code Quality
 
@@ -79,7 +80,7 @@ cd backend && uv run pre-commit run --all-files
 
 **Frontend:**
 ```bash
-cd frontend && pnpm run lint:fix && pnpm run format
+cd frontend && bun run format && bun run lint && bun run check
 ```
 
 ### Database Migrations

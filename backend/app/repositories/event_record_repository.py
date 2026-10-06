@@ -1,5 +1,6 @@
 import contextlib
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
@@ -310,23 +311,14 @@ class EventRecordRepository(
             .first()
         )
 
-    def get_records_with_filters(
-        self,
-        db_session: DbSession,
+    @staticmethod
+    def _record_filters(
         query_params: EventRecordQueryParams,
         user_id: str,
         restrict_to_record_ids: Query | None = None,
-    ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
-        query: Query = (
-            db_session.query(EventRecord, DataSource)
-            .join(
-                DataSource,
-                EventRecord.data_source_id == DataSource.id,
-            )
-            .options(*[selectinload(r) for r in EventRecord.detail_relationship(query_params.category)])
-        )
-
-        filters = [DataSource.user_id == UUID(user_id)]
+    ) -> list[ColumnElement[bool]]:
+        """The WHERE clause a record listing applies, shared so a total counts the same records."""
+        filters: list[ColumnElement[bool]] = [DataSource.user_id == UUID(user_id)]
 
         # Optional allow-list of record ids as a subquery (e.g. priority-deduplicated
         # sleep sessions). Inlined as `id IN (<subquery>)` before count/cursor/limit so
@@ -362,6 +354,25 @@ class EventRecordRepository(
 
         if query_params.max_duration is not None:
             filters.append(EventRecord.duration_seconds <= query_params.max_duration)
+        return filters
+
+    def get_records_with_filters(
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
+    ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
+        query: Query = (
+            db_session.query(EventRecord, DataSource)
+            .join(
+                DataSource,
+                EventRecord.data_source_id == DataSource.id,
+            )
+            .options(*[selectinload(r) for r in EventRecord.detail_relationship(query_params.category)])
+        )
+
+        filters = self._record_filters(query_params, user_id, restrict_to_record_ids)
 
         if filters:
             query = query.filter(and_(*filters))
@@ -424,6 +435,59 @@ class EventRecordRepository(
             query = query.offset(query_params.offset)
 
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+
+    def get_workout_totals(
+        self, db_session: DbSession, query_params: EventRecordQueryParams, user_id: str
+    ) -> tuple[int, int, Decimal | None, Decimal | None]:
+        """Count, duration, energy and distance of the matching workouts, in one aggregate."""
+        filters = self._record_filters(query_params.model_copy(update={"category": "workout"}), user_id)
+        row = (
+            db_session.query(
+                func.count(EventRecord.id),
+                func.coalesce(func.sum(EventRecord.duration_seconds), 0),
+                func.sum(WorkoutDetails.energy_burned),
+                func.sum(WorkoutDetails.distance),
+            )
+            .select_from(EventRecord)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(WorkoutDetails, WorkoutDetails.record_id == EventRecord.id)
+            .filter(and_(*filters))
+            .one()
+        )
+        return int(row[0]), int(row[1]), row[2], row[3]
+
+    def get_sleep_totals(
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
+    ) -> tuple[int, int, int, int, Decimal | None]:
+        """Sessions, naps, asleep and in-bed seconds, and mean efficiency, in one aggregate."""
+        filters = self._record_filters(
+            query_params.model_copy(update={"category": "sleep"}), user_id, restrict_to_record_ids
+        )
+        row = (
+            db_session.query(
+                func.count(EventRecord.id),
+                func.count(EventRecord.id).filter(SleepDetails.is_nap.is_(True)),
+                func.coalesce(func.sum(SleepDetails.sleep_total_duration_minutes), 0) * 60,
+                # The list falls back the same way: a span stands in for time in bed.
+                func.coalesce(
+                    func.sum(
+                        func.coalesce(SleepDetails.sleep_time_in_bed_minutes * 60, EventRecord.duration_seconds, 0)
+                    ),
+                    0,
+                ),
+                func.avg(SleepDetails.sleep_efficiency_score),
+            )
+            .select_from(EventRecord)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(and_(*filters))
+            .one()
+        )
+        return int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
 
     def winning_sleep_record_ids(
         self,

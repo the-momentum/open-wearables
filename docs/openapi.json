@@ -963,6 +963,103 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/summaries/activity/totals": {
+      "get": {
+        "tags": [
+          "External: Summaries"
+        ],
+        "summary": "Get Activity Totals",
+        "description": "Returns the period's daily activity added up: days, steps, distance and active energy.\n\nThe same days the daily summaries return, one per date after source priority,\nso a total matches what paging through them would add up to.",
+        "operationId": "get_activity_totals_api_v1_users__user_id__summaries_activity_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/summaries/sleep": {
       "get": {
         "tags": [
@@ -2097,6 +2194,202 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/workouts/totals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Get Workout Totals",
+        "description": "Returns the count, duration, energy and distance of the workouts the same filters would list.\n\nAdded up in the database, so it covers every matching workout however many\nthere are, without paging through them.",
+        "operationId": "get_workout_totals_api_v1_users__user_id__events_workouts_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "record_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Record Type"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkoutType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact normalized workout type. Unlike `record_type`, does not substring-match.",
+              "title": "Type"
+            },
+            "description": "Exact normalized workout type. Unlike `record_type`, does not substring-match."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/sleep": {
       "get": {
         "tags": [
@@ -2312,6 +2605,198 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedResponse_SleepSession_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/events/sleep/totals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Get Sleep Totals",
+        "description": "Returns the count, naps, time asleep, time in bed and mean efficiency of the sessions.\n\nThe same filters as the sleep list, so it adds up exactly what that would page through.\n\nAdded up in the database, so it covers every matching session however many\nthere are, without paging through them.",
+        "operationId": "get_sleep_totals_api_v1_users__user_id__events_sleep_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "is_nap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only naps; when false, only main sleep. Omit to return both.",
+              "title": "Is Nap"
+            },
+            "description": "When true, return only naps; when false, only main sleep. Omit to return both."
+          },
+          {
+            "name": "filter_by_priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "default": false,
+              "title": "Filter By Priority"
+            },
+            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SleepTotals"
                 }
               }
             }
@@ -10682,6 +11167,56 @@
         ],
         "title": "ActivitySummary"
       },
+      "ActivityTotals": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "description": "Days with activity data, one per date after source priority",
+            "example": 365
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "description": "Sum of daily steps",
+            "example": 2841230
+          },
+          "distance_meters": {
+            "type": "number",
+            "title": "Distance Meters",
+            "description": "Sum of daily distance",
+            "example": 2104380.5
+          },
+          "active_calories_kcal": {
+            "type": "number",
+            "title": "Active Calories Kcal",
+            "description": "Sum of daily active energy",
+            "example": 152340.0
+          },
+          "avg_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Steps",
+            "description": "Mean steps over the days that report steps; null when none do",
+            "example": 7784
+          }
+        },
+        "type": "object",
+        "required": [
+          "days",
+          "steps",
+          "distance_meters",
+          "active_calories_kcal"
+        ],
+        "title": "ActivityTotals",
+        "description": "The period's daily activity added up: the same days the daily summaries return."
+      },
       "ApiKeyRead": {
         "properties": {
           "id": {
@@ -15845,6 +16380,56 @@
         ],
         "title": "SleepSummary"
       },
+      "SleepTotals": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Sessions that match the filters, naps included",
+            "example": 30
+          },
+          "naps": {
+            "type": "integer",
+            "title": "Naps",
+            "description": "Of those, how many are naps",
+            "example": 4
+          },
+          "sleep_duration_seconds": {
+            "type": "integer",
+            "title": "Sleep Duration Seconds",
+            "description": "Sum of time asleep",
+            "example": 799200
+          },
+          "time_in_bed_seconds": {
+            "type": "integer",
+            "title": "Time In Bed Seconds",
+            "description": "Sum of time in bed, or of the session's span where none was reported",
+            "example": 871200
+          },
+          "avg_efficiency_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Efficiency Percent",
+            "description": "Mean efficiency over the sessions that report one",
+            "example": 91.4
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "naps",
+          "sleep_duration_seconds",
+          "time_in_bed_seconds"
+        ],
+        "title": "SleepTotals",
+        "description": "Sleep sessions matching a filter, added up in the database rather than paged."
+      },
       "SourceMetadata": {
         "properties": {
           "provider": {
@@ -18655,6 +19240,55 @@
         ],
         "title": "WorkoutIntensity",
         "description": "Unified subjective intensity of a workout, independent of the reporting provider."
+      },
+      "WorkoutTotals": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Workouts that match the filters",
+            "example": 42
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds",
+            "description": "Sum of their durations",
+            "example": 95400
+          },
+          "calories_kcal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Kcal",
+            "description": "Sum of reported energy burned; null when none reported any",
+            "example": 18250.5
+          },
+          "distance_meters": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Meters",
+            "description": "Sum of reported distance; null when none reported any",
+            "example": 212400.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "duration_seconds"
+        ],
+        "title": "WorkoutTotals",
+        "description": "Workouts matching a filter, added up in the database rather than paged."
       },
       "WorkoutType": {
         "type": "string",

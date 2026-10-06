@@ -48,7 +48,9 @@ from app.schemas.responses.activity import (
     NutrientValue,
     SleepSession,
     SleepStagesSummary,
+    SleepTotals,
     Workout,
+    WorkoutTotals,
 )
 from app.schemas.utils import (
     PaginatedResponse,
@@ -791,6 +793,16 @@ class EventRecordService(
         )
 
     @handle_exceptions
+    def get_workout_totals(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> WorkoutTotals:
+        count, seconds, energy, distance = self.crud.get_workout_totals(db_session, params, str(user_id))
+        return WorkoutTotals(
+            count=count,
+            duration_seconds=seconds,
+            calories_kcal=float(energy) if energy is not None else None,
+            distance_meters=float(distance) if distance is not None else None,
+        )
+
+    @handle_exceptions
     def get_workouts(
         self,
         db_session: DbSession,
@@ -899,6 +911,32 @@ class EventRecordService(
             ),
         )
 
+    def _winning_sleep_ids(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> Query:
+        """An inline subquery of the top-priority source's sessions per night."""
+        provider_order = self.priority_service.priority_repo.get_priority_order(db_session)
+        device_type_order = self.priority_service.device_type_priority_repo.get_priority_order(db_session)
+        return self.crud.winning_sleep_record_ids(db_session, str(user_id), params, provider_order, device_type_order)
+
+    @handle_exceptions
+    def get_sleep_totals(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+        filter_by_priority: bool = False,
+    ) -> SleepTotals:
+        restrict = self._winning_sleep_ids(db_session, user_id, params) if filter_by_priority else None
+        count, naps, asleep, in_bed, efficiency = self.crud.get_sleep_totals(
+            db_session, params, str(user_id), restrict_to_record_ids=restrict
+        )
+        return SleepTotals(
+            count=count,
+            naps=naps,
+            sleep_duration_seconds=asleep,
+            time_in_bed_seconds=in_bed,
+            avg_efficiency_percent=float(efficiency) if efficiency is not None else None,
+        )
+
     @handle_exceptions
     def get_sleep_sessions(
         self,
@@ -910,16 +948,7 @@ class EventRecordService(
     ) -> PaginatedResponse[SleepSession]:
         params.category = "sleep"
         with_stages = SleepInclude.STAGES in include
-
-        # inline query that restricts records to ones
-        # with highest priority
-        restrict_to_record_ids: Query | None = None
-        if filter_by_priority:
-            provider_order = self.priority_service.priority_repo.get_priority_order(db_session)
-            device_type_order = self.priority_service.device_type_priority_repo.get_priority_order(db_session)
-            restrict_to_record_ids = self.crud.winning_sleep_record_ids(
-                db_session, str(user_id), params, provider_order, device_type_order
-            )
+        restrict_to_record_ids = self._winning_sleep_ids(db_session, user_id, params) if filter_by_priority else None
 
         records, total_count = self._get_records_with_filters(
             db_session, params, str(user_id), restrict_to_record_ids=restrict_to_record_ids
