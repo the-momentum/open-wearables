@@ -29,6 +29,7 @@ from app.schemas.enums import (
 )
 from app.schemas.responses.activity import (
     ActivitySummary,
+    ActivityTotals,
     BloodPressure,
     BodyAveraged,
     BodyLatest,
@@ -84,6 +85,16 @@ BODY_AVERAGED_SERIES = [
 # Default settings for body summary
 DEFAULT_AVERAGE_PERIOD_DAYS = 7
 DEFAULT_LATEST_WINDOW_HOURS = 4
+
+
+def _midnight(day: date) -> datetime:
+    """A calendar date as the UTC midnight that starts it."""
+    return datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+
+
+def _activity_key(row: dict) -> tuple:
+    """The compound key an activity cursor points at: date, then source, then device."""
+    return (row["activity_date"], row["source"] or "", row.get("device_model") or "")
 
 
 class SummariesService:
@@ -275,7 +286,7 @@ class SummariesService:
             last_result = results[-1]
             last_date = last_result["sleep_date"]
             last_id = last_result["record_id"]
-            last_date_midnight = datetime.combine(last_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            last_date_midnight = _midnight(last_date)
             if has_more:
                 next_cursor = encode_cursor(last_date_midnight, last_id, "next")
 
@@ -284,7 +295,7 @@ class SummariesService:
                 first_result = results[0]
                 first_date = first_result["sleep_date"]
                 first_id = first_result["record_id"]
-                first_date_midnight = datetime.combine(first_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+                first_date_midnight = _midnight(first_date)
                 previous_cursor = encode_cursor(first_date_midnight, first_id, "prev")
 
         # Transform to schema
@@ -473,100 +484,8 @@ class SummariesService:
         """
         self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
 
-        # Get aggregated data from time-series repository (live data)
-        results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start_date, end_date)
-
-        # Merge archived data when archival is enabled
-        results = self._merge_archive_activity(db_session, user_id, start_date, end_date, results)
-
-        # Filter by priority to get best source per date
-        results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
-
-        # Get workout aggregates (elevation, distance, energy from workouts)
-        workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
-            db_session, user_id, start_date, end_date
-        )
-
-        # Build lookup dict for workout data by (date, provider, device)
-        workout_lookup: dict[tuple, dict] = {}
-        for wa in workout_aggregates:
-            key = (wa["workout_date"], wa["source"], wa.get("device_model"))
-            workout_lookup[key] = wa
-
-        # Get active/sedentary minutes from step data
-        activity_minutes = self.data_point_repo.get_daily_active_minutes(
-            db_session, user_id, start_date, end_date, active_threshold=ACTIVE_STEPS_THRESHOLD
-        )
-
-        # Build lookup for activity minutes
-        activity_lookup: dict[tuple, ActiveMinutesResult] = {}
-        for am in activity_minutes:
-            key = (am["activity_date"], am["source"], am.get("device_model"))
-            activity_lookup[key] = am
-
-        # Get intensity minutes from HR data
-        # Calculate HR zone thresholds based on user's max HR (220 - age)
-        max_hr = self._get_user_max_hr(db_session, user_id, start_date)
-        hr_zones = self._get_hr_zone_thresholds(max_hr)
-        intensity_minutes_data = self.data_point_repo.get_daily_intensity_minutes(
-            db_session,
-            user_id,
-            start_date,
-            end_date,
-            light_min=hr_zones["light_min"],
-            light_max=hr_zones["light_max"],
-            moderate_max=hr_zones["moderate_max"],
-            vigorous_max=hr_zones["vigorous_max"],
-        )
-
-        # Build lookup for intensity minutes
-        intensity_lookup: dict[tuple, IntensityMinutesResult] = {}
-        for im in intensity_minutes_data:
-            key = (im["activity_date"], im["source"], im.get("device_model"))
-            intensity_lookup[key] = im
-
-        # Sort results based on sort_order (default ascending from DB)
-        if sort_order == "desc":
-            results = list(reversed(results))
-
-        # Apply cursor-based pagination using compound key (date, provider, device)
-        # This ensures we don't skip records when multiple providers exist for the same date
-        if cursor:
-            cursor_date, cursor_provider, cursor_device, direction = decode_activity_cursor(cursor)
-            cursor_key = (cursor_date, cursor_provider, cursor_device or "")
-
-            if direction == "prev":
-                # Backward pagination: get items BEFORE cursor key (in current sort order)
-                if sort_order == "desc":
-                    # In desc order, "before" means items with GREATER keys
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                    ]
-                else:
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                    ]
-                # Reverse to get correct order for backward pagination
-                results = list(reversed(results))
-            else:
-                # Forward pagination: get items AFTER cursor key (in current sort order)
-                if sort_order == "desc":
-                    # In desc order, "after" means items with SMALLER keys
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                    ]
-                else:
-                    results = [
-                        r
-                        for r in results
-                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                    ]
+        # Only this page's days are aggregated, so its cost follows the page, not the period.
+        results = self._activity_page_days(db_session, user_id, start_date, end_date, cursor, limit, sort_order)
 
         # Check for more data
         has_more = len(results) > limit
@@ -591,6 +510,54 @@ class SummariesService:
                 previous_cursor = encode_activity_cursor(
                     first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
                 )
+
+        # The per-day extras, for this page's dates only.
+        page_dates = [r["activity_date"] for r in results]
+        page_start = _midnight(min(page_dates)) if page_dates else start_date
+        page_end = _midnight(max(page_dates)) + timedelta(days=1) if page_dates else start_date
+
+        # Get workout aggregates (elevation, distance, energy from workouts)
+        workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
+            db_session, user_id, page_start, page_end
+        )
+
+        # Build lookup dict for workout data by (date, provider, device)
+        workout_lookup: dict[tuple, dict] = {}
+        for wa in workout_aggregates:
+            key = (wa["workout_date"], wa["source"], wa.get("device_model"))
+            workout_lookup[key] = wa
+
+        # Get active/sedentary minutes from step data
+        activity_minutes = self.data_point_repo.get_daily_active_minutes(
+            db_session, user_id, page_start, page_end, active_threshold=ACTIVE_STEPS_THRESHOLD
+        )
+
+        # Build lookup for activity minutes
+        activity_lookup: dict[tuple, ActiveMinutesResult] = {}
+        for am in activity_minutes:
+            key = (am["activity_date"], am["source"], am.get("device_model"))
+            activity_lookup[key] = am
+
+        # Get intensity minutes from HR data
+        # Calculate HR zone thresholds based on user's max HR (220 - age)
+        max_hr = self._get_user_max_hr(db_session, user_id, start_date)
+        hr_zones = self._get_hr_zone_thresholds(max_hr)
+        intensity_minutes_data = self.data_point_repo.get_daily_intensity_minutes(
+            db_session,
+            user_id,
+            page_start,
+            page_end,
+            light_min=hr_zones["light_min"],
+            light_max=hr_zones["light_max"],
+            moderate_max=hr_zones["moderate_max"],
+            vigorous_max=hr_zones["vigorous_max"],
+        )
+
+        # Build lookup for intensity minutes
+        intensity_lookup: dict[tuple, IntensityMinutesResult] = {}
+        for im in intensity_minutes_data:
+            key = (im["activity_date"], im["source"], im.get("device_model"))
+            intensity_lookup[key] = im
 
         # Transform to schema
         data = []
@@ -693,6 +660,89 @@ class SummariesService:
                 end_time=end_date,
             ),
         )
+
+    def get_activity_totals(
+        self, db_session: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+    ) -> ActivityTotals:
+        """The daily summaries' steps, distance and active energy, added up over the period.
+
+        Only the daily sums: the per-day extras the summaries attach (workouts, active
+        and intensity minutes) are most of their cost and none of a total.
+        """
+        days = self._activity_days(db_session, user_id, start_date, end_date)
+        steps = [float(day["steps_sum"]) for day in days if day.get("steps_sum") is not None]
+        return ActivityTotals(
+            days=len(days),
+            steps=round(sum(steps)),
+            distance_meters=sum(float(day.get("distance_sum") or 0) for day in days),
+            active_calories_kcal=sum(float(day.get("active_energy_sum") or 0) for day in days),
+            avg_steps=round(sum(steps) / len(steps)) if steps else None,
+        )
+
+    def _activity_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
+        """One row per day in [start, end): live and archived, best source per date."""
+        results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start, end)
+        results = self._merge_archive_activity(db_session, user_id, start, end, results)
+        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+
+    def _activity_page_days(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+        sort_order: str,
+    ) -> list[dict]:
+        """The days for one page, in page order, plus one more if there is a next page.
+
+        Aggregates a window that starts limit + 2 days wide from where the page
+        begins, and widens it fourfold until it holds enough days or reaches the
+        edge of the period. A user with daily data needs one pass; a sparse one a few.
+        """
+        cursor_date: date | None = None
+        direction = "next"
+        if cursor:
+            cursor_date, cursor_provider, cursor_device, direction = decode_activity_cursor(cursor)
+            cursor_key = (cursor_date, cursor_provider, cursor_device or "")
+        # Which way the page runs from its anchor: into the past, or the future.
+        backwards = (sort_order == "desc") == (direction != "prev")
+
+        # The page, one more to tell there is a next, and the cursor's own day,
+        # which the window holds and the cursor then drops.
+        span = timedelta(days=limit + 2)
+        # A window over half the period is not worth a second, wider pass.
+        if span * 2 >= end_date - start_date:
+            span = end_date - start_date
+        while True:
+            if backwards:
+                anchor = min(end_date, _midnight(cursor_date) + timedelta(days=1)) if cursor_date else end_date
+                window = (max(start_date, anchor - span), anchor)
+                complete = window[0] <= start_date
+            else:
+                anchor = max(start_date, _midnight(cursor_date)) if cursor_date else start_date
+                window = (anchor, min(end_date, anchor + span))
+                complete = window[1] >= end_date
+
+            results = self._activity_days(db_session, user_id, *window)
+            if sort_order == "desc":
+                results = list(reversed(results))
+
+            # Compound key (date, provider, device), so a date two providers share is
+            # not skipped. A backwards page keeps the keys below the cursor, else above.
+            if cursor:
+                results = [
+                    r
+                    for r in results
+                    if (_activity_key(r) < cursor_key if backwards else _activity_key(r) > cursor_key)
+                ]
+                if direction == "prev":
+                    results = list(reversed(results))
+
+            if complete or len(results) > limit:
+                return results
+            span *= 4
 
     def _calculate_age(self, birth_date: date, reference_date: date) -> int:
         """Calculate age in years from birth date to reference date."""

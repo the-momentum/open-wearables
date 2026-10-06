@@ -40,7 +40,7 @@ The Railway template provisions seven services:
 |---------|-------------|
 | **PostgreSQL** | Primary database for users, health data, and API keys |
 | **Backend** | FastAPI application server |
-| **Frontend** | React dashboard |
+| **Frontend** | Developer portal (SvelteKit) |
 | **Redis** | Broker for Celery task queue and caching |
 | **Celery Worker** | Processes background tasks (data syncs, webhooks) |
 | **Celery Beat** | Schedules recurring sync jobs |
@@ -77,6 +77,8 @@ All inter-service networking and environment variables are configured automatica
 
 ## Environment variables reference
 
+The **Frontend** service needs only `VITE_API_URL`, the public URL of the backend. See [Frontend configuration](/deployment/docker#frontend-configuration) for the optional `API_URL`.
+
 Key variables you may want to customize on the **Backend** service:
 
 | Variable | Description | Default |
@@ -86,6 +88,7 @@ Key variables you may want to customize on the **Backend** service:
 | `ACCESS_LOG_LEVEL` | Per-request access logging: `all`, `errors` (4xx/5xx only), or `off` | `errors` in production, `all` otherwise |
 | `LOG_FORMAT` | Log output: `legacy` (structured app logs as JSON, other logs as text), `json` (every line JSON) or `text` (readable). See [Logs](/deployment/docker#logs) | `legacy` |
 | `LOG_LEVEL` | Drop log lines below this level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` | not set |
+| `OTEL_ENABLED` | Also send logs to an OTLP/HTTP collector set with `OTEL_EXPORTER_OTLP_ENDPOINT`. See [Exporting logs with OpenTelemetry](/dev-guides/log-export) | `false` |
 | `REDIS_SSL` | Enable TLS for Redis connections (`rediss://`). Required for managed Redis with transit encryption (e.g. AWS ElastiCache, Upstash with TLS). | `false` |
 
 <Note>
