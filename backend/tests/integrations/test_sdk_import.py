@@ -9,14 +9,14 @@ import logging
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.models import DataPointSeries, DataSource, EventRecord, MealDetails, WorkoutDetails
-from app.schemas.enums import SeriesType, get_series_type_id
+from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
@@ -915,14 +915,13 @@ class TestSDKImportMealCorrelation:
             "data": {"records": records},
         }
 
-    def test_food_correlation_creates_meal_and_saves_nutrient_samples(
-        self, db: Session, import_service: ImportService
-    ) -> None:
-        """Nutrients are saved as ordinary samples; the meal picks up every nutrient sample from
-        its data source recorded in its window - including a loose one (caffeine without
-        parentId) logged at the same instant."""
+    def _user_samples(self, db: Session, user_id: UUID) -> list[DataPointSeries]:
+        return db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user_id).all()
+
+    def test_food_correlation_creates_meal_with_its_nutrients(self, db: Session, import_service: ImportService) -> None:
+        """The correlation's nutrient records are stored on the meal, not as samples; a record
+        without parentId (caffeine) stays a loose sample and is not part of the meal."""
         user = UserFactory()
-        user_id = str(user.id)
         payload = self._build_payload(
             [
                 self._correlation_record("MEAL-1"),
@@ -934,88 +933,129 @@ class TestSDKImportMealCorrelation:
             ]
         )
 
-        result = import_service.load_data(db, payload, user_id)
+        result = import_service.load_data(db, payload, str(user.id))
 
         assert result["meals_saved"] == 1
-
         meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
         assert meal.external_id == "MEAL-1"
         detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
         assert detail.title == "Kurczak z ryżem"
         assert detail.meal_type == "obiad"
+        assert detail.nutrients == {"dietary_energy_consumed": 550.0, "dietary_protein": 38.2}
 
-        samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
-        assert {s.external_id for s in samples} == {"energy-1", "protein-1", "caffeine-1"}
+        assert [s.external_id for s in self._user_samples(db, user.id)] == ["caffeine-1"]
 
         meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
-        assert len(meals) == 1
         assert meals[0].calories_kcal == 550.0
         assert meals[0].macros is not None
         assert meals[0].macros.protein_g == 38.2
-        assert meals[0].nutrients["dietary_caffeine"].value == 95.0
+        assert "dietary_caffeine" not in meals[0].nutrients
 
-    def test_food_correlation_resync_does_not_duplicate_the_meal(
+    def test_meals_sharing_the_same_interval_are_all_saved(self, db: Session, import_service: ImportService) -> None:
+        """MyFitnessPal logs every meal of a day with the same interval. Each meal is its own
+        record with its own nutrients, and the rest of the batch (a workout) is unaffected."""
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                {**self._correlation_record("MEAL-1"), "metadata": {"mealType": "breakfast"}},
+                {**self._correlation_record("MEAL-2"), "metadata": {"mealType": "lunch"}},
+                self._nutrient_record("protein-1", "HKQuantityTypeIdentifierDietaryProtein", 6, "g", "MEAL-1"),
+                self._nutrient_record("protein-2", "HKQuantityTypeIdentifierDietaryProtein", 40.42, "g", "MEAL-2"),
+            ]
+        )
+        payload["data"]["workouts"] = [
+            {
+                "id": "WORKOUT-1",
+                "type": "walking",
+                "startDate": "2026-09-18T09:00:00Z",
+                "endDate": "2026-09-18T09:30:00Z",
+                "source": {"name": "Test Apple Watch", "bundleIdentifier": "com.apple.health"},
+            }
+        ]
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["meals_saved"] == 2
+        assert result["workouts_saved"] == 1
+        meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
+        assert {m.meal_type: m.nutrients["dietary_protein"].value for m in meals} == {
+            "breakfast": 6.0,
+            "lunch": 40.42,
+        }
+        assert self._user_samples(db, user.id) == []
+
+    def test_food_correlation_resync_updates_the_meal_in_place(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """A meal's window shifts as items are added to it; the external_id keeps it the same
+        meal, and its nutrients are replaced by the latest set."""
+        user = UserFactory()
+        first_batch = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+                self._nutrient_record("sugar-1", "HKQuantityTypeIdentifierDietarySugar", 10, "g", "MEAL-1"),
+            ]
+        )
+        second_batch = self._build_payload(
+            [
+                {
+                    **self._correlation_record("MEAL-1", end_date="2026-09-18T12:15:00Z"),
+                    "startDate": "2026-09-18T11:45:00Z",
+                },
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 600, "Cal", "MEAL-1"
+                ),
+            ]
+        )
+
+        first = import_service.load_data(db, first_batch, str(user.id))
+        second = import_service.load_data(db, second_batch, str(user.id))
+
+        assert first["meals_saved"] == 1
+        assert second["meals_saved"] == 0
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        db.refresh(meal)
+        assert meal.start_datetime.isoformat() == "2026-09-18T11:45:00+00:00"
+        assert meal.end_datetime.isoformat() == "2026-09-18T12:15:00+00:00"
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        db.refresh(detail)
+        assert detail.nutrients == {"dietary_energy_consumed": 600.0}
+
+    def test_nutrient_record_without_its_correlation_in_the_batch_stays_loose(
         self, db: Session, import_service: ImportService
     ) -> None:
         user = UserFactory()
-        user_id = str(user.id)
         payload = self._build_payload(
             [
-                self._correlation_record("MEAL-1"),
                 self._nutrient_record(
                     "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
                 ),
             ]
         )
 
-        first = import_service.load_data(db, payload, user_id)
-        second = import_service.load_data(db, payload, user_id)
+        result = import_service.load_data(db, payload, str(user.id))
 
-        assert first["meals_saved"] == 1
-        assert second["meals_saved"] == 0
-        assert db.query(EventRecord).filter(EventRecord.category == "meal").count() == 1
-        assert db.query(MealDetails).count() == 1
+        assert result["meals_saved"] == 0
+        assert [s.external_id for s in self._user_samples(db, user.id)] == ["energy-1"]
 
-    def test_unresolvable_meal_conflict_is_skipped_without_failing_the_batch(
+    def test_non_nutrient_record_with_meal_parent_id_stays_loose(
         self, db: Session, import_service: ImportService
     ) -> None:
-        """Two distinct meals (different external_id) that happen to share the exact same
-        (data_source, start, end) collide on ix_event_record_source_time, so only the first is
-        saved. That must not sink the rest of the batch (e.g. a workout in the same payload)."""
         user = UserFactory()
-        user_id = str(user.id)
-        payload = {
-            "provider": "apple",
-            "sdkVersion": "1.2.0",
-            "syncTimestamp": "2026-09-18T12:00:00Z",
-            "data": {
-                "records": [
-                    self._correlation_record("MEAL-1"),
-                    self._correlation_record("MEAL-2"),  # same start/end as MEAL-1, different id
-                ],
-                "workouts": [
-                    {
-                        "id": "WORKOUT-1",
-                        "type": "walking",
-                        "startDate": "2026-09-18T09:00:00Z",
-                        "endDate": "2026-09-18T09:30:00Z",
-                        "source": {"name": "Test Apple Watch", "bundleIdentifier": "com.apple.health"},
-                    }
-                ],
-            },
-        }
+        payload = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record("hr-1", "HKQuantityTypeIdentifierHeartRate", 70, "count/min", "MEAL-1"),
+            ]
+        )
 
-        result = import_service.load_data(db, payload, user_id)
+        import_service.load_data(db, payload, str(user.id))
 
-        assert result["meals_saved"] == 1
-        assert result["workouts_saved"] == 1
-
-        meals = db.query(EventRecord).filter(EventRecord.category == "meal").all()
-        assert len(meals) == 1
-        assert meals[0].external_id == "MEAL-1"
-
-        workouts = db.query(EventRecord).filter(EventRecord.category == "workout").all()
-        assert len(workouts) == 1
+        assert db.query(MealDetails).one().nutrients == {}
+        assert [s.external_id for s in self._user_samples(db, user.id)] == ["hr-1"]
 
 
 class TestSDKImportAndroidFoodCorrelation:
@@ -1110,13 +1150,12 @@ class TestSDKImportAndroidFoodCorrelation:
         assert detail.title == "Chicken rice"
         assert detail.meal_type == "dinner"
 
-        samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
-        samples_by_external_id = {s.external_id: s for s in samples}
-
-        assert set(samples_by_external_id) == {"meal-1-energy", "meal-1-protein", "meal-1-caffeine"}
-        assert samples_by_external_id["meal-1-energy"].series_type_definition_id == get_series_type_id(
-            SeriesType.dietary_energy_consumed
-        )
+        assert detail.nutrients == {
+            "dietary_energy_consumed": 550.0,
+            "dietary_protein": 32.0,
+            "dietary_caffeine": 40.0,
+        }
+        assert db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
 
         meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
         assert meals[0].calories_kcal == 550.0

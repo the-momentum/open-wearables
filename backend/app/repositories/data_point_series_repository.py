@@ -11,7 +11,6 @@ from sqlalchemy import (
     Column,
     ColumnElement,
     Date,
-    DateTime,
     Integer,
     Interval,
     MetaData,
@@ -919,55 +918,6 @@ class DataPointSeriesRepository(
 
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
-
-    def get_sums_in_event_windows(
-        self,
-        db_session: DbSession,
-        windows: list[tuple[UUID, UUID, datetime, datetime]],
-        types: list[SeriesType],
-    ) -> dict[UUID, dict[SeriesType, Decimal]]:
-        """Sum the samples of ``types`` recorded within each event's window, per event and type.
-
-        A sample belongs to an event when it comes from the event's data source and falls in
-        [start, end] - inclusive at both ends, so an instantaneous event (a meal, start == end)
-        still matches the samples recorded at that instant.
-
-        Args:
-            windows: List of (record_id, data_source_id, start_time, end_time) tuples.
-
-        Returns:
-            Dict mapping record_id to {series type: summed value}. Events with no samples are omitted.
-        """
-        if not windows or not types:
-            return {}
-
-        type_by_id = {get_series_type_id(t): t for t in types}
-        event_windows = values(
-            column("record_id", PGUUID(as_uuid=True)),
-            column("data_source_id", PGUUID(as_uuid=True)),
-            column("start_time", DateTime(timezone=True)),
-            column("end_time", DateTime(timezone=True)),
-            name="event_windows",
-        ).data(windows)
-        rows = db_session.execute(
-            select(event_windows.c.record_id, self.model.series_type_definition_id, func.sum(self.model.value))
-            .select_from(event_windows)
-            .join(
-                self.model,
-                and_(
-                    self.model.data_source_id == event_windows.c.data_source_id,
-                    self.model.series_type_definition_id.in_(type_by_id),
-                    self.model.recorded_at >= event_windows.c.start_time,
-                    self.model.recorded_at <= event_windows.c.end_time,
-                ),
-            )
-            .group_by(event_windows.c.record_id, self.model.series_type_definition_id)
-        ).all()
-
-        result: dict[UUID, dict[SeriesType, Decimal]] = {}
-        for record_id, type_id, total in rows:
-            result.setdefault(record_id, {})[type_by_id[type_id]] = total
-        return result
 
     def _local_day_window(
         self, local_date: ColumnElement, start_date: datetime, end_date: datetime

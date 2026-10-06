@@ -59,9 +59,11 @@ MMOL_L_TO_MG_DL = Decimal("18.0182")
 # Energy series stored in kcal.
 _KCAL_SERIES = frozenset({SeriesType.dietary_energy_consumed, SeriesType.dietary_energy_from_fat})
 
-# Meal correlation types: records with no measurement of their own, saved as meal events.
-# Their nutrients arrive as ordinary records and are stored as loose samples.
 MEAL_CORRELATION_TYPES = frozenset({"HKCorrelationTypeIdentifierFood", "FOOD"})
+
+MEAL_NUTRIENT_SERIES_TYPES = frozenset(
+    {st for st in SeriesType if st.value.startswith("dietary_")} | {SeriesType.hydration}
+)
 
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
 
@@ -217,16 +219,11 @@ class ImportService:
     def _build_meal_bundles(
         self,
         correlation_records: list[MetricRecord],
+        nutrient_records: dict[str, list[MetricRecord]],
         provider: str,
         user_id: str,
-    ) -> Generator[tuple[EventRecordCreate, EventRecordDetailCreate]]:
-        """Build meal (EventRecordCreate, MealDetailCreate) pairs from HealthKit
-        correlation records (e.g. HKCorrelationTypeIdentifierFood).
-
-        `correlation_records` are the `records[]` entries already classified as meal
-        correlations by `load_data` - a correlation record has no measurement value of its
-        own; its nutrients are separate records, saved as samples by `_build_statistic_bundles`.
-        """
+    ) -> Generator[tuple[EventRecordCreate, MealDetailCreate]]:
+        """Build meal (EventRecordCreate, MealDetailCreate) pairs from food correlations and their nutrient records."""
         user_uuid = UUID(user_id)
 
         for rjson in correlation_records:
@@ -252,10 +249,14 @@ class ImportService:
                 provider=provider,
                 user_id=user_uuid,
             )
+            nutrients: dict[SeriesType, float] = {}
+            for sample in self._build_statistic_bundles(nutrient_records.get(rjson.id, []), provider, user_id):
+                nutrients[sample.series_type] = nutrients.get(sample.series_type, 0.0) + float(sample.value)
             detail = MealDetailCreate(
                 record_id=meal_id,
                 title=metadata.get("title"),
                 meal_type=metadata.get("mealType"),
+                nutrients=nutrients,
             )
 
             yield record, detail
@@ -450,27 +451,27 @@ class ImportService:
         sleep_saved = 0
         types: set[str] = set()
 
-        # Split records[] once into meal correlations vs everything else, instead of each
-        # builder re-scanning the full list and skipping what the other one handles.
-        correlation_records: list[MetricRecord] = []
+        # A nutrient record whose correlation isn't in this batch stays a loose sample.
+        correlation_records = [r for r in request.data.records if (r.type or "") in MEAL_CORRELATION_TYPES]
+        meal_external_ids = {r.id for r in correlation_records if r.id}
+        nutrient_records: dict[str, list[MetricRecord]] = {}
         records: list[MetricRecord] = []
         for rjson in request.data.records:
             if (rjson.type or "") in MEAL_CORRELATION_TYPES:
-                correlation_records.append(rjson)
+                continue
+            if (
+                rjson.parentId is not None
+                and rjson.parentId in meal_external_ids
+                and get_series_type_from_metric_type(rjson.type or "") in MEAL_NUTRIENT_SERIES_TYPES
+            ):
+                nutrient_records.setdefault(rjson.parentId, []).append(rjson)
             else:
                 records.append(rjson)
 
         # Process meals in batch
-        meal_bundles = list(self._build_meal_bundles(correlation_records, request.provider, user_id))
+        meal_bundles = list(self._build_meal_bundles(correlation_records, nutrient_records, request.provider, user_id))
         if meal_bundles:
-            details_by_id = {detail.record_id: detail for _, detail in meal_bundles}
-            inserted_ids = self.event_record_service.bulk_create(db_session, [record for record, _ in meal_bundles])
-            db_session.flush()
-
-            details_to_insert = [details_by_id[rid] for rid in inserted_ids if rid in details_by_id]
-            if details_to_insert:
-                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="meal")
-            meals_saved = len(inserted_ids)
+            meals_saved = self.event_record_service.upsert_meals(db_session, meal_bundles)
 
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))

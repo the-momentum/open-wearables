@@ -3404,7 +3404,7 @@
           "External: Events"
         ],
         "summary": "Delete Meal",
-        "description": "Delete a meal. Its nutrient samples are kept.",
+        "description": "Delete a meal together with its nutrients.",
         "operationId": "delete_meal_api_v1_users__user_id__events_meals__meal_id__delete",
         "security": [
           {

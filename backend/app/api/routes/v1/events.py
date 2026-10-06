@@ -281,6 +281,6 @@ def delete_meal(
     db: DbSession,
     _api_key: ApiKeyDep,
 ) -> None:
-    """Delete a meal. Its nutrient samples are kept."""
+    """Delete a meal together with its nutrients."""
     if not event_record_service.delete_event_record(db, user_id, meal_id, "meal"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")

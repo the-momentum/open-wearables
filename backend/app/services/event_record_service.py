@@ -35,6 +35,7 @@ from app.schemas.model_crud.activities import (
     EventRecordQueryParams,
     EventRecordResponse,
     EventRecordUpdate,
+    MealDetailCreate,
     MenstrualCycleDetailCreate,
     SleepInclude,
     WorkoutInclude,
@@ -68,11 +69,6 @@ from app.services.services import AppService
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
-
-# Nutrient series the /events/meals response sums per meal.
-_MEAL_SERIES_TYPES: frozenset[SeriesType] = frozenset(t for t in SeriesType if t.value.startswith("dietary_")) | {
-    SeriesType.hydration
-}
 
 
 def pace_sec_per_km(distance_meters: float | None, seconds: int | None) -> float | None:
@@ -252,6 +248,27 @@ class EventRecordService(
         return self.crud.find_adjacent_sleep_record(
             db_session, user_id, start_time, end_time, threshold_minutes, source=source, provider=provider
         )
+
+    def upsert_meals(
+        self,
+        db_session: DbSession,
+        meals: list[tuple[EventRecordCreate, MealDetailCreate]],
+    ) -> int:
+        """Insert or refresh meals with their details; webhooks only for new ones. Returns the number inserted."""
+        stored = self.crud.bulk_upsert_meals(db_session, [record for record, _ in meals])
+        inserted: list[EventRecordDetailCreate] = []
+        refreshed: list[EventRecordDetailCreate] = []
+        for record, detail in meals:
+            if record.id not in stored:
+                continue
+            record_id, is_inserted = stored[record.id]
+            (inserted if is_inserted else refreshed).append(detail.model_copy(update={"record_id": record_id}))
+
+        if inserted:
+            self.bulk_create_details(db_session, inserted, detail_type="meal")
+        if refreshed:
+            self.event_record_detail_repo.bulk_create(db_session, refreshed, detail_type="meal")
+        return len(inserted)
 
     def create_or_merge_sleep(
         self,
@@ -1114,12 +1131,14 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
-        nutrients_by_meal = self._nutrients_by_meal(db_session, [record for record, _ in records])
-
         data = []
         for record, data_source in records:
             details: MealDetails | None = record.meal_detail
-            nutrients = nutrients_by_meal.get(record.id, {})
+            nutrients = {
+                SeriesType(code): value
+                for code, value in (details.nutrients if details else {}).items()
+                if code in SeriesType.__members__
+            }
             macros = Macros(
                 protein_g=as_float(nutrients.get(SeriesType.dietary_protein)),
                 carbohydrates_g=as_float(nutrients.get(SeriesType.dietary_carbohydrates)),
@@ -1137,8 +1156,7 @@ class EventRecordService(
                     macros=macros if any(v is not None for v in macros.model_dump().values()) else None,
                     water_ml=as_float(nutrients.get(SeriesType.hydration)),
                     nutrients={
-                        t.value: NutrientValue(value=float(v), unit=get_series_type_unit(t))
-                        for t, v in nutrients.items()
+                        t.value: NutrientValue(value=v, unit=get_series_type_unit(t)) for t, v in nutrients.items()
                     },
                 )
             )
@@ -1156,17 +1174,6 @@ class EventRecordService(
                 start_time=params.start_datetime,
                 end_time=params.end_datetime,
             ),
-        )
-
-    def _nutrients_by_meal(
-        self, db_session: DbSession, meals: list[EventRecord]
-    ) -> dict[UUID, dict[SeriesType, Decimal]]:
-        """Sum each meal's nutrient samples (macros, calories, water): those from the meal's
-        data source, recorded within the meal's time window."""
-        return self.data_point_series_repo.get_sums_in_event_windows(
-            db_session,
-            [(meal.id, meal.data_source_id, meal.start_datetime, meal.end_datetime) for meal in meals],
-            list(_MEAL_SERIES_TYPES),
         )
 
     def delete_event_record(
