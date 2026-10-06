@@ -951,6 +951,30 @@ class TestSDKImportMealCorrelation:
         assert meals[0].macros.protein_g == 38.2
         assert "dietary_caffeine" not in meals[0].nutrients
 
+    def test_meal_created_fires_once_for_a_new_meal_with_its_nutrients(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+            ]
+        )
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as on_meal_created,
+        ):
+            import_service.load_data(db, payload, str(user.id))
+            import_service.load_data(db, payload, str(user.id))
+
+        on_meal_created.assert_called_once()
+        assert on_meal_created.call_args.kwargs["title"] == "Kurczak z ryżem"
+        assert on_meal_created.call_args.kwargs["calories_kcal"] == 550.0
+
     def test_meals_sharing_the_same_interval_are_all_saved(self, db: Session, import_service: ImportService) -> None:
         """MyFitnessPal logs every meal of a day with the same interval. Each meal is its own
         record with its own nutrients, and the rest of the batch (a workout) is unaffected."""

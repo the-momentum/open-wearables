@@ -387,13 +387,21 @@ Every payload envelope has `type` (the event name as a string) and `data`.
       "fat_g": 18.5,
       "fiber_g": 4.0
     },
-    "water_ml": null
+    "water_ml": null,
+    "nutrients": {
+      "dietary_energy_consumed": { "value": 550.0, "unit": "kcal" },
+      "dietary_protein": { "value": 38.2, "unit": "g" },
+      "dietary_carbohydrates": { "value": 42.0, "unit": "g" },
+      "dietary_fat_total": { "value": 18.5, "unit": "g" },
+      "dietary_fiber": { "value": 4.0, "unit": "g" },
+      "dietary_sodium": { "value": 620.0, "unit": "mg" }
+    }
   }
 }
 ```
 
 <Note>
-  `title` and `meal_type` come from the provider's food-log entry (or HealthKit/Health Connect correlation metadata) and are `null` when not reported. `macros` is `null` when none of its four fields were recorded for the meal; each of `calories_kcal` and `water_ml` is `null` independently when that nutrient wasn't reported.
+  `title` and `meal_type` come from the provider's food-log entry (or HealthKit/Health Connect correlation metadata) and are `null` when not reported. `macros` is `null` when none of its four fields were recorded for the meal; each of `calories_kcal` and `water_ml` is `null` independently when that nutrient wasn't reported. `nutrients` holds every nutrient recorded for the meal, keyed by series type, the same as in `GET /events/meals`.
 </Note>
 
 ### `menstrual_cycle.created`

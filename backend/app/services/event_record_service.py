@@ -72,14 +72,28 @@ from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
-from app.utils.db_events import defer_until_commit
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
-# Nutrient series correlated to a meal EventRecord that the /events/meals response returns.
-_MEAL_SERIES_TYPES: frozenset[SeriesType] = frozenset(t for t in SeriesType if t.value.startswith("dietary_")) | {
-    SeriesType.hydration
-}
+
+def _meal_summary(nutrients: dict[SeriesType, float]) -> tuple[float | None, Macros | None, float | None]:
+    """Calories, macros (None when none recorded) and water for a meal, as /events/meals and meal.created show them."""
+    macros = Macros(
+        protein_g=nutrients.get(SeriesType.dietary_protein),
+        carbohydrates_g=nutrients.get(SeriesType.dietary_carbohydrates),
+        fat_g=nutrients.get(SeriesType.dietary_fat_total),
+        fiber_g=nutrients.get(SeriesType.dietary_fiber),
+    )
+    has_macros = any(v is not None for v in macros.model_dump().values())
+    return (
+        nutrients.get(SeriesType.dietary_energy_consumed),
+        macros if has_macros else None,
+        nutrients.get(SeriesType.hydration),
+    )
+
+
+def _nutrient_values(nutrients: dict[SeriesType, float]) -> dict[str, NutrientValue]:
+    return {t.value: NutrientValue(value=v, unit=get_series_type_unit(t)) for t, v in nutrients.items()}
 
 
 def pace_sec_per_km(distance_meters: float | None, seconds: int | None) -> float | None:
@@ -583,12 +597,11 @@ class EventRecordService(
         db_session.commit()
         return created_record, True, new_detail
 
+    @staticmethod
     def _emit_event_record_webhook(
-        self,
         record: EventRecord,
         data_source: DataSource,
         detail: EventRecordDetailCreate,
-        nutrients: dict[SeriesType, Decimal] | None = None,
     ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
         if not svix_service.is_enabled():
@@ -680,8 +693,8 @@ class EventRecordService(
                     else None,
                     avg_pace_sec_per_km=round(avg_pace) if avg_pace is not None else None,
                 )
-            case "meal":
-                mdc = detail if isinstance(detail, MealDetailCreate) else None
+            case "meal" if isinstance(detail, MealDetailCreate):
+                calories_kcal, macros, water_ml = _meal_summary(detail.nutrients)
                 on_meal_created(
                     record_id=record.id,
                     user_id=data_source.user_id,
@@ -690,71 +703,13 @@ class EventRecordService(
                     start_time=record.start_datetime.isoformat(),
                     end_time=record.end_datetime.isoformat(),
                     zone_offset=zone_offset,
-                    title=mdc.title if mdc else None,
-                    meal_type=mdc.meal_type if mdc else None,
-                    **self._meal_webhook_fields(nutrients),
+                    title=detail.title,
+                    meal_type=detail.meal_type,
+                    calories_kcal=calories_kcal,
+                    macros=macros.model_dump() if macros else None,
+                    water_ml=water_ml,
+                    nutrients={code: value.model_dump() for code, value in _nutrient_values(detail.nutrients).items()},
                 )
-
-    @staticmethod
-    def _meal_webhook_fields(nutrients: dict[SeriesType, Decimal] | None) -> dict:
-        """Calories/macros/water for a meal's webhook payload, summarized like the /events/meals response.
-
-        Takes the nutrient totals rather than querying for them: both meal webhook call
-        sites fire from an ``after_commit`` hook, where the triggering Session is in a
-        committed state and SQLAlchemy refuses to emit further SQL on it until the *next*
-        transaction - which here would be one that never comes.
-        """
-        nutrients = nutrients or {}
-        macros = {
-            "protein_g": as_float(nutrients.get(SeriesType.dietary_protein)),
-            "carbohydrates_g": as_float(nutrients.get(SeriesType.dietary_carbohydrates)),
-            "fat_g": as_float(nutrients.get(SeriesType.dietary_fat_total)),
-            "fiber_g": as_float(nutrients.get(SeriesType.dietary_fiber)),
-        }
-        return {
-            "calories_kcal": as_float(nutrients.get(SeriesType.dietary_energy_consumed)),
-            "macros": macros if any(v is not None for v in macros.values()) else None,
-            "water_ml": as_float(nutrients.get(SeriesType.hydration)),
-        }
-
-    def schedule_meal_webhook(
-        self,
-        db_session: DbSession,
-        record_id: UUID,
-        record: EventRecordCreate,
-        detail: EventRecordDetailCreate,
-        nutrients: dict[SeriesType, Decimal] | None,
-    ) -> None:
-        """Defer meal.created until the caller's commit, mirroring bulk_create_details.
-
-        Called explicitly by whoever creates/updates the meal, once its nutrient samples are
-        known - create_or_update_meal itself doesn't call this, since a newly inserted meal's
-        nutrients aren't always known at that point (see create_or_update_meal). The caller
-        only flushes - it commits the meal alongside its nutrient samples - so firing here
-        would race a transaction that might still roll back. Uses defer_until_commit rather
-        than a raw after_commit listener because callers (e.g. the Google Health nutrition
-        sync) run this inside a per-meal begin_nested() savepoint: a plain listener would fire
-        on that savepoint's release, before the caller's real commit, and would survive
-        uncleared if the savepoint rolled back instead.
-        """
-        if not svix_service.is_enabled():
-            return
-
-        @defer_until_commit(db_session)
-        def _dispatch_meal_webhook() -> None:
-            """Fire meal.created now that the meal and its nutrient samples are committed."""
-            on_meal_created(
-                record_id=record_id,
-                user_id=record.user_id,
-                provider=record.provider or record.source_name,
-                device=record.device_model,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=record.zone_offset,
-                title=detail.title if isinstance(detail, MealDetailCreate) else None,
-                meal_type=detail.meal_type if isinstance(detail, MealDetailCreate) else None,
-                **self._meal_webhook_fields(nutrients),
-            )
 
     def bulk_create(
         self,
@@ -771,14 +726,8 @@ class EventRecordService(
         db_session: DbSession,
         details: list[EventRecordDetailCreate],
         detail_type: str = "workout",
-        nutrients_by_record: dict[UUID, dict[SeriesType, Decimal]] | None = None,
     ) -> None:
-        """Bulk create event record details and fire one webhook per detail on commit.
-
-        ``nutrients_by_record`` carries the dietary DataPointSeries totals per meal, keyed by
-        record id - needed for meal.created, since MealDetailCreate itself has no nutrient
-        fields (those live in DataPointSeries, inserted separately by the caller).
-        """
+        """Bulk create event record details and fire one webhook per detail on commit."""
         self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)  # ty:ignore[invalid-argument-type]
 
         if not details or not svix_service.is_enabled():
@@ -797,7 +746,7 @@ class EventRecordService(
         )
         data_sources_by_id = {ds.id: ds for ds in data_sources}
 
-        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate, dict[SeriesType, Decimal] | None]] = []
+        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
         for detail in details:
             record = records_by_id.get(detail.record_id)
             if record is None or record.data_source_id is None:
@@ -805,8 +754,7 @@ class EventRecordService(
             data_source = data_sources_by_id.get(record.data_source_id)
             if data_source is None:
                 continue
-            nutrients = (nutrients_by_record or {}).get(detail.record_id)
-            dispatches.append((record, data_source, detail, nutrients))
+            dispatches.append((record, data_source, detail))
 
         if not dispatches:
             return
@@ -821,9 +769,8 @@ class EventRecordService(
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
-            """Fire one webhook per detail now that the whole batch is committed."""
-            for record, data_source, detail, nutrients in dispatches:
-                self._emit_event_record_webhook(record, data_source, detail, nutrients)
+            for record, data_source, detail in dispatches:
+                self._emit_event_record_webhook(record, data_source, detail)
 
     @handle_exceptions
     def _get_records_with_filters(
@@ -1234,12 +1181,7 @@ class EventRecordService(
                 for code, value in (details.nutrients if details else {}).items()
                 if code in SeriesType.__members__
             }
-            macros = Macros(
-                protein_g=as_float(nutrients.get(SeriesType.dietary_protein)),
-                carbohydrates_g=as_float(nutrients.get(SeriesType.dietary_carbohydrates)),
-                fat_g=as_float(nutrients.get(SeriesType.dietary_fat_total)),
-                fiber_g=as_float(nutrients.get(SeriesType.dietary_fiber)),
-            )
+            calories_kcal, macros, water_ml = _meal_summary(nutrients)
             data.append(
                 Meal(
                     id=record.id,
@@ -1247,12 +1189,10 @@ class EventRecordService(
                     meal_type=details.meal_type if details else None,
                     name=details.title if details else None,
                     source=self._map_source(data_source),
-                    calories_kcal=as_float(nutrients.get(SeriesType.dietary_energy_consumed)),
-                    macros=macros if any(v is not None for v in macros.model_dump().values()) else None,
-                    water_ml=as_float(nutrients.get(SeriesType.hydration)),
-                    nutrients={
-                        t.value: NutrientValue(value=v, unit=get_series_type_unit(t)) for t, v in nutrients.items()
-                    },
+                    calories_kcal=calories_kcal,
+                    macros=macros,
+                    water_ml=water_ml,
+                    nutrients=_nutrient_values(nutrients),
                 )
             )
 

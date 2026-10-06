@@ -135,6 +135,14 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
                 "fiber_g": 4.0,
             },
             "water_ml": None,
+            "nutrients": {
+                "dietary_energy_consumed": {"value": 550.0, "unit": "kcal"},
+                "dietary_protein": {"value": 38.2, "unit": "g"},
+                "dietary_carbohydrates": {"value": 42.0, "unit": "g"},
+                "dietary_fat_total": {"value": 18.5, "unit": "g"},
+                "dietary_fiber": {"value": 4.0, "unit": "g"},
+                "dietary_sodium": {"value": 620.0, "unit": "mg"},
+            },
         },
     },
     # ------------------------------------------------------------------

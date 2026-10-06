@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
@@ -46,7 +45,6 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -148,7 +146,6 @@ class ImportService:
         self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
-        """Convert a raw numeric value to `Decimal`, passing `None` through unchanged."""
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
@@ -263,7 +260,6 @@ class ImportService:
             yield record, detail
 
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
-        """Rescale a value into the series' stored unit for series where the SDK unit varies by provider."""
         match series_type:
             # meters → cm
             case SeriesType.height | SeriesType.walking_step_length:
@@ -282,26 +278,12 @@ class ImportService:
             case _:
                 return value
 
-    @handle_exceptions
     def _build_statistic_bundles(
         self,
         records: list[MetricRecord],
         provider: str,
         user_id: str,
-        correlation_id_map: dict[str, UUID] | None = None,
-        correlation_type_by_external_id: dict[str, str] | None = None,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
-        """Build time series samples from `records[]` (correlation records themselves
-        already excluded by `load_data` - see `_build_meal_bundles`).
-
-        `correlation_id_map` links a sample to its parent (via `parentId`) when that
-        correlation was already resolved earlier in the same batch. `correlation_type_by_
-        external_id` says which correlation type that parent is, so the link is only made
-        when the sample's own series type is one CORRELATION_LINKABLE_SERIES_TYPES allows
-        for that specific correlation type - a heart rate reading whose parentId happens to
-        match a meal's external_id, say, must stay a loose sample. No match, or no
-        `parentId`, is also a loose sample.
-        """
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
 
@@ -332,13 +314,6 @@ class ImportService:
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
 
-            # Links this sample to its parent correlation, when it has one, its own type is
-            # allowed for THAT correlation's type, and the correlation was resolved in this
-            # same batch. None for a loose sample.
-            parent_type = correlation_type_by_external_id.get(rjson.parentId) if rjson.parentId else None
-            linkable_types = CORRELATION_LINKABLE_SERIES_TYPES.get(parent_type, frozenset())
-            event_record_id = correlation_id_map.get(rjson.parentId) if series_type in linkable_types else None
-
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.id,
@@ -353,7 +328,6 @@ class ImportService:
                 value=value,
                 series_type=series_type,
                 is_daily_total=daily_total_flag(series_type, is_daily=False),
-                event_record_id=event_record_id,
             )
 
             match series_type:
@@ -366,35 +340,7 @@ class ImportService:
 
         return time_series_samples
 
-    def _prune_stale_meal_samples(
-        self,
-        db_session: DbSession,
-        samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate],
-        meal_ids: set[UUID],
-    ) -> None:
-        """Delete a meal's previously-stored samples whose type this batch no longer reports.
-
-        A meal only reports the nutrient types it currently has; an item removed from it
-        (e.g. the user deletes a food from the entry) simply won't be in this set, so this
-        deletes whatever this batch no longer reports for that meal - otherwise a removed
-        item's sample would never get cleaned up. A meal absent from `samples` entirely
-        (this batch says nothing about its nutrients) is left untouched.
-
-        `meal_ids` are the ids this same call just upserted as meals - `sample.event_record_id`
-        is trusted only against that set, not merely "is not None", so a future bug that sets
-        event_record_id on a sample for some other purpose can't get its rows silently swept
-        into meal reconciliation.
-        """
-        meal_sample_types: dict[UUID, set[SeriesType]] = {}
-        for sample in samples:
-            if sample.event_record_id is None or sample.event_record_id not in meal_ids:
-                continue
-            meal_sample_types.setdefault(sample.event_record_id, set()).add(sample.series_type)
-        for meal_id, types in meal_sample_types.items():
-            self.event_record_service.data_point_series_repo.delete_stale_for_event_record(db_session, meal_id, types)
-
     def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
-        """Return (min, max, avg) for `values`, or `(None, None, None)` when empty."""
         if not values:
             return None, None, None
         min_v = min(values)
@@ -550,22 +496,11 @@ class ImportService:
         # Process time series samples (records)
         samples = self._build_statistic_bundles(records, request.provider, user_id)
         if samples:
-            self._prune_stale_meal_samples(db_session, samples, meal_ids)
-
             counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
-
-        # Schedule meal.created for newly inserted meals now that the nutrient samples built
-        # above are known - create_or_update_meal itself doesn't fire it (see its docstring).
-        if newly_inserted_meals:
-            meal_nutrients = self._nutrients_by_meal(samples, set(newly_inserted_meals.keys()))
-            for meal_id, (meal_record, meal_detail) in newly_inserted_meals.items():
-                self.event_record_service.schedule_meal_webhook(
-                    db_session, meal_id, meal_record, meal_detail, meal_nutrients.get(meal_id)
-                )
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()
@@ -595,12 +530,6 @@ class ImportService:
         user_id: str,
         batch_id: str | None = None,
     ) -> UploadDataResponse:
-        """Parse, validate, and load an SDK sync request, returning a best-effort response.
-
-        Always returns a 200/400 `UploadDataResponse` rather than raising - validation and
-        processing failures are caught, logged, reported to Sentry, and turned into a response
-        instead of propagating to the caller.
-        """
         provider = "unknown"
         try:
             # Parse content based on type

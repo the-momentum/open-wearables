@@ -117,6 +117,7 @@ def on_meal_created(
     calories_kcal: float | None = None,
     macros: dict[str, float | None] | None = None,
     water_ml: float | None = None,
+    nutrients: dict[str, dict[str, float | str]] | None = None,
 ) -> None:
     """Dispatch the meal.created webhook for a newly saved meal."""
     _dispatch(
@@ -135,6 +136,7 @@ def on_meal_created(
                 "calories_kcal": calories_kcal,
                 "macros": macros,
                 "water_ml": water_ml,
+                "nutrients": nutrients or {},
             },
         },
         idempotency_key=f"meal.created.{record_id}",

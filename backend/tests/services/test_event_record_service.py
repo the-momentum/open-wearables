@@ -232,30 +232,26 @@ class TestEventRecordServiceBulkCreateDetails:
         mock_workout.assert_not_called()
 
     def test_bulk_create_details_emits_meal_webhook_with_nutrients(self, db: Session) -> None:
-        """Meal correlations saved via the SDK import path (bulk_create + bulk_create_details)
-        must fire meal.created with the nutrient totals the caller recorded against the meal.
-
-        MealDetailCreate itself carries no nutrient fields (those live in DataPointSeries),
-        so the caller passes them separately via nutrients_by_record.
-        """
         data_source = DataSourceFactory(source="apple")
         meal = EventRecordFactory(mapping=data_source, category="meal", type_=None)
-        details = [MealDetailCreate(record_id=meal.id, title="Chicken Salad", meal_type="lunch")]
-        nutrients_by_record = {
-            meal.id: {
-                SeriesType.dietary_energy_consumed: Decimal("650.0"),
-                SeriesType.dietary_protein: Decimal("40.0"),
-                SeriesType.hydration: Decimal("250.0"),
-            }
-        }
+        details = [
+            MealDetailCreate(
+                record_id=meal.id,
+                title="Chicken Salad",
+                meal_type="lunch",
+                nutrients={
+                    SeriesType.dietary_energy_consumed: 650.0,
+                    SeriesType.dietary_protein: 40.0,
+                    SeriesType.hydration: 250.0,
+                },
+            )
+        ]
 
         with (
             patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
             patch("app.services.event_record_service.on_meal_created") as mock_meal,
         ):
-            event_record_service.bulk_create_details(
-                db, details, detail_type="meal", nutrients_by_record=nutrients_by_record
-            )
+            event_record_service.bulk_create_details(db, details, detail_type="meal")
             db.commit()
 
         mock_meal.assert_called_once()
@@ -266,6 +262,11 @@ class TestEventRecordServiceBulkCreateDetails:
         assert kwargs["calories_kcal"] == 650.0
         assert kwargs["macros"]["protein_g"] == 40.0
         assert kwargs["water_ml"] == 250.0
+        assert kwargs["nutrients"] == {
+            "dietary_energy_consumed": {"value": 650.0, "unit": "kcal"},
+            "dietary_protein": {"value": 40.0, "unit": "g"},
+            "hydration": {"value": 250.0, "unit": "mL"},
+        }
 
 
 class TestEventRecordServiceGetRecordsResponse:

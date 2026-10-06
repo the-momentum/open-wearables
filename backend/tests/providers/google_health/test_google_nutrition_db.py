@@ -120,6 +120,26 @@ class TestResync:
         assert meals[0].start_datetime == START + timedelta(minutes=15)
 
 
+class TestMealCreatedWebhook:
+    def test_fires_once_after_the_sync_commits_with_the_meal_nutrients(self, db: Session) -> None:
+        user = UserFactory()
+        _existing_source(user)
+        db.commit()
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as on_meal_created,
+        ):
+            _sync_like_data_247(db, user.id, [_point("Chicken")])
+            _sync_like_data_247(db, user.id, [_point("Chicken")])
+
+        on_meal_created.assert_called_once()
+        kwargs = on_meal_created.call_args.kwargs
+        assert kwargs["title"] == "Chicken"
+        assert kwargs["calories_kcal"] == 100.0
+        assert kwargs["macros"]["protein_g"] == 10.0
+
+
 class TestWebhookPath:
     def test_the_webhook_route_commits_the_batch(self, db: Session) -> None:
         """No savepoint wraps the handler here, so _fetch_and_save must commit itself."""
