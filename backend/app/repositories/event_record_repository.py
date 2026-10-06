@@ -99,6 +99,7 @@ class EventRecordRepository(
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
+                self.model.category != "meal",
                 self.model.start_datetime == creation.start_datetime,
                 self.model.end_datetime == creation.end_datetime,
             )

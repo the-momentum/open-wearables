@@ -45,7 +45,6 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -147,7 +146,6 @@ class ImportService:
         self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
-        """Convert a raw numeric value to `Decimal`, passing `None` through unchanged."""
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
@@ -262,7 +260,6 @@ class ImportService:
             yield record, detail
 
     def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
-        """Rescale a value into the series' stored unit for series where the SDK unit varies by provider."""
         match series_type:
             # meters → cm
             case SeriesType.height | SeriesType.walking_step_length:
@@ -281,16 +278,12 @@ class ImportService:
             case _:
                 return value
 
-    @handle_exceptions
     def _build_statistic_bundles(
         self,
         records: list[MetricRecord],
         provider: str,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
-        """Build time series samples from `records[]` (correlation records themselves
-        already excluded by `load_data` - see `_build_meal_bundles`).
-        """
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
 
@@ -348,7 +341,6 @@ class ImportService:
         return time_series_samples
 
     def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
-        """Return (min, max, avg) for `values`, or `(None, None, None)` when empty."""
         if not values:
             return None, None, None
         min_v = min(values)
@@ -538,12 +530,6 @@ class ImportService:
         user_id: str,
         batch_id: str | None = None,
     ) -> UploadDataResponse:
-        """Parse, validate, and load an SDK sync request, returning a best-effort response.
-
-        Always returns a 200/400 `UploadDataResponse` rather than raising - validation and
-        processing failures are caught, logged, reported to Sentry, and turned into a response
-        instead of propagating to the caller.
-        """
         provider = "unknown"
         try:
             # Parse content based on type
