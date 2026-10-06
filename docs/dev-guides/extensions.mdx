@@ -1,0 +1,119 @@
+---
+title: "Extensions"
+description: "Add functionality to Open Wearables from a separate Python package: Celery tasks, scheduled jobs and API endpoints, without changing the core."
+keywords: ["open wearables extensions", "open wearables plugins", "open wearables add-on module"]
+"og:title": "Extensions | Open Wearables Developer Guide"
+"og:description": "Add functionality to Open Wearables from a separate Python package without changing the core."
+"og:url": "https://docs.openwearables.io/dev-guides/extensions"
+"og:type": "article"
+"twitter:title": "Extensions | Open Wearables Developer Guide"
+"twitter:description": "Add functionality to Open Wearables from a separate Python package without changing the core."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+An extension is a Python package that lives in its own repository and plugs into the
+Open Wearables backend at startup. It can contribute:
+
+- **Celery tasks** - autodiscovered from the packages you list
+- **Scheduled jobs** - merged into the Celery beat schedule
+- **API endpoints** - FastAPI routers mounted under `/api/v1`
+
+Extensions run inside the backend process and can use the core's database models,
+for example to write rows into `health_score`, which then go out through the regular
+API.
+
+## Writing an extension
+
+Register a subclass of `OWExtension` under the `open_wearables.extensions` entry point
+group:
+
+```toml pyproject.toml
+[project]
+name = "my-extension"
+version = "0.1.0"
+dependencies = []  # extensions run on the core's dependency set
+
+[project.entry-points."open_wearables.extensions"]
+my_extension = "my_extension.extension:MyExtension"
+```
+
+```python my_extension/extension.py
+from dataclasses import dataclass, field
+from typing import Any
+
+from fastapi import APIRouter
+
+from app.extensions import OWExtension
+
+
+@dataclass
+class MyExtension(OWExtension):
+    name: str = "my_extension"
+    display_name: str = "My Extension"
+    version: str = "0.1.0"
+    requires_core: str = ">=0.9,<0.11"
+    # Celery autodiscovers a `tasks` module in each listed package.
+    celery_task_packages: list[str] = field(default_factory=lambda: ["my_extension"])
+
+    def beat_schedule(self) -> dict[str, dict[str, Any]]:
+        return {
+            "my-extension-job": {
+                "task": "my_extension.tasks.run_job",
+                "schedule": 600.0,
+            }
+        }
+
+    def routers(self) -> list[APIRouter]:
+        from my_extension.router import router
+
+        return [router]
+```
+
+| Attribute / method | Purpose |
+|---|---|
+| `name` | Unique identifier of the extension |
+| `version` | Version of the extension package |
+| `requires_core` | [PEP 440](https://peps.python.org/pep-0440/#version-specifiers) specifier of supported core versions. Outside of it the extension is skipped with a warning |
+| `celery_task_packages` | Packages Celery searches for a `tasks` module |
+| `beat_schedule()` | Periodic tasks added to the beat schedule |
+| `routers()` | FastAPI routers mounted under `/api/v1` |
+
+<Note>
+`app.extensions` is the supported interface. Extensions may import anything else from
+`app` (models, repositories, services), but those are internal and can change between
+releases. Keep `requires_core` narrow and test against each core version you support.
+</Note>
+
+An extension that fails to import or does not support the running core version is
+logged and skipped. It never stops the backend from starting.
+
+## Local development
+
+Clone the extension into the `extensions/` directory at the repository root. The
+directory is mounted into the backend containers, and every subdirectory with a
+`pyproject.toml` is installed in editable mode on container start:
+
+```bash
+git clone <extension repo> extensions/my-extension
+docker compose up -d
+```
+
+Look for `Extension my_extension 0.1.0 loaded` in the backend logs. With
+`make watch`, changes to the extension restart the Celery worker and beat.
+
+## Deployment
+
+Production images do not read the `extensions/` directory. Build an image on top of
+the core image instead:
+
+```dockerfile Dockerfile
+ARG CORE_TAG=latest
+FROM themomentum/open-wearables-backend:${CORE_TAG}
+
+COPY . /src/my-extension
+RUN uv pip install --no-deps /src/my-extension
+```
+
+Use that image for the `app`, `celery-worker`, `celery-beat` and `flower` services.

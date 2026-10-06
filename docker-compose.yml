@@ -37,6 +37,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      # Add-on modules checked out locally, see extensions/README.md
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync
@@ -72,8 +75,14 @@ services:
       - redis
       - db
       - app
+    volumes:
+      # Add-on modules checked out locally, see extensions/README.md
+      - ./extensions:/root_project/extensions
     develop:
       watch:
+        - action: sync+restart
+          path: ./extensions
+          target: /root_project/extensions
         - action: sync+restart
           path: ./backend/app
           target: /root_project/app
@@ -95,8 +104,14 @@ services:
       - redis
       - db
       - app
+    volumes:
+      # Add-on modules checked out locally, see extensions/README.md
+      - ./extensions:/root_project/extensions
     develop:
       watch:
+        - action: sync+restart
+          path: ./extensions
+          target: /root_project/extensions
         - action: sync+restart
           path: ./backend/app
           target: /root_project/app
@@ -120,6 +135,9 @@ services:
       - redis
       - db
       - app
+    volumes:
+      # Add-on modules checked out locally, see extensions/README.md
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync

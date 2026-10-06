@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e -x
 
+scripts/start/install_extensions.sh
+
 echo "Starting I/O worker..."
 uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync,webhook_sync -n io@%h &
 

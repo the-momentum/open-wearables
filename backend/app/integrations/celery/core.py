@@ -9,6 +9,7 @@ from celery import current_app as current_celery_app
 from celery.schedules import crontab
 
 from app.config import settings
+from app.extensions import collect_beat_schedule, get_active_extensions
 from app.integrations.otel import init_otel, shutdown_otel
 from app.services import raw_payload_storage
 from app.utils.config_utils import LogFormat
@@ -212,7 +213,11 @@ def create_celery() -> Celery:
         celery_app.conf.broker_use_ssl = ssl_options
         celery_app.conf.redis_backend_use_ssl = ssl_options
 
-    celery_app.autodiscover_tasks(["app.integrations.celery.tasks", "app.integrations.celery.tasks.garmin"])
+    extensions = get_active_extensions()
+    celery_app.autodiscover_tasks(
+        ["app.integrations.celery.tasks", "app.integrations.celery.tasks.garmin"]
+        + [package for extension in extensions for package in extension.celery_task_packages]
+    )
 
     celery_app.conf.beat_schedule = {
         "sync-all-users-periodic": {
@@ -273,5 +278,7 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {"event": "daily"},
         }
+
+    celery_app.conf.beat_schedule.update(collect_beat_schedule())
 
     return celery_app
