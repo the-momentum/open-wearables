@@ -15,3 +15,9 @@ export const fetchFeatures = async (accessToken: string): Promise<Features> => {
 		email: config.email_enabled !== false
 	};
 };
+
+/** Off by default: without it the webhook endpoints answer 503. */
+export const fetchWebhooksEnabled = async (accessToken: string): Promise<boolean> => {
+	const config = await apiGet<AppConfig>('/api/v1/config', accessToken);
+	return config.outgoing_webhooks_enabled === true;
+};

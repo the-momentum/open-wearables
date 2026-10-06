@@ -1,3 +1,4 @@
+import { fetchWebhooksEnabled } from '$lib/server/config';
 import { attempt } from '$lib/server/form';
 import { requireToken } from '$lib/server/guard';
 import {
@@ -14,12 +15,16 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ locals }) => {
 	const accessToken = await requireToken(locals);
 
+	if (!(await fetchWebhooksEnabled(accessToken))) {
+		return { enabled: false, subscriptions: [], types: [] };
+	}
+
 	const [subscriptions, types] = await Promise.all([
 		listSubscriptions(accessToken),
 		listEventTypes(accessToken)
 	]);
 
-	return { subscriptions, types };
+	return { enabled: true, subscriptions, types };
 };
 
 /**

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Plus from '@lucide/svelte/icons/plus';
 	import Webhook from '@lucide/svelte/icons/webhook';
+	import Alert from '$lib/components/ui/Alert.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import ConfirmDialog from '$lib/components/ui/ConfirmDialog.svelte';
@@ -13,6 +14,8 @@
 	import { messageFrom } from '$lib/utils/forms.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	const WEBHOOKS_DOCS = 'https://openwearables.io/docs/api-reference/guides/webhooks';
 
 	// One dialog of each kind for the page, not one per row, and the subject is
 	// separate from openness so closing does not have to null it.
@@ -37,14 +40,24 @@
 		description="Each one asks us to POST events to a URL of yours as they happen."
 	>
 		{#snippet actions()}
-			<Button onclick={() => open(null)}>
+			<Button onclick={() => open(null)} disabled={!data.enabled}>
 				<Plus size={15} aria-hidden="true" />
 				New subscription
 			</Button>
 		{/snippet}
 	</PageHeader>
 
-	{#if data.subscriptions.length === 0}
+	{#if !data.enabled}
+		<Alert tone="warning">
+			<span>
+				Outgoing webhooks are not enabled on this instance. Set
+				<code>OUTGOING_WEBHOOKS_ENABLED=true</code> in the backend environment, as the
+				<a href={WEBHOOKS_DOCS} target="_blank" rel="noopener noreferrer" class="underline"
+					>webhooks guide</a
+				> describes.
+			</span>
+		</Alert>
+	{:else if data.subscriptions.length === 0}
 		<Card>
 			<EmptyState
 				icon={Webhook}
