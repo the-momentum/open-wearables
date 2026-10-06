@@ -368,7 +368,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (240, SeriesType.withings_pulse_wave_velocity, "m_per_s"),
     (241, SeriesType.withings_metabolic_age, "years"),
     # -------------------------------------------------------------------------
-    # NUTRITION - Dietary intake (IDs 260-299)
+    # NUTRITION - Dietary intake (IDs 260-301)
     # -------------------------------------------------------------------------
     (260, SeriesType.dietary_energy_consumed, "kcal"),
     (261, SeriesType.dietary_carbohydrates, "g"),
@@ -478,7 +478,7 @@ _CATEGORY_RANGES: list[tuple[range, str]] = [
     (range(180, 200), "Activity - Generic"),
     (range(200, 220), "Environmental"),
     (range(220, 250), "Provider-Specific"),  # 220-239 Garmin, 240-249 Withings
-    (range(260, 300), "Nutrition"),
+    (range(260, 302), "Nutrition"),
     (range(500, 600), "Other"),
 ]
 

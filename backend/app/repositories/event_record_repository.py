@@ -18,6 +18,7 @@ from sqlalchemy import (
     func,
     lateral,
     literal,
+    literal_column,
     select,
     text,
     true,
@@ -58,11 +59,7 @@ class EventRecordRepository(
         self.data_source_repo = DataSourceRepository()
 
     def _build_creation(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[UUID, EventRecord]:
-        """Resolve the data source and build the ORM object without touching the session.
-
-        Never commits: create_and_flush and create_and_flush_meal promise their caller owns
-        the transaction, and the committing create() commits the source together with the record.
-        """
+        """Resolve the data source and build the ORM object without touching the session."""
         if creator.data_source_id:
             data_source_id = creator.data_source_id
         else:
@@ -80,7 +77,6 @@ class EventRecordRepository(
                 software_version=creator.software_version,
                 original_source_name=creator.source,
                 reported_type=creator.device_type,
-                commit=False,
             )
             data_source_id = data_source.id
 
@@ -103,6 +99,7 @@ class EventRecordRepository(
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
+                self.model.category != "meal",
                 self.model.start_datetime == creation.start_datetime,
                 self.model.end_datetime == creation.end_datetime,
             )
@@ -112,31 +109,21 @@ class EventRecordRepository(
     def get_by_external_id(
         self,
         db_session: DbSession,
+        user_id: UUID,
         external_id: str,
-        user_id: UUID | None = None,
-        data_source_id: UUID | None = None,
         source: str | None = None,
         provider: str | None = None,
-        category: str | None = None,
     ) -> EventRecord | None:
         """Find a single EventRecord by its provider-assigned external_id."""
-        if data_source_id is not None:
-            query = db_session.query(self.model).filter(
-                self.model.data_source_id == data_source_id,
-                self.model.external_id == external_id,
-            )
-        else:
-            query = (
-                db_session.query(self.model)
-                .join(DataSource, self.model.data_source_id == DataSource.id)
-                .filter(DataSource.user_id == user_id, self.model.external_id == external_id)
-            )
-            if source is not None:
-                query = query.filter(DataSource.source == source)
-            if provider is not None:
-                query = query.filter(DataSource.provider == provider)
-        if category is not None:
-            query = query.filter(self.model.category == category)
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.external_id == external_id)
+        )
+        if source is not None:
+            query = query.filter(DataSource.source == source)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
         return query.one_or_none()
 
     def delete_by_external_id(
@@ -201,35 +188,8 @@ class EventRecordRepository(
                 return existing
             raise
 
-    def create_and_flush_meal(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[EventRecord, bool]:
-        """Inserting optimistically and falling back to that row on conflict closes
-        the check-then-insert window. Returns (record, is_inserted)."""
-        data_source_id, creation = self._build_creation(db_session, creator)
-        nested = db_session.begin_nested()
-        try:
-            db_session.add(creation)
-            db_session.flush()
-            nested.commit()
-            return creation, True
-        except IntegrityError:
-            nested.rollback()
-            if creator.external_id is not None:
-                existing = self.get_by_external_id(
-                    db_session, creator.external_id, data_source_id=data_source_id, category=creator.category
-                )
-                if existing is not None:
-                    return existing, False
-            raise
-
-    @handle_exceptions
-    def bulk_create(
-        self,
-        db_session: DbSession,
-        creators: list[EventRecordCreate],
-    ) -> list[UUID]:
-        if not creators:
-            return []
-
+    def _resolve_values(self, db_session: DbSession, creators: list[EventRecordCreate]) -> list[dict]:
+        """Resolve data sources in batch and build event_record row values."""
         # Group by provider for batch processing
         by_provider: dict[ProviderName, list[EventRecordCreate]] = {}
         for c in creators:
@@ -278,10 +238,23 @@ class EventRecordRepository(
                     "zone_offset": creator.zone_offset,
                 }
             )
+        return values_list
 
+    @handle_exceptions
+    def bulk_create(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> list[UUID]:
+        """Insert non-meal records, skipping existing ones. Meals go through bulk_upsert_meals."""
+        if not creators:
+            return []
+
+        values_list = self._resolve_values(db_session, creators)
         if not values_list:
             return []
 
+        # Batch insert with ON CONFLICT DO NOTHING
         # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
         chunk_size = 6_500
         inserted_ids: set[UUID] = set()
@@ -290,13 +263,66 @@ class EventRecordRepository(
             stmt = (
                 insert(self.model)
                 .values(chunk)
-                .on_conflict_do_nothing(index_elements=["data_source_id", "start_datetime", "end_datetime"])
+                .on_conflict_do_nothing(
+                    index_elements=["data_source_id", "start_datetime", "end_datetime"],
+                    index_where=text("category <> 'meal'"),
+                )
             )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
         # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
+
+    @handle_exceptions
+    def bulk_upsert_meals(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> dict[UUID, tuple[UUID, bool]]:
+        """Insert or update meals by (data source, external_id). Returns {creator id: (record id, is_inserted)}."""
+        values_by_key: dict[tuple[UUID, str], tuple[EventRecordCreate, dict]] = {}
+        resolved = self._resolve_values(db_session, [c for c in creators if c.external_id])
+        creators_by_id = {c.id: c for c in creators}
+        for values in resolved:
+            values_by_key[(values["data_source_id"], values["external_id"])] = (creators_by_id[values["id"]], values)
+        if not values_by_key:
+            return {}
+
+        result: dict[UUID, tuple[UUID, bool]] = {}
+        entries = list(values_by_key.values())
+        chunk_size = 6_500
+        for i in range(0, len(entries), chunk_size):
+            chunk = entries[i : i + chunk_size]
+            stmt = insert(self.model).values([values for _, values in chunk])
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["data_source_id", "external_id"],
+                index_where=text("category = 'meal'"),
+                set_={
+                    column: stmt.excluded[column]
+                    for column in (
+                        "type",
+                        "source_name",
+                        "duration_seconds",
+                        "start_datetime",
+                        "end_datetime",
+                        "zone_offset",
+                    )
+                },
+            ).returning(
+                self.model.id,
+                self.model.data_source_id,
+                self.model.external_id,
+                literal_column("xmax = 0").label("is_inserted"),
+            )
+            stored = {
+                (row.data_source_id, row.external_id): (row.id, row.is_inserted)
+                for row in db_session.execute(stmt).fetchall()
+            }
+            for creator, values in chunk:
+                result[creator.id] = stored[(values["data_source_id"], values["external_id"])]
+        db_session.flush()
+        return result
 
     def get_record_with_details(
         self,

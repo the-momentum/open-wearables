@@ -1,5 +1,4 @@
 import contextlib
-from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import LiteralString, NamedTuple
@@ -263,7 +262,6 @@ class DataPointSeriesRepository(
         value: Decimal | float | int
         series_type_definition_id: int
         is_daily_total: bool | None
-        event_record_id: UUID | None
 
     # Single source of truth for the COPY/INSERT column list, derived from _StagingRow's
     # own field names above so the SQL text and the row shape can't drift apart.
@@ -297,7 +295,6 @@ class DataPointSeriesRepository(
                     value=creator.value,
                     series_type_definition_id=get_series_type_id(creator.series_type),
                     is_daily_total=creator.is_daily_total,
-                    event_record_id=creator.event_record_id,
                 )
             )
 
@@ -344,16 +341,11 @@ class DataPointSeriesRepository(
                             external_id = excluded.external_id,
                             value = excluded.value,
                             zone_offset = excluded.zone_offset,
-                            is_daily_total = excluded.is_daily_total,
-                            event_record_id = COALESCE(excluded.event_record_id, data_point_series.event_record_id)
+                            is_daily_total = excluded.is_daily_total
                         WHERE data_point_series.value IS DISTINCT FROM excluded.value
                            OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
                            OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
                            OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
-                           OR (
-                               excluded.event_record_id IS NOT NULL
-                               AND data_point_series.event_record_id IS DISTINCT FROM excluded.event_record_id
-                           )
                         RETURNING (xmax = 0) AS was_insert
                     )
                     SELECT count(*) FILTER (WHERE was_insert) FROM merged
@@ -926,35 +918,6 @@ class DataPointSeriesRepository(
 
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
-
-    def get_by_event_record_ids(
-        self,
-        db_session: DbSession,
-        event_record_ids: list[UUID],
-    ) -> list[DataPointSeries]:
-        """Fetch every sample correlated to one of the given EventRecords (e.g. a meal's nutrients)."""
-        if not event_record_ids:
-            return []
-        return db_session.query(self.model).filter(self.model.event_record_id.in_(event_record_ids)).all()
-
-    def delete_stale_for_event_record(
-        self,
-        db_session: DbSession,
-        event_record_id: UUID,
-        keep: Iterable[SeriesType],
-    ) -> int:
-        """Drop the samples linked to ``event_record_id`` whose series is not in ``keep``.
-
-        An upsert only touches the series present in the latest payload, so a nutrient the
-        provider stopped reporting for a meal would otherwise stay attached. Flushes only.
-        """
-        keep_ids = [get_series_type_id(t) for t in keep]
-        query = db_session.query(self.model).filter(self.model.event_record_id == event_record_id)
-        if keep_ids:
-            query = query.filter(self.model.series_type_definition_id.not_in(keep_ids))
-        deleted = query.delete(synchronize_session=False)
-        db_session.flush()
-        return deleted
 
     def _local_day_window(
         self, local_date: ColumnElement, start_date: datetime, end_date: datetime

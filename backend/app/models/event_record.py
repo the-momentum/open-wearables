@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index
+from sqlalchemy import Index, text
 from sqlalchemy.orm import Mapped, QueryableAttribute, relationship
 
 from app.database import BaseDbModel
@@ -26,13 +26,21 @@ class EventRecord(BaseDbModel):
     __tablename__ = "event_record"
     __table_args__ = (
         Index("ix_event_record_source_category", "data_source_id", "category"),
-        Index("ix_event_record_source_time", "data_source_id", "start_datetime", "end_datetime", unique=True),
+        # Meals are unique by external_id, not time - several can share one interval (e.g. MyFitnessPal).
+        Index(
+            "ix_event_record_source_time",
+            "data_source_id",
+            "start_datetime",
+            "end_datetime",
+            unique=True,
+            postgresql_where=text("category <> 'meal'"),
+        ),
         Index(
             "ix_event_record_meal_source_external_id",
             "data_source_id",
             "external_id",
             unique=True,
-            postgresql_where="category = 'meal'",
+            postgresql_where=text("category = 'meal'"),
         ),
     )
 

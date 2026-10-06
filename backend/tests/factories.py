@@ -587,6 +587,7 @@ class MealDetailsFactory(BaseFactory):
 
     title = "Grilled Chicken Breast"
     meal_type = "lunch"
+    nutrients = LazyFunction(dict)
 
     @classmethod
     def _create(cls, model_class: type[MealDetails], *args: Any, **kwargs: Any) -> MealDetails:

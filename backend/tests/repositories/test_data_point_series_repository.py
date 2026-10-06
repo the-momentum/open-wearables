@@ -20,7 +20,7 @@ from app.models import DataPointSeries, DataSource
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
-from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+from tests.factories import DataSourceFactory, UserFactory
 
 
 class TestDataPointSeriesRepository:
@@ -773,75 +773,6 @@ class TestDataPointSeriesRepository:
         stored = db.query(DataPointSeries.value).filter(DataPointSeries.recorded_at == ts).scalar()
         assert stored == 2000
 
-    def test_bulk_create_resync_without_correlation_keeps_existing_event_link(
-        self, db: Session, series_repo: DataPointSeriesRepository
-    ) -> None:
-        """A resync that arrives without a resolved meal correlation must not sever a
-        link a previous batch already established (see COALESCE in the merge SET).
-        """
-        user = UserFactory()
-        ts = datetime(2099, 1, 4, tzinfo=timezone.utc)
-        meal = EventRecordFactory(category="meal")
-
-        def sample(value: int, event_record_id: UUID | None) -> TimeSeriesSampleCreate:
-            return TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source="apple",
-                recorded_at=ts,
-                value=value,
-                series_type=SeriesType.hydration,
-                event_record_id=event_record_id,
-                data_source_id=None,
-            )
-
-        # First batch: nutrient sample arrives already linked to its meal.
-        series_repo.bulk_create(db, [sample(500, meal.id)])
-        db.commit()
-
-        # Retry/resync of the same instant arrives without a resolved parentId
-        # (e.g. the meal correlation wasn't available in this batch) - the value
-        # legitimately changes, but the link must survive.
-        series_repo.bulk_create(db, [sample(600, None)])
-        db.commit()
-
-        stored = db.query(DataPointSeries).filter(DataPointSeries.recorded_at == ts).one()
-        assert stored.value == 600
-        assert stored.event_record_id == meal.id
-
-    def test_bulk_create_loose_sample_can_still_be_promoted_to_linked(
-        self, db: Session, series_repo: DataPointSeriesRepository
-    ) -> None:
-        """A loose sample must still gain its meal link once a later batch resolves it -
-        the COALESCE guard must not make the link one-way in the wrong direction.
-        """
-        user = UserFactory()
-        ts = datetime(2099, 1, 5, tzinfo=timezone.utc)
-        meal = EventRecordFactory(category="meal")
-
-        def sample(event_record_id: UUID | None) -> TimeSeriesSampleCreate:
-            return TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source="apple",
-                recorded_at=ts,
-                value=500,
-                series_type=SeriesType.hydration,
-                event_record_id=event_record_id,
-                data_source_id=None,
-            )
-
-        # First batch: correlation not resolved yet -> loose sample.
-        series_repo.bulk_create(db, [sample(None)])
-        db.commit()
-
-        # Later batch: the meal correlation resolves -> the sample gets linked.
-        series_repo.bulk_create(db, [sample(meal.id)])
-        db.commit()
-
-        stored = db.query(DataPointSeries).filter(DataPointSeries.recorded_at == ts).one()
-        assert stored.event_record_id == meal.id
-
     def test_bulk_create_null_fields_round_trip_through_copy(
         self, db: Session, series_repo: DataPointSeriesRepository
     ) -> None:
@@ -971,91 +902,3 @@ class TestDataPointSeriesRepository:
         by_source = {r["source"]: r["steps_sum"] for r in result}
         assert by_source["garmin"] == 10000
         assert by_source["apple"] == 8000
-
-
-class TestDeleteStaleForEventRecord:
-    """data_point_series is one shared table for every category's samples (meal, sleep,
-    workout, ...). event_record_id is a foreign key to event_record.id - a single,
-    globally-unique primary key across all categories - so scoping a delete on it can never
-    leak into another record's rows, even though they all sit in the same table and column."""
-
-    @pytest.fixture
-    def series_repo(self) -> DataPointSeriesRepository:
-        return DataPointSeriesRepository(DataPointSeries)
-
-    def test_only_deletes_rows_linked_to_the_given_event_record(
-        self, db: Session, series_repo: DataPointSeriesRepository
-    ) -> None:
-        user = UserFactory()
-        data_source = DataSourceFactory(user=user)
-        meal = EventRecordFactory(data_source=data_source, category="meal")
-        sleep = EventRecordFactory(data_source=data_source, category="sleep")
-        now = datetime.now(timezone.utc)
-
-        def _sample(recorded_at: datetime, series_type: SeriesType, event_record_id: UUID) -> TimeSeriesSampleCreate:
-            return TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source=data_source.source,
-                device_model=data_source.device_model,
-                data_source_id=data_source.id,
-                recorded_at=recorded_at,
-                value=Decimal("10"),
-                series_type=series_type,
-                event_record_id=event_record_id,
-            )
-
-        meal_sample_id = series_repo.create(db, _sample(now, SeriesType.dietary_protein, meal.id)).id
-        sleep_sample_id = series_repo.create(db, _sample(now - timedelta(hours=1), SeriesType.heart_rate, sleep.id)).id
-
-        # keep=[] means "the meal no longer reports any nutrient type" - the most
-        # aggressive possible delete-stale call - yet it must still leave the
-        # sleep-linked row (a different event_record_id) untouched.
-        deleted = series_repo.delete_stale_for_event_record(db, meal.id, keep=[])
-
-        assert deleted == 1
-        remaining_ids = {row.id for row in db.query(DataPointSeries.id).all()}
-        assert meal_sample_id not in remaining_ids
-        assert sleep_sample_id in remaining_ids
-
-    def test_keeps_reported_types_deletes_the_rest(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        user = UserFactory()
-        data_source = DataSourceFactory(user=user)
-        meal = EventRecordFactory(data_source=data_source, category="meal")
-        now = datetime.now(timezone.utc)
-
-        energy_id = series_repo.create(
-            db,
-            TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source=data_source.source,
-                device_model=data_source.device_model,
-                data_source_id=data_source.id,
-                recorded_at=now,
-                value=Decimal("550"),
-                series_type=SeriesType.dietary_energy_consumed,
-                event_record_id=meal.id,
-            ),
-        ).id
-        protein_id = series_repo.create(
-            db,
-            TimeSeriesSampleCreate(
-                id=uuid4(),
-                user_id=user.id,
-                source=data_source.source,
-                device_model=data_source.device_model,
-                data_source_id=data_source.id,
-                recorded_at=now,
-                value=Decimal("38.2"),
-                series_type=SeriesType.dietary_protein,
-                event_record_id=meal.id,
-            ),
-        ).id
-
-        deleted = series_repo.delete_stale_for_event_record(db, meal.id, keep=[SeriesType.dietary_energy_consumed])
-
-        assert deleted == 1
-        remaining_ids = {row.id for row in db.query(DataPointSeries.id).all()}
-        assert energy_id in remaining_ids
-        assert protein_id not in remaining_ids
