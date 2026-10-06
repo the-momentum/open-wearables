@@ -11,8 +11,8 @@ class MealDetails(EventRecordDetail):
     """Per-meal metadata from HealthKit or Google Health.
 
     Nutrient values themselves (protein, carbs, vitamins, ...) are not stored here -
-    they live in DataPointSeries as regular per-nutrient samples, linked back to this
-    record via DataPointSeries.event_record_id.
+    they live in DataPointSeries as regular per-nutrient samples from the same data
+    source, recorded at the meal's time.
     """
 
     __tablename__ = "meal_details"

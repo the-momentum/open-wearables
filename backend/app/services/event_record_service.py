@@ -28,7 +28,7 @@ from app.repositories import (
     EventRecordRepository,
     HealthScoreRepository,
 )
-from app.schemas.enums import HealthScoreCategory, SeriesType, get_series_type_id, get_series_type_unit
+from app.schemas.enums import HealthScoreCategory, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -69,7 +69,7 @@ from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_se
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
-# Nutrient series correlated to a meal EventRecord that the /events/meals response returns.
+# Nutrient series the /events/meals response sums per meal.
 _MEAL_SERIES_TYPES: frozenset[SeriesType] = frozenset(t for t in SeriesType if t.value.startswith("dietary_")) | {
     SeriesType.hydration
 }
@@ -252,39 +252,6 @@ class EventRecordService(
         return self.crud.find_adjacent_sleep_record(
             db_session, user_id, start_time, end_time, threshold_minutes, source=source, provider=provider
         )
-
-    def create_or_update_meal(
-        self,
-        db_session: DbSession,
-        record: EventRecordCreate,
-        detail: EventRecordDetailCreate,
-    ) -> tuple[EventRecord, bool]:
-        """Insert a meal, or refresh the one already stored for its data source and external id.
-
-        Inserts optimistically and lets ix_event_record_meal_source_external_id settle a
-        conflict, so a pull sync and a webhook racing to save the same meal serialize on that
-        unique index instead of both passing a plain existence check and duplicating the meal.
-
-        Flushes only - the caller commits, so the meal's nutrient samples can share the
-        transaction. Returns (record, is_inserted).
-        """
-        saved, is_inserted = self.crud.create_and_flush_meal(db_session, record)
-        if is_inserted:
-            self.event_record_detail_repo.create_and_flush(
-                db_session, detail.model_copy(update={"record_id": saved.id}), detail_type="meal"
-            )
-            return saved, True
-
-        saved.start_datetime = record.start_datetime
-        saved.end_datetime = record.end_datetime
-        saved.duration_seconds = record.duration_seconds
-        saved.zone_offset = record.zone_offset
-        db_session.flush()
-        self.event_record_detail_repo.delete_by_record_id(db_session, saved.id, "meal")
-        self.event_record_detail_repo.create_and_flush(
-            db_session, detail.model_copy(update={"record_id": saved.id}), detail_type="meal"
-        )
-        return saved, False
 
     def create_or_merge_sleep(
         self,
@@ -1147,7 +1114,7 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
-        nutrients_by_meal = self._nutrients_by_meal(db_session, [record.id for record, _ in records])
+        nutrients_by_meal = self._nutrients_by_meal(db_session, [record for record, _ in records])
 
         data = []
         for record, data_source in records:
@@ -1191,17 +1158,16 @@ class EventRecordService(
             ),
         )
 
-    def _nutrients_by_meal(self, db_session: DbSession, meal_ids: list[UUID]) -> dict[UUID, dict[SeriesType, Decimal]]:
-        """Group the correlated DataPointSeries samples (macros, calories, water) per meal."""
-        id_to_series_type = {get_series_type_id(t): t for t in _MEAL_SERIES_TYPES}
-        result: dict[UUID, dict[SeriesType, Decimal]] = {}
-        for sample in self.data_point_series_repo.get_by_event_record_ids(db_session, meal_ids):
-            series_type = id_to_series_type.get(sample.series_type_definition_id)
-            if series_type is None or sample.event_record_id is None:
-                continue
-            bucket = result.setdefault(sample.event_record_id, {})
-            bucket[series_type] = bucket.get(series_type, Decimal("0")) + sample.value
-        return result
+    def _nutrients_by_meal(
+        self, db_session: DbSession, meals: list[EventRecord]
+    ) -> dict[UUID, dict[SeriesType, Decimal]]:
+        """Sum each meal's nutrient samples (macros, calories, water): those from the meal's
+        data source, recorded within the meal's time window."""
+        return self.data_point_series_repo.get_sums_in_event_windows(
+            db_session,
+            [(meal.id, meal.data_source_id, meal.start_datetime, meal.end_datetime) for meal in meals],
+            list(_MEAL_SERIES_TYPES),
+        )
 
     def delete_event_record(
         self,
