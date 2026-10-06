@@ -1,4 +1,4 @@
-import { fetchWebhooksEnabled } from '$lib/server/config';
+import { readFeatures } from '$lib/server/config';
 import { attempt } from '$lib/server/form';
 import { requireToken } from '$lib/server/guard';
 import {
@@ -15,7 +15,7 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ locals }) => {
 	const accessToken = await requireToken(locals);
 
-	if (!(await fetchWebhooksEnabled(accessToken))) {
+	if (!(await readFeatures(accessToken)).webhooks) {
 		return { enabled: false, subscriptions: [], types: [] };
 	}
 

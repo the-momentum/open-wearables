@@ -4,6 +4,7 @@ import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
 import Archive from '@lucide/svelte/icons/archive';
 import Users from '@lucide/svelte/icons/users';
 import Sprout from '@lucide/svelte/icons/sprout';
+import type { Features } from '$lib/config/features';
 import type { Component } from 'svelte';
 import { resolve } from '$app/paths';
 
@@ -15,9 +16,6 @@ export type SettingsTab = {
 	beta?: boolean;
 	feature?: keyof Features;
 };
-
-/** What this instance has switched on, from `/config`. */
-export type Features = { lifecycle: boolean; email: boolean };
 
 /**
  * Each tab is a route of its own, so a tab loads only what it shows - the old
