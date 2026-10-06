@@ -51,9 +51,9 @@ uv run ty check .
 - **Type hints**: Required on all function parameters and return types
 - **Imports**: Sorted automatically by Ruff
 
-## Frontend (TypeScript/React)
+## Frontend (SvelteKit/TypeScript)
 
-We use **oxlint** for linting and **Prettier** for formatting.
+We use **ESLint** for linting, **Prettier** for formatting and **svelte-check** for types.
 
 ### Commands
 
@@ -61,32 +61,31 @@ We use **oxlint** for linting and **Prettier** for formatting.
 cd frontend
 
 # Check for linting errors
-pnpm lint
+bun run lint
 
-# Fix linting errors
-pnpm lint:fix
+# Type-check
+bun run check
 
 # Check formatting
-pnpm format:check
+bun run format:check
 
 # Apply formatting
-pnpm format
+bun run format
 ```
 
 ### Style Guidelines
 
-- **Line length**: 80 characters
+- **Line length**: 100 characters
+- **Indentation**: Tabs
 - **Quotes**: Single quotes
-- **Semicolons**: Required
 - **TypeScript**: Strict mode enabled
 
 ### Before Submitting a PR
 
-Run all checks:
+Run everything CI runs, from the repository root:
 
 ```bash
-cd frontend
-pnpm lint:fix && pnpm format
+make frontend_verify
 ```
 
 ## CI Checks
@@ -99,9 +98,11 @@ The CI pipeline runs these checks automatically:
 - `uv run ty check` - Type checking
 
 **Frontend:**
-- `pnpm run lint` - Linting
-- `pnpm run format:check` - Formatting
-- `pnpm run build` - Build verification
+- `bun run check` - Type checking
+- `bun run lint` - Linting
+- `bun run format:check` - Formatting
+- `bun run build` - Build verification
+- `bun run test:unit` and `playwright test` - Unit, component and end-to-end tests
 
 All checks must pass before a PR can be merged.
 

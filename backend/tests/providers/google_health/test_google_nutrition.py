@@ -1,11 +1,7 @@
 """Google Health API nutrition-log handler.
 
-A nutrition-log DataPoint carries one food item (mealType, foodDisplayName) plus a handful
-of nutrient values. Each DataPoint becomes its own, independent meal - the same shape the
-SDK/HealthKit "Food" correlation path already models as a meal EventRecord + linked
-DataPointSeries samples - keyed by Google's stable per-DataPoint resource ``name`` used
-verbatim as ``external_id``. These tests cover the mapping from Google's wire shape to
-that model, without touching a real database.
+Each nutrition-log DataPoint becomes its own meal (EventRecord + MealDetails with nutrients),
+keyed by Google's per-DataPoint resource ``name`` as ``external_id``. No real database here.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -54,17 +50,6 @@ def _point(name: str = "abc123", data_source: dict | None = None, **overrides: o
     }
 
 
-def _db() -> MagicMock:
-    """A session mock whose begin_nested() context manager lets exceptions propagate.
-
-    MagicMock's default __exit__ returns a truthy mock, which would swallow the very
-    errors the handler's per-meal savepoint is supposed to surface to its except block.
-    """
-    db = MagicMock()
-    db.begin_nested.return_value.__exit__.return_value = False
-    return db
-
-
 @pytest.fixture
 def nutrition() -> GoogleHealthApiNutrition:
     return GoogleHealthApiNutrition(
@@ -110,6 +95,35 @@ class TestNutrients:
 
         # A nutrient entry with no quantity yields no reading, but must not crash the rest.
         assert SeriesType.dietary_protein not in values
+
+    def test_maps_the_api_nutrient_enum_and_scales_to_each_series_unit(
+        self, nutrition: GoogleHealthApiNutrition
+    ) -> None:
+        payload = _point(
+            energyFromFat={"kcal": 32},
+            nutrients=[
+                {"nutrient": "DIETARY_FIBER", "quantity": {"grams": 7.5}},
+                {"nutrient": "CALCIUM", "quantity": {"grams": 0.2753}},
+                {"nutrient": "VITAMIN_D", "quantity": {"grams": 0.000005}},
+                {"nutrient": "CAFFEINE", "quantity": {"grams": 0.095}},
+            ],
+        )["nutritionLog"]
+
+        values = nutrition._nutrients(payload)
+
+        assert values[SeriesType.dietary_energy_from_fat] == Decimal("32")
+        assert values[SeriesType.dietary_fiber] == Decimal("7.5")
+        assert values[SeriesType.dietary_calcium] == Decimal("275.3")
+        assert values[SeriesType.dietary_vitamin_d] == Decimal("5")
+        assert values[SeriesType.dietary_caffeine] == Decimal("95")
+
+    def test_top_level_carbohydrate_wins_over_the_nutrients_entry(self, nutrition: GoogleHealthApiNutrition) -> None:
+        payload = _point(
+            totalCarbohydrate={"grams": 40},
+            nutrients=[{"nutrient": "CARBOHYDRATES", "quantity": {"grams": 39.8}}],
+        )["nutritionLog"]
+
+        assert nutrition._nutrients(payload)[SeriesType.dietary_carbohydrates] == Decimal("40")
 
 
 class TestParsePoint:
@@ -181,23 +195,6 @@ class TestParsePoint:
         assert meal.title is None
 
 
-class TestBuildSamples:
-    def test_samples_carry_the_meal_link_time_device_and_offset(self, nutrition: GoogleHealthApiNutrition) -> None:
-        """Without device_model unrelated meals collide on the sample upsert key; without
-        zone_offset a 23:30 local dinner lands in the next UTC day's totals."""
-        meal_id = uuid4()
-        meal = nutrition._parse_point(_point(), *WINDOW)
-        assert meal is not None
-
-        samples = nutrition._build_samples(USER_ID, meal_id, meal)
-
-        assert samples
-        assert all(s.event_record_id == meal_id for s in samples)
-        assert all(s.recorded_at == START for s in samples)
-        assert all(s.device_model == "Pixel Fold" for s in samples)
-        assert all(s.zone_offset == "+02:00" for s in samples)
-
-
 class TestFetch:
     def test_filters_on_civil_start_day_widened_a_day_each_way(self) -> None:
         """Session types can only be filtered on civil start time (no offset), so the fetch
@@ -223,9 +220,9 @@ class TestFetch:
 
 
 class TestLoadAndSave:
-    """End-to-end fetch -> parse -> persist, with the DB/service layer mocked out."""
+    """Fetch -> parse -> one batch upsert, with the service layer mocked out."""
 
-    def _run(self, nutrition: GoogleHealthApiNutrition, points: list[dict], db: MagicMock | None = None) -> int:
+    def _run(self, nutrition: GoogleHealthApiNutrition, points: list[dict], db: MagicMock) -> MagicMock:
         with (
             patch(
                 "app.services.providers.google_health.nutrition.make_authenticated_request",
@@ -233,132 +230,44 @@ class TestLoadAndSave:
             ),
             patch("app.services.providers.google_health.nutrition.store_raw_payload"),
             patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
-            patch("app.services.providers.google_health.nutrition.timeseries_service"),
         ):
-            # A fresh insert: the service hands back the record it was given.
-            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail, **_kwargs: (
-                MagicMock(id=record.id),
-                True,
-            )
-            return nutrition.load_and_save(db if db is not None else _db(), USER_ID, *WINDOW)
+            event_record_service.upsert_meals.side_effect = lambda _db, meals: len(meals)
+            self.count = nutrition.load_and_save(db, USER_ID, *WINDOW)
+        return event_record_service.upsert_meals
 
-    def test_saves_a_meal_under_its_own_savepoint_without_committing(self, nutrition: GoogleHealthApiNutrition) -> None:
-        """The 24/7 sync wraps the handler in begin_nested(); a commit in here would close it."""
-        db = _db()
+    def test_upserts_every_point_as_its_own_meal_in_one_batch(self, nutrition: GoogleHealthApiNutrition) -> None:
+        upsert = self._run(nutrition, [_point("a"), _point("b"), _point("c")], MagicMock())
 
-        assert self._run(nutrition, [_point()], db=db) == 1
-        db.begin_nested.assert_called_once()
+        upsert.assert_called_once()
+        meals = upsert.call_args.args[1]
+        assert [record.external_id for record, _ in meals] == [
+            f"users/me/dataTypes/nutrition-log/dataPoints/{name}" for name in "abc"
+        ]
+        assert self.count == 3
+
+    def test_nutrients_go_to_the_meal_detail(self, nutrition: GoogleHealthApiNutrition) -> None:
+        upsert = self._run(nutrition, [_point()], MagicMock())
+
+        record, detail = upsert.call_args.args[1][0]
+        assert detail.record_id == record.id
+        assert detail.meal_type == "lunch"
+        assert detail.nutrients[SeriesType.dietary_protein] == 31.0
+        assert detail.nutrients[SeriesType.dietary_sodium] == 74.0
+
+    def test_never_commits_or_rolls_back(self, nutrition: GoogleHealthApiNutrition) -> None:
+        """The 24/7 sync wraps the handler in its own savepoint and commits after it."""
+        db = MagicMock()
+
+        self._run(nutrition, [_point()], db)
+
         db.commit.assert_not_called()
         db.rollback.assert_not_called()
 
-    def test_a_new_meal_does_not_prune_samples(self, nutrition: GoogleHealthApiNutrition) -> None:
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": [_point()]},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
-            patch("app.services.providers.google_health.nutrition.timeseries_service") as timeseries_service,
-        ):
-            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail, **_kwargs: (
-                MagicMock(id=record.id),
-                True,
-            )
-            nutrition.load_and_save(_db(), USER_ID, *WINDOW)
+    def test_no_points_skip_the_upsert(self, nutrition: GoogleHealthApiNutrition) -> None:
+        upsert = self._run(nutrition, [], MagicMock())
 
-        timeseries_service.crud.delete_stale_for_event_record.assert_not_called()
-
-    def test_three_points_count_as_three_separate_meals(self, nutrition: GoogleHealthApiNutrition) -> None:
-        """Even when they'd share start/device/mealType, each DataPoint is its own meal."""
-        assert self._run(nutrition, [_point("a"), _point("b"), _point("c")]) == 3
-
-    def test_an_already_stored_meal_is_refreshed_but_not_counted(self, nutrition: GoogleHealthApiNutrition) -> None:
-        """On re-sync the service hands back the existing row; its samples are still re-linked."""
-        existing_id = uuid4()
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": [_point()]},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
-            patch("app.services.providers.google_health.nutrition.timeseries_service") as timeseries_service,
-        ):
-            event_record_service.create_or_update_meal.return_value = (MagicMock(id=existing_id), False)
-
-            count = nutrition.load_and_save(_db(), USER_ID, *WINDOW)
-
-        assert count == 0
-        samples = timeseries_service.bulk_create_samples.call_args.args[1]
-        assert samples
-        assert all(s.event_record_id == existing_id for s in samples)
-        # Nutrients Google no longer reports for this meal are dropped, keeping the current set.
-        prune = timeseries_service.crud.delete_stale_for_event_record
-        prune.assert_called_once()
-        assert prune.call_args.args[1] == existing_id
-        assert set(prune.call_args.args[2]) == {s.series_type for s in samples}
-
-    def test_a_failing_meal_does_not_stop_the_rest(self, nutrition: GoogleHealthApiNutrition) -> None:
-        good = _point("a")
-        bad = _point("b", interval=_interval(START + timedelta(hours=1)))
-
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": [good, bad]},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
-            patch("app.services.providers.google_health.nutrition.timeseries_service"),
-            patch("app.services.providers.google_health.nutrition.log_and_capture_error") as capture,
-        ):
-            calls: list[int] = []
-
-            def create_or_update_meal(
-                _db: object, record: object, _detail: object, **_kwargs: object
-            ) -> tuple[MagicMock, bool]:
-                # First meal fails, the rest insert normally.
-                calls.append(1)
-                if len(calls) == 1:
-                    raise RuntimeError("boom")
-                return MagicMock(id=record.id), True  # type: ignore[attr-defined]
-
-            event_record_service.create_or_update_meal.side_effect = create_or_update_meal
-
-            count = nutrition.load_and_save(_db(), USER_ID, *WINDOW)
-
-        assert count == 1
-        capture.assert_called_once()
-
-    def test_a_failing_meal_is_confined_to_its_savepoint(self, nutrition: GoogleHealthApiNutrition) -> None:
-        """A failure after the record was flushed is discarded by the meal's own savepoint -
-        not by a session-wide rollback, which would also close the sync's enclosing savepoint."""
-        db = _db()
-
-        with (
-            patch(
-                "app.services.providers.google_health.nutrition.make_authenticated_request",
-                return_value={"dataPoints": [_point()]},
-            ),
-            patch("app.services.providers.google_health.nutrition.store_raw_payload"),
-            patch("app.services.providers.google_health.nutrition.event_record_service") as event_record_service,
-            patch("app.services.providers.google_health.nutrition.timeseries_service") as timeseries_service,
-            patch("app.services.providers.google_health.nutrition.log_and_capture_error"),
-        ):
-            event_record_service.create_or_update_meal.side_effect = lambda _db, record, _detail, **_kwargs: (
-                MagicMock(id=record.id),
-                True,
-            )
-            timeseries_service.bulk_create_samples.side_effect = RuntimeError("boom")
-
-            count = nutrition.load_and_save(db, USER_ID, *WINDOW)
-
-        assert count == 0
-        db.rollback.assert_not_called()
-        db.commit.assert_not_called()
-        exc_type = db.begin_nested.return_value.__exit__.call_args.args[0]
-        assert exc_type is RuntimeError
+        upsert.assert_not_called()
+        assert self.count == 0
 
 
 class TestWebhookRouting:

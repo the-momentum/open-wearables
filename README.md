@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-blue.svg)](https://github.com/the-momentum/open-wearables/issues)
-![Built with: FastAPI + React + Tanstack](https://img.shields.io/badge/Built%20with-FastAPI%20%2B%20React%20%2B%20Tanstack-green.svg)
+![Built with: FastAPI + SvelteKit](https://img.shields.io/badge/Built%20with-FastAPI%20%2B%20SvelteKit-green.svg)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/qrcfFnNE6H)
 
 <a href="https://www.producthunt.com/products/open-wearables?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-open-wearables-3" target="_blank" rel="noopener noreferrer"><img alt="Open Wearables - Open infrastructure for wearable-powered health products. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1132023&theme=light&t=1777448243573"></a>
@@ -173,7 +173,7 @@ Web-based dashboard for managing your deployment:
 
 Built with:
 - 🐍 **Backend**: FastAPI (Python)
-- ⚛️ **Frontend**: React + TanStack Start + TypeScript (Vite)
+- 🖥️ **Frontend**: SvelteKit + TypeScript (Bun, server-rendered)
 - 🗄️ **Database**: PostgreSQL + Redis
 - ⚙️ **Task Queue**: Celery (background jobs for data syncing and processing)
 - 🔐 **Authentication**: Self-contained (no external auth services required)

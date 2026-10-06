@@ -6,10 +6,8 @@ This guide covers setting up your local development environment for Open Wearabl
 
 - **Docker** (recommended) - [Install Docker](https://docs.docker.com/get-docker/)
 - **uv >=0.9.17** - Python package manager ([Install uv](https://docs.astral.sh/uv/)) - manages Python automatically. Upgrade with `uv self update` if needed ([docs](https://docs.astral.sh/uv/getting-started/installation/#upgrading-uv))
-- **pnpm** - Node.js package manager ([Install pnpm](https://pnpm.io/installation))
-
 For local frontend development without Docker, you'll also need:
-- **Node.js 22+** - For frontend development
+- **Bun 1.4+** - Runtime and package manager for the frontend ([Install Bun](https://bun.sh/docs/installation))
 
 ## Quick Start with Docker (Recommended)
 
@@ -53,6 +51,7 @@ Once running, you can access:
 | `make migrate` | Apply database migrations |
 | `make create_migration m="..."` | Create new migration |
 | `make seed` | Seed sample data |
+| `make frontend_verify` | Run every frontend check CI runs |
 
 ## Local Development Without Docker
 
@@ -80,13 +79,13 @@ uv run fastapi dev app/main.py --host 0.0.0.0 --port 8000
 cd frontend
 
 # Install dependencies
-pnpm install
+bun install
 
-# Copy environment file
+# Copy environment file (VITE_API_URL)
 cp .env.example .env
 
-# Start development server
-pnpm dev
+# Start development server on http://localhost:3000
+bun run dev
 ```
 
 ## Environment Variables
@@ -102,4 +101,4 @@ For detailed code patterns and architecture guidelines, see:
 
 - [Root AGENTS.md](../AGENTS.md) - General workflow and guidelines
 - [Backend AGENTS.md](../backend/AGENTS.md) - Python/FastAPI patterns
-- [Frontend AGENTS.md](../frontend/AGENTS.md) - React/TypeScript patterns
+- [Frontend AGENTS.md](../frontend/AGENTS.md) - SvelteKit architecture, testing, and review rules
