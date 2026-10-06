@@ -50,11 +50,11 @@ A typical deployment consists of the application containers plus their backing s
 - `celery-beat` - schedules recurring syncs, from the backend image
 - `frontend` - the web UI, from the frontend image
 - PostgreSQL - primary database
-- Redis - Celery broker, cache, and developer portal sessions
+- Redis - Celery broker and cache
 - `flower` (optional) - Celery monitoring, from the backend image
 - `svix-server` (optional) - only needed when [outgoing webhooks](/api-reference/guides/webhooks) are enabled; requires its own `svix` database
 
-The backend reads all of its configuration from environment variables at runtime; `backend/config/.env.example` documents them. The frontend reads its API URL and Redis address at runtime as well (see [Frontend configuration](#frontend-configuration)). Neither image needs a per-environment rebuild.
+The backend reads all of its configuration from environment variables at runtime; `backend/config/.env.example` documents them. The frontend reads its API URL at runtime as well (see [Frontend configuration](#frontend-configuration)). Neither image needs a per-environment rebuild.
 
 <Warning>
   The `docker-compose.yml` in the repository root is a **development** setup: it builds images from local source, hardcodes database credentials, and wires up hot reload via `docker compose watch`. Do not use it as a production template. For deployment, run the published images with your own orchestration—a Compose file you maintain, Kubernetes, or a managed platform such as [Railway](/deployment/railway).
@@ -134,12 +134,10 @@ services:
     environment:
       - VITE_API_URL=${VITE_API_URL:?Set VITE_API_URL in .env}
       - API_URL=http://app:8000
-      - REDIS_URL=redis://redis:6379/2
     ports:
       - "3000:3000"
     depends_on:
       - app
-      - redis
     restart: unless-stopped
 
 volumes:
@@ -239,26 +237,23 @@ The frontend reads its configuration at runtime, so the same published image wor
 |----------|----------|---------|
 | `VITE_API_URL` | yes | Public URL of the API, as a browser or phone reaches it. Shown in the portal wherever a client needs the API address. |
 | `API_URL` | no | A shorter route from the frontend server to the API, e.g. `http://app:8000` on the same Docker network. Defaults to `VITE_API_URL`. |
-| `REDIS_URL` | yes | Redis for developer portal sessions, e.g. `redis://redis:6379/2`. Defaults to `redis://localhost:6379/2`, which does not resolve inside a container. |
 
 ```bash
 docker run -p 3000:3000 \
   -e VITE_API_URL=https://api.client1.com \
-  -e REDIS_URL=redis://redis.internal:6379/2 \
   themomentum/open-wearables-frontend:latest
 ```
 
 ### How it works
 
-The frontend is server-rendered. The browser never calls the API directly: after sign-in it holds only an opaque, `HttpOnly` session cookie, and the frontend server keeps the API access and refresh tokens in Redis and calls the API on the browser's behalf. So:
+The frontend is server-rendered. The browser never calls the API directly: after sign-in it holds the API tokens in an `HttpOnly` cookie, which page scripts cannot read, and the frontend server calls the API on the browser's behalf. So:
 
-- **Redis is required.** The backend's Redis works; database `2` keeps the sessions apart from the backend (`0`) and Svix (`1`). If Redis is unreachable, nobody can sign in.
-- **Sessions survive frontend restarts and scale across replicas**, because they live in Redis, not in the container.
+- **The frontend keeps no state.** It needs no database or Redis of its own; sessions survive restarts and work across replicas.
 - **The API needs no CORS entry for the portal**, since only the frontend server talks to it.
 
 ### Upgrading from the React frontend
 
-Releases before the SvelteKit portal shipped a React frontend in the same image. The image name, port `3000` and `VITE_API_URL` are unchanged. Add `REDIS_URL` to the frontend container (and `API_URL` if the API is reachable on an internal address); without `REDIS_URL` the login page loads but signing in fails.
+Releases before the SvelteKit portal shipped a React frontend in the same image. The image name, port `3000` and `VITE_API_URL` are unchanged, so no configuration change is needed. Optionally add `API_URL` if the API is reachable on an internal address. Developers sign in again once after the upgrade.
 
 ## Related Guides
 

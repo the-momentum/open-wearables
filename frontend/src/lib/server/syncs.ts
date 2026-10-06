@@ -30,7 +30,7 @@ const PARAM: Record<keyof RunFilters, string> = {
  * Filters go to the backend: it applies them before cutting to the limit.
  */
 export async function fetchRunWindow(filters: RunFilters, accessToken: string): Promise<RunWindow> {
-	const hit = await recall<RunWindow>(windowKey(filters));
+	const hit = recall<RunWindow>(windowKey(filters));
 	if (hit) return hit;
 
 	const params = new URLSearchParams({ limit: String(SYNC_WINDOW) });

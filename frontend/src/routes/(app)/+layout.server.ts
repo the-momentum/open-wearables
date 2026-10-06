@@ -5,10 +5,10 @@ import type { LayoutServerLoad } from './$types';
 /** A revoked session surfaces at the next refresh, not instantly - the trade a
  *  short access token exists to make, and it keeps /auth/me off every render. */
 export const load: LayoutServerLoad = async ({ locals }) => {
-	const record = await locals.auth.session();
-	if (!record) redirect(303, resolve('/login'));
+	const session = locals.auth.session();
+	if (!session) redirect(303, resolve('/login'));
 
 	if (!(await locals.auth.accessToken())) redirect(303, resolve('/login'));
 
-	return { developer: record.session.developer };
+	return { developer: session.developer };
 };

@@ -22,7 +22,7 @@ export const actions: Actions = {
 
 		return attempt('save', {}, async () => {
 			await saveProviderSettings(providers, accessToken);
-			await forgetProviders();
+			forgetProviders();
 		});
 	},
 
@@ -35,7 +35,7 @@ export const actions: Actions = {
 
 		return attempt('liveSync', { provider }, async () => {
 			await setLiveSyncMode(provider, mode, accessToken);
-			await forgetProviders();
+			forgetProviders();
 		});
 	}
 };

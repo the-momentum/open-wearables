@@ -173,7 +173,7 @@ Web-based dashboard for managing your deployment:
 
 Built with:
 - 🐍 **Backend**: FastAPI (Python)
-- 🖥️ **Frontend**: SvelteKit + TypeScript (Bun, server-rendered, sessions in Redis)
+- 🖥️ **Frontend**: SvelteKit + TypeScript (Bun, server-rendered)
 - 🗄️ **Database**: PostgreSQL + Redis
 - ⚙️ **Task Queue**: Celery (background jobs for data syncing and processing)
 - 🔐 **Authentication**: Self-contained (no external auth services required)
