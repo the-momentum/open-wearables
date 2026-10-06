@@ -188,7 +188,16 @@ test('gives every tab a real URL, and 404s on one that is not a tab', async ({ p
 // The header sits in the layout, so `?/update` resolves against whichever tab
 // is showing. Every built tab has to carry those actions or the button 404s.
 test.describe('header actions reach the server from a built tab', () => {
-	for (const tab of ['workouts', 'activity', 'sleep', 'body', 'data', 'scores', 'womens-health']) {
+	for (const tab of [
+		'workouts',
+		'activity',
+		'sleep',
+		'meals',
+		'body',
+		'data',
+		'scores',
+		'womens-health'
+	]) {
 		test(tab, async ({ page }) => {
 			await page.goto(`/users/${CONNECTED}/${tab}`);
 			await page.getByRole('button', { name: 'Edit user' }).click();

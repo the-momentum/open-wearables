@@ -2007,3 +2007,109 @@ export const storedRun = (runKey: string) =>
 					}
 				]
 			};
+
+/** The backend's cursor paging over records already filtered and ordered newest first. */
+const cursorPage = <T extends { id: string }>(matching: T[], query: URLSearchParams) => {
+	const limit = Number(query.get('limit') ?? 50);
+	const cursor = query.get('cursor');
+	const { id, backwards } = cursor ? decodeCursor(cursor) : { id: '', backwards: false };
+	const found = cursor ? matching.findIndex((item) => item.id === id) : -1;
+
+	const offset = backwards ? Math.max(found - limit, 0) : found + 1;
+	const hasMore = backwards ? found > limit : offset + limit < matching.length;
+	const data = matching.slice(offset, offset + limit);
+	const previous = cursor && data.length && (!backwards || hasMore);
+
+	return {
+		data,
+		pagination: {
+			next_cursor: hasMore && data.length ? encodeCursor(data[data.length - 1].id, 'next') : null,
+			previous_cursor: previous ? encodeCursor(data[0].id, 'prev') : null,
+			has_more: hasMore,
+			total_count: matching.length
+		}
+	};
+};
+
+const MEAL_SHAPES = [
+	{
+		type: 'breakfast',
+		name: 'Oatmeal with banana',
+		hour: '06:30',
+		kcal: 420,
+		protein: 14,
+		carbs: 68,
+		fat: 9
+	},
+	{
+		type: 'lunch',
+		name: 'Chicken salad',
+		hour: '11:00',
+		kcal: 610,
+		protein: 42,
+		carbs: 30,
+		fat: 31
+	},
+	{ type: 'snack', name: null, hour: '14:30', kcal: 210, protein: 20, carbs: 22, fat: 7 }
+];
+
+const buildMeals = () =>
+	Array.from({ length: 21 }, (_, index) => {
+		const shape = MEAL_SHAPES[index % MEAL_SHAPES.length];
+		const day = Math.floor(index / MEAL_SHAPES.length);
+		return {
+			id: `f0000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+			timestamp: `${isoDay(day)}T${shape.hour}:00Z`,
+			meal_type: shape.type,
+			name: shape.name,
+			source: {
+				provider: 'apple',
+				source: 'MyFitnessPal',
+				device: null,
+				device_type: null,
+				device_name: null
+			},
+			calories_kcal: shape.kcal,
+			macros: {
+				protein_g: shape.protein,
+				carbohydrates_g: shape.carbs,
+				fat_g: shape.fat,
+				fiber_g: 4
+			},
+			water_ml: null,
+			nutrients: {
+				dietary_energy_consumed: { value: shape.kcal, unit: 'kcal' },
+				dietary_protein: { value: shape.protein, unit: 'g' },
+				dietary_carbohydrates: { value: shape.carbs, unit: 'g' },
+				dietary_fat_total: { value: shape.fat, unit: 'g' },
+				dietary_fiber: { value: 4, unit: 'g' },
+				dietary_sodium: { value: 380, unit: 'mg' },
+				dietary_vitamin_c: { value: 12.5, unit: 'mg' }
+			}
+		};
+	}).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+let MEALS = buildMeals();
+
+export const resetMeals = () => {
+	MEALS = buildMeals();
+};
+
+export const deleteMeal = (id: string) => {
+	const index = MEALS.findIndex((meal) => meal.id === id);
+	if (index === -1) return false;
+	MEALS.splice(index, 1);
+	return true;
+};
+
+export const makeMeals = (query: URLSearchParams) => {
+	const provider = query.get('provider') ?? '';
+	const start = new Date(query.get('start_date') ?? 0).getTime();
+	const end = new Date(query.get('end_date') ?? 0).getTime();
+
+	const matching = MEALS.filter((meal) => {
+		const at = new Date(meal.timestamp).getTime();
+		return at >= start && at < end && (!provider || meal.source.provider === provider);
+	});
+	return cursorPage(matching, query);
+};

@@ -5,6 +5,7 @@ import Heart from '@lucide/svelte/icons/heart';
 import Moon from '@lucide/svelte/icons/moon';
 import Scale from '@lucide/svelte/icons/scale';
 import Trophy from '@lucide/svelte/icons/trophy';
+import Utensils from '@lucide/svelte/icons/utensils';
 import Plug from '@lucide/svelte/icons/plug';
 import type { Component } from 'svelte';
 import { resolve } from '$app/paths';
@@ -26,6 +27,7 @@ export const USER_TABS: readonly UserTab[] = [
 	{ slug: 'workouts', label: 'Workouts', icon: Dumbbell },
 	{ slug: 'activity', label: 'Activity', icon: Activity },
 	{ slug: 'sleep', label: 'Sleep', icon: Moon },
+	{ slug: 'meals', label: 'Meals', icon: Utensils },
 	{ slug: 'body', label: 'Body', icon: Scale },
 	{ slug: 'scores', label: 'Scores', icon: Trophy },
 	{ slug: 'womens-health', label: "Women's Health", icon: Heart, gated: true }

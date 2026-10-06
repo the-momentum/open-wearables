@@ -138,7 +138,8 @@ test.describe('mobile', () => {
 		'/webhooks/ep_live/deliveries',
 		`/users/${CONNECTED}`,
 		`/users/${CONNECTED}/data`,
-		`/users/${CONNECTED}/scores`
+		`/users/${CONNECTED}/scores`,
+		`/users/${CONNECTED}/meals`
 	];
 
 	for (const route of PHONE_ROUTES) {
@@ -204,7 +205,8 @@ const NESTED_ROUTES = [
 	'/settings/team',
 	'/settings/providers',
 	`/users/${CONNECTED}/workouts`,
-	`/users/${CONNECTED}/sleep`
+	`/users/${CONNECTED}/sleep`,
+	`/users/${CONNECTED}/meals`
 ];
 
 for (const route of NESTED_ROUTES) {

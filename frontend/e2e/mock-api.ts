@@ -61,6 +61,9 @@ import {
 	makeBody,
 	deleteWorkout,
 	makeCycles,
+	makeMeals,
+	deleteMeal,
+	resetMeals,
 	makeScores,
 	makeSleep,
 	sleepTotals,
@@ -127,6 +130,7 @@ const server = Bun.serve({
 			resetSleep();
 			resetActivity();
 			resetCycles();
+			resetMeals();
 			resetWebhooks();
 			resetSettings();
 			resetLifecycle();
@@ -504,13 +508,14 @@ const server = Bun.serve({
 		}
 
 		const eventMatch = pathname.match(
-			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep|menstrual-cycles)\/([^/]+)$/
+			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep|menstrual-cycles|meals)\/([^/]+)$/
 		);
 		if (eventMatch && request.method === 'DELETE') {
 			const remove = {
 				workouts: deleteWorkout,
 				sleep: deleteSleep,
-				'menstrual-cycles': deleteCycle
+				'menstrual-cycles': deleteCycle,
+				meals: deleteMeal
 			}[eventMatch[2]]!;
 			return remove(eventMatch[3])
 				? new Response(null, { status: 204 })
@@ -600,6 +605,8 @@ const server = Bun.serve({
 							? makeCycles(new URL(request.url).searchParams)
 							: { data: [], pagination: { has_more: false, total_count: 0 } }
 					);
+				case '/events/meals':
+					return json(makeMeals(new URL(request.url).searchParams));
 				case '/events/sleep':
 					return json(makeSleep(new URL(request.url).searchParams));
 				case '/events/sleep/totals':
