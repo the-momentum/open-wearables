@@ -147,7 +147,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             except ValidationError as exc:
                 if not all("email" in e["loc"] for e in exc.errors()):
                     raise
-                self.logger.warning("Skipping user %s — invalid email: %s", user.id, user.email)
+                self.logger.warning("Skipping user %s — invalid email", user.id)
                 total_count -= 1
                 continue
 
