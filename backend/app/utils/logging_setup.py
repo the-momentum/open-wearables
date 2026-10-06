@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config import settings
+from app.integrations.otel import attach_handler, check_dependencies, is_export_handler
 from app.utils.config_utils import LogFormat
 
 # Loggers that come with their own level from uvicorn's or Celery's logging setup, so the
@@ -93,6 +94,7 @@ def configure_logging() -> None:
     module is imported (``fastapi run``), so the app lifespan calls this again, and so
     does the Celery ``setup_logging`` signal after it set up the ``celery`` logger.
     """
+    check_dependencies()
     root = logging.getLogger()
     level = min_log_level()
 
@@ -100,7 +102,8 @@ def configure_logging() -> None:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(_FORMATTERS[settings.log_format]())
         for existing in root.handlers[:]:
-            root.removeHandler(existing)
+            if not is_export_handler(existing):
+                root.removeHandler(existing)
         root.addHandler(handler)
         root.setLevel(logging.INFO if level is None else level)
         for name in ("uvicorn", "uvicorn.error"):
@@ -116,3 +119,6 @@ def configure_logging() -> None:
             # handlers without passing these loggers' level, so filter at the handlers too.
             for handler in target.handlers:
                 handler.setLevel(level)
+
+    # uvicorn and Celery replace the handlers of their loggers; put the export handler back.
+    attach_handler()

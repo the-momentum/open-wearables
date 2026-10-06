@@ -1,6 +1,6 @@
 """Tests for SummariesService."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from logging import getLogger
 from typing import Any
 from uuid import uuid4
@@ -361,3 +361,68 @@ class TestGetActivitySummaries:
             limit=10,
         )
         assert result.data == []
+
+
+class TestActivityPagingWindow:
+    """Each page aggregates only a window of days around it, widened as needed."""
+
+    def test_pages_through_sparse_days_without_skipping_or_repeating(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        # A day a month for two years: far sparser than any first window, so every
+        # page has to widen it, and the cursor must still hand over cleanly.
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        start = _dt("2024-01-01T00:00:00+00:00")
+        days = [start + timedelta(days=30 * i, hours=10) for i in range(25)]
+        for at in days:
+            DataPointSeriesFactory(data_source=ds, series_type=steps_type, value=1000, recorded_at=at)
+        expected = [at.date() for at in days]
+        end = _dt("2026-06-01T00:00:00+00:00")
+
+        for order, want in (("desc", list(reversed(expected))), ("asc", expected)):
+            seen: list[date] = []
+            cursor = None
+            pages = []
+            while True:
+                page = service.get_activity_summaries(db, user.id, start, end, cursor=cursor, limit=3, sort_order=order)
+                pages.append(page)
+                seen += [summary.date for summary in page.data]
+                if not page.pagination.next_cursor:
+                    break
+                cursor = page.pagination.next_cursor
+            assert seen == want
+
+            # Back from the third page lands on the second.
+            back = service.get_activity_summaries(
+                db, user.id, start, end, cursor=pages[2].pagination.previous_cursor, limit=3, sort_order=order
+            )
+            assert sorted(summary.date for summary in back.data) == sorted(summary.date for summary in pages[1].data)
+
+
+class TestActivityTotals:
+    def test_adds_up_the_days_the_summaries_return(self, db: Session, service: SummariesService) -> None:
+        # The total is defined by the daily summaries, so it is checked against them.
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        start = _dt("2026-01-01T00:00:00+00:00")
+        for day, value in ((0, 1000), (1, 3000), (5, 2000)):
+            DataPointSeriesFactory(
+                data_source=ds, series_type=steps_type, value=value, recorded_at=start + timedelta(days=day, hours=10)
+            )
+        end = _dt("2026-02-01T00:00:00+00:00")
+
+        totals = service.get_activity_totals(db, user.id, start, end)
+        days = service.get_activity_summaries(db, user.id, start, end, cursor=None, limit=100).data
+
+        assert totals.days == len(days) == 3
+        assert totals.steps == sum(day.steps or 0 for day in days) == 6000
+        assert totals.avg_steps == 2000
+
+    def test_is_empty_without_data(self, db: Session, service: SummariesService) -> None:
+        totals = service.get_activity_totals(
+            db, UserFactory().id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-02-01T00:00:00+00:00")
+        )
+        assert (totals.days, totals.steps, totals.avg_steps) == (0, 0, None)

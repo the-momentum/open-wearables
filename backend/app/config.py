@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     log_format: LogFormat = LogFormat.LEGACY
     # None keeps the per-logger defaults (stdlib INFO, log_structured unfiltered).
     log_level: LogLevel | None = None
+    # Export logs over OTLP/HTTP as well (needs the `otel` extra). Endpoint, headers and
+    # resource come from the standard OTEL_* variables; OTEL_SDK_DISABLED=true also turns it off.
+    otel_enabled: bool = False
+    # Comma-separated attribute names, added to the built-in list, whose values are
+    # replaced with "REDACTED" in exported logs. Matching ignores case.
+    otel_export_redact_keys: str = ""
 
     # DATABASE SETTINGS
     db_host: str = "db"

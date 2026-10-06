@@ -25,8 +25,8 @@ updates:
       - "dependencies"
     open-pull-requests-limit: 10
 
-  # --- npm ---
-  - package-ecosystem: "npm"
+  # --- bun ---
+  - package-ecosystem: "bun"
     directory: "/frontend"
     schedule:
       interval: "weekly"
@@ -38,10 +38,10 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
     groups:
-      npm-minor-patch:
+      frontend-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-      npm-major:
+      frontend-major:
         patterns: ["*"]
         update-types: ["major"]
     labels:
