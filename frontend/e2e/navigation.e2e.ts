@@ -64,6 +64,13 @@ test.describe('desktop', () => {
 
 		await expect(page.getByRole('complementary').getByText(/^\d+\.\d+\.\d+$/)).toBeVisible();
 	});
+
+	// SvelteKit compares this to notice a deploy and reload an open tab. A fixed
+	// value left it requesting chunks the new build no longer had.
+	test('gives SvelteKit a version of its own for every build', async ({ request }) => {
+		const { version } = await (await request.get('/_app/version.json')).json();
+		expect(version).not.toMatch(/^\d+\.\d+\.\d+$/);
+	});
 });
 
 test.describe('mobile', () => {

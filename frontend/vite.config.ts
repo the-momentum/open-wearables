@@ -6,6 +6,10 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { version } from './package.json' with { type: 'json' };
 
 export default defineConfig({
+	// The sidebar shows this. SvelteKit's own version stays the build timestamp:
+	// it is how an open tab notices a deploy and reloads instead of requesting
+	// chunks the new build no longer has.
+	define: { __APP_VERSION__: JSON.stringify(version) },
 	server: {
 		host: '0.0.0.0',
 		port: 3000,
@@ -30,9 +34,9 @@ export default defineConfig({
 			// second name for the same value. API_URL matches neither this nor a
 			// private prefix of "", so it stays server-only.
 			env: { publicPrefix: 'VITE_' },
-			// Makes `version` from $app/environment the package version rather than
-			// SvelteKit's default build timestamp, so the sidebar can show it.
-			version: { name: version }
+			// Relative paths made a server redirect read "./login", which use:enhance
+			// resolved against the page it was on: /users/<id>/login.
+			paths: { relative: false }
 		})
 	],
 	test: {

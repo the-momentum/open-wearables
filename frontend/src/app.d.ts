@@ -2,6 +2,8 @@ import type { AuthContext } from '$lib/server/auth';
 import type { Theme } from '$lib/theme';
 
 declare global {
+	const __APP_VERSION__: string;
+
 	namespace App {
 		interface Locals {
 			auth: AuthContext;

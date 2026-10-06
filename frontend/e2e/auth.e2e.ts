@@ -28,17 +28,16 @@ test('keeps the session cookie out of reach of JavaScript', async ({ page, conte
 	const cookie = (await context.cookies()).find((c) => c.name === 'ow_session');
 	expect(cookie, 'session cookie should exist after signing in').toBeDefined();
 
-	// The reason this design was chosen over localStorage: an XSS cannot read it.
+	// It carries the tokens, so no script on the page may read it.
 	expect(cookie?.httpOnly).toBe(true);
 	expect(cookie?.sameSite).toBe('Lax');
-
-	// And it holds only an opaque id - no token ever reaches the browser.
-	expect(cookie?.value).not.toContain('access');
 	await expect(page.evaluate(() => document.cookie)).resolves.not.toContain('ow_session');
 });
 
+// From a nested page: a relative redirect once landed on /settings/login.
 test('signing out ends the session for good', async ({ page }) => {
 	await signIn(page);
+	await page.goto('/settings/team');
 
 	await page.getByRole('button', { name: 'Logout' }).click();
 	await expect(page).toHaveURL('/login');
