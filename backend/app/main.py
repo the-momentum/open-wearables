@@ -84,7 +84,6 @@ api = FastAPI(
     lifespan=_lifespan,
     telemetry={"auto_configure": False, "tracing": False, "metrics": False, "logs": False},
 )
-
 init_sentry()
 celery_app = create_celery()
 raw_payload_storage.configure(

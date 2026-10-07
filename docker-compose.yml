@@ -30,7 +30,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-      # Bytecode of the mounted extensions goes here instead of root-owned __pycache__ in the checkout
+      # Keeps root-owned __pycache__ out of the mounted extensions
       - PYTHONPYCACHEPREFIX=/tmp/pycache
     ports:
       - "${API_PORT:-8000}:8000"
@@ -72,7 +72,6 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-      # Bytecode of the mounted extensions goes here instead of root-owned __pycache__ in the checkout
       - PYTHONPYCACHEPREFIX=/tmp/pycache
     depends_on:
       - redis
@@ -99,7 +98,6 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-      # Bytecode of the mounted extensions goes here instead of root-owned __pycache__ in the checkout
       - PYTHONPYCACHEPREFIX=/tmp/pycache
     depends_on:
       - redis
@@ -126,7 +124,6 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-      # Bytecode of the mounted extensions goes here instead of root-owned __pycache__ in the checkout
       - PYTHONPYCACHEPREFIX=/tmp/pycache
     ports:
       - "${FLOWER_PORT:-5555}:5555"

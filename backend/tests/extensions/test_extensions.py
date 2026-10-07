@@ -63,6 +63,25 @@ class ContributingExtension(OWExtension):
 
 
 @dataclass
+class MixedRoutersExtension(OWExtension):
+    name: str = "mixed_routers"
+
+    def routers(self) -> list[Any]:
+        return [None, APIRouter()]
+
+
+@dataclass
+class NoneHooksExtension(OWExtension):
+    name: str = "none_hooks"
+
+    def beat_schedule(self) -> Any:
+        return None
+
+    def routers(self) -> Any:
+        return None
+
+
+@dataclass
 class OtherContributingExtension(OWExtension):
     name: str = "other_contributing"
 
@@ -139,7 +158,7 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]:
 
 
 @pytest.fixture
-def make_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., str]:
+def make_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., str]]:
     """Create an importable package under tmp_path; `tasks` is the source of its tasks module."""
     monkeypatch.syspath_prepend(str(tmp_path))
     created: list[str] = []
@@ -156,7 +175,7 @@ def make_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..
     yield make
     for name in created:
         for module in [m for m in sys.modules if m == name or m.startswith(f"{name}.")]:
-            monkeypatch.delitem(sys.modules, module, raising=False)
+            sys.modules.pop(module, None)
 
 
 class TestDiscovery:
@@ -209,9 +228,7 @@ class TestDiscovery:
         self, installed: Callable[..., None], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         reported: list[Exception] = []
-        monkeypatch.setattr(
-            extensions, "log_and_capture_error", lambda exc, *args, **kwargs: reported.append(exc), raising=False
-        )
+        monkeypatch.setattr(extensions, "log_and_capture_error", lambda exc, *args, **kwargs: reported.append(exc))
         installed(FakeEntryPoint("broken", _broken))
 
         get_extensions()
@@ -274,6 +291,8 @@ class TestTaskModules:
         # Workers and beat run this on startup; an exception here stops them.
         celery_app.loader.import_default_modules()
 
+        assert "app.integrations.celery.tasks.periodic_sync_task.sync_all_users" in celery_app.tasks
+
 
 class TestHooks:
     def test_failing_hooks_do_not_affect_other_extensions(self, installed: Callable[..., None]) -> None:
@@ -284,6 +303,17 @@ class TestHooks:
 
         assert list(collect_beat_schedule()) == ["contributing-job"]
         assert len(collect_routers()) == 1
+
+    def test_hooks_returning_none_are_skipped(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("none_hooks", NoneHooksExtension))
+
+        assert collect_beat_schedule() == {}
+        assert collect_routers() == []
+
+    def test_values_that_are_not_routers_are_skipped(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("mixed_routers", MixedRoutersExtension))
+
+        assert [type(router) for router in collect_routers()] == [APIRouter]
 
 
 class TestBeatSchedule:

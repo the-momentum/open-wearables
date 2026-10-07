@@ -16,22 +16,20 @@ from importlib import import_module
 from importlib.metadata import entry_points
 from importlib.util import find_spec
 from logging import getLogger
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from fastapi import APIRouter
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from app import __version__ as core_version
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
-if TYPE_CHECKING:
-    from fastapi import APIRouter
-
 logger = getLogger(__name__)
 
 ENTRY_POINT_GROUP = "open_wearables.extensions"
 
-# Fields celery beat accepts in a schedule entry; any other field stops beat on startup.
+# The fields Celery documents for a beat_schedule entry; beat fails to start on an unknown one.
 _BEAT_ENTRY_FIELDS = frozenset({"task", "schedule", "args", "kwargs", "options", "relative"})
 
 
@@ -48,7 +46,7 @@ class OWExtension:
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
         return {}
 
-    def routers(self) -> list["APIRouter"]:
+    def routers(self) -> list[APIRouter]:
         """Routers mounted under the API v1 prefix."""
         return []
 
@@ -76,8 +74,7 @@ def _compatibility_error(ext: OWExtension) -> str | None:
 
 
 def _task_import_error(ext: OWExtension) -> str | None:
-    """Import the extension's task modules now: one that fails disables the extension here
-    instead of stopping Celery workers and beat when they autodiscover tasks on startup."""
+    """Import the task modules now, so one that fails disables the extension instead of stopping Celery."""
     for package in ext.celery_task_packages:
         module = f"{package}.tasks"
         try:
@@ -129,25 +126,48 @@ def get_active_extensions() -> list[OWExtension]:
     return [e.extension for e in get_extensions() if e.active and e.extension is not None]
 
 
-def collect_routers() -> list["APIRouter"]:
+def collect_routers() -> list[APIRouter]:
     routers: list[APIRouter] = []
     for ext in get_active_extensions():
         try:
-            routers.extend(ext.routers())
+            contributed = list(ext.routers())
         except Exception as exc:
             log_and_capture_error(
                 exc, logger, "Extension routers() failed, its endpoints are not mounted", extra={"extension": ext.name}
             )
+            continue
+        for router in contributed:
+            if isinstance(router, APIRouter):
+                routers.append(router)
+            else:
+                log_structured(
+                    logger,
+                    "error",
+                    "Extension router skipped",
+                    action="extension_router_skipped",
+                    extension=ext.name,
+                    reason=f"not an APIRouter: {type(router).__name__}",
+                )
     return routers
 
 
+def _beat_entry_error(
+    key: str, entry: dict[str, Any], reserved: Collection[str], scheduled: Collection[str]
+) -> str | None:
+    if key in reserved or key in scheduled:
+        return "key already taken"
+    if not {"task", "schedule"} <= set(entry) <= _BEAT_ENTRY_FIELDS:
+        return f"invalid fields {sorted(entry)}"
+    return None
+
+
 def collect_beat_schedule(reserved: Collection[str] = ()) -> dict[str, dict[str, Any]]:
-    """An entry is skipped when its key is in `reserved` (the core's own entries) or taken by an
+    """An entry is skipped when its key is in ``reserved`` (the core's own entries) or taken by an
     earlier extension, or when beat could not build it."""
     schedule: dict[str, dict[str, Any]] = {}
     for ext in get_active_extensions():
         try:
-            entries = ext.beat_schedule()
+            entries = dict(ext.beat_schedule())
         except Exception as exc:
             log_and_capture_error(
                 exc,
@@ -157,22 +177,19 @@ def collect_beat_schedule(reserved: Collection[str] = ()) -> dict[str, dict[str,
             )
             continue
         for key, entry in entries.items():
-            if key in reserved or key in schedule:
-                reason = "key already taken"
-            elif not {"task", "schedule"} <= set(entry) <= _BEAT_ENTRY_FIELDS:
-                reason = f"invalid fields {sorted(entry)}"
+            error = _beat_entry_error(key, entry, reserved, schedule)
+            if error:
+                log_structured(
+                    logger,
+                    "error",
+                    "Extension beat entry skipped",
+                    action="extension_beat_entry_skipped",
+                    extension=ext.name,
+                    key=key,
+                    reason=error,
+                )
             else:
                 schedule[key] = entry
-                continue
-            log_structured(
-                logger,
-                "error",
-                "Extension beat entry skipped",
-                action="extension_beat_entry_skipped",
-                extension=ext.name,
-                key=key,
-                reason=reason,
-            )
     return schedule
 
 

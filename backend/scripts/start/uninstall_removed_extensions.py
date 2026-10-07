@@ -1,7 +1,7 @@
 """Uninstall extensions whose directory was removed since the container was created.
 
 Their editable installs stay in the environment otherwise, and their entry points fail to load
-on every start. Called by install_extensions.sh with the extensions directory.
+on every start.
 """
 
 import json
@@ -15,12 +15,12 @@ def removed_extensions(extensions_dir: Path) -> list[str]:
         ["uv", "pip", "list", "--editable", "--format", "json"], capture_output=True, text=True, check=True
     )
     root = extensions_dir.resolve()
-    return [
-        package["name"]
-        for package in json.loads(listing.stdout)
-        if root in Path(package.get("editable_project_location") or "/").resolve().parents
-        and not (Path(package["editable_project_location"]) / "pyproject.toml").is_file()
-    ]
+    removed = []
+    for package in json.loads(listing.stdout):
+        location = Path(package.get("editable_project_location") or "/")
+        if root in location.resolve().parents and not (location / "pyproject.toml").is_file():
+            removed.append(package["name"])
+    return removed
 
 
 def main() -> None:

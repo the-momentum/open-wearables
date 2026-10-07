@@ -10,7 +10,8 @@ git clone <extension repo> extensions/<name>
 docker compose up -d
 ```
 
-The API reloads on its own when an extension's code changes; Celery does not:
+With `ENVIRONMENT=local` the API reloads on its own when an extension's code changes; Celery
+does not:
 
 ```bash
 docker compose restart celery-worker celery-beat
