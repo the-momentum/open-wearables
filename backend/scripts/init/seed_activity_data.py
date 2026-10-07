@@ -15,7 +15,7 @@ def seed_activity_data() -> None:
     """Create 2 users with default health data (same as original behavior)."""
     request = SeedDataRequest(
         num_users=2,
-        profile=SeedProfileConfig(),
+        profile=SeedProfileConfig(generate_meals=True),
     )
     with SessionLocal() as db:
         summary = seed_data_service.generate(db, request)
@@ -25,6 +25,7 @@ def seed_activity_data() -> None:
     print(f"  - {summary['connections']} provider connections")
     print(f"  - {summary['workouts']} workouts")
     print(f"  - {summary['sleeps']} sleep records")
+    print(f"  - {summary['meals']} meals")
     print(f"  - {summary['time_series_samples']} time series samples")
 
 

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.enums import Resolution, SeriesType
+from app.schemas.enums import DeviceType, Resolution, SeriesType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -35,6 +35,7 @@ class TimeSeriesSampleCreate(TimeSeriesSampleBase):
     provider: str | None = None
     user_connection_id: UUID | None = None
     software_version: str | None = None
+    device_type: DeviceType | None = None
 
 
 class TimeSeriesSampleUpdate(TimeSeriesSampleBase):

@@ -30,7 +30,7 @@ Common labels you may see:
 | `good first issue` | Good for newcomers |
 | `help wanted` | Extra attention needed |
 | `backend` | Related to Python/FastAPI |
-| `frontend` | Related to React/TypeScript |
+| `frontend` | Related to the SvelteKit developer portal |
 
 ## Getting Help
 

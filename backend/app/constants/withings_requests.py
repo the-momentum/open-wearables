@@ -72,4 +72,8 @@ SLEEP_SERIES = WithingsDataRequest(
     service_path="/v2/sleep",
     action="get",
     list_key="series",
+    data_fields=(
+        "rmssd",
+        "sdnn_1",
+    ),
 )

@@ -34,9 +34,9 @@ repos:
 
       - id: prettier-check
         name: prettier check
-        entry: sh -c 'cd frontend && pnpm run format:check'
+        entry: sh -c 'cd frontend && bun run format:check'
         language: system
-        files: ^frontend/src/.*\.(ts|tsx|js|jsx|json|css|md)$
+        files: ^frontend/.*\.(ts|js|svelte|json|css|md|html)$
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

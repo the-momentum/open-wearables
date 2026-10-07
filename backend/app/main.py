@@ -18,12 +18,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api import head_router
 from app.config import settings
 from app.integrations.celery import create_celery
+from app.integrations.otel import init_otel, shutdown_otel
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_access_log_middleware, add_cors_middleware, add_endpoint_usage_middleware
 from app.services import raw_payload_storage
 from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
+from app.utils.logging_setup import configure_logging
 
 # Configure logging to use stdout instead of stderr
 # Some platforms convert stderr logs to level.error automatically, so we must use stdout
@@ -46,6 +48,8 @@ for _name in ("uvicorn", "uvicorn.error"):
 for _name in ("httpx", "httpcore"):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
+configure_logging()
+
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
@@ -53,14 +57,32 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     # dictConfig that re-creates the logger and undoes an import-time disable. Lifespan
     # runs after it, so add_access_log_middleware stays the single access-log source.
     logging.getLogger("uvicorn.access").disabled = True
+    # The same dictConfig resets the uvicorn loggers, so apply LOG_FORMAT/LOG_LEVEL again.
+    configure_logging()
+    # Here, not at import: Celery workers import this module too and start their own export.
+    init_otel("open-wearables-api")
+    # After init_otel, so the notice is exported too.
+    if settings.telemetry_enabled:
+        logging.getLogger(__name__).info(
+            "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
+            "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
+        )
     svix_service.register_event_types()
     yield
     # Hand the last partial interval of telemetry counters to Redis before exiting.
     with contextlib.suppress(Exception):
         await asyncio.to_thread(endpoint_usage.flush)
+    await asyncio.to_thread(shutdown_otel)
 
 
-api = FastAPI(title=settings.api_name, version=version("open-wearables"), lifespan=_lifespan)
+# FastAPI >= 0.142 turns on its own OpenTelemetry by default (request traces, metrics,
+# exception logs, OTLP exporters from OTEL_* variables). Keep it off: our OTel setup is explicit.
+api = FastAPI(
+    title=settings.api_name,
+    version=version("open-wearables"),
+    lifespan=_lifespan,
+    telemetry={"auto_configure": False, "tracing": False, "metrics": False, "logs": False},
+)
 celery_app = create_celery()
 init_sentry()
 raw_payload_storage.configure(
@@ -76,12 +98,6 @@ raw_payload_storage.configure(
 add_cors_middleware(api)
 add_access_log_middleware(api)
 add_endpoint_usage_middleware(api)
-
-if settings.telemetry_enabled:
-    logging.getLogger(__name__).info(
-        "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
-        "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
-    )
 
 # Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"

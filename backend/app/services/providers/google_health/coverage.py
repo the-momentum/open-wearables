@@ -1,5 +1,5 @@
 from app.schemas.enums import SeriesType
-from app.services.providers.apple.coverage import HEALTH_SCORES, SLEEP_FIELDS, WORKOUT_FIELDS
+from app.services.providers.apple.coverage import HEALTH_SCORES, MEAL_FIELDS, SLEEP_FIELDS, WORKOUT_FIELDS
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
 
 # Series from the unified metric registry, plus the civil-day totals read from dailyRollUp
@@ -10,4 +10,4 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
     | {d.series_type for d in DERIVED_DAILY_METRICS}
 )
 
-__all__ = ["HEALTH_SCORES", "SLEEP_FIELDS", "TIMESERIES", "WORKOUT_FIELDS"]
+__all__ = ["HEALTH_SCORES", "MEAL_FIELDS", "SLEEP_FIELDS", "TIMESERIES", "WORKOUT_FIELDS"]

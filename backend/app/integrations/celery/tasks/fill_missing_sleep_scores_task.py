@@ -55,6 +55,9 @@ def fill_missing_sleep_scores() -> dict:
     path (periodic pull, webhook, SDK upload). Uses a LEFT JOIN on event_record_id
     to guarantee idempotency — already-scored sessions are never re-processed.
     """
+    if not settings.ow_scores_enabled:
+        return {"saved": 0, "skipped": 0}
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.score_backfill_days)
 
     with SessionLocal() as db:

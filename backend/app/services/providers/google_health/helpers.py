@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.constants.devices_map import map_reported_device_type
+from app.schemas.enums import DeviceType
 from app.schemas.providers.google import DataPointsPage, LevelSum
 from app.utils.conversion import to_decimal
 from app.utils.dates import offset_to_iso, to_rfc3339
@@ -102,6 +104,12 @@ def extract_source(data_source: Any) -> tuple[str, str | None]:
         or None
     )
     return platform or "Google Health", device_model
+
+
+def extract_form_factor(data_source: Any) -> DeviceType | None:
+    """Device type from a list data point's ``dataSource.device.formFactor``; reconciled points carry none."""
+    device = data_source.get("device") if isinstance(data_source, dict) else None
+    return map_reported_device_type(device.get("formFactor")) if isinstance(device, dict) else None
 
 
 def parse_duration_seconds(value: str | None) -> Decimal | None:

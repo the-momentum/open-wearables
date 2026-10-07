@@ -95,7 +95,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 
     - Go to your team apps page (example): `https://developerportal.garmin.com/teams/{your_team_name}/apps`
     - Create an app and set the type to **Connect Developer - Evaluation**
-    - Set the **OAuth redirect URL** (where the user is sent after Garmin login in the 3-legged OAuth flow)
+    - Set the **OAuth redirect URL** (where the user is sent after Garmin login in the 3-legged OAuth flow). Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/garmin/callback`, so register that exact URL here
     - Provide legal company details and describe how you will use Garmin data (aggregated/anonymous vs linked to identifiable users)
     - Select the APIs you intend to use (Health / Activity / Women’s Health / Training / Courses)
 
@@ -167,13 +167,13 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     Once you have an app created, configure your Open Wearables backend with:
 
 ```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/garmin/callback.
+API_BASE_URL=http://localhost:8000
+
 # Garmin OAuth Credentials
 GARMIN_CLIENT_ID=your_client_id_here
 GARMIN_CLIENT_SECRET=your_client_secret_here
-# Optional: override only if your OAuth callback URL differs from the default.
-# This must match the Redirect URI configured for your app in the Garmin Developer Portal.
-# Default: http://localhost:8000/api/v1/oauth/garmin/callback
-GARMIN_REDIRECT_URI=https://yourdomain.com/api/v1/oauth/garmin/callback
 ```
 
     <Note>

@@ -95,11 +95,14 @@ class WithingsSleepSummary(BaseModel):
 
 
 class WithingsSleepSeriesEntry(BaseModel):
-    """One interval of ``/v2/sleep`` action ``get``: the hypnogram."""
+    """One interval of ``/v2/sleep`` action ``get``: a hypnogram stage and its HRV readings."""
 
     startdate: int
     enddate: int
     state: int
+    # Epoch of each reading -> ms. Nullable, so one missing reading cannot drop the stage.
+    rmssd: dict[int, float | None] | None = None
+    sdnn_1: dict[int, float | None] | None = None
 
 
 class WithingsWorkoutData(BaseModel):
