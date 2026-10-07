@@ -1,3 +1,4 @@
+import logging
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -8,9 +9,12 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScr
 
 from app import __version__
 from app.config import settings
+from app.utils.structured_logging import log_structured
 
 if TYPE_CHECKING:
     from sentry_sdk._types import Event, Hint
+
+logger = logging.getLogger(__name__)
 
 FILTERED = "[Filtered]"
 
@@ -46,6 +50,11 @@ _scrubber = EventScrubber(
     pii_denylist=DEFAULT_PII_DENYLIST,
     recursive=True,
 )
+# With SENTRY_SEND_SENSITIVE_DATA, credentials (tokens, secrets, cookies) are still masked.
+# "headers" covers raw ASGI scopes in frame locals (a Starlette Request is a mapping over its
+# scope), whose byte-string headers carry Authorization / API keys. Request headers themselves
+# are scrubbed per header by the SDK, so they stay visible.
+_credentials_scrubber = EventScrubber(denylist=[*DEFAULT_DENYLIST, "headers"], recursive=True)
 
 
 def _scrub_text(value: Any) -> Any:
@@ -96,29 +105,51 @@ def before_send(event: "Event", hint: "Hint") -> "Event":
     return event
 
 
+def before_send_sensitive(event: "Event", hint: "Hint") -> "Event":
+    """SENTRY_SEND_SENSITIVE_DATA mode: keep app-code locals, drop library-frame locals.
+
+    Framework frames (Starlette/ASGI) hold the raw request scope, whose byte-string headers
+    include Authorization / API keys - the key-based scrubber can't see those.
+    """
+    for exc in (event.get("exception") or {}).get("values") or []:
+        for frame in (exc.get("stacktrace") or {}).get("frames") or []:
+            if not frame.get("in_app"):
+                frame.pop("vars", None)
+    return event
+
+
 def init_sentry() -> None:
-    if settings.SENTRY_ENABLED:
-        release = f"{__version__}+{settings.GIT_SHA[:12]}" if settings.GIT_SHA else __version__
-        sentry_sdk.init(
-            dsn=settings.SENTRY_DSN,
-            environment=settings.SENTRY_ENV,
-            server_name=settings.SENTRY_SERVER_NAME,
-            release=release,
-            traces_sample_rate=settings.SENTRY_SAMPLES_RATE,
-            # We process health data: never ship request bodies (webhook/SDK payloads),
-            # stack-frame locals (parsed records) or default PII (IPs, cookies, task args).
-            send_default_pii=False,
-            include_local_variables=False,
-            max_request_body_size="never",
-            event_scrubber=_scrubber,
-            before_send=before_send,
-            integrations=[
-                CeleryIntegration(
-                    monitor_beat_tasks=True,
-                    propagate_traces=True,
-                ),
-                # Log records are free-form text the scrubber cannot inspect, so don't turn
-                # INFO/WARNING logs into breadcrumbs; ERROR logs still become events.
-                LoggingIntegration(level=None),
-            ],
+    if not settings.SENTRY_ENABLED:
+        return
+
+    release = f"{__version__}+{settings.GIT_SHA[:12]}" if settings.GIT_SHA else __version__
+    sensitive = settings.SENTRY_SEND_SENSITIVE_DATA
+    integrations: list[Any] = [CeleryIntegration(monitor_beat_tasks=True, propagate_traces=True)]
+    if sensitive:
+        log_structured(
+            logger,
+            "warning",
+            "SENTRY_SEND_SENSITIVE_DATA is on - Sentry receives request bodies, locals and log breadcrumbs, "
+            "which carry health data and PII",
+            action="sentry_sensitive_data_enabled",
         )
+    else:
+        # Log records are free-form text the scrubber cannot inspect, so don't turn
+        # INFO/WARNING logs into breadcrumbs; ERROR logs still become events.
+        integrations.append(LoggingIntegration(level=None))
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENV,
+        server_name=settings.SENTRY_SERVER_NAME,
+        release=release,
+        traces_sample_rate=settings.SENTRY_SAMPLES_RATE,
+        # We process health data: by default never ship request bodies (webhook/SDK payloads),
+        # stack-frame locals (parsed records) or default PII (IPs, cookies, task args).
+        send_default_pii=False,
+        include_local_variables=sensitive,
+        max_request_body_size="medium" if sensitive else "never",
+        event_scrubber=_credentials_scrubber if sensitive else _scrubber,
+        before_send=before_send_sensitive if sensitive else before_send,
+        integrations=integrations,
+    )

@@ -117,6 +117,10 @@ Each object includes metadata for filtering and querying:
 | `user_id` | User identifier (if available) |
 | `trace_id` | Request trace/batch ID (if available) |
 
+#### Finding the payload behind a Sentry error
+
+Each stored payload also adds a Sentry breadcrumb (category `raw_payload`) with the `s3://` reference, source, provider and trace ID - never the payload itself. An error later in the same request or Celery task shows it under breadcrumbs, so you can open the exact file. With the `log` backend the breadcrumb has no reference, but the trace ID lets you find the payload in stdout.
+
 ## Supported Ingestion Points
 
 Raw payloads storage is currently enabled at two ingestion points:

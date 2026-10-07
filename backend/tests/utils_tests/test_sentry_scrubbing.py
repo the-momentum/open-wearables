@@ -8,7 +8,7 @@ import json
 import logging
 from collections.abc import Generator
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import sentry_sdk
@@ -20,6 +20,7 @@ from sentry_sdk.transport import Transport
 
 from app.config import settings
 from app.integrations import sentry as sentry_integration
+from app.services import raw_payload_storage
 from app.utils.sentry_helpers import log_and_capture_error
 
 logger = logging.getLogger("app.test_sentry_scrubbing")
@@ -28,6 +29,7 @@ FAKE_HEART_RATE = 187.349  # a dot keeps it from matching numeric ids in the eve
 FAKE_EMAIL = "jane.doe@example.com"
 FAKE_USERNAME = "jane-strava-login"
 FAKE_PAYLOAD = "resting_hr=48"
+FAKE_TOKEN = "tok-not-a-real-credential"
 
 
 class _CapturingTransport(Transport):
@@ -46,7 +48,9 @@ class _Sample(BaseModel):
 
 
 @pytest.fixture
-def captured() -> Generator[list[dict[str, Any]], None, None]:
+def captured(request: pytest.FixtureRequest) -> Generator[list[dict[str, Any]], None, None]:
+    """Events Sentry would ship. Parametrize indirectly with True to enable SENTRY_SEND_SENSITIVE_DATA."""
+    send_sensitive = getattr(request, "param", False)
     transport = _CapturingTransport()
     real_init = sentry_sdk.init
 
@@ -56,6 +60,7 @@ def captured() -> Generator[list[dict[str, Any]], None, None]:
     with (
         patch.object(settings, "SENTRY_ENABLED", True),
         patch.object(settings, "SENTRY_DSN", "https://public@sentry.example.com/1"),
+        patch.object(settings, "SENTRY_SEND_SENSITIVE_DATA", send_sensitive),
         patch.object(sentry_integration.sentry_sdk, "init", init_with_transport),
     ):
         sentry_integration.init_sentry()
@@ -163,3 +168,44 @@ def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list
     assert len(captured) == 3
     for event in captured:
         assert FAKE_EMAIL not in _dump(event)
+
+
+@pytest.mark.parametrize("captured", [True], indirect=True)
+def test_sensitive_mode_ships_full_data_but_still_masks_credentials(captured: list[dict[str, Any]]) -> None:
+    app = FastAPI()
+
+    @app.post("/webhook")
+    async def webhook(request: Request) -> None:
+        payload = await request.json()  # noqa: F841 - expected as a frame local in this mode
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    client.post(
+        "/webhook",
+        json={"heart_rate": FAKE_HEART_RATE, "email": FAKE_EMAIL},
+        headers={"Authorization": f"Bearer {FAKE_TOKEN}"},
+    )
+    sentry_sdk.flush()
+
+    event = captured[0]
+    assert event["request"]["data"] == {"heart_rate": FAKE_HEART_RATE, "email": FAKE_EMAIL}
+    assert any("payload" in frame.get("vars", {}) for frame in event["exception"]["values"][-1]["stacktrace"]["frames"])
+    assert FAKE_TOKEN not in _dump(event)
+
+
+def test_stored_raw_payload_is_referenced_not_included(captured: list[dict[str, Any]]) -> None:
+    with patch.object(raw_payload_storage, "_create_s3_client", return_value=MagicMock()):
+        raw_payload_storage.configure("s3", 1024 * 1024, s3_bucket="raw-bucket")
+    try:
+        raw_payload_storage.store_raw_payload(
+            source="webhook", provider="polar", payload={"resting_hr": FAKE_PAYLOAD}, trace_id="t-1"
+        )
+    finally:
+        raw_payload_storage.configure("disabled", 10 * 1024 * 1024)
+    sentry_sdk.capture_message("processing failed")
+    sentry_sdk.flush()
+
+    crumbs = [c for c in captured[0]["breadcrumbs"]["values"] if c.get("category") == "raw_payload"]
+    assert crumbs[-1]["data"]["ref"].startswith("s3://raw-bucket/raw-payloads/polar/webhook/")
+    assert crumbs[-1]["data"]["trace_id"] == "t-1"
+    assert FAKE_PAYLOAD not in _dump(captured[0])
