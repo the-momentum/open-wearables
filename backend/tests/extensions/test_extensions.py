@@ -112,6 +112,8 @@ class MalformedBeatExtension(OWExtension):
             "no-schedule": {"task": "malformed.tasks.run"},
             "unknown-key": {"task": "malformed.tasks.run", "schedule": 60.0, "interval": 5},
             "string-schedule": {"task": "malformed.tasks.run", "schedule": "every minute"},
+            "no-task-name": {"task": None, "schedule": 60.0},
+            "empty-task-name": {"task": "", "schedule": 60.0},
             "valid": {"task": "malformed.tasks.run", "schedule": 60.0, "kwargs": {"a": 1}},
         }
 

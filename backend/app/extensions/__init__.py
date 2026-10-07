@@ -159,6 +159,8 @@ def _beat_entry_error(key: str, entry: Any, reserved: Collection[str], scheduled
         return f"entry is a {type(entry).__name__}, not a dict"
     if not {"task", "schedule"} <= set(entry) <= _BEAT_ENTRY_FIELDS:
         return f"invalid fields {sorted(entry)}"
+    if not isinstance(entry["task"], str) or not entry["task"]:
+        return f"invalid task name {entry['task']!r}"
     schedule = entry["schedule"]
     # What celery.schedules.maybe_schedule can turn into a schedule; anything else stops beat.
     if not isinstance(schedule, int | float | timedelta) and not hasattr(schedule, "is_due"):
