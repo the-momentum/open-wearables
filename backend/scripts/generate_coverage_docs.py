@@ -38,82 +38,116 @@ def _provider_headers(providers: list[str]) -> list[str]:
     return [" ".join(word.capitalize() for word in p.split("_")) for p in providers]
 
 
+# (code, unit, providers that support it)
+Row = tuple[str, str, list[str]]
+# Rows split under optional category headings (timeseries has them, field tables don't).
+Groups = list[tuple[str | None, list[Row]]]
+
+_STATUS_TEXT = {"y": "Supported", "n": "Not available"}
+
+
 def _breakable(code: str) -> str:
     # Long snake_case codes may wrap in the pinned column, but only after an underscore.
     return code.replace("_", "_<wbr />")
 
 
-def _render_table(
-    rows: list[tuple[str, str, list[str]]],
-    providers: list[str],
-    groups: list[tuple[str, int]] | None = None,
-) -> list[str]:
+def _render_html_table(groups: Groups, providers: list[str]) -> list[str]:
     """Static HTML matrix styled by docs/coverage.css: pinned header + first column,
-    rotated provider names, dots instead of emoji. Plain markup keeps the content in
-    the page source (SSR, site search, llms.txt) — no client-side component."""
+    rotated provider names, dots instead of emoji. Each cell also carries visually
+    hidden status text so screen readers get the same information as the dots."""
     lines = ['<div className="ow-cov">', '<table className="ow-cov-table">', "<thead>", "<tr>"]
-    lines.append(f'<th className="ow-cov-sticky ow-cov-corner">{len(rows)} rows</th>')
+    row_count = sum(len(rows) for _, rows in groups)
+    lines.append(f'<th className="ow-cov-sticky ow-cov-corner">{row_count} rows</th>')
     for name in _provider_headers(providers):
         lines.append(f'<th className="ow-cov-provider"><span className="ow-cov-vlabel">{name}</span></th>')
     lines += ["</tr>", "</thead>", "<tbody>"]
-    group_starts = {index: name for name, index in (groups or [])}
-    for i, (code, unit, supported) in enumerate(rows):
-        if i in group_starts:
+    for group_name, rows in groups:
+        if group_name:
             lines.append(
-                f'<tr className="ow-cov-cat"><td className="ow-cov-sticky">{group_starts[i]}</td>'
+                f'<tr className="ow-cov-cat"><td className="ow-cov-sticky">{group_name}</td>'
                 f"<td colSpan={{{len(providers)}}}></td></tr>"
             )
-        unit_html = f' <span className="ow-cov-unit">{unit}</span>' if unit else ""
-        cells = "".join(f'<td className="{"y" if p in supported else "n"}"></td>' for p in providers)
-        metric = f'<td className="ow-cov-sticky ow-cov-metric"><code>{_breakable(code)}</code>{unit_html}</td>'
-        lines.append(f"<tr>{metric}{cells}</tr>")
+        for code, unit, supported in rows:
+            unit_html = f' <span className="ow-cov-unit">{unit}</span>' if unit else ""
+            metric_html = f"<code>{_breakable(code)}</code>{unit_html}"
+            metric = f'<th scope="row" className="ow-cov-sticky ow-cov-metric">{metric_html}</th>'
+            cells = "".join(
+                f'<td className="{s}"><span className="ow-cov-sr">{_STATUS_TEXT[s]}</span></td>'
+                for s in ("y" if p in supported else "n" for p in providers)
+            )
+            lines.append(f"<tr>{metric}{cells}</tr>")
     lines += ["</tbody>", "</table>", "</div>"]
     return lines
 
 
-def _render_timeseries_tab(coverage: CoverageResponse) -> list[str]:
-    rows: list[tuple[str, str, list[str]]] = []
-    groups: list[tuple[str, int]] = []
-    for cat in coverage.timeseries:
-        groups.append((cat.name, len(rows)))
-        rows.extend((m.code, m.unit, m.providers) for m in cat.metrics)
-    return _render_table(rows, coverage.providers, groups)
+def _render_markdown_tables(groups: Groups, providers: list[str], code_header: str) -> list[str]:
+    """Plain markdown tables for the agent-facing copy (.md page views, llms-full.txt),
+    where the HTML matrix would come through as empty cells."""
+    with_unit = any(unit for _, rows in groups for _, unit, _ in rows)
+    label_headers = [code_header, *(["Unit"] if with_unit else [])]
+    header_row = "| " + " | ".join([*label_headers, *_provider_headers(providers)]) + " |"
+    separator = "|" + "|".join(["------"] * len(label_headers) + [":----:"] * len(providers)) + "|"
+    lines: list[str] = []
+    for group_name, rows in groups:
+        if group_name:
+            lines += [f"**{group_name}**", ""]
+        lines += [header_row, separator]
+        for code, unit, supported in rows:
+            row = [f"`{code}`", *([unit] if with_unit else []), *("✅" if p in supported else "❌" for p in providers)]
+            lines.append("| " + " | ".join(row) + " |")
+        lines.append("")
+    return lines
 
 
-def _render_field_tab(
+def _field_groups(
     fields: list[WorkoutField] | list[SleepField] | list[MenstrualCycleField] | list[MealField] | list[HealthScore],
-    providers: list[str],
-) -> list[str]:
-    return _render_table([(f.code, "", f.providers) for f in fields], providers)
+) -> Groups:
+    return [(None, [(f.code, "", f.providers) for f in fields])]
 
 
 def generate_body(coverage: CoverageResponse) -> str:
-    tabs = [
-        ("Timeseries", _render_timeseries_tab(coverage)),
-        ("Workout", _render_field_tab(coverage.workout_fields, coverage.providers)),
-        ("Sleep", _render_field_tab(coverage.sleep_fields, coverage.providers)),
-        ("Women's Health", _render_field_tab(coverage.menstrual_cycle_fields, coverage.providers)),
-        ("Meals", _render_field_tab(coverage.meal_fields, coverage.providers)),
-        ("Health Scores", _render_field_tab(coverage.health_scores, coverage.providers)),
+    timeseries: Groups = [
+        (cat.name, [(m.code, m.unit, m.providers) for m in cat.metrics]) for cat in coverage.timeseries
     ]
+    # (title, code column header, rows)
+    sections: list[tuple[str, str, Groups]] = [
+        ("Timeseries", "Metric", timeseries),
+        ("Workout", "Field", _field_groups(coverage.workout_fields)),
+        ("Sleep", "Field", _field_groups(coverage.sleep_fields)),
+        ("Women's Health", "Field", _field_groups(coverage.menstrual_cycle_fields)),
+        ("Meals", "Field", _field_groups(coverage.meal_fields)),
+        ("Health Scores", "Score", _field_groups(coverage.health_scores)),
+    ]
+    providers = coverage.providers
     lines = [
         # Dev-facing note, invisible in the rendered page.
         "{/* Auto-generated from ProviderCoverage by scripts/generate_coverage_docs.py — do not edit by hand. */}",
         "",
         "## Detailed Coverage Matrix",
         "",
+        # Humans get the compact HTML matrix; agents (.md views, llms-full.txt) get markdown tables.
+        '<Visibility for="humans">',
         "<Tabs>",
     ]
-    for title, table_lines in tabs:
+    for title, _, groups in sections:
         lines.append(f'<Tab title="{title}">')
-        lines.extend(table_lines)
+        lines.extend(_render_html_table(groups, providers))
         lines.append("</Tab>")
     lines += [
         "</Tabs>",
         "",
         '<div className="ow-cov-legend"><span><i className="ow-cov-dot y"></i> supported</span>'
         '<span><i className="ow-cov-dot n"></i> not available</span></div>',
+        "</Visibility>",
+        "",
+        '<Visibility for="agents">',
+        "Legend: ✅ supported, ❌ not available.",
+        "",
     ]
+    for title, code_header, groups in sections:
+        lines += [f"**{title} coverage**", ""]
+        lines.extend(_render_markdown_tables(groups, providers, code_header))
+    lines.append("</Visibility>")
     return "\n".join(lines) + "\n"
 
 

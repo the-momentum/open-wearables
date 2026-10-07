@@ -11,7 +11,7 @@
   --ow-cov-text: #111827;
   --ow-cov-muted: #6b7280;
   --ow-cov-chip: #eef0f2;
-  --ow-cov-dot-off: #d9dde2;
+  --ow-cov-dot-off: #c4c9cf;
   --ow-cov-dot-on: #16a34a;
   --ow-cov-dot-ring: rgba(22, 163, 74, 0.22);
   font-size: 0.8125rem;
@@ -27,7 +27,7 @@
   --ow-cov-text: #e4e4e7;
   --ow-cov-muted: #a1a1aa;
   --ow-cov-chip: #27272a;
-  --ow-cov-dot-off: #2a2a2e;
+  --ow-cov-dot-off: #3f3f46;
   --ow-cov-dot-on: #22c55e;
   --ow-cov-dot-ring: rgba(34, 197, 94, 0.25);
 }
@@ -137,11 +137,13 @@
   white-space: nowrap;
 }
 
-.ow-cov-table tbody td {
+.ow-cov-table tbody td,
+.ow-cov-table tbody th {
   border-bottom: 1px solid var(--ow-cov-border-soft) !important;
 }
 
-.ow-cov-table tbody tr:last-child td {
+.ow-cov-table tbody tr:last-child td,
+.ow-cov-table tbody tr:last-child th {
   border-bottom: 0 !important;
 }
 
@@ -185,7 +187,8 @@
   height: 1.9rem;
 }
 
-.ow-cov-table tbody tr:hover td {
+.ow-cov-table tbody tr:hover td,
+.ow-cov-table tbody tr:hover th {
   background: var(--ow-cov-bg-alt);
 }
 
@@ -271,4 +274,17 @@
 .ow-cov-legend b {
   color: var(--ow-cov-text);
   font-weight: 600;
+}
+
+/* Status text for screen readers; the dot carries the same information visually. */
+.ow-cov-sr {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
