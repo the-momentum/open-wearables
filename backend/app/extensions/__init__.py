@@ -64,7 +64,7 @@ class LoadedExtension:
         return self.extension is not None and self.error is None
 
 
-def _is_compatible(ext: OWExtension) -> str | None:
+def _compatibility_error(ext: OWExtension) -> str | None:
     """Return an error message when the extension does not support this core version."""
     if not ext.requires_core:
         return None
@@ -110,7 +110,7 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             # Without @dataclass the inherited __init__ resets the subclass's attributes to the defaults.
             error = f"{type(ext).__name__} must be declared with @dataclass"
         else:
-            error = _is_compatible(ext) or _task_import_error(ext)
+            error = _compatibility_error(ext) or _task_import_error(ext)
         name = getattr(ext, "name", "") or ep.name
         if error:
             log_structured(
@@ -120,7 +120,8 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             log_structured(
                 logger, "info", "Extension loaded", action="extension_loaded", extension=name, version=ext.version
             )
-        loaded.append(LoadedExtension(name=name, extension=ext, error=error))
+        extension = ext if isinstance(ext, OWExtension) else None
+        loaded.append(LoadedExtension(name=name, extension=extension, error=error))
     return tuple(loaded)
 
 

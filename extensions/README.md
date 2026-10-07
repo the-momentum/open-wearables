@@ -10,4 +10,14 @@ git clone <extension repo> extensions/<name>
 docker compose up -d
 ```
 
+The API reloads on its own when an extension's code changes; Celery does not:
+
+```bash
+docker compose restart celery-worker celery-beat
+```
+
+To remove an extension, delete its directory and restart the backend containers
+(`docker compose restart app celery-worker celery-beat`), which uninstalls it. A checkout
+that fails to install is skipped with a warning instead of stopping the backend.
+
 Everything in this directory except this README is git-ignored.
