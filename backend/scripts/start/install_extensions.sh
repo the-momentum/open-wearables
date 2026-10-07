@@ -1,8 +1,6 @@
 #!/bin/bash
-# Install add-on modules checked out into the extensions directory (local development).
-# Each subdirectory with a pyproject.toml is installed in editable mode, so code changes
-# apply without rebuilding the image. Production images ship extensions preinstalled and
-# have no such directory, which makes this a no-op.
+# Editable installs, so local changes to an extension apply without rebuilding the image.
+# Production images have no extensions directory, which makes this a no-op.
 set -e
 
 EXTENSIONS_DIR="${EXTENSIONS_DIR:-/root_project/extensions}"

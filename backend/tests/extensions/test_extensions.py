@@ -1,5 +1,3 @@
-"""Tests for extension discovery (app.extensions)."""
-
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any

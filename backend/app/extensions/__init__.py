@@ -1,15 +1,9 @@
-"""Extension point for add-on modules shipped as separate Python packages.
+"""Extensions: separately installed packages that plug into the backend.
 
-An extension registers itself under the ``open_wearables.extensions`` entry point
-group in its own pyproject.toml:
+An extension registers an ``OWExtension`` subclass in its pyproject.toml:
 
     [project.entry-points."open_wearables.extensions"]
-    health_scores = "ow_health_scores.extension:HealthScoresExtension"
-
-The entry point resolves to an ``OWExtension`` subclass. Core instantiates it once
-per process and wires in its Celery tasks, beat schedule and API routers. Extensions
-write into core tables (e.g. ``health_score``), so their output goes out through the
-regular API and webhooks.
+    my_extension = "my_extension.extension:MyExtension"
 
 This module is the supported surface for extensions. Everything else in ``app`` can be
 imported too, but may change between releases - pin ``requires_core`` accordingly.
@@ -35,18 +29,15 @@ ENTRY_POINT_GROUP = "open_wearables.extensions"
 
 @dataclass
 class OWExtension:
-    """Base class for extensions. Subclasses override the attributes and hooks they need."""
-
     name: str = ""
     display_name: str = ""
     version: str = ""
-    # PEP 440 specifier of supported core versions, e.g. ">=0.9,<0.11". Empty = any.
+    # PEP 440 specifier, e.g. ">=0.9,<0.11"; empty accepts any core version.
     requires_core: str = ""
-    # Packages Celery autodiscovers tasks in (looks for a `tasks` module inside each).
+    # Celery autodiscovers a `tasks` module in each of these packages.
     celery_task_packages: list[str] = field(default_factory=list)
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
-        """Periodic tasks merged into the Celery beat schedule."""
         return {}
 
     def routers(self) -> list["APIRouter"]:
@@ -78,11 +69,7 @@ def _is_compatible(ext: OWExtension) -> str | None:
 
 @cache
 def get_extensions() -> tuple[LoadedExtension, ...]:
-    """Discover installed extensions once per process.
-
-    A broken or incompatible extension is logged and skipped - it must never stop the core
-    from starting.
-    """
+    """A broken or incompatible extension is logged and skipped instead of stopping the core."""
     loaded: list[LoadedExtension] = []
     for ep in entry_points(group=ENTRY_POINT_GROUP):
         try:
@@ -105,12 +92,10 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
 
 
 def get_active_extensions() -> list[OWExtension]:
-    """Installed extensions that loaded and support this core version."""
     return [e.extension for e in get_extensions() if e.active and e.extension is not None]
 
 
 def collect_routers() -> list["APIRouter"]:
-    """Routers of all active extensions; an extension whose hook raises is skipped."""
     routers: list[APIRouter] = []
     for ext in get_active_extensions():
         try:
@@ -121,7 +106,6 @@ def collect_routers() -> list["APIRouter"]:
 
 
 def collect_beat_schedule() -> dict[str, dict[str, Any]]:
-    """Merged beat schedule of all active extensions; an extension whose hook raises is skipped."""
     schedule: dict[str, dict[str, Any]] = {}
     for ext in get_active_extensions():
         try:

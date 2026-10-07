@@ -177,6 +177,6 @@ CLAUDE.local.md
 
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
-# Locally checked-out extensions (see extensions/README.md)
+# Locally checked-out extensions
 extensions/*
 !extensions/README.md
