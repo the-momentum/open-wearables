@@ -10,5 +10,4 @@ git clone <extension repo> extensions/<name>
 docker compose up -d
 ```
 
-Everything in this directory except this README is git-ignored. See
-`docs/dev-guides/extensions.mdx` for how to write an extension.
+Everything in this directory except this README is git-ignored.

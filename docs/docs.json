@@ -144,7 +144,6 @@
               "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
               "dev-guides/data-migrations",
-              "dev-guides/extensions",
               "dev-guides/ngrok-setup"
             ]
           },
