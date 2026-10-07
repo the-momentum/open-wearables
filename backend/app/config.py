@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     # not the whole run: the sweep leaves anything still reporting in Redis alone.
     sync_run_stale_after_hours: int = Field(2, ge=1)
     sync_run_sweep_interval_seconds: int = Field(1800, ge=60)
+    # A user's sync.completed events within this window reach extensions as one task.
+    extension_event_debounce_seconds: int = Field(300, ge=0)
+    extension_event_sweep_interval_seconds: int = Field(60, ge=10)
 
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"

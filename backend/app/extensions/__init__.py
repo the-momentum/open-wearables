@@ -25,7 +25,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from app import __version__ as core_version
 from app.database import engine
-from app.extensions import migrations
+from app.extensions import events, migrations
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -55,6 +55,10 @@ class OWExtension:
     def routers(self) -> list[APIRouter]:
         """Routers mounted under the API v1 prefix."""
         return []
+
+    def event_handlers(self) -> dict[str, str]:
+        """Celery task queued with ``user_id`` per event, e.g. ``{"sync.completed": "my_ext.tasks.recompute"}``."""
+        return {}
 
 
 @dataclass
@@ -171,6 +175,36 @@ def collect_routers() -> list[APIRouter]:
     return routers
 
 
+def collect_event_handlers() -> dict[str, tuple[str, ...]]:
+    handlers: dict[str, list[str]] = {}
+    for ext in get_active_extensions():
+        try:
+            declared = dict(ext.event_handlers())
+        except Exception as exc:
+            log_and_capture_error(
+                exc, logger, "Extension event_handlers() failed, it receives no events", extra={"extension": ext.name}
+            )
+            continue
+        for event, task in declared.items():
+            if event not in events.SUPPORTED_EVENTS:
+                error = f"unknown event {event!r}"
+            elif not isinstance(task, str) or not task:
+                error = f"invalid task name {task!r}"
+            else:
+                handlers.setdefault(event, []).append(task)
+                continue
+            log_structured(
+                logger,
+                "error",
+                "Extension event handler skipped",
+                action="extension_event_handler_skipped",
+                extension=ext.name,
+                event=event,
+                reason=error,
+            )
+    return {event: tuple(tasks) for event, tasks in handlers.items()}
+
+
 def _beat_entry_error(key: str, entry: Any, reserved: Collection[str], scheduled: Collection[str]) -> str | None:
     if key in reserved or key in scheduled:
         return "key already taken"
@@ -224,6 +258,7 @@ __all__ = [
     "LoadedExtension",
     "OWExtension",
     "collect_beat_schedule",
+    "collect_event_handlers",
     "collect_routers",
     "get_active_extensions",
     "get_extensions",

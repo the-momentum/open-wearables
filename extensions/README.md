@@ -50,3 +50,21 @@ separate migration step. If a migration fails, it is rolled back and the extensi
 disabled until the next start. The core's autogenerate ignores `ext_` tables, so a core
 migration never creates or drops them.
 
+## Reacting to new data
+
+Instead of scanning every user on a beat schedule, an extension can have a Celery task queued
+when a user's sync brings new data (a completed sync with status `success` or `partial`):
+
+```python
+@dataclass
+class MyExtension(OWExtension):
+    def event_handlers(self) -> dict[str, str]:
+        return {"sync.completed": "my_extension.tasks.recompute_user"}
+```
+
+The task is called with `user_id` (a string) only, and loads what it needs itself. A user's
+syncs are coalesced: the first opens a window of `EXTENSION_EVENT_DEBOUNCE_SECONDS` (5 min by
+default) and all syncs inside it end in a single task, queued by a sweep every
+`EXTENSION_EVENT_SWEEP_INTERVAL_SECONDS`. Delivery is at least once, so the task must be safe to
+run twice for the same user.
+

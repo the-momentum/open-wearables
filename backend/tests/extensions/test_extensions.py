@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from alembic.autogenerate import compare_metadata
@@ -20,12 +22,17 @@ from app.extensions import (
     LoadedExtension,
     OWExtension,
     collect_beat_schedule,
+    collect_event_handlers,
     collect_routers,
+    events,
     get_active_extensions,
     get_extensions,
 )
 from app.extensions.migrations import TABLE_PREFIX, is_core_object
 from app.integrations.celery.core import create_celery
+from app.integrations.redis_client import get_redis_client
+from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus, SyncStatusEvent
+from app.services.sync_status_service import emit
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -57,6 +64,9 @@ class FaultyHooksExtension(OWExtension):
         raise RuntimeError("boom")
 
     def routers(self) -> list[Any]:
+        raise RuntimeError("boom")
+
+    def event_handlers(self) -> dict[str, str]:
         raise RuntimeError("boom")
 
 
@@ -180,6 +190,7 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]:
 
     yield install
     get_extensions.cache_clear()
+    events.register({})
 
 
 @pytest.fixture
@@ -381,6 +392,7 @@ class TestDefaults:
         assert ext.beat_schedule() == {}
         assert ext.routers() == []
         assert ext.celery_task_packages == []
+        assert ext.event_handlers() == {}
 
 
 _REVISION = """
@@ -496,3 +508,127 @@ class TestMigrations:
     )
     def test_core_autogenerate_skips_extension_tables(self, name: str, type_: str, included: bool) -> None:
         assert is_core_object(name, type_, {}) is included
+
+
+@dataclass
+class ListeningExtension(OWExtension):
+    name: str = "listening"
+
+    def event_handlers(self) -> dict[str, Any]:
+        return {"sync.completed": "listening.tasks.recompute", "user.deleted": "listening.tasks.forget", "": None}
+
+
+def _sync_event(stage: SyncStage, status: SyncStatus, user_id: str | None = None) -> SyncStatusEvent:
+    return SyncStatusEvent(
+        run_id=f"run_{uuid4().hex}",
+        user_id=user_id or str(uuid4()),
+        provider="garmin",
+        source=SyncSource.WEBHOOK,
+        stage=stage,
+        status=status,
+    )
+
+
+def _pending() -> dict[str, float]:
+    return dict(get_redis_client().zrange(events.pending_key(events.SYNC_COMPLETED), 0, -1, withscores=True))
+
+
+class TestEvents:
+    @pytest.fixture
+    def send_task(self, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        app = MagicMock()
+        monkeypatch.setattr(events, "current_app", app)
+        return app.send_task
+
+    def test_handlers_are_collected_and_bad_ones_skipped(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("listening", ListeningExtension), FakeEntryPoint("faulty", FaultyHooksExtension))
+
+        assert collect_event_handlers() == {"sync.completed": ("listening.tasks.recompute",)}
+
+    @pytest.mark.parametrize(
+        ("stage", "status", "pending"),
+        [
+            (SyncStage.COMPLETED, SyncStatus.SUCCESS, True),
+            (SyncStage.COMPLETED, SyncStatus.PARTIAL, True),
+            (SyncStage.COMPLETED, SyncStatus.SKIPPED, False),
+            (SyncStage.FAILED, SyncStatus.FAILED, False),
+            (SyncStage.STARTED, SyncStatus.IN_PROGRESS, False),
+        ],
+    )
+    def test_only_a_sync_that_brought_data_marks_the_user(
+        self, installed: Callable[..., None], stage: SyncStage, status: SyncStatus, pending: bool
+    ) -> None:
+        installed()
+        events.register({events.SYNC_COMPLETED: ("listening.tasks.recompute",)})
+        event = _sync_event(stage, status)
+
+        emit(event)
+
+        assert (str(event.user_id) in _pending()) is pending
+
+    def test_nothing_is_recorded_without_handlers(self, installed: Callable[..., None]) -> None:
+        installed()
+
+        emit(_sync_event(SyncStage.COMPLETED, SyncStatus.SUCCESS))
+
+        assert _pending() == {}
+
+    def test_later_syncs_ride_on_the_first_window(self, installed: Callable[..., None]) -> None:
+        installed()
+        events.register({events.SYNC_COMPLETED: ("listening.tasks.recompute",)})
+        user_id = str(uuid4())
+
+        emit(_sync_event(SyncStage.COMPLETED, SyncStatus.SUCCESS, user_id))
+        first = _pending()[user_id]
+        emit(_sync_event(SyncStage.COMPLETED, SyncStatus.SUCCESS, user_id))
+
+        assert _pending() == {user_id: first}
+
+    def test_settled_users_are_queued_once_to_every_handler(
+        self, installed: Callable[..., None], send_task: MagicMock
+    ) -> None:
+        installed()
+        events.register({events.SYNC_COMPLETED: ("a.tasks.run", "b.tasks.run")})
+        get_redis_client().zadd(events.pending_key(events.SYNC_COMPLETED), {"settled": 1, "recent": 9e12})
+
+        dispatched = events.dispatch_due(get_redis_client(), debounce_seconds=300)
+
+        assert dispatched == 1
+        assert [c.args[0] for c in send_task.call_args_list] == ["a.tasks.run", "b.tasks.run"]
+        assert {c.kwargs["kwargs"]["user_id"] for c in send_task.call_args_list} == {"settled"}
+        assert list(_pending()) == ["recent"]
+
+    def test_sweep_drains_in_batches(
+        self, installed: Callable[..., None], send_task: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        installed()
+        monkeypatch.setattr(events, "_SWEEP_BATCH", 2)
+        events.register({events.SYNC_COMPLETED: ("a.tasks.run",)})
+        get_redis_client().zadd(events.pending_key(events.SYNC_COMPLETED), {f"user{i}": i for i in range(5)})
+
+        assert events.dispatch_due(get_redis_client(), debounce_seconds=300) == 5
+        assert send_task.call_count == 5
+        assert _pending() == {}
+
+    def test_users_not_queued_go_back_when_the_broker_fails(
+        self, installed: Callable[..., None], send_task: MagicMock
+    ) -> None:
+        installed()
+        events.register({events.SYNC_COMPLETED: ("a.tasks.run",)})
+        get_redis_client().zadd(events.pending_key(events.SYNC_COMPLETED), {"first": 1, "second": 2, "third": 3})
+        send_task.side_effect = [None, ConnectionError("broker down")]
+
+        with pytest.raises(ConnectionError):
+            events.dispatch_due(get_redis_client(), debounce_seconds=300)
+
+        assert _pending() == {"second": 0, "third": 0}
+
+    def test_sweep_is_scheduled_only_when_an_extension_listens(self, installed: Callable[..., None]) -> None:
+        installed()
+        assert "dispatch-extension-events" not in create_celery().conf.beat_schedule
+
+        installed(FakeEntryPoint("listening", ListeningExtension))
+        entry = create_celery().conf.beat_schedule["dispatch-extension-events"]
+
+        assert entry["task"] == "app.integrations.celery.tasks.extension_events_task.dispatch_extension_events"
+        assert events.subscribed(events.SYNC_COMPLETED)

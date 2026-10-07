@@ -9,7 +9,7 @@ from celery import current_app as current_celery_app
 from celery.schedules import crontab
 
 from app.config import settings
-from app.extensions import collect_beat_schedule, get_active_extensions
+from app.extensions import collect_beat_schedule, collect_event_handlers, events, get_active_extensions
 from app.integrations.otel import init_otel, shutdown_otel
 from app.services import raw_payload_storage
 from app.utils.config_utils import LogFormat
@@ -277,6 +277,14 @@ def create_celery() -> Celery:
             "schedule": settings.telemetry_beat_interval_seconds,
             "args": (),
             "kwargs": {"event": "daily"},
+        }
+
+    event_handlers = collect_event_handlers()
+    events.register(event_handlers)
+    if event_handlers:
+        celery_app.conf.beat_schedule["dispatch-extension-events"] = {
+            "task": "app.integrations.celery.tasks.extension_events_task.dispatch_extension_events",
+            "schedule": float(settings.extension_event_sweep_interval_seconds),
         }
 
     celery_app.conf.beat_schedule.update(collect_beat_schedule(reserved=set(celery_app.conf.beat_schedule)))
