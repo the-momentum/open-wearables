@@ -1,3 +1,5 @@
+from typing import NamedTuple
+
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
@@ -9,17 +11,27 @@ ACTIVITY_SAMPLE_SERIES: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
 }
 
-# Single daily values (handler key → SeriesType), each carrying its own day_start_timestamp.
-DAILY_SCALAR_SERIES: dict[str, SeriesType] = {
-    "vo2_max": SeriesType.vo2_max,
-    "active_minutes": SeriesType.active_time,
-    "sleep_rhr": SeriesType.resting_heart_rate,
+
+class DailyScalar(NamedTuple):
+    """A once-per-day Ultrahuman metric and the object field that holds its number."""
+
+    series_type: SeriesType
+    value_field: str
+
+
+# Earlier entries win when two metrics share a series and day_start_timestamp.
+# sleep_rhr is the overnight resting heart rate; night_rhr.avg is the fallback.
+DAILY_SCALAR_SERIES: dict[str, DailyScalar] = {
+    "vo2_max": DailyScalar(SeriesType.vo2_max, "value"),
+    "active_minutes": DailyScalar(SeriesType.active_time, "value"),
+    "sleep_rhr": DailyScalar(SeriesType.resting_heart_rate, "value"),
+    "night_rhr": DailyScalar(SeriesType.resting_heart_rate, "avg"),
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *ACTIVITY_SAMPLE_SERIES.values(),  # /user_data/metrics (hr, hrv, temp, steps)
-        *DAILY_SCALAR_SERIES.values(),  # /user_data/metrics (vo2_max, active_minutes, sleep_rhr)
+        *(scalar.series_type for scalar in DAILY_SCALAR_SERIES.values()),
     }
 )
 

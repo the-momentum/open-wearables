@@ -13,7 +13,7 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import daily_total_flag
+from app.schemas.enums import SeriesType, daily_total_flag
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
@@ -602,20 +602,29 @@ class Ultrahuman247Data(Base247DataTemplate):
                         normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
                         daily_samples.extend(self._build_activity_samples(user_id, normalized_samples))
 
-                    for key, series_type in DAILY_SCALAR_SERIES.items():
+                    # First declared metric wins for a series at one day start, so a
+                    # present sleep_rhr is kept and night_rhr is not written beside it.
+                    emitted_daily: set[tuple[SeriesType, datetime]] = set()
+                    for key, daily_scalar in DAILY_SCALAR_SERIES.items():
                         scalar = items_by_type.get(key) or {}
-                        value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
+                        value = scalar.get(daily_scalar.value_field)
+                        day_start = scalar.get("day_start_timestamp")
                         if value is None or not day_start:
                             continue
+                        recorded_at = datetime.fromtimestamp(day_start, tz=timezone.utc)
+                        sample_key = (daily_scalar.series_type, recorded_at)
+                        if sample_key in emitted_daily:
+                            continue
+                        emitted_daily.add(sample_key)
                         daily_samples.append(
                             TimeSeriesSampleCreate(
                                 id=uuid4(),
                                 user_id=user_id,
                                 provider=self.provider_name,
-                                recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
+                                recorded_at=recorded_at,
                                 value=Decimal(str(value)),
-                                series_type=series_type,
-                                is_daily_total=daily_total_flag(series_type, True),
+                                series_type=daily_scalar.series_type,
+                                is_daily_total=daily_total_flag(daily_scalar.series_type, True),
                             )
                         )
 
