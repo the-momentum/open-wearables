@@ -8,6 +8,7 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     ("RUNNING", "RUNNING_ROAD", WorkoutType.RUNNING),
     ("RUNNING", "RUNNING_TRAIL", WorkoutType.TRAIL_RUNNING),
     ("RUNNING", "RUNNING_TREADMILL", WorkoutType.TREADMILL),
+    ("RUNNING", "TREADMILL_RUNNING", WorkoutType.TREADMILL),
     # Cycling variants - sport="CYCLING" or "OTHER"
     ("CYCLING", None, WorkoutType.CYCLING),
     ("CYCLING", "CYCLING_ROAD", WorkoutType.CYCLING),
@@ -19,6 +20,7 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     # Swimming - sport="SWIMMING" or "OTHER"
     ("SWIMMING", None, WorkoutType.SWIMMING),
     ("SWIMMING", "SWIMMING_POOL", WorkoutType.POOL_SWIMMING),
+    ("SWIMMING", "POOL_SWIMMING", WorkoutType.POOL_SWIMMING),
     ("SWIMMING", "SWIMMING_OPEN_WATER", WorkoutType.OPEN_WATER_SWIMMING),
     ("OTHER", "AQUATICS_SWIMMING", WorkoutType.SWIMMING),
     # Walking & Hiking - sport="WALKING" or "OTHER"
@@ -37,6 +39,8 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     ("OTHER", "WINTERSPORTS_ICE_SKATING", WorkoutType.ICE_SKATING),
     # Strength & Gym - sport="STRENGTH_TRAINING" or "OTHER"
     ("STRENGTH_TRAINING", None, WorkoutType.STRENGTH_TRAINING),
+    ("OTHER", "STRENGTH_TRAINING", WorkoutType.STRENGTH_TRAINING),
+    ("OTHER", "HIIT", WorkoutType.CARDIO_TRAINING),
     ("OTHER", "FITNESS_CARDIO", WorkoutType.CARDIO_TRAINING),
     ("OTHER", "JUMP_ROPE", WorkoutType.CARDIO_TRAINING),
     ("OTHER", "FITNESS_ELLIPTICAL", WorkoutType.ELLIPTICAL),
