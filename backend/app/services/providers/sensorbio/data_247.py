@@ -37,6 +37,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import as_utc
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 _SchemaT = TypeVar("_SchemaT", bound=BaseModel)
@@ -677,12 +678,18 @@ class SensorBio247Data(Base247DataTemplate):
                 if isinstance(response, dict) and "metrics" in response:
                     all_stats.append(response)
             except Exception as e:
-                log_structured(
+                log_and_capture_error(
+                    e,
                     self.logger,
-                    "warning",
-                    f"Error fetching Sensor Bio {endpoint} for {current_date}: {e}",
-                    provider="sensorbio",
-                    task="get_daily_activity_statistics",
+                    "Failed to fetch Sensor Bio daily details",
+                    level="warning",
+                    extra={
+                        "provider": "sensorbio",
+                        "endpoint": endpoint,
+                        "date": current_date.isoformat(),
+                        "user_id": str(user_id),
+                        "error": str(e),
+                    },
                 )
             current_date += timedelta(days=1)
         return all_stats
