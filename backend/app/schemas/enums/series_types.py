@@ -299,6 +299,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (86, SeriesType.flights_climbed, "count"),
     (87, SeriesType.average_met, "met"),
     (88, SeriesType.active_time, "minutes"),
+    (89, SeriesType.total_energy, "kcal"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Distance (IDs 100-119)
     # -------------------------------------------------------------------------

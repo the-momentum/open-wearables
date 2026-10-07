@@ -14,7 +14,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         *RECOVERY_SERIES.values(),  # /v2/recovery
         SeriesType.height,  # /v2/user/measurement/body
         SeriesType.weight,  # /v2/user/measurement/body
-        SeriesType.active_energy,  # /v2/cycle, daily total from kilojoule
+        SeriesType.total_energy,  # /v2/cycle, daily total from kilojoule (includes BMR)
         SeriesType.steps,  # /v2/cycle, daily total from step_count
     }
 )

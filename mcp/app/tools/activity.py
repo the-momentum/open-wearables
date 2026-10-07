@@ -91,6 +91,8 @@ async def get_activity_summary(
         - active_calories_kcal is energy burned through activity (exercise).
         - total_calories_kcal includes active calories plus basal metabolic rate;
           it is null when the provider doesn't report basal energy.
+          For providers without an active/basal split (e.g. Whoop) only the total is set
+          and active_calories_kcal is null.
         - intensity_minutes categorize activity by heart rate zones:
           light (zone 1-2), moderate (zone 3), vigorous (zone 4-5).
         - The 'source' field indicates which wearable provided the data (garmin, whoop, etc.)

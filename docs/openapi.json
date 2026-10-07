@@ -15675,6 +15675,7 @@
           "flights_climbed",
           "average_met",
           "active_time",
+          "total_energy",
           "distance_walking_running",
           "distance_cycling",
           "distance_swimming",

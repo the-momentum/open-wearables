@@ -223,6 +223,7 @@ class SummariesService:
                 SeriesType.steps,
                 SeriesType.active_energy,
                 SeriesType.basal_energy,
+                SeriesType.total_energy,
                 SeriesType.heart_rate,
                 SeriesType.distance_walking_running,
                 SeriesType.flights_climbed,
@@ -600,7 +601,9 @@ class SummariesService:
             # not additive - providers report daily totals that include workout calories
             active_cal = result.get("active_energy_sum")
             basal_cal = result.get("basal_energy_sum")
-            total_cal = (active_cal or 0.0) + basal_cal if basal_cal is not None else None
+            total_cal = result.get("total_energy_sum")
+            if total_cal is None and basal_cal is not None:
+                total_cal = (active_cal or 0.0) + basal_cal
 
             # Active minutes: prefer the provider-reported daily active time (Garmin
             # activeTimeInSeconds, Oura high+medium+low activity time, Polar active_duration).

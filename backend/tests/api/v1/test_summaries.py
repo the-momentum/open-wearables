@@ -513,6 +513,28 @@ class TestActivitySummaryEndpoint:
         assert activity["active_calories_kcal"] == 400.0
         assert activity["total_calories_kcal"] is None
 
+    def test_get_activity_summary_total_calories_from_total_energy(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="whoop")
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_total_energy(),
+            value=Decimal("2150.0"),
+            recorded_at=datetime(2025, 12, 26, 10, 0, 0, tzinfo=timezone.utc),
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/activity",
+            headers=api_key_headers(api_key.plain_key),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        activity = response.json()["data"][0]
+        assert activity["active_calories_kcal"] is None
+        assert activity["total_calories_kcal"] == 2150.0
+
     def test_get_activity_summary_with_heart_rate(self, client: TestClient, db: Session) -> None:
         """Test activity summary includes heart rate statistics."""
         user = UserFactory()
