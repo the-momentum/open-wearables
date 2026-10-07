@@ -96,7 +96,7 @@ export type MockConnection = {
 	created_at: string;
 	updated_at: string;
 	icon_url: string | null;
-	max_historical_days: number | null;
+	history_limit_days: number | null;
 	rest_pull: boolean;
 	webhook_stream: boolean;
 	webhook_ping: boolean;
@@ -124,7 +124,7 @@ export const makeConnections = (userId: string): MockConnection[] => [
 		created_at: '2026-02-01T10:00:00Z',
 		updated_at: '2026-09-04T06:30:00Z',
 		icon_url: '/static/provider-icons/garmin.svg',
-		max_historical_days: 30,
+		history_limit_days: 30,
 		rest_pull: false,
 		webhook_stream: true,
 		webhook_ping: false,
@@ -144,7 +144,7 @@ export const makeConnections = (userId: string): MockConnection[] => [
 		created_at: '2026-03-11T09:00:00Z',
 		updated_at: '2026-09-03T22:05:00Z',
 		icon_url: '/static/provider-icons/oura.svg',
-		max_historical_days: null,
+		history_limit_days: null,
 		rest_pull: true,
 		webhook_stream: false,
 		webhook_ping: true,
@@ -165,7 +165,7 @@ export const makeConnections = (userId: string): MockConnection[] => [
 		created_at: '2026-04-02T09:00:00Z',
 		updated_at: '2026-07-19T22:05:00Z',
 		icon_url: '/static/provider-icons/suunto.svg',
-		max_historical_days: null,
+		history_limit_days: null,
 		rest_pull: true,
 		webhook_stream: true,
 		webhook_ping: false,

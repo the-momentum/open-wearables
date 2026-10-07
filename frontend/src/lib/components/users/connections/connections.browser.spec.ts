@@ -12,7 +12,7 @@ const connection = (overrides: Partial<Connection> = {}): Connection =>
 		status: 'active',
 		scope: 'personal daily heartrate',
 		last_synced_at: '2026-09-04T06:30:00Z',
-		max_historical_days: null,
+		history_limit_days: null,
 		rest_pull: true,
 		webhook_stream: false,
 		webhook_ping: true,

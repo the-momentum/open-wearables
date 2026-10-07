@@ -71,7 +71,7 @@ class UserConnectionWithCapabilities(UserConnectionRead):
             " Resolve against the API base URL."
         ),
     )
-    max_historical_days: int | None = None
+    history_limit_days: int | None = None
     rest_pull: bool = False
     webhook_stream: bool = False
     webhook_ping: bool = False

@@ -49,13 +49,13 @@ export const DEFAULT_RANGE = 90;
  * is truthful there. Deleting that branch is the whole fix if it ever changes.
  */
 export function historyRanges(connection: Connection): number[] {
-	const cap = connection.max_historical_days;
+	const cap = connection.history_limit_days;
 	if (cap === null) return [...RANGES];
 	if (connection.webhook_callback) return [cap];
 	return [...RANGES.filter((days) => days < cap), cap];
 }
 
 export const historyLimitNote = (connection: Connection): string | null =>
-	connection.max_historical_days
-		? `The provider allows at most ${connection.max_historical_days} days of history.`
+	connection.history_limit_days
+		? `The provider allows at most ${connection.history_limit_days} days of history.`
 		: null;

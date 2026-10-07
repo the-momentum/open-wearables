@@ -8,7 +8,7 @@ export type Connection = {
 	status: 'active' | 'revoked' | 'expired';
 	scope: string | null;
 	last_synced_at: string | null;
-	max_historical_days: number | null;
+	history_limit_days: number | null;
 	rest_pull: boolean;
 	webhook_stream: boolean;
 	webhook_ping: boolean;

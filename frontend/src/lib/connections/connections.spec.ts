@@ -18,7 +18,7 @@ const connection = (overrides: Partial<Connection>): Connection =>
 		webhook_ping: false,
 		webhook_callback: false,
 		live_sync_mode: null,
-		max_historical_days: null,
+		history_limit_days: null,
 		...overrides
 	}) as Connection;
 
@@ -65,7 +65,7 @@ describe('historyDelivery', () => {
 	});
 
 	it('only notes a limit when the provider imposes one', () => {
-		expect(historyLimitNote(connection({ max_historical_days: 30 }))).toContain('30 days');
+		expect(historyLimitNote(connection({ history_limit_days: 30 }))).toContain('30 days');
 		expect(historyLimitNote(connection({}))).toBeNull();
 	});
 });
@@ -76,14 +76,12 @@ describe('historyRanges', () => {
 	});
 
 	it('offers a capped pull provider everything up to and including the cap', () => {
-		expect(historyRanges(connection({ rest_pull: true, max_historical_days: 30 }))).toEqual([
-			7, 30
-		]);
+		expect(historyRanges(connection({ rest_pull: true, history_limit_days: 30 }))).toEqual([7, 30]);
 	});
 
 	it('offers a callback backfill only its cap, because it ignores the window', () => {
 		// Garmin: start_historical_sync drops `days` and always covers 30.
-		expect(historyRanges(connection({ webhook_callback: true, max_historical_days: 30 }))).toEqual([
+		expect(historyRanges(connection({ webhook_callback: true, history_limit_days: 30 }))).toEqual([
 			30
 		]);
 	});

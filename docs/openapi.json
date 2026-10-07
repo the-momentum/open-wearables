@@ -18022,7 +18022,7 @@
             "title": "Icon Url",
             "description": "Relative URL to provider icon (e.g., '/static/provider-icons/garmin.svg'). Resolve against the API base URL."
           },
-          "max_historical_days": {
+          "history_limit_days": {
             "anyOf": [
               {
                 "type": "integer"
@@ -18031,7 +18031,7 @@
                 "type": "null"
               }
             ],
-            "title": "Max Historical Days"
+            "title": "History Limit Days"
           },
           "rest_pull": {
             "type": "boolean",
