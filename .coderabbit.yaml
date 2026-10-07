@@ -1,6 +1,8 @@
 inheritance: true
 
 reviews:
+  auto_apply_labels: true
+
   pre_merge_checks:
     custom_checks:
       - name: "Breaking changes called out"
