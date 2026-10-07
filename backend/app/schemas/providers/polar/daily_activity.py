@@ -47,6 +47,13 @@ class DailyActivityJSON(BaseModel):
     samples: DailyActivitySamplesJSON | None = None
 
     @property
+    def basal_calories(self) -> int | None:
+        """Total ``calories`` (incl. BMR) minus ``active_calories`` (excl. BMR)."""
+        if self.calories is None or self.active_calories is None:
+            return None
+        return max(self.calories - self.active_calories, 0)
+
+    @property
     def active_time_minutes(self) -> int | None:
         """Parse the ISO-8601 ``active_duration`` (e.g. "PT1H30M") into whole minutes."""
         if not self.active_duration:

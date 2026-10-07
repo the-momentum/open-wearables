@@ -244,6 +244,21 @@ def test_normalize_daily_activity_missing_metric_is_none(data_247: SensorBio247D
     assert normalized["energy"] is None
 
 
+def test_normalize_daily_calories_reads_resting_calories(data_247: SensorBio247Data) -> None:
+    response = {
+        "date": "2024-01-15",
+        "granularity": "day",
+        "metrics": [
+            {"name": "Resting Calories", "value": 1650.0, "unit": "kcal"},
+            {"name": "Active Calories", "value": 420.0, "unit": "kcal"},
+            {"name": "Total Calories", "value": 2070.0, "unit": "kcal"},
+        ],
+    }
+    normalized = data_247.normalize_daily_calories(response, USER_ID)
+    assert normalized["basal_energy"] == pytest.approx(1650.0)
+    assert normalized["timestamp"] == datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+
 def test_get_daily_activity_statistics_no_data_wrapper(data_247: SensorBio247Data) -> None:
     """get_daily_activity_statistics must handle the response as a direct
     StepDetailsResponseBody (no 'data' key wrapping it)."""

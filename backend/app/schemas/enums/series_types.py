@@ -86,6 +86,7 @@ class SeriesType(str, Enum):
     flights_climbed = "flights_climbed"
     average_met = "average_met"
     active_time = "active_time"  # Provider-reported daily active time (non-sedentary)
+    total_energy = "total_energy"  # Provider-reported total energy (active + basal), no split available
 
     # =========================================================================
     # ACTIVITY - Distance (IDs 100-119)

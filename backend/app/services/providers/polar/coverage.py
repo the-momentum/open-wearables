@@ -6,6 +6,7 @@ from app.schemas.enums.health_score_category import HealthScoreCategory
 ACTIVITY_SERIES: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "active_calories": SeriesType.active_energy,
+    "basal_calories": SeriesType.basal_energy,
     "distance_from_steps": SeriesType.distance_walking_running,
     "active_time_minutes": SeriesType.active_time,
     "exercise_time_minutes": SeriesType.exercise_time,
