@@ -44,6 +44,7 @@ _PYDANTIC_INPUT_VALUE = re.compile(r"input_value=.*, input_type=")
 # Emails are the one kind of PII we can reliably spot in free text (exception messages,
 # f-string log errors). Health values in prose are not detectable - keep them out of messages.
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_QUERY_VALUE = re.compile(r"=[^&]*")
 
 _scrubber = EventScrubber(
     denylist=DEFAULT_DENYLIST + PII_DENYLIST,
@@ -68,53 +69,22 @@ def _scrub_text(value: Any) -> Any:
     return value
 
 
-def _scrub_query_string(query_string: str) -> str:
-    # Keep parameter names for debugging; values can be emails or search terms (?email=, ?search=).
-    pairs = [part.split("=", 1)[0] for part in query_string.split("&") if part]
-    return "&".join(f"{name}={FILTERED}" for name in pairs)
-
-
 def before_send(event: "Event", hint: "Hint") -> "Event":
-    """Strip health data / PII that the SDK's built-in scrubber does not cover."""
-    # log_and_capture_error attaches `extra` as contexts, which EventScrubber skips.
-    # Callers often pass `"error": str(exc)` there too, so filter pydantic input values.
-    for key in ("contexts", "extra"):
+    """Filter free text that the key-based scrubber can't see."""
+    # `contexts` is where log_and_capture_error puts `extra` - EventScrubber skips it.
+    for key in ("message", "logentry", "contexts", "extra"):
         if key in event:
             event[key] = _scrub_text(event[key])
     _scrubber.scrub_dict(event.get("contexts"))
 
-    request = event.get("request")
-    query_string = request.get("query_string") if isinstance(request, dict) else None
-    if isinstance(request, dict) and isinstance(query_string, str):
-        request["query_string"] = _scrub_query_string(query_string)
-
     for exc in (event.get("exception") or {}).get("values") or []:
         exc["value"] = _scrub_text(exc.get("value"))
 
-    if "message" in event:
-        event["message"] = _scrub_text(event["message"])
-    logentry = event.get("logentry")
-    if isinstance(logentry, dict):
-        for key in ("message", "formatted"):
-            if key in logentry:
-                logentry[key] = _scrub_text(logentry[key])
-        params = logentry.get("params")
-        if isinstance(params, list):
-            logentry["params"] = [_scrub_text(p) for p in params]
+    # Keep parameter names for debugging; values can be emails or search terms (?email=, ?search=).
+    request = event.get("request") or {}
+    if isinstance(query_string := request.get("query_string"), str):
+        request["query_string"] = _QUERY_VALUE.sub(f"={FILTERED}", query_string)
 
-    return event
-
-
-def before_send_sensitive(event: "Event", hint: "Hint") -> "Event":
-    """SENTRY_SEND_SENSITIVE_DATA mode: keep app-code locals, drop library-frame locals.
-
-    Framework frames (Starlette/ASGI) hold the raw request scope, whose byte-string headers
-    include Authorization / API keys - the key-based scrubber can't see those.
-    """
-    for exc in (event.get("exception") or {}).get("values") or []:
-        for frame in (exc.get("stacktrace") or {}).get("frames") or []:
-            if not frame.get("in_app"):
-                frame.pop("vars", None)
     return event
 
 
@@ -150,6 +120,6 @@ def init_sentry() -> None:
         include_local_variables=sensitive,
         max_request_body_size="medium" if sensitive else "never",
         event_scrubber=_credentials_scrubber if sensitive else _scrubber,
-        before_send=before_send_sensitive if sensitive else before_send,
+        before_send=None if sensitive else before_send,
         integrations=integrations,
     )
