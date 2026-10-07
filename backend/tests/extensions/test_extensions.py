@@ -7,17 +7,24 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from alembic.autogenerate import compare_metadata
+from alembic.runtime.migration import MigrationContext
 from celery.schedules import crontab
 from fastapi import APIRouter
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import text as sa_text
 
 import app.extensions as extensions
+from app.database import BaseDbModel
 from app.extensions import (
+    LoadedExtension,
     OWExtension,
     collect_beat_schedule,
     collect_routers,
     get_active_extensions,
     get_extensions,
 )
+from app.extensions.migrations import TABLE_PREFIX, is_core_object
 from app.integrations.celery.core import create_celery
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -374,3 +381,118 @@ class TestDefaults:
         assert ext.beat_schedule() == {}
         assert ext.routers() == []
         assert ext.celery_task_packages == []
+
+
+_REVISION = """
+import sqlalchemy as sa
+from alembic import op
+
+revision = "0001"
+down_revision = None
+
+
+def upgrade():
+    op.create_table({table!r}, sa.Column("id", sa.Integer, primary_key=True))
+    {after}
+
+
+def downgrade():
+    op.drop_table({table!r})
+"""
+
+_ENV = """
+import sqlalchemy as sa
+from app.extensions.migrations import run_env
+
+metadata = sa.MetaData()
+sa.Table({table!r}, metadata, sa.Column("id", sa.Integer, primary_key=True))
+run_env({name!r}, metadata)
+"""
+
+
+class TestMigrations:
+    @pytest.fixture
+    def migrated(
+        self,
+        installed: Callable[..., None],
+        make_package: Callable[..., str],
+        tmp_path: Path,
+        engine: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> Iterator[Callable[..., LoadedExtension]]:
+        """Install an extension `name` whose single revision creates `table`, then run discovery."""
+        monkeypatch.setattr(extensions, "engine", engine)
+
+        def load(name: str, table: str, after: str = "pass") -> LoadedExtension:
+            migrations_dir = tmp_path / make_package(name) / "migrations"
+            (migrations_dir / "versions").mkdir(parents=True)
+            (migrations_dir / "env.py").write_text(_ENV.format(name=name, table=table))
+            (migrations_dir / "versions" / "0001_init.py").write_text(_REVISION.format(table=table, after=after))
+            ext = OWExtension(name=name, migrations=f"{name}:migrations")
+            installed(FakeEntryPoint(name, lambda: ext))
+            [loaded] = get_extensions()
+            return loaded
+
+        yield load
+        with engine.begin() as connection:
+            for table in sa_inspect(connection).get_table_names():
+                if table.startswith(TABLE_PREFIX):
+                    connection.execute(sa_text(f'DROP TABLE "{table}"'))
+
+    def test_tables_are_migrated_before_the_extension_loads(
+        self, migrated: Callable[..., LoadedExtension], engine: Any
+    ) -> None:
+        loaded = migrated("demo", "ext_demo_item")
+
+        assert loaded.active
+        tables = set(sa_inspect(engine).get_table_names())
+        assert {"ext_demo_item", "ext_demo_alembic_version"} <= tables
+        # Every process migrates on start; once at head the next run is a no-op.
+        get_extensions.cache_clear()
+        assert get_extensions()[0].active
+
+    def test_failed_migration_disables_the_extension_and_rolls_back(
+        self, migrated: Callable[..., LoadedExtension], engine: Any
+    ) -> None:
+        loaded = migrated("failing", "ext_failing_item", after='raise RuntimeError("boom")')
+
+        assert not loaded.active
+        assert "migrations failed: boom" in (loaded.error or "")
+        assert not {"ext_failing_item", "ext_failing_alembic_version"} & set(sa_inspect(engine).get_table_names())
+
+    def test_tables_outside_the_extension_prefix_disable_it(self, migrated: Callable[..., LoadedExtension]) -> None:
+        loaded = migrated("sloppy", "item")
+
+        assert not loaded.active
+        assert "must start with 'ext_sloppy_'" in (loaded.error or "")
+
+    def test_name_that_cannot_prefix_tables_disables_it(self, installed: Callable[..., None]) -> None:
+        @dataclass
+        class BadNameExtension(OWExtension):
+            name: str = "Bad-Name"
+            migrations: str = "bad_name:migrations"
+
+        installed(FakeEntryPoint("bad", BadNameExtension))
+
+        [loaded] = get_extensions()
+
+        assert not loaded.active
+        assert "lowercase identifier" in (loaded.error or "")
+
+    def test_core_autogenerate_leaves_extension_tables_alone(
+        self, migrated: Callable[..., LoadedExtension], engine: Any
+    ) -> None:
+        migrated("demo", "ext_demo_item")
+
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection, opts={"include_name": is_core_object})
+            diff = compare_metadata(context, BaseDbModel.metadata)
+
+        assert not [op for op in diff if TABLE_PREFIX in str(op)]
+
+    @pytest.mark.parametrize(
+        ("name", "type_", "included"),
+        [("ext_demo_item", "table", False), ("ext_demo_alembic_version", "table", False), ("user", "table", True)],
+    )
+    def test_core_autogenerate_skips_extension_tables(self, name: str, type_: str, included: bool) -> None:
+        assert is_core_object(name, type_, {}) is included

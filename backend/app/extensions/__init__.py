@@ -5,8 +5,9 @@ An extension registers an ``OWExtension`` subclass in its pyproject.toml:
     [project.entry-points."open_wearables.extensions"]
     my_extension = "my_extension.extension:MyExtension"
 
-This module is the supported surface for extensions. Everything else in ``app`` can be
-imported too, but may change between releases - pin ``requires_core`` accordingly.
+This module is the supported surface for extensions, with ``app.extensions.migrations`` for
+their database tables. Everything else in ``app`` can be imported too, but may change between
+releases - pin ``requires_core`` accordingly.
 """
 
 from collections.abc import Collection
@@ -23,6 +24,8 @@ from fastapi import APIRouter
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from app import __version__ as core_version
+from app.database import engine
+from app.extensions import migrations
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -43,6 +46,8 @@ class OWExtension:
     requires_core: str = ""
     # Celery autodiscovers a `tasks` module in each of these packages.
     celery_task_packages: list[str] = field(default_factory=list)
+    # Alembic script location of the extension's own history, e.g. "my_extension:migrations".
+    migrations: str = ""
 
     def beat_schedule(self) -> dict[str, dict[str, Any]]:
         return {}
@@ -72,6 +77,20 @@ def _compatibility_error(ext: OWExtension) -> str | None:
     except InvalidSpecifier:
         return f"invalid requires_core specifier {ext.requires_core!r}"
     return None if supported else f"requires core {ext.requires_core}, running {core_version}"
+
+
+def _migration_error(ext: OWExtension) -> str | None:
+    """Migrate the extension's tables to head, so it never runs against an older schema."""
+    if not ext.migrations:
+        return None
+    if error := migrations.name_error(ext.name):
+        return error
+    try:
+        migrations.upgrade(ext.name, ext.migrations, engine)
+    except Exception as exc:
+        log_and_capture_error(exc, logger, "Extension migrations failed", extra={"extension": ext.name})
+        return f"migrations failed: {exc}"
+    return None
 
 
 def _task_import_error(ext: OWExtension) -> str | None:
@@ -108,7 +127,7 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             # Without @dataclass the inherited __init__ resets the subclass's attributes to the defaults.
             error = f"{type(ext).__name__} must be declared with @dataclass"
         else:
-            error = _compatibility_error(ext) or _task_import_error(ext)
+            error = _compatibility_error(ext) or _migration_error(ext) or _task_import_error(ext)
         name = getattr(ext, "name", "") or ep.name
         if error:
             log_structured(
