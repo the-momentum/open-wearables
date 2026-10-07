@@ -948,7 +948,7 @@ class DataPointSeriesRepository(
 
         Returns list of dicts with keys:
         - activity_date, provider, source, device_model, device_type
-        - steps_sum, active_energy_sum, basal_energy_sum
+        - steps_sum, active_energy_sum, basal_energy_sum, total_energy_sum
         - hr_avg, hr_max, hr_min
         - distance_sum, flights_climbed_sum
         """
@@ -956,6 +956,7 @@ class DataPointSeriesRepository(
         steps_id = get_series_type_id(SeriesType.steps)
         energy_id = get_series_type_id(SeriesType.active_energy)
         basal_energy_id = get_series_type_id(SeriesType.basal_energy)
+        total_energy_id = get_series_type_id(SeriesType.total_energy)
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
@@ -1008,6 +1009,8 @@ class DataPointSeriesRepository(
                 prefer_daily_sum(energy_id).label("active_energy_sum"),
                 # Basal energy - prefer daily total, else sum samples
                 prefer_daily_sum(basal_energy_id).label("basal_energy_sum"),
+                # Total energy - providers that report active + basal without a split
+                prefer_daily_sum(total_energy_id).label("total_energy_sum"),
                 # Heart rate stats
                 func.avg(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
                     "hr_avg"
@@ -1030,7 +1033,16 @@ class DataPointSeriesRepository(
                 DataSource.user_id == user_id,
                 *self._local_day_window(local_date, start_date, end_date),
                 self.model.series_type_definition_id.in_(
-                    [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id, active_time_id]
+                    [
+                        steps_id,
+                        energy_id,
+                        basal_energy_id,
+                        total_energy_id,
+                        hr_id,
+                        distance_id,
+                        flights_id,
+                        active_time_id,
+                    ]
                 ),
             )
             .group_by(
@@ -1055,8 +1067,9 @@ class DataPointSeriesRepository(
                     "device_model": row.device_model,
                     "device_type": row.device_type,
                     "steps_sum": int(row.steps_sum) if row.steps_sum else 0,
-                    "active_energy_sum": float(row.active_energy_sum) if row.active_energy_sum else 0.0,
-                    "basal_energy_sum": float(row.basal_energy_sum) if row.basal_energy_sum else 0.0,
+                    "active_energy_sum": float(row.active_energy_sum) if row.active_energy_sum is not None else None,
+                    "basal_energy_sum": float(row.basal_energy_sum) if row.basal_energy_sum is not None else None,
+                    "total_energy_sum": float(row.total_energy_sum) if row.total_energy_sum is not None else None,
                     "hr_avg": int(round(float(row.hr_avg))) if row.hr_avg is not None else None,
                     "hr_max": int(row.hr_max) if row.hr_max is not None else None,
                     "hr_min": int(row.hr_min) if row.hr_min is not None else None,

@@ -11110,7 +11110,7 @@
               }
             ],
             "title": "Total Calories Kcal",
-            "description": "Active + basal energy",
+            "description": "Total energy burned: the provider's reported total when available, otherwise active + basal energy; null when neither is available",
             "example": 2150.0
           },
           "active_minutes": {
@@ -15684,6 +15684,7 @@
           "flights_climbed",
           "average_met",
           "active_time",
+          "total_energy",
           "distance_walking_running",
           "distance_cycling",
           "distance_swimming",

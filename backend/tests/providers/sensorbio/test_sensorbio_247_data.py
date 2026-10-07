@@ -484,7 +484,7 @@ class TestSensorBio247DailyActivityNormalization:
         assert result is not None
         assert result["steps"] == 8200
         assert result["distance"] == 6.1
-        assert result["energy"] == 312
+        assert "energy" not in result  # active energy comes from /v1/calorie/details
         assert result["timestamp"] == datetime(2024, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
 
     def test_missing_metrics_keys(self, data_247: SensorBio247Data) -> None:
@@ -497,7 +497,6 @@ class TestSensorBio247DailyActivityNormalization:
         assert result is not None
         assert result["steps"] == 5000
         assert result["distance"] is None
-        assert result["energy"] is None
 
     def test_missing_date(self, data_247: SensorBio247Data) -> None:
         raw = {"metrics": [{"name": "Steps", "value": 5000}]}

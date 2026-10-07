@@ -167,6 +167,11 @@ class TestPolar247DailyActivityNormalization:
         energy_sample = next(s for s in samples if s.series_type == SeriesType.active_energy)
         assert energy_sample.value == 420
 
+    def test_basal_energy_is_total_minus_active(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        samples = data_247.normalize_daily_activity([{**sample_activity, "calories": 2200}], uuid4())
+        basal_sample = next(s for s in samples if s.series_type == SeriesType.basal_energy)
+        assert basal_sample.value == 1780
+
     def test_distance_value(self, data_247: Polar247Data, sample_activity: dict) -> None:
         user_id = uuid4()
         samples = data_247.normalize_daily_activity([sample_activity], user_id)

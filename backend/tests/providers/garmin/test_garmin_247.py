@@ -548,8 +548,8 @@ class TestGarmin247Data:
         normalized, _ = garmin_247.normalize_dailies(sample_daily, user_id)
         samples = garmin_247._build_dailies_samples(user_id, normalized)
 
-        # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
-        assert len(samples) == 8
+        # 6 metrics (steps, active/basal calories, resting_hr, floors, distance) + 3 HR samples
+        assert len(samples) == 9
         assert len({s.series_type for s in samples}) > 1
 
     def test_build_dailies_samples_exercise_time(self, garmin_247: Garmin247Data) -> None:

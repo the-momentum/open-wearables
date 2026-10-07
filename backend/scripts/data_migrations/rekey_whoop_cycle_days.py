@@ -65,12 +65,13 @@ _HEALTH_SCORE = _Table(
 
 _DATA_POINT_SERIES = _Table(
     name="data_point_series",
-    label="data_point_series (active_energy, steps)",
+    label="data_point_series (active_energy, total_energy, steps)",
     eligible=(
         "t.is_daily_total IS TRUE"
         " AND EXISTS (SELECT 1 FROM data_source ds WHERE ds.id = t.data_source_id AND ds.provider = 'whoop')"
         " AND EXISTS (SELECT 1 FROM series_type_definition std"
-        "             WHERE std.id = t.series_type_definition_id AND std.code IN ('active_energy', 'steps'))"
+        "             WHERE std.id = t.series_type_definition_id"
+        "               AND std.code IN ('active_energy', 'total_energy', 'steps'))"
     ),
     user_id="(SELECT ds.user_id FROM data_source ds WHERE ds.id = t.data_source_id)",
     key="t.data_source_id, t.series_type_definition_id",

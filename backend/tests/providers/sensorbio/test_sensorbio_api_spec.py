@@ -214,12 +214,11 @@ _STEP_DETAILS_RESPONSE: dict[str, Any] = {
 
 
 def test_normalize_daily_activity_reads_metrics_by_name(data_247: SensorBio247Data) -> None:
-    """normalize_daily_activity must parse steps/distance/energy from metrics[]."""
+    """normalize_daily_activity must parse steps/distance from metrics[]."""
     normalized = data_247.normalize_daily_activity(_STEP_DETAILS_RESPONSE, USER_ID)
 
     assert normalized["steps"] == 8200
     assert normalized["distance"] == pytest.approx(6.1)
-    assert normalized["energy"] == pytest.approx(312.0)
 
 
 def test_normalize_daily_activity_timestamp_from_date(data_247: SensorBio247Data) -> None:
@@ -230,18 +229,30 @@ def test_normalize_daily_activity_timestamp_from_date(data_247: SensorBio247Data
 
 def test_normalize_daily_activity_missing_metric_is_none(data_247: SensorBio247Data) -> None:
     """When a metric is absent from the array, the field should be None."""
-    response_no_calories = {
+    response_no_distance = {
+        "date": "2024-01-15",
+        "granularity": "day",
+        "metrics": [{"name": "Steps", "value": 5000}],
+    }
+    normalized = data_247.normalize_daily_activity(response_no_distance, USER_ID)
+    assert normalized["steps"] == 5000
+    assert normalized["distance"] is None
+
+
+def test_normalize_daily_calories_reads_resting_and_active(data_247: SensorBio247Data) -> None:
+    response = {
         "date": "2024-01-15",
         "granularity": "day",
         "metrics": [
-            {"name": "Steps", "value": 5000},
-            {"name": "Distance", "value": 3.5, "unit": "km"},
-            # No Calories entry
+            {"name": "Resting Calories", "value": 1650.0, "unit": "kcal"},
+            {"name": "Active Calories", "value": 420.0, "unit": "kcal"},
+            {"name": "Total Calories", "value": 2070.0, "unit": "kcal"},
         ],
     }
-    normalized = data_247.normalize_daily_activity(response_no_calories, USER_ID)
-    assert normalized["steps"] == 5000
-    assert normalized["energy"] is None
+    normalized = data_247.normalize_daily_calories(response, USER_ID)
+    assert normalized["basal_energy"] == pytest.approx(1650.0)
+    assert normalized["energy"] == pytest.approx(420.0)  # Total - Resting
+    assert normalized["timestamp"] == datetime(2024, 1, 15, tzinfo=timezone.utc)
 
 
 def test_get_daily_activity_statistics_no_data_wrapper(data_247: SensorBio247Data) -> None:

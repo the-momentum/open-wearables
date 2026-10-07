@@ -270,6 +270,7 @@ class TestOura247ActivityNormalization:
                 "day": "2024-01-15",
                 "steps": 8500,
                 "active_calories": 350,
+                "total_calories": 1800,
                 "equivalent_walking_distance": 6500,
                 "timestamp": "2024-01-15T23:59:59+00:00",
             },
@@ -280,6 +281,7 @@ class TestOura247ActivityNormalization:
         assert samples["steps"][0]["value"] == 8500
         assert len(samples["energy"]) == 1
         assert samples["energy"][0]["value"] == 350
+        assert samples["basal_energy"][0]["value"] == 1450
         assert len(samples["distance"]) == 1
         assert samples["distance"][0]["value"] == 6500
 

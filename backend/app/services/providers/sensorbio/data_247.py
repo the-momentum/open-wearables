@@ -18,6 +18,7 @@ from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
 from app.schemas.providers.sensorbio import (
     BiometricsRecord,
+    CalorieDetailsResponse,
     ScoresRecord,
     SleepRecord,
     SleepStageIntervalRecord,
@@ -36,6 +37,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import as_utc
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 _SchemaT = TypeVar("_SchemaT", bound=BaseModel)
@@ -652,27 +654,42 @@ class SensorBio247Data(Base247DataTemplate):
     def get_daily_activity_statistics(
         self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
     ) -> list[dict[str, Any]]:
-        """Fetch step details per day from /v1/step/details.
+        """Fetch step details per day from /v1/step/details."""
+        return self._get_daily_details(db, user_id, start_date, end_date, "/v1/step/details")
 
-        Like sleep/scores, this endpoint is date-scoped (``date`` + ``granularity``).
-        """
+    def get_daily_calorie_details(
+        self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+    ) -> list[dict[str, Any]]:
+        """Fetch calorie details (resting/active/total) per day from /v1/calorie/details."""
+        return self._get_daily_details(db, user_id, start_date, end_date, "/v1/calorie/details")
+
+    def _get_daily_details(
+        self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime, endpoint: str
+    ) -> list[dict[str, Any]]:
+        """One ``granularity=day`` request per date; like sleep/scores, these endpoints are date-scoped."""
         all_stats: list[dict[str, Any]] = []
         current_date = start_date.astimezone(timezone.utc).date()
         final_date = end_date.astimezone(timezone.utc).date()
         while current_date <= final_date:
             try:
                 response = self._make_api_request(
-                    db, user_id, "/v1/step/details", params={"date": current_date.isoformat(), "granularity": "day"}
+                    db, user_id, endpoint, params={"date": current_date.isoformat(), "granularity": "day"}
                 )
                 if isinstance(response, dict) and "metrics" in response:
                     all_stats.append(response)
             except Exception as e:
-                log_structured(
+                log_and_capture_error(
+                    e,
                     self.logger,
-                    "warning",
-                    f"Error fetching Sensor Bio step details for {current_date}: {e}",
-                    provider="sensorbio",
-                    task="get_daily_activity_statistics",
+                    "Failed to fetch Sensor Bio daily details",
+                    level="warning",
+                    extra={
+                        "provider": "sensorbio",
+                        "endpoint": endpoint,
+                        "date": current_date.isoformat(),
+                        "user_id": str(user_id),
+                        "error": str(e),
+                    },
                 )
             current_date += timedelta(days=1)
         return all_stats
@@ -694,7 +711,6 @@ class SensorBio247Data(Base247DataTemplate):
 
         steps_metric = metrics_by_name.get("Steps")
         distance_metric = metrics_by_name.get("Distance")
-        calories_metric = metrics_by_name.get("Calories")
 
         return {
             "user_id": user_id,
@@ -702,8 +718,29 @@ class SensorBio247Data(Base247DataTemplate):
             "timestamp": timestamp,
             "steps": int(steps_metric.value) if steps_metric and steps_metric.value is not None else None,
             "distance": distance_metric.value if distance_metric else None,
-            "energy": calories_metric.value if calories_metric else None,
             "raw": raw_stats,
+        }
+
+    def normalize_daily_calories(self, raw_calories: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:
+        """Validate + normalise a CalorieDetailsResponseBody into resting (basal) and active energy.
+
+        Active is Total minus Resting: the docs don't say how Step/Active/Workout overlap,
+        so summing them could double-count.
+        """
+        parsed = self._parse(raw_calories, CalorieDetailsResponse, "calorie_details", user_id)
+        if parsed is None or not parsed.date:
+            return None
+
+        values = {(m.name or m.type): m.value for m in parsed.metrics}
+        resting = values.get("Resting Calories") or None
+        total = values.get("Total Calories")
+        active = total - resting if total is not None and resting is not None else None
+        return {
+            "user_id": user_id,
+            "provider": self.provider_name,
+            "timestamp": datetime.fromisoformat(f"{parsed.date}T00:00:00+00:00"),
+            "basal_energy": resting,
+            "energy": active if active and active > 0 else None,
         }
 
     def save_daily_activity(self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]) -> int:
@@ -747,12 +784,16 @@ class SensorBio247Data(Base247DataTemplate):
     def load_and_save_daily_activity(
         self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
     ) -> int:
-        """Fetch, normalize, and persist daily step/distance/energy data."""
-        raw_data = self.get_daily_activity_statistics(db, user_id, start_time, end_time)
+        """Fetch, normalize, and persist daily step/distance/energy and resting-calorie data."""
+        steps = self.get_daily_activity_statistics(db, user_id, start_time, end_time)
+        calories = self.get_daily_calorie_details(db, user_id, start_time, end_time)
+        work = [(item, self.normalize_daily_activity) for item in steps] + [
+            (item, self.normalize_daily_calories) for item in calories
+        ]
         total_count = 0
-        for item in raw_data:
+        for item, normalize in work:
             try:
-                normalized = self.normalize_daily_activity(item, user_id)
+                normalized = normalize(item, user_id)
                 if normalized is None:
                     continue
                 total_count += self.save_daily_activity(db, user_id, normalized)

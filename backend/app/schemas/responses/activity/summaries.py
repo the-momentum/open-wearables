@@ -42,7 +42,14 @@ class ActivitySummary(BaseModel):
     elevation_meters: float | None = Field(None, description="Raw total elevation gain", example=36.0)
     # Energy metrics
     active_calories_kcal: float | None = Field(None, description="Active energy burned", example=342.5)
-    total_calories_kcal: float | None = Field(None, description="Active + basal energy", example=2150.0)
+    total_calories_kcal: float | None = Field(
+        None,
+        description=(
+            "Total energy burned: the provider's reported total when available, otherwise active + basal energy; "
+            "null when neither is available"
+        ),
+        example=2150.0,
+    )
     # Duration metrics (based on step threshold)
     active_minutes: int | None = Field(None, description="Minutes with activity above threshold", example=60)
     sedentary_minutes: int | None = Field(None, description="Minutes with minimal activity", example=480)

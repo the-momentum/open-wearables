@@ -75,6 +75,13 @@ echo 'Running Whoop cycle day re-key...'
 uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
     || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Relabels Whoop cycle energy stored as active_energy (id=81) to total_energy (id=89):
+# it includes BMR. Drops 0 kJ no-wear rows. Scoped to provider='whoop', no-op once done.
+echo 'Running Whoop active_energy->total_energy relabel...'
+uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py \
+    || echo "Warning: Whoop energy relabel failed — will retry on next startup."
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
 # recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
