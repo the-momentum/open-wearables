@@ -5,7 +5,6 @@ autogenerate skips, so neither history can create or drop the other's tables. An
 ``migrations/env.py`` is a single call: ``run_env("my_extension", Base.metadata)``.
 """
 
-import re
 from typing import Any
 
 from alembic import command, context
@@ -13,7 +12,6 @@ from alembic.config import Config
 from sqlalchemy import Connection, Engine, MetaData, text
 
 TABLE_PREFIX = "ext_"
-_NAME = re.compile(r"[a-z][a-z0-9_]*")
 # Serialises the processes that start together (API, workers, beat), so one migrates and the rest find head.
 _LOCK_KEY = 7_302_118_543_026_771_041
 
@@ -29,12 +27,6 @@ def version_table(name: str) -> str:
 def is_core_object(name: str | None, type_: str, parent_names: Any) -> bool:
     """``include_name`` for the core's Alembic env: leaves extension tables out of autogenerate."""
     return type_ != "table" or not (name or "").startswith(TABLE_PREFIX)
-
-
-def name_error(name: str) -> str | None:
-    if _NAME.fullmatch(name):
-        return None
-    return f"name {name!r} must be a lowercase identifier to prefix its tables"
 
 
 def upgrade(name: str, script_location: str, engine: Engine) -> None:

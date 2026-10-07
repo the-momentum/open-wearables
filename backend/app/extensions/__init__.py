@@ -10,9 +10,11 @@ their database tables. Everything else in ``app`` can be imported too, but may c
 releases - pin ``requires_core`` accordingly.
 """
 
+import re
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import timedelta
+from enum import Enum
 from functools import cache
 from importlib import import_module
 from importlib.metadata import entry_points
@@ -20,7 +22,7 @@ from importlib.util import find_spec
 from logging import getLogger
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI, params
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from app import __version__ as core_version
@@ -32,6 +34,7 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 ENTRY_POINT_GROUP = "open_wearables.extensions"
+_NAME = re.compile(r"[a-z][a-z0-9_]*")
 
 # The fields Celery documents for a beat_schedule entry; beat fails to start on an unknown one.
 _BEAT_ENTRY_FIELDS = frozenset({"task", "schedule", "args", "kwargs", "options", "relative"})
@@ -53,7 +56,11 @@ class OWExtension:
         return {}
 
     def routers(self) -> list[APIRouter]:
-        """Routers mounted under the API v1 prefix."""
+        """Routers mounted under ``/api/v1/ext/<name>``, behind the core's API key auth."""
+        return []
+
+    def public_routers(self) -> list[APIRouter]:
+        """Routers mounted like ``routers()`` but without auth, e.g. a third party's webhook receiver."""
         return []
 
     def event_handlers(self) -> dict[str, str]:
@@ -72,6 +79,13 @@ class LoadedExtension:
         return self.extension is not None and self.error is None
 
 
+def _name_error(ext: OWExtension) -> str | None:
+    """The name prefixes the extension's URLs and tables, so it must be a lowercase identifier."""
+    if _NAME.fullmatch(ext.name):
+        return None
+    return f"name {ext.name!r} must be a lowercase identifier"
+
+
 def _compatibility_error(ext: OWExtension) -> str | None:
     """Return an error message when the extension does not support this core version."""
     if not ext.requires_core:
@@ -87,8 +101,6 @@ def _migration_error(ext: OWExtension) -> str | None:
     """Migrate the extension's tables to head, so it never runs against an older schema."""
     if not ext.migrations:
         return None
-    if error := migrations.name_error(ext.name):
-        return error
     try:
         migrations.upgrade(ext.name, ext.migrations, engine)
     except Exception as exc:
@@ -131,7 +143,7 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             # Without @dataclass the inherited __init__ resets the subclass's attributes to the defaults.
             error = f"{type(ext).__name__} must be declared with @dataclass"
         else:
-            error = _compatibility_error(ext) or _migration_error(ext) or _task_import_error(ext)
+            error = _name_error(ext) or _compatibility_error(ext) or _migration_error(ext) or _task_import_error(ext)
         name = getattr(ext, "name", "") or ep.name
         if error:
             log_structured(
@@ -150,29 +162,42 @@ def get_active_extensions() -> list[OWExtension]:
     return [e.extension for e in get_extensions() if e.active and e.extension is not None]
 
 
-def collect_routers() -> list[APIRouter]:
+def _hook_routers(ext: OWExtension, hook: str) -> list[APIRouter]:
+    try:
+        contributed = list(getattr(ext, hook)())
+    except Exception as exc:
+        log_and_capture_error(
+            exc,
+            logger,
+            f"Extension {hook}() failed, its endpoints are not mounted",
+            extra={"extension": ext.name},
+        )
+        return []
     routers: list[APIRouter] = []
-    for ext in get_active_extensions():
-        try:
-            contributed = list(ext.routers())
-        except Exception as exc:
-            log_and_capture_error(
-                exc, logger, "Extension routers() failed, its endpoints are not mounted", extra={"extension": ext.name}
-            )
+    for router in contributed:
+        if isinstance(router, APIRouter):
+            routers.append(router)
             continue
-        for router in contributed:
-            if isinstance(router, APIRouter):
-                routers.append(router)
-            else:
-                log_structured(
-                    logger,
-                    "error",
-                    "Extension router skipped",
-                    action="extension_router_skipped",
-                    extension=ext.name,
-                    reason=f"not an APIRouter: {type(router).__name__}",
-                )
+        log_structured(
+            logger,
+            "error",
+            "Extension router skipped",
+            action="extension_router_skipped",
+            extension=ext.name,
+            reason=f"not an APIRouter: {type(router).__name__}",
+        )
     return routers
+
+
+def mount_routers(app: FastAPI, prefix: str, auth: params.Depends) -> None:
+    """Mount every active extension's routers under ``<prefix>/ext/<name>``, so they can neither
+    shadow the core's paths nor each other's; ``routers()`` sit behind ``auth``."""
+    for ext in get_active_extensions():
+        tags: list[str | Enum] = [f"Extension: {ext.display_name or ext.name}"]
+        for router in _hook_routers(ext, "routers"):
+            app.include_router(router, prefix=f"{prefix}/ext/{ext.name}", tags=tags, dependencies=[auth])
+        for router in _hook_routers(ext, "public_routers"):
+            app.include_router(router, prefix=f"{prefix}/ext/{ext.name}", tags=tags)
 
 
 def collect_event_handlers() -> dict[str, tuple[str, ...]]:
@@ -259,7 +284,7 @@ __all__ = [
     "OWExtension",
     "collect_beat_schedule",
     "collect_event_handlers",
-    "collect_routers",
     "get_active_extensions",
     "get_extensions",
+    "mount_routers",
 ]

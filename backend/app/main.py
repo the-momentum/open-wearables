@@ -17,12 +17,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
-from app.extensions import collect_routers
+from app.extensions import mount_routers
 from app.integrations.celery import create_celery
 from app.integrations.otel import init_otel, shutdown_otel
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_access_log_middleware, add_cors_middleware, add_endpoint_usage_middleware
 from app.services import raw_payload_storage
+from app.services.api_key_service import API_KEY_REQUIRED
 from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
@@ -157,5 +158,4 @@ async def http_exception_handler_with_body_log(request: Request, exc: StarletteH
 
 
 api.include_router(head_router)
-for _router in collect_routers():
-    api.include_router(_router, prefix=settings.api_v1)
+mount_routers(api, settings.api_v1, API_KEY_REQUIRED)

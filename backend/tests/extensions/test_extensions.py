@@ -12,7 +12,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from celery.schedules import crontab
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text as sa_text
@@ -25,10 +25,10 @@ from app.extensions import (
     OWExtension,
     collect_beat_schedule,
     collect_event_handlers,
-    collect_routers,
     events,
     get_active_extensions,
     get_extensions,
+    mount_routers,
 )
 from app.extensions.migrations import TABLE_PREFIX, is_core_object
 from app.integrations.celery.core import create_celery
@@ -39,6 +39,18 @@ from tests.factories import ApiKeyFactory
 from tests.utils import api_key_headers
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def _ping_router() -> APIRouter:
+    router = APIRouter()
+    router.add_api_route("/ping", lambda: {"pong": True})
+    return router
+
+
+def _mounted_paths() -> list[str]:
+    app = FastAPI()
+    mount_routers(app, "/api/v1", Depends(lambda: None))
+    return [path for path in app.openapi()["paths"] if path.startswith("/api/v1/ext/")]
 
 
 @dataclass
@@ -82,7 +94,7 @@ class ContributingExtension(OWExtension):
         return {"contributing-job": {"task": "contributing.tasks.run", "schedule": 60.0}}
 
     def routers(self) -> list[Any]:
-        return [APIRouter()]
+        return [_ping_router()]
 
 
 @dataclass
@@ -90,7 +102,7 @@ class MixedRoutersExtension(OWExtension):
     name: str = "mixed_routers"
 
     def routers(self) -> list[Any]:
-        return [None, APIRouter()]
+        return [None, _ping_router()]
 
 
 @dataclass
@@ -255,6 +267,17 @@ class TestDiscovery:
         # A bad extension never takes the others down with it.
         assert [e.name for e in get_active_extensions()] == ["compatible"]
 
+    @pytest.mark.parametrize("name", ["", "Bad-Name", "has space", "1st"])
+    def test_name_that_cannot_prefix_urls_and_tables_is_skipped(
+        self, installed: Callable[..., None], name: str
+    ) -> None:
+        installed(FakeEntryPoint("misnamed", lambda: OWExtension(name=name)))
+
+        [loaded] = get_extensions()
+
+        assert not loaded.active
+        assert "lowercase identifier" in (loaded.error or "")
+
     def test_plain_subclass_is_skipped(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("plain", PlainSubclassExtension), FakeEntryPoint("compatible", CompatibleExtension))
 
@@ -342,18 +365,18 @@ class TestHooks:
         )
 
         assert list(collect_beat_schedule()) == ["contributing-job"]
-        assert len(collect_routers()) == 1
+        assert _mounted_paths() == ["/api/v1/ext/contributing/ping"]
 
     def test_hooks_returning_none_are_skipped(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("none_hooks", NoneHooksExtension))
 
         assert collect_beat_schedule() == {}
-        assert collect_routers() == []
+        assert _mounted_paths() == []
 
     def test_values_that_are_not_routers_are_skipped(self, installed: Callable[..., None]) -> None:
         installed(FakeEntryPoint("mixed_routers", MixedRoutersExtension))
 
-        assert [type(router) for router in collect_routers()] == [APIRouter]
+        assert _mounted_paths() == ["/api/v1/ext/mixed_routers/ping"]
 
 
 class TestBeatSchedule:
@@ -481,19 +504,6 @@ class TestMigrations:
 
         assert not loaded.active
         assert "must start with 'ext_sloppy_'" in (loaded.error or "")
-
-    def test_name_that_cannot_prefix_tables_disables_it(self, installed: Callable[..., None]) -> None:
-        @dataclass
-        class BadNameExtension(OWExtension):
-            name: str = "Bad-Name"
-            migrations: str = "bad_name:migrations"
-
-        installed(FakeEntryPoint("bad", BadNameExtension))
-
-        [loaded] = get_extensions()
-
-        assert not loaded.active
-        assert "lowercase identifier" in (loaded.error or "")
 
     def test_core_autogenerate_leaves_extension_tables_alone(
         self, migrated: Callable[..., LoadedExtension], engine: Any
@@ -669,3 +679,52 @@ class TestMetaEndpoint:
 
     def test_requires_authentication(self, client: TestClient) -> None:
         assert client.get("/api/v1/meta/extensions").status_code == 401
+
+
+@dataclass
+class RoutedExtension(OWExtension):
+    name: str = "routed"
+    display_name: str = "Routed"
+
+    def routers(self) -> list[Any]:
+        router = _ping_router()
+        router.add_api_route("/users/{user_id}/summaries/activity", lambda user_id: {"ext": user_id})
+        return [router]
+
+    def public_routers(self) -> list[Any]:
+        router = APIRouter()
+        router.add_api_route("/webhook", lambda: {"received": True}, methods=["POST"])
+        return [router]
+
+
+class TestRouters:
+    @pytest.fixture
+    def app(self, installed: Callable[..., None]) -> FastAPI:
+        def auth(request: Request) -> None:
+            if request.headers.get("X-Test-Auth") != "ok":
+                raise HTTPException(status_code=401)
+
+        installed(FakeEntryPoint("routed", RoutedExtension))
+        app = FastAPI()
+        mount_routers(app, "/api/v1", Depends(auth))
+        return app
+
+    def test_routers_require_auth(self, app: FastAPI) -> None:
+        client = TestClient(app)
+
+        assert client.get("/api/v1/ext/routed/ping").status_code == 401
+        assert client.get("/api/v1/ext/routed/ping", headers={"X-Test-Auth": "ok"}).json() == {"pong": True}
+
+    def test_public_routers_skip_auth(self, app: FastAPI) -> None:
+        assert TestClient(app).post("/api/v1/ext/routed/webhook").json() == {"received": True}
+
+    def test_a_core_path_lands_under_the_extension_prefix(self, app: FastAPI) -> None:
+        paths = set(app.openapi()["paths"])
+
+        assert "/api/v1/ext/routed/users/{user_id}/summaries/activity" in paths
+        assert "/api/v1/users/{user_id}/summaries/activity" not in paths
+
+    def test_endpoints_are_grouped_under_the_extension_tag(self, app: FastAPI) -> None:
+        tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
+
+        assert tags == {"Extension: Routed"}

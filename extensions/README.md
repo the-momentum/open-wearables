@@ -68,3 +68,25 @@ default) and all syncs inside it end in a single task, queued by a sweep every
 `EXTENSION_EVENT_SWEEP_INTERVAL_SECONDS`. Delivery is at least once, so the task must be safe to
 run twice for the same user.
 
+## API endpoints
+
+Routers from `routers()` are mounted under `/api/v1/ext/<name>` and require the same
+authentication as the core API (an API key or a dashboard token), so an endpoint is never public
+by accident and never collides with a core path. A router that must be public, such as a
+receiver for a third party's webhooks, goes in `public_routers()` instead:
+
+```python
+@dataclass
+class MyExtension(OWExtension):
+    name: str = "my_extension"
+
+    def routers(self) -> list[APIRouter]:
+        return [reports_router]  # GET /api/v1/ext/my_extension/reports, authenticated
+
+    def public_routers(self) -> list[APIRouter]:
+        return [webhook_router]  # POST /api/v1/ext/my_extension/webhook, public
+```
+
+`name` must be a lowercase identifier (`[a-z][a-z0-9_]*`), since it prefixes the extension's
+URLs and tables; an extension with any other name is not loaded.
+
