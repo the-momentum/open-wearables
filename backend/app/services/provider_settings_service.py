@@ -1,6 +1,5 @@
-from typing import Any
-
 from app.database import DbSession
+from app.models import ProviderSetting
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
@@ -8,18 +7,22 @@ from app.schemas.model_crud.data_priority import (
     ProviderSettingRead,
     ProviderSettingUpdate,
 )
+from app.services.providers.base_strategy import ProviderCapabilities
 from app.services.providers.factory import ProviderFactory
 
 _NON_PROVIDER_NAMES = {ProviderName.UNKNOWN, ProviderName.INTERNAL}
 
 
-def include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is_historical: bool) -> bool:
+def live_sync_mode_of(provider: str, provider_settings: dict[str, ProviderSetting]) -> LiveSyncMode | None:
+    setting = provider_settings.get(provider)
+    return setting.live_sync_mode if setting else LiveSyncMode.PULL
+
+
+def include_in_periodic_pull(
+    caps: ProviderCapabilities, live_sync_mode: LiveSyncMode | None, is_historical: bool
+) -> bool:
     """True if the provider belongs in this REST pull run; live sync polls pull mode only."""
-    if not caps.rest_pull:
-        return False
-    if is_historical:
-        return True
-    return live_sync_mode == LiveSyncMode.PULL
+    return caps.rest_pull and (is_historical or live_sync_mode == LiveSyncMode.PULL)
 
 
 class ProviderSettingsService:
@@ -30,19 +33,18 @@ class ProviderSettingsService:
         self.repo = ProviderSettingsRepository()
 
     def get_pull_eligible_providers(self, db: DbSession) -> list[str]:
-        """Providers worth periodic-polling, so push-only ones are never even queried."""
+        """Providers the periodic sync polls, so users of push-only ones are never enqueued."""
         provider_settings = self.repo.get_all(db)
-        eligible = []
-        for name in ProviderName:
-            if name in _NON_PROVIDER_NAMES:
-                continue
-            caps = self.factory.get_provider(name.value).capabilities
-            live_sync_mode = (
-                provider_settings[name.value].live_sync_mode if name.value in provider_settings else LiveSyncMode.PULL
+        return [
+            name.value
+            for name in ProviderName
+            if name not in _NON_PROVIDER_NAMES
+            and include_in_periodic_pull(
+                self.factory.get_provider(name.value).capabilities,
+                live_sync_mode_of(name.value, provider_settings),
+                is_historical=False,
             )
-            if include_in_periodic_pull(caps, live_sync_mode, is_historical=False):
-                eligible.append(name.value)
-        return eligible
+        ]
 
     def _to_read(self, provider_key: str, setting_map: dict) -> ProviderSettingRead:
         strategy = self.factory.get_provider(provider_key)
@@ -65,7 +67,7 @@ class ProviderSettingsService:
     def get_all_providers(self, db: DbSession) -> list[ProviderSettingRead]:
         """Get all providers merged with their DB settings and strategy metadata."""
         db_settings_map = self.repo.get_all(db)
-        return [self._to_read(p.value, db_settings_map) for p in ProviderName if p.value not in ("unknown", "internal")]
+        return [self._to_read(p.value, db_settings_map) for p in ProviderName if p not in _NON_PROVIDER_NAMES]
 
     def update_provider_setting(
         self,

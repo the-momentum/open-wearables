@@ -394,36 +394,12 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .all()
         )
 
-    def get_all_active_users(self, db_session: DbSession) -> list[UUID]:
-        """Get all unique user IDs that have active connections."""
-        return [
-            row.user_id
-            for row in db_session.query(self.model.user_id)
-            .filter(self.model.status == ConnectionStatus.ACTIVE)
-            .distinct()
-            .all()
-        ]
-
-    def get_all_active_users_by_provider(self, db_session: DbSession, providers: list[str]) -> list[UUID]:
-        """Unique user IDs with an active connection to one of `providers`.
-
-        Lets callers pre-filter to providers actually worth acting on (e.g.
-        rest_pull-capable ones for periodic sync) before fanning out per user.
-        """
-        if not providers:
-            return []
-        return [
-            row.user_id
-            for row in db_session.query(self.model.user_id)
-            .filter(
-                and_(
-                    self.model.status == ConnectionStatus.ACTIVE,
-                    self.model.provider.in_(providers),
-                ),
-            )
-            .distinct()
-            .all()
-        ]
+    def get_all_active_users(self, db_session: DbSession, providers: list[str] | None = None) -> list[UUID]:
+        """Unique user IDs with an active connection, optionally only to one of ``providers``."""
+        query = db_session.query(self.model.user_id).filter(self.model.status == ConnectionStatus.ACTIVE)
+        if providers is not None:
+            query = query.filter(self.model.provider.in_(providers))
+        return [row.user_id for row in query.distinct().all()]
 
     def ensure_sdk_connection(
         self,

@@ -15,7 +15,7 @@
 	import { FOOTNOTE, INLINE_LINK, MICRO } from '$lib/components/ui/typography';
 	import { providerLabel } from '$lib/providers/labels';
 	import { offsetHrefs } from '$lib/lists/offset';
-	import { filtered, SYNC_WINDOW } from '$lib/syncs/runs';
+	import { filtered, SYNC_INDEX_LIMIT, SYNC_WINDOW } from '$lib/syncs/runs';
 	import { formatRelativeTime } from '$lib/utils/datetime';
 	import { createSubmitFlag } from '$lib/utils/forms.svelte';
 	import { formatNumber } from '$lib/utils/format';
@@ -35,7 +35,9 @@
 <div class="flex flex-col gap-5">
 	<PageHeader
 		title="Syncs"
-		description="Every user's syncs from the last 24 hours, as Redis holds them."
+		description="Every user's syncs from the last 24 hours, up to the newest {formatNumber(
+			SYNC_INDEX_LIMIT
+		)}, as Redis holds them."
 	>
 		{#snippet actions()}
 			<form

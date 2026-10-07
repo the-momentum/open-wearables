@@ -19,7 +19,7 @@ def sync_all_users(
     user_id: str | None = None,
 ) -> dict:
     """
-    Sync all users with an active, rest_pull-eligible connection.
+    Sync all users with an active connection to a provider in pull mode.
     Calls sync_vendor_data for each user with the same parameters.
 
     Args:
@@ -28,23 +28,20 @@ def sync_all_users(
     """
     log_structured(logger, "info", "Starting sync for all users", task="sync_all_users")
 
-    user_connection_repo = UserConnectionRepository()
-
     with SessionLocal() as db:
         eligible_providers = ProviderSettingsService().get_pull_eligible_providers(db)
-        active_user_ids = user_connection_repo.get_all_active_users_by_provider(db, eligible_providers)
+        active_user_ids = UserConnectionRepository().get_all_active_users(db, eligible_providers)
 
-        log_structured(
-            logger,
-            "info",
-            f"Found {len(active_user_ids)} users with a rest_pull-eligible connection",
-            provider="sync_all_users",
-            task="sync_all_users",
-            eligible_providers=eligible_providers,
-            active_user_ids=[str(uid) for uid in active_user_ids],
-        )
+    log_structured(
+        logger,
+        "info",
+        f"Found {len(active_user_ids)} users with a pull-mode connection",
+        provider="sync_all_users",
+        task="sync_all_users",
+        eligible_providers=eligible_providers,
+    )
 
-        for active_user_id in active_user_ids:
-            sync_vendor_data.delay(user_id=str(active_user_id), start_date=start_date, end_date=end_date)
+    for active_user_id in active_user_ids:
+        sync_vendor_data.delay(user_id=str(active_user_id), start_date=start_date, end_date=end_date)
 
-        return SyncAllUsersResult(users_for_sync=len(active_user_ids)).model_dump()
+    return SyncAllUsersResult(users_for_sync=len(active_user_ids)).model_dump()

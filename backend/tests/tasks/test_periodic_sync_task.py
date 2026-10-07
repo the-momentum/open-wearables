@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.periodic_sync_task import sync_all_users
-from app.schemas.auth import ConnectionStatus
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -262,3 +263,28 @@ class TestSyncAllUsersTask:
         call_args_list = [call.kwargs["user_id"] for call in mock_sync_vendor_data.delay.call_args_list]
         for user in users:
             assert str(user.id) in call_args_list
+
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    def test_sync_all_users_skips_users_without_a_pull_mode_connection(
+        self,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        pull_user = UserFactory()
+        push_only_user = UserFactory()
+        webhook_mode_user = UserFactory()
+        UserConnectionFactory(user=pull_user, provider="whoop", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=push_only_user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=webhook_mode_user, provider="polar", status=ConnectionStatus.ACTIVE)
+        ProviderSettingsRepository().upsert(db, "polar", is_enabled=True, live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+
+        result = sync_all_users()
+
+        assert result["users_for_sync"] == 1
+        mock_sync_vendor_data.delay.assert_called_once_with(user_id=str(pull_user.id), start_date=None, end_date=None)

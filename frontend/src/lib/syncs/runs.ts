@@ -1,8 +1,11 @@
 import { SYNC_SOURCES } from './source';
 import type { SyncRunSummary, SyncStatus } from './types';
 
-/** Runs fetched at once; `/sync/runs` scans every buffer whatever the limit. */
+/** Runs fetched at once, then paged through here. */
 export const SYNC_WINDOW = 500;
+
+/** Mirrors backend `MAX_INDEXED_RUNS`: the newest runs Redis indexes across all users. */
+export const SYNC_INDEX_LIMIT = 10_000;
 
 /** Mirrors backend `SyncStatus`, for the filter. */
 export const SYNC_STATUSES: SyncStatus[] = [

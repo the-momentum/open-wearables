@@ -21,6 +21,7 @@ Keys (all TTL'd to ``HISTORY_TTL_SECONDS``):
 - ``sync:status:user:<user_id>:runs_by_time`` — run_ids scored by event time (ZADD)
 - ``sync:status:runs_by_time``              — the same across all users, capped at ``MAX_INDEXED_RUNS``
 - ``sync:status:run:<run_id>``              — JSON-encoded latest event
+- ``sync:status:run:<run_id>:started_at``   — ISO start time, since later events drop it
 """
 
 import logging
@@ -91,6 +92,10 @@ def _user_runs_key(user_id: str | UUID) -> str:
 
 def _run_key(run_id: str) -> str:
     return f"sync:status:run:{run_id}"
+
+
+def _run_started_key(run_id: str) -> str:
+    return f"sync:status:run:{run_id}:started_at"
 
 
 def new_run_id(prefix: str = "run") -> str:
@@ -308,6 +313,8 @@ def emit(event: SyncStatusEvent) -> None:
         pipe.zremrangebyrank(_ALL_RUNS_KEY, 0, -(MAX_INDEXED_RUNS + 1))
         pipe.expire(_ALL_RUNS_KEY, HISTORY_TTL_SECONDS)
         pipe.set(_run_key(event.run_id), payload, ex=HISTORY_TTL_SECONDS)
+        if event.stage == SyncStage.STARTED and event.started_at is not None:
+            pipe.set(_run_started_key(event.run_id), event.started_at.isoformat(), ex=HISTORY_TTL_SECONDS, nx=True)
         pipe.publish(_user_channel(user_id), payload)
         pipe.publish(_global_channel(), payload)
         pipe.execute()
@@ -466,11 +473,7 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
 
     Reads the newest ``limit`` run ids from the per-user runs index, then fetches the latest
     event of each from its own key. Cost follows the page asked for rather than everything
-    the user has ever synced, and it is not capped by the recent-events list
-    (``MAX_RECENT_EVENTS`` raw events / ~4 events-per-run ≈ 50 runs).
-
-    Terminal events (completed / failed / cancelled) don't carry ``started_at``; it is
-    recovered from the recent-events list, which is only read when some run needs it.
+    the user has ever synced, and it is not capped by the recent-events list.
     """
     return _read_run_summaries(_user_runs_key(user_id), limit)
 
@@ -489,6 +492,8 @@ def get_all_run_summaries(
     not the number of users; the global index holds at most ``MAX_INDEXED_RUNS``.
     """
     index_key = _user_runs_key(user_id_filter) if user_id_filter else _ALL_RUNS_KEY
+    if not (provider_filter or status_filter or source_filter):
+        return _read_run_summaries(index_key, limit)
 
     def matches(event: SyncStatusEvent) -> bool:
         return (
@@ -497,8 +502,7 @@ def get_all_run_summaries(
             and (not source_filter or str(event.source) == source_filter)
         )
 
-    filtered = provider_filter or status_filter or source_filter
-    return _read_run_summaries(index_key, limit, matches if filtered else None)
+    return _read_run_summaries(index_key, limit, matches)
 
 
 def _read_run_summaries(
@@ -513,16 +517,12 @@ def _read_run_summaries(
     events: list[SyncStatusEvent] = []
     offset = 0
     while len(events) < limit:
-        raw_run_ids = cast(list[str | bytes], client.zrevrange(index_key, offset, offset + chunk - 1))
-        if not raw_run_ids:
+        run_ids = cast(list[str], client.zrevrange(index_key, offset, offset + chunk - 1))
+        if not run_ids:
             break
-        offset += len(raw_run_ids)
+        offset += len(run_ids)
 
-        pipe = client.pipeline(transaction=False)
-        for rid in raw_run_ids:
-            pipe.get(_run_key(rid if isinstance(rid, str) else rid.decode("utf-8")))
-
-        for item in pipe.execute():
+        for item in cast(list[str | None], client.mget([_run_key(rid) for rid in run_ids])):
             if not item:
                 continue
             with suppress(ValueError, TypeError):
@@ -530,11 +530,11 @@ def _read_run_summaries(
                 if matches is None or matches(event):
                     events.append(event)
 
-        if len(raw_run_ids) < chunk:
+        if len(run_ids) < chunk:
             break
 
     events = events[:limit]
-    started_at_by_run = _started_at_by_run({str(e.user_id) for e in events if e.started_at is None})
+    started_at_by_run = _started_at_by_run([e for e in events if e.started_at is None])
 
     summaries = [
         SyncRunSummary(
@@ -560,11 +560,21 @@ def _read_run_summaries(
     return summaries
 
 
-def _started_at_by_run(user_ids: set[str]) -> dict[str, datetime]:
-    """When each recent run of these users started, for terminal events that no longer carry it."""
-    if not user_ids:
+def _started_at_by_run(events: list[SyncStatusEvent]) -> dict[str, datetime]:
+    """When each run started, for later events that no longer carry it."""
+    if not events:
         return {}
+    values = cast(list[str | None], get_redis_client().mget([_run_started_key(e.run_id) for e in events]))
+    started_at = {e.run_id: datetime.fromisoformat(value) for e, value in zip(events, values) if value}
 
+    # Runs opened before the started_at key was introduced.
+    unresolved_users = {str(e.user_id) for e in events if e.run_id not in started_at}
+    if unresolved_users:
+        started_at = _started_at_from_recent_events(unresolved_users) | started_at
+    return started_at
+
+
+def _started_at_from_recent_events(user_ids: set[str]) -> dict[str, datetime]:
     pipe = get_redis_client().pipeline(transaction=False)
     for user_id in user_ids:
         pipe.lrange(_user_recent_key(user_id), 0, MAX_RECENT_EVENTS - 1)
@@ -574,8 +584,8 @@ def _started_at_by_run(user_ids: set[str]) -> dict[str, datetime]:
         for item in raw:
             with suppress(ValueError, TypeError):
                 event = SyncStatusEvent.model_validate_json(item)
-                if event.started_at is not None and event.run_id not in started_at:
-                    started_at[event.run_id] = event.started_at
+                if event.started_at is not None:
+                    started_at.setdefault(event.run_id, event.started_at)
     return started_at
 
 

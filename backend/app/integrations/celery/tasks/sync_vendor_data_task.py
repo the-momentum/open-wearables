@@ -10,7 +10,6 @@ from app.config import settings
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.schemas.sync_status import (
     DataTypeKind,
@@ -20,7 +19,7 @@ from app.schemas.sync_status import (
     SyncStage,
     SyncStatus,
 )
-from app.services.provider_settings_service import include_in_periodic_pull
+from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
 from app.services.providers.factory import ProviderFactory
 from app.services.sync_coordination import (
     bind_primary_lease,
@@ -134,20 +133,13 @@ def sync_vendor_data(
             if providers:
                 connections = [c for c in connections if c.provider in providers]
 
-            # Load provider settings once (live_sync_mode per provider).
             provider_settings = provider_settings_repo.get_all(db)
-
-            # Only sync providers in pull mode. Push-only providers (Garmin, Apple SDK)
-            # deliver data via webhooks/SDK and must not be polled here.
-            # Historical backfill always uses REST regardless of live_sync_mode.
             connections = [
                 c
                 for c in connections
                 if include_in_periodic_pull(
                     factory.get_provider(c.provider).capabilities,
-                    provider_settings[c.provider].live_sync_mode
-                    if c.provider in provider_settings
-                    else LiveSyncMode.PULL,
+                    live_sync_mode_of(c.provider, provider_settings),
                     is_historical,
                 )
             ]
