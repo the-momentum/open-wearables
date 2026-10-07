@@ -135,3 +135,31 @@ def test_info_logs_do_not_become_breadcrumbs(captured: list[dict[str, Any]]) -> 
     sentry_sdk.flush()
 
     assert SECRET_EMAIL not in _dump(captured[0])
+
+
+def test_query_string_values_are_filtered(captured: list[dict[str, Any]]) -> None:
+    app = FastAPI()
+
+    @app.get("/users")
+    async def users() -> None:
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    client.get("/users", params={"email": SECRET_EMAIL, "search": SECRET_USERNAME})
+    sentry_sdk.flush()
+
+    event = captured[0]
+    assert event["request"]["query_string"] == "email=[Filtered]&search=[Filtered]"
+    assert SECRET_USERNAME not in _dump(event)
+    assert "example.com" not in _dump(event)  # covers the URL-encoded email too
+
+
+def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list[dict[str, Any]]) -> None:
+    logger.error(f"Failed to send invitation to {SECRET_EMAIL}")
+    logger.error("Failed to send invitation to %s", SECRET_EMAIL)
+    sentry_sdk.capture_exception(ValueError(f"User {SECRET_EMAIL} already exists"))
+    sentry_sdk.flush()
+
+    assert len(captured) == 3
+    for event in captured:
+        assert SECRET_EMAIL not in _dump(event)

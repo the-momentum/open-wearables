@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.inspection import inspect
 
 from app.database import BaseDbModel
+from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
@@ -50,7 +51,14 @@ def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | Non
     except ValidationError as exc:
         # Log field locations only - the raw value / pydantic message may carry health data.
         locs = [".".join(str(x) for x in err["loc"]) for err in exc.errors()]
-        logger.warning("Discarding malformed %s payload (invalid fields: %s)", model.__name__, locs)
+        log_structured(
+            logger,
+            "warning",
+            "Discarding malformed payload",
+            action="discard_malformed_payload",
+            model=model.__name__,
+            invalid_fields=locs,
+        )
         return None
 
 

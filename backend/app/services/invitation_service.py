@@ -184,7 +184,13 @@ class InvitationService:
 
         invitation = self.crud.update_status(db_session, invitation, InvitationStatus.REVOKED)
 
-        self.logger.info(f"Invitation revoked: {invitation.id}")
+        log_structured(
+            self.logger,
+            "info",
+            "Invitation revoked",
+            action="invitation_revoked",
+            invitation_id=str(invitation.id),
+        )
         return invitation
 
     def resend_invitation(self, db_session: DbSession, invitation_id: UUID) -> Invitation:

@@ -189,6 +189,8 @@ except Exception as e:
 - ✅ Multi-provider sync where one provider failure shouldn't stop others
 - ❌ Don't use if exception is re-raised or allowed to propagate naturally
 
+**Keep health data and PII out of Sentry:** `extra` is sent to Sentry as event context. Put only identifiers and categories in it (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise and to `logger.error(...)` text, since both become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
+
 ### Logging
 
 **Default rule:** Use `log_structured` instead of raw `logger.info/warning/error/...`. Structured logs are emitted as single-line JSON, making them queryable by attribute (`@user_id:...`, `@action:...`) in Railway, GCP, Vercel, etc. This is the established standard in the codebase - prefer it even when editing an existing file that still uses the raw logger.

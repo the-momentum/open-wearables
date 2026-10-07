@@ -37,6 +37,9 @@ PII_DENYLIST = [
 # "[type=int_parsing, input_value='72 bpm', input_type=str]". Greedy up to the last
 # ", input_type=" on the line so a repr containing that text cannot leak a tail.
 _PYDANTIC_INPUT_VALUE = re.compile(r"input_value=.*, input_type=")
+# Emails are the one kind of PII we can reliably spot in free text (exception messages,
+# f-string log errors). Health values in prose are not detectable - keep them out of messages.
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 _scrubber = EventScrubber(
     denylist=DEFAULT_DENYLIST + PII_DENYLIST,
@@ -47,12 +50,19 @@ _scrubber = EventScrubber(
 
 def _scrub_text(value: Any) -> Any:
     if isinstance(value, str):
-        return _PYDANTIC_INPUT_VALUE.sub(f"input_value={FILTERED}, input_type=", value)
+        value = _PYDANTIC_INPUT_VALUE.sub(f"input_value={FILTERED}, input_type=", value)
+        return _EMAIL.sub(FILTERED, value)
     if isinstance(value, dict):
         return {k: _scrub_text(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_scrub_text(v) for v in value]
     return value
+
+
+def _scrub_query_string(query_string: str) -> str:
+    # Keep parameter names for debugging; values can be emails or search terms (?email=, ?search=).
+    pairs = [part.split("=", 1)[0] for part in query_string.split("&") if part]
+    return "&".join(f"{name}={FILTERED}" for name in pairs)
 
 
 def before_send(event: "Event", hint: "Hint") -> "Event":
@@ -63,6 +73,11 @@ def before_send(event: "Event", hint: "Hint") -> "Event":
         if key in event:
             event[key] = _scrub_text(event[key])
     _scrubber.scrub_dict(event.get("contexts"))
+
+    request = event.get("request")
+    query_string = request.get("query_string") if isinstance(request, dict) else None
+    if isinstance(request, dict) and isinstance(query_string, str):
+        request["query_string"] = _scrub_query_string(query_string)
 
     for exc in (event.get("exception") or {}).get("values") or []:
         exc["value"] = _scrub_text(exc.get("value"))
