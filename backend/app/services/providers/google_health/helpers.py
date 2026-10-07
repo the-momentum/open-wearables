@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.constants.devices_map import map_reported_device_type
 from app.schemas.enums import DeviceType
-from app.schemas.providers.google import DataPointsPage
+from app.schemas.providers.google import DataPointsPage, LevelSum
 from app.utils.conversion import to_decimal
 from app.utils.dates import offset_to_iso, to_rfc3339
 
@@ -59,6 +59,30 @@ def read_number(
         value = value.get(subfield) if isinstance(value, dict) else None
     number = to_decimal(value)
     return number * scale if number is not None else None
+
+
+def read_level_sum(
+    obj: dict[str, Any],
+    field: str,
+    level_sum: LevelSum,
+    scale: Decimal = Decimal(1),
+) -> Decimal | None:
+    """Add up the ``obj[field]`` entries whose level is one of ``level_sum.levels``.
+
+    None when the list is missing; 0 when it lists only other levels, since the day was
+    still measured.
+    """
+    entries = obj.get(field)
+    if not isinstance(entries, list):
+        return None
+    total = Decimal(0)
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        level = entry.get(level_sum.level_key)
+        if isinstance(level, str) and level in level_sum.levels:
+            total += to_decimal(entry.get(level_sum.value_field)) or Decimal(0)
+    return total * scale
 
 
 def extract_source(data_source: Any) -> tuple[str, str | None]:

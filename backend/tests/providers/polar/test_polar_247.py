@@ -187,6 +187,108 @@ class TestPolar247DailyActivityNormalization:
     def test_empty_input(self, data_247: Polar247Data) -> None:
         assert data_247.normalize_daily_activity([], uuid4()) == []
 
+    @staticmethod
+    def _with_zones(activity: dict, zones: list[tuple[str, str]]) -> dict:
+        activity["end_time"] = "2024-01-15T23:59:59"
+        activity["samples"] = {"activity_zones": {"samples": [{"zone": z, "timestamp": t} for z, t in zones]}}
+        return activity
+
+    def test_exercise_time_from_moderate_and_vigorous_zones(
+        self, data_247: Polar247Data, sample_activity: dict
+    ) -> None:
+        activity = self._with_zones(
+            sample_activity,
+            [
+                ("SEDENTARY", "2024-01-15T00:00:00"),
+                ("MODERATE", "2024-01-15T08:00:00"),  # 20.5 min
+                ("VIGOROUS", "2024-01-15T08:20:30"),  # 24.5 min
+                ("LIGHT", "2024-01-15T08:45:00"),
+                ("MODERATE", "2024-01-15T23:50:00"),  # until end_time: 9 min 59 s
+            ],
+        )
+
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+
+        exercise = [s for s in samples if s.series_type == SeriesType.exercise_time]
+        assert [s.value for s in exercise] == [54]
+        assert exercise[0].is_daily_total is True
+
+    def test_exercise_time_zero_without_moderate_or_vigorous(
+        self, data_247: Polar247Data, sample_activity: dict
+    ) -> None:
+        activity = self._with_zones(
+            sample_activity, [("SEDENTARY", "2024-01-15T00:00:00"), ("LIGHT", "2024-01-15T09:00:00")]
+        )
+
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+
+        assert [s.value for s in samples if s.series_type == SeriesType.exercise_time] == [0]
+
+    @pytest.mark.parametrize(
+        "zones",
+        [
+            None,
+            {"samples": None},
+            {
+                "samples": [
+                    {"zone": "MODERATE", "timestamp": "2024-01-15T08:00:00"},
+                    {"zone": "LIGHT", "timestamp": "x"},
+                ]
+            },
+            {
+                "samples": [
+                    {"zone": "MODERATE", "timestamp": "2024-01-15T08:00:00"},
+                    {"zone": "LIGHT", "timestamp": None},
+                ]
+            },
+            {
+                "samples": [
+                    {"zone": "MODERATE", "timestamp": "2024-01-15T08:00:00"},
+                    {"zone": None, "timestamp": "2024-01-15T09:00:00"},
+                ]
+            },
+        ],
+        ids=["no_zones", "null_samples", "unreadable_timestamp", "null_timestamp", "null_zone"],
+    )
+    def test_unusable_zones_give_no_exercise_time(
+        self, data_247: Polar247Data, sample_activity: dict, zones: dict | None
+    ) -> None:
+        sample_activity["end_time"] = "2024-01-15T23:59:59"
+        if zones is not None:
+            sample_activity["samples"] = {"activity_zones": zones}
+
+        samples = data_247.normalize_daily_activity([sample_activity], uuid4())
+
+        assert not any(s.series_type == SeriesType.exercise_time for s in samples)
+        assert any(s.series_type == SeriesType.steps for s in samples)
+
+    def test_exercise_time_from_unsorted_zone_samples(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        activity = self._with_zones(
+            sample_activity,
+            [
+                ("MODERATE", "2024-01-15T23:50:00"),
+                ("LIGHT", "2024-01-15T08:45:00"),
+                ("SEDENTARY", "2024-01-15T00:00:00"),
+                ("VIGOROUS", "2024-01-15T08:20:30"),
+                ("MODERATE", "2024-01-15T08:00:00"),
+            ],
+        )
+
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+
+        assert [s.value for s in samples if s.series_type == SeriesType.exercise_time] == [54]
+
+    def test_requests_activity_zones(self, data_247: Polar247Data) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=[]) as request:
+            data_247.get_daily_activity_statistics(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 2, tzinfo=timezone.utc),
+            )
+
+        assert request.call_args.kwargs["params"]["activity_zones"] == "true"
+
 
 # ---------------------------------------------------------------------------
 # Continuous Heart Rate

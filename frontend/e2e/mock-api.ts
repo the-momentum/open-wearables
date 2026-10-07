@@ -61,6 +61,9 @@ import {
 	makeBody,
 	deleteWorkout,
 	makeCycles,
+	makeMeals,
+	deleteMeal,
+	resetMeals,
 	makeScores,
 	makeSleep,
 	sleepTotals,
@@ -88,6 +91,7 @@ const late = (name: string, ms: number) =>
 	SLOW.has(name) ? new Promise((resolve) => setTimeout(resolve, ms)) : undefined;
 let LIFECYCLE_ENABLED = true;
 let EMAIL_ENABLED = true;
+let WEBHOOKS_ENABLED = true;
 /** Lets a test see what an untouched archive looks like on the dashboard. */
 let EMPTY_ARCHIVE = false;
 
@@ -120,11 +124,13 @@ const server = Bun.serve({
 			SLOW = new Set();
 			LIFECYCLE_ENABLED = true;
 			EMAIL_ENABLED = true;
+			WEBHOOKS_ENABLED = true;
 			EMPTY_ARCHIVE = false;
 			resetWorkouts();
 			resetSleep();
 			resetActivity();
 			resetCycles();
+			resetMeals();
 			resetWebhooks();
 			resetSettings();
 			resetLifecycle();
@@ -148,9 +154,14 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
+		if (pathname === '/__webhooks-off') {
+			WEBHOOKS_ENABLED = false;
+			return new Response(null, { status: 204 });
+		}
+
 		if (pathname === '/api/v1/config') {
 			return json({
-				outgoing_webhooks_enabled: true,
+				outgoing_webhooks_enabled: WEBHOOKS_ENABLED,
 				data_lifecycle_enabled: LIFECYCLE_ENABLED,
 				email_enabled: EMAIL_ENABLED
 			});
@@ -189,6 +200,17 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/webhooks/event-types') {
 			return json(makeEventTypes());
+		}
+
+		// As the backend does: the event types are a static list, the rest needs Svix.
+		if (!WEBHOOKS_ENABLED && pathname.startsWith('/api/v1/webhooks/endpoints')) {
+			return json(
+				{
+					detail:
+						'Outgoing webhooks are not enabled (set OUTGOING_WEBHOOKS_ENABLED=true in the backend environment).'
+				},
+				503
+			);
 		}
 
 		const testMatch = pathname.match(/^\/api\/v1\/webhooks\/endpoints\/([^/]+)\/test$/);
@@ -486,13 +508,14 @@ const server = Bun.serve({
 		}
 
 		const eventMatch = pathname.match(
-			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep|menstrual-cycles)\/([^/]+)$/
+			/^\/api\/v1\/users\/([^/]+)\/events\/(workouts|sleep|menstrual-cycles|meals)\/([^/]+)$/
 		);
 		if (eventMatch && request.method === 'DELETE') {
 			const remove = {
 				workouts: deleteWorkout,
 				sleep: deleteSleep,
-				'menstrual-cycles': deleteCycle
+				'menstrual-cycles': deleteCycle,
+				meals: deleteMeal
 			}[eventMatch[2]]!;
 			return remove(eventMatch[3])
 				? new Response(null, { status: 204 })
@@ -582,6 +605,8 @@ const server = Bun.serve({
 							? makeCycles(new URL(request.url).searchParams)
 							: { data: [], pagination: { has_more: false, total_count: 0 } }
 					);
+				case '/events/meals':
+					return json(makeMeals(new URL(request.url).searchParams));
 				case '/events/sleep':
 					return json(makeSleep(new URL(request.url).searchParams));
 				case '/events/sleep/totals':

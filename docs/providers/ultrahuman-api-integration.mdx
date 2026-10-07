@@ -64,7 +64,7 @@ Ultrahuman provides access to sleep, recovery, and continuous activity data thro
     In the Developer Dashboard, create a new application:
 
     - **App Name**: Your application name
-    - **Redirect URI**: Your OAuth callback URL (e.g. `http://localhost:8000/api/v1/oauth/ultrahuman/callback` for local development)
+    - **Redirect URI**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/ultrahuman/callback`, so register that exact URL here, e.g. `http://localhost:8000/api/v1/oauth/ultrahuman/callback` for local development.
 
     After creating the app, you'll receive:
     - **Client ID**
@@ -79,10 +79,13 @@ Ultrahuman provides access to sleep, recovery, and continuous activity data thro
     Add the following to your `.env` file:
 
 ```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/ultrahuman/callback.
+API_BASE_URL=http://localhost:8000
+
 #--- Ultrahuman ---#
 ULTRAHUMAN_CLIENT_ID=your-ultrahuman-client-id
 ULTRAHUMAN_CLIENT_SECRET=your-ultrahuman-client-secret
-ULTRAHUMAN_REDIRECT_URI=http://localhost:8000/api/v1/oauth/ultrahuman/callback
 ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
 ```
 
@@ -90,9 +93,9 @@ ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
 
     | Variable | Description |
     |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/ultrahuman/callback`, which must match the redirect URI registered in the Developer Dashboard |
     | `ULTRAHUMAN_CLIENT_ID` | Client ID from the Developer Dashboard |
     | `ULTRAHUMAN_CLIENT_SECRET` | Client Secret from the Developer Dashboard |
-    | `ULTRAHUMAN_REDIRECT_URI` | Must match the redirect URI registered in the Developer Dashboard. For local dev: `http://localhost:8000/api/v1/oauth/ultrahuman/callback` |
     | `ULTRAHUMAN_DEFAULT_SCOPE` | OAuth scopes requested during authorization |
 
   </Step>
@@ -117,7 +120,7 @@ ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
 
     **2. Redirect the user** to the `authorization_url`. They will log in to Ultrahuman and authorize your app.
 
-    **3. Ultrahuman redirects back** to the callback URI configured in your `.env`. Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+    **3. Ultrahuman redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/ultrahuman/callback`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
 
     **4. Verify the connection:**
 
@@ -129,7 +132,7 @@ ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
     You should see a connection with `"provider": "ultrahuman"` and `"status": "active"`.
 
     <Note>
-      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `ULTRAHUMAN_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback.
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/ultrahuman/callback`) that Ultrahuman sends the authorization code to.
     </Note>
   </Step>
 

@@ -41,7 +41,7 @@ export const actions: Actions = {
 		const fields = new URLSearchParams();
 		for (const [name, value] of form) fields.set(name, String(value));
 
-		await forgetRunWindow(runFilters(fields));
+		forgetRunWindow(runFilters(fields));
 		return { action: 'refresh' };
 	}
 };

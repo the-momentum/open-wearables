@@ -44,7 +44,7 @@ bun run test:unit --run
 # Run specific test file
 bun run test:unit --run src/lib/utils/utils.spec.ts
 
-# End-to-end tests (needs Redis at redis://localhost:6379/15)
+# End-to-end tests
 bun run test:e2e
 ```
 

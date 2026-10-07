@@ -7,6 +7,7 @@ ACTIVITY_SERIES: dict[str, SeriesType] = {
     "energy": SeriesType.active_energy,
     "distance": SeriesType.distance_walking_running,
     "active_time": SeriesType.active_time,
+    "exercise_time": SeriesType.exercise_time,
     "met": SeriesType.physical_effort,
 }
 READINESS_SERIES: dict[str, SeriesType] = {

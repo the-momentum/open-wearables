@@ -216,12 +216,10 @@ services:
       # The server's own hop to the API stays inside the network; VITE_API_URL
       # from the env file is the address a browser or phone dials.
       - API_URL=http://app:8000
-      - REDIS_URL=redis://redis:6379/2
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - app
-      - redis
     develop:
       watch:
         - action: sync

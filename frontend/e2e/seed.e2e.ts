@@ -77,7 +77,7 @@ test('lets the picked providers set the connection count', async ({ page, reques
 	});
 });
 
-test('applies one window to all three kinds of data', async ({ page, request }) => {
+test('applies one window to every kind of data', async ({ page, request }) => {
 	await page.getByRole('button', { name: 'Dates' }).click();
 	await page.getByLabel('From', { exact: true }).fill('2026-01-01');
 	await page.getByLabel('To', { exact: true }).fill('2026-03-31');
@@ -85,7 +85,12 @@ test('applies one window to all three kinds of data', async ({ page, request }) 
 	await expect(page.getByText('Queued one user.')).toBeVisible();
 
 	const { profile } = await sent(request);
-	for (const config of [profile.workout_config, profile.sleep_config, profile.time_series_config]) {
+	for (const config of [
+		profile.workout_config,
+		profile.sleep_config,
+		profile.time_series_config,
+		profile.meal_config
+	]) {
 		expect(config).toMatchObject({ date_from: '2026-01-01', date_to: '2026-03-31' });
 	}
 });

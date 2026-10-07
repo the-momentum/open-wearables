@@ -41,7 +41,7 @@ The Railway template provisions seven services:
 | **PostgreSQL** | Primary database for users, health data, and API keys |
 | **Backend** | FastAPI application server |
 | **Frontend** | Developer portal (SvelteKit) |
-| **Redis** | Broker for Celery task queue, caching, and developer portal sessions |
+| **Redis** | Broker for Celery task queue and caching |
 | **Celery Worker** | Processes background tasks (data syncs, webhooks) |
 | **Celery Beat** | Schedules recurring sync jobs |
 | **Flower** | Celery monitoring dashboard |
@@ -77,14 +77,7 @@ All inter-service networking and environment variables are configured automatica
 
 ## Environment variables reference
 
-The **Frontend** service needs two variables:
-
-| Variable | Description |
-|----------|-------------|
-| `VITE_API_URL` | Public URL of the backend |
-| `REDIS_URL` | Redis for portal sessions, e.g. `${{Redis.REDIS_URL}}/2`. Without it the login page loads but signing in fails |
-
-See [Frontend configuration](/deployment/docker#frontend-configuration) for the optional `API_URL`.
+The **Frontend** service needs only `VITE_API_URL`, the public URL of the backend. See [Frontend configuration](/deployment/docker#frontend-configuration) for the optional `API_URL`.
 
 Key variables you may want to customize on the **Backend** service:
 

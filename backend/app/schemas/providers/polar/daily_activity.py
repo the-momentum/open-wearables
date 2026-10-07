@@ -1,5 +1,9 @@
+from datetime import datetime
+
 import isodate
 from pydantic import BaseModel
+
+_EXERCISE_ZONES = frozenset({"MODERATE", "VIGOROUS"})
 
 
 class StepSampleJSON(BaseModel):
@@ -14,12 +18,12 @@ class StepsJSON(BaseModel):
 
 
 class ActivityZoneSampleJSON(BaseModel):
-    zone: str
-    timestamp: str
+    zone: str | None = None
+    timestamp: str | None = None
 
 
 class ActivityZonesJSON(BaseModel):
-    samples: list[ActivityZoneSampleJSON]
+    samples: list[ActivityZoneSampleJSON] | None = None
 
 
 class DailyActivitySamplesJSON(BaseModel):
@@ -51,3 +55,30 @@ class DailyActivityJSON(BaseModel):
             return int(isodate.parse_duration(self.active_duration).total_seconds() // 60)
         except (ValueError, isodate.ISO8601Error, AttributeError):
             return None
+
+    @property
+    def exercise_time_minutes(self) -> int | None:
+        """Whole minutes the day spent in the MODERATE and VIGOROUS activity zones.
+
+        A zone sample marks where a segment starts; it lasts until the next sample, the last
+        one until ``end_time``. None when the day carries no zone samples or a sample lacks its
+        zone or a readable timestamp, since the day's split is then unknown.
+        """
+        zones = self.samples.activity_zones if self.samples else None
+        if not zones or not zones.samples or not self.end_time:
+            return None
+        labelled = [(s.timestamp, s.zone) for s in zones.samples if s.timestamp and s.zone]
+        if len(labelled) != len(zones.samples):
+            return None
+        try:
+            segments = sorted((datetime.fromisoformat(ts).replace(tzinfo=None), zone) for ts, zone in labelled)
+            day_end = datetime.fromisoformat(self.end_time).replace(tzinfo=None)
+        except ValueError:
+            return None
+        ends = [start for start, _ in segments[1:]] + [day_end]
+        seconds = sum(
+            (end - start).total_seconds()
+            for (start, zone), end in zip(segments, ends, strict=True)
+            if zone in _EXERCISE_ZONES and end > start
+        )
+        return int(seconds // 60)

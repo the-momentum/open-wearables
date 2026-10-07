@@ -273,3 +273,21 @@ test('says an empty filter means every event, later ones included', async ({ pag
 		card.getByText('Every event, including ones added after this was created.')
 	).toBeVisible();
 });
+
+test('says webhooks are off on this instance, rather than failing the page', async ({
+	page,
+	request
+}) => {
+	await request.post('http://localhost:8787/__webhooks-off');
+	await page.goto('/webhooks');
+
+	await expect(page.getByText(/Outgoing webhooks are not enabled/)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'New subscription' })).toBeDisabled();
+});
+
+test('sends deliveries back to the list when webhooks are off', async ({ page, request }) => {
+	await request.post('http://localhost:8787/__webhooks-off');
+	await page.goto('/webhooks/ep_live/deliveries');
+
+	await expect(page).toHaveURL('/webhooks');
+});

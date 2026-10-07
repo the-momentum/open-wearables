@@ -5,9 +5,11 @@ from .data_point_responses import (
     TimeSeriesSample,
 )
 from .events import (
+    Macros,
     Meal,
     Measurement,
     MenstrualCycleRecord,
+    NutrientValue,
     SleepSession,
     SleepTotals,
     Workout,
@@ -46,6 +48,8 @@ __all__ = [
     "Workout",
     "WorkoutTotals",
     "Meal",
+    "Macros",
+    "NutrientValue",
     "Measurement",
     "MenstrualCycleRecord",
     "SleepSession",

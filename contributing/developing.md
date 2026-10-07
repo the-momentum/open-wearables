@@ -8,7 +8,6 @@ This guide covers setting up your local development environment for Open Wearabl
 - **uv >=0.9.17** - Python package manager ([Install uv](https://docs.astral.sh/uv/)) - manages Python automatically. Upgrade with `uv self update` if needed ([docs](https://docs.astral.sh/uv/getting-started/installation/#upgrading-uv))
 For local frontend development without Docker, you'll also need:
 - **Bun 1.4+** - Runtime and package manager for the frontend ([Install Bun](https://bun.sh/docs/installation))
-- **Redis** - The frontend keeps sessions in it (the backend's Redis works)
 
 ## Quick Start with Docker (Recommended)
 
@@ -82,7 +81,7 @@ cd frontend
 # Install dependencies
 bun install
 
-# Copy environment file (VITE_API_URL, REDIS_URL)
+# Copy environment file (VITE_API_URL)
 cp .env.example .env
 
 # Start development server on http://localhost:3000

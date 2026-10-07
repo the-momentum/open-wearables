@@ -1,37 +1,32 @@
-import { redis } from './redis';
+// Per process: a second replica keeps its own copy, which costs it one API call.
+const entries = new Map<string, { value: unknown; expiresAt: number }>();
 
-/**
- * Fails open, unlike the session store: with Redis down a cached read costs
- * the call it was saving, not a sign-in. Shared by everything that caches an
- * API answer, so they cannot disagree about what "down" means.
- */
-export async function recall<T>(key: string): Promise<T | null> {
-	try {
-		const hit = await redis().get(key);
-		return hit ? (JSON.parse(hit) as T) : null;
-	} catch {
-		return null;
-	}
+export function recall<T>(key: string, now = Date.now()): T | null {
+	const entry = entries.get(key);
+	if (!entry) return null;
+	if (entry.expiresAt > now) return entry.value as T;
+	entries.delete(key);
+	return null;
 }
 
-/** Writes in the background and hands the value straight back. */
-export function keep<T>(key: string, value: T, ttlSeconds: number): T {
-	redis()
-		.set(key, JSON.stringify(value), 'EX', ttlSeconds)
-		.catch(() => {});
+export function keep<T>(key: string, value: T, ttlSeconds: number, now = Date.now()): T {
+	for (const [stale, entry] of entries) if (entry.expiresAt <= now) entries.delete(stale);
+	entries.set(key, { value, expiresAt: now + ttlSeconds * 1000 });
 	return value;
 }
 
 /** Drops an entry, so the next read goes to the API. */
-export const forget = (key: string) =>
-	redis()
-		.del(key)
-		.catch(() => {});
+export const forget = (key: string) => {
+	entries.delete(key);
+};
+
+/** Empties the cache; only the e2e suite needs this, between tests. */
+export const forgetAll = () => entries.clear();
 
 export async function cached<T>(
 	key: string,
 	ttlSeconds: number,
 	load: () => Promise<T>
 ): Promise<T> {
-	return (await recall<T>(key)) ?? keep(key, await load(), ttlSeconds);
+	return recall<T>(key) ?? keep(key, await load(), ttlSeconds);
 }

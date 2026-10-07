@@ -1,10 +1,13 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
+import { resolve } from '$app/paths';
+import { readFeatures } from '$lib/server/config';
 import { requireToken } from '$lib/server/guard';
 import { listDeliveries, listEventTypes, listSubscriptions } from '$lib/server/webhooks';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const accessToken = await requireToken(locals);
+	if (!(await readFeatures(accessToken)).webhooks) redirect(303, resolve('/webhooks'));
 
 	const limit = 20;
 	const status = url.searchParams.get('status') ?? '';

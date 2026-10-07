@@ -27,7 +27,7 @@ open-wearables/
 | Python 3.14+ | SvelteKit 2 + Svelte 5 + TypeScript | Python 3.13+ |
 | FastAPI | Bun | FastMCP |
 | SQLAlchemy 2.0 | Tailwind CSS v4 | httpx |
-| PostgreSQL | Redis (sessions) | |
+| PostgreSQL | | |
 | Celery + Redis | Vitest + Playwright | |
 | Ruff + ty | ESLint + Prettier | Ruff + ty |
 

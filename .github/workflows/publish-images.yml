@@ -117,7 +117,7 @@ jobs:
           # Backend uses this as the Sentry release; frontend Dockerfile ignores it.
           build-args: |
             GIT_SHA=${{ github.sha }}
-          # Frontend config (VITE_API_URL, API_URL, REDIS_URL) is read at runtime, not a build-arg.
+          # Frontend config (VITE_API_URL, API_URL) is read at runtime, not a build-arg.
           cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.arch }}
 

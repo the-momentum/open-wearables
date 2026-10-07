@@ -10,3 +10,11 @@ export function meanOf<T>(items: T[], pick: (item: T) => number | null): number 
 	const values = items.map(pick).filter((value): value is number => value !== null);
 	return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
+
+/** The sum of the records that reported the field; null when none did. */
+export function sumOf<T>(items: T[], pick: (item: T) => number | null | undefined): number | null {
+	const values = items
+		.map(pick)
+		.filter((value): value is number => value !== null && value !== undefined);
+	return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}

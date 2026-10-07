@@ -35,6 +35,7 @@ from app.services.providers.garmin.coverage import ACTIVITY_SAMPLE_SERIES, DAILI
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_fit_file
+from app.utils.conversion import seconds_to_minutes
 from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
@@ -483,7 +484,6 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
     ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:
         """Normalize Garmin daily summary to internal schema."""
-        active_seconds = raw_daily.get("activeTimeInSeconds")
         normalized = {
             "user_id": user_id,
             "calendar_date": raw_daily.get("calendarDate"),
@@ -501,9 +501,11 @@ class Garmin247Data(Base247DataTemplate):
             "avg_stress": raw_daily.get("averageStressLevel"),
             "max_stress": raw_daily.get("maxStressLevel"),
             "stress_qualifier": raw_daily.get("stressQualifier"),
-            "moderate_intensity_minutes": (raw_daily.get("moderateIntensityDurationInSeconds") or 0) // 60,
-            "vigorous_intensity_minutes": (raw_daily.get("vigorousIntensityDurationInSeconds") or 0) // 60,
-            "active_time": active_seconds // 60 if active_seconds is not None else None,
+            "exercise_time": seconds_to_minutes(
+                raw_daily.get("moderateIntensityDurationInSeconds"),
+                raw_daily.get("vigorousIntensityDurationInSeconds"),
+            ),
+            "active_time": seconds_to_minutes(raw_daily.get("activeTimeInSeconds")),
             "heart_rate_samples": raw_daily.get("timeOffsetHeartRateSamples"),
             "garmin_summary_id": raw_daily.get("summaryId"),
         }

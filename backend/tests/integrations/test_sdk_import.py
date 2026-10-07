@@ -9,14 +9,17 @@ import logging
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord, WorkoutDetails
+from app.constants.series_types.sdk import get_series_type_from_metric_type
+from app.models import DataPointSeries, DataSource, EventRecord, MealDetails, WorkoutDetails
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
+from app.services.event_record_service import event_record_service
 from app.services.sdk.import_service import ImportService
 from tests.factories import UserFactory
 
@@ -643,7 +646,7 @@ class TestSDKImportUnitConversion:
             "apple",
             [self._record("HKQuantityTypeIdentifierBodyFatPercentage", 0.304)],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.body_fat_percentage
@@ -659,7 +662,7 @@ class TestSDKImportUnitConversion:
             "health_connect",
             [self._record("BODY_FAT", 30.4)],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.body_fat_percentage
@@ -675,7 +678,7 @@ class TestSDKImportUnitConversion:
             "samsung",
             [self._record("BODY_FAT", 18.5)],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.body_fat_percentage
@@ -691,7 +694,7 @@ class TestSDKImportUnitConversion:
             "apple",
             [self._record("HKQuantityTypeIdentifierHeight", 1.7526)],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.height
@@ -707,11 +710,37 @@ class TestSDKImportUnitConversion:
             "health_connect",
             [self._record("HEIGHT", 1.7526)],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
+
+    @pytest.mark.parametrize(
+        ("unit", "expected"),
+        [
+            ("cal", Decimal("450")),
+            ("Cal", Decimal("450000")),
+            ("kcal", Decimal("450000")),
+            (None, Decimal("450000")),
+        ],
+    )
+    def test_dietary_energy_small_calories_converted_to_kcal(
+        self,
+        import_service: ImportService,
+        unit: str | None,
+        expected: Decimal,
+    ) -> None:
+        """Dietary energy is stored in kcal; only a small-calorie ("cal") unit is divided by 1000."""
+        request = self._build_request(
+            "health_connect",
+            [self._record("DIETARY_ENERGY", 450000, unit=unit)],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.dietary_energy_consumed
+        assert samples[0].value == expected
 
     @pytest.mark.parametrize(
         ("unit", "expected"),
@@ -734,7 +763,7 @@ class TestSDKImportUnitConversion:
             "samsung",
             [self._record("BLOOD_GLUCOSE", 6.111, unit=unit)],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.blood_glucose
@@ -750,8 +779,420 @@ class TestSDKImportUnitConversion:
             "apple",
             [self._record("HKQuantityTypeIdentifierBloodGlucose", 105, unit="mg/dL")],
         )
-        samples = import_service._build_statistic_bundles(request, user_id)
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
 
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.blood_glucose
         assert samples[0].value == Decimal("105")
+
+
+class TestSDKImportNutrition:
+    """Dietary/nutrition metric types map to per-nutrient SeriesType samples."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _build_record(metric_type: str, value: float, unit: str) -> dict[str, Any]:
+        return {
+            "id": f"test-{metric_type}",
+            "type": metric_type,
+            "unit": unit,
+            "value": value,
+            "startDate": "2025-04-10T12:00:00Z",
+            "endDate": "2025-04-10T12:00:00Z",
+            "source": {
+                "name": "Test Device",
+                "bundleIdentifier": "test",
+            },
+        }
+
+    def _build_request(self, provider: str, records: list[dict[str, Any]]) -> SDKSyncRequest:
+        return SDKSyncRequest(
+            **{
+                "provider": provider,
+                "sdkVersion": "1.0.0",
+                "syncTimestamp": "2025-04-10T12:00:00Z",
+                "data": {"records": records},
+            }
+        )
+
+    def test_dietary_protein_maps_to_series_type(self, import_service: ImportService) -> None:
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._build_record("HKQuantityTypeIdentifierDietaryProtein", value=24.5, unit="g")],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.dietary_protein
+        assert samples[0].value == Decimal("24.5")
+
+    def test_dietary_water_liters_converted_to_hydration_milliliters(self, import_service: ImportService) -> None:
+        """HealthKit reports dietary water in liters; the unified hydration series is in mL."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._build_record("HKQuantityTypeIdentifierDietaryWater", value=0.5, unit="L")],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hydration
+        assert samples[0].value == Decimal("500.0")
+
+    def test_hydration_reported_in_milliliters_is_not_rescaled(self, import_service: ImportService) -> None:
+        """A provider that already reports hydration in mL (e.g. Google Health API) is untouched."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "google",
+            [self._build_record("HYDRATION", value=500, unit="mL")],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hydration
+        assert samples[0].value == Decimal("500")
+
+    def test_hydration_with_unrelated_unit_starting_with_l_is_not_rescaled(self, import_service: ImportService) -> None:
+        """A bogus/unexpected unit like "lb" must not be mistaken for a liter alias."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._build_record("HKQuantityTypeIdentifierDietaryWater", value=500, unit="lb")],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.hydration
+        assert samples[0].value == Decimal("500")
+
+
+class TestSDKImportMealCorrelation:
+    """HealthKit HKCorrelationType.food records arrive mixed into `records[]` and
+    group sibling nutrient samples via their shared `parentId`."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _correlation_record(correlation_id: str, end_date: str = "2026-09-18T12:00:00Z") -> dict[str, Any]:
+        return {
+            "id": correlation_id,
+            "type": "HKCorrelationTypeIdentifierFood",
+            "startDate": "2026-09-18T12:00:00Z",
+            "endDate": end_date,
+            "zoneOffset": "+02:00",
+            "source": {"name": "MyFitnessPal", "bundleIdentifier": "com.myfitnesspal.mfp"},
+            "metadata": {"title": "Kurczak z ryżem", "mealType": "obiad"},
+            "value": 1,
+            "unit": None,
+        }
+
+    @staticmethod
+    def _nutrient_record(
+        external_id: str, metric_type: str, value: float, unit: str, parent_id: str | None
+    ) -> dict[str, Any]:
+        return {
+            "id": external_id,
+            "parentId": parent_id,
+            "type": metric_type,
+            "value": value,
+            "unit": unit,
+            "startDate": "2026-09-18T12:00:00Z",
+            "endDate": "2026-09-18T12:00:00Z",
+            "source": {"name": "MyFitnessPal", "bundleIdentifier": "com.myfitnesspal.mfp"},
+        }
+
+    def _build_payload(self, records: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "provider": "apple",
+            "sdkVersion": "1.2.0",
+            "syncTimestamp": "2026-09-18T12:00:00Z",
+            "data": {"records": records},
+        }
+
+    def _user_samples(self, db: Session, user_id: UUID) -> list[DataPointSeries]:
+        return db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user_id).all()
+
+    def test_food_correlation_creates_meal_with_its_nutrients(self, db: Session, import_service: ImportService) -> None:
+        """The correlation's nutrient records are stored on the meal, not as samples; a record
+        without parentId (caffeine) stays a loose sample and is not part of the meal."""
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+                self._nutrient_record("protein-1", "HKQuantityTypeIdentifierDietaryProtein", 38.2, "g", "MEAL-1"),
+                self._nutrient_record("caffeine-1", "HKQuantityTypeIdentifierDietaryCaffeine", 95, "mg", None),
+            ]
+        )
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["meals_saved"] == 1
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        assert meal.external_id == "MEAL-1"
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        assert detail.title == "Kurczak z ryżem"
+        assert detail.meal_type == "obiad"
+        assert detail.nutrients == {"dietary_energy_consumed": 550.0, "dietary_protein": 38.2}
+
+        assert [s.external_id for s in self._user_samples(db, user.id)] == ["caffeine-1"]
+
+        meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
+        assert meals[0].calories_kcal == 550.0
+        assert meals[0].macros is not None
+        assert meals[0].macros.protein_g == 38.2
+        assert "dietary_caffeine" not in meals[0].nutrients
+
+    def test_meal_created_fires_once_for_a_new_meal_with_its_nutrients(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+            ]
+        )
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as on_meal_created,
+        ):
+            import_service.load_data(db, payload, str(user.id))
+            import_service.load_data(db, payload, str(user.id))
+
+        on_meal_created.assert_called_once()
+        assert on_meal_created.call_args.kwargs["title"] == "Kurczak z ryżem"
+        assert on_meal_created.call_args.kwargs["calories_kcal"] == 550.0
+
+    def test_meals_sharing_the_same_interval_are_all_saved(self, db: Session, import_service: ImportService) -> None:
+        """MyFitnessPal logs every meal of a day with the same interval. Each meal is its own
+        record with its own nutrients, and the rest of the batch (a workout) is unaffected."""
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                {**self._correlation_record("MEAL-1"), "metadata": {"mealType": "breakfast"}},
+                {**self._correlation_record("MEAL-2"), "metadata": {"mealType": "lunch"}},
+                self._nutrient_record("protein-1", "HKQuantityTypeIdentifierDietaryProtein", 6, "g", "MEAL-1"),
+                self._nutrient_record("protein-2", "HKQuantityTypeIdentifierDietaryProtein", 40.42, "g", "MEAL-2"),
+            ]
+        )
+        payload["data"]["workouts"] = [
+            {
+                "id": "WORKOUT-1",
+                "type": "walking",
+                "startDate": "2026-09-18T09:00:00Z",
+                "endDate": "2026-09-18T09:30:00Z",
+                "source": {"name": "Test Apple Watch", "bundleIdentifier": "com.apple.health"},
+            }
+        ]
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["meals_saved"] == 2
+        assert result["workouts_saved"] == 1
+        meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
+        assert {m.meal_type: m.nutrients["dietary_protein"].value for m in meals} == {
+            "breakfast": 6.0,
+            "lunch": 40.42,
+        }
+        assert self._user_samples(db, user.id) == []
+
+    def test_food_correlation_resync_updates_the_meal_in_place(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        """A meal's window shifts as items are added to it; the external_id keeps it the same
+        meal, and its nutrients are replaced by the latest set."""
+        user = UserFactory()
+        first_batch = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+                self._nutrient_record("sugar-1", "HKQuantityTypeIdentifierDietarySugar", 10, "g", "MEAL-1"),
+            ]
+        )
+        second_batch = self._build_payload(
+            [
+                {
+                    **self._correlation_record("MEAL-1", end_date="2026-09-18T12:15:00Z"),
+                    "startDate": "2026-09-18T11:45:00Z",
+                },
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 600, "Cal", "MEAL-1"
+                ),
+            ]
+        )
+
+        first = import_service.load_data(db, first_batch, str(user.id))
+        second = import_service.load_data(db, second_batch, str(user.id))
+
+        assert first["meals_saved"] == 1
+        assert second["meals_saved"] == 0
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        db.refresh(meal)
+        assert meal.start_datetime.isoformat() == "2026-09-18T11:45:00+00:00"
+        assert meal.end_datetime.isoformat() == "2026-09-18T12:15:00+00:00"
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        db.refresh(detail)
+        assert detail.nutrients == {"dietary_energy_consumed": 600.0}
+
+    def test_nutrient_record_without_its_correlation_in_the_batch_stays_loose(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                self._nutrient_record(
+                    "energy-1", "HKQuantityTypeIdentifierDietaryEnergyConsumed", 550, "Cal", "MEAL-1"
+                ),
+            ]
+        )
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["meals_saved"] == 0
+        assert [s.external_id for s in self._user_samples(db, user.id)] == ["energy-1"]
+
+    def test_non_nutrient_record_with_meal_parent_id_stays_loose(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        payload = self._build_payload(
+            [
+                self._correlation_record("MEAL-1"),
+                self._nutrient_record("hr-1", "HKQuantityTypeIdentifierHeartRate", 70, "count/min", "MEAL-1"),
+            ]
+        )
+
+        import_service.load_data(db, payload, str(user.id))
+
+        assert db.query(MealDetails).one().nutrients == {}
+        assert [s.external_id for s in self._user_samples(db, user.id)] == ["hr-1"]
+
+
+class TestSDKImportAndroidFoodCorrelation:
+    """Health Connect (Samsung Health / Google Health Connect) uses its own correlation
+    type ("FOOD") and its own dietary metric type names (DIETARY_ENERGY, DIETARY_PROTEIN,
+    ...) - distinct strings from Apple HealthKit, but the same grouping mechanism."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    def test_real_health_connect_payload_saves_meal_and_nutrients(
+        self, db: Session, import_service: ImportService
+    ) -> None:
+        user = UserFactory()
+        user_id = str(user.id)
+        source = {
+            "appId": "com.example.nutrition",
+            "deviceId": None,
+            "deviceName": None,
+            "deviceManufacturer": None,
+            "deviceModel": None,
+            "deviceType": None,
+            "recordingMethod": "manual",
+        }
+        payload = {
+            "provider": "google",
+            "sdkVersion": "0.13.0",
+            "syncTimestamp": "2026-09-25T12:00:00Z",
+            "data": {
+                "records": [
+                    {
+                        "id": "meal-1",
+                        "type": "FOOD",
+                        "startDate": "2026-09-25T18:30:00Z",
+                        "endDate": "2026-09-25T18:45:00Z",
+                        "zoneOffset": "+02:00",
+                        "source": source,
+                        "value": 1.0,
+                        "unit": None,
+                        "parentId": None,
+                        "metadata": {"title": "Chicken rice", "mealType": "dinner"},
+                    },
+                    {
+                        "id": "meal-1-energy",
+                        "type": "DIETARY_ENERGY",
+                        "startDate": "2026-09-25T18:30:00Z",
+                        "endDate": "2026-09-25T18:45:00Z",
+                        "zoneOffset": "+02:00",
+                        "source": source,
+                        "value": 550.0,
+                        "unit": "kcal",
+                        "parentId": "meal-1",
+                        "metadata": None,
+                    },
+                    {
+                        "id": "meal-1-protein",
+                        "type": "DIETARY_PROTEIN",
+                        "startDate": "2026-09-25T18:30:00Z",
+                        "endDate": "2026-09-25T18:45:00Z",
+                        "zoneOffset": "+02:00",
+                        "source": source,
+                        "value": 32.0,
+                        "unit": "g",
+                        "parentId": "meal-1",
+                        "metadata": None,
+                    },
+                    {
+                        "id": "meal-1-caffeine",
+                        "type": "DIETARY_CAFFEINE",
+                        "startDate": "2026-09-25T18:30:00Z",
+                        "endDate": "2026-09-25T18:45:00Z",
+                        "zoneOffset": "+02:00",
+                        "source": source,
+                        "value": 40.0,
+                        "unit": "mg",
+                        "parentId": "meal-1",
+                        "metadata": None,
+                    },
+                ],
+                "workouts": [],
+                "sleep": [],
+            },
+        }
+
+        result = import_service.load_data(db, payload, user_id)
+        assert result["meals_saved"] == 1
+
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        assert meal.external_id == "meal-1"
+        detail = db.query(MealDetails).filter(MealDetails.record_id == meal.id).one()
+        assert detail.title == "Chicken rice"
+        assert detail.meal_type == "dinner"
+
+        assert detail.nutrients == {
+            "dietary_energy_consumed": 550.0,
+            "dietary_protein": 32.0,
+            "dietary_caffeine": 40.0,
+        }
+        assert db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
+
+        meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
+        assert meals[0].calories_kcal == 550.0
+        assert meals[0].macros is not None
+        assert meals[0].macros.protein_g == 32.0
+
+    def test_new_dietary_types_added_for_health_connect_resolve(self) -> None:
+        """Regression test: DIETARY_TRANS_FAT, DIETARY_ENERGY_FROM_FAT,
+        DIETARY_UNSATURATED_FAT and DIETARY_FOLIC_ACID have no HealthKit counterpart -
+        HealthKit has no dietary trans fat identifier at all, so this is Health
+        Connect/Samsung only, unlike the others which are Health Connect only."""
+        assert get_series_type_from_metric_type("DIETARY_TRANS_FAT") == SeriesType.dietary_fat_trans
+        assert get_series_type_from_metric_type("HKQuantityTypeIdentifierDietaryFatTrans") is None
+        assert get_series_type_from_metric_type("DIETARY_ENERGY_FROM_FAT") == SeriesType.dietary_energy_from_fat
+        assert get_series_type_from_metric_type("DIETARY_UNSATURATED_FAT") == SeriesType.dietary_fat_unsaturated
+        assert get_series_type_from_metric_type("DIETARY_FOLIC_ACID") == SeriesType.dietary_folic_acid

@@ -64,6 +64,13 @@ test.describe('desktop', () => {
 
 		await expect(page.getByRole('complementary').getByText(/^\d+\.\d+\.\d+$/)).toBeVisible();
 	});
+
+	// SvelteKit compares this to notice a deploy and reload an open tab. A fixed
+	// value left it requesting chunks the new build no longer had.
+	test('gives SvelteKit a version of its own for every build', async ({ request }) => {
+		const { version } = await (await request.get('/_app/version.json')).json();
+		expect(version).not.toMatch(/^\d+\.\d+\.\d+$/);
+	});
 });
 
 test.describe('mobile', () => {
@@ -131,7 +138,8 @@ test.describe('mobile', () => {
 		'/webhooks/ep_live/deliveries',
 		`/users/${CONNECTED}`,
 		`/users/${CONNECTED}/data`,
-		`/users/${CONNECTED}/scores`
+		`/users/${CONNECTED}/scores`,
+		`/users/${CONNECTED}/meals`
 	];
 
 	for (const route of PHONE_ROUTES) {
@@ -197,7 +205,8 @@ const NESTED_ROUTES = [
 	'/settings/team',
 	'/settings/providers',
 	`/users/${CONNECTED}/workouts`,
-	`/users/${CONNECTED}/sleep`
+	`/users/${CONNECTED}/sleep`,
+	`/users/${CONNECTED}/meals`
 ];
 
 for (const route of NESTED_ROUTES) {
