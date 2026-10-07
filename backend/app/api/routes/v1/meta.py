@@ -1,10 +1,12 @@
-"""Public metadata endpoint — provider coverage matrix."""
+"""Metadata endpoints: the public provider coverage matrix and the installed extensions."""
 
 from contextlib import suppress
 from functools import lru_cache
 
 from fastapi import APIRouter
 
+from app import __version__ as core_version
+from app.extensions import LoadedExtension, get_extensions
 from app.schemas.enums import ProviderName, SeriesType
 from app.schemas.enums.health_score_category import HEALTH_SCORE_DESCRIPTION_BY_ENUM, HealthScoreCategory
 from app.schemas.enums.series_types import (
@@ -22,6 +24,8 @@ from app.schemas.model_crud.coverage import (
     TimeseriesMetric,
     WorkoutField,
 )
+from app.schemas.responses.extensions import ExtensionInfo, ExtensionsResponse
+from app.services.api_key_service import ApiKeyDep
 from app.services.providers.base_strategy import ProviderCoverage
 from app.services.providers.factory import ProviderFactory
 
@@ -149,3 +153,28 @@ def _coverage() -> CoverageResponse:
 )
 def get_coverage() -> CoverageResponse:
     return _coverage()
+
+
+def _extension_info(loaded: LoadedExtension) -> ExtensionInfo:
+    ext = loaded.extension
+    return ExtensionInfo(
+        name=loaded.name,
+        display_name=ext.display_name if ext else "",
+        version=ext.version if ext else "",
+        requires_core=ext.requires_core if ext else "",
+        active=loaded.active,
+        error=loaded.error,
+    )
+
+
+@router.get(
+    "/meta/extensions",
+    summary="Installed extensions",
+    tags=["External: Meta"],
+)
+def list_extensions(_api_key: ApiKeyDep) -> ExtensionsResponse:
+    """Every installed extension and whether it loaded; ``error`` says why one did not."""
+    return ExtensionsResponse(
+        core_version=core_version,
+        extensions=[_extension_info(loaded) for loaded in get_extensions()],
+    )

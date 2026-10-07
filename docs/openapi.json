@@ -49,6 +49,62 @@
         }
       }
     },
+    "/api/v1/meta/extensions": {
+      "get": {
+        "tags": [
+          "External: Meta",
+          "External: Meta"
+        ],
+        "summary": "Installed extensions",
+        "description": "Every installed extension and whether it loaded; ``error`` says why one did not.",
+        "operationId": "list_extensions_api_v1_meta_extensions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -12897,6 +12953,73 @@
           "description"
         ],
         "title": "EventTypeResponse"
+      },
+      "ExtensionInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "default": ""
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "requires_core": {
+            "type": "string",
+            "title": "Requires Core",
+            "description": "PEP 440 specifier of the core versions it supports.",
+            "default": ""
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why an installed extension is not active."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "active"
+        ],
+        "title": "ExtensionInfo"
+      },
+      "ExtensionsResponse": {
+        "properties": {
+          "core_version": {
+            "type": "string",
+            "title": "Core Version"
+          },
+          "extensions": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionInfo"
+            },
+            "type": "array",
+            "title": "Extensions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "core_version",
+          "extensions"
+        ],
+        "title": "ExtensionsResponse"
       },
       "HRZone": {
         "properties": {

@@ -13,8 +13,10 @@ from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from celery.schedules import crontab
 from fastapi import APIRouter
+from fastapi.testclient import TestClient
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text as sa_text
+from sqlalchemy.orm import Session
 
 import app.extensions as extensions
 from app.database import BaseDbModel
@@ -33,6 +35,8 @@ from app.integrations.celery.core import create_celery
 from app.integrations.redis_client import get_redis_client
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus, SyncStatusEvent
 from app.services.sync_status_service import emit
+from tests.factories import ApiKeyFactory
+from tests.utils import api_key_headers
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -632,3 +636,36 @@ class TestEvents:
 
         assert entry["task"] == "app.integrations.celery.tasks.extension_events_task.dispatch_extension_events"
         assert events.subscribed(events.SYNC_COMPLETED)
+
+
+class TestMetaEndpoint:
+    def test_lists_every_installed_extension_with_its_state(
+        self, installed: Callable[..., None], client: TestClient, db: Session
+    ) -> None:
+        installed(
+            FakeEntryPoint("compatible", CompatibleExtension),
+            FakeEntryPoint("incompatible", IncompatibleExtension),
+            FakeEntryPoint("broken", _broken),
+        )
+
+        response = client.get("/api/v1/meta/extensions", headers=api_key_headers(ApiKeyFactory().plain_key))
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["core_version"]
+        by_name = {e["name"]: e for e in body["extensions"]}
+        assert by_name["compatible"] == {
+            "name": "compatible",
+            "display_name": "",
+            "version": "1.0.0",
+            "requires_core": ">=0",
+            "active": True,
+            "error": None,
+        }
+        assert not by_name["incompatible"]["active"]
+        assert "requires core <0.0.1" in by_name["incompatible"]["error"]
+        assert by_name["broken"]["version"] == ""
+        assert "missing dependency" in by_name["broken"]["error"]
+
+    def test_requires_authentication(self, client: TestClient) -> None:
+        assert client.get("/api/v1/meta/extensions").status_code == 401
