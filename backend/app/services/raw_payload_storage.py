@@ -112,6 +112,9 @@ def store_raw_payload(
             source=source, provider=provider, payload=payload_str, user_id=user_id, trace_id=trace_id
         )
 
+    if _storage_backend == "s3" and ref is None:
+        return  # upload failed - there is nothing to point at
+
     # Point any Sentry error later in this request/task at the stored payload - the
     # reference only, never the content.
     sentry_sdk.add_breadcrumb(

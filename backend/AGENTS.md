@@ -177,9 +177,7 @@ except Exception as e:
 try:
     process_item(item)
 except Exception as e:
-    log_and_capture_error(
-        e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id, "error": str(e)}
-    )
+    log_and_capture_error(e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id})
     continue
 ```
 

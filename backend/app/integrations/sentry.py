@@ -83,7 +83,7 @@ def before_send(event: "Event", hint: "Hint") -> "Event":
     # Keep parameter names for debugging; values can be emails or search terms (?email=, ?search=).
     request = event.get("request") or {}
     if isinstance(query_string := request.get("query_string"), str):
-        request["query_string"] = _QUERY_VALUE.sub(f"={FILTERED}", query_string)
+        request["query_string"] = _scrub_text(_QUERY_VALUE.sub(f"={FILTERED}", query_string))
 
     return event
 
@@ -121,5 +121,7 @@ def init_sentry() -> None:
         max_request_body_size="medium" if sensitive else "never",
         event_scrubber=_credentials_scrubber if sensitive else _scrubber,
         before_send=None if sensitive else before_send,
+        # Sampled transactions carry the request (query string) too but skip before_send.
+        before_send_transaction=None if sensitive else before_send,
         integrations=integrations,
     )

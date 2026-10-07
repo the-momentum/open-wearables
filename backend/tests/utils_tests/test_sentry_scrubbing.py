@@ -36,11 +36,13 @@ class _CapturingTransport(Transport):
     def __init__(self, options: dict[str, Any] | None = None) -> None:
         super().__init__(options)
         self.events: list[dict[str, Any]] = []
+        self.transactions: list[dict[str, Any]] = []
 
     def capture_envelope(self, envelope: Envelope) -> None:
-        event = envelope.get_event()
-        if event is not None:
+        if (event := envelope.get_event()) is not None:
             self.events.append(event)
+        if (transaction := envelope.get_transaction_event()) is not None:
+            self.transactions.append(transaction)
 
 
 class _Sample(BaseModel):
@@ -48,10 +50,16 @@ class _Sample(BaseModel):
 
 
 @pytest.fixture
-def captured(request: pytest.FixtureRequest) -> Generator[list[dict[str, Any]], None, None]:
-    """Events Sentry would ship. Parametrize indirectly with True to enable SENTRY_SEND_SENSITIVE_DATA."""
+def transport() -> _CapturingTransport:
+    return _CapturingTransport()
+
+
+@pytest.fixture
+def captured(
+    request: pytest.FixtureRequest, transport: _CapturingTransport
+) -> Generator[list[dict[str, Any]], None, None]:
+    """Error events Sentry would ship. Parametrize indirectly with True to enable SENTRY_SEND_SENSITIVE_DATA."""
     send_sensitive = getattr(request, "param", False)
-    transport = _CapturingTransport()
     real_init = sentry_sdk.init
 
     def init_with_transport(*args: Any, **kwargs: Any) -> Any:
@@ -61,6 +69,7 @@ def captured(request: pytest.FixtureRequest) -> Generator[list[dict[str, Any]], 
         patch.object(settings, "SENTRY_ENABLED", True),
         patch.object(settings, "SENTRY_DSN", "https://public@sentry.example.com/1"),
         patch.object(settings, "SENTRY_SEND_SENSITIVE_DATA", send_sensitive),
+        patch.object(settings, "SENTRY_SAMPLES_RATE", 1.0),
         patch.object(sentry_integration.sentry_sdk, "init", init_with_transport),
     ):
         sentry_integration.init_sentry()
@@ -209,3 +218,36 @@ def test_stored_raw_payload_is_referenced_not_included(captured: list[dict[str, 
     assert crumbs[-1]["data"]["ref"].startswith("s3://raw-bucket/raw-payloads/polar/webhook/")
     assert crumbs[-1]["data"]["trace_id"] == "t-1"
     assert FAKE_PAYLOAD not in _dump(captured[0])
+
+
+def test_query_string_is_filtered_in_transactions_and_param_names(
+    captured: list[dict[str, Any]], transport: _CapturingTransport
+) -> None:
+    app = FastAPI()
+
+    @app.get("/users")
+    async def users() -> None:
+        return None
+
+    client = TestClient(app)
+    client.get(f"/users?email={FAKE_EMAIL}&{FAKE_EMAIL}=1")
+    sentry_sdk.flush()
+
+    transaction = transport.transactions[-1]
+    assert transaction["request"]["query_string"] == "email=[Filtered]&[Filtered]=[Filtered]"
+    assert FAKE_EMAIL not in _dump(transaction)
+
+
+def test_failed_s3_upload_adds_no_breadcrumb(captured: list[dict[str, Any]]) -> None:
+    with patch.object(raw_payload_storage, "_create_s3_client", return_value=MagicMock()):
+        raw_payload_storage.configure("s3", 1024 * 1024, s3_bucket="raw-bucket")
+    try:
+        with patch.object(raw_payload_storage, "put_payload_to_s3", return_value=None):
+            raw_payload_storage.store_raw_payload(source="webhook", provider="oura", payload={"x": 1})
+    finally:
+        raw_payload_storage.configure("disabled", 10 * 1024 * 1024)
+    sentry_sdk.capture_message("processing failed")
+    sentry_sdk.flush()
+
+    crumbs = captured[0].get("breadcrumbs", {}).get("values", [])
+    assert not [c for c in crumbs if c.get("category") == "raw_payload" and c["data"]["provider"] == "oura"]
