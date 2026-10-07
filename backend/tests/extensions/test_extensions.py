@@ -2,10 +2,12 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
+from celery.schedules import crontab
 from fastapi import APIRouter
 
 import app.extensions as extensions
@@ -104,11 +106,25 @@ class CoreKeyExtension(OWExtension):
 class MalformedBeatExtension(OWExtension):
     name: str = "malformed_beat"
 
-    def beat_schedule(self) -> dict[str, dict[str, Any]]:
+    def beat_schedule(self) -> dict[str, Any]:
         return {
+            "not-a-dict": None,
             "no-schedule": {"task": "malformed.tasks.run"},
             "unknown-key": {"task": "malformed.tasks.run", "schedule": 60.0, "interval": 5},
+            "string-schedule": {"task": "malformed.tasks.run", "schedule": "every minute"},
             "valid": {"task": "malformed.tasks.run", "schedule": 60.0, "kwargs": {"a": 1}},
+        }
+
+
+@dataclass
+class ScheduleTypesExtension(OWExtension):
+    name: str = "schedule_types"
+
+    def beat_schedule(self) -> dict[str, dict[str, Any]]:
+        return {
+            "seconds": {"task": "types.tasks.run", "schedule": 60},
+            "timedelta": {"task": "types.tasks.run", "schedule": timedelta(minutes=5)},
+            "crontab": {"task": "types.tasks.run", "schedule": crontab(minute=0)},
         }
 
 
@@ -342,6 +358,11 @@ class TestBeatSchedule:
         installed(FakeEntryPoint("malformed_beat", MalformedBeatExtension))
 
         assert list(collect_beat_schedule()) == ["valid"]
+
+    def test_every_schedule_type_beat_accepts_is_kept(self, installed: Callable[..., None]) -> None:
+        installed(FakeEntryPoint("schedule_types", ScheduleTypesExtension))
+
+        assert list(collect_beat_schedule()) == ["seconds", "timedelta", "crontab"]
 
 
 class TestDefaults:

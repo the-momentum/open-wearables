@@ -11,6 +11,7 @@ imported too, but may change between releases - pin ``requires_core`` accordingl
 
 from collections.abc import Collection
 from dataclasses import dataclass, field
+from datetime import timedelta
 from functools import cache
 from importlib import import_module
 from importlib.metadata import entry_points
@@ -151,13 +152,17 @@ def collect_routers() -> list[APIRouter]:
     return routers
 
 
-def _beat_entry_error(
-    key: str, entry: dict[str, Any], reserved: Collection[str], scheduled: Collection[str]
-) -> str | None:
+def _beat_entry_error(key: str, entry: Any, reserved: Collection[str], scheduled: Collection[str]) -> str | None:
     if key in reserved or key in scheduled:
         return "key already taken"
+    if not isinstance(entry, dict):
+        return f"entry is a {type(entry).__name__}, not a dict"
     if not {"task", "schedule"} <= set(entry) <= _BEAT_ENTRY_FIELDS:
         return f"invalid fields {sorted(entry)}"
+    schedule = entry["schedule"]
+    # What celery.schedules.maybe_schedule can turn into a schedule; anything else stops beat.
+    if not isinstance(schedule, int | float | timedelta) and not hasattr(schedule, "is_due"):
+        return f"invalid schedule {schedule!r}"
     return None
 
 
