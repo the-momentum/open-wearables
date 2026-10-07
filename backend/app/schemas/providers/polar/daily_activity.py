@@ -65,13 +65,13 @@ class DailyActivityJSON(BaseModel):
         zone or a readable timestamp, since the day's split is then unknown.
         """
         zones = self.samples.activity_zones if self.samples else None
-        if not zones or not zones.samples or not self.end_time or any(s.zone is None for s in zones.samples):
+        if not zones or not zones.samples or not self.end_time:
+            return None
+        labelled = [(s.timestamp, s.zone) for s in zones.samples if s.timestamp and s.zone]
+        if len(labelled) != len(zones.samples):
             return None
         try:
-            segments = sorted(
-                ((datetime.fromisoformat(s.timestamp or "").replace(tzinfo=None), s.zone) for s in zones.samples),
-                key=lambda segment: segment[0],
-            )
+            segments = sorted((datetime.fromisoformat(ts).replace(tzinfo=None), zone) for ts, zone in labelled)
             day_end = datetime.fromisoformat(self.end_time).replace(tzinfo=None)
         except ValueError:
             return None

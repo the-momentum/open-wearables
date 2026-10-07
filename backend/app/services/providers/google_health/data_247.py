@@ -9,9 +9,10 @@ still backs the derived daily metrics. Sleep, workouts and nutrition come from t
 endpoint and are handled separately.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
+from functools import partial
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
@@ -113,54 +114,19 @@ class GoogleHealth247Data(Base247DataTemplate):
 
         if granularity_supported:
             for metric in METRICS:
-                # Confine each metric (fetch + write) to a savepoint so a failed write rolls
-                # back only that metric and leaves the transaction usable for the rest.
-                try:
-                    with db.begin_nested():
-                        if metric.use_list(granularity):
-                            samples = self._native_samples(db, user_id, metric, start_time, end_time)
-                        else:
-                            samples = self._rollup_samples(db, user_id, metric, start_time, end_time, granularity)
-                        counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-                    db.commit()
-                except Exception as e:
-                    db.rollback()
-                    self._log_metric_failure(metric.data_type, user_id, e)
-                    failures[metric.data_type] = str(e)
-                    continue
-                succeeded += 1
-                if counts is not None:
-                    results[metric.data_type] = counts
+                if metric.use_list(granularity):
+                    build = partial(self._native_samples, db, user_id, metric, start_time, end_time)
+                else:
+                    build = partial(self._rollup_samples, db, user_id, metric, start_time, end_time, granularity)
+                succeeded += self._store_samples(db, user_id, metric.data_type, build, results, failures)
 
         for derived in DERIVED_DAILY_METRICS:
-            try:
-                with db.begin_nested():
-                    samples = self._derived_daily_samples(db, user_id, derived, start_time, end_time)
-                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                self._log_metric_failure(derived.name, user_id, e)
-                failures[derived.name] = str(e)
-                continue
-            succeeded += 1
-            if counts is not None:
-                results[derived.name] = counts
+            build = partial(self._derived_daily_samples, db, user_id, derived, start_time, end_time)
+            succeeded += self._store_samples(db, user_id, derived.name, build, results, failures)
 
         for daily in DAILY_ROLLUP_METRICS:
-            try:
-                with db.begin_nested():
-                    samples = self._daily_rollup_samples(db, user_id, daily, start_time, end_time)
-                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                self._log_metric_failure(daily.name, user_id, e)
-                failures[daily.name] = str(e)
-                continue
-            succeeded += 1
-            if counts is not None:
-                results[daily.name] = counts
+            build = partial(self._daily_rollup_samples, db, user_id, daily, start_time, end_time)
+            succeeded += self._store_samples(db, user_id, daily.name, build, results, failures)
 
         try:
             with db.begin_nested():
@@ -203,6 +169,30 @@ class GoogleHealth247Data(Base247DataTemplate):
             nutrition_entries=nutrition_count,
         )
         return results
+
+    def _store_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        name: str,
+        build: Callable[[], list[TimeSeriesSampleCreate]],
+        results: dict[str, WriteCounts],
+        failures: dict[str, str],
+    ) -> bool:
+        """Fetch and write one data type in a savepoint, so a failure rolls back only that type."""
+        try:
+            with db.begin_nested():
+                samples = build()
+                counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            self._log_metric_failure(name, user_id, e)
+            failures[name] = str(e)
+            return False
+        if counts is not None:
+            results[name] = counts
+        return True
 
     def sync_data_type(
         self,

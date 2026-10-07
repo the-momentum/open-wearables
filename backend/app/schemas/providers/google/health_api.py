@@ -156,7 +156,8 @@ class DerivedDailyMetric:
 class DailyRollupMetric:
     """A civil-day total read straight from one data type's dailyRollUp.
 
-    data_source_family keeps the total to first-party sources, as for DerivedDailyMetric.
+    data_source_family keeps the total to first-party sources, since points from several
+    sources on one civil day are summed and would otherwise count the same minutes twice.
     """
 
     name: str
