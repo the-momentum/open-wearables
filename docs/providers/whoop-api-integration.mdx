@@ -1,13 +1,13 @@
 ---
 title: "Whoop API Integration"
-description: "Connect Whoop via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV, SpO2, and body measurements in real time via webhooks. Requires an active Whoop membership."
+description: "Connect Whoop via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV, SpO2, and body measurements in real time via webhooks."
 keywords: ["whoop api", "whoop data integration", "whoop health data", "whoop api open source"]
 "og:title": "Whoop API Integration | Open Wearables"
-"og:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2. Requires Whoop membership."
+"og:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2."
 "og:url": "https://docs.openwearables.io/providers/whoop-api-integration"
 "og:type": "article"
 "twitter:title": "Whoop API Integration | Open Wearables"
-"twitter:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2. Requires Whoop membership."
+"twitter:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2."
 "twitter:card": "summary_large_image"
 ---
 
@@ -88,15 +88,16 @@ Whoop reports sleep stages as **aggregate durations for the whole sleep**, not a
 
 ## Prerequisites
 
-- A Whoop account with an active membership
+- A Whoop account (no membership or device needed to get API credentials)
+- A Whoop user with a device and an active membership to test with real data. Whoop has no test accounts or mock data. New apps start on the [Sandbox tier](https://developer.whoop.com/docs/developing/app-approval), which only caps how many members can connect (10).
 
 ## Application walkthrough
 
 <Steps>
-  <Step title="Sign up for Whoop">
-    You must have a Whoop membership to develop on the Whoop Developer Platform. Your Whoop account is also your developer login.
+  <Step title="Create a Whoop account">
+    There is no separate developer account. You sign in to the Developer Dashboard with a regular Whoop account.
 
-    If you don't have one yet, [join Whoop here](https://www.whoop.com/).
+    The account can only be created in the Whoop mobile app ([iOS](https://apps.apple.com/app/whoop/id933944389), [Android](https://play.google.com/store/apps/details?id=com.whoop.android)), not on the web. You don't need a Whoop device or a membership to sign up, and a free account is enough to create an app and get a Client ID and Client Secret.
   </Step>
 
   <Step title="Create a Team in the Developer Dashboard">
@@ -105,7 +106,7 @@ Whoop reports sleep stages as **aggregate durations for the whole sleep**, not a
     Before creating an app, you'll be prompted to create a **Team**. Choose a name for your team and click **Create Team**.
 
     <Note>
-    You can invite other developers to your team later from the Team section of the Developer Dashboard. They'll need a Whoop account to be added.
+    You can invite other developers to your team later from the Team section of the Developer Dashboard. They'll need a Whoop account to be added, created in the mobile app the same way.
     </Note>
   </Step>
 

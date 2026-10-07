@@ -7,6 +7,7 @@ from app.database import DbSession
 from app.schemas.enums import ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.activity import (
     ActivitySummary,
+    ActivityTotals,
     BodySummary,
     RecoverySummary,
     SleepSummary,
@@ -40,6 +41,24 @@ def get_activity_summary(
     end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_activity_summaries(
         db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
+    )
+
+
+@router.get("/users/{user_id}/summaries/activity/totals")
+def get_activity_totals(
+    user_id: UUID,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> ActivityTotals:
+    """Returns the period's daily activity added up: days, steps, distance and active energy.
+
+    The same days the daily summaries return, one per date after source priority,
+    so a total matches what paging through them would add up to.
+    """
+    return summaries_service.get_activity_totals(
+        db, user_id, parse_query_datetime(start_date), parse_query_end_datetime(end_date)
     )
 
 

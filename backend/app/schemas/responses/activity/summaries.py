@@ -19,6 +19,18 @@ class HeartRateStats(BaseModel):
     min_bpm: int | None = None
 
 
+class ActivityTotals(BaseModel):
+    """The period's daily activity added up: the same days the daily summaries return."""
+
+    days: int = Field(..., description="Days with activity data, one per date after source priority", example=365)
+    steps: int = Field(..., description="Sum of daily steps", example=2841230)
+    distance_meters: float = Field(..., description="Sum of daily distance", example=2104380.5)
+    active_calories_kcal: float = Field(..., description="Sum of daily active energy", example=152340.0)
+    avg_steps: int | None = Field(
+        None, description="Mean steps over the days that report steps; null when none do", example=7784
+    )
+
+
 class ActivitySummary(BaseModel):
     date: date
     source: SourceMetadata

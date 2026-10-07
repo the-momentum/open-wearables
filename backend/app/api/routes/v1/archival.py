@@ -6,16 +6,27 @@ Admin-only endpoints to configure when live time-series data is archived
 
 from logging import getLogger
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
 from app.integrations.celery.tasks.archival_task import run_daily_archival
 from app.schemas.utils import ArchivalSettingUpdate, ArchivalSettingWithEstimate
 from app.services import DeveloperDep
 from app.services.archival_service import archival_service
 
-router = APIRouter()
 logger = getLogger(__name__)
+
+
+def _require_data_lifecycle_enabled(_developer: DeveloperDep) -> None:
+    if not settings.data_lifecycle_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Data lifecycle is not enabled (set DATA_LIFECYCLE_ENABLED=true in the backend environment).",
+        )
+
+
+router = APIRouter(dependencies=[Depends(_require_data_lifecycle_enabled)])
 
 
 @router.get(

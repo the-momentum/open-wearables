@@ -76,7 +76,7 @@ GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES = frozenset(
 # AUTOMATIC lets Google create per-user subscriptions itself as users connect.
 GOOGLE_WEBHOOK_DATA_TYPES = [
     data_type
-    for data_type in ([m.data_type for m in METRICS] + ["sleep", "exercise"])
+    for data_type in ([m.data_type for m in METRICS] + ["sleep", "exercise", "nutrition-log"])
     if data_type in GOOGLE_WEBHOOK_SUPPORTED_DATA_TYPES
 ]
 

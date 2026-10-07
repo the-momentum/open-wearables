@@ -963,6 +963,103 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/summaries/activity/totals": {
+      "get": {
+        "tags": [
+          "External: Summaries"
+        ],
+        "summary": "Get Activity Totals",
+        "description": "Returns the period's daily activity added up: days, steps, distance and active energy.\n\nThe same days the daily summaries return, one per date after source priority,\nso a total matches what paging through them would add up to.",
+        "operationId": "get_activity_totals_api_v1_users__user_id__summaries_activity_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/summaries/sleep": {
       "get": {
         "tags": [
@@ -2097,6 +2194,202 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/workouts/totals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Get Workout Totals",
+        "description": "Returns the count, duration, energy and distance of the workouts the same filters would list.\n\nAdded up in the database, so it covers every matching workout however many\nthere are, without paging through them.",
+        "operationId": "get_workout_totals_api_v1_users__user_id__events_workouts_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "record_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Record Type"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkoutType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact normalized workout type. Unlike `record_type`, does not substring-match.",
+              "title": "Type"
+            },
+            "description": "Exact normalized workout type. Unlike `record_type`, does not substring-match."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/sleep": {
       "get": {
         "tags": [
@@ -2329,6 +2622,198 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/sleep/totals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Get Sleep Totals",
+        "description": "Returns the count, naps, time asleep, time in bed and mean efficiency of the sessions.\n\nThe same filters as the sleep list, so it adds up exactly what that would page through.\n\nAdded up in the database, so it covers every matching session however many\nthere are, without paging through them.",
+        "operationId": "get_sleep_totals_api_v1_users__user_id__events_sleep_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "is_nap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only naps; when false, only main sleep. Omit to return both.",
+              "title": "Is Nap"
+            },
+            "description": "When true, return only naps; when false, only main sleep. Omit to return both."
+          },
+          {
+            "name": "filter_by_priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "default": false,
+              "title": "Filter By Priority"
+            },
+            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SleepTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/menstrual-cycles": {
       "get": {
         "tags": [
@@ -2519,6 +3004,196 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/meals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "List Meals",
+        "description": "Returns meals (nutrition entries).",
+        "operationId": "list_meals_api_v1_users__user_id__events_meals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_Meal_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/workouts/{workout_id}": {
       "delete": {
         "tags": [
@@ -2687,6 +3362,74 @@
               "type": "string",
               "format": "uuid",
               "title": "Cycle Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/events/meals/{meal_id}": {
+      "delete": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Delete Meal",
+        "description": "Delete a meal together with its nutrients.",
+        "operationId": "delete_meal_api_v1_users__user_id__events_meals__meal_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "meal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meal Id"
             }
           },
           {
@@ -5676,7 +6419,88 @@
                                     "HKQuantityTypeIdentifierCrossCountrySkiingSpeed",
                                     "HKQuantityTypeIdentifierPaddleSportsSpeed",
                                     "HKQuantityTypeIdentifierRowingSpeed",
-                                    "HKQuantityTypeIdentifierNikeFuel"
+                                    "HKQuantityTypeIdentifierNikeFuel",
+                                    "HKQuantityTypeIdentifierDietaryEnergyConsumed",
+                                    "DIETARY_ENERGY",
+                                    "HKQuantityTypeIdentifierDietaryCarbohydrates",
+                                    "DIETARY_CARBOHYDRATE",
+                                    "HKQuantityTypeIdentifierDietaryFiber",
+                                    "DIETARY_FIBER",
+                                    "HKQuantityTypeIdentifierDietarySugar",
+                                    "DIETARY_SUGAR",
+                                    "HKQuantityTypeIdentifierDietaryFatTotal",
+                                    "DIETARY_TOTAL_FAT",
+                                    "HKQuantityTypeIdentifierDietaryFatSaturated",
+                                    "DIETARY_SATURATED_FAT",
+                                    "HKQuantityTypeIdentifierDietaryFatMonounsaturated",
+                                    "DIETARY_MONOUNSATURATED_FAT",
+                                    "HKQuantityTypeIdentifierDietaryFatPolyunsaturated",
+                                    "DIETARY_POLYUNSATURATED_FAT",
+                                    "HKQuantityTypeIdentifierDietaryCholesterol",
+                                    "DIETARY_CHOLESTEROL",
+                                    "HKQuantityTypeIdentifierDietaryProtein",
+                                    "DIETARY_PROTEIN",
+                                    "HKQuantityTypeIdentifierDietarySodium",
+                                    "DIETARY_SODIUM",
+                                    "HKQuantityTypeIdentifierDietaryPotassium",
+                                    "DIETARY_POTASSIUM",
+                                    "HKQuantityTypeIdentifierDietaryCalcium",
+                                    "DIETARY_CALCIUM",
+                                    "HKQuantityTypeIdentifierDietaryIron",
+                                    "DIETARY_IRON",
+                                    "HKQuantityTypeIdentifierDietaryMagnesium",
+                                    "DIETARY_MAGNESIUM",
+                                    "HKQuantityTypeIdentifierDietaryPhosphorus",
+                                    "DIETARY_PHOSPHORUS",
+                                    "HKQuantityTypeIdentifierDietaryZinc",
+                                    "DIETARY_ZINC",
+                                    "HKQuantityTypeIdentifierDietaryCopper",
+                                    "DIETARY_COPPER",
+                                    "HKQuantityTypeIdentifierDietaryManganese",
+                                    "DIETARY_MANGANESE",
+                                    "HKQuantityTypeIdentifierDietarySelenium",
+                                    "DIETARY_SELENIUM",
+                                    "HKQuantityTypeIdentifierDietaryChromium",
+                                    "DIETARY_CHROMIUM",
+                                    "HKQuantityTypeIdentifierDietaryMolybdenum",
+                                    "DIETARY_MOLYBDENUM",
+                                    "HKQuantityTypeIdentifierDietaryIodine",
+                                    "DIETARY_IODINE",
+                                    "HKQuantityTypeIdentifierDietaryChloride",
+                                    "DIETARY_CHLORIDE",
+                                    "HKQuantityTypeIdentifierDietaryVitaminA",
+                                    "DIETARY_VITAMIN_A",
+                                    "HKQuantityTypeIdentifierDietaryVitaminB6",
+                                    "DIETARY_VITAMIN_B6",
+                                    "HKQuantityTypeIdentifierDietaryVitaminB12",
+                                    "DIETARY_VITAMIN_B12",
+                                    "HKQuantityTypeIdentifierDietaryVitaminC",
+                                    "DIETARY_VITAMIN_C",
+                                    "HKQuantityTypeIdentifierDietaryVitaminD",
+                                    "DIETARY_VITAMIN_D",
+                                    "HKQuantityTypeIdentifierDietaryVitaminE",
+                                    "DIETARY_VITAMIN_E",
+                                    "HKQuantityTypeIdentifierDietaryVitaminK",
+                                    "DIETARY_VITAMIN_K",
+                                    "HKQuantityTypeIdentifierDietaryThiamin",
+                                    "DIETARY_THIAMIN",
+                                    "HKQuantityTypeIdentifierDietaryRiboflavin",
+                                    "DIETARY_RIBOFLAVIN",
+                                    "HKQuantityTypeIdentifierDietaryNiacin",
+                                    "DIETARY_NIACIN",
+                                    "HKQuantityTypeIdentifierDietaryFolate",
+                                    "DIETARY_FOLATE",
+                                    "HKQuantityTypeIdentifierDietaryPantothenicAcid",
+                                    "DIETARY_PANTOTHENIC_ACID",
+                                    "HKQuantityTypeIdentifierDietaryBiotin",
+                                    "DIETARY_BIOTIN",
+                                    "HKQuantityTypeIdentifierDietaryCaffeine",
+                                    "DIETARY_CAFFEINE",
+                                    "HKQuantityTypeIdentifierDietaryWater",
+                                    "DIETARY_TRANS_FAT",
+                                    "DIETARY_ENERGY_FROM_FAT",
+                                    "DIETARY_UNSATURATED_FAT",
+                                    "DIETARY_FOLIC_ACID"
                                   ],
                                   "title": "SDKMetricType",
                                   "type": "string"
@@ -10343,6 +11167,56 @@
         ],
         "title": "ActivitySummary"
       },
+      "ActivityTotals": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "description": "Days with activity data, one per date after source priority",
+            "example": 365
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "description": "Sum of daily steps",
+            "example": 2841230
+          },
+          "distance_meters": {
+            "type": "number",
+            "title": "Distance Meters",
+            "description": "Sum of daily distance",
+            "example": 2104380.5
+          },
+          "active_calories_kcal": {
+            "type": "number",
+            "title": "Active Calories Kcal",
+            "description": "Sum of daily active energy",
+            "example": 152340.0
+          },
+          "avg_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Steps",
+            "description": "Mean steps over the days that report steps; null when none do",
+            "example": 7784
+          }
+        },
+        "type": "object",
+        "required": [
+          "days",
+          "steps",
+          "distance_meters",
+          "active_calories_kcal"
+        ],
+        "title": "ActivityTotals",
+        "description": "The period's daily activity added up: the same days the daily summaries return."
+      },
       "ApiKeyRead": {
         "properties": {
           "id": {
@@ -11135,11 +12009,21 @@
           "outgoing_webhooks_enabled": {
             "type": "boolean",
             "title": "Outgoing Webhooks Enabled"
+          },
+          "data_lifecycle_enabled": {
+            "type": "boolean",
+            "title": "Data Lifecycle Enabled"
+          },
+          "email_enabled": {
+            "type": "boolean",
+            "title": "Email Enabled"
           }
         },
         "type": "object",
         "required": [
-          "outgoing_webhooks_enabled"
+          "outgoing_webhooks_enabled",
+          "data_lifecycle_enabled",
+          "email_enabled"
         ],
         "title": "ConfigResponse",
         "description": "Instance feature flags for the admin panel. Additive-only: append new flags,\nnever remove or repurpose, so the frontend stays backward compatible."
@@ -11217,6 +12101,13 @@
             "type": "array",
             "title": "Menstrual Cycle Fields"
           },
+          "meal_fields": {
+            "items": {
+              "$ref": "#/components/schemas/MealField"
+            },
+            "type": "array",
+            "title": "Meal Fields"
+          },
           "health_scores": {
             "items": {
               "$ref": "#/components/schemas/HealthScore"
@@ -11232,6 +12123,7 @@
           "workout_fields",
           "sleep_fields",
           "menstrual_cycle_fields",
+          "meal_fields",
           "health_scores"
         ],
         "title": "CoverageResponse"
@@ -11635,6 +12527,19 @@
           "phone",
           "scale",
           "ring",
+          "tablet",
+          "chest_strap",
+          "hr_sensor",
+          "headphones",
+          "head_mounted",
+          "glasses",
+          "smart_display",
+          "bp_monitor",
+          "glucose_meter",
+          "thermometer",
+          "sleep_monitor",
+          "bike_computer",
+          "fitness_machine",
           "other",
           "unknown"
         ],
@@ -12605,6 +13510,228 @@
         ],
         "title": "LiveSyncMode"
       },
+      "Macros": {
+        "properties": {
+          "protein_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein G"
+          },
+          "carbohydrates_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbohydrates G"
+          },
+          "fat_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat G"
+          },
+          "fiber_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber G"
+          }
+        },
+        "type": "object",
+        "title": "Macros"
+      },
+      "Meal": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceMetadata"
+          },
+          "calories_kcal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Kcal"
+          },
+          "macros": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Macros"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "water_ml": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Ml"
+          },
+          "nutrients": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NutrientValue"
+            },
+            "type": "object",
+            "title": "Nutrients",
+            "description": "All nutrient values recorded for the meal, keyed by series type (e.g. dietary_sugar)",
+            "example": {
+              "dietary_sugar": {
+                "unit": "g",
+                "value": 12.5
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "timestamp",
+          "source"
+        ],
+        "title": "Meal"
+      },
+      "MealConfig": {
+        "properties": {
+          "meal_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Meal Count",
+            "description": "Total number of meals to generate.",
+            "default": 50
+          },
+          "calories_range": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Calories Range",
+            "default": [
+              150,
+              900
+            ]
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From",
+            "description": "Explicit start date. Defaults to a 6-month lookback."
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To",
+            "description": "Explicit end date. Defaults to the last synced date."
+          }
+        },
+        "type": "object",
+        "title": "MealConfig",
+        "description": "Parameters controlling meal generation."
+      },
+      "MealField": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "providers"
+        ],
+        "title": "MealField"
+      },
       "MenstrualCycleField": {
         "properties": {
           "code": {
@@ -13074,6 +14201,24 @@
         ],
         "title": "MultipartSignResponse"
       },
+      "NutrientValue": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "unit"
+        ],
+        "title": "NutrientValue"
+      },
       "OldPaginatedResponse_UserRead_": {
         "properties": {
           "items": {
@@ -13179,6 +14324,30 @@
           "metadata"
         ],
         "title": "PaginatedResponse[HealthScoreResponse]"
+      },
+      "PaginatedResponse_Meal_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Meal"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/TimeseriesMetadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "pagination",
+          "metadata"
+        ],
+        "title": "PaginatedResponse[Meal]"
       },
       "PaginatedResponse_MenstrualCycleRecord_": {
         "properties": {
@@ -14203,6 +15372,7 @@
               "generate_workouts": true,
               "generate_sleep": true,
               "generate_time_series": true,
+              "generate_meals": false,
               "num_connections": 2,
               "workout_config": {
                 "count": 80,
@@ -14248,6 +15418,13 @@
                 "date_range_months": 6,
                 "enabled_types": [],
                 "include_blood_pressure": false
+              },
+              "meal_config": {
+                "calories_range": [
+                  150,
+                  900
+                ],
+                "meal_count": 50
               }
             }
           },
@@ -14354,6 +15531,12 @@
             "title": "Generate Time Series",
             "default": true
           },
+          "generate_meals": {
+            "type": "boolean",
+            "title": "Generate Meals",
+            "description": "Opt-in: existing presets and defaults stay meal-free unless explicitly enabled.",
+            "default": false
+          },
           "providers": {
             "anyOf": [
               {
@@ -14428,6 +15611,16 @@
               "enabled_types": [],
               "include_blood_pressure": false,
               "date_range_months": 6
+            }
+          },
+          "meal_config": {
+            "$ref": "#/components/schemas/MealConfig",
+            "default": {
+              "meal_count": 50,
+              "calories_range": [
+                150,
+                900
+              ]
             }
           }
         },
@@ -14527,6 +15720,48 @@
           "garmin_body_battery",
           "withings_pulse_wave_velocity",
           "withings_metabolic_age",
+          "dietary_energy_consumed",
+          "dietary_carbohydrates",
+          "dietary_fiber",
+          "dietary_sugar",
+          "dietary_fat_total",
+          "dietary_fat_saturated",
+          "dietary_fat_monounsaturated",
+          "dietary_fat_polyunsaturated",
+          "dietary_cholesterol",
+          "dietary_protein",
+          "dietary_sodium",
+          "dietary_potassium",
+          "dietary_calcium",
+          "dietary_iron",
+          "dietary_magnesium",
+          "dietary_phosphorus",
+          "dietary_zinc",
+          "dietary_copper",
+          "dietary_manganese",
+          "dietary_selenium",
+          "dietary_chromium",
+          "dietary_molybdenum",
+          "dietary_iodine",
+          "dietary_chloride",
+          "dietary_vitamin_a",
+          "dietary_vitamin_b6",
+          "dietary_vitamin_b12",
+          "dietary_vitamin_c",
+          "dietary_vitamin_d",
+          "dietary_vitamin_e",
+          "dietary_vitamin_k",
+          "dietary_thiamin",
+          "dietary_riboflavin",
+          "dietary_niacin",
+          "dietary_folate",
+          "dietary_pantothenic_acid",
+          "dietary_biotin",
+          "dietary_caffeine",
+          "dietary_fat_trans",
+          "dietary_energy_from_fat",
+          "dietary_fat_unsaturated",
+          "dietary_folic_acid",
           "electrodermal_activity",
           "push_count",
           "atrial_fibrillation_burden",
@@ -15227,6 +16462,56 @@
           "source"
         ],
         "title": "SleepSummary"
+      },
+      "SleepTotals": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Sessions that match the filters, naps included",
+            "example": 30
+          },
+          "naps": {
+            "type": "integer",
+            "title": "Naps",
+            "description": "Of those, how many are naps",
+            "example": 4
+          },
+          "sleep_duration_seconds": {
+            "type": "integer",
+            "title": "Sleep Duration Seconds",
+            "description": "Sum of time asleep",
+            "example": 799200
+          },
+          "time_in_bed_seconds": {
+            "type": "integer",
+            "title": "Time In Bed Seconds",
+            "description": "Sum of time in bed, or of the session's span where none was reported",
+            "example": 871200
+          },
+          "avg_efficiency_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Efficiency Percent",
+            "description": "Mean efficiency over the sessions that report one",
+            "example": 91.4
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "naps",
+          "sleep_duration_seconds",
+          "time_in_bed_seconds"
+        ],
+        "title": "SleepTotals",
+        "description": "Sleep sessions matching a filter, added up in the database rather than paged."
       },
       "SourceMetadata": {
         "properties": {
@@ -16598,6 +17883,12 @@
             "type": "integer",
             "title": "Workouts Saved",
             "description": "Workouts saved",
+            "default": 0
+          },
+          "meals_saved": {
+            "type": "integer",
+            "title": "Meals Saved",
+            "description": "Meal correlations saved",
             "default": 0
           },
           "sleep_saved": {
@@ -18032,6 +19323,55 @@
         ],
         "title": "WorkoutIntensity",
         "description": "Unified subjective intensity of a workout, independent of the reporting provider."
+      },
+      "WorkoutTotals": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Workouts that match the filters",
+            "example": 42
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds",
+            "description": "Sum of their durations",
+            "example": 95400
+          },
+          "calories_kcal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Kcal",
+            "description": "Sum of reported energy burned; null when none reported any",
+            "example": 18250.5
+          },
+          "distance_meters": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Meters",
+            "description": "Sum of reported distance; null when none reported any",
+            "example": 212400.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "duration_seconds"
+        ],
+        "title": "WorkoutTotals",
+        "description": "Workouts matching a filter, added up in the database rather than paged."
       },
       "WorkoutType": {
         "type": "string",

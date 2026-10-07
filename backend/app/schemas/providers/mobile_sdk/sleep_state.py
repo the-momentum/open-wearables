@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.series_types.sdk import SleepPhase
 from app.constants.sleep import SleepStageType
+from app.schemas.enums import DeviceType
 
 
 class SleepStateStage(BaseModel):
@@ -18,6 +19,7 @@ class SleepState(BaseModel):
     uuid: str
     source_name: str | None = None
     device_model: str | None = None
+    device_type: DeviceType | None = None
     provider: str | None = None
     zone_offset: str | None = None
 
@@ -33,6 +35,9 @@ class SleepState(BaseModel):
     light_seconds: float = 0
     deep_seconds: float = 0
     rem_seconds: float = 0
+
+    # Provider-computed sleep score sent in the SDK sleep entry `values` (Samsung `sleepScore`)
+    sleep_score: float | None = None
 
     stages: list[SleepStateStage] = Field(default_factory=list)
 

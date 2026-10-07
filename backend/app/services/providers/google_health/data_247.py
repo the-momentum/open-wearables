@@ -5,8 +5,8 @@ resolution by the operation ``google_use_reconcile`` picks — ``dataPoints:reco
 merged, deduplicated stream across sources, matching the native health app) or ``dataPoints``
 list (raw per-source points with device attribution). Windowed ``dataPoints:rollUp`` is
 disabled (#1577) and the configured granularity no longer selects it; ``dataPoints:dailyRollUp``
-still backs the derived daily metrics. Sleep and workouts come from the sessions endpoint and
-are handled separately.
+still backs the derived daily metrics. Sleep, workouts and nutrition come from the sessions
+endpoint and are handled separately.
 """
 
 from collections.abc import Iterator
@@ -26,7 +26,7 @@ from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, SeriesType
+from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, DeviceType, SeriesType
 from app.schemas.enums.aggregation_method import daily_total_flag
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.schemas.providers.google import (
@@ -41,6 +41,7 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     civil_interval,
+    extract_form_factor,
     extract_source,
     parse_date,
     parse_page,
@@ -50,6 +51,7 @@ from app.services.providers.google_health.helpers import (
     zone_offset_from,
 )
 from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -82,6 +84,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         self.connection_repo = connection_repo
         self.settings_repo = ProviderSettingsRepository()
         self.sleep = GoogleHealthApiSleep(oauth, connection_repo, api_base_url)
+        self.nutrition = GoogleHealthApiNutrition(oauth, connection_repo, api_base_url)
 
     # -- orchestration ---------------------------------------------------------
 
@@ -153,6 +156,17 @@ class GoogleHealth247Data(Base247DataTemplate):
             failures["sleep"] = str(e)
             sleep_count = 0
 
+        try:
+            with db.begin_nested():
+                nutrition_count = self.nutrition.load_and_save(db, user_id, start_time, end_time)
+            db.commit()
+            succeeded += 1
+        except Exception as e:
+            db.rollback()
+            self._log_metric_failure("nutrition-log", user_id, e)
+            failures["nutrition-log"] = str(e)
+            nutrition_count = 0
+
         if not granularity_supported:
             raise UnsupportedGranularityError(granularity)
         # Every attempted data type failed (e.g. ACCOUNT_NOT_LINKED) — surface it so the sync
@@ -169,6 +183,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             granularity=granularity.value,
             metrics_synced=len(results),
             sleep_sessions=sleep_count,
+            nutrition_entries=nutrition_count,
         )
         return results
 
@@ -182,9 +197,9 @@ class GoogleHealth247Data(Base247DataTemplate):
     ) -> WriteCounts | None:
         """Fetch + persist a single 24/7 metric over an explicit window (webhook-triggered).
 
-        Returns None when ``data_type`` is not a registered metric. Sleep and exercise
-        are owned by their own handlers and are routed there by the webhook handler
-        before ever reaching here, so an unrecognised type is a safe no-op. Raises
+        Returns None when ``data_type`` is not a registered metric. Sleep, exercise and
+        nutrition-log are owned by their own handlers and are routed there by the webhook
+        handler before ever reaching here, so an unrecognised type is a safe no-op. Raises
         UnsupportedGranularityError, which the webhook handler reports without a 5xx.
         """
         metric = next((m for m in METRICS if m.data_type == data_type), None)
@@ -413,13 +428,21 @@ class GoogleHealth247Data(Base247DataTemplate):
                 continue
             # Only list points carry a dataSource; reconciled points are already merged.
             device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
+            device_type = None if reconcile else extract_form_factor(point.get("dataSource"))
             for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
                 value = read_number(value_obj, field, subfield, scale)
                 if value is None or value == 0:
                     continue
                 samples.append(
                     self._sample(
-                        user_id, recorded_at, value, series_type, spec.is_daily_total, zone_offset, device_model
+                        user_id,
+                        recorded_at,
+                        value,
+                        series_type,
+                        spec.is_daily_total,
+                        zone_offset,
+                        device_model,
+                        device_type,
                     )
                 )
         return samples
@@ -532,6 +555,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         is_daily_total: bool,
         zone_offset: str | None = None,
         device_model: str | None = None,
+        device_type: DeviceType | None = None,
     ) -> TimeSeriesSampleCreate:
         return TimeSeriesSampleCreate(
             id=uuid4(),
@@ -539,6 +563,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             source=GOOGLE_HEALTH_API_SOURCE,
             provider=self.provider_name,
             device_model=device_model,
+            device_type=device_type,
             recorded_at=recorded_at,
             zone_offset=zone_offset,
             value=value,

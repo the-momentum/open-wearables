@@ -407,6 +407,13 @@ def sample_ultrahuman_api_response() -> dict:
                     },
                 },
                 {
+                    "type": "sleep_rhr",
+                    "object": {
+                        "value": 51,
+                        "day_start_timestamp": 1705276800,
+                    },
+                },
+                {
                     "type": "avg_sleep_hrv",
                     "object": {
                         "value": 48,

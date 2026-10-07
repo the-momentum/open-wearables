@@ -18,6 +18,7 @@ from app.api.routes.v1.meta import _build_coverage
 from app.schemas.model_crud.coverage import (
     CoverageResponse,
     HealthScore,
+    MealField,
     MenstrualCycleField,
     SleepField,
     WorkoutField,
@@ -59,7 +60,7 @@ def _render_timeseries_section(coverage: CoverageResponse) -> str:
 def _render_field_section(
     title: str,
     code_header: str,
-    fields: list[WorkoutField] | list[SleepField] | list[MenstrualCycleField] | list[HealthScore],
+    fields: list[WorkoutField] | list[SleepField] | list[MenstrualCycleField] | list[MealField] | list[HealthScore],
     providers: list[str],
 ) -> str:
     lines = [f"## {title}", ""]
@@ -79,6 +80,7 @@ def generate_body(coverage: CoverageResponse) -> str:
         _render_field_section("Workout Data Coverage", "Field", coverage.workout_fields, coverage.providers),
         _render_field_section("Sleep Data Coverage", "Field", coverage.sleep_fields, coverage.providers),
         _render_field_section("Women's Health Coverage", "Field", coverage.menstrual_cycle_fields, coverage.providers),
+        _render_field_section("Meal Data Coverage", "Field", coverage.meal_fields, coverage.providers),
         _render_field_section("Health Scores Coverage", "Score", coverage.health_scores, coverage.providers),
     ]
     # Dev-facing note, invisible in the rendered page (reader-facing content has no

@@ -144,6 +144,26 @@ class SleepConfig(BaseModel):
         return self
 
 
+class MealConfig(BaseModel):
+    """Parameters controlling meal generation."""
+
+    meal_count: int = Field(50, ge=0, le=10_000, description="Total number of meals to generate.")
+    calories_range: tuple[int, int] = (150, 900)
+    date_from: date | None = Field(None, description="Explicit start date. Defaults to a 6-month lookback.")
+    date_to: date | None = Field(None, description="Explicit end date. Defaults to the last synced date.")
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "MealConfig":
+        lo, hi = self.calories_range
+        if not (0 <= lo <= hi <= 5_000):
+            msg = f"calories_range ({lo}, {hi}) must satisfy 0 <= min <= max <= 5000"
+            raise ValueError(msg)
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            msg = f"date_from ({self.date_from}) must be <= date_to ({self.date_to})"
+            raise ValueError(msg)
+        return self
+
+
 class TimeSeriesConfig(BaseModel):
     """Parameters controlling continuous time-series generation.
 
@@ -184,11 +204,15 @@ class SeedProfileConfig(BaseModel):
     generate_workouts: bool = True
     generate_sleep: bool = True
     generate_time_series: bool = True
+    generate_meals: bool = Field(
+        False, description="Opt-in: existing presets and defaults stay meal-free unless explicitly enabled."
+    )
     providers: list[ProviderName] | None = Field(None, description="Specific providers. None = random selection.")
     num_connections: int = Field(2, ge=1, le=5)
     workout_config: WorkoutConfig = WorkoutConfig()
     sleep_config: SleepConfig = SleepConfig()
     time_series_config: TimeSeriesConfig = TimeSeriesConfig()
+    meal_config: MealConfig = MealConfig()
 
 
 class SeedDataRequest(BaseModel):
@@ -470,6 +494,22 @@ SEED_PRESETS: dict[str, dict] = {
                 enabled_types=[*_ALL_CONTINUOUS_TYPES, *_WORKOUT_BOUND_TYPES],
                 include_blood_pressure=True,
             ),
+            generate_meals=True,
+        ),
+    },
+    "nutrition_focused": {
+        "label": "Nutrition Focused",
+        "description": "540 logged meals (~3/day over 6 months) of nutrition data, light workouts, no sleep.",
+        "profile": SeedProfileConfig(
+            preset="nutrition_focused",
+            providers=[ProviderName.APPLE],
+            num_connections=1,
+            generate_workouts=True,
+            generate_sleep=False,
+            generate_time_series=False,
+            workout_config=WorkoutConfig(count=10),
+            generate_meals=True,
+            meal_config=MealConfig(meal_count=540),
         ),
     },
 }

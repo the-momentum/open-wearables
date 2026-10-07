@@ -1,5 +1,6 @@
 import contextlib
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
@@ -17,6 +18,7 @@ from sqlalchemy import (
     func,
     lateral,
     literal,
+    literal_column,
     select,
     text,
     true,
@@ -30,7 +32,7 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository, source_filter_conditions, utc_bucket_start
-from app.schemas.enums import ProviderName, SeriesType, TimelineBucket, get_series_type_id
+from app.schemas.enums import DeviceType, ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
@@ -74,6 +76,7 @@ class EventRecordRepository(
                 source=creator.source,
                 software_version=creator.software_version,
                 original_source_name=creator.source,
+                reported_type=creator.device_type,
             )
             data_source_id = data_source.id
 
@@ -86,6 +89,7 @@ class EventRecordRepository(
             "provider",
             "user_connection_id",
             "software_version",
+            "device_type",
         ):
             creation_data.pop(redundant_key, None)
         return data_source_id, self.model(**creation_data)
@@ -95,6 +99,7 @@ class EventRecordRepository(
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
+                self.model.category != "meal",
                 self.model.start_datetime == creation.start_datetime,
                 self.model.end_datetime == creation.end_datetime,
             )
@@ -183,15 +188,8 @@ class EventRecordRepository(
                 return existing
             raise
 
-    @handle_exceptions
-    def bulk_create(
-        self,
-        db_session: DbSession,
-        creators: list[EventRecordCreate],
-    ) -> list[UUID]:
-        if not creators:
-            return []
-
+    def _resolve_values(self, db_session: DbSession, creators: list[EventRecordCreate]) -> list[dict]:
+        """Resolve data sources in batch and build event_record row values."""
         # Group by provider for batch processing
         by_provider: dict[ProviderName, list[EventRecordCreate]] = {}
         for c in creators:
@@ -205,12 +203,16 @@ class EventRecordRepository(
 
         for provider, provider_creators in by_provider.items():
             unique_identities: set[DataSourceIdentity] = set()
+            reported_types: dict[DataSourceIdentity, DeviceType] = {}
             user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
             for c in provider_creators:
-                unique_identities.add((c.user_id, c.device_model, c.source))
+                identity = (c.user_id, c.device_model, c.source)
+                unique_identities.add(identity)
+                if c.device_type:
+                    reported_types.setdefault(identity, c.device_type)
 
             batch_result = self.data_source_repo.batch_ensure_data_sources(
-                db_session, provider, user_connection_id, unique_identities
+                db_session, provider, user_connection_id, unique_identities, reported_types
             )
             identity_to_source_id.update(batch_result)
 
@@ -236,11 +238,23 @@ class EventRecordRepository(
                     "zone_offset": creator.zone_offset,
                 }
             )
+        return values_list
 
+    @handle_exceptions
+    def bulk_create(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> list[UUID]:
+        """Insert non-meal records, skipping existing ones. Meals go through bulk_upsert_meals."""
+        if not creators:
+            return []
+
+        values_list = self._resolve_values(db_session, creators)
         if not values_list:
             return []
 
-        # 3. Batch insert with ON CONFLICT DO NOTHING
+        # Batch insert with ON CONFLICT DO NOTHING
         # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
         chunk_size = 6_500
         inserted_ids: set[UUID] = set()
@@ -249,13 +263,66 @@ class EventRecordRepository(
             stmt = (
                 insert(self.model)
                 .values(chunk)
-                .on_conflict_do_nothing(index_elements=["data_source_id", "start_datetime", "end_datetime"])
+                .on_conflict_do_nothing(
+                    index_elements=["data_source_id", "start_datetime", "end_datetime"],
+                    index_where=text("category <> 'meal'"),
+                )
             )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
         # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
+
+    @handle_exceptions
+    def bulk_upsert_meals(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> dict[UUID, tuple[UUID, bool]]:
+        """Insert or update meals by (data source, external_id). Returns {creator id: (record id, is_inserted)}."""
+        values_by_key: dict[tuple[UUID, str], tuple[EventRecordCreate, dict]] = {}
+        resolved = self._resolve_values(db_session, [c for c in creators if c.external_id])
+        creators_by_id = {c.id: c for c in creators}
+        for values in resolved:
+            values_by_key[(values["data_source_id"], values["external_id"])] = (creators_by_id[values["id"]], values)
+        if not values_by_key:
+            return {}
+
+        result: dict[UUID, tuple[UUID, bool]] = {}
+        entries = list(values_by_key.values())
+        chunk_size = 6_500
+        for i in range(0, len(entries), chunk_size):
+            chunk = entries[i : i + chunk_size]
+            stmt = insert(self.model).values([values for _, values in chunk])
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["data_source_id", "external_id"],
+                index_where=text("category = 'meal'"),
+                set_={
+                    column: stmt.excluded[column]
+                    for column in (
+                        "type",
+                        "source_name",
+                        "duration_seconds",
+                        "start_datetime",
+                        "end_datetime",
+                        "zone_offset",
+                    )
+                },
+            ).returning(
+                self.model.id,
+                self.model.data_source_id,
+                self.model.external_id,
+                literal_column("xmax = 0").label("is_inserted"),
+            )
+            stored = {
+                (row.data_source_id, row.external_id): (row.id, row.is_inserted)
+                for row in db_session.execute(stmt).fetchall()
+            }
+            for creator, values in chunk:
+                result[creator.id] = stored[(values["data_source_id"], values["external_id"])]
+        db_session.flush()
+        return result
 
     def get_record_with_details(
         self,
@@ -270,23 +337,14 @@ class EventRecordRepository(
             .first()
         )
 
-    def get_records_with_filters(
-        self,
-        db_session: DbSession,
+    @staticmethod
+    def _record_filters(
         query_params: EventRecordQueryParams,
         user_id: str,
         restrict_to_record_ids: Query | None = None,
-    ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
-        query: Query = (
-            db_session.query(EventRecord, DataSource)
-            .join(
-                DataSource,
-                EventRecord.data_source_id == DataSource.id,
-            )
-            .options(*[selectinload(r) for r in EventRecord.detail_relationship(query_params.category)])
-        )
-
-        filters = [DataSource.user_id == UUID(user_id)]
+    ) -> list[ColumnElement[bool]]:
+        """The WHERE clause a record listing applies, shared so a total counts the same records."""
+        filters: list[ColumnElement[bool]] = [DataSource.user_id == UUID(user_id)]
 
         # Optional allow-list of record ids as a subquery (e.g. priority-deduplicated
         # sleep sessions). Inlined as `id IN (<subquery>)` before count/cursor/limit so
@@ -322,6 +380,25 @@ class EventRecordRepository(
 
         if query_params.max_duration is not None:
             filters.append(EventRecord.duration_seconds <= query_params.max_duration)
+        return filters
+
+    def get_records_with_filters(
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
+    ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
+        query: Query = (
+            db_session.query(EventRecord, DataSource)
+            .join(
+                DataSource,
+                EventRecord.data_source_id == DataSource.id,
+            )
+            .options(*[selectinload(r) for r in EventRecord.detail_relationship(query_params.category)])
+        )
+
+        filters = self._record_filters(query_params, user_id, restrict_to_record_ids)
 
         if filters:
             query = query.filter(and_(*filters))
@@ -384,6 +461,59 @@ class EventRecordRepository(
             query = query.offset(query_params.offset)
 
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
+
+    def get_workout_totals(
+        self, db_session: DbSession, query_params: EventRecordQueryParams, user_id: str
+    ) -> tuple[int, int, Decimal | None, Decimal | None]:
+        """Count, duration, energy and distance of the matching workouts, in one aggregate."""
+        filters = self._record_filters(query_params.model_copy(update={"category": "workout"}), user_id)
+        row = (
+            db_session.query(
+                func.count(EventRecord.id),
+                func.coalesce(func.sum(EventRecord.duration_seconds), 0),
+                func.sum(WorkoutDetails.energy_burned),
+                func.sum(WorkoutDetails.distance),
+            )
+            .select_from(EventRecord)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(WorkoutDetails, WorkoutDetails.record_id == EventRecord.id)
+            .filter(and_(*filters))
+            .one()
+        )
+        return int(row[0]), int(row[1]), row[2], row[3]
+
+    def get_sleep_totals(
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
+    ) -> tuple[int, int, int, int, Decimal | None]:
+        """Sessions, naps, asleep and in-bed seconds, and mean efficiency, in one aggregate."""
+        filters = self._record_filters(
+            query_params.model_copy(update={"category": "sleep"}), user_id, restrict_to_record_ids
+        )
+        row = (
+            db_session.query(
+                func.count(EventRecord.id),
+                func.count(EventRecord.id).filter(SleepDetails.is_nap.is_(True)),
+                func.coalesce(func.sum(SleepDetails.sleep_total_duration_minutes), 0) * 60,
+                # The list falls back the same way: a span stands in for time in bed.
+                func.coalesce(
+                    func.sum(
+                        func.coalesce(SleepDetails.sleep_time_in_bed_minutes * 60, EventRecord.duration_seconds, 0)
+                    ),
+                    0,
+                ),
+                func.avg(SleepDetails.sleep_efficiency_score),
+            )
+            .select_from(EventRecord)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(and_(*filters))
+            .one()
+        )
+        return int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
 
     def winning_sleep_record_ids(
         self,

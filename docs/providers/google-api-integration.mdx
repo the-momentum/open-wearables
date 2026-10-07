@@ -40,6 +40,7 @@ The Google Health API is an **aggregation layer**: it surfaces data from *every*
 | Weight, body fat, core body temperature, blood glucose | 24/7 metrics |
 | Workouts (Exercise sessions) | Sessions |
 | Sleep (with stages) | Sessions |
+| Meals (nutrition-log: energy, macros, minerals, vitamins, meal type, food name) | Sessions |
 
 ### Data delivery
 
@@ -69,8 +70,8 @@ Daily basal energy is the one exception: it is derived from `dataPoints:dailyRol
 
 A user commonly has the **same activity reported by multiple sources** (e.g. the phone's pedometer *and* the Fitbit app both counting steps). The two modes handle that overlap differently:
 
-- **`reconcile` (default)** returns **one merged stream**, deduplicated across all sources at the interval level — exactly what the native Google Health / Fitbit app displays. There is no single device behind a merged value, so reconciled points carry **no device attribution** (`device_model` is empty).
-- **`list`** returns the **raw per-source points**, each tagged with its originating device. This preserves device attribution but stores overlapping sources separately; Open Wearables then **deduplicates on read** by source priority (it does *not* sum them).
+- **`reconcile` (default)** returns **one merged stream**, deduplicated across all sources at the interval level — exactly what the native Google Health / Fitbit app displays. There is no single device behind a merged value, so reconciled points carry **no device attribution** (`device_model` and `device_type` are empty).
+- **`list`** returns the **raw per-source points**, each tagged with its originating device; `device_type` comes from the data source's `formFactor`. This preserves device attribution but stores overlapping sources separately; Open Wearables then **deduplicates on read** by source priority (it does *not* sum them).
 
 A concrete example — steps for one day for a user tracked by both their phone (Health Connect) and Fitbit MobileTrack:
 
@@ -436,7 +437,7 @@ curl -X POST \
   -d '{
     "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google_health/webhooks",
     "subscriberConfigs": [
-      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
+      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise", "nutrition-log"], "subscriptionCreatePolicy": "AUTOMATIC"}
     ],
     "endpointAuthorization": {"secret": "Bearer YOUR_GOOGLE_WEBHOOK_SECRET"}
   }'
@@ -461,8 +462,8 @@ curl -X DELETE \
 `dataTypes` above is an abbreviated example — use the set the app supports for webhooks
 (steps, distance, hydration-log, heart-rate, run-vo2-max, daily-resting-heart-rate,
 heart-rate-variability, daily-heart-rate-variability, weight, body-fat, blood-glucose,
-daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise). Registering a data type
-the app doesn't handle just means its notifications are ignored.
+daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise, nutrition-log). Registering
+a data type the app doesn't handle just means its notifications are ignored.
 </Note>
 
 ## Next Steps

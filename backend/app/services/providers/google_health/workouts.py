@@ -20,6 +20,7 @@ from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDeta
 from app.services.event_record_service import event_record_service
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    extract_form_factor,
     extract_source,
     parse_duration_seconds,
     parse_interval,
@@ -110,6 +111,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
         if start is None or end is None:
             raise ValueError("Exercise interval missing startTime/endTime")
         source_name, device_model = extract_source(raw_workout.get("dataSource"))
+        device_type = extract_form_factor(raw_workout.get("dataSource"))
 
         duration_seconds = int((end - start).total_seconds()) if start and end else None
         zone_offset = zone_offset_from(interval.get("startUtcOffset"))
@@ -122,6 +124,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
             device_model=device_model,
+            device_type=device_type,
             external_id=raw_workout.get("name"),
             start_datetime=start,
             end_datetime=end,

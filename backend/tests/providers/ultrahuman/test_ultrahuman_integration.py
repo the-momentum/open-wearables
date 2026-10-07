@@ -353,6 +353,38 @@ class TestUltrahumanActivitySamplesIntegration:
             value = float(sample.value)
             assert 15 <= value <= 90, f"VO2 max {value} is outside realistic range (15-90 ml/kg/min)"
 
+    def test_sleep_rhr_saved_as_resting_heart_rate(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
+        """The ring's overnight resting heart rate reaches the resting_heart_rate series."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
+
+        provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+            provider_impl.load_and_save_all(
+                db,
+                user.id,
+                start_time=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                end_time=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            )
+            db.commit()
+
+        samples = (
+            db.query(DataPointSeries)
+            .join(DataSource)
+            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            .filter(
+                DataSource.user_id == user.id,
+                SeriesTypeDefinition.code == SeriesType.resting_heart_rate.value,
+            )
+            .all()
+        )
+
+        assert [float(sample.value) for sample in samples] == [51]
+        assert samples[0].recorded_at == datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
+
     def test_heart_rate_values_are_reasonable_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
     ) -> None:

@@ -84,6 +84,7 @@ class TestFailureIsolation:
                 side_effect=fake_request,
             ),
             patch.object(data_247.sleep, "load_and_save", return_value=0),
+            patch.object(data_247.nutrition, "load_and_save", return_value=0),
             patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
             patch("app.services.providers.google_health.data_247.store_raw_payload"),
         ):
@@ -111,6 +112,7 @@ class TestPerMetricTransactions:
                 side_effect=fake_request,
             ),
             patch.object(data_247.sleep, "load_and_save", return_value=0),
+            patch.object(data_247.nutrition, "load_and_save", return_value=0),
             patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
             patch("app.services.providers.google_health.data_247.store_raw_payload"),
         ):
