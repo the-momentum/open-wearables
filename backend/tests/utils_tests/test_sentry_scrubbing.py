@@ -24,10 +24,10 @@ from app.utils.sentry_helpers import log_and_capture_error
 
 logger = logging.getLogger("app.test_sentry_scrubbing")
 
-SECRET_HEART_RATE = 187.349  # a dot keeps it from matching numeric ids in the event
-SECRET_EMAIL = "jane.doe@example.com"
-SECRET_USERNAME = "jane-strava-login"
-SECRET_PAYLOAD = "resting_hr=48"
+FAKE_HEART_RATE = 187.349  # a dot keeps it from matching numeric ids in the event
+FAKE_EMAIL = "jane.doe@example.com"
+FAKE_USERNAME = "jane-strava-login"
+FAKE_PAYLOAD = "resting_hr=48"
 
 
 class _CapturingTransport(Transport):
@@ -79,7 +79,7 @@ def test_unhandled_request_error_ships_no_body_or_locals(captured: list[dict[str
         raise RuntimeError("boom")
 
     client = TestClient(app, raise_server_exceptions=False)
-    client.post("/webhook", json={"heart_rate": SECRET_HEART_RATE, "email": SECRET_EMAIL})
+    client.post("/webhook", json={"heart_rate": FAKE_HEART_RATE, "email": FAKE_EMAIL})
     sentry_sdk.flush()
 
     assert len(captured) == 1
@@ -88,13 +88,13 @@ def test_unhandled_request_error_ships_no_body_or_locals(captured: list[dict[str
     assert not event["request"].get("data")
     frames = event["exception"]["values"][-1]["stacktrace"]["frames"]
     assert all("vars" not in frame for frame in frames)
-    assert SECRET_EMAIL not in _dump(event)
-    assert str(SECRET_HEART_RATE) not in _dump(event)
+    assert FAKE_EMAIL not in _dump(event)
+    assert str(FAKE_HEART_RATE) not in _dump(event)
 
 
 def test_pydantic_input_value_is_filtered(captured: list[dict[str, Any]]) -> None:
     try:
-        _Sample.model_validate({"heart_rate": f"{SECRET_EMAIL} {SECRET_HEART_RATE}"})
+        _Sample.model_validate({"heart_rate": f"{FAKE_EMAIL} {FAKE_HEART_RATE}"})
     except ValidationError as exc:
         sentry_sdk.capture_exception(exc)
     sentry_sdk.flush()
@@ -102,7 +102,7 @@ def test_pydantic_input_value_is_filtered(captured: list[dict[str, Any]]) -> Non
     value = captured[0]["exception"]["values"][0]["value"]
     assert "input_value=[Filtered], input_type=str" in value
     assert "heart_rate" in value  # field location is kept for debugging
-    assert SECRET_EMAIL not in _dump(captured[0])
+    assert FAKE_EMAIL not in _dump(captured[0])
 
 
 def test_log_and_capture_error_context_is_scrubbed(captured: list[dict[str, Any]]) -> None:
@@ -112,9 +112,9 @@ def test_log_and_capture_error_context_is_scrubbed(captured: list[dict[str, Any]
         "sync failed",
         extra={
             "user_id": "u-1",
-            "email": SECRET_EMAIL,
-            "nested": {"provider_username": SECRET_USERNAME},
-            "error": f"[type=int_parsing, input_value='{SECRET_PAYLOAD}', input_type=str]",
+            "email": FAKE_EMAIL,
+            "nested": {"provider_username": FAKE_USERNAME},
+            "error": f"[type=int_parsing, input_value='{FAKE_PAYLOAD}', input_type=str]",
         },
     )
     sentry_sdk.flush()
@@ -123,18 +123,18 @@ def test_log_and_capture_error_context_is_scrubbed(captured: list[dict[str, Any]
     event = next(e for e in captured if "exception" in e)
     assert event["contexts"]["user_id"] == {"value": "u-1"}
     for e in captured:
-        assert SECRET_EMAIL not in _dump(e)
-        assert SECRET_USERNAME not in _dump(e)
-        assert SECRET_PAYLOAD not in _dump(e)
+        assert FAKE_EMAIL not in _dump(e)
+        assert FAKE_USERNAME not in _dump(e)
+        assert FAKE_PAYLOAD not in _dump(e)
 
 
 def test_info_logs_do_not_become_breadcrumbs(captured: list[dict[str, Any]]) -> None:
-    logger.info("Invitation sent to %s", SECRET_EMAIL)
-    logger.warning("Skipping user %s", SECRET_EMAIL)
+    logger.info("Invitation sent to %s", FAKE_EMAIL)
+    logger.warning("Skipping user %s", FAKE_EMAIL)
     sentry_sdk.capture_message("something happened")
     sentry_sdk.flush()
 
-    assert SECRET_EMAIL not in _dump(captured[0])
+    assert FAKE_EMAIL not in _dump(captured[0])
 
 
 def test_query_string_values_are_filtered(captured: list[dict[str, Any]]) -> None:
@@ -145,21 +145,21 @@ def test_query_string_values_are_filtered(captured: list[dict[str, Any]]) -> Non
         raise RuntimeError("boom")
 
     client = TestClient(app, raise_server_exceptions=False)
-    client.get("/users", params={"email": SECRET_EMAIL, "search": SECRET_USERNAME})
+    client.get("/users", params={"email": FAKE_EMAIL, "search": FAKE_USERNAME})
     sentry_sdk.flush()
 
     event = captured[0]
     assert event["request"]["query_string"] == "email=[Filtered]&search=[Filtered]"
-    assert SECRET_USERNAME not in _dump(event)
+    assert FAKE_USERNAME not in _dump(event)
     assert "example.com" not in _dump(event)  # covers the URL-encoded email too
 
 
 def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list[dict[str, Any]]) -> None:
-    logger.error(f"Failed to send invitation to {SECRET_EMAIL}")
-    logger.error("Failed to send invitation to %s", SECRET_EMAIL)
-    sentry_sdk.capture_exception(ValueError(f"User {SECRET_EMAIL} already exists"))
+    logger.error(f"Failed to send invitation to {FAKE_EMAIL}")
+    logger.error("Failed to send invitation to %s", FAKE_EMAIL)
+    sentry_sdk.capture_exception(ValueError(f"User {FAKE_EMAIL} already exists"))
     sentry_sdk.flush()
 
     assert len(captured) == 3
     for event in captured:
-        assert SECRET_EMAIL not in _dump(event)
+        assert FAKE_EMAIL not in _dump(event)
