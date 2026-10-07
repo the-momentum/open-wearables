@@ -534,7 +534,7 @@ def _read_run_summaries(
             break
 
     events = events[:limit]
-    started_at_by_run = _started_at_by_run([e for e in events if e.started_at is None])
+    started_at_by_run = _started_at_by_run([e.run_id for e in events if e.started_at is None])
 
     summaries = [
         SyncRunSummary(
@@ -560,33 +560,12 @@ def _read_run_summaries(
     return summaries
 
 
-def _started_at_by_run(events: list[SyncStatusEvent]) -> dict[str, datetime]:
+def _started_at_by_run(run_ids: list[str]) -> dict[str, datetime]:
     """When each run started, for later events that no longer carry it."""
-    if not events:
+    if not run_ids:
         return {}
-    values = cast(list[str | None], get_redis_client().mget([_run_started_key(e.run_id) for e in events]))
-    started_at = {e.run_id: datetime.fromisoformat(value) for e, value in zip(events, values) if value}
-
-    # Runs opened before the started_at key was introduced.
-    unresolved_users = {str(e.user_id) for e in events if e.run_id not in started_at}
-    if unresolved_users:
-        started_at = _started_at_from_recent_events(unresolved_users) | started_at
-    return started_at
-
-
-def _started_at_from_recent_events(user_ids: set[str]) -> dict[str, datetime]:
-    pipe = get_redis_client().pipeline(transaction=False)
-    for user_id in user_ids:
-        pipe.lrange(_user_recent_key(user_id), 0, MAX_RECENT_EVENTS - 1)
-
-    started_at: dict[str, datetime] = {}
-    for raw in pipe.execute():
-        for item in raw:
-            with suppress(ValueError, TypeError):
-                event = SyncStatusEvent.model_validate_json(item)
-                if event.started_at is not None:
-                    started_at.setdefault(event.run_id, event.started_at)
-    return started_at
+    values = cast(list[str | None], get_redis_client().mget([_run_started_key(rid) for rid in run_ids]))
+    return {rid: datetime.fromisoformat(value) for rid, value in zip(run_ids, values) if value}
 
 
 def stream_user_events(

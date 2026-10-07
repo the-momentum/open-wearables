@@ -287,12 +287,11 @@ class TestAllRunSummaries:
         assert summary.stage == SyncStage.COMPLETED.value
         assert summary.started_at is not None
 
-    def test_started_at_falls_back_to_recent_events_without_its_key(self, user_id: str) -> None:
+    def test_terminal_only_run_does_not_read_recent_events(self, user_id: str) -> None:
         run_id = sync_status_service.new_run_id()
-        started = sync_status_service.emit_sync_started(user_id, "garmin", SyncSource.PULL, run_id=run_id)
-        get_redis_client().delete(sync_status_service._run_started_key(run_id))
-        sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.PULL, run_id=run_id)
+        sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.WEBHOOK, run_id=run_id)
 
-        [summary] = sync_status_service.get_all_run_summaries()
+        with patch.object(type(get_redis_client()), "lrange", side_effect=AssertionError("LRANGE used")):
+            [summary] = sync_status_service.get_all_run_summaries()
 
-        assert summary.started_at == started.started_at
+        assert summary.started_at is None
