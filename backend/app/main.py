@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
 from app.config import settings
+from app.extensions import collect_routers
 from app.integrations.celery import create_celery
 from app.integrations.otel import init_otel, shutdown_otel
 from app.integrations.sentry import init_sentry
@@ -83,8 +84,9 @@ api = FastAPI(
     lifespan=_lifespan,
     telemetry={"auto_configure": False, "tracing": False, "metrics": False, "logs": False},
 )
-celery_app = create_celery()
+
 init_sentry()
+celery_app = create_celery()
 raw_payload_storage.configure(
     settings.raw_payload_storage,
     settings.raw_payload_max_size_bytes,
@@ -156,3 +158,5 @@ async def http_exception_handler_with_body_log(request: Request, exc: StarletteH
 
 
 api.include_router(head_router)
+for _router in collect_routers():
+    api.include_router(_router, prefix=settings.api_v1)

@@ -279,6 +279,6 @@ def create_celery() -> Celery:
             "kwargs": {"event": "daily"},
         }
 
-    celery_app.conf.beat_schedule.update(collect_beat_schedule())
+    celery_app.conf.beat_schedule.update(collect_beat_schedule(reserved=set(celery_app.conf.beat_schedule)))
 
     return celery_app
