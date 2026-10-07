@@ -11110,7 +11110,7 @@
               }
             ],
             "title": "Total Calories Kcal",
-            "description": "Active + basal energy",
+            "description": "Active + basal energy; null when basal energy is not available",
             "example": 2150.0
           },
           "active_minutes": {
