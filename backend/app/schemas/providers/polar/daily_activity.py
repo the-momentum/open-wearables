@@ -51,7 +51,8 @@ class DailyActivityJSON(BaseModel):
         """Total ``calories`` (incl. BMR) minus ``active_calories`` (excl. BMR)."""
         if self.calories is None or self.active_calories is None:
             return None
-        return max(self.calories - self.active_calories, 0)
+        basal = self.calories - self.active_calories
+        return basal if basal > 0 else None
 
     @property
     def active_time_minutes(self) -> int | None:

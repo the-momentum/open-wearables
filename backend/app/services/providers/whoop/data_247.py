@@ -1054,7 +1054,6 @@ class Whoop247Data(Base247DataTemplate):
         # Null step_count means no step data for the cycle (e.g. device not worn throughout).
         step_count = raw_cycle.get("step_count")
 
-        # Total energy incl. BMR; 0 kJ means the strap wasn't worn, not a real reading.
         energy_kcal = kilojoules_to_kcal(kilojoule) if kilojoule else None
 
         daily_values: list[tuple[SeriesType, Decimal | int]] = []

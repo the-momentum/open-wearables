@@ -23,7 +23,8 @@ RECOVERY_SERIES: dict[str, SeriesType] = {
     "spo2_percentage": SeriesType.oxygen_saturation,
 }
 
-# Daily totals from /v1/step/details and /v1/calorie/details (handler key → SeriesType).
+# Daily totals (handler key → SeriesType): steps/distance from /v1/step/details,
+# energy (Total − Resting) and basal_energy (Resting) from /v1/calorie/details.
 DAILY_ACTIVITY_SERIES: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "energy": SeriesType.active_energy,

@@ -275,14 +275,11 @@ class Oura247Data(Base247DataTemplate):
                 result["energy"].append(
                     {"recorded_at": recorded_at, "value": activity.active_calories, "zone_offset": activity_zone_offset}
                 )
-                if activity.total_calories is not None:
-                    # total_calories includes BMR; active_calories doesn't
+                # total_calories includes BMR; active_calories doesn't
+                basal = activity.total_calories - activity.active_calories if activity.total_calories is not None else 0
+                if basal > 0:
                     result["basal_energy"].append(
-                        {
-                            "recorded_at": recorded_at,
-                            "value": max(activity.total_calories - activity.active_calories, 0),
-                            "zone_offset": activity_zone_offset,
-                        }
+                        {"recorded_at": recorded_at, "value": basal, "zone_offset": activity_zone_offset}
                     )
             if activity.equivalent_walking_distance is not None:
                 result["distance"].append(
