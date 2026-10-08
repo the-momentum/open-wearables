@@ -1,6 +1,7 @@
 """Tests for the seed data generation service."""
 
-from datetime import date
+from datetime import date, datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -10,9 +11,11 @@ from app.models import (
     EventRecord,
     MealDetails,
     PersonalRecord,
+    ProviderPriority,
     SeriesTypeDefinition,
     User,
     UserConnection,
+    WorkoutDetails,
 )
 from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.utils.seed_data import (
@@ -24,6 +27,7 @@ from app.schemas.utils.seed_data import (
     WorkoutConfig,
 )
 from app.services.seed_data import seed_data_service
+from app.services.summaries_service import summaries_service
 
 
 class TestSeedDataServiceGenerate:
@@ -132,6 +136,34 @@ class TestSeedDataServiceGenerate:
         workouts = db.query(EventRecord).filter_by(category="workout").all()
         for w in workouts:
             assert w.type in ("boxing", "running")
+
+    def test_distance_only_for_pace_based_workouts(self, db: Session) -> None:
+        """Pace-based sports get a distance; others (e.g. boxing) don't."""
+        request = SeedDataRequest(
+            num_users=1,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=False,
+                generate_time_series=False,
+                workout_config=WorkoutConfig(
+                    count=20,
+                    workout_types=[WorkoutType.BOXING, WorkoutType.RUNNING],
+                ),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        rows = (
+            db.query(EventRecord, WorkoutDetails).join(WorkoutDetails).filter(EventRecord.category == "workout").all()
+        )
+        assert rows
+        for record, detail in rows:
+            if record.type == "running":
+                assert detail.distance is not None
+                assert detail.distance > 0
+            else:
+                assert detail.distance is None
 
     def test_generate_with_specific_providers(self, db: Session) -> None:
         """Connections should use the specified providers."""
@@ -309,6 +341,53 @@ class TestContinuousTimeSeries:
         summary = seed_data_service.generate(db, request)
 
         assert summary["time_series_samples"] == 0
+
+    def test_every_activity_day_has_steps(self, db: Session) -> None:
+        """Daily activity series share the top-priority device, so the day the summary picks has steps."""
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                ProviderPriority(id=uuid4(), provider=ProviderName.GARMIN, priority=1, updated_at=now),
+                ProviderPriority(id=uuid4(), provider=ProviderName.POLAR, priority=2, updated_at=now),
+            ]
+        )
+        db.flush()
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=1926769294,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=False,
+                generate_time_series=True,
+                providers=[ProviderName.POLAR, ProviderName.GARMIN],
+                num_connections=2,
+                workout_config=WorkoutConfig(
+                    count=10,
+                    date_from=date(2024, 11, 1),
+                    date_to=date(2024, 11, 7),
+                ),
+                time_series_config=TimeSeriesConfig(
+                    enabled_types=[SeriesType.steps, SeriesType.active_energy, SeriesType.heart_rate],
+                    date_from=date(2024, 11, 1),
+                    date_to=date(2024, 11, 7),
+                ),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        user = db.query(User).one()
+        page = summaries_service.get_activity_summaries(
+            db,
+            user.id,
+            datetime(2024, 11, 1, tzinfo=timezone.utc),
+            datetime(2024, 11, 8, tzinfo=timezone.utc),
+            cursor=None,
+            limit=100,
+        )
+        assert page.data
+        for day in page.data:
+            assert day.steps, f"no steps on {day.date}"
 
 
 class TestSeededDataSourceProviders:
