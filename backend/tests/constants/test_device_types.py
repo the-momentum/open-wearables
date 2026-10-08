@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.constants.devices_map import infer_device_type, infer_device_type_from_model, map_reported_device_type
+from app.constants.devices_map import (
+    infer_device_type,
+    infer_device_type_from_model,
+    map_reported_device_type,
+    normalize_device_model,
+)
 from app.schemas.enums import DeviceType, ProviderName
 
 
@@ -137,3 +142,10 @@ class TestReportedDeviceType:
         old_sdk = infer_device_type(ProviderName.SAMSUNG, device_model, name, DeviceType.PHONE)
         new_sdk = infer_device_type(ProviderName.SAMSUNG, device_model, name, DeviceType.WATCH)
         assert old_sdk == new_sdk == DeviceType.WATCH
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("unknown", None), ("  ", None), (None, None), (" Garmin fenix 8 ", "Garmin fenix 8")]
+)
+def test_normalize_device_model(raw: str | None, expected: str | None) -> None:
+    assert normalize_device_model(raw) == expected

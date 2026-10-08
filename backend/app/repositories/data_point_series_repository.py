@@ -39,7 +39,7 @@ from sqlalchemy.schema import CreateTable
 from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
 from app.models.series_type_definition import SeriesTypeDefinition
-from app.repositories.data_source_repository import DataSourceRepository
+from app.repositories.data_source_repository import DataSourceIdentity, DataSourceRepository
 from app.repositories.repositories import (
     CrudRepository,
     source_filter_conditions,
@@ -74,7 +74,6 @@ from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
 
 # Identity tuple: (user_id, device_model, source)
-DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
 class WriteCounts(int):
@@ -188,6 +187,9 @@ class DataPointSeriesRepository(
             "user_connection_id",
             "software_version",
             "device_type",
+            "device_id",
+            "source_app_id",
+            "device_manufacturer",
             "series_type",
             "data_source_id",
         ):
@@ -237,15 +239,27 @@ class DataPointSeriesRepository(
         for provider, provider_creators in by_provider.items():
             unique_identities: set[DataSourceIdentity] = set()
             reported_types: dict[DataSourceIdentity, DeviceType] = {}
+            software_versions: dict[DataSourceIdentity, str] = {}
+            manufacturers: dict[DataSourceIdentity, str] = {}
             user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
             for c in provider_creators:
-                identity = (c.user_id, c.device_model, c.source)
+                identity = DataSourceIdentity.of(c)
                 unique_identities.add(identity)
                 if c.device_type:
                     reported_types.setdefault(identity, c.device_type)
+                if c.software_version:
+                    software_versions.setdefault(identity, c.software_version)
+                if c.device_manufacturer:
+                    manufacturers.setdefault(identity, c.device_manufacturer)
 
             batch_result = self.data_source_repo.batch_ensure_data_sources(
-                db_session, provider, user_connection_id, unique_identities, reported_types
+                db_session,
+                provider,
+                user_connection_id,
+                unique_identities,
+                reported_types,
+                software_versions,
+                manufacturers,
             )
             identity_to_source_id.update(batch_result)
 
@@ -280,8 +294,7 @@ class DataPointSeriesRepository(
         """
         rows: list[DataPointSeriesRepository._StagingRow] = []
         for creator in creators:
-            identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
-            source_id = source_map.get(identity)
+            source_id = source_map.get(DataSourceIdentity.of(creator))
             if not source_id:
                 # Should not happen if resolve logic is correct, but safe skip.
                 continue
@@ -404,6 +417,9 @@ class DataPointSeriesRepository(
             software_version=creator.software_version,
             source=creator.source,
             reported_type=creator.device_type,
+            device_id=creator.device_id,
+            source_app_id=creator.source_app_id,
+            device_manufacturer=creator.device_manufacturer,
         )
 
     def get_samples(

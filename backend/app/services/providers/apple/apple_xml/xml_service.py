@@ -139,7 +139,6 @@ class XMLService:
 
         return SourceInfo(
             name=raw_fields.get("name"),
-            device_id=raw_fields.get("device"),
             device_model=raw_fields.get("model"),
             device_manufacturer=raw_fields.get("manufacturer"),
             device_hardware_version=raw_fields.get("hardware"),

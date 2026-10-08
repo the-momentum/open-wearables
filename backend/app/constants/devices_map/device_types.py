@@ -46,6 +46,18 @@ APPLE_PRODUCT_TYPE_PREFIXES: list[tuple[str, DeviceType]] = [
     ("iPad", DeviceType.TABLET),
 ]
 
+# Bundle id prefix of HealthKit sources written by Apple's own devices, whose productType is the
+# producing device. Observed in SDK payloads (com.apple.health.<UUID>), not documented by Apple.
+APPLE_SOURCE_APP_PREFIX = "com.apple.health."
+
+
+def is_host_model(source_app_id: str | None, device_model: str | None) -> bool:
+    """Apple hardware code on a third-party writer's row: the iPhone/Watch that relayed it, not the producer."""
+    if not source_app_id or source_app_id.startswith(APPLE_SOURCE_APP_PREFIX) or not device_model:
+        return False
+    return device_model.startswith(tuple(prefix for prefix, _ in APPLE_PRODUCT_TYPE_PREFIXES) + ("iPod",))
+
+
 # Samsung model code prefix (SM-X...); SM-R is skipped as it mixes watches, bands and buds
 SAMSUNG_MODEL_CODE = re.compile(r"^SM-([A-Z])\d")
 SAMSUNG_MODEL_PREFIX_DEVICE_TYPE: dict[str, DeviceType] = {
@@ -145,6 +157,18 @@ def _match_keywords(value: str, rules: list[tuple[re.Pattern[str], DeviceType]])
         if pattern.search(value):
             return device_type
     return None
+
+
+# Values providers send when the device is unknown; treated as no device model
+DEVICE_MODEL_PLACEHOLDERS = frozenset({"", "unknown"})
+
+
+def normalize_device_model(device_model: str | None) -> str | None:
+    """Strip whitespace and map placeholders (e.g. Garmin's "unknown" on edited activities) to None."""
+    if device_model is None:
+        return None
+    stripped = device_model.strip()
+    return None if stripped.lower() in DEVICE_MODEL_PLACEHOLDERS else stripped
 
 
 def infer_device_type_from_model(device_model: str | None) -> DeviceType:

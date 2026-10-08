@@ -816,6 +816,7 @@ class EventRecordService(
             source=data_source.source,
             device=data_source.device_model,
             device_type=data_source.device_type,
+            device_id=data_source.device_id,
         )
 
     @handle_exceptions

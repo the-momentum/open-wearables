@@ -85,6 +85,13 @@ echo 'Running device type backfill...'
 uv run python scripts/data_migrations/backfill_device_types.py \
     || echo "Warning: device type backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Merges data sources split by placeholder models / platform names / Polar's missing source,
+# then drops events duplicated across a user's sources. Idempotent, no-op once merged.
+echo 'Running data source merge...'
+uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
+    || echo "Warning: data source merge failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

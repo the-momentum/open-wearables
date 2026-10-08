@@ -57,6 +57,17 @@ def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | No
     return device_model, software_version, original_source_name
 
 
+def extract_device_ids(source: SourceInfo | None) -> tuple[str | None, str | None, str | None]:
+    """(device_id, source_app_id, device_manufacturer) reported by the SDK.
+
+    Both ids key the data source, so only stable values belong here: iOS and Health Connect never fill
+    deviceId (HealthKit's localIdentifier changes per host and on updates). The manufacturer is descriptive.
+    """
+    if not source:
+        return None, None, None
+    return source.device_id, source.app_id or source.bundle_identifier, source.device_manufacturer
+
+
 def extract_device_type(source: SourceInfo | None) -> DeviceType | None:
     """Device type reported by the SDK, or None when absent or unknown."""
     return map_reported_device_type(source.device_type) if source else None

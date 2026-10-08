@@ -267,6 +267,8 @@ class Polar247Data(Base247DataTemplate):
                 category="sleep",
                 type="sleep_session",
                 source_name="Polar",
+                source=ProviderName.POLAR,
+                device_id=parsed.device_id,
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
@@ -313,6 +315,7 @@ class Polar247Data(Base247DataTemplate):
                 if parsed.heart_rate_samples
                 else []
             )
+            hr_samples = [s.model_copy(update={"device_id": parsed.device_id}) for s in hr_samples]
             results.append((record, detail, score, hr_samples))
         return results
 

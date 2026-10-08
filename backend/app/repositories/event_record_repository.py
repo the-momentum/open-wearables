@@ -30,7 +30,7 @@ from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
-from app.repositories.data_source_repository import DataSourceRepository
+from app.repositories.data_source_repository import DataSourceIdentity, DataSourceRepository
 from app.repositories.repositories import CrudRepository, source_filter_conditions, utc_bucket_start
 from app.schemas.enums import DeviceType, ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
@@ -42,7 +42,6 @@ from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
 # Identity tuple: (user_id, device_model, source)
-DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
 def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
@@ -77,6 +76,9 @@ class EventRecordRepository(
                 software_version=creator.software_version,
                 original_source_name=creator.source,
                 reported_type=creator.device_type,
+                device_id=creator.device_id,
+                source_app_id=creator.source_app_id,
+                device_manufacturer=creator.device_manufacturer,
             )
             data_source_id = data_source.id
 
@@ -90,6 +92,9 @@ class EventRecordRepository(
             "user_connection_id",
             "software_version",
             "device_type",
+            "device_id",
+            "source_app_id",
+            "device_manufacturer",
         ):
             creation_data.pop(redundant_key, None)
         return data_source_id, self.model(**creation_data)
@@ -204,22 +209,33 @@ class EventRecordRepository(
         for provider, provider_creators in by_provider.items():
             unique_identities: set[DataSourceIdentity] = set()
             reported_types: dict[DataSourceIdentity, DeviceType] = {}
+            software_versions: dict[DataSourceIdentity, str] = {}
+            manufacturers: dict[DataSourceIdentity, str] = {}
             user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
             for c in provider_creators:
-                identity = (c.user_id, c.device_model, c.source)
+                identity = DataSourceIdentity.of(c)
                 unique_identities.add(identity)
                 if c.device_type:
                     reported_types.setdefault(identity, c.device_type)
+                if c.software_version:
+                    software_versions.setdefault(identity, c.software_version)
+                if c.device_manufacturer:
+                    manufacturers.setdefault(identity, c.device_manufacturer)
 
             batch_result = self.data_source_repo.batch_ensure_data_sources(
-                db_session, provider, user_connection_id, unique_identities, reported_types
+                db_session,
+                provider,
+                user_connection_id,
+                unique_identities,
+                reported_types,
+                software_versions,
+                manufacturers,
             )
             identity_to_source_id.update(batch_result)
 
         values_list = []
         for creator in creators:
-            identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
-            source_id = identity_to_source_id.get(identity)
+            source_id = identity_to_source_id.get(DataSourceIdentity.of(creator))
 
             if not source_id:
                 continue
