@@ -701,6 +701,11 @@ Open Wearables (via Svix) retries failed deliveries automatically with exponenti
   <Accordion title="Webhook availability">
     Data ingestion is **never** blocked by webhook failures — if delivery infrastructure is temporarily unavailable, data continues to be stored and events are queued for retry.
   </Accordion>
+  <Accordion title="User deletion">
+    When you delete a user (`DELETE /api/v1/users/{user_id}`), Open Wearables deletes the payloads of all their webhook messages from Svix in a background task, about a minute after the user is removed. The messages stay in delivery history without the payload, and their event IDs can still contain the user ID.
+
+    The cleanup is best-effort. The one-minute delay lets webhooks already queued for that user reach Svix first, so they are cleaned up too, but a webhook queued for longer than that (for example when the worker is backlogged) is not covered. If the cleanup task cannot be queued at all, the user is still deleted and a warning is logged. In both cases the remaining payloads are removed when their payload retention period ends.
+  </Accordion>
 </AccordionGroup>
 
 ---
