@@ -11,6 +11,8 @@ from alembic import command, context
 from alembic.config import Config
 from sqlalchemy import Connection, Engine, MetaData, text
 
+from app.database import engine as default_engine
+
 TABLE_PREFIX = "ext_"
 # Serialises the processes that start together (API, workers, beat), so one migrates and the rest find head.
 _LOCK_KEY = 7_302_118_543_026_771_041
@@ -56,9 +58,7 @@ def run_env(name: str, metadata: MetaData) -> None:
         _run(connection, name, metadata)
         return
     # Run straight from the alembic CLI, e.g. to autogenerate an extension's revision.
-    from app.database import engine
-
-    with engine.begin() as connection:
+    with default_engine.begin() as connection:
         _run(connection, name, metadata)
 
 
