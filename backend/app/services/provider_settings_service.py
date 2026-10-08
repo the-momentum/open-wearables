@@ -46,6 +46,9 @@ class ProviderSettingsService:
             )
         ]
 
+    def get_settings_map(self, db: DbSession) -> dict[str, ProviderSetting]:
+        return self.repo.get_all(db)
+
     def _to_read(self, provider_key: str, setting_map: dict) -> ProviderSettingRead:
         strategy = self.factory.get_provider(provider_key)
         setting = setting_map.get(provider_key)
@@ -124,3 +127,6 @@ class ProviderSettingsService:
 
         self.repo.bulk_update(db, updates)
         return self.get_all_providers(db)
+
+
+provider_settings_service = ProviderSettingsService()

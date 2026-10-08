@@ -6,7 +6,7 @@ from app.database import SessionLocal
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.responses.upload import SyncAllUsersResult
-from app.services.provider_settings_service import ProviderSettingsService
+from app.services.provider_settings_service import provider_settings_service
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -29,7 +29,7 @@ def sync_all_users(
     log_structured(logger, "info", "Starting sync for all users", task="sync_all_users")
 
     with SessionLocal() as db:
-        eligible_providers = ProviderSettingsService().get_pull_eligible_providers(db)
+        eligible_providers = provider_settings_service.get_pull_eligible_providers(db)
         active_user_ids = UserConnectionRepository().get_all_active_users(db, eligible_providers)
 
     log_structured(
