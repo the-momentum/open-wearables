@@ -179,4 +179,4 @@ CLAUDE.local.md
 !.gemini/settings.json
 # Locally checked-out extensions
 extensions/*
-!extensions/README.md
+!extensions/.gitkeep
