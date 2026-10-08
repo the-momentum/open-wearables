@@ -678,6 +678,16 @@
               }
             }
           },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Input should be a valid UUID"
+                }
+              }
+            }
+          },
           "404": {
             "description": "User not found",
             "content": {
@@ -757,6 +767,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "birth_date cannot be in the future"
                 }
               }
             }
