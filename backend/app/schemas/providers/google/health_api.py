@@ -220,5 +220,5 @@ class DataTypeMetric:
             if spec is not None and spec.extra
             for sf in spec.extra
         )
-        derived = (df.series_type for df in (self.list_spec.derived if self.list_spec else None) or ())
+        derived = (df.series_type for df in self.list_spec.derived or ()) if self.list_spec else ()
         return frozenset({self.series_type, *extra, *derived})

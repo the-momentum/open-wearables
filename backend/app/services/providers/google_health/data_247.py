@@ -484,6 +484,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                         spec.is_daily_total,
                         zone_offset,
                         device_model,
+                        device_type,
                     )
                 )
         return samples

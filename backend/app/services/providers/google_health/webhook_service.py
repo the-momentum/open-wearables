@@ -138,7 +138,16 @@ class GoogleWebhookService(BaseWebhookService):
                     url, headers=headers, params={"subscriberId": SUBSCRIBER_ID}, json=body, timeout=30.0
                 )
                 if response.status_code == 409:
-                    return [{"status": "skipped", "subscriber_id": SUBSCRIBER_ID}]
+                    # Registered before: bring its data types up to date, or a type added since never arrives.
+                    response = await client.patch(
+                        f"{url}/{SUBSCRIBER_ID}",
+                        headers=headers,
+                        params={"updateMask": "subscriberConfigs"},
+                        json={"subscriberConfigs": body["subscriberConfigs"]},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    return [{"status": "updated", "subscriber_id": SUBSCRIBER_ID}]
                 response.raise_for_status()
             except httpx.HTTPError as e:
                 response_body = e.response.text if isinstance(e, httpx.HTTPStatusError) else None

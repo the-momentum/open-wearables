@@ -6,7 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.schemas.enums import SeriesType
+from app.config import settings
+from app.schemas.enums import DeviceType, SeriesType
 from app.schemas.providers.google import DataTypeMetric
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.metrics import METRICS
@@ -53,3 +54,16 @@ def test_a_night_without_a_baseline_still_yields_its_temperature(data_247: Googl
         samples = data_247._native_samples(MagicMock(), USER_ID, _metric(), *WINDOW)
 
     assert [sample.series_type for sample in samples] == [SeriesType.skin_temperature]
+
+
+def test_the_deviation_keeps_the_device_of_the_night_it_comes_from(
+    data_247: GoogleHealth247Data, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "google_use_reconcile", False)
+    point = {**POINT, "dataSource": {"device": {"displayName": "Charge 6", "formFactor": "FITNESS_BAND"}}}
+
+    with patch.object(data_247, "_fetch_points", return_value=iter([point])):
+        samples = data_247._native_samples(MagicMock(), USER_ID, _metric(), *WINDOW)
+
+    assert len(samples) == 2
+    assert {(sample.device_model, sample.device_type) for sample in samples} == {("Charge 6", DeviceType.BAND)}
