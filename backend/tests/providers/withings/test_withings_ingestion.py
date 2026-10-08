@@ -770,3 +770,22 @@ def test_a_night_without_a_low_heart_rate_is_still_saved(
 
     assert saved == 1
     mock_timeseries.bulk_create_samples.assert_not_called()
+
+
+@patch("app.services.providers.withings.data_247.paginate")
+@patch("app.services.providers.withings.data_247.paginate_mapping")
+def test_one_sync_asks_for_the_daily_rows_once(mock_intraday: MagicMock, mock_paginate: MagicMock) -> None:
+    # Daily and intraday activity both start from getactivity; a second call only spends quota.
+    mock_intraday.return_value = {}
+    mock_paginate.return_value = MagicMock(rows=TWO_DAYS)
+    data_247 = _data_247()
+    data_247._active_connection_id = MagicMock(return_value=None)
+
+    with patch.object(data_247, "save_measures", return_value=0), patch.object(data_247, "save_sleep", return_value=0):
+        data_247.load_and_save_all(
+            MagicMock(), uuid4(), datetime(2026, 3, 1, tzinfo=timezone.utc), datetime(2026, 3, 3, tzinfo=timezone.utc)
+        )
+
+    actions = [call.kwargs["action"] for call in mock_paginate.call_args_list]
+    assert actions.count("getactivity") == 1
+    assert mock_intraday.call_count == 2

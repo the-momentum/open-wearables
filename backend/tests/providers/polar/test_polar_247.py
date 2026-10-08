@@ -229,6 +229,47 @@ class TestPolar247DailyActivityNormalization:
         assert [s.value for s in step_samples if s.recorded_at == datetime(2024, 1, 15)] == [9500]
         assert [int(s.value) for s in step_samples if not s.is_daily_total] == [120]
 
+    @staticmethod
+    def _intraday_steps(data_247: Polar247Data, activity: dict, total: int, points: list[tuple[str, int]]) -> list:
+        activity["samples"] = {
+            "steps": {
+                "interval_ms": 60_000,
+                "total_steps": total,
+                "samples": [{"steps": steps, "timestamp": at} for at, steps in points],
+            }
+        }
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+        return [
+            (s.recorded_at.strftime("%H:%M"), int(s.value))
+            for s in samples
+            if s.series_type == SeriesType.steps and not s.is_daily_total
+        ]
+
+    def test_steps_omitted_as_repeats_are_restored(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        # Polar drops a sample that repeats the previous count: 07:11 and 07:12 walked 100 too.
+        steps = self._intraday_steps(
+            data_247, sample_activity, 9500, [("2024-01-15T07:10", 100), ("2024-01-15T07:13", 0)]
+        )
+
+        assert steps == [("07:10", 100), ("07:11", 100), ("07:12", 100), ("07:13", 0)]
+
+    def test_a_gap_after_zero_steps_stays_one_sample(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        steps = self._intraday_steps(
+            data_247, sample_activity, 9500, [("2024-01-15T01:00", 0), ("2024-01-15T07:00", 50)]
+        )
+
+        assert steps == [("01:00", 0), ("07:00", 50)]
+
+    def test_steps_are_kept_as_sent_when_restoring_would_exceed_the_total(
+        self, data_247: Polar247Data, sample_activity: dict
+    ) -> None:
+        # Five hours of 100 steps a minute cannot fit a 600-step day: that gap was no run of repeats.
+        steps = self._intraday_steps(
+            data_247, sample_activity, 600, [("2024-01-15T07:00", 100), ("2024-01-15T12:00", 0)]
+        )
+
+        assert steps == [("07:00", 100), ("12:00", 0)]
+
     def test_unreadable_step_sample_timestamp_skipped(self, data_247: Polar247Data, sample_activity: dict) -> None:
         sample_activity["samples"] = {
             "steps": {

@@ -65,6 +65,17 @@ from app.utils.structured_logging import log_structured
 _T = TypeVar("_T", bound=BaseModel)
 
 
+def _expand_repeated_steps(points: list[tuple[datetime, int]], interval: timedelta) -> dict[datetime, int]:
+    """Polar omits a sample repeating the previous count, so a longer gap after a non-zero one holds repeats."""
+    expanded: dict[datetime, int] = {}
+    next_times: list[datetime | None] = [at for at, _ in points[1:]]
+    for (at, count), next_at in zip(points, [*next_times, None], strict=True):
+        repeats = (next_at - at) // interval if count and next_at and interval > timedelta(0) else 1
+        for step in range(max(repeats, 1)):
+            expanded[at + step * interval] = count
+    return expanded
+
+
 class Polar247Data(Base247DataTemplate):
     def __init__(
         self,
@@ -370,40 +381,36 @@ class Polar247Data(Base247DataTemplate):
         user_id: UUID,
         daily_total_at: datetime,
     ) -> list[TimeSeriesSampleCreate]:
-        """Emit the intraday step samples the daily row already carries.
-
-        ``/v3/users/activities`` is requested with ``steps=true``, so every row arrives with
-        them; only the day's total was read until now. They answer which hours a user moved
-        in, which the total cannot.
-
-        Polar's first sample always repeats ``start_time``, which is where the day's total is
-        stored. A series row is keyed by its instant alone, so emitting both would upsert the
-        total away and leave the day reporting that first minute instead.
-        """
-        if not parsed.samples or not parsed.samples.steps:
+        """The row's intraday step samples, except on ``daily_total_at``, where the day's total is stored."""
+        steps = parsed.samples.steps if parsed.samples else None
+        if not steps:
             return []
-        samples: list[TimeSeriesSampleCreate] = []
-        for sample in parsed.samples.steps.samples:
+        points: list[tuple[datetime, int]] = []
+        for sample in steps.samples:
             try:
-                recorded_at = datetime.fromisoformat(sample.timestamp)
+                points.append((datetime.fromisoformat(sample.timestamp), sample.steps))
             except ValueError:
                 self.logger.warning("Skipping Polar step sample with an unreadable timestamp")
-                continue
-            if recorded_at == daily_total_at:
-                continue
-            samples.append(
-                TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    provider=ProviderName.POLAR,
-                    source=ProviderName.POLAR,
-                    recorded_at=recorded_at,
-                    value=Decimal(sample.steps),
-                    series_type=SeriesType.steps,
-                    is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
-                )
+        points.sort()
+        counts = _expand_repeated_steps(points, timedelta(milliseconds=steps.interval_ms))
+        if sum(counts.values()) > steps.total_steps:
+            # A gap that is not a run of repeats, e.g. the device stopped; keep only what was sent.
+            self.logger.warning("Polar step samples exceed the day's total once expanded; storing them as sent")
+            counts = dict(points)
+        return [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=ProviderName.POLAR,
+                source=ProviderName.POLAR,
+                recorded_at=recorded_at,
+                value=Decimal(count),
+                series_type=SeriesType.steps,
+                is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
             )
-        return samples
+            for recorded_at, count in sorted(counts.items())
+            if recorded_at != daily_total_at
+        ]
 
     # -------------------------------------------------------------------------
     # Continuous Heart Rate - GET /v3/users/continuous-heart-rate/{date}
