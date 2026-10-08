@@ -534,6 +534,9 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def _get_settings() -> Settings:
+    # Tests set this so a developer's local config/.env can't change test behaviour
+    if os.environ.get("OW_IGNORE_ENV_FILE"):
+        return Settings(_env_file=None)
     return Settings()
 
 

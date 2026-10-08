@@ -9,11 +9,13 @@ Tests the /api/v1/users/{user_id}/connections endpoint including:
 - Error cases
 """
 
+from collections.abc import Generator
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -32,6 +34,13 @@ from tests.factories import (
     WorkoutDetailsFactory,
 )
 from tests.utils import api_key_headers, developer_auth_headers
+
+
+@pytest.fixture
+def mock_deregistration() -> Generator[MagicMock, None, None]:
+    """Disconnect calls the provider's deregistration endpoint; keep it off the network."""
+    with patch("httpx.delete") as mock:
+        yield mock
 
 
 class TestConnectionsEndpoints:
@@ -300,6 +309,7 @@ class TestConnectionsEndpoints:
         assert "refresh_token" not in connection_data
 
 
+@pytest.mark.usefixtures("mock_deregistration")
 class TestDisconnectEndpoint:
     """Test suite for DELETE /api/v1/users/{user_id}/connections/{provider}."""
 
@@ -483,6 +493,7 @@ def sdk_token_headers(user_id: UUID, app_id: str = "app_123") -> dict[str, str]:
     return {"Authorization": f"Bearer {create_sdk_user_token(app_id, str(user_id))}"}
 
 
+@pytest.mark.usefixtures("mock_deregistration")
 class TestDisconnectWithSDKToken:
     """SDK sign-out: DELETE /users/{user_id}/connections/{provider} with an SDK user token."""
 

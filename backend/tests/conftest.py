@@ -7,7 +7,9 @@ Following patterns from know-how-tests.md:
 - Factory pattern for test data
 """
 
+import ipaddress
 import os
+import socket
 import sys
 from collections.abc import Generator
 from typing import Any
@@ -29,11 +31,6 @@ from app.main import api
 from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
 from tests import factories
-
-# Set test environment before importing app modules
-os.environ["ENV"] = "test"
-os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
 
 
 @pytest.fixture(scope="session")
@@ -185,7 +182,7 @@ def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
     Point app settings at the test Redis instance for the whole session.
 
     Uses patch.object instead of env vars because settings is already
-    instantiated from config/.env at import time.
+    instantiated at import time.
     """
     parsed = urlparse(_redis_url)
     with (
@@ -203,6 +200,85 @@ def flush_redis(_redis_url: str) -> Generator[None, None, None]:
     yield
     redis_lib.from_url(_redis_url).flushdb()
     get_redis_client.cache_clear()
+
+
+# ============================================================================
+# Network isolation
+# ============================================================================
+
+_real_connect = socket.socket.connect
+_real_connect_ex = socket.socket.connect_ex
+_real_getaddrinfo = socket.getaddrinfo
+_allowed_hosts: set[str] = set()
+_blocked_connections: list[str] = []
+_resolved_names: dict[str, str] = {}  # IP -> hostname, so failures name the host, not just an IP
+
+
+def _recording_getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
+    results = _real_getaddrinfo(host, *args, **kwargs)
+    if isinstance(host, str):
+        for *_, sockaddr in results:
+            _resolved_names[str(sockaddr[0])] = host
+    return results
+
+
+def _describe(address: tuple[Any, ...]) -> str:
+    host = _resolved_names.get(address[0], address[0])
+    return f"{host}:{address[1]}"
+
+
+def _connection_allowed(address: Any) -> bool:
+    if not isinstance(address, tuple):  # AF_UNIX, e.g. the Docker socket used by testcontainers
+        return True
+    host = address[0]
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return True
+    except ValueError:
+        pass
+    return host in _allowed_hosts
+
+
+def _guarded_connect(self: socket.socket, address: Any) -> None:
+    if not _connection_allowed(address):
+        _blocked_connections.append(_describe(address))
+        raise ConnectionRefusedError(f"Network access is blocked in tests: {_describe(address)}")
+    _real_connect(self, address)
+
+
+def _guarded_connect_ex(self: socket.socket, address: Any) -> int:
+    if not _connection_allowed(address):
+        _blocked_connections.append(_describe(address))
+        return 111  # ECONNREFUSED
+    return _real_connect_ex(self, address)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _block_network(_postgres_url: str, _redis_url: str) -> Generator[None, None, None]:
+    """Refuse TCP connections to anything but loopback and the test Postgres/Redis."""
+    for url in (_postgres_url, _redis_url):
+        hostname = urlparse(url).hostname
+        if hostname:
+            _allowed_hosts.add(hostname)
+            _allowed_hosts.update(socket.gethostbyname_ex(hostname)[2])
+    with (
+        patch.object(socket.socket, "connect", _guarded_connect),
+        patch.object(socket.socket, "connect_ex", _guarded_connect_ex),
+        patch.object(socket, "getaddrinfo", _recording_getaddrinfo),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _fail_on_network_access(_block_network: None) -> Generator[None, None, None]:
+    """Fail a test that tried to reach the network, even if the code under test swallowed the error.
+
+    Mock the HTTP call (e.g. ``@patch("httpx.delete")``) in tests that exercise provider APIs.
+    """
+    _blocked_connections.clear()
+    yield
+    if _blocked_connections:
+        pytest.fail(f"Test tried to reach the network: {', '.join(sorted(set(_blocked_connections)))}")
 
 
 # ============================================================================
