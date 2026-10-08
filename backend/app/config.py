@@ -25,6 +25,9 @@ from app.utils.config_utils import (
     parse_duration,
 )
 
+# Public in .env.example and the docs, so an account still using it is open to anyone.
+DEFAULT_ADMIN_PASSWORD = "your-secure-password"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -102,7 +105,7 @@ class Settings(BaseSettings):
 
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
-    admin_password: SecretStr = SecretStr("your-secure-password")
+    admin_password: SecretStr = SecretStr(DEFAULT_ADMIN_PASSWORD)
 
     # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours

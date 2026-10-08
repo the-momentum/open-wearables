@@ -13531,6 +13531,16 @@
             ],
             "title": "Expires In"
           },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "user_id": {
             "type": "string",
             "format": "uuid",
@@ -14789,6 +14799,15 @@
           "confirm_password"
         ],
         "title": "PasswordChange"
+      },
+      "PasswordChangePrompt": {
+        "type": "string",
+        "enum": [
+          "required",
+          "recommended"
+        ],
+        "title": "PasswordChangePrompt",
+        "description": "How the portal should ask a developer who signed in with the default password to change it."
       },
       "PowerZone": {
         "properties": {
@@ -17946,6 +17965,16 @@
               }
             ],
             "title": "Expires In"
+          },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
