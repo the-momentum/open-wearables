@@ -209,7 +209,7 @@ def flush_redis(_redis_url: str) -> Generator[None, None, None]:
 _real_connect = socket.socket.connect
 _real_connect_ex = socket.socket.connect_ex
 _real_getaddrinfo = socket.getaddrinfo
-_allowed_hosts: set[str] = set()
+_allowed_addresses: set[tuple[str, int]] = set()  # (IP, port) of the test Postgres/Redis
 _blocked_connections: list[str] = []
 _resolved_names: dict[str, str] = {}  # IP -> hostname, so failures name the host, not just an IP
 
@@ -230,13 +230,13 @@ def _describe(address: tuple[Any, ...]) -> str:
 def _connection_allowed(address: Any) -> bool:
     if not isinstance(address, tuple):  # AF_UNIX, e.g. the Docker socket used by testcontainers
         return True
-    host = address[0]
+    host, port = address[0], address[1]
     try:
         if ipaddress.ip_address(host).is_loopback:
             return True
     except ValueError:
         pass
-    return host in _allowed_hosts
+    return (host, port) in _allowed_addresses
 
 
 def _guarded_connect(self: socket.socket, address: Any) -> None:
@@ -256,11 +256,13 @@ def _guarded_connect_ex(self: socket.socket, address: Any) -> int:
 @pytest.fixture(scope="session", autouse=True)
 def _block_network(_postgres_url: str, _redis_url: str) -> Generator[None, None, None]:
     """Refuse TCP connections to anything but loopback and the test Postgres/Redis."""
-    for url in (_postgres_url, _redis_url):
-        hostname = urlparse(url).hostname
-        if hostname:
-            _allowed_hosts.add(hostname)
-            _allowed_hosts.update(socket.gethostbyname_ex(hostname)[2])
+    for url, default_port in ((_postgres_url, 5432), (_redis_url, 6379)):
+        parsed = urlparse(url)
+        if not parsed.hostname:
+            continue
+        port = parsed.port or default_port
+        for *_, sockaddr in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM):
+            _allowed_addresses.add((str(sockaddr[0]), port))
     with (
         patch.object(socket.socket, "connect", _guarded_connect),
         patch.object(socket.socket, "connect_ex", _guarded_connect_ex),
