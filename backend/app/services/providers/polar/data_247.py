@@ -325,7 +325,7 @@ class Polar247Data(Base247DataTemplate):
                 "from": chunk_start.date().isoformat(),
                 "to": chunk_end.date().isoformat(),
                 "steps": "true",
-                "activity_zones": "false",
+                "activity_zones": "true",
                 "inactivity_stamps": "false",
             }
             response = self._make_api_request(db, user_id, "/v3/users/activities", params=params)
@@ -489,16 +489,46 @@ class Polar247Data(Base247DataTemplate):
         response = self._make_api_request(db, user_id, "/v3/users/nightly-recharge")
         return (response or {}).get("recharges", [])
 
+    NightlyRechargeNormalized = tuple[list[HealthScoreCreate], list[TimeSeriesSampleCreate]]
+
     def normalize_nightly_recharge(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[HealthScoreCreate]:
+    ) -> NightlyRechargeNormalized:
+        """HRV and breathing rate are four-hour averages from early sleep, so one sample per night.
+
+        Samples are emitted only for records processed by future syncs; existing database rows
+        are not updated. Historical records not processed again by a sync require a separate
+        backfill or replay to populate their time-series samples.
+        """
         scores: list[HealthScoreCreate] = []
+        samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, NightlyRechargeJSON, user_id, "nightly_recharge")) is None:
                 continue
-            if parsed.nightly_recharge_status is None or not parsed.date:
+            if not parsed.date:
+                continue
+            # Polar sends a bare date, so anchor the night to UTC midnight instead of leaving it naive.
+            recorded_at = datetime.fromisoformat(parsed.date).replace(tzinfo=timezone.utc)
+            for value, series_type in (
+                (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),
+                (parsed.breathing_rate_avg, SeriesType.respiratory_rate),
+            ):
+                if value is not None:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            provider=ProviderName.POLAR,
+                            source=ProviderName.POLAR,
+                            recorded_at=recorded_at,
+                            value=value,
+                            series_type=series_type,
+                        )
+                    )
+            # Polar withholds the status until it has three nights to compare against.
+            if parsed.nightly_recharge_status is None:
                 continue
             components: dict[str, ScoreComponent] = {}
             for key, val in {
@@ -523,11 +553,11 @@ class Polar247Data(Base247DataTemplate):
                     category=HealthScoreCategory.RECOVERY,
                     value=parsed.nightly_recharge_status,
                     qualifier=NIGHTLY_RECHARGE_STATUS_LABELS.get(parsed.nightly_recharge_status),
-                    recorded_at=datetime.fromisoformat(parsed.date),
+                    recorded_at=recorded_at,
                     components=components or None,
                 )
             )
-        return scores
+        return scores, samples
 
     # -------------------------------------------------------------------------
     # SleepWise — Alertness: GET /v3/users/sleepwise/alertness
@@ -865,7 +895,8 @@ class Polar247Data(Base247DataTemplate):
         path: str,
     ) -> dict[str, int]:
         """Fetch a single entity from the webhook URL path and save it. Used by webhook handler."""
-        raw = self._make_api_request(db, user_id, path)
+        params = {"activity_zones": "true"} if event_type == PolarWebhookEventType.ACTIVITY_SUMMARY else None
+        raw = self._make_api_request(db, user_id, path, params=params)
         if not raw:
             return {}
 
@@ -903,6 +934,24 @@ class Polar247Data(Base247DataTemplate):
                     provider="polar",
                 )
                 return {}
+
+    def _save_nightly_recharge(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """Save the night's score and samples, reporting the series writes.
+
+        The sync report splits inserts from updates, which only the series write can tell it:
+        health scores are inserted with on_conflict_do_nothing and report nothing back.
+        """
+        scores, samples = self.normalize_nightly_recharge(
+            self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
+        )
+        self._save_scores(db, scores)
+        return self._save_timeseries(db, samples)
 
     def _save_sleep(
         self,
@@ -972,12 +1021,7 @@ class Polar247Data(Base247DataTemplate):
             "cardio_load": lambda: self._save_scores(
                 db, self.normalize_cardio_load(self.get_cardio_load_data(db, user_id, start_time, end_time), user_id)
             ),
-            "nightly_recharge": lambda: self._save_scores(
-                db,
-                self.normalize_nightly_recharge(
-                    self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
-                ),
-            ),
+            "nightly_recharge": lambda: self._save_nightly_recharge(db, user_id, start_time, end_time),
             "alertness": lambda: self._save_scores(
                 db, self.normalize_alertness(self.get_alertness_data(db, user_id, start_time, end_time), user_id)
             ),

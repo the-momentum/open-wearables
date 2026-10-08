@@ -11,6 +11,8 @@ from datetime import date as date_type
 
 from pydantic import BaseModel, Field
 
+from app.utils.conversion import seconds_to_minutes
+
 
 class WithingsMeasure(BaseModel):
     """``measure_object``: the real value is ``value × 10^unit``."""
@@ -53,6 +55,12 @@ class WithingsActivity(BaseModel):
     distance: float | None = Field(default=None, ge=0)
     calories: float | None = Field(default=None, ge=0)  # active kcal
     totalcalories: float | None = Field(default=None, ge=0)  # active + passive kcal
+    active: int | None = Field(default=None, ge=0)  # moderate + intense activity, seconds
+
+    @property
+    def active_minutes(self) -> int | None:
+        """Moderate plus intense activity time in whole minutes."""
+        return seconds_to_minutes(self.active)
 
 
 class WithingsSleepData(BaseModel):
@@ -86,6 +94,17 @@ class WithingsSleepSummary(BaseModel):
     model: int | None = None
     model_id: int | None = None
     data: WithingsSleepData = Field(default_factory=WithingsSleepData)
+
+
+class WithingsSleepSeriesEntry(BaseModel):
+    """One interval of ``/v2/sleep`` action ``get``: a hypnogram stage and its HRV readings."""
+
+    startdate: int
+    enddate: int
+    state: int
+    # Epoch of each reading -> ms. Nullable, so one missing reading cannot drop the stage.
+    rmssd: dict[int, float | None] | None = None
+    sdnn_1: dict[int, float | None] | None = None
 
 
 class WithingsWorkoutData(BaseModel):

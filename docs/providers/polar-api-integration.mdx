@@ -27,7 +27,7 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Sleep (with stages) | Yes |
 | Daily activity (steps, calories, activity zones) | Yes |
 | Continuous heart rate | Yes |
-| Nightly Recharge / Recovery | Yes |
+| Nightly Recharge / Recovery | Yes — recovery score, plus overnight HRV (RMSSD) and breathing rate as one sample per night |
 | Cardio Load | Yes |
 | Sleepwise Alertness | Yes (requires Polar Sleepwise subscription) |
 | Sleepwise Circadian Bedtime | Yes (requires Polar Sleepwise subscription) |
@@ -81,7 +81,7 @@ Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_S
     - **Business contact (email)**: Your contact email
     - **Description**: Brief description of your application
     - **Application Web site**: Your app's website (optional)
-    - **Authorization redirect URL**: Your OAuth callback URL - for local development use `http://localhost:8000/api/v1/oauth/polar/callback`
+    - **Authorization redirect URL**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/polar/callback`, so register that exact URL here, e.g. `http://localhost:8000/api/v1/oauth/polar/callback` for local development.
     - **Available data types**: Enable all three - **Exercise data**, **Daily activity data**, **Physical information data**
 
     **3. Check Information**
@@ -103,10 +103,13 @@ Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_S
     Add the following to your `.env` file:
 
 ```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/polar/callback.
+API_BASE_URL=http://localhost:8000
+
 #--- Polar ---#
 POLAR_CLIENT_ID=your-polar-client-id
 POLAR_CLIENT_SECRET=your-polar-client-secret
-POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
 # Optional — required only if using webhooks (set automatically on first registration)
 POLAR_WEBHOOK_SIGNATURE_SECRET=
 ```
@@ -115,9 +118,9 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
 
     | Variable | Description |
     |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/polar/callback`, which must match the Authorization redirect URL registered in your Polar application |
     | `POLAR_CLIENT_ID` | Client ID from the Polar AccessLink Admin panel |
     | `POLAR_CLIENT_SECRET` | Client Secret from the Polar AccessLink Admin panel |
-    | `POLAR_REDIRECT_URI` | Must match the Authorization redirect URL registered in your Polar application. For local dev: `http://localhost:8000/api/v1/oauth/polar/callback` |
     | `POLAR_WEBHOOK_SIGNATURE_SECRET` | HMAC-SHA256 signing secret returned by Polar on webhook creation. Returned once — save it immediately. Used to verify incoming webhook payloads. |
 
     <Note>
@@ -145,7 +148,7 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
 
     **2. Redirect the user** to the `authorization_url`. They will log in to Polar Flow and authorize your app.
 
-    **3. Polar redirects back** to the callback URI configured in your `.env` (`POLAR_REDIRECT_URI`). Open Wearables automatically exchanges the authorization code for access tokens and registers the user with the Polar API.
+    **3. Polar redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/polar/callback`). Open Wearables automatically exchanges the authorization code for access tokens and registers the user with the Polar API.
 
     **4. Verify the connection** was created:
 
@@ -157,7 +160,7 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
     You should see a connection with `"provider": "polar"` and `"status": "active"`.
 
     <Note>
-      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `POLAR_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback that Polar sends the authorization code to.
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/polar/callback`) that Polar sends the authorization code to.
     </Note>
   </Step>
 

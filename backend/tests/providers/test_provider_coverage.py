@@ -5,7 +5,7 @@ implementation files and assert that:
 
 - every emitted ``series_type=SeriesType.<x>`` is declared in ``TIMESERIES``
 - every EventRecordDetail data field it sets is declared in
-  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS`` or ``MENSTRUAL_CYCLE_FIELDS``
+  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS``, ``MENSTRUAL_CYCLE_FIELDS`` or ``MEAL_FIELDS``
 - declared field/score names are valid
 
 A drift (new metric in the code, stale coverage) fails the test.
@@ -21,8 +21,12 @@ import pytest
 from app.constants.series_types.sdk.metric_types import (
     ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
     APPLE_METRIC_TYPE_TO_SERIES_TYPE,
+    SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
 )
-from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.workout_statistics import (
+    SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+)
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.schemas.model_crud.activities import EventRecordDetailCreate
@@ -31,7 +35,7 @@ from app.services.providers.factory import ProviderFactory
 PROVIDERS_DIR = Path("app/services/providers")
 
 # Implementation files that may emit timeseries / set detail fields.
-IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_service.py")
+IMPL_FILES = ("data_247.py", "workouts.py", "nutrition.py", "webhook_handler.py", "webhook_service.py")
 
 # SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the
@@ -44,6 +48,10 @@ SDK_SHARED_FILES = (
 
 # Apple alone also ingests the Health XML export.
 EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_service.py"),)}
+
+# Fields the shared SDK pipeline sets, but only from inputs this provider never sends:
+# Samsung has no `stepCount`/`recordingMethod`, and nothing yields moving time.
+SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "moving_time_seconds", "entry_source"}}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
 STRUCTURAL_DETAIL_FIELDS = {"record_id"}
@@ -103,6 +111,10 @@ def _menstrual_cycle_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "MENSTRUAL_CYCLE_FIELDS", frozenset())
 
 
+def _meal_fields(cov: ModuleType) -> frozenset:
+    return getattr(cov, "MEAL_FIELDS", frozenset())
+
+
 def _health_scores(cov: ModuleType) -> frozenset:
     return getattr(cov, "HEALTH_SCORES", frozenset())
 
@@ -124,25 +136,31 @@ def test_emitted_timeseries_are_declared(provider: str) -> None:
 def test_set_detail_fields_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
-    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)
+    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
 
     used = {field for field in TRACKED_DETAIL_FIELDS if re.search(rf"\b{field}=", source) or f'"{field}"' in source}
-    undeclared = used - declared
+    undeclared = used - declared - SDK_UNREACHABLE_DETAIL_FIELDS.get(provider, set())
 
     assert not undeclared, f"{provider}: sets EventRecordDetail fields not declared in coverage: {sorted(undeclared)}"
 
 
 _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
-    "samsung": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+    "samsung": SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
     "health_connect": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+}
+
+_SDK_WORKOUT_STATISTIC_MAP = {
+    "apple": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    "samsung": SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    "health_connect": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
 }
 
 
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values())
+    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(_SDK_WORKOUT_STATISTIC_MAP[provider].values())
     assert _timeseries(cov) == expected, (
         f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
     )
@@ -159,6 +177,7 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
     assert exposed.menstrual_cycle_fields == _menstrual_cycle_fields(cov), (
         f"{provider}: strategy drops/alters MENSTRUAL_CYCLE_FIELDS"
     )
+    assert exposed.meal_fields == _meal_fields(cov), f"{provider}: strategy drops/alters MEAL_FIELDS"
     assert exposed.health_scores == _health_scores(cov), f"{provider}: strategy drops/alters HEALTH_SCORES"
 
 
@@ -166,7 +185,9 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
 def test_declared_names_are_valid(provider: str) -> None:
     cov = _load_coverage(provider)
 
-    bad_fields = (_workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)) - ALL_DETAIL_FIELDS
+    bad_fields = (
+        _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
+    ) - ALL_DETAIL_FIELDS
     assert not bad_fields, f"{provider}: unknown EventRecordDetail fields declared: {sorted(bad_fields)}"
 
     assert all(isinstance(s, HealthScoreCategory) for s in _health_scores(cov))

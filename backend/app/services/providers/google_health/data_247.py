@@ -5,13 +5,14 @@ resolution by the operation ``google_use_reconcile`` picks — ``dataPoints:reco
 merged, deduplicated stream across sources, matching the native health app) or ``dataPoints``
 list (raw per-source points with device attribution). Windowed ``dataPoints:rollUp`` is
 disabled (#1577) and the configured granularity no longer selects it; ``dataPoints:dailyRollUp``
-still backs the derived daily metrics. Sleep and workouts come from the sessions endpoint and
-are handled separately.
+still backs the derived daily metrics. Sleep, workouts and nutrition come from the sessions
+endpoint and are handled separately.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
+from functools import partial
 from typing import Any, NoReturn
 from uuid import UUID, uuid4
 
@@ -26,10 +27,11 @@ from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, SeriesType
+from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, DeviceType, SeriesType
 from app.schemas.enums.aggregation_method import daily_total_flag
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
 from app.schemas.providers.google import (
+    DailyRollupMetric,
     DailyRollupSpec,
     DataTypeMetric,
     DerivedDailyMetric,
@@ -41,15 +43,18 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     civil_interval,
+    extract_form_factor,
     extract_source,
     parse_date,
     parse_page,
     parse_rfc3339,
     physical_interval,
+    read_level_sum,
     read_number,
     zone_offset_from,
 )
-from app.services.providers.google_health.metrics import DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
+from app.services.providers.google_health.nutrition import GoogleHealthApiNutrition
 from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -82,6 +87,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         self.connection_repo = connection_repo
         self.settings_repo = ProviderSettingsRepository()
         self.sleep = GoogleHealthApiSleep(oauth, connection_repo, api_base_url)
+        self.nutrition = GoogleHealthApiNutrition(oauth, connection_repo, api_base_url)
 
     # -- orchestration ---------------------------------------------------------
 
@@ -108,39 +114,19 @@ class GoogleHealth247Data(Base247DataTemplate):
 
         if granularity_supported:
             for metric in METRICS:
-                # Confine each metric (fetch + write) to a savepoint so a failed write rolls
-                # back only that metric and leaves the transaction usable for the rest.
-                try:
-                    with db.begin_nested():
-                        if metric.use_list(granularity):
-                            samples = self._native_samples(db, user_id, metric, start_time, end_time)
-                        else:
-                            samples = self._rollup_samples(db, user_id, metric, start_time, end_time, granularity)
-                        counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-                    db.commit()
-                except Exception as e:
-                    db.rollback()
-                    self._log_metric_failure(metric.data_type, user_id, e)
-                    failures[metric.data_type] = str(e)
-                    continue
-                succeeded += 1
-                if counts is not None:
-                    results[metric.data_type] = counts
+                if metric.use_list(granularity):
+                    build = partial(self._native_samples, db, user_id, metric, start_time, end_time)
+                else:
+                    build = partial(self._rollup_samples, db, user_id, metric, start_time, end_time, granularity)
+                succeeded += self._store_samples(db, user_id, metric.data_type, build, results, failures)
 
         for derived in DERIVED_DAILY_METRICS:
-            try:
-                with db.begin_nested():
-                    samples = self._derived_daily_samples(db, user_id, derived, start_time, end_time)
-                    counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
-                db.commit()
-            except Exception as e:
-                db.rollback()
-                self._log_metric_failure(derived.name, user_id, e)
-                failures[derived.name] = str(e)
-                continue
-            succeeded += 1
-            if counts is not None:
-                results[derived.name] = counts
+            build = partial(self._derived_daily_samples, db, user_id, derived, start_time, end_time)
+            succeeded += self._store_samples(db, user_id, derived.name, build, results, failures)
+
+        for daily in DAILY_ROLLUP_METRICS:
+            build = partial(self._daily_rollup_samples, db, user_id, daily, start_time, end_time)
+            succeeded += self._store_samples(db, user_id, daily.name, build, results, failures)
 
         try:
             with db.begin_nested():
@@ -152,6 +138,17 @@ class GoogleHealth247Data(Base247DataTemplate):
             self._log_metric_failure("sleep", user_id, e)
             failures["sleep"] = str(e)
             sleep_count = 0
+
+        try:
+            with db.begin_nested():
+                nutrition_count = self.nutrition.load_and_save(db, user_id, start_time, end_time)
+            db.commit()
+            succeeded += 1
+        except Exception as e:
+            db.rollback()
+            self._log_metric_failure("nutrition-log", user_id, e)
+            failures["nutrition-log"] = str(e)
+            nutrition_count = 0
 
         if not granularity_supported:
             raise UnsupportedGranularityError(granularity)
@@ -169,8 +166,33 @@ class GoogleHealth247Data(Base247DataTemplate):
             granularity=granularity.value,
             metrics_synced=len(results),
             sleep_sessions=sleep_count,
+            nutrition_entries=nutrition_count,
         )
         return results
+
+    def _store_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        name: str,
+        build: Callable[[], list[TimeSeriesSampleCreate]],
+        results: dict[str, WriteCounts],
+        failures: dict[str, str],
+    ) -> bool:
+        """Fetch and write one data type in a savepoint, so a failure rolls back only that type."""
+        try:
+            with db.begin_nested():
+                samples = build()
+                counts = timeseries_service.bulk_create_samples(db, samples) if samples else None
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            self._log_metric_failure(name, user_id, e)
+            failures[name] = str(e)
+            return False
+        if counts is not None:
+            results[name] = counts
+        return True
 
     def sync_data_type(
         self,
@@ -182,9 +204,9 @@ class GoogleHealth247Data(Base247DataTemplate):
     ) -> WriteCounts | None:
         """Fetch + persist a single 24/7 metric over an explicit window (webhook-triggered).
 
-        Returns None when ``data_type`` is not a registered metric. Sleep and exercise
-        are owned by their own handlers and are routed there by the webhook handler
-        before ever reaching here, so an unrecognised type is a safe no-op. Raises
+        Returns None when ``data_type`` is not a registered metric. Sleep, exercise and
+        nutrition-log are owned by their own handlers and are routed there by the webhook
+        handler before ever reaching here, so an unrecognised type is a safe no-op. Raises
         UnsupportedGranularityError, which the webhook handler reports without a 5xx.
         """
         metric = next((m for m in METRICS if m.data_type == data_type), None)
@@ -337,6 +359,18 @@ class GoogleHealth247Data(Base247DataTemplate):
                 samples.append(self._sample(user_id, day, value, metric.series_type, True))
         return samples
 
+    def _daily_rollup_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        metric: DailyRollupMetric,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """One daily-total sample per civil day the data type reports."""
+        totals = self._daily_totals(db, user_id, metric.spec, start_time, end_time, metric.data_source_family)
+        return [self._sample(user_id, day, value, metric.series_type, True) for day, value in sorted(totals.items())]
+
     def _daily_totals(
         self,
         db: DbSession,
@@ -368,7 +402,11 @@ class GoogleHealth247Data(Base247DataTemplate):
                 value_obj = point.get(spec.value_key)
                 if day is None or not isinstance(value_obj, dict):
                     continue
-                value = read_number(value_obj, spec.field, None, spec.scale)
+                value = (
+                    read_level_sum(value_obj, spec.field, spec.level_sum, spec.scale)
+                    if spec.level_sum
+                    else read_number(value_obj, spec.field, None, spec.scale)
+                )
                 if value is not None:
                     # Windows are disjoint civil days, so two points on one date are
                     # different sources of the same day, never duplicates — sum them.
@@ -413,13 +451,21 @@ class GoogleHealth247Data(Base247DataTemplate):
                 continue
             # Only list points carry a dataSource; reconciled points are already merged.
             device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
+            device_type = None if reconcile else extract_form_factor(point.get("dataSource"))
             for series_type, field, subfield, scale in self._bindings(metric.series_type, spec):
                 value = read_number(value_obj, field, subfield, scale)
                 if value is None or value == 0:
                     continue
                 samples.append(
                     self._sample(
-                        user_id, recorded_at, value, series_type, spec.is_daily_total, zone_offset, device_model
+                        user_id,
+                        recorded_at,
+                        value,
+                        series_type,
+                        spec.is_daily_total,
+                        zone_offset,
+                        device_model,
+                        device_type,
                     )
                 )
             # Unlike the readings above, a difference of zero is a measurement: the night sat on
@@ -550,6 +596,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         is_daily_total: bool,
         zone_offset: str | None = None,
         device_model: str | None = None,
+        device_type: DeviceType | None = None,
     ) -> TimeSeriesSampleCreate:
         return TimeSeriesSampleCreate(
             id=uuid4(),
@@ -557,6 +604,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             source=GOOGLE_HEALTH_API_SOURCE,
             provider=self.provider_name,
             device_model=device_model,
+            device_type=device_type,
             recorded_at=recorded_at,
             zone_offset=zone_offset,
             value=value,

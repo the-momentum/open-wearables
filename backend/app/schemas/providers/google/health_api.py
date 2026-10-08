@@ -114,13 +114,29 @@ class ListSpec:
 
 
 @dataclass(frozen=True)
+class LevelSum:
+    """A sum over the per-level list of a ``*RollupValue`` object, keeping only some levels.
+
+    level_key:   key naming each entry's level (e.g. ``activityLevel``).
+    value_field: key of each entry's number (e.g. ``activeMinutesSum``).
+    levels:      levels included in the sum.
+    """
+
+    level_key: str
+    value_field: str
+    levels: frozenset[str]
+
+
+@dataclass(frozen=True)
 class DailyRollupSpec:
     """How to read one data type's civil-day total from a dataPoints:dailyRollUp response.
 
     data_type/value_key: the type to request and the union key its value lands under.
-    field:               key of the scalar within the ``*RollupValue`` object (e.g. ``kcalSum``).
+    field:               key of the scalar within the ``*RollupValue`` object (e.g. ``kcalSum``),
+                         or of the per-level list when ``level_sum`` is set.
     scale:               unit factor applied to the value.
-    max_range_days:      dailyRollUp's per-request range cap (14 for total-calories, else 90).
+    max_range_days:      dailyRollUp's per-request range cap (14 for total-calories and active-minutes, else 90).
+    level_sum:           which levels of the ``field`` list to add up, for per-level types.
     """
 
     data_type: str
@@ -128,6 +144,7 @@ class DailyRollupSpec:
     field: str
     scale: Decimal = Decimal(1)
     max_range_days: int = 90
+    level_sum: LevelSum | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +165,20 @@ class DerivedDailyMetric:
     left: DailyRollupSpec
     right: DailyRollupSpec
     operation: Callable[[Decimal, Decimal], Decimal]
+    data_source_family: str = "users/me/dataSourceFamilies/google-sources"
+
+
+@dataclass(frozen=True)
+class DailyRollupMetric:
+    """A civil-day total read straight from one data type's dailyRollUp.
+
+    data_source_family keeps the total to first-party sources, since points from several
+    sources on one civil day are summed and would otherwise count the same minutes twice.
+    """
+
+    name: str
+    series_type: SeriesType
+    spec: DailyRollupSpec
     data_source_family: str = "users/me/dataSourceFamilies/google-sources"
 
 

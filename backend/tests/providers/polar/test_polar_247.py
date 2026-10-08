@@ -1,10 +1,12 @@
 """Tests for Polar247Data normalization."""
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, SeriesType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
@@ -185,6 +187,108 @@ class TestPolar247DailyActivityNormalization:
     def test_empty_input(self, data_247: Polar247Data) -> None:
         assert data_247.normalize_daily_activity([], uuid4()) == []
 
+    @staticmethod
+    def _with_zones(activity: dict, zones: list[tuple[str, str]]) -> dict:
+        activity["end_time"] = "2024-01-15T23:59:59"
+        activity["samples"] = {"activity_zones": {"samples": [{"zone": z, "timestamp": t} for z, t in zones]}}
+        return activity
+
+    def test_exercise_time_from_moderate_and_vigorous_zones(
+        self, data_247: Polar247Data, sample_activity: dict
+    ) -> None:
+        activity = self._with_zones(
+            sample_activity,
+            [
+                ("SEDENTARY", "2024-01-15T00:00:00"),
+                ("MODERATE", "2024-01-15T08:00:00"),  # 20.5 min
+                ("VIGOROUS", "2024-01-15T08:20:30"),  # 24.5 min
+                ("LIGHT", "2024-01-15T08:45:00"),
+                ("MODERATE", "2024-01-15T23:50:00"),  # until end_time: 9 min 59 s
+            ],
+        )
+
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+
+        exercise = [s for s in samples if s.series_type == SeriesType.exercise_time]
+        assert [s.value for s in exercise] == [54]
+        assert exercise[0].is_daily_total is True
+
+    def test_exercise_time_zero_without_moderate_or_vigorous(
+        self, data_247: Polar247Data, sample_activity: dict
+    ) -> None:
+        activity = self._with_zones(
+            sample_activity, [("SEDENTARY", "2024-01-15T00:00:00"), ("LIGHT", "2024-01-15T09:00:00")]
+        )
+
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+
+        assert [s.value for s in samples if s.series_type == SeriesType.exercise_time] == [0]
+
+    @pytest.mark.parametrize(
+        "zones",
+        [
+            None,
+            {"samples": None},
+            {
+                "samples": [
+                    {"zone": "MODERATE", "timestamp": "2024-01-15T08:00:00"},
+                    {"zone": "LIGHT", "timestamp": "x"},
+                ]
+            },
+            {
+                "samples": [
+                    {"zone": "MODERATE", "timestamp": "2024-01-15T08:00:00"},
+                    {"zone": "LIGHT", "timestamp": None},
+                ]
+            },
+            {
+                "samples": [
+                    {"zone": "MODERATE", "timestamp": "2024-01-15T08:00:00"},
+                    {"zone": None, "timestamp": "2024-01-15T09:00:00"},
+                ]
+            },
+        ],
+        ids=["no_zones", "null_samples", "unreadable_timestamp", "null_timestamp", "null_zone"],
+    )
+    def test_unusable_zones_give_no_exercise_time(
+        self, data_247: Polar247Data, sample_activity: dict, zones: dict | None
+    ) -> None:
+        sample_activity["end_time"] = "2024-01-15T23:59:59"
+        if zones is not None:
+            sample_activity["samples"] = {"activity_zones": zones}
+
+        samples = data_247.normalize_daily_activity([sample_activity], uuid4())
+
+        assert not any(s.series_type == SeriesType.exercise_time for s in samples)
+        assert any(s.series_type == SeriesType.steps for s in samples)
+
+    def test_exercise_time_from_unsorted_zone_samples(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        activity = self._with_zones(
+            sample_activity,
+            [
+                ("MODERATE", "2024-01-15T23:50:00"),
+                ("LIGHT", "2024-01-15T08:45:00"),
+                ("SEDENTARY", "2024-01-15T00:00:00"),
+                ("VIGOROUS", "2024-01-15T08:20:30"),
+                ("MODERATE", "2024-01-15T08:00:00"),
+            ],
+        )
+
+        samples = data_247.normalize_daily_activity([activity], uuid4())
+
+        assert [s.value for s in samples if s.series_type == SeriesType.exercise_time] == [54]
+
+    def test_requests_activity_zones(self, data_247: Polar247Data) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=[]) as request:
+            data_247.get_daily_activity_statistics(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 2, tzinfo=timezone.utc),
+            )
+
+        assert request.call_args.kwargs["params"]["activity_zones"] == "true"
+
 
 # ---------------------------------------------------------------------------
 # Continuous Heart Rate
@@ -314,7 +418,7 @@ class TestPolar247NightlyRechargeNormalization:
 
     def test_produces_recovery_score(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         user_id = uuid4()
-        scores = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+        scores, _ = data_247.normalize_nightly_recharge([sample_recharge], user_id)
 
         assert len(scores) == 1
         score = scores[0]
@@ -325,7 +429,7 @@ class TestPolar247NightlyRechargeNormalization:
 
     def test_components_include_hrv(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         user_id = uuid4()
-        score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0]
+        score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0][0]
 
         assert "heart_rate_variability_avg" in score.components
         assert score.components["heart_rate_variability_avg"].value == 48
@@ -334,7 +438,7 @@ class TestPolar247NightlyRechargeNormalization:
 
     def test_ans_charge_status_qualifier(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         user_id = uuid4()
-        score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0]
+        score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0][0]
 
         assert "ans_charge_status" in score.components
         assert score.components["ans_charge_status"].qualifier == "usual"
@@ -343,16 +447,74 @@ class TestPolar247NightlyRechargeNormalization:
         user_id = uuid4()
         for status, label in [(1, "very poor"), (2, "poor"), (3, "compromised"), (4, "ok"), (6, "very good")]:
             sample_recharge["nightly_recharge_status"] = status
-            score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0]
+            score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0][0]
             assert score.qualifier == label
 
-    def test_missing_status_skipped(self, data_247: Polar247Data, sample_recharge: dict) -> None:
+    def test_samples_are_stamped_in_utc(self, data_247: Polar247Data, sample_recharge: dict) -> None:
+        # Nightly Recharge dates carry no offset, and a naive timestamp reaches webhooks as-is.
+        _, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4())
+
+        assert samples[0].recorded_at == datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+    def test_a_night_without_a_status_still_yields_its_measurements(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        # Polar withholds the status for the first three nights while it builds a baseline,
+        # but it already reports HRV and breathing rate for them.
         sample_recharge.pop("nightly_recharge_status")
+
+        scores, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4())
+
+        assert scores == []
+        by_type = {sample.series_type: sample for sample in samples}
+        assert float(by_type[SeriesType.heart_rate_variability_rmssd].value) == 48
+        assert float(by_type[SeriesType.respiratory_rate].value) == 14.5
+
+    def test_nightly_averages_become_samples_dated_to_the_night(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
         user_id = uuid4()
-        assert data_247.normalize_nightly_recharge([sample_recharge], user_id) == []
+        _, samples = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+
+        by_type = {s.series_type: s for s in samples}
+        assert float(by_type[SeriesType.heart_rate_variability_rmssd].value) == 48
+        assert float(by_type[SeriesType.respiratory_rate].value) == 14.5
+        assert by_type[SeriesType.heart_rate_variability_rmssd].recorded_at.date().isoformat() == "2024-01-15"
+        assert by_type[SeriesType.heart_rate_variability_rmssd].user_id == user_id
+
+    def test_night_without_hrv_or_breathing_still_scores_but_yields_no_samples(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        sample_recharge.pop("heart_rate_variability_avg")
+        sample_recharge.pop("breathing_rate_avg")
+
+        scores, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4())
+
+        assert samples == []
+        assert len(scores) == 1
+
+    def test_saving_an_unscored_night_reports_the_samples_it_wrote(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        # A run that writes only samples must not report zero, or the sync counts it as a no-op.
+        sample_recharge.pop("nightly_recharge_status")
+
+        with (
+            patch.object(data_247, "get_nightly_recharge_data", return_value=[sample_recharge]),
+            patch("app.services.providers.polar.data_247.timeseries_service") as timeseries,
+        ):
+            timeseries.bulk_create_samples.return_value = WriteCounts(inserted=2, updated=0)
+            saved = data_247._save_nightly_recharge(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 31, tzinfo=timezone.utc),
+            )
+
+        assert saved == 2
 
     def test_empty_input(self, data_247: Polar247Data) -> None:
-        assert data_247.normalize_nightly_recharge([], uuid4()) == []
+        assert data_247.normalize_nightly_recharge([], uuid4()) == ([], [])
 
 
 # ---------------------------------------------------------------------------

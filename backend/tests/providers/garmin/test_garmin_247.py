@@ -308,6 +308,34 @@ class TestGarmin247Data:
         assert normalized["steps"] is None
         assert normalized["active_calories"] is None
         assert normalized["resting_heart_rate"] is None
+        assert normalized["exercise_time"] is None
+
+    def test_normalize_dailies_exercise_time(self, garmin_247: Garmin247Data) -> None:
+        """Moderate and vigorous seconds are summed into whole exercise minutes."""
+        daily_data = {
+            "summaryId": "daily_123",
+            "calendarDate": "2024-01-15",
+            "startTimeInSeconds": 1705276800,
+            "moderateIntensityDurationInSeconds": 750,
+            "vigorousIntensityDurationInSeconds": 1710,
+        }
+
+        normalized, _ = garmin_247.normalize_dailies(daily_data, uuid4())
+
+        assert normalized["exercise_time"] == 41
+
+    def test_normalize_dailies_exercise_time_from_one_field(self, garmin_247: Garmin247Data) -> None:
+        """One intensity field alone still gives exercise minutes."""
+        daily_data = {
+            "summaryId": "daily_123",
+            "calendarDate": "2024-01-15",
+            "startTimeInSeconds": 1705276800,
+            "vigorousIntensityDurationInSeconds": 1680,
+        }
+
+        normalized, _ = garmin_247.normalize_dailies(daily_data, uuid4())
+
+        assert normalized["exercise_time"] == 28
 
     # -------------------------------------------------------------------------
     # Epochs Data Tests
@@ -523,6 +551,24 @@ class TestGarmin247Data:
         # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
         assert len(samples) == 8
         assert len({s.series_type for s in samples}) > 1
+
+    def test_build_dailies_samples_exercise_time(self, garmin_247: Garmin247Data) -> None:
+        """Dailies emit exercise_time as a daily-total sample."""
+        user_id = uuid4()
+        daily_data = {
+            "summaryId": "daily_123",
+            "calendarDate": "2024-01-15",
+            "startTimeInSeconds": 1705276800,
+            "moderateIntensityDurationInSeconds": 720,
+            "vigorousIntensityDurationInSeconds": 1680,
+        }
+        normalized, _ = garmin_247.normalize_dailies(daily_data, user_id)
+
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        exercise = [s for s in samples if s.series_type == SeriesType.exercise_time]
+        assert [s.value for s in exercise] == [Decimal("40")]
+        assert exercise[0].is_daily_total is True
 
     def test_build_dailies_samples_empty_on_missing_date(self, garmin_247: Garmin247Data) -> None:
         """Test _build_dailies_samples returns empty for missing date/timestamp."""

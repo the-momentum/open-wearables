@@ -44,7 +44,7 @@ def test_request_posts_form_data_and_unwraps_body(mock_req: MagicMock) -> None:
 
 @pytest.mark.parametrize(
     ("withings_status", "http_status"),
-    [(100, 401), (601, 429), (503, 502)],
+    [(100, 401), (503, 502)],
 )
 @patch("app.services.providers.withings.handlers.rpc_client.make_authenticated_request")
 def test_nonzero_status_is_an_error_even_on_http_200(
@@ -57,6 +57,49 @@ def test_nonzero_status_is_an_error_even_on_http_200(
 
     assert exc_info.value.withings_status == withings_status
     assert exc_info.value.status_code == http_status
+
+
+THROTTLED = {"status": 601, "body": {}, "error": "Too Many Requests (#/min)"}
+
+
+def _http_response(envelope: dict[str, Any]) -> MagicMock:
+    response = MagicMock(status_code=200)
+    response.json.return_value = envelope
+    return response
+
+
+@patch("app.services.providers.withings.handlers.rpc_client.time.sleep")
+@patch("app.services.providers.api_client._get_valid_token", return_value="token")
+@patch("app.services.providers.api_client.httpx.Client")
+def test_throttle_is_retried_through_the_shared_client(
+    mock_client: MagicMock, mock_token: MagicMock, mock_sleep: MagicMock
+) -> None:
+    # Withings answers a throttle with HTTP 200 and an ``error`` next to the status. The
+    # shared client used to raise on that message before the envelope was ever read.
+    request = mock_client.return_value.__enter__.return_value.request
+    request.side_effect = [_http_response(THROTTLED), _http_response({"status": 0, "body": {"series": []}})]
+
+    body = rpc_client.withings_request(**_request())
+
+    assert body == {"series": []}
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [15.0]
+
+
+@patch("app.services.providers.withings.handlers.rpc_client.time.sleep")
+@patch("app.services.providers.api_client._get_valid_token", return_value="token")
+@patch("app.services.providers.api_client.httpx.Client")
+def test_throttle_that_persists_is_a_rate_limit_error(
+    mock_client: MagicMock, mock_token: MagicMock, mock_sleep: MagicMock
+) -> None:
+    request = mock_client.return_value.__enter__.return_value.request
+    request.return_value = _http_response(THROTTLED)
+
+    with pytest.raises(rpc_client.WithingsAPIError) as exc_info:
+        rpc_client.withings_request(**_request())
+
+    assert exc_info.value.status_code == 429
+    assert request.call_count == 4
+    assert [call.args[0] for call in mock_sleep.call_args_list] == [15.0, 30.0, 60.0]
 
 
 @patch("app.services.providers.withings.handlers.rpc_client.make_authenticated_request")

@@ -18,6 +18,10 @@ keywords: ["data retention", "time series archival", "storage growth", "delete o
 This feature is in early access and is not yet ready for production use.
 </Warning>
 
+<Note>
+Self-hosting: set `DATA_LIFECYCLE_ENABLED=false` in the backend `.env` to turn the feature off. The tab disappears from Settings, the `/api/v1/settings/archival` endpoints return `503`, and the daily archival job stops running. Existing archive data is left untouched.
+</Note>
+
 ## Storage Overview
 
 The top of the page shows the current database footprint:

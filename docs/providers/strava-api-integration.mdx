@@ -94,10 +94,13 @@ Self-upgrade to Standard Tier (up to 10 athletes) directly from your [API Settin
     Add the following to your `.env` file:
 
 ```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/strava/callback.
+API_BASE_URL=http://localhost:8000
+
 #--- Strava ---#
 STRAVA_CLIENT_ID=your-strava-client-id
 STRAVA_CLIENT_SECRET=your-strava-client-secret
-STRAVA_REDIRECT_URI=http://localhost:8000/api/v1/oauth/strava/callback
 STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
 STRAVA_WEBHOOK_VERIFY_TOKEN=your-secret-verify-token
 ```
@@ -106,9 +109,9 @@ STRAVA_WEBHOOK_VERIFY_TOKEN=your-secret-verify-token
 
     | Variable | Description |
     |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/strava/callback`. Its domain must match the Authorization Callback Domain you set in Strava |
     | `STRAVA_CLIENT_ID` | Client ID from the Strava API settings page |
     | `STRAVA_CLIENT_SECRET` | Client Secret from the Strava API settings page |
-    | `STRAVA_REDIRECT_URI` | Must match the callback domain you set in Strava. For local dev: `http://localhost:8000/api/v1/oauth/strava/callback` |
     | `STRAVA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Default `activity:read_all,profile:read_all` covers all activity data and athlete profile |
     | `STRAVA_WEBHOOK_VERIFY_TOKEN` | A secret string you choose. Strava will send this back during webhook subscription verification to confirm ownership. Pick something unique and hard to guess |
 

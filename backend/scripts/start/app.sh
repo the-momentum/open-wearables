@@ -51,12 +51,37 @@ uv run python scripts/data_migrations/relabel_ultrahuman_hrv_sdnn_to_rmssd.py \
     || echo "Warning: Ultrahuman HRV relabel failed — will retry on next startup."
 
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Relabels Ultrahuman active minutes stored as active_time (id=88) to exercise_time
+# (id=84). Scoped to provider='ultrahuman', no-op once corrected.
+echo 'Running Ultrahuman active_time->exercise_time relabel...'
+uv run python scripts/data_migrations/relabel_ultrahuman_active_time_to_exercise_time.py \
+    || echo "Warning: Ultrahuman active time relabel failed — will retry on next startup."
+
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Links legacy Whoop workout strain scores to their event records; without it they stay
 # indistinguishable from the per-day cycle strain. Idempotent, no-op once linked.
 echo 'Running Whoop strain event_record backfill...'
 uv run python scripts/data_migrations/backfill_whoop_strain_event_record.py \
     || echo "Warning: Whoop strain backfill failed — will retry on next startup."
+
+
+# TODO: Remove this after ~2026-11-01 once all deployments have migrated.
+# Moves Whoop whole-day strain and energy off the cycle's start onto the day the cycle
+# covers. Must stay after the strain backfill above, which is what tells cycle strain
+# apart from legacy workout strain. Idempotent, no-op once re-keyed.
+echo 'Running Whoop cycle day re-key...'
+uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
+    || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
+
+# TODO: Remove this after ~2026-12-01 once all deployments have migrated.
+# Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
+# recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
+# the same rule afterwards.
+echo 'Running device type backfill...'
+uv run python scripts/data_migrations/backfill_device_types.py \
+    || echo "Warning: device type backfill failed — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'
