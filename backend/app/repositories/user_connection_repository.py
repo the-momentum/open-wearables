@@ -3,7 +3,7 @@ from logging import getLogger
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, func, select, tuple_, update
+from sqlalchemy import CursorResult, and_, func, or_, select, tuple_, update
 from sqlalchemy.orm import Query
 from sqlalchemy.orm.exc import MultipleResultsFound
 
@@ -300,7 +300,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 and_(
                     UserConnection.user_id == user_id,
                     UserConnection.provider == provider,
-                    UserConnection.access_token.is_not(None),
+                    or_(UserConnection.access_token.is_not(None), UserConnection.refresh_token.is_not(None)),
                 ),
             )
             .values(access_token=None, refresh_token=None, token_expires_at=None),
