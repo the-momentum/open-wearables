@@ -9,18 +9,24 @@ Tests process_push task for:
 - Retry behaviour on infrastructure errors
 """
 
+from collections.abc import Generator
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from celery.exceptions import Retry
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.webhook_push_task import process_webhook_push
 from app.schemas.auth import ConnectionStatus
+from app.services.providers.garmin.oauth import GarminOAuth
 from tests.factories import UserConnectionFactory, UserFactory
 
 MODULE = "app.integrations.celery.tasks.webhook_push_task"
 HANDLER_MODULE = "app.services.providers.garmin.webhook_handler"
+LIFECYCLE_MODULE = "app.services.providers.garmin.handlers.lifecycle"
+BASE_OAUTH_MODULE = "app.services.providers.templates.base_oauth"
 
 
 @pytest.fixture
@@ -655,6 +661,23 @@ class TestGarminUserPermissionsWebhook:
         assert result["userPermissionsChange"]["errors"] == ["Invalid userPermissions payload format"]
 
 
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://apis.garmin.com/partner-gateway/rest/user/id")
+    return httpx.HTTPStatusError("error", request=request, response=httpx.Response(status_code, request=request))
+
+
+@pytest.fixture
+def mock_garmin_user_id() -> Generator[MagicMock, None, None]:
+    with patch.object(GarminOAuth, "get_user_id", side_effect=_http_status_error(401)) as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_revoked_webhook() -> Generator[MagicMock, None, None]:
+    with patch(f"{LIFECYCLE_MODULE}.on_connection_revoked") as mock:
+        yield mock
+
+
 class TestGarminDeregistrationWebhook:
     """Tests for deregistration handling via process_push."""
 
@@ -662,6 +685,7 @@ class TestGarminDeregistrationWebhook:
         self,
         task_db: Session,
         mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
     ) -> None:
         """Test that deregistration revokes the connection."""
         # Arrange
@@ -690,6 +714,111 @@ class TestGarminDeregistrationWebhook:
         # Verify DB was updated
         task_db.refresh(connection)
         assert connection.status == ConnectionStatus.REVOKED
+
+    def test_stale_ping_ignored_when_current_grant_is_active(
+        self,
+        task_db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
+        mock_revoked_webhook: MagicMock,
+    ) -> None:
+        """A ping for an old grant must not revoke a connection the user re-authorized."""
+        connection = UserConnectionFactory(user=UserFactory(), provider="garmin", provider_user_id="garmin_user_123")
+        mock_garmin_user_id.side_effect = None
+        mock_garmin_user_id.return_value = "garmin_user_123"
+
+        result = process_webhook_push.run("garmin", {"deregistrations": [{"userId": "garmin_user_123"}]}, "trace-036")
+
+        assert result["deregistrations"] == {"revoked": 0, "ignored_stale": 1, "errors": []}
+        mock_garmin_user_id.assert_called_once_with(connection.access_token)
+        task_db.refresh(connection)
+        assert connection.status == ConnectionStatus.ACTIVE
+        mock_revoked_webhook.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "user_id_response",
+        [
+            pytest.param(_http_status_error(503), id="garmin_error"),
+            pytest.param("other_garmin_user", id="different_user"),
+        ],
+    )
+    def test_revokes_unless_garmin_confirms_the_grant(
+        self,
+        task_db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
+        mock_revoked_webhook: MagicMock,
+        user_id_response: Exception | str,
+    ) -> None:
+        connection = UserConnectionFactory(user=UserFactory(), provider="garmin", provider_user_id="garmin_user_123")
+        if isinstance(user_id_response, Exception):
+            mock_garmin_user_id.side_effect = user_id_response
+        else:
+            mock_garmin_user_id.side_effect = None
+            mock_garmin_user_id.return_value = user_id_response
+
+        result = process_webhook_push.run("garmin", {"deregistrations": [{"userId": "garmin_user_123"}]}, "trace-037")
+
+        assert result["deregistrations"]["revoked"] == 1
+        task_db.refresh(connection)
+        assert connection.status == ConnectionStatus.REVOKED
+        mock_revoked_webhook.assert_called_once()
+
+    def test_already_revoked_connection_is_not_revoked_again(
+        self,
+        task_db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
+        mock_revoked_webhook: MagicMock,
+    ) -> None:
+        """The ping that follows our own disconnect must not emit a second connection.revoked."""
+        UserConnectionFactory(
+            user=UserFactory(),
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            status=ConnectionStatus.REVOKED,
+            access_token=None,
+            refresh_token=None,
+        )
+
+        result = process_webhook_push.run("garmin", {"deregistrations": [{"userId": "garmin_user_123"}]}, "trace-038")
+
+        assert result["deregistrations"]["revoked"] == 0
+        mock_garmin_user_id.assert_not_called()
+        mock_revoked_webhook.assert_not_called()
+
+    def test_dead_refresh_token_revokes_once_as_deregistration(
+        self,
+        task_db: Session,
+        mock_external_apis: dict[str, MagicMock],
+        mock_garmin_user_id: MagicMock,
+        mock_revoked_webhook: MagicMock,
+    ) -> None:
+        """Push tokens are usually expired by the time Garmin deregisters the user. The refresh must
+        not revoke with "refresh_failed" first, or integrators get a misleading reason."""
+        connection = UserConnectionFactory(
+            user=UserFactory(),
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            token_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        request = httpx.Request("POST", "https://diauth.garmin.com/di-oauth2-service/oauth/token")
+
+        with (
+            patch("httpx.post", return_value=httpx.Response(400, request=request)),
+            patch(f"{BASE_OAUTH_MODULE}.on_connection_revoked") as mock_refresh_revoked_webhook,
+        ):
+            result = process_webhook_push.run(
+                "garmin", {"deregistrations": [{"userId": "garmin_user_123"}]}, "trace-039"
+            )
+
+        assert result["deregistrations"]["revoked"] == 1
+        task_db.refresh(connection)
+        assert connection.status == ConnectionStatus.REVOKED
+        mock_garmin_user_id.assert_not_called()
+        mock_refresh_revoked_webhook.assert_not_called()
+        mock_revoked_webhook.assert_called_once()
+        assert mock_revoked_webhook.call_args.kwargs["reason"] == "deregistration"
 
     def test_push_webhook_deregistration_unknown_user(
         self,

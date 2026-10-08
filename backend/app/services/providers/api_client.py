@@ -29,6 +29,8 @@ def get_valid_token(
     provider_name: str,
     connection_repo: UserConnectionRepository,
     oauth: BaseOAuthTemplate,
+    *,
+    revoke_on_failure: bool = True,
 ) -> str:
     """Get a valid access token, refreshing if necessary.
 
@@ -90,7 +92,9 @@ def get_valid_token(
                     detail=f"Token expired and no refresh token available for {provider_name}",
                 )
 
-            token_response = oauth.refresh_access_token(db, user_id, connection.refresh_token)
+            token_response = oauth.refresh_access_token(
+                db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
+            )
             return token_response.access_token
 
     return connection.access_token

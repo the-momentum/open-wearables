@@ -97,7 +97,9 @@ class WithingsOAuth(BaseOAuthTemplate):
         }
         return self._request_token(payload, task="exchange_token")
 
-    def refresh_access_token(self, db: DbSession, user_id: UUID, refresh_token: str) -> OAuthTokenResponse:
+    def refresh_access_token(
+        self, db: DbSession, user_id: UUID, refresh_token: str, *, revoke_on_failure: bool = True
+    ) -> OAuthTokenResponse:
         payload = {
             "action": "requesttoken",
             "grant_type": "refresh_token",
@@ -108,7 +110,7 @@ class WithingsOAuth(BaseOAuthTemplate):
         try:
             token_response = self._request_token(payload, task="refresh_access_token")
         except WithingsTokenError as exc:
-            if exc.invalid_grant:
+            if exc.invalid_grant and revoke_on_failure:
                 self._revoke_connection(db, user_id, reason="refresh_failed")
             raise
 
