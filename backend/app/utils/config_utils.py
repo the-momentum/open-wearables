@@ -52,6 +52,20 @@ class AccessLogLevel(str, Enum):
     OFF = "off"  # log nothing
 
 
+class LogFormat(str, Enum):
+    LEGACY = "legacy"
+    JSON = "json"
+    TEXT = "text"
+
+
+class LogLevel(str, Enum):
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
 class Decryptor(Protocol):
     def decrypt(self, value: bytes) -> bytes: ...
 

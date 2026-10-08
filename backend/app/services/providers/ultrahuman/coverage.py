@@ -12,14 +12,15 @@ ACTIVITY_SAMPLE_SERIES: dict[str, SeriesType] = {
 # Single daily values (handler key → SeriesType), each carrying its own day_start_timestamp.
 DAILY_SCALAR_SERIES: dict[str, SeriesType] = {
     "vo2_max": SeriesType.vo2_max,
-    "active_minutes": SeriesType.active_time,
+    "active_minutes": SeriesType.exercise_time,
     "sleep_rhr": SeriesType.resting_heart_rate,
+    "temperature_deviation": SeriesType.skin_temperature_deviation,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *ACTIVITY_SAMPLE_SERIES.values(),  # /user_data/metrics (hr, hrv, temp, steps)
-        *DAILY_SCALAR_SERIES.values(),  # /user_data/metrics (vo2_max, active_minutes, sleep_rhr)
+        *DAILY_SCALAR_SERIES.values(),  # /user_data/metrics, one value per day
     }
 )
 

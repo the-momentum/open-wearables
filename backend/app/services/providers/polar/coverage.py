@@ -8,6 +8,7 @@ ACTIVITY_SERIES: dict[str, SeriesType] = {
     "active_calories": SeriesType.active_energy,
     "distance_from_steps": SeriesType.distance_walking_running,
     "active_time_minutes": SeriesType.active_time,
+    "exercise_time_minutes": SeriesType.exercise_time,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(

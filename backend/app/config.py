@@ -20,6 +20,8 @@ from app.utils.config_utils import (
     EncryptedField,
     EnvironmentType,
     FernetDecryptorField,
+    LogFormat,
+    LogLevel,
     parse_duration,
 )
 
@@ -52,6 +54,19 @@ class Settings(BaseSettings):
     log_error_response_body: bool = False
     log_error_response_body_max_bytes: int = 8192  # truncate a logged body
     log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min
+
+    # LOGGING SETTINGS
+    # legacy: JSON from log_structured, plain text from stdlib loggers (the output before
+    # LOG_FORMAT existed). json: every line JSON. text: every line human-readable.
+    log_format: LogFormat = LogFormat.LEGACY
+    # None keeps the per-logger defaults (stdlib INFO, log_structured unfiltered).
+    log_level: LogLevel | None = None
+    # Export logs over OTLP/HTTP as well (needs the `otel` extra). Endpoint, headers and
+    # resource come from the standard OTEL_* variables; OTEL_SDK_DISABLED=true also turns it off.
+    otel_enabled: bool = False
+    # Comma-separated attribute names, added to the built-in list, whose values are
+    # replaced with "REDACTED" in exported logs. Matching ignores case.
+    otel_export_redact_keys: str = ""
 
     # DATABASE SETTINGS
     db_host: str = "db"
@@ -132,6 +147,9 @@ class Settings(BaseSettings):
     default_data_granularity: DataGranularity = DataGranularity.RAW
 
     # SCORE SETTINGS
+    # Compute OW's own (provider="internal") sleep and resilience scores. Device-reported scores
+    # from providers are stored regardless. The fill tasks are idempotent, so re-enabling backfills the gap.
+    ow_scores_enabled: bool = True
     score_backfill_days: int = 30  # How far back the missing-score query looks
     sleep_score_interval_seconds: int = 600  # How often to run the fill-missing-scores task (default: 10 min)
     resilience_score_interval_seconds: int = (
@@ -245,8 +263,13 @@ class Settings(BaseSettings):
     withings_webhook_token: SecretStr | None = None
     withings_default_scope: str = "user.info,user.metrics,user.activity"
 
-    # EMAIL SETTINGS (Resend)
+    # EMAIL SETTINGS (SMTP is used when SMTP_HOST is set, otherwise Resend)
     resend_api_key: SecretStr | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_security: Literal["starttls", "ssl", "none"] = "starttls"
     email_from_address: str | None = None
     email_from_name: str = "Open Wearables"
     frontend_url: str = "http://localhost:3000"
@@ -283,6 +306,11 @@ class Settings(BaseSettings):
     )
 
     xml_chunk_size: int = 50_000
+
+    # DATA LIFECYCLE
+    # Master switch for time-series archival and retention: the admin panel tab, the
+    # /settings/archival endpoints and the daily archival task.
+    data_lifecycle_enabled: bool = True
 
     # RAW PAYLOAD STORAGE
     raw_payload_storage: str = "disabled"  # disabled | log | s3
@@ -385,6 +413,33 @@ class Settings(BaseSettings):
 
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
+
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def _parse_log_format(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip().lower() or LogFormat.LEGACY
+        return v
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _parse_log_level(cls, v: Any) -> Any:
+        if not isinstance(v, str):
+            return v
+        name = v.strip().upper()
+        # Aliases the logging module accepts, common in shared LOG_LEVEL variables.
+        name = {"WARN": "WARNING", "FATAL": "CRITICAL"}.get(name, name)
+        if not name:
+            return None
+        if name not in LogLevel.__members__:
+            # LOG_LEVEL is a common variable name; a value meant for another tool (TRACE,
+            # NOTSET, ...) must not stop the backend from starting.
+            warnings.warn(
+                f"Ignoring LOG_LEVEL={v!r}: expected DEBUG, INFO, WARNING, ERROR or CRITICAL",
+                stacklevel=2,
+            )
+            return None
+        return name
 
     @field_validator("pull_sync_lookback", mode="before")
     @classmethod

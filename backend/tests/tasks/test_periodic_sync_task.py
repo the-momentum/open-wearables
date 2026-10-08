@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.periodic_sync_task import sync_all_users
-from app.schemas.auth import ConnectionStatus
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import ConnectionStatus, LiveSyncMode
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -31,7 +32,7 @@ class TestSyncAllUsersTask:
         user2 = UserFactory()
         user3 = UserFactory()
 
-        UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user1, provider="whoop", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user2, provider="polar", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user3, provider="suunto", status=ConnectionStatus.ACTIVE)
 
@@ -63,7 +64,7 @@ class TestSyncAllUsersTask:
         """Test syncing all users with specific date range."""
         # Arrange
         user = UserFactory()
-        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -97,7 +98,7 @@ class TestSyncAllUsersTask:
         user2 = UserFactory()
 
         # User 1 has active connection
-        UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user1, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         # User 2 has disconnected connection
         UserConnectionFactory(user=user2, provider="polar", status=ConnectionStatus.REVOKED)
@@ -151,7 +152,7 @@ class TestSyncAllUsersTask:
         user = UserFactory()
 
         # User has multiple active connections
-        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user, provider="polar", status=ConnectionStatus.ACTIVE)
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
@@ -182,7 +183,7 @@ class TestSyncAllUsersTask:
         user3 = UserFactory()
 
         # User 1: connected
-        UserConnectionFactory(user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user1, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         # User 2: mixed statuses (has at least one connected)
         UserConnectionFactory(user=user2, provider="polar", status=ConnectionStatus.ACTIVE)
@@ -218,7 +219,7 @@ class TestSyncAllUsersTask:
         """Test that sync tasks are queued asynchronously with delay."""
         # Arrange
         user = UserFactory()
-        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -246,7 +247,7 @@ class TestSyncAllUsersTask:
         for i in range(10):
             user = UserFactory()
             users.append(user)
-            UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+            UserConnectionFactory(user=user, provider="whoop", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -262,3 +263,28 @@ class TestSyncAllUsersTask:
         call_args_list = [call.kwargs["user_id"] for call in mock_sync_vendor_data.delay.call_args_list]
         for user in users:
             assert str(user.id) in call_args_list
+
+    @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
+    def test_sync_all_users_skips_users_without_a_pull_mode_connection(
+        self,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        pull_user = UserFactory()
+        push_only_user = UserFactory()
+        webhook_mode_user = UserFactory()
+        UserConnectionFactory(user=pull_user, provider="whoop", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=push_only_user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=webhook_mode_user, provider="polar", status=ConnectionStatus.ACTIVE)
+        ProviderSettingsRepository().upsert(db, "polar", is_enabled=True, live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+
+        result = sync_all_users()
+
+        assert result["users_for_sync"] == 1
+        mock_sync_vendor_data.delay.assert_called_once_with(user_id=str(pull_user.id), start_date=None, end_date=None)

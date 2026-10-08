@@ -45,6 +45,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import seconds_to_minutes
 from app.utils.dates import offset_to_iso, parse_iso_datetime, to_rfc3339
 from app.utils.structured_logging import LogContext, log_structured
 
@@ -246,6 +247,7 @@ class Oura247Data(Base247DataTemplate):
             "energy": [],
             "distance": [],
             "active_time": [],
+            "exercise_time": [],
             "met": [],
         }
 
@@ -280,20 +282,17 @@ class Oura247Data(Base247DataTemplate):
                         "zone_offset": activity_zone_offset,
                     }
                 )
-            # Active time = high + medium + low activity time (Oura reports them in seconds).
-            active_seconds = [
-                activity.high_activity_time,
-                activity.medium_activity_time,
-                activity.low_activity_time,
-            ]
-            if any(s is not None for s in active_seconds):
-                result["active_time"].append(
-                    {
-                        "recorded_at": recorded_at,
-                        "value": sum(s or 0 for s in active_seconds) // 60,
-                        "zone_offset": activity_zone_offset,
-                    }
-                )
+            minutes_by_series = {
+                "active_time": seconds_to_minutes(
+                    activity.high_activity_time, activity.medium_activity_time, activity.low_activity_time
+                ),
+                "exercise_time": seconds_to_minutes(activity.high_activity_time, activity.medium_activity_time),
+            }
+            for key, minutes in minutes_by_series.items():
+                if minutes is not None:
+                    result[key].append(
+                        {"recorded_at": recorded_at, "value": minutes, "zone_offset": activity_zone_offset}
+                    )
             result["met"].extend(self._expand_met_series(activity.met, activity.class_5_min))
 
         return result, activity_scores

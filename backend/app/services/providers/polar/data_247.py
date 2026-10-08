@@ -325,7 +325,7 @@ class Polar247Data(Base247DataTemplate):
                 "from": chunk_start.date().isoformat(),
                 "to": chunk_end.date().isoformat(),
                 "steps": "true",
-                "activity_zones": "false",
+                "activity_zones": "true",
                 "inactivity_stamps": "false",
             }
             response = self._make_api_request(db, user_id, "/v3/users/activities", params=params)
@@ -895,7 +895,8 @@ class Polar247Data(Base247DataTemplate):
         path: str,
     ) -> dict[str, int]:
         """Fetch a single entity from the webhook URL path and save it. Used by webhook handler."""
-        raw = self._make_api_request(db, user_id, path)
+        params = {"activity_zones": "true"} if event_type == PolarWebhookEventType.ACTIVITY_SUMMARY else None
+        raw = self._make_api_request(db, user_id, path, params=params)
         if not raw:
             return {}
 

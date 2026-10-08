@@ -199,6 +199,10 @@ services:
       - ./frontend/.env.example
       - path: ./frontend/.env
         required: false
+    environment:
+      # The server's own hop to the API stays inside the network; VITE_API_URL
+      # from the env file is the address a browser or phone dials.
+      - API_URL=http://app:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -209,12 +213,12 @@ services:
           path: ./frontend/src
           target: /app/src
         - action: sync
-          path: ./frontend/public
-          target: /app/public
+          path: ./frontend/static
+          target: /app/static
         - action: rebuild
           path: ./frontend/package.json
         - action: rebuild
-          path: ./frontend/pnpm-lock.yaml
+          path: ./frontend/bun.lock
         - action: rebuild
           path: ./frontend/vite.config.ts
     restart: on-failure

@@ -308,6 +308,34 @@ class TestGarmin247Data:
         assert normalized["steps"] is None
         assert normalized["active_calories"] is None
         assert normalized["resting_heart_rate"] is None
+        assert normalized["exercise_time"] is None
+
+    def test_normalize_dailies_exercise_time(self, garmin_247: Garmin247Data) -> None:
+        """Moderate and vigorous seconds are summed into whole exercise minutes."""
+        daily_data = {
+            "summaryId": "daily_123",
+            "calendarDate": "2024-01-15",
+            "startTimeInSeconds": 1705276800,
+            "moderateIntensityDurationInSeconds": 750,
+            "vigorousIntensityDurationInSeconds": 1710,
+        }
+
+        normalized, _ = garmin_247.normalize_dailies(daily_data, uuid4())
+
+        assert normalized["exercise_time"] == 41
+
+    def test_normalize_dailies_exercise_time_from_one_field(self, garmin_247: Garmin247Data) -> None:
+        """One intensity field alone still gives exercise minutes."""
+        daily_data = {
+            "summaryId": "daily_123",
+            "calendarDate": "2024-01-15",
+            "startTimeInSeconds": 1705276800,
+            "vigorousIntensityDurationInSeconds": 1680,
+        }
+
+        normalized, _ = garmin_247.normalize_dailies(daily_data, uuid4())
+
+        assert normalized["exercise_time"] == 28
 
     # -------------------------------------------------------------------------
     # Epochs Data Tests
@@ -523,6 +551,24 @@ class TestGarmin247Data:
         # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
         assert len(samples) == 8
         assert len({s.series_type for s in samples}) > 1
+
+    def test_build_dailies_samples_exercise_time(self, garmin_247: Garmin247Data) -> None:
+        """Dailies emit exercise_time as a daily-total sample."""
+        user_id = uuid4()
+        daily_data = {
+            "summaryId": "daily_123",
+            "calendarDate": "2024-01-15",
+            "startTimeInSeconds": 1705276800,
+            "moderateIntensityDurationInSeconds": 720,
+            "vigorousIntensityDurationInSeconds": 1680,
+        }
+        normalized, _ = garmin_247.normalize_dailies(daily_data, user_id)
+
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        exercise = [s for s in samples if s.series_type == SeriesType.exercise_time]
+        assert [s.value for s in exercise] == [Decimal("40")]
+        assert exercise[0].is_daily_total is True
 
     def test_build_dailies_samples_empty_on_missing_date(self, garmin_247: Garmin247Data) -> None:
         """Test _build_dailies_samples returns empty for missing date/timestamp."""
@@ -832,6 +878,38 @@ class TestGarmin247Data:
         assert count == 2
         all_records = mock_bulk_create.call_args[0][1]
         assert len(all_records) == 2
+
+    def test_skin_temp_deviation_becomes_a_sample(self, garmin_247: Garmin247Data) -> None:
+        # The skinTemp payload carries a deviation from baseline, never an absolute reading.
+        raw = {
+            "summaryId": "x60a3665-6abad64b",
+            "calendarDate": "2026-09-29",
+            "avgDeviationCelsius": -0.1,
+            "durationInSeconds": 31200,
+            "startTimeInSeconds": 1790629451,
+            "startTimeOffsetInSeconds": 7200,
+        }
+
+        samples = garmin_247._build_skin_temp_samples(uuid4(), raw)
+
+        assert [sample.series_type for sample in samples] == [SeriesType.skin_temperature_deviation]
+        assert float(samples[0].value) == -0.1
+        assert samples[0].external_id == "x60a3665-6abad64b"
+
+    def test_a_night_measured_before_midnight_keeps_garmins_own_day(self, garmin_247: Garmin247Data) -> None:
+        # Measurement starts at 23:02 local on the 23rd; Garmin calls that night the 24th.
+        raw = {
+            "summaryId": "x60a3665-late",
+            "calendarDate": "2026-09-24",
+            "avgDeviationCelsius": 0.3,
+            "durationInSeconds": 25200,
+            "startTimeInSeconds": 1790197320,
+            "startTimeOffsetInSeconds": 7200,
+        }
+
+        samples = garmin_247._build_skin_temp_samples(uuid4(), raw)
+
+        assert samples[0].recorded_at.date().isoformat() == "2026-09-24"
 
     def test_process_items_batch_empty(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test batch processing empty items returns 0."""
