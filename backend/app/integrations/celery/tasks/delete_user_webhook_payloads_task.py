@@ -18,6 +18,7 @@ from app.database import SessionLocal
 from app.services import developer_service
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
@@ -79,5 +80,5 @@ def delete_user_webhook_payloads(self: Any, user_id: str) -> dict[str, Any]:
             exc=RuntimeError(f"Webhook payload deletion failed for user {user_id} in app(s) {errors}"),
         )
 
-    logger.info("Deleted %d webhook payload(s) of deleted user %s", deleted, user_id)
+    log_structured(logger, "info", "Deleted webhook payloads of deleted user", user_id=user_id, deleted=deleted)
     return {"user_id": user_id, "deleted": deleted, "errors": errors}
