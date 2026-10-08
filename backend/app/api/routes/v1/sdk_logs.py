@@ -3,7 +3,7 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
 from app.schemas.providers.mobile_sdk import SDKLogEventType, SDKLogRequest
@@ -18,6 +18,7 @@ from app.schemas.sync_status import (
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.sync_status_service import emit_sync_started, try_record_data_types
 from app.utils.auth import SDKAuthDep
+from app.utils.sdk_request_metadata import sdk_request_metadata
 from app.utils.structured_logging import log_structured
 
 router = APIRouter()
@@ -115,6 +116,7 @@ def submit_sdk_logs(
     user_id: UUID,
     body: SDKLogRequest,
     auth: SDKAuthDep,
+    request: Request,
 ) -> UploadDataResponse:
     """Accept SDK diagnostic log events and store to raw S3 storage.
 
@@ -141,7 +143,8 @@ def submit_sdk_logs(
         provider=provider,
         event_count=len(body.events),
         event_types=event_types,
-        sdk_version=body.sdkVersion,
+        # Older SDK versions send the version only in the body.
+        **{"sdk_version": body.sdkVersion} | sdk_request_metadata(request.headers),
         **_event_fields(body),
     )
 
