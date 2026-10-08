@@ -9,7 +9,7 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -482,3 +482,52 @@ class TestEnsureSdkConnection:
 
         assert emit.call_count == 1
         assert emit.call_args.kwargs["connected_at"] == first.created_at.isoformat()
+
+
+class TestUserConnectionServiceDeregisterFromProvider:
+    """Deregistration must use a valid token, refreshing a stale one first."""
+
+    def test_refreshes_expired_token_before_deregistering(self, db: Session) -> None:
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            access_token="stale",
+            token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+        oauth = MagicMock()
+        oauth.refresh_access_token.return_value.access_token = "fresh"
+
+        user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
+
+        oauth.refresh_access_token.assert_called_once_with(db, user.id, connection.refresh_token)
+        oauth.deregister_user.assert_called_once_with("fresh", provider_user_id=connection.provider_user_id)
+
+    def test_uses_stored_token_when_still_valid(self, db: Session) -> None:
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            access_token="valid",
+            token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        oauth = MagicMock()
+
+        user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
+
+        oauth.refresh_access_token.assert_not_called()
+        oauth.deregister_user.assert_called_once_with("valid", provider_user_id=connection.provider_user_id)
+
+    def test_refresh_failure_skips_deregistration_without_raising(self, db: Session) -> None:
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            token_expires_at=datetime.now(timezone.utc) - timedelta(days=30),
+        )
+        oauth = MagicMock()
+        oauth.refresh_access_token.side_effect = RuntimeError("refresh rejected")
+
+        user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
+
+        oauth.deregister_user.assert_not_called()

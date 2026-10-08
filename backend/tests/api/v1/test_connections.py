@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
+import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -332,7 +333,7 @@ class TestDisconnectEndpoint:
             status=ConnectionStatus.ACTIVE,
             access_token="secret_access",
             refresh_token="secret_refresh",
-            token_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            token_expires_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
         )
         api_key = ApiKeyFactory()
         headers = api_key_headers(api_key.plain_key)
@@ -863,3 +864,60 @@ class TestDisconnectDeregistration:
         # Assert
         assert response.status_code == 204
         mock_httpx_delete.assert_not_called()
+
+    @patch("httpx.post")
+    @patch("httpx.delete")
+    def test_disconnect_refreshes_expired_token_before_deregistration(
+        self, mock_httpx_delete: MagicMock, mock_httpx_post: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """An expired access token is refreshed so Garmin accepts the deregistration call."""
+        mock_httpx_post.return_value.json.return_value = {
+            "access_token": "fresh_token",
+            "refresh_token": "fresh_refresh",
+            "token_type": "Bearer",
+            "expires_in": 86400,
+        }
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            access_token="stale_token",
+            token_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
+
+        assert response.status_code == 204
+        assert mock_httpx_delete.call_args.kwargs["headers"] == {"Authorization": "Bearer fresh_token"}
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="garmin").one()
+        assert conn.status == ConnectionStatus.REVOKED
+        assert conn.access_token is None
+
+    @patch("httpx.post")
+    @patch("httpx.delete")
+    def test_disconnect_clears_tokens_when_refresh_is_rejected(
+        self, mock_httpx_delete: MagicMock, mock_httpx_post: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """A rejected refresh revokes the connection; disconnect must still clear its tokens."""
+        mock_httpx_post.return_value.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "401", request=MagicMock(), response=MagicMock(status_code=401, text="invalid_grant")
+        )
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            token_expires_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
+
+        assert response.status_code == 204
+        mock_httpx_delete.assert_not_called()
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="garmin").one()
+        assert conn.status == ConnectionStatus.REVOKED
+        assert conn.access_token is None
+        assert conn.refresh_token is None

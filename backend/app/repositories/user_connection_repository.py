@@ -268,7 +268,12 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         )
 
     def disconnect(self, db_session: DbSession, user_id: UUID, provider: str) -> int:
-        """Disconnect a provider in a single UPDATE query. Returns number of rows updated."""
+        """Revoke a provider connection and clear its tokens.
+
+        Returns the number of connections that went from non-revoked to revoked. Tokens are
+        cleared even on an already revoked connection, e.g. one revoked by a failed token
+        refresh during provider deregistration.
+        """
         result = cast(
             CursorResult[tuple[()]],
             db_session.execute(
@@ -288,6 +293,17 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                     updated_at=datetime.now(timezone.utc),
                 ),
             ),
+        )
+        db_session.execute(
+            update(UserConnection)
+            .where(
+                and_(
+                    UserConnection.user_id == user_id,
+                    UserConnection.provider == provider,
+                    UserConnection.access_token.is_not(None),
+                ),
+            )
+            .values(access_token=None, refresh_token=None, token_expires_at=None),
         )
         db_session.commit()
         return result.rowcount
