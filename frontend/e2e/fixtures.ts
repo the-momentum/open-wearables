@@ -1,5 +1,8 @@
 export const CREDENTIALS = { email: 'dev@example.com', password: 'correct-horse' };
 
+/** The backend's public seed password; signing in with it asks for a new one. */
+export const DEFAULT_PASSWORD = 'your-secure-password';
+
 export const DEVELOPER = {
 	id: '00000000-0000-4000-8000-000000000001',
 	email: CREDENTIALS.email,
