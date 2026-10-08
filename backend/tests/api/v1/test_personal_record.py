@@ -122,11 +122,12 @@ class TestPutPersonalRecord:
     def test_future_birth_date_returns_400(
         self, client: TestClient, user: User, api_key_header: dict[str, str], api_v1_prefix: str
     ) -> None:
-        tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+        # Two days ahead, so the test cannot fail when it runs across midnight UTC.
+        future = datetime.now(timezone.utc).date() + timedelta(days=2)
 
         response = client.put(
             record_url(api_v1_prefix, user.id),
-            json={"birth_date": tomorrow.isoformat()},
+            json={"birth_date": future.isoformat()},
             headers=api_key_header,
         )
 

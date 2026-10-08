@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 from pydantic_core import PydanticCustomError
 
-type Sex = Literal["female", "male"]
+Sex = Literal["female", "male"]
 
 _SEX_DESCRIPTION = "Biological sex, for norms that differ between women and men"
 

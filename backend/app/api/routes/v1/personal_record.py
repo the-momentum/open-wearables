@@ -11,12 +11,6 @@ from app.services.personal_record_service import personal_record_service
 router = APIRouter()
 
 _RESPONSES: dict[int | str, dict[str, Any]] = {
-    401: {
-        "description": "Authentication required",
-        "content": {
-            "application/json": {"example": {"detail": "Authentication required: provide JWT token or API key"}}
-        },
-    },
     404: {
         "description": "User not found",
         "content": {
@@ -32,19 +26,7 @@ def get_personal_record(user_id: UUID, db: DbSession, _api_key: ApiKeyDep):
     return personal_record_service.get_for_user(db, user_id)
 
 
-@router.put(
-    "/users/{user_id}/personal-record",
-    response_model=PersonalRecordResponse,
-    responses={
-        **_RESPONSES,
-        400: {
-            "description": "Validation error",
-            "content": {
-                "application/json": {"example": {"detail": "Input should be 'female', 'male', 'nonbinary' or 'other'"}}
-            },
-        },
-    },
-)
+@router.put("/users/{user_id}/personal-record", response_model=PersonalRecordResponse, responses=_RESPONSES)
 def put_personal_record(user_id: UUID, payload: PersonalRecordUpdate, db: DbSession, _api_key: ApiKeyDep):
     """Sets the user's birth date, gender and sex.
 

@@ -678,16 +678,6 @@
               }
             }
           },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Authentication required: provide JWT token or API key"
-                }
-              }
-            }
-          },
           "404": {
             "description": "User not found",
             "content": {
@@ -771,32 +761,12 @@
               }
             }
           },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Authentication required: provide JWT token or API key"
-                }
-              }
-            }
-          },
           "404": {
             "description": "User not found",
             "content": {
               "application/json": {
                 "example": {
                   "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Input should be 'female', 'male', 'nonbinary' or 'other'"
                 }
               }
             }
@@ -14896,12 +14866,17 @@
           "sex": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Sex"
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Sex",
             "description": "Biological sex, for norms that differ between women and men"
           }
         },
@@ -14947,12 +14922,17 @@
           "sex": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Sex"
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
               },
               {
                 "type": "null"
               }
             ],
+            "title": "Sex",
             "description": "Biological sex, for norms that differ between women and men"
           }
         },
@@ -16075,13 +16055,6 @@
         ],
         "title": "SeriesType",
         "description": "All supported time-series metric types."
-      },
-      "Sex": {
-        "type": "string",
-        "enum": [
-          "female",
-          "male"
-        ]
       },
       "SignedPart": {
         "properties": {

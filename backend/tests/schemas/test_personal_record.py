@@ -18,9 +18,10 @@ class TestPersonalRecordUpdate:
         assert PersonalRecordUpdate(birth_date=today).birth_date == today
 
     def test_rejects_future_birth_date(self) -> None:
-        tomorrow = datetime.now(timezone.utc).date() + timedelta(days=1)
+        # Two days ahead, so the test cannot fail when it runs across midnight UTC.
+        future = datetime.now(timezone.utc).date() + timedelta(days=2)
         with pytest.raises(ValidationError, match="birth_date cannot be in the future"):
-            PersonalRecordUpdate(birth_date=tomorrow)
+            PersonalRecordUpdate(birth_date=future)
 
     def test_rejects_unknown_gender(self) -> None:
         with pytest.raises(ValidationError):
@@ -38,7 +39,7 @@ class TestPersonalRecordUpdate:
 
 
 class TestPersonalRecordResponse:
-    def test_has_no_record_id(self) -> None:
+    def test_fields(self) -> None:
         response = PersonalRecordResponse(user_id=uuid4())
         assert set(response.model_dump()) == {"user_id", "birth_date", "gender", "sex"}
 

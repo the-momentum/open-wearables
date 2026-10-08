@@ -22,6 +22,7 @@ class TestGetForUser:
         assert record.user_id == user.id
         assert record.birth_date is None
         assert record.gender is None
+        assert record.sex is None
         assert db.query(PersonalRecord).filter(PersonalRecord.user_id == user.id).count() == 0
 
     def test_returns_existing_record(self, db: Session) -> None:
