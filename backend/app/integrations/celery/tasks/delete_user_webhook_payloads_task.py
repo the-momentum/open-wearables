@@ -17,8 +17,23 @@ from svix.api.errors.http_error import HttpError
 from app.database import SessionLocal
 from app.services import developer_service
 from app.services.outgoing_webhooks import svix as svix_service
+from app.utils.sentry_helpers import log_and_capture_error
 
 logger = getLogger(__name__)
+
+
+def _load_developer_ids() -> list[str]:
+    """Return every developer ID; each one is also that developer's Svix application UID."""
+    with SessionLocal() as db:
+        page_size = 100
+        offset = 0
+        developer_ids: list[str] = []
+        while True:
+            batch = developer_service.crud.get_all(db, filters={}, offset=offset, limit=page_size, sort_by=None)
+            developer_ids.extend(str(dev.id) for dev in batch)
+            if len(batch) < page_size:
+                return developer_ids
+            offset += page_size
 
 
 @shared_task(
@@ -37,30 +52,26 @@ def delete_user_webhook_payloads(self: Any, user_id: str) -> dict[str, Any]:
     if not svix_service.is_enabled():
         return {"user_id": user_id, "deleted": 0, "errors": []}
 
-    with SessionLocal() as db:
-        page_size = 100
-        offset = 0
-        developer_ids: list[str] = []
-        while True:
-            batch = developer_service.crud.get_all(db, filters={}, offset=offset, limit=page_size, sort_by=None)
-            developer_ids.extend(str(dev.id) for dev in batch)
-            if len(batch) < page_size:
-                break
-            offset += page_size
+    try:
+        developer_ids = _load_developer_ids()
+    except Exception as exc:
+        raise self.retry(exc=exc)
 
     deleted = 0
     errors: list[str] = []
     for app_id in developer_ids:
         try:
             deleted += svix_service.delete_user_message_payloads(app_id, UUID(user_id))
-        except HttpError as exc:
-            if exc.status_code == 404:
+        except Exception as exc:
+            if isinstance(exc, HttpError) and exc.status_code == 404:
                 # Application never created in Svix (it is created lazily on first emit).
                 continue
-            logger.exception("Failed to delete webhook payloads of user %s in app %s", user_id, app_id)
-            errors.append(app_id)
-        except Exception:
-            logger.exception("Failed to delete webhook payloads of user %s in app %s", user_id, app_id)
+            log_and_capture_error(
+                exc,
+                logger,
+                "Failed to delete webhook payloads of deleted user",
+                extra={"user_id": user_id, "app_id": app_id, "error": str(exc)},
+            )
             errors.append(app_id)
 
     if errors:

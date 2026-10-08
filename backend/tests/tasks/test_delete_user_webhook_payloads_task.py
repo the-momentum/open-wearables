@@ -90,6 +90,14 @@ class TestDeleteUserMessagePayloads:
         with pytest.raises(HttpError):
             svix_service.delete_user_message_payloads("app_1", uuid4())
 
+    def test_repeated_iterator_raises(self, mock_client: MagicMock) -> None:
+        mock_client.message.list.return_value = _page(["msg_1"], done=False, iterator="it_1")
+
+        with pytest.raises(RuntimeError):
+            svix_service.delete_user_message_payloads("app_1", uuid4())
+        assert mock_client.message.list.call_count == 2
+        mock_client.message.bulk_expunge_content.assert_not_called()
+
 
 class TestDeleteUserWebhookPayloadsTask:
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
@@ -118,10 +126,14 @@ class TestDeleteUserWebhookPayloadsTask:
 
         assert result == {"user_id": result["user_id"], "deleted": 2, "errors": []}
 
+    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.log_and_capture_error")
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
-    def test_retries_when_an_app_fails(self, mock_dev_service: MagicMock, mock_svix: MagicMock) -> None:
-        mock_dev_service.crud.get_all.return_value = [MagicMock(id=uuid4())]
+    def test_retries_when_an_app_fails(
+        self, mock_dev_service: MagicMock, mock_svix: MagicMock, mock_capture: MagicMock
+    ) -> None:
+        app_id = uuid4()
+        mock_dev_service.crud.get_all.return_value = [MagicMock(id=app_id)]
         mock_svix.delete_user_message_payloads.side_effect = _http_error(500)
 
         with (
@@ -130,6 +142,21 @@ class TestDeleteUserWebhookPayloadsTask:
         ):
             delete_user_webhook_payloads(str(uuid4()))
         mock_retry.assert_called_once()
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.kwargs["extra"]["app_id"] == str(app_id)
+
+    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
+    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
+    def test_retries_when_loading_developers_fails(self, mock_dev_service: MagicMock, mock_svix: MagicMock) -> None:
+        mock_dev_service.crud.get_all.side_effect = ConnectionError("db down")
+
+        with (
+            patch.object(delete_user_webhook_payloads, "retry", side_effect=Retry()) as mock_retry,
+            pytest.raises(Retry),
+        ):
+            delete_user_webhook_payloads(str(uuid4()))
+        mock_retry.assert_called_once()
+        mock_svix.delete_user_message_payloads.assert_not_called()
 
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
     def test_noop_when_svix_disabled(self, mock_svix: MagicMock) -> None:
@@ -142,7 +169,7 @@ class TestDeleteUserWebhookPayloadsTask:
 
 
 class TestUserDeleteSchedulesPayloadDeletion:
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.delete_user_webhook_payloads")
+    @patch("app.services.user_service.delete_user_webhook_payloads")
     def test_schedules_payload_deletion_after_user_delete(self, mock_task: MagicMock, db: Session) -> None:
         user = UserFactory()
         user_id = user.id
@@ -154,7 +181,7 @@ class TestUserDeleteSchedulesPayloadDeletion:
         mock_task.apply_async.assert_called_once()
         assert mock_task.apply_async.call_args.kwargs["args"] == [str(user_id)]
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.delete_user_webhook_payloads")
+    @patch("app.services.user_service.delete_user_webhook_payloads")
     def test_delete_succeeds_when_scheduling_fails(self, mock_task: MagicMock, db: Session) -> None:
         mock_task.apply_async.side_effect = ConnectionError("broker down")
         user = UserFactory()
@@ -165,7 +192,7 @@ class TestUserDeleteSchedulesPayloadDeletion:
 
         assert user_service.get(db, user_id) is None
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.delete_user_webhook_payloads")
+    @patch("app.services.user_service.delete_user_webhook_payloads")
     def test_skips_when_svix_disabled(self, mock_task: MagicMock, db: Session) -> None:
         user = UserFactory()
 

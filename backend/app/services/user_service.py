@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from app.database import DbSession
+from app.integrations.celery.tasks.delete_user_webhook_payloads_task import delete_user_webhook_payloads
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.user_management import (
@@ -127,8 +128,6 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         if not svix_service.is_enabled():
             return
         try:
-            from app.integrations.celery.tasks.delete_user_webhook_payloads_task import delete_user_webhook_payloads
-
             delete_user_webhook_payloads.apply_async(
                 args=[str(user_id)],
                 countdown=_WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS,

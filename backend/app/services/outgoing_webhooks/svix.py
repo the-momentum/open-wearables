@@ -381,6 +381,8 @@ def delete_user_message_payloads(app_id: str, user_id: UUID) -> int:
         msg_ids.extend(msg.id for msg in page.data)
         if page.done or not page.iterator:
             break
+        if page.iterator == iterator:
+            raise RuntimeError(f"Svix returned the same message list iterator twice for app {app_id}")
         iterator = page.iterator
 
     deleted = 0
