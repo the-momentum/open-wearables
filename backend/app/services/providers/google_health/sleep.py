@@ -24,6 +24,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
+    extract_form_factor,
     extract_source,
     parse_interval,
     parse_page,
@@ -117,6 +118,7 @@ class GoogleHealthApiSleep:
     ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
         record_id = uuid4()
         source_name, device_model = extract_source(point.get("dataSource"))
+        device_type = extract_form_factor(point.get("dataSource"))
         zone_offset = zone_offset_from(interval.get("startUtcOffset"))
         metadata = sleep.get("metadata") or {}
 
@@ -127,6 +129,7 @@ class GoogleHealthApiSleep:
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,
             device_model=device_model,
+            device_type=device_type,
             external_id=point.get("name") or metadata.get("externalId"),
             start_datetime=start,
             end_datetime=end,

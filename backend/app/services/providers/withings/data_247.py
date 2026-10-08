@@ -36,8 +36,15 @@ from app.schemas.providers.withings.imports import WithingsSleepSeriesEntry
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.coverage import ACTIVITY_FIELD_MAP, MEASURE_TYPE_MAP, MEASURE_UNIT_FACTOR
+from app.services.providers.withings.coverage import (
+    ACTIVITY_FIELD_MAP,
+    INTRADAY_ACTIVITY_FIELD_MAP,
+    MEASURE_TYPE_MAP,
+    MEASURE_UNIT_FACTOR,
+    SLEEP_HRV_FIELD_MAP,
+)
 from app.services.providers.withings.handlers.rpc_client import (
+    WithingsAPIError,
     paginate,
     paginate_mapping,
     scale_measure,
@@ -57,6 +64,19 @@ class _Night(NamedTuple):
 
     start: int
     end: int
+
+
+class _HrvReading(NamedTuple):
+    at: datetime
+    series_type: SeriesType
+    value: float
+
+
+class _SleepSeries(NamedTuple):
+    """What one walk of ``/v2/sleep`` action ``get`` yields for a window of nights."""
+
+    stages: list[SleepStage]
+    hrv: list[_HrvReading]
 
 
 # Trailing window used when a caller supplies no bounds.
@@ -419,7 +439,7 @@ class Withings247Data(Base247DataTemplate):
                 if zone_name
                 else None
             )
-            for field, series_type in ACTIVITY_FIELD_MAP.items():
+            for field, series_type in INTRADAY_ACTIVITY_FIELD_MAP.items():
                 value = getattr(activity_slice, field)
                 if value is None:
                     continue
@@ -528,13 +548,13 @@ class Withings247Data(Base247DataTemplate):
             for row in rows
             if isinstance(row, dict) and (start := self._epoch_or_none(row.get("startdate"))) is not None
         ]
-        window_stages = self._fetch_sleep_stages(db, user_id, nights) if nights else []
+        window = self._fetch_sleep_series(db, user_id, nights) if nights else _SleepSeries([], [])
         processed = 0
         samples: list[TimeSeriesSampleCreate] = []
         for row in rows:
             # Tolerate a malformed night without dropping the rest of the batch.
             try:
-                night_samples = self._save_sleep_row(db, user_id, row, user_connection_id, window_stages)
+                night_samples = self._save_sleep_row(db, user_id, row, user_connection_id, window)
                 if night_samples is not None:
                     processed += 1
                     samples.extend(night_samples)
@@ -552,26 +572,32 @@ class Withings247Data(Base247DataTemplate):
             db.commit()
         return processed
 
-    def _fetch_sleep_stages(
+    def _fetch_sleep_series(
         self,
         db: DbSession,
         user_id: UUID,
         nights: list[_Night],
-    ) -> list[SleepStage]:
-        """Fetch the hypnogram covering the given nights. Empty when it is unavailable.
+    ) -> _SleepSeries:
+        """Fetch the hypnogram and HRV covering the given nights. Empty when unavailable.
 
         The endpoint truncates long ranges without setting `more`, so the nights are walked
         with a cursor. A page that adds nothing means an empty stretch, not the end of the
         data, so the cursor moves on to the next night.
         """
         stages: list[SleepStage] = []
+        hrv: list[_HrvReading] = []
         seen: set[tuple[int, int]] = set()
         starts = sorted(datetime.fromtimestamp(night.start, tz=timezone.utc) for night in nights)
         end_dt = datetime.fromtimestamp(max(night.end for night in nights), tz=timezone.utc)
         cursor = starts[0]
+        data_fields = ",".join(SLEEP_SERIES.data_fields)
         # A page reaches at least a day and a night is shorter, so a night costs at most
-        # two: one for its stages, one for the empty stretch that follows it.
-        for _ in range(2 * len(nights)):
+        # two: one for its stages, one for the empty stretch that follows it. Plus one
+        # retry without the HRV fields.
+        for _ in range(2 * len(nights) + 1):
+            params = {"startdate": int(cursor.timestamp()), "enddate": int(end_dt.timestamp())}
+            if data_fields:
+                params["data_fields"] = data_fields
             try:
                 body = withings_request(
                     db=db,
@@ -580,9 +606,22 @@ class Withings247Data(Base247DataTemplate):
                     oauth=self.oauth,
                     service_path=SLEEP_SERIES.service_path,
                     action=SLEEP_SERIES.action,
-                    params={"startdate": int(cursor.timestamp()), "enddate": int(end_dt.timestamp())},
+                    params=params,
                 )
             except Exception as e:
+                # HRV is paid-pack and a free plan may refuse the fields; the stages must survive
+                # that. A throttle or lost grant would fail without them too, so only 502 retries.
+                if data_fields and isinstance(e, WithingsAPIError) and e.status_code == 502:
+                    log_structured(
+                        logger,
+                        "warning",
+                        "Withings sleep series failed with the HRV fields; retrying without them",
+                        provider="withings",
+                        user_id=str(user_id),
+                        error=str(e),
+                    )
+                    data_fields = ""
+                    continue
                 log_and_capture_error(
                     e,
                     logger,
@@ -604,11 +643,20 @@ class Withings247Data(Base247DataTemplate):
                     continue
                 interval_end = datetime.fromtimestamp(entry.enddate, tz=timezone.utc)
                 newest = max(newest, interval_end)
-                stage = SLEEP_STATE_STAGE_MAP.get(entry.state)
                 # A page starts on the previous one's last interval, so it repeats it.
-                if stage is None or (entry.startdate, entry.enddate) in seen:
+                if (entry.startdate, entry.enddate) in seen:
                     continue
                 seen.add((entry.startdate, entry.enddate))
+                for field, series_type in SLEEP_HRV_FIELD_MAP.items():
+                    # 0 ms is a missed reading.
+                    hrv.extend(
+                        _HrvReading(datetime.fromtimestamp(epoch, tz=timezone.utc), series_type, value)
+                        for epoch, value in (getattr(entry, field) or {}).items()
+                        if value is not None and value > 0
+                    )
+                stage = SLEEP_STATE_STAGE_MAP.get(entry.state)
+                if stage is None:
+                    continue
                 stages.append(
                     SleepStage(
                         stage=stage,
@@ -630,14 +678,14 @@ class Withings247Data(Base247DataTemplate):
             log_structured(
                 logger,
                 "warning",
-                "Withings sleep series walk ran out of requests; later nights keep no stages",
+                "Withings sleep series walk ran out of requests; later nights keep no stages or HRV",
                 provider="withings",
                 user_id=str(user_id),
                 nights=len(nights),
                 stopped_at=cursor.isoformat(),
             )
 
-        return self._merge_adjacent(sorted(stages, key=lambda s: s.start_time))
+        return _SleepSeries(self._merge_adjacent(sorted(stages, key=lambda s: s.start_time)), hrv)
 
     @staticmethod
     def _merge_adjacent(stages: list[SleepStage]) -> list[SleepStage]:
@@ -685,7 +733,7 @@ class Withings247Data(Base247DataTemplate):
         user_id: UUID,
         row: dict,
         user_connection_id: UUID | None,
-        window_stages: list[SleepStage],
+        window: _SleepSeries,
     ) -> list[TimeSeriesSampleCreate] | None:
         """Save one night and return its samples, or None when the night was not saved."""
         summary = WithingsSleepSummary.model_validate(row)
@@ -725,7 +773,7 @@ class Withings247Data(Base247DataTemplate):
         efficiency = data.sleep_efficiency
 
         record_id = uuid4()
-        sleep_stages = self._stages_within(window_stages, start_dt, end_dt)
+        sleep_stages = self._stages_within(window.stages, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,
             category="sleep",
@@ -766,9 +814,21 @@ class Withings247Data(Base247DataTemplate):
             )
             return None
 
+        # One offset fits the whole night unless it crosses a DST change.
+        start_offset = zone_offset_at(
+            summary.timezone,
+            start_dt,
+            logger,
+            action="sleep_timezone_invalid",
+            user_id=str(user_id),
+            sleep_id=summary.id,
+        )
+        readings: list[tuple[datetime, SeriesType, float]] = [
+            reading for reading in window.hrv if start_dt <= reading.at < end_dt
+        ]
         # Withings publishes no resting heart rate; the night's lowest is what Oura and Suunto map too.
-        if data.hr_min is None:
-            return []
+        if data.hr_min is not None:
+            readings.append((start_dt, SeriesType.resting_heart_rate, data.hr_min))
         return [
             TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -776,20 +836,21 @@ class Withings247Data(Base247DataTemplate):
                 provider=self.provider_name,
                 source=self.provider_name,
                 user_connection_id=user_connection_id,
-                recorded_at=start_dt,
-                # The record keys on the night's end; a sample stamped at its start can sit
-                # on the other side of a DST change.
-                zone_offset=zone_offset_at(
+                recorded_at=recorded_at,
+                zone_offset=zone_offset
+                if start_offset == zone_offset
+                else zone_offset_at(
                     summary.timezone,
-                    start_dt,
+                    recorded_at,
                     logger,
                     action="sleep_timezone_invalid",
                     user_id=str(user_id),
                     sleep_id=summary.id,
                 ),
-                value=data.hr_min,
-                series_type=SeriesType.resting_heart_rate,
+                value=value,
+                series_type=series_type,
             )
+            for recorded_at, series_type, value in readings
         ]
 
     # ---------------------- Combined load ----------------------

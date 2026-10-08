@@ -5,7 +5,7 @@ implementation files and assert that:
 
 - every emitted ``series_type=SeriesType.<x>`` is declared in ``TIMESERIES``
 - every EventRecordDetail data field it sets is declared in
-  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS`` or ``MENSTRUAL_CYCLE_FIELDS``
+  ``WORKOUT_FIELDS``, ``SLEEP_FIELDS``, ``MENSTRUAL_CYCLE_FIELDS`` or ``MEAL_FIELDS``
 - declared field/score names are valid
 
 A drift (new metric in the code, stale coverage) fails the test.
@@ -35,7 +35,7 @@ from app.services.providers.factory import ProviderFactory
 PROVIDERS_DIR = Path("app/services/providers")
 
 # Implementation files that may emit timeseries / set detail fields.
-IMPL_FILES = ("data_247.py", "workouts.py", "webhook_handler.py", "webhook_service.py")
+IMPL_FILES = ("data_247.py", "workouts.py", "nutrition.py", "webhook_handler.py", "webhook_service.py")
 
 # SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the
@@ -111,6 +111,10 @@ def _menstrual_cycle_fields(cov: ModuleType) -> frozenset:
     return getattr(cov, "MENSTRUAL_CYCLE_FIELDS", frozenset())
 
 
+def _meal_fields(cov: ModuleType) -> frozenset:
+    return getattr(cov, "MEAL_FIELDS", frozenset())
+
+
 def _health_scores(cov: ModuleType) -> frozenset:
     return getattr(cov, "HEALTH_SCORES", frozenset())
 
@@ -132,7 +136,7 @@ def test_emitted_timeseries_are_declared(provider: str) -> None:
 def test_set_detail_fields_are_declared(provider: str) -> None:
     cov = _load_coverage(provider)
     source = _impl_source(provider)
-    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)
+    declared = _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
 
     used = {field for field in TRACKED_DETAIL_FIELDS if re.search(rf"\b{field}=", source) or f'"{field}"' in source}
     undeclared = used - declared - SDK_UNREACHABLE_DETAIL_FIELDS.get(provider, set())
@@ -173,6 +177,7 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
     assert exposed.menstrual_cycle_fields == _menstrual_cycle_fields(cov), (
         f"{provider}: strategy drops/alters MENSTRUAL_CYCLE_FIELDS"
     )
+    assert exposed.meal_fields == _meal_fields(cov), f"{provider}: strategy drops/alters MEAL_FIELDS"
     assert exposed.health_scores == _health_scores(cov), f"{provider}: strategy drops/alters HEALTH_SCORES"
 
 
@@ -180,7 +185,9 @@ def test_strategy_exposes_full_coverage(provider: str) -> None:
 def test_declared_names_are_valid(provider: str) -> None:
     cov = _load_coverage(provider)
 
-    bad_fields = (_workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov)) - ALL_DETAIL_FIELDS
+    bad_fields = (
+        _workout_fields(cov) | _sleep_fields(cov) | _menstrual_cycle_fields(cov) | _meal_fields(cov)
+    ) - ALL_DETAIL_FIELDS
     assert not bad_fields, f"{provider}: unknown EventRecordDetail fields declared: {sorted(bad_fields)}"
 
     assert all(isinstance(s, HealthScoreCategory) for s in _health_scores(cov))

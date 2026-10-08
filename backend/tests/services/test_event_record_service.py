@@ -16,16 +16,23 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, EventRecord, HealthScore
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordQueryParams,
+    MealDetailCreate,
     SleepInclude,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
+from app.schemas.responses.activity import Meal, NutrientValue
 from app.services.event_record_service import event_record_service
-from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
+from tests.factories import (
+    DataSourceFactory,
+    EventRecordFactory,
+    SleepDetailsFactory,
+    UserFactory,
+)
 
 
 class TestEventRecordServiceCreateDetail:
@@ -224,6 +231,43 @@ class TestEventRecordServiceBulkCreateDetails:
 
         mock_workout.assert_not_called()
 
+    def test_bulk_create_details_emits_meal_webhook_with_nutrients(self, db: Session) -> None:
+        data_source = DataSourceFactory(source="apple")
+        meal = EventRecordFactory(mapping=data_source, category="meal", type_=None)
+        details = [
+            MealDetailCreate(
+                record_id=meal.id,
+                title="Chicken Salad",
+                meal_type="lunch",
+                nutrients={
+                    SeriesType.dietary_energy_consumed: 650.0,
+                    SeriesType.dietary_protein: 40.0,
+                    SeriesType.hydration: 250.0,
+                },
+            )
+        ]
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_meal_created") as mock_meal,
+        ):
+            event_record_service.bulk_create_details(db, details, detail_type="meal")
+            db.commit()
+
+        mock_meal.assert_called_once()
+        kwargs = mock_meal.call_args.kwargs
+        assert kwargs["record_id"] == meal.id
+        assert kwargs["title"] == "Chicken Salad"
+        assert kwargs["meal_type"] == "lunch"
+        assert kwargs["calories_kcal"] == 650.0
+        assert kwargs["macros"]["protein_g"] == 40.0
+        assert kwargs["water_ml"] == 250.0
+        assert kwargs["nutrients"] == {
+            "dietary_energy_consumed": {"value": 650.0, "unit": "kcal"},
+            "dietary_protein": {"value": 40.0, "unit": "g"},
+            "hydration": {"value": 250.0, "unit": "mL"},
+        }
+
 
 class TestEventRecordServiceGetRecordsResponse:
     """Test getting formatted event records."""
@@ -364,6 +408,126 @@ class TestEventRecordServiceGetRecordsResponse:
 
         # Assert
         assert records == []
+
+
+class TestUpsertMeals:
+    """A meal is identified by (data source, external_id): meals sharing a time window are
+    separate, and a re-synced meal is refreshed in place, nutrients included."""
+
+    START = datetime(2026, 10, 5, 8, 0, tzinfo=timezone.utc)
+    END = datetime(2026, 10, 5, 20, 0, tzinfo=timezone.utc)
+
+    def _meal(
+        self,
+        data_source: DataSource,
+        external_id: str,
+        meal_type: str,
+        nutrients: dict[SeriesType, float],
+        start: datetime | None = None,
+    ) -> tuple[EventRecordCreate, MealDetailCreate]:
+        start = start or self.START
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="meal",
+            source_name="com.myfitnesspal.android",
+            source=data_source.source,
+            device_model=data_source.device_model,
+            user_id=data_source.user_id,
+            provider=data_source.provider,
+            external_id=external_id,
+            start_datetime=start,
+            end_datetime=self.END,
+            duration_seconds=int((self.END - start).total_seconds()),
+        )
+        return record, MealDetailCreate(record_id=record.id, meal_type=meal_type, nutrients=nutrients)
+
+    def _meals_by_type(self, db: Session, data_source: DataSource) -> dict[str, Meal]:
+        response = event_record_service.get_meals(db, data_source.user_id, EventRecordQueryParams())
+        return {m.meal_type: m for m in response.data if m.meal_type}
+
+    def test_meals_with_the_same_window_are_separate(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        inserted = event_record_service.upsert_meals(
+            db,
+            [
+                self._meal(data_source, "dp-1", "breakfast", {SeriesType.dietary_carbohydrates: 10}),
+                self._meal(data_source, "dp-2", "lunch", {SeriesType.dietary_carbohydrates: 106.393}),
+            ],
+        )
+        db.commit()
+
+        assert inserted == 2
+        meals = self._meals_by_type(db, data_source)
+        assert meals["breakfast"].macros.carbohydrates_g == 10.0
+        assert meals["lunch"].macros.carbohydrates_g == 106.393
+
+    def test_resync_refreshes_window_type_and_nutrients_in_place(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        event_record_service.upsert_meals(
+            db,
+            [
+                self._meal(
+                    data_source,
+                    "dp-1",
+                    "snack",
+                    {SeriesType.dietary_protein: 6, SeriesType.dietary_sugar: 10},
+                )
+            ],
+        )
+        db.commit()
+
+        inserted = event_record_service.upsert_meals(
+            db,
+            [
+                self._meal(
+                    data_source,
+                    "dp-1",
+                    "breakfast",
+                    {SeriesType.dietary_protein: 7},
+                    start=self.START - timedelta(hours=1),
+                )
+            ],
+        )
+        db.commit()
+
+        assert inserted == 0
+        meal = db.query(EventRecord).filter(EventRecord.category == "meal").one()
+        db.refresh(meal)
+        assert meal.start_datetime == self.START - timedelta(hours=1)
+        meals = self._meals_by_type(db, data_source)
+        assert set(meals) == {"breakfast"}
+        assert meals["breakfast"].nutrients == {"dietary_protein": NutrientValue(value=7.0, unit="g")}
+
+    def test_all_nutrients_are_returned_with_their_units(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        nutrients = {
+            SeriesType.dietary_energy_consumed: 934.38,
+            SeriesType.dietary_sodium: 35.8,
+            SeriesType.dietary_vitamin_c: 0.5,
+            SeriesType.hydration: 250,
+        }
+        event_record_service.upsert_meals(db, [self._meal(data_source, "dp-1", "lunch", nutrients)])
+        db.commit()
+
+        lunch = self._meals_by_type(db, data_source)["lunch"]
+
+        assert lunch.calories_kcal == 934.38
+        assert lunch.water_ml == 250.0
+        assert lunch.macros is None
+        assert {k: (v.value, v.unit) for k, v in lunch.nutrients.items()} == {
+            "dietary_energy_consumed": (934.38, "kcal"),
+            "dietary_sodium": (35.8, "mg"),
+            "dietary_vitamin_c": (0.5, "mg"),
+            "hydration": (250.0, "mL"),
+        }
+
+    def test_meal_without_external_id_is_skipped(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        record, detail = self._meal(data_source, "dp-1", "lunch", {})
+        record = record.model_copy(update={"external_id": None})
+
+        assert event_record_service.upsert_meals(db, [(record, detail)]) == 0
+        assert db.query(EventRecord).filter(EventRecord.category == "meal").count() == 0
 
 
 class TestCreateOrMergeSleep:

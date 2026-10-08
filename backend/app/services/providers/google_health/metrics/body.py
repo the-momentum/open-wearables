@@ -7,7 +7,7 @@ core-body-temperature also carries Min/Max alongside the Avg we take (future mul
 from decimal import Decimal
 
 from app.schemas.enums import SeriesType
-from app.schemas.providers.google import DataTypeMetric, ListSpec, RollupSpec, TimeShape
+from app.schemas.providers.google import DataTypeMetric, DerivedSeriesField, ListSpec, RollupSpec, TimeShape
 
 _G_TO_KG = Decimal("0.001")
 
@@ -32,6 +32,23 @@ BODY_METRICS: tuple[DataTypeMetric, ...] = (
         value_key="coreBodyTemperature",
         rollup_spec=RollupSpec("temperatureCelsiusAvg"),
         list_spec=ListSpec("celsius", TimeShape.SAMPLE),
+    ),
+    DataTypeMetric(
+        "daily-sleep-temperature-derivations",
+        SeriesType.skin_temperature,
+        value_key="dailySleepTemperatureDerivations",
+        list_spec=ListSpec(
+            "nightlyTemperatureCelsius",
+            TimeShape.DATE,
+            is_daily_total=True,
+            derived=(
+                DerivedSeriesField(
+                    SeriesType.skin_temperature_deviation,
+                    "nightlyTemperatureCelsius",
+                    against="baselineTemperatureCelsius",
+                ),
+            ),
+        ),
     ),
     DataTypeMetric(
         "blood-glucose",

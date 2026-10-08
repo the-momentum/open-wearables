@@ -15,11 +15,19 @@ from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCre
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
+from app.services.providers.factory import ProviderFactory
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 
 from .constants import PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
-from .event_generators import _generate_personal_record, _generate_sleep, _generate_workout
+from .event_generators import (
+    _generate_meal,
+    _generate_personal_record,
+    _generate_sleep,
+    _generate_spread_timestamps,
+    _generate_workout,
+    _resolve_date_bounds,
+)
 from .health_score_generators import _generate_health_scores
 from .support_generators import _generate_time_series_samples, _generate_user_connections
 from .time_series_generators import ProviderDescriptor, _generate_continuous_time_series
@@ -88,6 +96,7 @@ class SeedDataService:
         Returns a summary dict with counts of created entities.
         """
         profile = request.profile
+        factory = ProviderFactory()
         seed = request.random_seed if request.random_seed is not None else random.randint(0, 2**31 - 1)
         random.seed(seed)
         fake = Faker()
@@ -111,6 +120,7 @@ class SeedDataService:
             "sleeps": 0,
             "time_series_samples": 0,
             "health_scores": 0,
+            "meals": 0,
         }
 
         enabled_types: set[SeriesType] = set(profile.time_series_config.enabled_types)
@@ -188,6 +198,21 @@ class SeedDataService:
                     event_record_service.create_detail(db, detail, detail_type="sleep")
                     summary["sleeps"] += 1
 
+            # Only providers that actually deliver meals, so seed data doesn't claim a capability they lack.
+            meal_providers = [p for p in provider_sync_times if factory.get_provider(p.value).coverage.meal_fields]
+            if profile.generate_meals and meal_providers:
+                meal_start, meal_end = _resolve_date_bounds(
+                    profile.meal_config.date_from,
+                    profile.meal_config.date_to,
+                    profile.meal_config.date_range_months,
+                    max(provider_sync_times[p] for p in meal_providers),
+                )
+                meals = [
+                    _generate_meal(user.id, fake, fake.random.choice(meal_providers), start, profile.meal_config)
+                    for start in _generate_spread_timestamps(fake, meal_start, meal_end, profile.meal_config.meal_count)
+                ]
+                summary["meals"] += event_record_service.upsert_meals(db, meals)
+
             # Continuous time series (independent of workouts)
             if profile.generate_time_series and provider_sync_times:
                 last_synced_at = max(provider_sync_times.values())
@@ -228,11 +253,12 @@ class SeedDataService:
 
             db.commit()
             logger.info(
-                "Seed user %d/%d created (workouts=%d, sleeps=%d, ts=%d, health_scores=%d)",
+                "Seed user %d/%d created (workouts=%d, sleeps=%d, meals=%d, ts=%d, health_scores=%d)",
                 user_num,
                 request.num_users,
                 summary["workouts"],
                 summary["sleeps"],
+                summary["meals"],
                 summary["time_series_samples"],
                 summary["health_scores"],
             )

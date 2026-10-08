@@ -34,12 +34,14 @@ The Google Health API is an **aggregation layer**: it surfaces data from *every*
 
 | Data type | Path |
 |-----------|------|
-| Steps, distance, calories, hydration | 24/7 metrics |
+| Steps, distance, calories, hydration, moderate and vigorous active minutes | 24/7 metrics |
 | Heart rate, resting heart rate, HRV (RMSSD + SDNN) | 24/7 metrics |
 | VO₂ max, respiratory rate, SpO₂ | 24/7 metrics |
 | Weight, body fat, core body temperature, blood glucose | 24/7 metrics |
+| Nightly skin temperature and its deviation from the 30-day baseline | 24/7 metrics |
 | Workouts (Exercise sessions) | Sessions |
 | Sleep (with stages) | Sessions |
+| Meals (nutrition-log: energy, macros, minerals, vitamins, meal type, food name) | Sessions |
 
 ### Data delivery
 
@@ -60,17 +62,17 @@ The Health API exposes the same underlying data through three different operatio
 <Warning>
 Windowed `dataPoints:rollUp` aggregates are currently disabled. A rollUp window starts wherever the requested range does, so the same reading came back under a different timestamp on a later sync and was inserted as a duplicate rather than updated.
 
-Because `hourly` and `daily` cannot be honoured without it, Google Health **refuses** them rather than storing raw data under an aggregating setting: a scheduled pull is reported as a failed `data_247` sync, and a webhook notification is reported to the error tracker and dropped (it is not answered with a 5xx, which Google would only retry). Sleep sessions and derived daily totals are unaffected and keep syncing. Set the provider's granularity to `raw` to resume the rest.
+Because `hourly` and `daily` cannot be honoured without it, Google Health **refuses** them rather than storing raw data under an aggregating setting: a scheduled pull is reported as a failed `data_247` sync, and a webhook notification is reported to the error tracker and dropped (it is not answered with a 5xx, which Google would only retry). Sleep sessions and the dailyRollUp totals are unaffected and keep syncing. Set the provider's granularity to `raw` to resume the rest.
 </Warning>
 
-Daily basal energy is the one exception: it is derived from `dataPoints:dailyRollUp`, whose windows are anchored to civil days and so do not drift.
+Daily basal energy and active minutes are the exceptions: they come from `dataPoints:dailyRollUp`, whose windows are anchored to civil days and so do not drift.
 
 ### Reconcile vs. list — why it matters
 
 A user commonly has the **same activity reported by multiple sources** (e.g. the phone's pedometer *and* the Fitbit app both counting steps). The two modes handle that overlap differently:
 
-- **`reconcile` (default)** returns **one merged stream**, deduplicated across all sources at the interval level — exactly what the native Google Health / Fitbit app displays. There is no single device behind a merged value, so reconciled points carry **no device attribution** (`device_model` is empty).
-- **`list`** returns the **raw per-source points**, each tagged with its originating device. This preserves device attribution but stores overlapping sources separately; Open Wearables then **deduplicates on read** by source priority (it does *not* sum them).
+- **`reconcile` (default)** returns **one merged stream**, deduplicated across all sources at the interval level — exactly what the native Google Health / Fitbit app displays. There is no single device behind a merged value, so reconciled points carry **no device attribution** (`device_model` and `device_type` are empty).
+- **`list`** returns the **raw per-source points**, each tagged with its originating device; `device_type` comes from the data source's `formFactor`. This preserves device attribution but stores overlapping sources separately; Open Wearables then **deduplicates on read** by source priority (it does *not* sum them).
 
 A concrete example — steps for one day for a user tracked by both their phone (Health Connect) and Fitbit MobileTrack:
 
@@ -436,7 +438,7 @@ curl -X POST \
   -d '{
     "endpointUri": "https://YOUR_API_BASE_URL/api/v1/providers/google_health/webhooks",
     "subscriberConfigs": [
-      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise"], "subscriptionCreatePolicy": "AUTOMATIC"}
+      {"dataTypes": ["steps", "distance", "heart-rate", "sleep", "exercise", "nutrition-log"], "subscriptionCreatePolicy": "AUTOMATIC"}
     ],
     "endpointAuthorization": {"secret": "Bearer YOUR_GOOGLE_WEBHOOK_SECRET"}
   }'
@@ -461,8 +463,8 @@ curl -X DELETE \
 `dataTypes` above is an abbreviated example — use the set the app supports for webhooks
 (steps, distance, hydration-log, heart-rate, run-vo2-max, daily-resting-heart-rate,
 heart-rate-variability, daily-heart-rate-variability, weight, body-fat, blood-glucose,
-daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise). Registering a data type
-the app doesn't handle just means its notifications are ignored.
+daily-respiratory-rate, daily-oxygen-saturation, sleep, exercise, nutrition-log). Registering
+a data type the app doesn't handle just means its notifications are ignored.
 </Note>
 
 ## Next Steps

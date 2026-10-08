@@ -24,6 +24,7 @@ DAILIES_SERIES: list[tuple[str, SeriesType]] = [
     ("floors_climbed", SeriesType.flights_climbed),
     ("distance_meters", SeriesType.distance_walking_running),
     ("active_time", SeriesType.active_time),
+    ("exercise_time", SeriesType.exercise_time),
 ]
 
 # Epoch sample category → SeriesType (/wellness-api/rest/epochs).
@@ -52,7 +53,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.blood_pressure_diastolic,  # /wellness-api/rest/bloodPressures
         SeriesType.vo2_max,  # /wellness-api/rest/userMetrics
         SeriesType.garmin_fitness_age,  # /wellness-api/rest/userMetrics
-        SeriesType.skin_temperature,  # /wellness-api/rest/skinTemp
+        SeriesType.skin_temperature_deviation,  # /wellness-api/rest/skinTemp (avgDeviationCelsius)
     }
 )
 

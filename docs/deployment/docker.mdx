@@ -10,7 +10,7 @@ Open Wearables publishes two production images to Docker Hub:
 | Image | Service | Port |
 |-------|---------|------|
 | [`themomentum/open-wearables-backend`](https://hub.docker.com/r/themomentum/open-wearables-backend) | FastAPI API + Celery worker/beat/flower | `8000` |
-| [`themomentum/open-wearables-frontend`](https://hub.docker.com/r/themomentum/open-wearables-frontend) | React frontend (TanStack Start, served by Nitro) | `3000` |
+| [`themomentum/open-wearables-frontend`](https://hub.docker.com/r/themomentum/open-wearables-frontend) | Developer portal (SvelteKit, served by Bun) | `3000` |
 
 The single backend image covers every backend role. The start command selects what the container runs:
 
@@ -54,7 +54,7 @@ A typical deployment consists of the application containers plus their backing s
 - `flower` (optional) - Celery monitoring, from the backend image
 - `svix-server` (optional) - only needed when [outgoing webhooks](/api-reference/guides/webhooks) are enabled; requires its own `svix` database
 
-The backend reads all of its configuration from environment variables at runtime; `backend/config/.env.example` documents them. The frontend takes its API URL at runtime as well (see below). Neither image needs a per-environment rebuild.
+The backend reads all of its configuration from environment variables at runtime; `backend/config/.env.example` documents them. The frontend reads its API URL at runtime as well (see [Frontend configuration](#frontend-configuration)). Neither image needs a per-environment rebuild.
 
 <Warning>
   The `docker-compose.yml` in the repository root is a **development** setup: it builds images from local source, hardcodes database credentials, and wires up hot reload via `docker compose watch`. Do not use it as a production template. For deployment, run the published images with your own orchestration—a Compose file you maintain, Kubernetes, or a managed platform such as [Railway](/deployment/railway).
@@ -133,8 +133,11 @@ services:
     image: themomentum/open-wearables-frontend:latest
     environment:
       - VITE_API_URL=${VITE_API_URL:?Set VITE_API_URL in .env}
+      - API_URL=http://app:8000
     ports:
       - "3000:3000"
+    depends_on:
+      - app
     restart: unless-stopped
 
 volumes:
@@ -158,8 +161,11 @@ The defaults in `.env.example` are development values. Override at least these f
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
 | `VITE_API_URL` | URL of the API as reached from the browser |
+| `LOG_FORMAT` | `json` if a log collector reads the container output (see [Logs](#logs)) |
 
 `VITE_API_URL` is a frontend variable and is not part of `.env.example`—add it to the same `.env`. For a local trial of this stack, set it to `http://localhost:8000`; in production it is typically the same value as `API_BASE_URL`.
+
+Open Wearables does not use `OTEL_PROPAGATORS`, but FastAPI loads the propagators it lists at startup. If your platform sets it to one that is not installed in the image, such as `b3`, every backend container fails with `ValueError: Propagator b3 not found`. Unset it for these containers.
 
 ### Running it
 
@@ -193,9 +199,44 @@ In practice you will put the API and frontend behind a reverse proxy with TLS in
 
 To add Flower, run another backend container with `command: scripts/start/flower.sh` and publish port `5555`. To enable outgoing webhooks, add a `svix-server` service and a `svix` database; the development `docker-compose.yml` shows the wiring.
 
-## Configuring the frontend API URL at runtime
+## Logs
 
-The frontend resolves its API URL at runtime, so the same published image works against any backend without rebuilding. Set `VITE_API_URL` as an environment variable on the frontend container. The Nitro server reads it at request time and injects it into the served HTML before the app loads:
+The backend writes its application logs to stdout (in `legacy`, uvicorn's own lines go to stderr, as before). `LOG_FORMAT` selects their format:
+
+| Value | Output |
+|-------|--------|
+| `legacy` (default) | Structured app logs as JSON lines, framework and library logs as plain text (`[time - logger] (LEVEL) message`) |
+| `json` | Every line is one JSON object, for log collectors such as Loki, Datadog, CloudWatch or Azure Monitor |
+| `text` | Readable lines, for local development |
+
+Structured app log lines keep the same fields in `legacy` and `json`: `timestamp`, `level`, `message`, `provider`, then the attributes of the event (`user_id`, `action`, ...). Other lines in `json` carry `timestamp`, `level`, `message`, `logger` and, for errors, `exception`.
+
+`LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, case-insensitive) drops log lines below that level, structured app logs included. It cannot lower the level of libraries that are kept quieter on purpose (`httpx` and `httpcore` stay at `WARNING`). When it is not set, other logs start at `INFO` and structured app logs are not filtered.
+
+`LOG_LEVEL` also changes what Sentry sees from standard-library log records (`logger.error(...)` and similar) of app, Celery and uvicorn code: with `CRITICAL`, their errors no longer create Sentry events, and above `INFO` their `INFO` records no longer become breadcrumbs. Libraries with a level of their own (`httpx`, `httpcore`) still report to Sentry as before. `log_structured` lines never reach Sentry, whatever the level, and exceptions captured explicitly (`capture_exception`) or left unhandled always do. `WARN` and `FATAL` are accepted as aliases. Any other value, for example one your platform sets for another tool, is ignored with a warning at startup, as if `LOG_LEVEL` were not set.
+
+<Note>
+  The default will change from `legacy` to `text` in a future release. Set `LOG_FORMAT` explicitly if you depend on the current output.
+</Note>
+
+To send logs to an OpenTelemetry collector as well, see [Exporting logs with OpenTelemetry](/dev-guides/log-export).
+
+Output printed outside the logging setup keeps its own format, and some of it goes to stderr:
+
+- startup banners of the FastAPI CLI, Celery workers and Celery beat, and Celery's `worker: Warm shutdown` lines;
+- uvicorn's first lines (`Started server process`, `Waiting for application startup.`) and, with `ENVIRONMENT=local`, its reloader messages;
+- what the start scripts print before the service starts: shell traces, Alembic migrations and the seed scripts;
+- raw payloads printed with `RAW_PAYLOAD_STORAGE=log`, which ignore `LOG_FORMAT` and `LOG_LEVEL`;
+- Python warnings (`warnings.warn`), printed to stderr.
+
+## Frontend configuration
+
+The frontend reads its configuration at runtime, so the same published image works against any backend without rebuilding:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `VITE_API_URL` | yes | Public URL of the API, as a browser or phone reaches it. Shown in the portal wherever a client needs the API address. |
+| `API_URL` | no | A shorter route from the frontend server to the API, e.g. `http://app:8000` on the same Docker network. Defaults to `VITE_API_URL`. |
 
 ```bash
 docker run -p 3000:3000 \
@@ -203,29 +244,16 @@ docker run -p 3000:3000 \
   themomentum/open-wearables-frontend:latest
 ```
 
-The same image with a different value points at a different backend—no rebuild:
-
-```bash
-docker run -p 3000:3000 \
-  -e VITE_API_URL=https://api.client2.com \
-  themomentum/open-wearables-frontend:latest
-```
-
-If `VITE_API_URL` is not set, it falls back to `http://localhost:8000`.
-
-<Note>
-  `VITE_API_URL` is a single variable used for both build-time (Vite inlines `import.meta.env`) and runtime configuration. When the same variable is set both in an `.env` file and via the container's `environment:`, the container environment wins—so runtime always overrides any baked-in value.
-</Note>
-
 ### How it works
 
-Because the frontend is server-rendered (TanStack Start on Nitro), the value travels from the container env to the browser like this:
+The frontend is server-rendered. The browser never calls the API directly: after sign-in it holds the API tokens in an `HttpOnly` cookie, which page scripts cannot read, and the frontend server calls the API on the browser's behalf. So:
 
-1. The Nitro server reads `process.env.VITE_API_URL` at request time.
-2. It injects `window.__APP_CONFIG__ = { apiUrl: "..." }` into the HTML `<head>` before the app hydrates.
-3. The API client reads that value. (Resolution order: injected runtime value → `VITE_API_URL` baked at build → `http://localhost:8000`.)
+- **The frontend keeps no state.** It needs no database or Redis of its own; sessions survive restarts and work across replicas.
+- **The API needs no CORS entry for the portal**, since only the frontend server talks to it.
 
-The logic lives in `frontend/src/lib/api/runtime-config.ts`.
+### Upgrading from the React frontend
+
+Releases before the SvelteKit portal shipped a React frontend in the same image. The image name, port `3000` and `VITE_API_URL` are unchanged, so no configuration change is needed. Optionally add `API_URL` if the API is reachable on an internal address. Developers sign in again once after the upgrade.
 
 ## Related Guides
 

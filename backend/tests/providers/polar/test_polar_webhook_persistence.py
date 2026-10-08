@@ -112,3 +112,16 @@ def test_process_payload_rolls_back_on_error(db: Session) -> None:
 
     assert result["status"] == "error"
     assert rolled_back == ["rollback"]
+
+
+def test_activity_summary_webhook_requests_activity_zones(db: Session) -> None:
+    user = UserFactory()
+    data_247 = PolarStrategy().data_247
+    assert isinstance(data_247, Polar247Data)
+
+    with patch.object(Polar247Data, "_make_api_request", return_value={}) as request:
+        data_247.fetch_and_save_from_webhook(
+            db, UUID(str(user.id)), PolarWebhookEventType.ACTIVITY_SUMMARY, "/v3/users/activities/2026-09-10"
+        )
+
+    assert request.call_args.kwargs["params"] == {"activity_zones": "true"}

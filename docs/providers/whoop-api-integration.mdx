@@ -1,13 +1,13 @@
 ---
 title: "Whoop API Integration"
-description: "Connect Whoop via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV, SpO2, and body measurements in real time via webhooks. Requires an active Whoop membership."
+description: "Connect Whoop via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV, SpO2, and body measurements in real time via webhooks."
 keywords: ["whoop api", "whoop data integration", "whoop health data", "whoop api open source"]
 "og:title": "Whoop API Integration | Open Wearables"
-"og:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2. Requires Whoop membership."
+"og:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2."
 "og:url": "https://docs.openwearables.io/providers/whoop-api-integration"
 "og:type": "article"
 "twitter:title": "Whoop API Integration | Open Wearables"
-"twitter:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2. Requires Whoop membership."
+"twitter:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2."
 "twitter:card": "summary_large_image"
 ---
 
@@ -88,15 +88,16 @@ Whoop reports sleep stages as **aggregate durations for the whole sleep**, not a
 
 ## Prerequisites
 
-- A Whoop account with an active membership
+- A Whoop account (no membership or device needed to get API credentials)
+- A Whoop user with a device and an active membership to test with real data. Whoop has no test accounts or mock data. New apps start on the [Sandbox tier](https://developer.whoop.com/docs/developing/app-approval), which only caps how many members can connect (10).
 
 ## Application walkthrough
 
 <Steps>
-  <Step title="Sign up for Whoop">
-    You must have a Whoop membership to develop on the Whoop Developer Platform. Your Whoop account is also your developer login.
+  <Step title="Create a Whoop account">
+    There is no separate developer account. You sign in to the Developer Dashboard with a regular Whoop account.
 
-    If you don't have one yet, [join Whoop here](https://www.whoop.com/).
+    The account can only be created in the Whoop mobile app ([iOS](https://apps.apple.com/app/whoop/id933944389), [Android](https://play.google.com/store/apps/details?id=com.whoop.android)), not on the web. You don't need a Whoop device or a membership to sign up, and a free account is enough to create an app and get a Client ID and Client Secret.
   </Step>
 
   <Step title="Create a Team in the Developer Dashboard">
@@ -105,7 +106,7 @@ Whoop reports sleep stages as **aggregate durations for the whole sleep**, not a
     Before creating an app, you'll be prompted to create a **Team**. Choose a name for your team and click **Create Team**.
 
     <Note>
-    You can invite other developers to your team later from the Team section of the Developer Dashboard. They'll need a Whoop account to be added.
+    You can invite other developers to your team later from the Team section of the Developer Dashboard. They'll need a Whoop account to be added, created in the mobile app the same way.
     </Note>
   </Step>
 
@@ -114,7 +115,7 @@ Whoop reports sleep stages as **aggregate durations for the whole sleep**, not a
 
     - **App Name**: Your application name
     - **Scopes**: Select the scopes your app needs (see table below)
-    - **Redirect URIs**: Add your OAuth callback URL (e.g. `http://localhost:8000/api/v1/oauth/whoop/callback` for local development)
+    - **Redirect URIs**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/whoop/callback`, so register that exact URL here, e.g. `http://localhost:8000/api/v1/oauth/whoop/callback` for local development.
 
     After creating the app, you'll receive:
     - **Client ID**
@@ -129,10 +130,13 @@ Whoop reports sleep stages as **aggregate durations for the whole sleep**, not a
     Add the following to your `.env` file:
 
 ```bash
+# Public base URL of your API. The OAuth redirect URI is derived from this as
+# {API_BASE_URL}/api/v1/oauth/whoop/callback.
+API_BASE_URL=http://localhost:8000
+
 #--- Whoop ---#
 WHOOP_CLIENT_ID=your-whoop-client-id
 WHOOP_CLIENT_SECRET=your-whoop-client-secret
-WHOOP_REDIRECT_URI=http://localhost:8000/api/v1/oauth/whoop/callback
 WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout read:body_measurement read:profile
 ```
 
@@ -140,9 +144,9 @@ WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout re
 
     | Variable | Description |
     |----------|-------------|
+    | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/whoop/callback`, which must match a redirect URI registered in the Developer Dashboard |
     | `WHOOP_CLIENT_ID` | Client ID from the Whoop Developer Dashboard |
     | `WHOOP_CLIENT_SECRET` | Client Secret from the Whoop Developer Dashboard |
-    | `WHOOP_REDIRECT_URI` | Must match a redirect URI registered in the Developer Dashboard. For local dev: `http://localhost:8000/api/v1/oauth/whoop/callback` |
     | `WHOOP_DEFAULT_SCOPE` | OAuth scopes requested during authorization. The `offline` scope is required for refresh tokens |
 
   </Step>
@@ -167,7 +171,7 @@ WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout re
 
     **2. Redirect the user** to the `authorization_url`. They will log in to Whoop and authorize your app.
 
-    **3. Whoop redirects back** to the callback URI configured in your `.env` (`WHOOP_REDIRECT_URI`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+    **3. Whoop redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/whoop/callback`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
 
     **4. Verify the connection** was created:
 
@@ -179,7 +183,7 @@ WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout re
     You should see a connection with `"provider": "whoop"` and `"status": "active"`.
 
     <Note>
-      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `WHOOP_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback that Whoop sends the authorization code to.
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from the **server-side** OAuth callback (`{API_BASE_URL}/api/v1/oauth/whoop/callback`) that Whoop sends the authorization code to.
     </Note>
   </Step>
 
