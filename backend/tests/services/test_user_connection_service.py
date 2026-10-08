@@ -500,7 +500,9 @@ class TestUserConnectionServiceDeregisterFromProvider:
 
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
-        oauth.refresh_access_token.assert_called_once_with(db, user.id, connection.refresh_token)
+        oauth.refresh_access_token.assert_called_once_with(
+            db, user.id, connection.refresh_token, revoke_on_failure=True
+        )
         oauth.deregister_user.assert_called_once_with("fresh", provider_user_id=connection.provider_user_id)
 
     def test_uses_stored_token_when_still_valid(self, db: Session) -> None:
