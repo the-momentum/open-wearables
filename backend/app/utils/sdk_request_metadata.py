@@ -23,8 +23,11 @@ def _sanitize(value: str) -> str:
     return cleaned[:_MAX_VALUE_LENGTH]
 
 
-def sdk_request_metadata(headers: Mapping[str, str]) -> dict[str, Any]:
+def sdk_request_metadata(headers: Mapping[str, str], body_sdk_version: object = None) -> dict[str, Any]:
     fields: dict[str, Any] = {}
+    # Older SDK versions send the version only in the body.
+    if isinstance(body_sdk_version, str) and (cleaned := _sanitize(body_sdk_version)):
+        fields["sdk_version"] = cleaned
     for header, field in _SDK_HEADERS.items():
         value = headers.get(header)
         if value and (cleaned := _sanitize(value)):

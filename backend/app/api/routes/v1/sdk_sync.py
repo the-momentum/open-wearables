@@ -99,11 +99,6 @@ def sync_sdk_data(
     workouts_count = len(workouts) if isinstance(workouts, list) else 0
     sleep_count = len(sleep) if isinstance(sleep, list) else 0
 
-    # Older SDK versions send the version only in the body.
-    request_metadata = sdk_request_metadata(request.headers)
-    if "sdk_version" not in request_metadata and isinstance(body.get("sdkVersion"), str):
-        request_metadata["sdk_version"] = body["sdkVersion"]
-
     # Log initial batch receipt with counts
     log_structured(
         logger,
@@ -117,7 +112,7 @@ def sync_sdk_data(
         workouts_count=workouts_count,
         sleep_count=sleep_count,
         total_items=records_count + workouts_count + sleep_count,
-        **request_metadata,
+        **sdk_request_metadata(request.headers, body.get("sdkVersion")),
     )
 
     content_str = json.dumps(body)

@@ -143,8 +143,7 @@ def submit_sdk_logs(
         provider=provider,
         event_count=len(body.events),
         event_types=event_types,
-        # Older SDK versions send the version only in the body.
-        **{"sdk_version": body.sdkVersion} | sdk_request_metadata(request.headers),
+        **sdk_request_metadata(request.headers, body.sdkVersion),
         **_event_fields(body),
     )
 

@@ -23,3 +23,17 @@ class TestSDKRequestMetadata:
 
     def test_blank_values_are_dropped(self) -> None:
         assert sdk_request_metadata({"x-request-id": "  ", "x-open-wearables-sdk-platform": "\n"}) == {}
+
+    def test_header_version_wins_over_body(self) -> None:
+        fields = sdk_request_metadata({"x-open-wearables-sdk-version": "0.15.0"}, body_sdk_version="0.14.0")
+
+        assert fields["sdk_version"] == "0.15.0"
+
+    def test_body_version_is_sanitized(self) -> None:
+        fields = sdk_request_metadata({}, body_sdk_version="1.0.0\nfake=line" + "x" * 1000)
+
+        assert "\n" not in fields["sdk_version"]
+        assert len(fields["sdk_version"]) == 256
+
+    def test_non_string_body_version_is_ignored(self) -> None:
+        assert sdk_request_metadata({}, body_sdk_version={"nested": "1.0.0"}) == {}
