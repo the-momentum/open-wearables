@@ -59,6 +59,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import offset_to_iso
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -147,6 +148,11 @@ class Polar247Data(Base247DataTemplate):
             prev_t = t
         return result
 
+    @staticmethod
+    def _zone_offset(dt: datetime) -> str | None:
+        offset = dt.utcoffset()
+        return offset_to_iso(int(offset.total_seconds())) if offset is not None else None
+
     def _parse(self, raw: dict[str, Any], schema: type[_T], user_id: UUID, context: str) -> _T | None:
         try:
             return schema.model_validate(raw)
@@ -165,6 +171,9 @@ class Polar247Data(Base247DataTemplate):
         nights = (response or {}).get("available", [])
         return {date.fromisoformat(night["date"]) for night in nights if night.get("date")}
 
+    # Polar keeps nights available via AccessLink for 28 days.
+    SLEEP_AVAILABILITY_DAYS = 28
+
     def get_sleep_data(
         self,
         db: DbSession,
@@ -176,8 +185,20 @@ class Polar247Data(Base247DataTemplate):
             start_time.date() + timedelta(days=i) for i in range((end_time.date() - start_time.date()).days + 1)
         }
         available_dates = self._get_available_sleep_dates(db, user_id)
+
+        # A night shows up in /sleep/available only after the device syncs with
+        # Polar Flow, which can be days later. By then its date has left the sync
+        # window, so also fetch any available night in Polar's retention window
+        # that is not stored yet.
+        retention_start = end_time.date() - timedelta(days=self.SLEEP_AVAILABILITY_DAYS - 1)
+        late_dates = {d for d in available_dates if retention_start <= d <= end_time.date()} - date_range
+        if late_dates:
+            late_dates -= event_record_service.get_sleep_end_dates(
+                db, user_id, self.provider_name, retention_start, end_time.date()
+            )
+
         sleep_data = []
-        for d in date_range.intersection(available_dates):
+        for d in sorted(date_range.intersection(available_dates) | late_dates):
             response = self._make_api_request(db, user_id, f"/v3/users/sleep/{d.isoformat()}")
             if response:
                 sleep_data.append(response)
@@ -270,6 +291,9 @@ class Polar247Data(Base247DataTemplate):
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
+                # Polar gives local times with an offset; keeping it dates the night
+                # by its local wake-up date, the same way /sleep/available does.
+                zone_offset=self._zone_offset(end_dt),
                 provider=ProviderName.POLAR,
                 user_id=user_id,
             )
@@ -953,12 +977,13 @@ class Polar247Data(Base247DataTemplate):
             case PolarWebhookEventType.SLEEP:
                 count = 0
                 for record, detail, score, hr_samples in self.normalize_sleep([raw], user_id):
-                    event_record_service.create_or_merge_sleep(
+                    saved = event_record_service.create_or_merge_sleep(
                         db, user_id, record, detail, settings.sleep_end_gap_minutes
                     )
                     count += 1
                     if score:
-                        health_score_service.bulk_create(db, [score])
+                        # A merge keeps the existing row, so the pre-generated id may not exist
+                        health_score_service.bulk_create(db, [score.model_copy(update={"event_record_id": saved.id})])
                     if hr_samples:
                         timeseries_service.bulk_create_samples(db, hr_samples)
                 return {"sleep": count}
@@ -1017,10 +1042,13 @@ class Polar247Data(Base247DataTemplate):
 
         for record, detail, score, hr in normalized:
             try:
-                event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+                saved = event_record_service.create_or_merge_sleep(
+                    db, user_id, record, detail, settings.sleep_end_gap_minutes
+                )
                 count += 1
                 if score:
-                    scores.append(score)
+                    # A merge keeps the existing row, so the pre-generated id may not exist
+                    scores.append(score.model_copy(update={"event_record_id": saved.id}))
                 hr_samples.extend(hr)
             except Exception as e:
                 log_and_capture_error(

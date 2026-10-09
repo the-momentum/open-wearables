@@ -45,6 +45,10 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | **Webhooks (push)** | Polar sends a lightweight notification on each event (exercise, sleep, activity, etc.). Open Wearables acknowledges immediately and enqueues a targeted sync for the affected data type. |
 
 <Note>
+A sleep night appears in AccessLink only after the device syncs with Polar Flow, which can be days later. Each sync therefore also fetches any night Polar still lists as available (AccessLink keeps nights for 28 days) that is not stored yet, matched by local wake-up date.
+</Note>
+
+<Note>
 Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_SIGNATURE_SECRET` set in your environment. See the configuration step below.
 </Note>
 
