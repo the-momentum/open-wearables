@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from app.database import DbSession
+from app.integrations.celery.tasks.delete_user_webhook_payloads_task import delete_user_webhook_payloads
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.user_management import (
@@ -20,6 +21,7 @@ from app.schemas.model_crud.user_management import (
     UserUpdateInternal,
 )
 from app.schemas.utils import OldPaginatedResponse
+from app.services.outgoing_webhooks import svix as svix_service
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.backfill_state import force_release_backfill_lock
 from app.services.services import AppService
@@ -27,6 +29,10 @@ from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
 from app.utils.exceptions import ResourceAlreadyExistsError, ResourceNotFoundError, handle_exceptions
 from app.utils.structured_logging import log_structured
+
+# Delay before deleting the webhook payloads of a deleted user, covering emit tasks already
+# queued (emit_webhook_event retries twice, 5 s apart).
+_WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS = 60
 
 
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
@@ -108,7 +114,32 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 error=str(e),
             )
 
-        return self.crud.delete(db_session, user)
+        user_id = user.id
+        deleted = self.crud.delete(db_session, user)
+        self._schedule_webhook_payload_deletion(user_id)
+        return deleted
+
+    def _schedule_webhook_payload_deletion(self, user_id: UUID) -> None:
+        """Delete the user's outgoing webhook payloads from Svix in the background.
+
+        The countdown lets emit tasks already queued for this user land in Svix first,
+        so their payloads get deleted too.
+        """
+        if not svix_service.is_enabled():
+            return
+        try:
+            delete_user_webhook_payloads.apply_async(
+                args=[str(user_id)],
+                countdown=_WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS,
+            )
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to schedule webhook payload deletion on user deletion",
+                user_id=user_id,
+                error=str(e),
+            )
 
     @handle_exceptions
     def get_detail(
