@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.enums import ProviderName
-from app.services.summaries_service import SummariesService
+from app.services.summaries_service import ACTIVITY_METRIC_GROUPS, SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -63,6 +63,41 @@ class TestFilterByPriority:
         ]
         result = service._filter_by_priority(db, uuid4(), entries, date_key="sleep_date")
         assert len(result) == 1
+
+    def test_fills_complementary_metrics_from_other_sources(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        phone = {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000, "hr_avg": None}
+        watch = {
+            "activity_date": day,
+            "source": "apple_health_sdk",
+            "device_model": None,
+            "steps_sum": None,
+            "hr_avg": 72,
+            "hr_max": 140,
+            "hr_min": 55,
+        }
+        result = service._filter_by_priority(db, uuid4(), [phone, watch], fill_missing=ACTIVITY_METRIC_GROUPS)
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 8000
+        assert (result[0]["hr_avg"], result[0]["hr_max"], result[0]["hr_min"]) == (72, 140, 55)
+
+    def test_fill_never_sums_a_metric_both_sources_report(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        entries = [
+            {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000},
+            {"activity_date": day, "source": "apple_health_sdk", "device_model": None, "steps_sum": 7500},
+        ]
+        result = service._filter_by_priority(db, uuid4(), entries, fill_missing=ACTIVITY_METRIC_GROUPS)
+        assert result[0]["steps_sum"] in {8000, 7500}
+
+    def test_without_fill_missing_only_the_chosen_entry_is_kept(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        entries = [
+            {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000, "hr_avg": None},
+            {"activity_date": day, "source": "apple_health_sdk", "device_model": None, "steps_sum": None, "hr_avg": 72},
+        ]
+        result = service._filter_by_priority(db, uuid4(), entries)
+        assert result[0] in entries
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 import contextlib
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
@@ -59,6 +60,16 @@ from app.utils.pagination import (
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
 ACTIVE_STEPS_THRESHOLD = 30  # Steps per minute to be considered "active"
 METERS_PER_FLOOR = 3.0  # Standard floor height for floors_climbed calculation
+# Activity metrics a day's chosen source can take from a lower-priority one that reports them
+ACTIVITY_METRIC_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("steps_sum",),
+    ("active_energy_sum",),
+    ("basal_energy_sum",),
+    ("distance_sum",),
+    ("flights_climbed_sum",),
+    ("active_time_minutes",),
+    ("hr_avg", "hr_max", "hr_min"),
+)
 
 # HR zone percentages (as fraction of max HR)
 HR_ZONE_LIGHT = (0.50, 0.63)  # 50-63% of max HR
@@ -115,12 +126,16 @@ class SummariesService:
         user_id: UUID,
         results: list[dict] | list,
         date_key: str = "activity_date",
+        fill_missing: Sequence[tuple[str, ...]] = (),
     ) -> list[dict] | list:
         """Filter results to highest priority source per date.
 
         Args:
             results: List of dicts with date, source (provider), device_model
             date_key: Key name for date field (activity_date or sleep_date)
+            fill_missing: Groups of metric keys that the chosen entry takes from the
+                next-highest-priority entry that reports them, when it has none of
+                that group itself. Values are copied, never summed across sources.
 
         Returns:
             Filtered list with only highest priority entry per date
@@ -162,7 +177,17 @@ class SummariesService:
                 return (provider_priority, device_type_priority, device_model or "")
 
             entries_sorted = sorted(entries, key=sort_key)
-            filtered.append(entries_sorted[0])
+            best = entries_sorted[0]
+            for keys in fill_missing:
+                if any(best.get(key) is not None for key in keys):
+                    continue
+                donor = next(
+                    (entry for entry in entries_sorted[1:] if any(entry.get(key) is not None for key in keys)),
+                    None,
+                )
+                if donor is not None:
+                    best = {**best, **{key: donor.get(key) for key in keys}}
+            filtered.append(best)
 
         return filtered
 
@@ -683,7 +708,9 @@ class SummariesService:
         """One row per day in [start, end): live and archived, best source per date."""
         results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start, end)
         results = self._merge_archive_activity(db_session, user_id, start, end, results)
-        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="activity_date", fill_missing=ACTIVITY_METRIC_GROUPS
+        )
 
     def _activity_page_days(
         self,
