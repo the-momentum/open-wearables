@@ -7,6 +7,7 @@ from .event_record_detail_repository import EventRecordDetailRepository
 from .event_record_repository import EventRecordRepository
 from .health_score_repository import HealthScoreRepository
 from .invitation_repository import InvitationRepository
+from .personal_record_repository import PersonalRecordRepository
 from .provider_priority_repository import ProviderPriorityRepository
 from .refresh_token_repository import RefreshTokenRepository, refresh_token_repository
 from .repositories import CrudRepository
@@ -28,6 +29,7 @@ __all__ = [
     "UserConnectionRepository",
     "DeveloperRepository",
     "InvitationRepository",
+    "PersonalRecordRepository",
     "CrudRepository",
     "HealthScoreRepository",
 ]
