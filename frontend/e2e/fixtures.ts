@@ -527,10 +527,16 @@ export const makeWorkouts = (query: URLSearchParams) => {
 	const start = new Date(query.get('start_date') ?? 0).getTime();
 	const end = new Date(query.get('end_date') ?? 0).getTime();
 
+	// Suunto is the lowest-ranked source here, so it stands in for the copy a
+	// higher-priority provider already recorded. The real endpoint matches by
+	// overlap in time, which these evenly spaced fixtures never produce.
+	const topSourceOnly = query.get('filter_by_priority') === 'true';
+
 	const matching = WORKOUTS.filter((workout) => {
 		const at = new Date(workout.start_time).getTime();
 		if (at < start || at >= end) return false;
 		if (provider && workout.source.provider !== provider) return false;
+		if (topSourceOnly && workout.source.provider === 'suunto') return false;
 		return !type || workout.type === type;
 	});
 

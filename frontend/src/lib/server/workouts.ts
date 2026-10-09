@@ -6,6 +6,8 @@ import type { WorkoutPage, WorkoutTotalsResponse } from '$lib/workouts/types';
 export type WorkoutQuery = {
 	period: Period;
 	provider?: string;
+	/** Drops a workout a higher-priority source already recorded, by the ranking summaries use. */
+	topSourceOnly?: boolean;
 	type?: string;
 	cursor?: string;
 	limit?: number;
@@ -14,19 +16,24 @@ export type WorkoutQuery = {
 /** The filters the list and its totals share, so both count the same workouts. */
 function filterParams(
 	params: URLSearchParams,
-	{ provider, type }: { provider: string; type: string }
+	{
+		provider,
+		type,
+		topSourceOnly
+	}: Pick<Required<WorkoutQuery>, 'provider' | 'type' | 'topSourceOnly'>
 ) {
 	if (provider) params.set('provider', provider);
 	if (type) params.set('type', type);
+	if (topSourceOnly) params.set('filter_by_priority', 'true');
 	return params;
 }
 
 export function fetchWorkouts(
 	userId: string,
 	accessToken: string,
-	{ period, provider = '', type = '', cursor = '', limit = 10 }: WorkoutQuery
+	{ period, provider = '', type = '', topSourceOnly = false, cursor = '', limit = 10 }: WorkoutQuery
 ): Promise<WorkoutPage> {
-	const params = filterParams(eventWindow(period, limit), { provider, type });
+	const params = filterParams(eventWindow(period, limit), { provider, type, topSourceOnly });
 	// A card cannot draw zones until it is expanded, but paging again on expand
 	// would be worse than carrying them.
 	params.set('include', 'zones');
@@ -39,10 +46,15 @@ export function fetchWorkouts(
 export function fetchWorkoutTotals(
 	userId: string,
 	accessToken: string,
-	{ period, provider = '', type = '' }: Pick<WorkoutQuery, 'period' | 'provider' | 'type'>
+	{
+		period,
+		provider = '',
+		type = '',
+		topSourceOnly = false
+	}: Pick<WorkoutQuery, 'period' | 'provider' | 'type' | 'topSourceOnly'>
 ): Promise<WorkoutTotalsResponse> {
 	return apiGet<WorkoutTotalsResponse>(
-		`/api/v1/users/${userId}/events/workouts/totals?${filterParams(periodBounds(period), { provider, type })}`,
+		`/api/v1/users/${userId}/events/workouts/totals?${filterParams(periodBounds(period), { provider, type, topSourceOnly })}`,
 		accessToken
 	);
 }

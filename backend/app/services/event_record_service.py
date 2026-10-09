@@ -818,9 +818,24 @@ class EventRecordService(
             device_type=data_source.device_type,
         )
 
+    def _winning_workout_ids(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> Query:
+        """An inline subquery of the workouts no higher-priority source already covers."""
+        provider_order = self.priority_service.priority_repo.get_priority_order(db_session)
+        device_type_order = self.priority_service.device_type_priority_repo.get_priority_order(db_session)
+        return self.crud.winning_workout_record_ids(db_session, str(user_id), params, provider_order, device_type_order)
+
     @handle_exceptions
-    def get_workout_totals(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> WorkoutTotals:
-        count, seconds, energy, distance = self.crud.get_workout_totals(db_session, params, str(user_id))
+    def get_workout_totals(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: EventRecordQueryParams,
+        filter_by_priority: bool = False,
+    ) -> WorkoutTotals:
+        restrict = self._winning_workout_ids(db_session, user_id, params) if filter_by_priority else None
+        count, seconds, energy, distance = self.crud.get_workout_totals(
+            db_session, params, str(user_id), restrict_to_record_ids=restrict
+        )
         return WorkoutTotals(
             count=count,
             duration_seconds=seconds,
@@ -834,12 +849,18 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
+        filter_by_priority: bool = False,
         include: Sequence[WorkoutInclude] = (),
     ) -> PaginatedResponse[Workout]:
         params.category = "workout"
         with_zones = WorkoutInclude.ZONES in include
         with_segments = WorkoutInclude.SEGMENTS in include
-        records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
+
+        restrict_to_record_ids = self._winning_workout_ids(db_session, user_id, params) if filter_by_priority else None
+
+        records, total_count = self._get_records_with_filters(
+            db_session, params, str(user_id), restrict_to_record_ids=restrict_to_record_ids
+        )
         # Ensure total_count is always an int (not None)
         total_count = total_count if total_count is not None else 0
 

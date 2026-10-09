@@ -44,6 +44,27 @@ test('sums the whole period, not the page in front of you', async ({ page }) => 
 	await expect(summary.getByText('4', { exact: true })).toBeVisible();
 });
 
+test('hides the copies a higher-priority source already recorded, in the list and the totals', async ({
+	page
+}) => {
+	await page.goto(WORKOUTS);
+	const pager = page.getByRole('navigation', { name: 'Pagination' });
+	const summary = page.locator('[aria-label="Workout totals"]');
+	await expect(pager).toContainText('of 23');
+	await expect(summary.getByText('23', { exact: true })).toBeVisible();
+
+	await page.getByRole('link', { name: 'Hide duplicates' }).click();
+
+	// The backend narrows both, so paging and the figures agree with the cards.
+	await expect(page).toHaveURL(`${WORKOUTS}?top=1`);
+	await expect(pager).toContainText('of 19');
+	await expect(summary.getByText('19', { exact: true })).toBeVisible();
+
+	// And showing them again brings them back.
+	await page.getByRole('link', { name: 'Show duplicates' }).click();
+	await expect(pager).toContainText('of 23');
+});
+
 test('reads the clock the workout was recorded in, not the reader’s', async ({ page }) => {
 	await page.goto(WORKOUTS);
 
