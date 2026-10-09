@@ -177,9 +177,7 @@ except Exception as e:
 try:
     process_item(item)
 except Exception as e:
-    log_and_capture_error(
-        e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id, "error": str(e)}
-    )
+    log_and_capture_error(e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id})
     continue
 ```
 
@@ -188,6 +186,8 @@ except Exception as e:
 - ✅ Batch processing where you want to continue despite errors
 - ✅ Multi-provider sync where one provider failure shouldn't stop others
 - ❌ Don't use if exception is re-raised or allowed to propagate naturally
+
+**Keep health data and PII out of Sentry:** `extra` is sent to Sentry as event context. Put only identifiers and categories in it (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise and to `logger.error(...)` text, since both become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 
 ### Logging
 

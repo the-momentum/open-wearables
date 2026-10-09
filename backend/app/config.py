@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
     SENTRY_SERVER_NAME: str | None = None
+    # Sends request bodies, stack-frame locals, log breadcrumbs and unfiltered error text to
+    # Sentry. These carry health data and PII - only for dev/staging or a Sentry you may store PHI in.
+    SENTRY_SEND_SENSITIVE_DATA: bool = False
     GIT_SHA: str | None = None
 
     # AUTH SETTINGS

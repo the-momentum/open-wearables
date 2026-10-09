@@ -232,7 +232,6 @@ class StravaWebhookHandler(BaseWebhookHandler):
                     "provider": "strava",
                     "trace_id": trace_id,
                     "action": "webhook_invalid_payload",
-                    "error": str(exc),
                 },
             )
             return {"status": "error", "error": f"Invalid payload: {exc}"}

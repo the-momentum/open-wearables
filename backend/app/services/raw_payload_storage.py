@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+import sentry_sdk
+
 from app.services.s3_client import create_s3_client
 from app.utils.structured_logging import json_serial, log_structured
 
@@ -102,10 +104,24 @@ def store_raw_payload(
         )
         return
 
+    ref = None
     if _storage_backend == "log":
         _store_to_log(source, provider, payload_str, size, user_id, trace_id)
     elif _storage_backend == "s3":
-        put_payload_to_s3(source=source, provider=provider, payload=payload_str, user_id=user_id, trace_id=trace_id)
+        ref = put_payload_to_s3(
+            source=source, provider=provider, payload=payload_str, user_id=user_id, trace_id=trace_id
+        )
+
+    if _storage_backend == "s3" and ref is None:
+        return  # upload failed - there is nothing to point at
+
+    # Point any Sentry error later in this request/task at the stored payload - the
+    # reference only, never the content.
+    sentry_sdk.add_breadcrumb(
+        category="raw_payload",
+        message=f"Raw payload stored ({_storage_backend})",
+        data={"ref": ref, "source": source, "provider": provider, "trace_id": trace_id, "size_bytes": size},
+    )
 
 
 def get_payload_from_s3(ref: str) -> str:
