@@ -208,6 +208,7 @@ def send(
                 payload=payload,
                 event_id=idempotency_key,
                 channels=channels or None,
+                payload_retention_period=settings.outgoing_webhook_payload_retention_days,
             ),
         )
     except httpx.ConnectError:
@@ -377,6 +378,7 @@ def send_test_message(app_id: str, endpoint_id: str, event_type: str) -> Message
                 event_type=event_type,
                 payload=get_test_payload(event_type),
                 event_id=f"test.{endpoint_id}.{event_type}",
+                payload_retention_period=settings.outgoing_webhook_payload_retention_days,
             ),
         )
     except Exception:
