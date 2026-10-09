@@ -156,7 +156,7 @@ The defaults in `.env.example` are development values. Override at least these f
 | `ENVIRONMENT` | `production` |
 | `DB_PASSWORD` | a strong database password |
 | `SECRET_KEY` | a long random secret, used to sign tokens |
-| `ADMIN_PASSWORD` | password for the admin account seeded on first start |
+| `ADMIN_PASSWORD` | password for the admin account seeded on first start (required: with `ENVIRONMENT=production` the seed refuses the default) |
 | `CORS_ORIGINS` | your frontend origin, e.g. `["https://app.example.com"]` |
 | `FRONTEND_URL` | public URL of the frontend |
 | `API_BASE_URL` | public URL of the API, used for provider OAuth redirect URIs |
