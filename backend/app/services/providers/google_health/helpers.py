@@ -85,6 +85,22 @@ def read_level_sum(
     return total * scale
 
 
+def read_weighted_sum(
+    obj: dict[str, Any],
+    weighted_fields: tuple[tuple[str, Decimal], ...],
+    scale: Decimal = Decimal(1),
+) -> Decimal:
+    """Add up ``obj[key] * weight`` over ``weighted_fields``.
+
+    A missing key counts as 0: Google omits zero int64 fields, and the object being
+    present means the day was measured.
+    """
+    total = Decimal(0)
+    for key, weight in weighted_fields:
+        total += (to_decimal(obj.get(key)) or Decimal(0)) * weight
+    return total * scale
+
+
 def extract_source(data_source: Any) -> tuple[str, str | None]:
     """Derive (source_name, device_model) from a list data point's dataSource.
 

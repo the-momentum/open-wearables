@@ -137,6 +137,8 @@ class DailyRollupSpec:
     scale:               unit factor applied to the value.
     max_range_days:      dailyRollUp's per-request range cap (14 for total-calories and active-minutes, else 90).
     level_sum:           which levels of the ``field`` list to add up, for per-level types.
+    weighted_fields:     (key, weight) scalars of the ``*RollupValue`` object to add up instead of
+                         ``field``, for types that split one total over several keys.
     """
 
     data_type: str
@@ -145,6 +147,7 @@ class DailyRollupSpec:
     scale: Decimal = Decimal(1)
     max_range_days: int = 90
     level_sum: LevelSum | None = None
+    weighted_fields: tuple[tuple[str, Decimal], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -174,12 +177,14 @@ class DailyRollupMetric:
 
     data_source_family keeps the total to first-party sources, since points from several
     sources on one civil day are summed and would otherwise count the same minutes twice.
+    fallback is read for the civil days ``spec`` reports nothing for.
     """
 
     name: str
     series_type: SeriesType
     spec: DailyRollupSpec
     data_source_family: str = "users/me/dataSourceFamilies/google-sources"
+    fallback: DailyRollupSpec | None = None
 
 
 @dataclass(frozen=True)

@@ -51,6 +51,7 @@ from app.services.providers.google_health.helpers import (
     physical_interval,
     read_level_sum,
     read_number,
+    read_weighted_sum,
     zone_offset_from,
 )
 from app.services.providers.google_health.metrics import DAILY_ROLLUP_METRICS, DERIVED_DAILY_METRICS, METRICS
@@ -367,8 +368,11 @@ class GoogleHealth247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[TimeSeriesSampleCreate]:
-        """One daily-total sample per civil day the data type reports."""
+        """One daily-total sample per civil day the data type (or else its fallback) reports."""
         totals = self._daily_totals(db, user_id, metric.spec, start_time, end_time, metric.data_source_family)
+        if metric.fallback:
+            fallback = self._daily_totals(db, user_id, metric.fallback, start_time, end_time, metric.data_source_family)
+            totals = fallback | totals
         return [self._sample(user_id, day, value, metric.series_type, True) for day, value in sorted(totals.items())]
 
     def _daily_totals(
@@ -402,11 +406,12 @@ class GoogleHealth247Data(Base247DataTemplate):
                 value_obj = point.get(spec.value_key)
                 if day is None or not isinstance(value_obj, dict):
                     continue
-                value = (
-                    read_level_sum(value_obj, spec.field, spec.level_sum, spec.scale)
-                    if spec.level_sum
-                    else read_number(value_obj, spec.field, None, spec.scale)
-                )
+                if spec.weighted_fields:
+                    value = read_weighted_sum(value_obj, spec.weighted_fields, spec.scale)
+                elif spec.level_sum:
+                    value = read_level_sum(value_obj, spec.field, spec.level_sum, spec.scale)
+                else:
+                    value = read_number(value_obj, spec.field, None, spec.scale)
                 if value is not None:
                     # Windows are disjoint civil days, so two points on one date are
                     # different sources of the same day, never duplicates — sum them.
