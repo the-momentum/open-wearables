@@ -1196,3 +1196,137 @@ class TestSDKImportAndroidFoodCorrelation:
         assert get_series_type_from_metric_type("DIETARY_ENERGY_FROM_FAT") == SeriesType.dietary_energy_from_fat
         assert get_series_type_from_metric_type("DIETARY_UNSATURATED_FAT") == SeriesType.dietary_fat_unsaturated
         assert get_series_type_from_metric_type("DIETARY_FOLIC_ACID") == SeriesType.dietary_folic_acid
+
+
+class TestHealthConnectWorkoutFields:
+    """Energy left null when not sent, moving time from Health Connect segments."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _detail(
+        import_service: ImportService,
+        *,
+        provider: str = "health_connect",
+        values: list[dict[str, Any]] | None = None,
+        segments: list[dict[str, Any]] | None = None,
+    ) -> Any:
+        request = SDKSyncRequest(
+            **{
+                **SDK_ENVELOPE,
+                "provider": provider,
+                "data": {
+                    "workouts": [
+                        {
+                            "id": "hc-run-1",
+                            "type": "RUNNING",
+                            "startDate": "2026-09-18T12:44:00Z",
+                            "endDate": "2026-09-18T13:44:00Z",
+                            "source": {"name": "Fitbit", "bundleIdentifier": "com.fitbit.FitbitMobile"},
+                            "values": values
+                            if values is not None
+                            else [{"type": "duration", "value": 3600, "unit": "s"}],
+                            "segments": segments,
+                        }
+                    ]
+                },
+            }
+        )
+        [(_, detail, _)] = list(import_service._build_workout_bundles(request, str(uuid4())))
+        return detail
+
+    @staticmethod
+    def _segment(start: str, end: str, kind: str) -> dict[str, Any]:
+        return {"startDate": f"2026-09-18T{start}:00Z", "endDate": f"2026-09-18T{end}:00Z", "type": kind}
+
+    def test_energy_is_null_when_no_energy_statistic(self, import_service: ImportService) -> None:
+        detail = self._detail(import_service)
+
+        assert detail.energy_burned is None
+
+    def test_energy_still_summed_when_sent(self, import_service: ImportService) -> None:
+        detail = self._detail(
+            import_service,
+            values=[
+                {"type": "activeEnergyBurned", "value": 300, "unit": "kcal"},
+                {"type": "basalEnergyBurned", "value": 50, "unit": "kcal"},
+            ],
+        )
+
+        assert detail.energy_burned == Decimal("350")
+
+    def test_moving_time_is_the_active_segments(self, import_service: ImportService) -> None:
+        """Fitbit marks only the running part of a longer session."""
+        detail = self._detail(import_service, segments=[self._segment("13:14", "13:41", "running")])
+
+        assert detail.moving_time_seconds == 27 * 60
+
+    def test_moving_time_subtracts_pauses_when_only_pauses_are_segmented(self, import_service: ImportService) -> None:
+        detail = self._detail(
+            import_service,
+            segments=[self._segment("13:00", "13:10", "other_39"), self._segment("13:20", "13:25", "rest")],
+        )
+
+        assert detail.moving_time_seconds == 45 * 60
+
+    def test_active_and_idle_segments_count_only_the_active_ones(self, import_service: ImportService) -> None:
+        detail = self._detail(
+            import_service,
+            segments=[
+                self._segment("12:44", "13:04", "running"),
+                self._segment("13:04", "13:09", "rest"),
+                self._segment("13:09", "13:29", "running"),
+            ],
+        )
+
+        assert detail.moving_time_seconds == 40 * 60
+
+    def test_no_segments_no_moving_time(self, import_service: ImportService) -> None:
+        assert self._detail(import_service).moving_time_seconds is None
+
+    def test_malformed_segments_are_ignored(self, import_service: ImportService) -> None:
+        detail = self._detail(import_service, segments=[{"type": "running"}, {"startDate": "x", "endDate": "y"}])
+
+        assert detail.moving_time_seconds is None
+
+    def test_pauses_are_subtracted_from_elapsed_time_not_the_duration_statistic(
+        self, import_service: ImportService
+    ) -> None:
+        """A 60 min session with a 50 min duration statistic and a 10 min pause moved for 50 min."""
+        detail = self._detail(
+            import_service,
+            values=[{"type": "duration", "value": 3000, "unit": "s"}],
+            segments=[self._segment("13:00", "13:10", "other_39")],
+        )
+
+        assert detail.moving_time_seconds == 50 * 60
+
+    def test_segment_with_mixed_offset_awareness_is_ignored(self, import_service: ImportService) -> None:
+        detail = self._detail(
+            import_service,
+            segments=[
+                {"startDate": "2026-09-18T13:14:00", "endDate": "2026-09-18T13:41:00Z", "type": "running"},
+                self._segment("13:00", "13:10", "running"),
+            ],
+        )
+
+        assert detail.moving_time_seconds == 10 * 60
+
+    def test_segment_without_a_type_is_not_counted_as_active(self, import_service: ImportService) -> None:
+        detail = self._detail(
+            import_service,
+            segments=[
+                {"startDate": "2026-09-18T13:14:00Z", "endDate": "2026-09-18T13:41:00Z"},
+                {"startDate": "2026-09-18T13:00:00Z", "endDate": "2026-09-18T13:05:00Z", "type": None},
+                self._segment("12:50", "13:00", "rest"),
+            ],
+        )
+
+        assert detail.moving_time_seconds == 50 * 60
+
+    def test_apple_segments_are_not_interpreted(self, import_service: ImportService) -> None:
+        detail = self._detail(import_service, provider="apple", segments=[self._segment("13:14", "13:41", "running")])
+
+        assert detail.moving_time_seconds is None

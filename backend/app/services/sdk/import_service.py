@@ -21,6 +21,7 @@ from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import DeviceType, SeriesType, daily_total_flag
+from app.schemas.enums.provider import ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -44,6 +45,7 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 )
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
+from app.services.sdk.workout_segments import health_connect_moving_time
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -181,6 +183,13 @@ class ImportService:
 
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
+
+            if "moving_time_seconds" not in metrics and provider == ProviderName.HEALTH_CONNECT:
+                # Elapsed, not the duration statistic: pauses are subtracted from it.
+                elapsed = int((wjson.endDate - wjson.startDate).total_seconds())
+                moving_time = health_connect_moving_time(wjson.segments, elapsed)
+                if moving_time is not None:
+                    metrics["moving_time_seconds"] = moving_time
 
             workout_type = wjson.type.lower() if wjson.type else None
             type = get_unified_sdk_workout_type(workout_type).value if workout_type else None
@@ -367,7 +376,6 @@ class ImportService:
             return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
-        stats_dict["energy_burned"] = Decimal("0")
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
 
@@ -407,7 +415,8 @@ class ImportService:
                     | WorkoutStatisticType.CALORIES
                     | WorkoutStatisticType.TOTAL_CALORIES
                 ):
-                    stats_dict["energy_burned"] += value
+                    # No energy statistic means "not recorded", which is null, not 0 kcal.
+                    stats_dict["energy_burned"] = stats_dict.get("energy_burned", Decimal("0")) + value
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:
