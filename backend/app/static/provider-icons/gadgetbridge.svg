@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Gadgetbridge local wearable data">
+  <rect x="15" y="2" width="18" height="44" rx="8" fill="#263238"/>
+  <rect x="9" y="10" width="30" height="28" rx="8" fill="#4caf50"/>
+  <path d="M14 25h6l3-7 4 13 3-6h4" fill="none" stroke="white" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>

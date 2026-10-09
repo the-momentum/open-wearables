@@ -88,7 +88,7 @@ def process_sdk_upload(
             payload was offloaded to S3 - see ``payload_ref``.
         content_type: The content type header value
         user_id: User ID to associate with the data
-        provider: Import provider - "apple", "samsung", "health_connect"
+        provider: Native SDK provider (including "gadgetbridge")
         batch_id: Unique batch identifier for tracking (optional for backwards compatibility)
         payload_ref: ``s3://bucket/key`` of the stored payload. When set (and ``content`` is
             None) the body is loaded from S3 here, so it never travels through the broker.

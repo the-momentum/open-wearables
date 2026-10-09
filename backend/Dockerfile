@@ -1,4 +1,7 @@
-FROM python:3.14-slim AS builder
+ARG PYTHON_IMAGE=python:3.14-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:latest
+FROM ${UV_IMAGE} AS uv
+FROM ${PYTHON_IMAGE} AS builder
 
     RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential libpq-dev && \
@@ -6,7 +9,7 @@ FROM python:3.14-slim AS builder
     rm -rf /var/lib/apt/lists/*
     RUN pip install --no-cache-dir --upgrade pyopenssl
 
-    COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+    COPY --from=uv /uv /uvx /bin/
 
     WORKDIR /root_project
 
@@ -22,7 +25,7 @@ FROM python:3.14-slim AS builder
     COPY . .
     RUN uv sync --locked --no-dev --extra otel --no-editable
 
-FROM python:3.14-slim
+FROM ${PYTHON_IMAGE}
 
     RUN apt-get update && \
     apt-get install -y --no-install-recommends libpq5 && \
@@ -31,7 +34,7 @@ FROM python:3.14-slim
 
     WORKDIR /root_project
 
-    COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+    COPY --from=uv /uv /uvx /bin/
 
     COPY --from=builder /opt/venv /opt/venv
     COPY --from=builder /root_project /root_project

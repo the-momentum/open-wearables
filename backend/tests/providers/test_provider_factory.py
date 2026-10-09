@@ -161,7 +161,7 @@ class TestProviderFactory:
 
     def test_sdk_providers_have_no_components(self, factory: ProviderFactory) -> None:
         """SDK-only providers are metadata; ingestion runs through app/services/sdk/."""
-        for name in ("apple", "samsung", "health_connect"):
+        for name in ("apple", "samsung", "health_connect", "gadgetbridge"):
             # Act
             strategy = factory.get_provider(name)
 

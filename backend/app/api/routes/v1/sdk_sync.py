@@ -39,7 +39,7 @@ def sync_sdk_data(
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.
 
-    Supports Apple HealthKit and Samsung Health SDK formats (identical payloads):
+    Supports native SDK providers, including Gadgetbridge exports, using the same payload format:
     ```json
     {
         "provider": "apple",

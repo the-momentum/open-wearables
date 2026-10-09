@@ -1,0 +1,14 @@
+# Build from the checked-out revision, then deploy compose.yml alone (also in Portainer).
+services:
+  app:
+    build:
+      context: ../../backend
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.14.7-slim}
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.19}
+        GIT_SHA: ${OW_IMAGE_TAG}
+  frontend:
+    build:
+      context: ../../frontend
+      args:
+        BUN_IMAGE: ${BUN_IMAGE:-oven/bun:1.4.0-alpine}

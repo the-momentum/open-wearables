@@ -1,5 +1,6 @@
 # Build stage
-FROM oven/bun:1.4-alpine AS builder
+ARG BUN_IMAGE=oven/bun:1.4-alpine
+FROM ${BUN_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -12,7 +13,7 @@ ENV NODE_ENV=production
 RUN bun run build
 
 # Production stage
-FROM oven/bun:1.4-alpine
+FROM ${BUN_IMAGE}
 
 WORKDIR /app
 

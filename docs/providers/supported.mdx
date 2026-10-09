@@ -38,13 +38,19 @@ Connect your wearable devices and fitness platforms to Open Wearables. Click on 
 | **Google Health Connect** | [Setup Guide →](/sdk/android/integration) | Via Android, Flutter & React Native SDK |
 | **Samsung Health** | [Setup Guide →](/sdk/android/integration) | Via Android, Flutter & React Native SDK |
 
+### Local exports
+
+| Provider | Setup Guide | Notes |
+|----------|-------------|--------|
+| **Gadgetbridge** | [Setup Guide →](/providers/gadgetbridge) | Native SQLite → SDK ingestion; no OAuth or Health Connect |
+
 ## Adding New Providers
 
 More providers are being added regularly. Check the current status of provider requests and implementations on [GitHub Issues](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue+label%3Aprovider-request) tagged with `provider-request`.
 
 ## General Setup Steps
 
-While each provider has specific requirements, the general setup process typically involves:
+Local export and SDK providers follow their own setup guides. For cloud providers, the general setup process typically involves:
 
 1. **Register as a developer** with the provider
 2. **Create an OAuth application** to obtain client credentials
