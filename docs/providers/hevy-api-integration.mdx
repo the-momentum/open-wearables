@@ -1,0 +1,61 @@
+---
+title: "Hevy API Integration"
+description: "Connect Hevy with a personal API key. Syncs gym workouts with full exercise, set, rep, weight and RPE detail, including edits and deletions."
+keywords: ["hevy api", "hevy integration", "hevy workout data", "gym tracker api", "strength training data"]
+"og:title": "Hevy API Integration | Open Wearables"
+"og:description": "Connect Hevy with a personal API key. Syncs gym workouts with full exercise and set detail."
+"og:url": "https://docs.openwearables.io/providers/hevy-api-integration"
+"og:type": "article"
+"twitter:title": "Hevy API Integration | Open Wearables"
+"twitter:description": "Connect Hevy with a personal API key. Syncs gym workouts with full exercise and set detail."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+Hevy is a gym/strength-training tracker. The integration pulls workouts through the Hevy REST API using each user's **personal API key** — Hevy has no OAuth. Sync is incremental via the workout-events feed, so workouts edited or deleted in the Hevy app propagate to Open Wearables on the next pull.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Workouts (exercises, sets, reps, weights, RPE) | Yes |
+| Workout edits and deletions | Yes (via events feed) |
+| Sleep | No (not tracked by Hevy) |
+| Recovery / health scores | No |
+| Continuous timeseries | No |
+
+Per-set structure (exercise title, set type, weight, reps, distance, duration, RPE) is preserved losslessly in the workout detail's `segments` field. Distance from cardio-machine sets is aggregated into the workout `distance` metric.
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** | Open Wearables periodically fetches `GET /v1/workouts/events?since=...` — 'updated' events carry the full workout, 'deleted' events remove it. |
+
+### Provider quirks
+
+<Accordion title="API-key auth (no OAuth)">
+The API key is issued per user at `hevy.com/settings?developer` and requires a **Hevy Pro** subscription. It is unscoped and long-lived: it grants full read/write access to the user's Hevy account, and regenerating it invalidates every integration using it. When Hevy rejects the key (regenerated, or Pro lapsed) the connection is marked revoked and the user must submit a new key.
+</Accordion>
+
+<Accordion title="Pagination limits">
+Both `/v1/workouts` and `/v1/workouts/events` cap `pageSize` at 10. Large backfills therefore take one request per 10 workouts.
+</Accordion>
+
+## Connecting a user
+
+There is no OAuth authorize/callback flow. Create the connection by submitting the user's key:
+
+```bash
+curl -X POST "$API_BASE/api/v1/users/{user_id}/connections/hevy" \
+  -H "X-API-Key: <your Open Wearables API key>" \
+  -H "Content-Type: application/json" \
+  -d '{"api_key": "<the user's Hevy API key>"}'
+```
+
+The key is validated against `GET /v1/user/info` before it is stored. On success the response is the enriched connection object, and (flag-gated by `HISTORICAL_SYNC_ON_CONNECT`) a 90-day historical backfill is scheduled. Reposting with a new key rotates the stored key on the same connection.
+
+## Environment variables
+
+None. Hevy has no application-level credentials — auth is entirely per-user.

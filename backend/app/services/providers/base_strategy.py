@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID
 
 from celery import current_app as celery_app
 
-from app.models import EventRecord, User
+from app.database import DbSession
+from app.models import EventRecord, User, UserConnection
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
@@ -102,6 +103,11 @@ class ProviderCapabilities:
         env vars) and is stored in ``provider_settings.webhook_secret``.
         Must be used together with ``webhook_registration_api=True``.
         Currently: Polar.
+    api_key_connect:
+        Provider has no OAuth; the user supplies a personal API key which is
+        stored on the connection and sent with every REST request. Connections
+        are created via ``POST /users/{user_id}/connections/{provider}``.
+        Requires ``rest_pull=True``. Currently: Hevy.
     max_historical_days:
         Hard upper limit on how far back the provider allows data to be
         fetched. ``None`` means no known limit. Garmin: 30 days.
@@ -116,9 +122,12 @@ class ProviderCapabilities:
     webhook_registration_api: bool = False
     webhook_subscription_per_user: bool = False
     webhook_inbound_secret: bool = False
+    api_key_connect: bool = False
     max_historical_days: int | None = None
 
     def __post_init__(self) -> None:
+        if self.api_key_connect and not self.rest_pull:
+            raise ValueError("api_key_connect requires rest_pull=True (the key is only used for REST polling)")
         if self.webhook_stream and self.webhook_ping:
             raise ValueError("webhook_stream and webhook_ping are mutually exclusive")
         if self.webhook_ping and not self.rest_pull:
@@ -127,6 +136,41 @@ class ProviderCapabilities:
             raise ValueError("webhook_inbound_secret requires webhook_registration_api=True")
         if self.webhook_subscription_per_user and not self.webhook_registration_api:
             raise ValueError("webhook_subscription_per_user requires webhook_registration_api=True")
+
+
+class InvalidApiKeyError(Exception):
+    """An api_key_connect provider rejected the supplied API key."""
+
+
+class ProviderUnavailableError(Exception):
+    """The provider could not be reached or answered with an error that says nothing
+    about the caller's input (timeout, connection error, 429, 5xx, unexpected body).
+
+    Kept apart from InvalidApiKeyError so an outage is never reported as a bad key.
+    """
+
+
+class IncompleteSyncError(Exception):
+    """A provider's load_data did not fully apply the requested window.
+
+    Raised by providers whose feed is cursor-based (e.g. an events-since feed), where
+    advancing ``last_synced_at`` past a partial fetch would lose the rest for good.
+    A live sync keeps the cursor where it was, so the next run fetches the window again.
+    """
+
+
+@runtime_checkable
+class ApiKeyConnectable(Protocol):
+    """What ``ProviderCapabilities.api_key_connect = True`` promises.
+
+    The factory hands back the abstract strategy, so the connect endpoint has no
+    static way to know the method exists. Declaring the contract here means the
+    capability flag and the method cannot drift apart unnoticed.
+    """
+
+    def connect_with_api_key(self, db: DbSession, user_id: UUID, api_key: str) -> UserConnection:
+        """Validate the key against the provider and store it on the connection."""
+        ...
 
 
 class BaseProviderStrategy(ABC):

@@ -4,6 +4,7 @@ Tests for sync_vendor_data Celery task.
 Tests synchronization of workout data from external providers (Garmin, Polar, Suunto).
 """
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.schemas.auth import ConnectionStatus
 from app.schemas.sync_status import SyncStatus
+from app.services.providers.base_strategy import IncompleteSyncError
 from app.services.sync_coordination import try_become_primary
 from app.utils.sync_params import build_sync_params
 from tests.factories import UserConnectionFactory, UserFactory
@@ -352,6 +354,58 @@ class TestSyncVendorDataTask:
         assert result["user_id"] == "not-a-valid-uuid"
         assert "user_id" in result["errors"]
         assert "Invalid UUID format" in result["errors"]["user_id"]
+
+
+class TestSyncVendorDataCursorOnFailure:
+    """A provider that reports an incomplete window keeps the live cursor where it was."""
+
+    _BEFORE = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc)
+
+    def _run(
+        self, db: Session, mock_get_provider: MagicMock, mock_session_local: MagicMock, error: Exception
+    ) -> datetime:
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user, provider="garmin", status=ConnectionStatus.ACTIVE, last_synced_at=self._BEFORE
+        )
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
+        mock_strategy.workouts.load_data.side_effect = error
+        mock_strategy.data_247 = None
+        mock_get_provider.return_value = mock_strategy
+
+        sync_vendor_data(str(user.id))
+        db.refresh(connection)
+        last = connection.last_synced_at
+        return last if last.tzinfo else last.replace(tzinfo=timezone.utc)
+
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
+    @patch("app.services.providers.factory.ProviderFactory.get_provider")
+    def test_incomplete_sync_keeps_the_cursor(
+        self,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        last = self._run(db, mock_get_provider, mock_session_local, IncompleteSyncError("page 2 failed"))
+        assert last == self._BEFORE
+
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
+    @patch("app.services.providers.factory.ProviderFactory.get_provider")
+    def test_other_errors_still_advance_the_cursor(
+        self,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        last = self._run(db, mock_get_provider, mock_session_local, RuntimeError("boom"))
+        assert last > self._BEFORE
 
 
 class TestBuildSyncParams:

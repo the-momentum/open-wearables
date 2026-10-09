@@ -1,16 +1,23 @@
 import contextlib
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
 
+from app.config import settings
 from app.database import DbSession
 from app.models import ProviderSetting
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import ConnectionStatus, LiveSyncMode, SDKAuthContext
 from app.schemas.enums import ProviderName
-from app.schemas.model_crud.user_management import UserConnectionWithCapabilities
+from app.schemas.model_crud.user_management import ApiKeyConnectRequest, UserConnectionWithCapabilities
 from app.services import ApiKeyDep, user_connection_service
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import (
+    ApiKeyConnectable,
+    BaseProviderStrategy,
+    InvalidApiKeyError,
+    ProviderUnavailableError,
+)
 from app.services.providers.factory import ProviderFactory
 from app.utils.auth import CombinedAuthDep
 
@@ -70,6 +77,56 @@ def get_connections_endpoint(
         )
         for conn in connections
     ]
+
+
+@router.post(
+    "/users/{user_id}/connections/{provider}",
+    response_model=UserConnectionWithCapabilities,
+    status_code=status.HTTP_201_CREATED,
+)
+def connect_provider_with_api_key_endpoint(
+    user_id: UUID,
+    provider: ProviderName,
+    body: ApiKeyConnectRequest,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+):
+    """Connect a user to an API-key provider (no OAuth) by validating and storing their key.
+
+    Only providers with ``capabilities.api_key_connect`` (e.g. Hevy) accept this;
+    OAuth providers must go through /oauth/{provider}/authorize.
+    """
+    strategy = factory.get_provider(provider.value)
+    if not strategy.capabilities.api_key_connect or not isinstance(strategy, ApiKeyConnectable):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provider {provider.value} does not support API-key connect; use the OAuth flow",
+        )
+    try:
+        connection = strategy.connect_with_api_key(db, user_id, body.api_key)
+    except InvalidApiKeyError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except ProviderUnavailableError as e:
+        # The key may well be valid; the provider just could not confirm it right now.
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)) from e
+
+    # Mirror the OAuth callback's post-connect behaviour: cursor to now, then a
+    # 90-day historical backfill (HISTORICAL_SYNC_ON_CONNECT) off the request thread.
+    user_connection_service.stamp_last_synced_at(db, user_id, provider.value)
+    if settings.historical_sync_on_connect and strategy.capabilities.rest_pull:
+        from app.integrations.celery.tasks import sync_vendor_data
+
+        now = datetime.now(timezone.utc)
+        sync_vendor_data.delay(
+            user_id=str(user_id),
+            start_date=(now - timedelta(days=90)).isoformat(),
+            end_date=now.isoformat(),
+            providers=[provider.value],
+            is_historical=True,
+        )
+
+    settings_map = provider_settings_repo.get_all(db)
+    return _with_capabilities(connection, settings_map)
 
 
 def _assert_sdk_token_may_disconnect(
