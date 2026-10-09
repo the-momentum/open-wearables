@@ -85,6 +85,7 @@ def upload_batches(
     checkpoint: Path,
     timeout: float = 120,
     retry_unconfirmed: bool = False,
+    reconcile_before_retry: bool = False,
 ) -> int:
     identity = {"url": str(client.base_url), "user_id": user_id, "export": fingerprint(payloads)}
     state: dict[str, Any] = (
@@ -100,6 +101,14 @@ def upload_batches(
             completed += 1
             continue
         send = entry is None or retry_unconfirmed
+        confirmation = None
+        if entry and retry_unconfirmed and reconcile_before_retry:
+            try:
+                confirmation = wait_for_batch(client, user_id, entry["session_id"], payload["data"], timeout)
+            except (RuntimeError, TimeoutError):
+                pass
+            else:
+                send = False
         if send:
             entry = {"session_id": str(uuid4()), "verified": False}
             state["batches"][key] = entry
@@ -112,7 +121,8 @@ def upload_batches(
             if response.status_code != 202:
                 raise RuntimeError("Unexpected SDK acceptance response")
         assert entry is not None
-        wait_for_batch(client, user_id, entry["session_id"], payload["data"], timeout)
+        if confirmation is None:
+            wait_for_batch(client, user_id, entry["session_id"], payload["data"], timeout)
         finish_types(client, user_id, entry["session_id"], payload["data"])
         entry["verified"] = True
         write_private_json(checkpoint, state)

@@ -3,7 +3,7 @@ title: "Gadgetbridge"
 description: "Native, local Huawei SQLite imports through the Open Wearables SDK ingestion API."
 ---
 
-Gadgetbridge is a native provider (`gadgetbridge`), with no OAuth, Huawei Health, Health Connect, or vendor cloud account. The initial workflow is **Huawei wearable → Gadgetbridge SQLite export → Python converter → SDK API → Celery → PostgreSQL**. The Python converter runs on your own computer or server; Android automation is a future extension.
+Gadgetbridge is a native provider (`gadgetbridge`), with no OAuth, Huawei Health, Health Connect, or vendor cloud account. The initial workflow is **Huawei wearable → Gadgetbridge SQLite export → Python converter → SDK API → Celery → PostgreSQL**. The Python converter runs on your own computer or server; Scheduled Android exports and automatic server ingestion are available through the optional automation services.
 
 ## Install and import
 
@@ -98,7 +98,7 @@ This synthetic payload is accepted by `POST /api/v1/sdk/users/{user_id}/sync`, u
 
 The native ingestion coverage describes fields accepted by the shared SDK importer, not sensors provided by a Huawei Band 11. The SQLite adapter exports only the mappings above. Vendor sleep scores/physiology, stress, emotions, temperature, detailed workout samples and GPS tracks are not converted. Huawei stress is deliberately not labeled as Garmin stress. The provided workout type is Huawei esports (unsigned 223); without an exact Open Wearables equivalent it is imported as `other` and reported. Source-13 legacy activity sleep is excluded in favor of the dedicated true-sleep tables.
 
-This change does not add automatic Android uploads, an Internet Helper destination, Home Assistant integrations, or modifications to Endurain. It adds an independent native ingestion path; existing Gadgetbridge/Endurain flows can continue.
+This change does not add an Internet Helper destination, Home Assistant integrations, or modifications to Endurain. It adds an independent native ingestion path; existing Gadgetbridge/Endurain flows can continue.
 
 ## Audit and validation
 
@@ -111,3 +111,7 @@ Validation uses synthetic SQLite fixtures and actual PostgreSQL integration test
 The complete regression run passed: 3,077 backend tests (two skipped), 367 frontend unit/component tests, 244 browser end-to-end tests, and all pre-commit checks. Reposting all 29 real-data batches left database counts and sleep stage durations unchanged. The six-service stack was restarted with retained data, and image inspection confirmed that runtime `.env` files are excluded. Docker builds in the cloud required the environment proxy CA as a temporary build secret; TLS verification remained enabled, and this cloud-specific override is not part of the deployment files.
 
 A PostgreSQL custom-format backup was restored into an isolated database and all 13,312 Gadgetbridge measurement rows were verified there. The temporary restore database was then removed.
+
+## Automatic imports
+
+See `deploy/gadgetbridge/AUTOMATION.md` for the complete Android/Portainer workflow: native periodic Gadgetbridge database export, direct LAN transfer with Syncthing-Fork, and `compose.automation.yml` for a persistent automatic importer. `scripts/gadgetbridge_watch.py` waits for a stable SQLite file, checks integrity, converts and confirms every asynchronous batch. It resumes failed jobs before handling a newer export, avoids unchanged file uploads and retains checkpoints outside the container. Android setup must be verified on the actual phone.

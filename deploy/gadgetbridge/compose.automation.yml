@@ -1,0 +1,31 @@
+# Add to compose.yml for CLI, or merge these services into your existing Portainer stack.
+services:
+  gadgetbridge-importer:
+    image: local/open-wearables-backend:${OW_IMAGE_TAG:?Set OW_IMAGE_TAG}
+    restart: unless-stopped
+    init: true
+    user: ${GADGETBRIDGE_UID:-1000}:${GADGETBRIDGE_GID:-1000}
+    command:
+      - /opt/venv/bin/python
+      - scripts/gadgetbridge_watch.py
+      - /incoming/Gadgetbridge.db
+      - --state
+      - /state
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
+      OPEN_WEARABLES_API_KEY: ${GADGETBRIDGE_API_KEY:?Set the Open Wearables API key}
+      GADGETBRIDGE_USER_ID: ${GADGETBRIDGE_USER_ID:?Set the Open Wearables user UUID}
+      GADGETBRIDGE_API_URL: http://app:8000
+      GADGETBRIDGE_TIMEZONE: Europe/Paris
+      OW_IGNORE_ENV_FILE: '1'
+      TELEMETRY_ENABLED: 'false'
+      DO_NOT_TRACK: '1'
+      SENTRY_ENABLED: 'false'
+      OUTGOING_WEBHOOKS_ENABLED: 'false'
+      RAW_PAYLOAD_STORAGE: disabled
+    volumes:
+      - ${GADGETBRIDGE_INCOMING_DIR:-/srv/gadgetbridge/incoming}:/incoming:ro
+      - ${GADGETBRIDGE_STATE_DIR:-/srv/gadgetbridge/importer}:/state
+    depends_on:
+      app: {condition: service_started}
+      worker: {condition: service_started}

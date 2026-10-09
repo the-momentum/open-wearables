@@ -38,6 +38,8 @@ FROM ${PYTHON_IMAGE}
 
     COPY --from=builder /opt/venv /opt/venv
     COPY --from=builder /root_project /root_project
+    # Import tools can run as the host UID that owns their private bind mounts.
+    RUN chmod -R a+rX /root_project
     ENV VIRTUAL_ENV=/opt/venv
     ENV PATH="/opt/venv/bin:$PATH"
     ENV UV_PROJECT_ENVIRONMENT=/opt/venv

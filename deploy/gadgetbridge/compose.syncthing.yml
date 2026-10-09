@@ -1,0 +1,18 @@
+# Standalone, optional LAN file transfer. The importer works with any equivalent transfer tool.
+name: gadgetbridge-transfer
+services:
+  syncthing:
+    image: syncthing/syncthing:2.1.6
+    restart: unless-stopped
+    hostname: serv-kaell-gadgetbridge
+    environment:
+      PUID: ${GADGETBRIDGE_UID:-1000}
+      PGID: ${GADGETBRIDGE_GID:-1000}
+      UMASK: '0077'
+      STGUIADDRESS: 0.0.0.0:8384
+    volumes:
+      - ${SYNCTHING_CONFIG_DIR:-/srv/gadgetbridge/syncthing}:/var/syncthing
+      - ${GADGETBRIDGE_INCOMING_DIR:-/srv/gadgetbridge/incoming}:/incoming
+    ports:
+      - ${SYNCTHING_BIND_ADDRESS:-192.168.0.2}:${SYNCTHING_GUI_PORT:-18384}:8384
+      - ${SYNCTHING_BIND_ADDRESS:-192.168.0.2}:${SYNCTHING_SYNC_PORT:-22000}:22000/tcp

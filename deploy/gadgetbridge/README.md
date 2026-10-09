@@ -121,3 +121,7 @@ Pour une restauration planifiée, arrêter les services applicatifs, garder Post
 ## Validation de cette implémentation
 
 Les deux images ont été construites dans l'environnement cloud et les six services démarrés. L'export fourni a traversé l'API, Celery et PostgreSQL : 29 lots confirmés, 13 312 mesures, deux sessions de sommeil, une activité. La reprise avec checkpoint et le renvoi des mêmes lots ont été vérifiés sans duplication. La sauvegarde PostgreSQL a aussi été restaurée dans une base isolée : les 13 312 mesures y ont été retrouvées. La base originale a été ouverte en lecture seule et n'est pas ajoutée au dépôt. Aucun déploiement n'a été effectué sur `serv-kaell` et aucun service Endurain/Home Assistant n'a été modifié.
+
+## Synchronisation automatique
+
+Pour exporter périodiquement sur Android, transférer le fichier sur le LAN et convertir/importer automatiquement dans Docker, suivre [AUTOMATION.md](AUTOMATION.md). Les services optionnels sont fournis dans `compose.syncthing.yml` et `compose.automation.yml`.

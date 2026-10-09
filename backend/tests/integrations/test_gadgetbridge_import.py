@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Generator
 from contextlib import nullcontext
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -27,6 +28,12 @@ SOURCE = {
     "deviceType": "fitness_band",
     "deviceManufacturer": "Huawei",
 }
+
+
+@pytest.fixture(autouse=True)
+def isolate_sleep_finalizer() -> Generator[None, None, None]:
+    with patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps.delay"):
+        yield
 
 
 @pytest.fixture
