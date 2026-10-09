@@ -19,22 +19,14 @@ def login(
     db: DbSession,
 ) -> TokenResponse:
     """Authenticate developer and return access token with refresh token."""
-    # Find developer by email
-    developers = developer_service.crud.get_all(
-        db,
-        filters={"email": form_data.username},
-        offset=0,
-        limit=1,
-        sort_by=None,
-    )
-    if not developers:
+    developer = developer_service.get_by_email(db, form_data.username)
+    if not developer:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    developer = developers[0]
     if not verify_password(form_data.password, developer.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
