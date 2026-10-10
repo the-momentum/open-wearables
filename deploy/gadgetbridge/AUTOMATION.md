@@ -13,10 +13,10 @@ cd /opt/stacks/open-wearables
 sudo git fetch origin
 sudo git switch feat/gadgetbridge-native
 sudo git pull --ff-only origin feat/gadgetbridge-native
-release=$(git rev-parse --short=8 HEAD)
+release=$(sudo git rev-parse --short=8 HEAD)
 sudo docker build --build-arg PYTHON_IMAGE=python:3.14.7-slim \
   --build-arg UV_IMAGE=ghcr.io/astral-sh/uv:0.12.19 \
-  --build-arg GIT_SHA="$(git rev-parse HEAD)" \
+  --build-arg GIT_SHA="$(sudo git rev-parse HEAD)" \
   -t "local/open-wearables-backend:$release" backend
 sudo docker build --build-arg BUN_IMAGE=oven/bun:1.4.0-alpine \
   -t "local/open-wearables-frontend:$release" frontend
