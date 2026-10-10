@@ -40,3 +40,7 @@ To control the range yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `
 | Google Health Connect | 30 days | Health Connect only exposes the last 30 days to apps that lack the `READ_HEALTH_DATA_HISTORY` permission, which the Open Wearables SDK does not currently request. |
 | Apple Health | No limit | |
 | Samsung Health | No limit | |
+
+## Gadgetbridge local history
+
+[Gadgetbridge](/providers/gadgetbridge) imports historical SQLite data through the existing SDK endpoint. Its resumable uploader confirms each Celery result before checkpointing; HTTP 202 alone does not mark a batch successful.

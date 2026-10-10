@@ -1,0 +1,84 @@
+name: open-wearables-gadgetbridge
+services:
+  db:
+    image: ${POSTGRES_IMAGE:-postgres:18}
+    environment:
+      POSTGRES_USER: open-wearables
+      POSTGRES_DB: open-wearables
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - ${OW_DATA_DIR:-/srv/open-wearables}/postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -U, open-wearables, -d, open-wearables]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  redis:
+    image: ${REDIS_IMAGE:-redis:8}
+    command: [redis-server, --appendonly, 'yes', --appendfsync, everysec]
+    volumes:
+      - ${OW_DATA_DIR:-/srv/open-wearables}/redis:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  app:
+    image: local/open-wearables-backend:${OW_IMAGE_TAG:?Set OW_IMAGE_TAG to your source revision}
+    command: scripts/start/app.sh
+    env_file: ${OW_ENV_FILE:-.env}
+    environment: &backend-env
+      ENVIRONMENT: production
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY}
+      MASTER_KEY: ${MASTER_KEY:?Set MASTER_KEY}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_USER: open-wearables
+      DB_NAME: open-wearables
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      TELEMETRY_ENABLED: 'false'
+      DO_NOT_TRACK: '1'
+      SENTRY_ENABLED: 'false'
+      OUTGOING_WEBHOOKS_ENABLED: 'false'
+      SDK_PAYLOAD_S3_OFFLOAD: 'false'
+      RAW_PAYLOAD_STORAGE: disabled
+    ports:
+      - ${OW_BIND_ADDRESS:-127.0.0.1}:${OW_API_PORT:-18000}:8000
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  worker:
+    image: local/open-wearables-backend:${OW_IMAGE_TAG}
+    command: uv run celery -A app.main:celery_app worker --loglevel=info --pool=threads --concurrency=2 -Q default,sdk_sync,garmin_sync,webhook_sync,xml_sync
+    env_file: ${OW_ENV_FILE:-.env}
+    environment: *backend-env
+    depends_on:
+      app: {condition: service_started}
+    restart: unless-stopped
+  beat:
+    image: local/open-wearables-backend:${OW_IMAGE_TAG}
+    command: uv run celery -A app.main:celery_app beat --loglevel=info --schedule=/state/celerybeat-schedule --pidfile=/tmp/celerybeat.pid
+    env_file: ${OW_ENV_FILE:-.env}
+    environment: *backend-env
+    volumes:
+      - ${OW_DATA_DIR:-/srv/open-wearables}/beat:/state
+    depends_on:
+      app: {condition: service_started}
+    restart: unless-stopped
+  frontend:
+    image: local/open-wearables-frontend:${OW_IMAGE_TAG}
+    environment:
+      API_URL: http://app:8000
+      VITE_API_URL: ${API_BASE_URL:?Set API_BASE_URL}
+      ORIGIN: ${FRONTEND_URL:?Set FRONTEND_URL}
+    ports:
+      - ${OW_BIND_ADDRESS:-127.0.0.1}:${OW_FRONTEND_PORT:-13000}:3000
+    depends_on:
+      app: {condition: service_started}
+    restart: unless-stopped

@@ -6070,7 +6070,7 @@
           "External: Mobile SDK"
         ],
         "summary": "Sync Sdk Data",
-        "description": "Import health data from SDK provider asynchronously via Celery.\n\nSupports Apple HealthKit and Samsung Health SDK formats (identical payloads):\n```json\n{\n    \"provider\": \"apple\",\n    \"sdkVersion\": \"1.0.0\",\n    \"syncTimestamp\": \"2021-01-01T00:00:00Z\",\n    \"data\": {\n        \"records\": [...],\n        \"sleep\": [...],\n        \"workouts\": [...]\n    }\n}\n```\n\nArgs:\n    user_id: SDK user identifier\n    body: Health data payload\n    auth: SDK authentication (Bearer token or API key)\n\nReturns:\n    UploadDataResponse with 202 status and task queued message\n\nRaises:\n    HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported.\n    Payload validation runs async in the worker, not here.",
+        "description": "Import health data from SDK provider asynchronously via Celery.\n\nSupports native SDK providers, including Gadgetbridge exports, using the same payload format:\n```json\n{\n    \"provider\": \"apple\",\n    \"sdkVersion\": \"1.0.0\",\n    \"syncTimestamp\": \"2021-01-01T00:00:00Z\",\n    \"data\": {\n        \"records\": [...],\n        \"sleep\": [...],\n        \"workouts\": [...]\n    }\n}\n```\n\nArgs:\n    user_id: SDK user identifier\n    body: Health data payload\n    auth: SDK authentication (Bearer token or API key)\n\nReturns:\n    UploadDataResponse with 202 status and task queued message\n\nRaises:\n    HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported.\n    Payload validation runs async in the worker, not here.",
         "operationId": "sync_sdk_data_api_v1_sdk_users__user_id__sync_post",
         "security": [
           {
@@ -14988,6 +14988,7 @@
           "ultrahuman",
           "sensorbio",
           "withings",
+          "gadgetbridge",
           "unknown",
           "internal"
         ],

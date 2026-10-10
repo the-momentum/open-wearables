@@ -31,6 +31,7 @@ from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 from app.schemas.model_crud.activities import EventRecordDetailCreate
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.gadgetbridge.coverage import METRIC_TYPES as GADGETBRIDGE_METRIC_TYPES
 
 PROVIDERS_DIR = Path("app/services/providers")
 
@@ -40,7 +41,7 @@ IMPL_FILES = ("data_247.py", "workouts.py", "nutrition.py", "webhook_handler.py"
 # SDK providers emit via the shared SDK pipeline (not their own data_247);
 # their timeseries is derived from the SDK maps and sleep details are set in the
 # shared sleep service, so those shared files are scanned for them too.
-SDK_PROVIDERS = {"apple", "samsung", "health_connect"}
+SDK_PROVIDERS = {"apple", "samsung", "health_connect", "gadgetbridge"}
 SDK_SHARED_FILES = (
     Path("app/services/sdk/import_service.py"),
     Path("app/services/sdk/sleep_service.py"),
@@ -148,12 +149,14 @@ _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
     "samsung": SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
     "health_connect": ANDROID_METRIC_TYPE_TO_SERIES_TYPE,
+    "gadgetbridge": GADGETBRIDGE_METRIC_TYPES,
 }
 
 _SDK_WORKOUT_STATISTIC_MAP = {
     "apple": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
     "samsung": SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
     "health_connect": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
+    "gadgetbridge": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
 }
 
 

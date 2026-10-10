@@ -62,7 +62,8 @@
             "pages": [
               "providers/supported",
               "providers/coverage",
-              "providers/historical-data"
+              "providers/historical-data",
+              "providers/gadgetbridge"
             ]
           },
           {

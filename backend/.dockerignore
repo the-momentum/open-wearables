@@ -15,3 +15,10 @@ celerybeat-schedule-wal
 *.log
 *.tmp
 *.bak
+
+# Runtime configuration is injected by Compose, never baked into an image.
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example

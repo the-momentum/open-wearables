@@ -2,6 +2,7 @@ from app.schemas.enums import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.fitbit.strategy import FitbitStrategy
+from app.services.providers.gadgetbridge.strategy import GadgetbridgeStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.google_health.strategy import GoogleHealthStrategy
 from app.services.providers.health_connect.strategy import HealthConnectStrategy
@@ -50,5 +51,7 @@ class ProviderFactory:
                 return UltrahumanStrategy()
             case ProviderName.WITHINGS.value:
                 return WithingsStrategy()
+            case ProviderName.GADGETBRIDGE.value:
+                return GadgetbridgeStrategy()
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")

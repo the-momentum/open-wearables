@@ -1,0 +1,117 @@
+---
+title: "Gadgetbridge"
+description: "Native, local Huawei SQLite imports through the Open Wearables SDK ingestion API."
+---
+
+Gadgetbridge is a native provider (`gadgetbridge`), with no OAuth, Huawei Health, Health Connect, or vendor cloud account. The initial workflow is **Huawei wearable → Gadgetbridge SQLite export → Python converter → SDK API → Celery → PostgreSQL**. The Python converter runs on your own computer or server; Scheduled Android exports and automatic server ingestion are available through the optional automation services.
+
+## Install and import
+
+Use the Docker/Portainer deployment instructions in `deploy/gadgetbridge/README.md` in this checkout. Enable Gadgetbridge in the provider settings, create an Open Wearables user and an API key in your developer portal, and export the database from Gadgetbridge. Copy a consistent exported SQLite file, rather than a live database without its WAL.
+
+From the repository's `backend` directory, with dependencies installed:
+
+```bash
+uv run python scripts/gadgetbridge_inspect.py /private/Gadgetbridge.db
+uv run python scripts/gadgetbridge_import.py /private/Gadgetbridge.db \
+  --output /private/gadgetbridge-import --timezone Europe/Paris
+```
+
+The inspector prints schema and aggregate counts. Exporting performs no network requests and opens SQLite read-only. Generated payloads, reports and checkpoints contain health data; their directories use mode `0700` and newly written JSON files use mode `0600`. Keep them outside Git and protect backups similarly.
+
+To deliver the export, set `OPEN_WEARABLES_API_KEY` securely in the process environment. Never put the key into command-line arguments or Git. Set `OW_USER_ID` to the user UUID from your instance:
+
+```bash
+uv run python scripts/gadgetbridge_import.py /private/Gadgetbridge.db \
+  --output /private/gadgetbridge-import --timezone Europe/Paris \
+  --api-url http://localhost:18000 --user-id "$OW_USER_ID"
+```
+
+Use HTTPS for remote delivery, or an SSH tunnel. The user belongs to Open Wearables; `--gadgetbridge-user-id` instead selects the SQLite `USER_ID`. Multiple devices require `--device-id`. Multiple users require explicit selection. Tables without `USER_ID` remain device-scoped: use a separate export per person when a device was shared.
+
+## Verified Huawei mapping
+
+The adapter targets the actual Huawei schema inspected in a `user_version=151` export. Missing optional tables produce no data; missing required columns in existing tables fail explicitly. It is not a universal adapter for every Gadgetbridge device or firmware.
+
+| Source | SDK identifier / destination | Interpretation |
+| --- | --- | --- |
+| Activity `STEPS` | `STEP_COUNT` | Count per forward source-11 interval, not a cumulative counter |
+| Activity `HEART_RATE` | `HEART_RATE` | bpm; signed Huawei bytes are decoded, except missing `-1` |
+| Activity `RESTING_HEART_RATE` | `RESTING_HEART_RATE` | bpm, if present and valid |
+| Activity `DISTANCE` | `DISTANCE` | Meters per interval |
+| Activity `CALORIES` | `ACTIVE_CALORIES_BURNED` | Small calories divided by 1000; API receives kcal |
+| Activity `SPO` | `OXYGEN_SATURATION` | Percentage, valid range 1–100 |
+| HRV `VALUE` | `HEART_RATE_VARIABILITY` | Huawei RMSSD in milliseconds; `LAST_TIMESTAMP` is a sync watermark |
+| Sleep stage samples + statistics | `data.sleep` | 1=light, 2=REM, 3=deep, 4=awake, 5=generic sleeping/nap |
+| Workout summary | `data.workouts` | Start/end seconds, distance meters, energy kcal, verified activity types |
+
+Activity/workout epochs use seconds; sleep/HRV epochs use milliseconds. API dates are UTC, with each sample's `zoneOffset` computed using the requested IANA timezone, including daylight saving transitions. One sleep stage row represents one minute. Statistics' `TIMESTAMP` and `WAKEUP_TIME`, rounded down to minutes, delimit sleep; pre-sleep rows are excluded and gaps are never filled. Open Wearables merges the minute segments into sleep sessions across batches.
+
+Values `-1`, nulls, out-of-range sensor readings and reverse activity boundary rows are excluded and counted in `report.json`. Unknown sleep stages and conflicting same-type/time activity values fail rather than silently choosing a value. A stable hashed device identifier and deterministic UUIDs identify the source without exposing its MAC address.
+
+Defaults were verified against official Gadgetbridge sources; options `--hrv-kind sdnn --hrv-unit ms`, `--activity-calorie-unit`, `--workout-calorie-unit` and `--sleep-stage-map` are overrides for **independently verified** different schemas, not guesses. RMSSD and SDNN remain separate series in Open Wearables. Changing the mapping after a successful import requires reconciling old measurements; normal replay deduplication does not rewrite conflicting values.
+
+## Historical batches, confirmation and recovery
+
+Default batches contain at most 500 items; `--batch-size` supports 1–5000. Each payload is validated against the existing `SyncRequest` schema before export. Export directories are identified by a deterministic payload fingerprint. Changing the input, mapping, timezone or batch size may create another directory.
+
+**HTTP 202 only confirms queue acceptance.** The uploader assigns a unique `syncSessionId` to each attempt and records it before submitting. It polls `GET /api/v1/users/{user_id}/sync/runs` for the matching `sdk_<session>` run, checks provider, user, success, dropped-record messages and processed counts, then emits existing historical type-completion logs. Only then is the checkpoint marked verified. Failed, partial or timed-out processing exits unsuccessfully and preserves the checkpoint.
+
+Run the identical command again after interruption. Verified batches are skipped; pending attempts are reconciled using the saved run ID without reposting. If an attempt never reached the queue, its worker failed, or the result has expired from recent run history, investigate first, then explicitly use `--retry-unconfirmed` to resubmit pending batches with fresh run IDs. Delivery is at least once; the existing database uniqueness and sleep merging prevent duplicates. Checkpoints are tied to the server, user and export and cannot be reused across targets. A file lock prevents simultaneous CLI uploads to the same export directory.
+
+Inspect sync history and the user's metrics/sleep/workouts in the portal after importing. For server-side verification, count rows by the user's Gadgetbridge data source in `data_point_series` and `event_record`; a run's processed-item count is not its count of new database rows.
+
+## Valid API example
+
+This synthetic payload is accepted by `POST /api/v1/sdk/users/{user_id}/sync`, using `X-Open-Wearables-API-Key` authentication. The converter sends the same contract, plus actual converted data.
+
+```json
+{
+  "provider": "gadgetbridge",
+  "sdkVersion": "gadgetbridge-converter/1",
+  "syncTimestamp": "2026-10-06T21:01:00Z",
+  "syncType": "historical",
+  "syncSessionId": "synthetic-example-001",
+  "data": {
+    "records": [{
+      "id": "synthetic-steps-001",
+      "type": "STEP_COUNT",
+      "value": 42,
+      "unit": "count",
+      "startDate": "2026-10-06T21:00:00Z",
+      "endDate": "2026-10-06T21:01:00Z",
+      "zoneOffset": "+02:00",
+      "source": {
+        "name": "Gadgetbridge:synthetic-device",
+        "appId": "nodomain.freeyourgadget.gadgetbridge",
+        "deviceModel": "Huawei Band 11",
+        "deviceType": "fitness_band"
+      }
+    }],
+    "sleep": [],
+    "workouts": []
+  }
+}
+```
+
+## Limits
+
+The native ingestion coverage describes fields accepted by the shared SDK importer, not sensors provided by a Huawei Band 11. The SQLite adapter exports only the mappings above. Vendor sleep scores/physiology, stress, emotions, temperature, detailed workout samples and GPS tracks are not converted. Huawei stress is deliberately not labeled as Garmin stress. The provided workout type is Huawei esports (unsigned 223); without an exact Open Wearables equivalent it is imported as `other` and reported. Source-13 legacy activity sleep is excluded in favor of the dedicated true-sleep tables.
+
+This change does not add an Internet Helper destination, Home Assistant integrations, or modifications to Endurain. It adds an independent native ingestion path; existing Gadgetbridge/Endurain flows can continue.
+
+## Audit and validation
+
+Baseline: repository commit `d07f0d534051998d7a8a567795f5d6ecc8e685a8`, backend version 0.9.0, frontend version 0.10.0. Provider discovery, SDK validation, connection creation, provider settings, priorities and frontend lists already derive from provider strategies. The implementation adds the enum, priority, strategy, factory registration, coverage and a generic icon; it reuses the existing SDK schema, importer, historical status API and database deduplication. Provider columns are strings (`ProviderName: String(50)`), so no PostgreSQL enum migration is needed. Startup seed scripts add the new settings/priority without replacing existing settings.
+
+No Gadgetbridge strategy exists in the baseline. Official Gadgetbridge contains an Endurain workout exporter but no Open Wearables destination in the inspected source; it does not export these daily health tables. The GitHub Gadgetbridge mirror is frozen at an older revision, so mappings were checked against [official Codeberg revision 1d2889d2dd81d89c43292dd2dcde3fe0433e74dc](https://codeberg.org/Freeyourgadget/Gadgetbridge/src/commit/1d2889d2dd81d89c43292dd2dcde3fe0433e74dc): `HuaweiSampleProvider`, `HuaweiTrueSleepSequenceDataParser`, `HuaweiSupportProvider`, `HuaweiDictionarySyncHRV`, `HrvValueSample`, `ActivitySample`, Huawei generated DAO, and `HuaweiWorkoutGbParser`.
+
+Validation uses synthetic SQLite fixtures and actual PostgreSQL integration tests for units, stages, HRV, SDK acceptance, real worker writes, invalid-value salvage, async failures, replay and recovery. The privately supplied export was also delivered through the Docker API and Celery worker: 29 confirmed batches, 13,312 measurements (164 RMSSD samples), 837 sleep minute segments merged into two sessions, and one workout. SQL verified 6,803 steps and no negative measurements. Neither the export nor generated health payloads are included in Git.
+
+The complete regression run passed: 3,077 backend tests (two skipped), 367 frontend unit/component tests, 244 browser end-to-end tests, and all pre-commit checks. Reposting all 29 real-data batches left database counts and sleep stage durations unchanged. The six-service stack was restarted with retained data, and image inspection confirmed that runtime `.env` files are excluded. Docker builds in the cloud required the environment proxy CA as a temporary build secret; TLS verification remained enabled, and this cloud-specific override is not part of the deployment files.
+
+A PostgreSQL custom-format backup was restored into an isolated database and all 13,312 Gadgetbridge measurement rows were verified there. The temporary restore database was then removed.
+
+## Automatic imports
+
+See `deploy/gadgetbridge/AUTOMATION.md` for the complete Android/Portainer workflow: native periodic Gadgetbridge database export, direct LAN transfer with Syncthing-Fork, and `compose.automation.yml` for a persistent automatic importer. `scripts/gadgetbridge_watch.py` waits for a stable SQLite file, checks integrity, converts and confirms every asynchronous batch. It resumes failed jobs before handling a newer export, avoids unchanged file uploads and retains checkpoints outside the container. Android setup must be verified on the actual phone.
