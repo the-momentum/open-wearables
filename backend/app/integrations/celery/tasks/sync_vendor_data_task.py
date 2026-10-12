@@ -20,6 +20,7 @@ from app.schemas.sync_status import (
     SyncStatus,
 )
 from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
+from app.services.providers.base_strategy import IncompleteSyncError
 from app.services.providers.factory import ProviderFactory
 from app.services.sync_coordination import (
     bind_primary_lease,
@@ -280,6 +281,9 @@ def sync_vendor_data(
                     pull_updated = 0
                     data_type_outcomes: list[DataTypeOutcome] = []
                     applied_lookback: timedelta | None = None  # set when the lookback actually widened the window
+                    # Set when a provider says its window was only partly applied; the
+                    # live cursor then stays put so the next run fetches it again.
+                    hold_cursor = False
 
                     # Resolve effective start: explicit arg > last_synced_at > now
                     # This ensures live syncs never re-pull history.
@@ -338,6 +342,8 @@ def sync_vendor_data(
                                 )
                             )
                         except Exception as e:
+                            if isinstance(e, IncompleteSyncError):
+                                hold_cursor = True
                             log_structured(
                                 logger,
                                 "warning",
@@ -470,7 +476,7 @@ def sync_vendor_data(
                                 )
                             )
 
-                    if not is_historical:
+                    if not is_historical and not hold_cursor:
                         user_connection_repo.update_last_synced_at(db, connection)
 
                     if shared_token and connection.provider_user_id:

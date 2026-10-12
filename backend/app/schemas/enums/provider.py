@@ -18,6 +18,7 @@ class ProviderName(str, Enum):
     ULTRAHUMAN = "ultrahuman"
     SENSORBIO = "sensorbio"
     WITHINGS = "withings"
+    HEVY = "hevy"
     UNKNOWN = "unknown"
     INTERNAL = "internal"
 
@@ -62,4 +63,6 @@ DEFAULT_PROVIDER_PRIORITY: dict[ProviderName, int] = {
     ProviderName.STRAVA: 12,
     ProviderName.ULTRAHUMAN: 13,
     ProviderName.WITHINGS: 14,
+    # Gym sessions only, so it sits below every 24/7 wearable.
+    ProviderName.HEVY: 15,
 }

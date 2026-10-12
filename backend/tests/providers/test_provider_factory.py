@@ -15,6 +15,7 @@ from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.hevy.strategy import HevyStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.sensorbio.strategy import SensorBioStrategy
@@ -260,6 +261,41 @@ class TestProviderFactory:
 
         # Assert
         assert strategy.data_247 is not None
+
+    def test_get_provider_hevy(self, factory: ProviderFactory) -> None:
+        """Should return HevyStrategy instance."""
+        # Act
+        strategy = factory.get_provider("hevy")
+
+        # Assert
+        assert isinstance(strategy, HevyStrategy)
+        assert isinstance(strategy, BaseProviderStrategy)
+        assert strategy.name == "hevy"
+
+    def test_provider_hevy_is_api_key_connect(
+        self,
+        factory: ProviderFactory,
+    ) -> None:
+        """Hevy has no OAuth; connections are created with a personal API key."""
+        # Act
+        strategy = factory.get_provider("hevy")
+
+        # Assert
+        assert strategy.oauth is None
+        assert strategy.capabilities.api_key_connect is True
+        assert strategy.has_cloud_api is True
+
+    def test_provider_hevy_has_workouts(
+        self,
+        factory: ProviderFactory,
+    ) -> None:
+        """Should initialize workouts component for Hevy (no data_247)."""
+        # Act
+        strategy = factory.get_provider("hevy")
+
+        # Assert
+        assert strategy.workouts is not None
+        assert strategy.data_247 is None
 
     def test_multiple_calls_create_new_instances(
         self,
