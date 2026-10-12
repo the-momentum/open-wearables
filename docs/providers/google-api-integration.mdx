@@ -1,9 +1,9 @@
 ---
 title: "Google Health API Integration"
-description: "Connect Google Health via OAuth 2.0 to sync 24/7 metrics, workouts, and sleep. Choose reconcile (app-accurate merged totals) or list (per-device) fetch modes. Notify-only webhooks supported."
-keywords: ["google health api integration", "google health oauth", "google health connect api", "reconcile vs list", "google health webhooks", "google oauth verification", "casa security assessment", "restricted scopes"]
+description: "Connect Google Health via OAuth 2.0 to sync 24/7 metrics, workouts, and sleep, including from Fitbit devices (successor to the Fitbit Web API). Choose reconcile (app-accurate merged totals) or list (per-device) fetch modes. Notify-only webhooks supported."
+keywords: ["google health api integration", "google health oauth", "google health connect api", "reconcile vs list", "google health webhooks", "google oauth verification", "casa security assessment", "restricted scopes", "fitbit", "fitbit google health api", "fitbit web api replacement"]
 "og:title": "Google Health API Integration | Open Wearables"
-"og:description": "Connect Google Health via OAuth 2.0. Syncs 24/7 metrics, workouts, and sleep. Reconcile or list fetch modes; notify-only webhooks."
+"og:description": "Connect Google Health via OAuth 2.0. Syncs 24/7 metrics, workouts, and sleep, including from Fitbit devices. Reconcile or list fetch modes; notify-only webhooks."
 "og:url": "https://docs.openwearables.io/providers/google-api-integration"
 "og:type": "article"
 "twitter:title": "Google Health API Integration | Open Wearables"
@@ -29,6 +29,10 @@ They have separate scopes, connections and lifecycles: connecting one leaves the
 </Note>
 
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
+
+### Fitbit devices
+
+This integration is the successor to the [Fitbit integration](/providers/fitbit-api-integration). Google turns the legacy Fitbit Web API off on October 30, 2026 and points integrations to the Google Health API ([migration guide](https://developers.google.com/health/migration)). Our Fitbit integration is feature-frozen and only syncs workouts; sleep, heart rate, HRV, SpO2 and the other data types below come from Fitbit devices through `google_health`. Users connect with their Google account and have to consent again - Fitbit tokens cannot be carried over.
 
 ### Supported data types
 

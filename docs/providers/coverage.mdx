@@ -14,6 +14,10 @@ keywords: ["wearable api coverage", "health data types by provider", "wearable d
 
 This guide gives an overview of data type support across the integrated wearable providers. Use this matrix to understand what data you can expect when integrating with specific devices.
 
+<Note>
+**Fitbit devices: read the Google Health column.** The Fitbit column covers only the legacy Fitbit Web API integration, which is feature-frozen because Google turns that API off on October 30, 2026. Data from Fitbit devices (heart rate, HRV, sleep, SpO2, steps, workouts and more) is available through the [Google Health API integration](/providers/google-api-integration), which is its successor. A ❌ in the Fitbit column does not mean Open Wearables cannot get that data from a Fitbit device.
+</Note>
+
 ## Quick Overview
 
 {/* Keep the two Quick Overview copies in sync: the HTML matrix for the web page and the markdown table for agents (.md views, llms-full.txt). */}
@@ -33,17 +37,18 @@ This guide gives an overview of data type support across the integrated wearable
 <th className="ow-cov-provider"><span className="ow-cov-vlabel">Ultrahuman</span></th>
 <th className="ow-cov-provider"><span className="ow-cov-vlabel">Strava</span></th>
 <th className="ow-cov-provider"><span className="ow-cov-vlabel">Fitbit</span></th>
+<th className="ow-cov-provider"><span className="ow-cov-vlabel">Google Health</span></th>
 <th className="ow-cov-provider"><span className="ow-cov-vlabel">Health Connect</span></th>
 </tr>
 </thead>
 <tbody>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">OAuth</th><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td></tr>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Workouts</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Sleep</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="soon"><span className="ow-cov-sr">Coming soon</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">24/7 Data</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="p"><span className="ow-cov-sr">Partial</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="soon"><span className="ow-cov-sr">Coming soon</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Timeseries</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="p"><span className="ow-cov-sr">Partial</span></td><td className="soon"><span className="ow-cov-sr">Coming soon</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Health Scores</th><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td></tr>
-<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Women's Health</th><td className="soon"><span className="ow-cov-sr">Coming soon</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="soon"><span className="ow-cov-sr">Coming soon</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">OAuth</th><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Workouts</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Sleep</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">24/7 Data</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="p"><span className="ow-cov-sr">Partial</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Timeseries</th><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="p"><span className="ow-cov-sr">Partial</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Health Scores</th><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td></tr>
+<tr><th scope="row" className="ow-cov-sticky ow-cov-label">Women's Health</th><td className="soon"><span className="ow-cov-sr">Coming soon</span></td><td className="y"><span className="ow-cov-sr">Supported</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="n"><span className="ow-cov-sr">Not available</span></td><td className="soon"><span className="ow-cov-sr">Coming soon</span></td></tr>
 </tbody>
 </table>
 </div>
@@ -59,15 +64,15 @@ This guide gives an overview of data type support across the integrated wearable
 </Visibility>
 
 <Visibility for="agents">
-| Capability | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
-|------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
-| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| **Sleep** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
-| **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | 🔜 | ✅ |
-| **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ◐ | 🔜 | ✅ |
-| **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Women's Health** | 🔜 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
+| Capability | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Google Health | Health Connect |
+|------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:-------------:|:--------------:|
+| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Sleep** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
+| **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | ❌ | ✅ | ✅ |
+| **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ◐ | ❌ | ✅ | ✅ |
+| **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Women's Health** | 🔜 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
 
 Legend:
 - ✅ **Full support** — Fully implemented and collecting data
@@ -873,15 +878,16 @@ Key differences and limitations to be aware of when working with each provider:
   - Webhook must respond with HTTP 200 within 2 seconds; retries up to 3 times on failure
 </Accordion>
 
-<Accordion title="Fitbit">
+<Accordion title="Fitbit (legacy Fitbit Web API)">
+  **Feature-frozen.** Google turns the Fitbit Web API off on October 30, 2026, so this integration gets no new data types. For Fitbit devices use the [Google Health API integration](/providers/google-api-integration), which covers sleep, heart rate, HRV, SpO2, 24/7 metrics and workouts. See the [Fitbit page](/providers/fitbit-api-integration) for details.
+
   **Integration Method:** OAuth 2.0 with PKCE (pull-based polling)
 
-  - Data synced via periodic polling only; the Fitbit Subscriptions API (webhooks) is not yet implemented
-  - Workout/activity data only today, fetched from the Activities List API with pagination; backfill defaults to 30 days
-  - Workout metrics populated: avg heart rate, calories, distance, steps, and device name; min/max heart rate, speed, and elevation are offered by the API but not yet processed; power is not available
+  - Data synced via periodic polling only; the Fitbit Subscriptions API (webhooks) is not implemented
+  - Workout/activity data only, fetched from the Activities List API with pagination; backfill defaults to 30 days
+  - Workout metrics populated: avg heart rate, calories, distance, steps, and device name; min/max heart rate, speed, and elevation are offered by the API but not processed; power is not available
   - Workout distance is currently stored as the raw kilometer value from the API; conversion to the platform meter unit is pending
-  - Sleep, intraday heart rate, HRV, SpO2, breathing rate, skin temperature, and body measurements are available in the Fitbit Web API but processing is not yet implemented
-  - Intraday timeseries requires a Fitbit "Personal" app type or Fitbit approval for server applications
+  - Sleep, intraday heart rate, HRV, SpO2, breathing rate, skin temperature, and body measurements are not processed from the Fitbit Web API and will not be added; get them through Google Health instead
   - 14 activity type ID mappings plus 25 name-based fallbacks to the unified taxonomy; unrecognized activities map to "other"
 </Accordion>
 
