@@ -7,9 +7,9 @@ from fastapi import HTTPException, status
 
 from app.config import settings
 from app.database import DbSession
-from app.models import RefreshToken
+from app.models import Application, RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
-from app.schemas.auth import TokenResponse, TokenType
+from app.schemas.auth import SDKTokenOrigin, TokenResponse, TokenType
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 
@@ -26,13 +26,67 @@ class RefreshTokenService:
         """Generate an opaque refresh token ID with rt- prefix."""
         return f"rt-{secrets.token_hex(16)}"
 
-    def create_sdk_refresh_token(self, db_session: DbSession, user_id: UUID, app_id: str) -> str:
+    @staticmethod
+    def _sdk_app_id_claim(
+        origin: SDKTokenOrigin,
+        application: Application | None,
+        issued_by_developer_id: UUID | None,
+    ) -> str:
+        """Build the app_id claim of an SDK access token from where the token came from."""
+        if origin == SDKTokenOrigin.APPLICATION:
+            return application.app_id  # ty:ignore[unresolved-attribute]
+        # The issuing developer may have been deleted since; keep the origin prefix alone then
+        return f"{origin}:{issued_by_developer_id}" if issued_by_developer_id else str(origin)
+
+    def issue_sdk_tokens(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        origin: SDKTokenOrigin,
+        application: Application | None = None,
+        issued_by_developer_id: UUID | None = None,
+    ) -> tuple[str, str]:
+        """Issue an SDK access token and a matching refresh token.
+
+        Args:
+            db_session: Database session
+            user_id: The OpenWearables User ID
+            origin: How the token is being issued
+            application: The application that requested the token (APPLICATION origin)
+            issued_by_developer_id: The developer who issued the token (ADMIN / INVITE origin)
+
+        Returns:
+            Tuple of (access_token, refresh_token)
+        """
+        access_token = create_sdk_user_token(
+            app_id=self._sdk_app_id_claim(origin, application, issued_by_developer_id),
+            user_id=str(user_id),
+        )
+        refresh_token = self.create_sdk_refresh_token(
+            db_session,
+            user_id=user_id,
+            origin=origin,
+            application_id=application.id if application else None,
+            issued_by_developer_id=issued_by_developer_id,
+        )
+        return access_token, refresh_token
+
+    def create_sdk_refresh_token(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        origin: SDKTokenOrigin,
+        application_id: UUID | None = None,
+        issued_by_developer_id: UUID | None = None,
+    ) -> str:
         """Create a refresh token for an SDK token.
 
         Args:
             db_session: Database session
             user_id: The OpenWearables User ID
-            app_id: The application ID that created the token
+            origin: How the token was issued
+            application_id: The application that requested the token (APPLICATION origin)
+            issued_by_developer_id: The developer who issued the token (ADMIN / INVITE origin)
 
         Returns:
             The refresh token string (rt-{hex})
@@ -42,14 +96,16 @@ class RefreshTokenService:
             id=token_id,
             token_type=TokenType.SDK,
             user_id=user_id,
-            app_id=app_id,
+            origin=origin,
+            application_id=application_id,
+            issued_by_developer_id=issued_by_developer_id,
             developer_id=None,
             created_at=datetime.now(timezone.utc),
             last_used_at=None,
             revoked_at=None,
         )
         self.repo.create(db_session, token)
-        self.logger.debug(f"Created SDK refresh token for user {user_id}, app {app_id}")
+        self.logger.debug(f"Created SDK refresh token for user {user_id}, origin {origin}")
         return token_id
 
     def create_developer_refresh_token(self, db_session: DbSession, developer_id: UUID) -> str:
@@ -67,7 +123,6 @@ class RefreshTokenService:
             id=token_id,
             token_type=TokenType.DEVELOPER,
             user_id=None,
-            app_id=None,
             developer_id=developer_id,
             created_at=datetime.now(timezone.utc),
             last_used_at=None,
@@ -106,14 +161,12 @@ class RefreshTokenService:
 
         # Generate new access token and refresh token based on token type
         if token.token_type == TokenType.SDK:
-            access_token = create_sdk_user_token(
-                app_id=token.app_id,  # ty:ignore[invalid-argument-type]
-                user_id=str(token.user_id),
-            )
-            new_refresh_token = self.create_sdk_refresh_token(
+            access_token, new_refresh_token = self.issue_sdk_tokens(
                 db_session,
                 user_id=token.user_id,  # ty:ignore[invalid-argument-type]
-                app_id=token.app_id,  # ty:ignore[invalid-argument-type]
+                origin=token.origin,  # ty:ignore[invalid-argument-type]
+                application=token.application,
+                issued_by_developer_id=token.issued_by_developer_id,
             )
             self.logger.debug(f"Refreshed SDK token for user {token.user_id} (rotated)")
         elif token.token_type == TokenType.DEVELOPER:
