@@ -242,9 +242,11 @@ reviews:
 
     - path: "backend/app/schemas/**"
       instructions: |
-        If data models or enums change (e.g. new provider, new data type),
-        check if docs/architecture/unified-data-model.mdx and related pages
-        reflect these changes.
+        If a schema or enum change is visible through the API (e.g. new
+        provider, new data type, new or changed response field), check that
+        docs/architecture/unified-data-model.mdx and related pages reflect it
+        where they already describe that schema. Internal-only schemas need no
+        docs.
 
     - path: "docs/**"
       instructions: |
