@@ -1,8 +1,9 @@
+from collections.abc import Collection, Sequence
 from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, Date, cast, exists, func
+from sqlalchemy import ColumnElement, Date, cast, exists, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Query
 
 from app.database import BaseDbModel, DbSession
@@ -86,6 +87,11 @@ class CrudRepository[
 
     def get(self, db_session: DbSession, object_id: UUID | int | str) -> ModelType | None:
         return db_session.query(self.model).filter(getattr(self.model, "id") == object_id).one_or_none()
+
+    def get_by_ids(self, db_session: DbSession, object_ids: Collection[UUID | int | str]) -> Sequence[ModelType]:
+        if not object_ids:
+            return []
+        return db_session.scalars(select(self.model).where(getattr(self.model, "id").in_(object_ids))).all()
 
     def get_all(
         self,

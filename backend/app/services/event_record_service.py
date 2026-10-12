@@ -178,9 +178,9 @@ class EventRecordService(
         # Fire the webhook directly with fresh fetches rather than via after_commit — using
         # after_commit defers the call to the *next* session commit, at which point SQLAlchemy
         # has expired the captured ORM objects, causing lazy-load failures inside after_commit.
-        record = db_session.get(EventRecord, detail.record_id)
+        record = self.crud.get(db_session, detail.record_id)
         if record is not None and record.data_source_id is not None:
-            data_source = db_session.get(DataSource, record.data_source_id)
+            data_source = self.data_source_repo.get(db_session, record.data_source_id)
             if data_source is not None:
                 self._emit_event_record_webhook(record, data_source, detail)
 
@@ -737,13 +737,11 @@ class EventRecordService(
         if not record_ids:
             return
 
-        records = db_session.query(EventRecord).filter(EventRecord.id.in_(record_ids)).all()
+        records = self.crud.get_by_ids(db_session, record_ids)
         records_by_id = {r.id: r for r in records}
 
         data_source_ids = {r.data_source_id for r in records if r.data_source_id is not None}
-        data_sources = (
-            db_session.query(DataSource).filter(DataSource.id.in_(data_source_ids)).all() if data_source_ids else []
-        )
+        data_sources = self.data_source_repo.get_by_ids(db_session, data_source_ids)
         data_sources_by_id = {ds.id: ds for ds in data_sources}
 
         dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
