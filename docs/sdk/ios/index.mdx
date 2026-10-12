@@ -214,6 +214,18 @@ sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { grante
     | `.basalEnergy` | Basal (resting) energy burned |
   </Accordion>
 
+  <Accordion title="Running & Cycling">
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.runningPower` | Running power (iOS 16+) |
+    | `.runningVerticalOscillation` | Running vertical oscillation (iOS 16+) |
+    | `.runningGroundContactTime` | Running ground contact time (iOS 16+) |
+    | `.cyclingSpeed` | Cycling speed (iOS 17+) |
+    | `.cyclingPower` | Cycling power (iOS 17+) |
+    | `.cyclingCadence` | Cycling cadence (iOS 17+) |
+    | `.cyclingFunctionalThresholdPower` | Cycling functional threshold power (iOS 17+) |
+  </Accordion>
+
   <Accordion title="Heart & Vitals">
     | Enum Case | Description |
     |-----------|-------------|
@@ -277,6 +289,8 @@ sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { grante
     | Enum Case | Description |
     |-----------|-------------|
     | `.workout` | All workout types with metadata (distance, energy, heart rate, running metrics, elevation, weather, swimming) |
+    | `.workoutEffortScore` | Workout effort rated by the user (iOS 18+) |
+    | `.estimatedWorkoutEffortScore` | Workout effort estimated by Apple Watch (iOS 18+) |
   </Accordion>
 
   <Accordion title="Aliases">

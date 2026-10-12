@@ -5,6 +5,7 @@
  */
 import {
 	CREDENTIALS,
+	DEFAULT_PASSWORD,
 	DEVELOPER,
 	PROVIDER_SETTINGS,
 	createApiKey,
@@ -94,6 +95,8 @@ let EMAIL_ENABLED = true;
 let WEBHOOKS_ENABLED = true;
 /** Lets a test see what an untouched archive looks like on the dashboard. */
 let EMPTY_ARCHIVE = false;
+/** What the default password earns at sign-in: `required` as in production. */
+let PASSWORD_CHANGE: 'required' | 'recommended' = 'required';
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8787);
 
@@ -126,6 +129,7 @@ const server = Bun.serve({
 			EMAIL_ENABLED = true;
 			WEBHOOKS_ENABLED = true;
 			EMPTY_ARCHIVE = false;
+			PASSWORD_CHANGE = 'required';
 			resetWorkouts();
 			resetSleep();
 			resetActivity();
@@ -154,6 +158,11 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
+		if (pathname === '/__not-production') {
+			PASSWORD_CHANGE = 'recommended';
+			return new Response(null, { status: 204 });
+		}
+
 		if (pathname === '/__webhooks-off') {
 			WEBHOOKS_ENABLED = false;
 			return new Response(null, { status: 204 });
@@ -175,9 +184,16 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/auth/login') {
 			const form = await request.formData();
-			const ok =
-				form.get('username') === CREDENTIALS.email && form.get('password') === CREDENTIALS.password;
-			return ok ? json(issueTokens()) : json({ detail: 'Incorrect email or password' }, 401);
+			const password = form.get('password');
+			if (form.get('username') !== CREDENTIALS.email) {
+				return json({ detail: 'Incorrect email or password' }, 401);
+			}
+			if (password === DEFAULT_PASSWORD) {
+				return json({ ...issueTokens(), password_change: PASSWORD_CHANGE });
+			}
+			return password === CREDENTIALS.password
+				? json(issueTokens())
+				: json({ detail: 'Incorrect email or password' }, 401);
 		}
 
 		if (pathname === '/api/v1/auth/me') {
@@ -448,7 +464,7 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/auth/change-password' && request.method === 'POST') {
 			const { current_password } = await request.json();
-			return current_password === CREDENTIALS.password
+			return [CREDENTIALS.password, DEFAULT_PASSWORD].includes(current_password)
 				? json({ message: 'Password updated successfully.' })
 				: json({ detail: 'Incorrect current password' }, 400);
 		}

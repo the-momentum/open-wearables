@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e -x
 
+scripts/start/install_extensions.sh
+
 worker_ready() {
     uv run celery -A app.main:celery_app inspect ping
 }

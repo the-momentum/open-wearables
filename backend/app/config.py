@@ -25,6 +25,9 @@ from app.utils.config_utils import (
     parse_duration,
 )
 
+# Public in .env.example and the docs, so an account still using it is open to anyone.
+DEFAULT_ADMIN_PASSWORD = "your-secure-password"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -102,7 +105,7 @@ class Settings(BaseSettings):
 
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
-    admin_password: SecretStr = SecretStr("your-secure-password")
+    admin_password: SecretStr = SecretStr(DEFAULT_ADMIN_PASSWORD)
 
     # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
@@ -165,6 +168,9 @@ class Settings(BaseSettings):
     # not the whole run: the sweep leaves anything still reporting in Redis alone.
     sync_run_stale_after_hours: int = Field(2, ge=1)
     sync_run_sweep_interval_seconds: int = Field(1800, ge=60)
+    # A user's sync.completed events within this window reach extensions as one task.
+    extension_event_debounce_seconds: int = Field(300, ge=0)
+    extension_event_sweep_interval_seconds: int = Field(60, ge=10)
 
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"
@@ -333,6 +339,10 @@ class Settings(BaseSettings):
     svix_jwt_secret: SecretStr | None = None
     # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
     svix_auth_token: SecretStr | None = None
+    # How long Svix keeps each message payload (health data). Svix accepts 5-90 days.
+    # Must outlast the retry schedule (~28h, up to ~66h with Retry-After): Svix silently
+    # drops a retry once the payload is gone.
+    outgoing_webhook_payload_retention_days: int = Field(7, ge=5, le=90)
 
     # TELEMETRY SETTINGS
     # Anonymous usage telemetry: aggregate counts and config flags only, never
@@ -531,6 +541,9 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def _get_settings() -> Settings:
+    # Tests set this so a developer's local config/.env can't change test behaviour
+    if os.environ.get("OW_IGNORE_ENV_FILE"):
+        return Settings(_env_file=None)
     return Settings()
 
 

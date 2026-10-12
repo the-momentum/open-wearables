@@ -117,7 +117,7 @@ Every generated user's first name is prefixed with the seed and preset:
 If the preset is `custom`, you also need the other form values - seed alone isn't enough to reproduce a hand-tuned configuration.
 
 <Note>
-Data is anchored to a fixed reference date (2025-01-01) inside the service, so the same seed produces the same dates regardless of when you run the generator. Explicit **Date range** inputs override this anchor.
+Data is anchored to the current day (midnight UTC), so seeded users always have recent data. The same seed produces the same values, shifted to end around the day you run the generator. Explicit **Date range** inputs override this anchor.
 </Note>
 
 ## API

@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e -x
 
+scripts/start/install_extensions.sh
+
 # Ensure svix database exists (idempotent)
 echo 'Ensuring svix database...'
 uv run python scripts/init/create_svix_db.py

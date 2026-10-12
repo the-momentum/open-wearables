@@ -12,6 +12,7 @@ from .sdk_auth import (
     SDKTokenRequest,
 )
 from .token import (
+    PasswordChangePrompt,
     RefreshTokenRequest,
     TokenResponse,
     TokenType,
@@ -22,6 +23,7 @@ __all__ = [
     "SDKAuthContext",
     "SDKTokenRequest",
     # Token
+    "PasswordChangePrompt",
     "RefreshTokenRequest",
     "TokenResponse",
     "TokenType",

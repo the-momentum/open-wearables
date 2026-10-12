@@ -120,5 +120,6 @@ async def _require_api_key_detached(
         return await _authenticate(db, await get_current_developer_optional(db, token), x_open_wearables_api_key)
 
 
-ApiKeyDep = Annotated[str, Depends(_require_api_key)]
+API_KEY_REQUIRED = Depends(_require_api_key)
+ApiKeyDep = Annotated[str, API_KEY_REQUIRED]
 StreamingApiKeyDep = Annotated[str, Depends(_require_api_key_detached)]

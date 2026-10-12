@@ -20,7 +20,7 @@ from app.constants.series_types.polar import (
 )
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -63,6 +63,17 @@ from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 _T = TypeVar("_T", bound=BaseModel)
+
+
+def _expand_repeated_steps(points: list[tuple[datetime, int]], interval: timedelta) -> dict[datetime, int]:
+    """Polar omits a sample repeating the previous count, so a longer gap after a non-zero one holds repeats."""
+    expanded: dict[datetime, int] = {}
+    next_times: list[datetime | None] = [at for at, _ in points[1:]]
+    for (at, count), next_at in zip(points, [*next_times, None], strict=True):
+        repeats = (next_at - at) // interval if count and next_at and interval > timedelta(0) else 1
+        for step in range(max(repeats, 1)):
+            expanded[at + step * interval] = count
+    return expanded
 
 
 class Polar247Data(Base247DataTemplate):
@@ -358,10 +369,48 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=series_type,
-                        is_daily_total=True,
+                        is_daily_total=daily_total_flag(series_type, is_daily=True),
                     )
                 )
+            samples.extend(self._build_step_samples(parsed, user_id, recorded_at))
         return samples
+
+    def _build_step_samples(
+        self,
+        parsed: DailyActivityJSON,
+        user_id: UUID,
+        daily_total_at: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """The row's intraday step samples, except on ``daily_total_at``, where the day's total is stored."""
+        steps = parsed.samples.steps if parsed.samples else None
+        if not steps:
+            return []
+        points: list[tuple[datetime, int]] = []
+        for sample in steps.samples:
+            try:
+                points.append((datetime.fromisoformat(sample.timestamp), sample.steps))
+            except ValueError:
+                self.logger.warning("Skipping Polar step sample with an unreadable timestamp")
+        points.sort()
+        counts = _expand_repeated_steps(points, timedelta(milliseconds=steps.interval_ms))
+        if sum(counts.values()) > steps.total_steps:
+            # A gap that is not a run of repeats, e.g. the device stopped; keep only what was sent.
+            self.logger.warning("Polar step samples exceed the day's total once expanded; storing them as sent")
+            counts = dict(points)
+        return [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=ProviderName.POLAR,
+                source=ProviderName.POLAR,
+                recorded_at=recorded_at,
+                value=Decimal(count),
+                series_type=SeriesType.steps,
+                is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
+            )
+            for recorded_at, count in sorted(counts.items())
+            if recorded_at != daily_total_at
+        ]
 
     # -------------------------------------------------------------------------
     # Continuous Heart Rate - GET /v3/users/continuous-heart-rate/{date}

@@ -30,6 +30,8 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      # Keeps root-owned __pycache__ out of the mounted extensions
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -37,6 +39,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync
@@ -68,10 +72,13 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     depends_on:
       - redis
       - db
       - app
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync+restart
@@ -91,10 +98,13 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     depends_on:
       - redis
       - db
       - app
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync+restart
@@ -114,12 +124,15 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     depends_on:
       - redis
       - db
       - app
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync
