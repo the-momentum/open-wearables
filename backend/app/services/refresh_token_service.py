@@ -12,6 +12,7 @@ from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.auth import SDKTokenOrigin, TokenResponse, TokenType
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
+from app.utils.structured_logging import log_structured
 
 
 class RefreshTokenService:
@@ -105,7 +106,14 @@ class RefreshTokenService:
             revoked_at=None,
         )
         self.repo.create(db_session, token)
-        self.logger.debug(f"Created SDK refresh token for user {user_id}, origin {origin}")
+        log_structured(
+            self.logger,
+            "debug",
+            "Created SDK refresh token",
+            action="sdk_refresh_token_created",
+            user_id=str(user_id),
+            origin=str(origin),
+        )
         return token_id
 
     def create_developer_refresh_token(self, db_session: DbSession, developer_id: UUID) -> str:

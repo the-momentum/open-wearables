@@ -16,6 +16,7 @@ from app.models import RefreshToken
 from app.schemas.auth import SDKTokenOrigin
 from app.services import refresh_token_service
 from tests.factories import ApplicationFactory, DeveloperFactory, UserFactory
+from tests.utils import developer_auth_headers
 
 
 class TestRefreshToken:
@@ -87,8 +88,6 @@ class TestRefreshToken:
     ) -> None:
         """Deleting an application should cut off the refresh tokens it issued."""
         # Arrange
-        from tests.utils import developer_auth_headers
-
         developer = DeveloperFactory()
         application = ApplicationFactory(developer=developer)
         refresh_token = refresh_token_service.create_sdk_refresh_token(
@@ -314,8 +313,6 @@ class TestSDKTokenReturnsRefreshToken:
     def test_admin_sdk_token_returns_refresh_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Admin-generated SDK token should return refresh token."""
         # Arrange
-        from tests.utils import developer_auth_headers
-
         developer = DeveloperFactory()
         user = UserFactory()  # Create user
         headers = developer_auth_headers(developer.id)
