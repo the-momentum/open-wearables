@@ -18,6 +18,7 @@ from app.models import (
     HealthScore,
     MealDetails,
     MenstrualCycleDetails,
+    ProviderPriority,
     SleepDetails,
     WorkoutDetails,
 )
@@ -27,7 +28,9 @@ from app.repositories import (
     EventRecordDetailRepository,
     EventRecordRepository,
     HealthScoreRepository,
+    ProviderPriorityRepository,
 )
+from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import HealthScoreCategory, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -68,7 +71,6 @@ from app.services.outgoing_webhooks.events import (
     on_sleep_created,
     on_workout_created,
 )
-from app.services.priority_service import priority_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
@@ -118,7 +120,8 @@ class EventRecordService(
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
         self.health_score_repo = HealthScoreRepository(HealthScore)
-        self.priority_service = priority_service
+        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
+        self.device_type_priority_repo = DeviceTypePriorityRepository()
 
     def _resolve_avg_hr(
         self,
@@ -939,8 +942,8 @@ class EventRecordService(
 
     def _winning_sleep_ids(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> Query:
         """An inline subquery of the top-priority source's sessions per night."""
-        provider_order = self.priority_service.priority_repo.get_priority_order(db_session)
-        device_type_order = self.priority_service.device_type_priority_repo.get_priority_order(db_session)
+        provider_order = self.provider_priority_repo.get_priority_order(db_session)
+        device_type_order = self.device_type_priority_repo.get_priority_order(db_session)
         return self.crud.winning_sleep_record_ids(db_session, str(user_id), params, provider_order, device_type_order)
 
     @handle_exceptions

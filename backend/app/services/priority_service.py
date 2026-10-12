@@ -17,6 +17,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityListResponse,
     ProviderPriorityResponse,
 )
+from app.services.providers.factory import ProviderFactory
 from app.utils.exceptions import handle_exceptions
 
 
@@ -29,10 +30,6 @@ class PriorityService:
 
     def _to_provider_response(self, priority: ProviderPriority) -> ProviderPriorityResponse:
         """Enrich a priority row with the strategy's display name and icon, like provider settings do."""
-        # Imported here: provider strategies import event_record_service, which imports this
-        # module, so a top-level import of the factory would be a circular import.
-        from app.services.providers.factory import ProviderFactory
-
         response = ProviderPriorityResponse.model_validate(priority)
         with contextlib.suppress(ValueError):
             strategy = ProviderFactory().get_provider(str(priority.provider))

@@ -50,6 +50,7 @@ from app.schemas.sync_status import (
     SyncStatus,
     SyncStatusEvent,
 )
+from app.services.outgoing_webhooks import events as outgoing
 from app.utils.context import trace_id_var
 from app.utils.sse import format_comment, format_event
 from app.utils.structured_logging import log_structured
@@ -344,9 +345,6 @@ def _maybe_dispatch_outgoing_webhook(event: SyncStatusEvent) -> None:
     avoid spamming subscribers with intermediate progress updates.
     """
     try:
-        # Imported lazily to avoid circular imports between services.
-        from app.services.outgoing_webhooks import events as outgoing
-
         stage = event.stage if isinstance(event.stage, str) else event.stage.value
         status = event.status if isinstance(event.status, str) else event.status.value
         source = event.source if isinstance(event.source, str) else event.source.value

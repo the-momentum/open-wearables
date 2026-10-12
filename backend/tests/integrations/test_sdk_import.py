@@ -42,7 +42,7 @@ def mock_sleep_redis() -> Any:
 
     with (
         patch("app.services.sdk.sleep_service.get_redis_client") as mock_get_redis,
-        patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps"),
+        patch("app.services.sdk.sleep_service.celery_app"),
     ):
         mock_get_redis.return_value = mock_redis
         yield mock_redis

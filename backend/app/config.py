@@ -5,15 +5,13 @@ import warnings
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 from urllib.parse import quote
-
-if TYPE_CHECKING:
-    from app.schemas.enums import ProviderName
 
 from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.schemas.enums import ProviderName
 from app.schemas.enums.data_granularity import DataGranularity
 from app.utils.config_utils import (
     AccessLogLevel,
@@ -483,9 +481,7 @@ class Settings(BaseSettings):
         Google Health was reachable at /google/ before it was split from Health Connect,
         and that path is in every pre-0.8.1 deployment's registered redirect URI.
         """
-        from app.schemas.enums import ProviderName as _ProviderName  # runtime-only; see TYPE_CHECKING above
-
-        if provider is _ProviderName.GOOGLE_HEALTH and self.google_legacy_oauth_path:
+        if provider is ProviderName.GOOGLE_HEALTH and self.google_legacy_oauth_path:
             return "google"
         return provider.value
 

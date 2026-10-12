@@ -9,9 +9,10 @@ from uuid import UUID
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource
-from app.repositories import DataPointSeriesRepository
+from app.models import DataPointSeries, DataSource, ProviderPriority
+from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
+from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import (
     Resolution,
     SeriesType,
@@ -34,7 +35,6 @@ from app.schemas.utils import (
 )
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
-from app.services.priority_service import priority_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_bucket_cursor, encode_cursor
@@ -122,6 +122,8 @@ class TimeSeriesService(
 
     def __init__(self, log: Logger):
         super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
+        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
+        self.device_type_priority_repo = DeviceTypePriorityRepository()
 
     def bulk_create_samples(
         self,
@@ -225,8 +227,8 @@ class TimeSeriesService(
             params,
             types,
             user_id,
-            priority_service.priority_repo.get_priority_order(db_session),
-            priority_service.device_type_priority_repo.get_priority_order(db_session),
+            self.provider_priority_repo.get_priority_order(db_session),
+            self.device_type_priority_repo.get_priority_order(db_session),
         )
 
     def _aggregated_timeseries(

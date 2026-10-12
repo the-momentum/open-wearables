@@ -1,12 +1,12 @@
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, asc, delete, func
+from sqlalchemy import CursorResult, and_, asc, delete, func, or_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.constants.devices_map import infer_device_type
-from app.constants.sdk_providers import sdk_providers
+from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import DbSession
 from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
@@ -114,7 +114,7 @@ class DataSourceRepository(
     @staticmethod
     def next_device_type(provider: ProviderName, current: str | None, resolved: DeviceType) -> str | None:
         """Cloud rows take the inferred type; SDK rows only upgrade from unset/"other"."""
-        if provider.value not in sdk_providers():
+        if provider.value not in SDK_PROVIDERS:
             return resolved.value if resolved != DeviceType.UNKNOWN else None
         if current in (None, DeviceType.OTHER) and resolved not in (DeviceType.UNKNOWN, current):
             return resolved.value
@@ -132,8 +132,6 @@ class DataSourceRepository(
             return {}
 
         identities_list = list(identities)
-
-        from sqlalchemy import or_
 
         conditions = []
         for user_id, device_model, source in identities_list:

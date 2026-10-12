@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from base64 import b64encode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID
 
 import httpx
@@ -252,8 +253,6 @@ class BaseOAuthTemplate(ABC):
         )
 
         if self.credentials.default_scope:
-            from urllib.parse import quote
-
             encoded_scope = quote(self.credentials.default_scope)
             auth_url += f"&scope={encoded_scope}"
 
