@@ -17,8 +17,10 @@ Settings and priorities were only ever a cloud concern, so they move to ``google
 ``health_score`` follows its data source.
 
 Runs before ``init_provider_settings.py`` in ``scripts/start/app.sh``: that seeds a
-``google_health`` row, and ``provider_settings.provider`` is a primary key, so the rename
-would collide with it.
+``google_health`` row, and ``provider_settings.provider`` is a primary key, so a plain rename
+would collide with it. A failed run does not stop startup, though, so the retry on the next
+start finds that seeded row already there. In that case the legacy row is folded onto the
+seeded one instead of renamed (same for ``provider_priority``, which is unique on provider).
 
 Idempotent: every statement is keyed on ``provider = 'google'``, so re-runs are no-ops once
 no legacy rows remain. Safe to run on every startup until removed.
@@ -93,6 +95,19 @@ _HS_UPDATE_FROM_SOURCE = text("""
 # discriminator first, then the catch-all.
 _SR_SDK_UPDATE = text("UPDATE sync_run SET provider = :sdk WHERE provider = :legacy AND source = :sdk_source")
 _SR_UPDATE = text("UPDATE sync_run SET provider = :api WHERE provider = :legacy")
+# On a retry after a failed first run, init_provider_settings.py has already seeded the
+# target row. The legacy row holds what the deployment actually ran with, so it wins over
+# the seeded defaults, then goes. Without a target row this is a no-op and the rename runs.
+_PS_FOLD = text("""
+    UPDATE provider_settings target
+    SET is_enabled = legacy.is_enabled,
+        live_sync_mode = COALESCE(legacy.live_sync_mode, target.live_sync_mode),
+        webhook_secret = COALESCE(legacy.webhook_secret, target.webhook_secret),
+        data_granularity = COALESCE(legacy.data_granularity, target.data_granularity)
+    FROM provider_settings legacy
+    WHERE target.provider = :api AND legacy.provider = :legacy
+""")
+_PS_DELETE_LEGACY = text("DELETE FROM provider_settings WHERE provider = :legacy")
 _PS_UPDATE = text("UPDATE provider_settings SET provider = :api WHERE provider = :legacy")
 
 # An SDK upload under the old slug left a tokenless connection behind. disconnect() keeps
@@ -109,11 +124,26 @@ _PP_CLONE_FOR_SDK = text("""
     WHERE provider = :legacy
       AND NOT EXISTS (SELECT 1 FROM provider_priority WHERE provider = :sdk)
 """)
+# Same retry case: init_provider_priorities.py seeds a google_health ranking too.
+_PP_FOLD = text("""
+    UPDATE provider_priority target
+    SET priority = legacy.priority, updated_at = now()
+    FROM provider_priority legacy
+    WHERE target.provider = :api AND legacy.provider = :legacy
+""")
+_PP_DELETE_LEGACY = text("DELETE FROM provider_priority WHERE provider = :legacy")
 _PP_UPDATE = text("UPDATE provider_priority SET provider = :api WHERE provider = :legacy")
 
 
 def _rowcount(db: Session, query: TextClause) -> int:
     return db.execute(query, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
+
+
+def _fold_or_rename(db: Session, fold: TextClause, delete_legacy: TextClause, rename: TextClause) -> int:
+    """Move the single legacy row of a table keyed on provider, folding it if the target exists."""
+    if _rowcount(db, fold):
+        return _rowcount(db, delete_legacy)
+    return _rowcount(db, rename)
 
 
 def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
@@ -136,9 +166,9 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
     user_connection_api = _rowcount(db, _UC_UPDATE)
     sync_run = _rowcount(db, _SR_SDK_UPDATE) + _rowcount(db, _SR_UPDATE)
 
-    provider_settings = _rowcount(db, _PS_UPDATE)
+    provider_settings = _fold_or_rename(db, _PS_FOLD, _PS_DELETE_LEGACY, _PS_UPDATE)
     _rowcount(db, _PP_CLONE_FOR_SDK)  # must copy the legacy ranking before it is renamed
-    provider_priority = _rowcount(db, _PP_UPDATE)
+    provider_priority = _fold_or_rename(db, _PP_FOLD, _PP_DELETE_LEGACY, _PP_UPDATE)
 
     result = {
         "data_source_api": data_source_api,
