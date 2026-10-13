@@ -40,7 +40,19 @@ Connect your wearable devices and fitness platforms to Open Wearables. Click on 
 
 ## Adding New Providers
 
-More providers are being added regularly. Check the current status of provider requests and implementations on [GitHub Issues](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue+label%3Aprovider-request) tagged with `provider-request`.
+New providers are the most common request we get, so here is where things stand. The core team's capacity is limited, and with the work on the [roadmap](/roadmap) already committed, **we cannot promise new integrations on a timeline**. Open [provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) are tracked and prioritized by demand, but a request being open does not mean it is scheduled.
+
+There are two ways to get an integration built sooner.
+
+### Contribute one
+
+Provider integrations are a great contribution, and the architecture is designed for it. [Adding a new provider](/dev-guides/how-to-add-new-provider) walks through the whole process. That said, before you start, please read the [contribution guidelines](https://github.com/the-momentum/open-wearables/blob/main/CONTRIBUTING.md) and open an issue or ask on Discord to get a go-ahead, so we can agree on the scope and make sure nobody else is already on it.
+
+For this kind of contribution specifically, we ask that you have solid backend development experience. An integration touches OAuth, background sync, webhooks, and the mapping of a provider's data onto the unified data model, and a mistake there corrupts data for every user of that provider. Every pull request is reviewed manually by a core contributor, and review time is our main bottleneck. A partial integration that needs to be rewritten during review costs more than building it in-house, which is why we ask for the go-ahead first and for the change to be tested against a real provider account before it is submitted.
+
+### Prioritize it with us
+
+If you need a specific provider for a commercial product, it is possible to prioritize it as part of the Open Wearables commercial offering, including splitting the development cost between parties that need the same integration. The result is released as part of the core platform. [Get in touch](https://openwearables.io/custom-deployment) if that is an option for you.
 
 ## General Setup Steps
 
