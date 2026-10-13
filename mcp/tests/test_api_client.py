@@ -70,3 +70,20 @@ def test_typed_errors_inherit_from_base() -> None:
     assert issubclass(AuthenticationError, OpenWearablesError)
     assert issubclass(NotFoundError, OpenWearablesError)
     assert issubclass(ConfigurationError, OpenWearablesError)
+
+
+async def test_get_workouts_asks_backend_to_filter_by_priority(
+    api_client: OpenWearablesClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Workouts are requested with priority filtering so cross-provider copies are not counted twice."""
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            "https://api.test.com/api/v1/users/user-1/events/workouts"
+            "?start_date=2026-04-01&end_date=2026-04-30&limit=100&filter_by_priority=true"
+        ),
+        json={"data": []},
+    )
+
+    await api_client.get_workouts("user-1", "2026-04-01", "2026-04-30")

@@ -26,7 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Query, selectinload
+from sqlalchemy.orm import Query, aliased, selectinload
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
@@ -43,6 +43,31 @@ from app.utils.pagination import decode_cursor
 
 # Identity tuple: (user_id, device_model, source)
 DataSourceIdentity = tuple[UUID, str | None, str | None]
+
+# A workout is a duplicate when a higher-priority source overlaps at least this share of its duration.
+WORKOUT_DUPLICATE_MIN_OVERLAP = 0.5
+
+
+def _source_ranks(
+    data_source: type[DataSource],
+    provider_order: dict,
+    device_type_order: dict,
+) -> tuple[ColumnElement, ColumnElement]:
+    """SQL provider and device-type rank of a data source (lower = higher priority).
+
+    Anything absent from the order dicts falls through to 99, matching the priority service.
+    """
+    provider_rank = (
+        case(*[(data_source.provider == p, r) for p, r in provider_order.items()], else_=99)
+        if provider_order
+        else literal(99)
+    )
+    device_rank = (
+        case(*[(data_source.device_type == dt.value, r) for dt, r in device_type_order.items()], else_=99)
+        if device_type_order
+        else literal(99)
+    )
+    return provider_rank, device_rank
 
 
 def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
@@ -463,10 +488,16 @@ class EventRecordRepository(
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
     def get_workout_totals(
-        self, db_session: DbSession, query_params: EventRecordQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[int, int, Decimal | None, Decimal | None]:
         """Count, duration, energy and distance of the matching workouts, in one aggregate."""
-        filters = self._record_filters(query_params.model_copy(update={"category": "workout"}), user_id)
+        filters = self._record_filters(
+            query_params.model_copy(update={"category": "workout"}), user_id, restrict_to_record_ids
+        )
         row = (
             db_session.query(
                 func.count(EventRecord.id),
@@ -538,16 +569,7 @@ class EventRecordRepository(
             EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
             Date,
         )
-        provider_rank = (
-            case(*[(DataSource.provider == p, r) for p, r in provider_order.items()], else_=99)
-            if provider_order
-            else literal(99)
-        )
-        device_rank = (
-            case(*[(DataSource.device_type == dt.value, r) for dt, r in device_type_order.items()], else_=99)
-            if device_type_order
-            else literal(99)
-        )
+        provider_rank, device_rank = _source_ranks(DataSource, provider_order, device_type_order)
 
         filters = [
             DataSource.user_id == UUID(user_id),
@@ -575,6 +597,75 @@ class EventRecordRepository(
             .subquery()
         )
         return db_session.query(ranked.c.record_id).filter(ranked.c.source_rank == 1)
+
+    def winning_workout_record_ids(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        query_params: EventRecordQueryParams,
+        provider_order: dict,
+        device_type_order: dict,
+        min_overlap_ratio: float = WORKOUT_DUPLICATE_MIN_OVERLAP,
+    ) -> Query:
+        """Subquery of workout ids that are not a lower-priority copy of another workout.
+
+        Sleep keeps one source per night, but workouts are discrete, so each one is ranked
+        on its own: a workout is dropped when another workout of the same user, from a source
+        ranked strictly higher (provider, then device type, then device_model; the same
+        ranking as `winning_sleep_record_ids`), overlaps at least `min_overlap_ratio` of its
+        duration. Workouts nothing overlaps are kept, back-to-back sessions that only touch
+        are not merged, and equally-ranked sources never hide each other.
+
+        Only the time window of `query_params` limits which workouts are returned; type and
+        source filters are left to the caller so a copy labelled differently by a higher
+        source (`cycling` vs `indoor_cycling`) is still recognised. Returned as an unexecuted
+        Query so callers can inline it as `id IN (...)`.
+        """
+        other = aliased(EventRecord)
+        other_source = aliased(DataSource)
+
+        provider_rank, device_rank = _source_ranks(DataSource, provider_order, device_type_order)
+        other_provider_rank, other_device_rank = _source_ranks(other_source, provider_order, device_type_order)
+        rank = tuple_(provider_rank, device_rank, func.coalesce(DataSource.device_model, ""))
+        other_rank = tuple_(other_provider_rank, other_device_rank, func.coalesce(other_source.device_model, ""))
+
+        overlap_seconds = func.extract(
+            "epoch",
+            func.least(other.end_datetime, EventRecord.end_datetime)
+            - func.greatest(other.start_datetime, EventRecord.start_datetime),
+        )
+        duration_seconds = func.extract("epoch", EventRecord.end_datetime - EventRecord.start_datetime)
+
+        better_copy_exists = (
+            db_session.query(other.id)
+            .join(other_source, other.data_source_id == other_source.id)
+            .filter(
+                other_source.user_id == UUID(user_id),
+                other.category == "workout",
+                other.id != EventRecord.id,
+                other.start_datetime < EventRecord.end_datetime,
+                other.end_datetime > EventRecord.start_datetime,
+                overlap_seconds >= duration_seconds * min_overlap_ratio,
+                other_rank < rank,
+            )
+            .exists()
+        )
+
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == "workout",
+            ~better_copy_exists,
+        ]
+        if query_params.start_datetime:
+            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
+        if query_params.end_datetime:
+            filters.append(EventRecord.end_datetime < query_params.end_datetime)
+
+        return (
+            db_session.query(EventRecord.id)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(and_(*filters))
+        )
 
     def get_user_event_counts_by_provider(
         self,

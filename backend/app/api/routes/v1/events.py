@@ -38,6 +38,14 @@ FilterByPriorityQuery = Annotated[
         "(provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
     ),
 ]
+WorkoutFilterByPriorityQuery = Annotated[
+    bool,
+    Query(
+        description="When true, drop a workout when a higher-priority source (provider/device priority, "
+        "same ranking as summaries) has a workout overlapping at least 50% of its duration. "
+        "Workouts nothing overlaps are kept. Defaults to false for backwards compatibility."
+    ),
+]
 
 
 @router.get("/users/{user_id}/events/workouts")
@@ -56,6 +64,7 @@ def list_workouts(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
+    filter_by_priority: WorkoutFilterByPriorityQuery = False,
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
@@ -70,7 +79,9 @@ def list_workouts(
         device_model=device_model,
         data_source_id=data_source_id,
     )
-    return event_record_service.get_workouts(db, user_id, params, include=include)
+    return event_record_service.get_workouts(
+        db, user_id, params, filter_by_priority=filter_by_priority, include=include
+    )
 
 
 @router.get("/users/{user_id}/events/workouts/types")
@@ -96,6 +107,7 @@ def get_workout_totals(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
+    filter_by_priority: WorkoutFilterByPriorityQuery = False,
 ) -> WorkoutTotals:
     """Returns the count, duration, energy and distance of the workouts the same filters would list.
 
@@ -112,7 +124,7 @@ def get_workout_totals(
         device_model=device_model,
         data_source_id=data_source_id,
     )
-    return event_record_service.get_workout_totals(db, user_id, params)
+    return event_record_service.get_workout_totals(db, user_id, params, filter_by_priority=filter_by_priority)
 
 
 @router.get("/users/{user_id}/events/sleep")

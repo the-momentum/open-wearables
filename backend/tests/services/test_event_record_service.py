@@ -1363,3 +1363,136 @@ class TestGetSleepSessions:
         ids = {s.id for s in response.data}
         assert garmin_record.id in ids
         assert oura_record.id not in ids
+
+
+class TestGetWorkoutsFilterByPriority:
+    """Test the opt-in priority de-duplication of workouts across sources."""
+
+    START = datetime(2026, 4, 10, 8, 0, tzinfo=timezone.utc)
+
+    def _workout(self, source: DataSource, start: datetime, minutes: int, type_: str = "cycling") -> EventRecord:
+        return EventRecordFactory(
+            mapping=source,
+            category="workout",
+            type_=type_,
+            start_datetime=start,
+            end_datetime=start + timedelta(minutes=minutes),
+            duration_seconds=minutes * 60,
+        )
+
+    def _params(self) -> EventRecordQueryParams:
+        return EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+
+    def _rank_strava_above_apple(self, db: Session) -> None:
+        from app.services.priority_service import priority_service
+
+        priority_service.update_provider_priority(db, ProviderName.STRAVA, 1)
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 2)
+        priority_service.update_provider_priority(db, ProviderName.WITHINGS, 3)
+
+    def test_default_returns_every_source(self, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        strava_record = self._workout(strava, self.START, 26)
+        apple_record = self._workout(apple, self.START, 26)
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params())
+
+        assert {w.id for w in response.data} == {strava_record.id, apple_record.id}
+
+    def test_drops_overlapping_copy_from_lower_priority_source(self, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        strava_record = self._workout(strava, self.START, 26)
+        # Same ride, slightly shifted and labelled differently by the lower-priority source.
+        apple_record = self._workout(apple, self.START + timedelta(minutes=1), 25, type_="indoor_cycling")
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params(), filter_by_priority=True)
+
+        ids = {w.id for w in response.data}
+        assert strava_record.id in ids
+        assert apple_record.id not in ids
+        assert response.pagination.total_count == 1
+
+    def test_keeps_workout_nothing_overlaps(self, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        strava_record = self._workout(strava, self.START, 26)
+        later_apple_record = self._workout(apple, self.START + timedelta(hours=8), 22)
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params(), filter_by_priority=True)
+
+        assert {w.id for w in response.data} == {strava_record.id, later_apple_record.id}
+
+    def test_keeps_workout_with_small_overlap_only(self, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        strava_record = self._workout(strava, self.START, 60)
+        # Only the first 6 of its 36 minutes overlap the Strava ride (~17%).
+        apple_record = self._workout(apple, self.START + timedelta(minutes=54), 36)
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params(), filter_by_priority=True)
+
+        assert {w.id for w in response.data} == {strava_record.id, apple_record.id}
+
+    def test_back_to_back_workouts_are_not_merged(self, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        strava_record = self._workout(strava, self.START, 30)
+        apple_record = self._workout(apple, self.START + timedelta(minutes=30), 30)
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params(), filter_by_priority=True)
+
+        assert {w.id for w in response.data} == {strava_record.id, apple_record.id}
+
+    def test_equally_ranked_sources_do_not_hide_each_other(self, db: Session) -> None:
+        user = UserFactory()
+        apple_watch = DataSourceFactory(user=user, provider="apple", device_model="Watch7,2")
+        apple_same_model = DataSourceFactory(user=user, provider="apple", device_model="Watch7,2", source="other")
+        first = self._workout(apple_watch, self.START, 30)
+        second = self._workout(apple_same_model, self.START, 30)
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params(), filter_by_priority=True)
+
+        assert {w.id for w in response.data} == {first.id, second.id}
+
+    def test_other_users_workouts_never_hide_a_copy(self, db: Session) -> None:
+        user = UserFactory()
+        other_user = UserFactory()
+        strava = DataSourceFactory(user=other_user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        self._workout(strava, self.START, 26)
+        apple_record = self._workout(apple, self.START, 26)
+        self._rank_strava_above_apple(db)
+
+        response = event_record_service.get_workouts(db, user.id, self._params(), filter_by_priority=True)
+
+        assert {w.id for w in response.data} == {apple_record.id}
+
+    def test_type_filter_still_recognises_a_copy_labelled_differently(self, db: Session) -> None:
+        user = UserFactory()
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        apple = DataSourceFactory(user=user, provider="apple")
+        self._workout(strava, self.START, 26, type_="cycling")
+        self._workout(apple, self.START, 26, type_="indoor_cycling")
+        self._rank_strava_above_apple(db)
+        params = self._params()
+        params.record_type = "indoor_cycling"
+
+        response = event_record_service.get_workouts(db, user.id, params, filter_by_priority=True)
+
+        assert response.data == []

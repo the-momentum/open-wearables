@@ -16,6 +16,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const askedProvider = url.searchParams.get('provider') ?? '';
 	const askedType = url.searchParams.get('type') ?? '';
 	const cursor = url.searchParams.get('cursor') ?? '';
+	const topSourceOnly = url.searchParams.get('top') === '1';
 
 	// Ten, not the list default of twenty: these cards expand, and twenty of them
 	// is a page nobody reaches the end of. The sizes on offer are the shared ones.
@@ -32,7 +33,14 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	]);
 
 	const query = (provider: string, type: string) =>
-		fetchWorkouts(params.id, accessToken, { period, provider, type, cursor, limit: pageSize });
+		fetchWorkouts(params.id, accessToken, {
+			period,
+			provider,
+			type,
+			topSourceOnly,
+			cursor,
+			limit: pageSize
+		});
 
 	// With neither filter asked for there is nothing to check, so the list query
 	// travels alongside the option lists instead of queueing behind them.
@@ -52,6 +60,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		provider,
 		type,
 		types,
+		topSourceOnly,
 		workouts,
 		providers,
 		connections,
