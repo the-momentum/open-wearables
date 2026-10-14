@@ -30,6 +30,7 @@ from app.repositories import (
     HealthScoreRepository,
     ProviderPriorityRepository,
 )
+from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import HealthScoreCategory, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import (
@@ -131,7 +132,8 @@ class EventRecordService(
         """Return avg HR for each workout record.
 
         Uses stored heart_rate_avg where available, falls back to a single batch query
-        against data_point_series for records that don't have it.
+        against data_point_series for records that don't have it: the workout's own source
+        first, then the other sources of the same writer.
         """
         result: dict[UUID, int | None] = {}
         missing = []
@@ -142,11 +144,17 @@ class EventRecordService(
                 result[r.id] = round(details.heart_rate_avg)
             else:
                 result[r.id] = None
-                missing.append((r.id, r.data_source_id, r.start_datetime, r.end_datetime))
+                missing.append(r)
 
         if missing:
-            computed = self.data_point_series_repo.get_avg_hr_for_workout_batch(db_session, missing)
-            result.update(computed)
+            siblings = self.data_source_repo.get_writer_siblings(db_session, {r.data_source_id for r in missing})
+            windows = [
+                WorkoutWindow(
+                    r.id, r.data_source_id, r.start_datetime, r.end_datetime, siblings.get(r.data_source_id, ())
+                )
+                for r in missing
+            ]
+            result.update(self.data_point_series_repo.get_avg_hr_for_workout_batch(db_session, windows))
 
         return result
 

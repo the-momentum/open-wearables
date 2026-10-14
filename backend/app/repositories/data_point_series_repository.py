@@ -143,6 +143,20 @@ _TYPE_IDS_BY_METHOD: dict[AggregationMethod, frozenset[int]] = {
 }
 
 
+# Rows per avg HR query; 5 bind parameters each keeps a query far below PostgreSQL's 65535
+_MAX_WINDOW_ROWS = 2000
+
+
+class WorkoutWindow(NamedTuple):
+    """A workout's time window, its own data source and the sources to fall back on for samples."""
+
+    record_id: UUID
+    data_source_id: UUID
+    start_time: datetime
+    end_time: datetime
+    fallback_source_ids: tuple[UUID, ...] = ()
+
+
 class AggregatedSample(NamedTuple):
     """One resolution bucket for a single (data source, series type) pair."""
 
@@ -803,54 +817,72 @@ class DataPointSeriesRepository(
     def get_avg_hr_for_workout_batch(
         self,
         db_session: DbSession,
-        workouts: list[tuple[UUID, UUID, datetime, datetime]],
+        workouts: list[WorkoutWindow],
     ) -> dict[UUID, int]:
         """Batch-compute average HR from series data for multiple workout windows.
 
-        Issues a single query using a VALUES CTE joined against data_point_series.
-        Filters by data_source_id so HR data comes from the same device as the workout.
-
-        Args:
-            workouts: List of (record_id, data_source_id, start_time, end_time) tuples.
+        One query per chunk of workouts, a VALUES CTE joined against data_point_series with one
+        index range scan per (workout, source). HR from the workout's own source wins; the fallback
+        sources are used only when it has none in the window.
 
         Returns:
             Dict mapping record_id to rounded avg HR. Workouts with no HR data are omitted.
         """
-        if not workouts:
-            return {}
+        result: dict[UUID, int] = {}
+        chunk: list[WorkoutWindow] = []
+        rows = 0
+        for workout in workouts:
+            # A workout's sources stay in one chunk, so its fallback average covers all of them
+            workout_rows = 1 + len(workout.fallback_source_ids)
+            if chunk and rows + workout_rows > _MAX_WINDOW_ROWS:
+                result |= self._avg_hr_for_windows(db_session, chunk)
+                chunk, rows = [], 0
+            chunk.append(workout)
+            rows += workout_rows
+        if chunk:
+            result |= self._avg_hr_for_windows(db_session, chunk)
+        return result
 
-        hr_type_id = get_series_type_id(SeriesType.heart_rate)
-
-        values_parts = []
-        params: dict[str, object] = {"hr_type_id": hr_type_id}
-        for i, (record_id, data_source_id, start_time, end_time) in enumerate(workouts):
-            values_parts.append(f"""(
-                CAST(:record_id_{i} AS uuid),
-                CAST(:ds_id_{i} AS uuid),
-                CAST(:start_{i} AS timestamptz),
-                CAST(:end_{i} AS timestamptz)
-            )""")
-            params[f"record_id_{i}"] = str(record_id)
-            params[f"ds_id_{i}"] = str(data_source_id)
-            params[f"start_{i}"] = start_time
-            params[f"end_{i}"] = end_time
+    def _avg_hr_for_windows(self, db_session: DbSession, workouts: list[WorkoutWindow]) -> dict[UUID, int]:
+        # Windows are passed as literals: computed in SQL, the planner loses the time bounds on the index
+        values_parts: list[str] = []
+        params: dict[str, object] = {"hr_type_id": get_series_type_id(SeriesType.heart_rate)}
+        for workout in workouts:
+            sources = [(workout.data_source_id, True), *((source, False) for source in workout.fallback_source_ids)]
+            for data_source_id, is_own in sources:
+                i = len(values_parts)
+                values_parts.append(f"""(
+                    CAST(:record_id_{i} AS uuid),
+                    CAST(:ds_id_{i} AS uuid),
+                    CAST(:is_own_{i} AS boolean),
+                    CAST(:start_{i} AS timestamptz),
+                    CAST(:end_{i} AS timestamptz)
+                )""")
+                params[f"record_id_{i}"] = str(workout.record_id)
+                params[f"ds_id_{i}"] = str(data_source_id)
+                params[f"is_own_{i}"] = is_own
+                params[f"start_{i}"] = workout.start_time
+                params[f"end_{i}"] = workout.end_time
 
         sql = text(f"""
-            WITH workout_windows(record_id, data_source_id, start_time, end_time) AS (
+            WITH workout_windows(record_id, data_source_id, is_own, start_time, end_time) AS (
                 VALUES {", ".join(values_parts)}
             )
-            SELECT ww.record_id, ROUND(AVG(dps.value))::int
+            SELECT ww.record_id, ww.is_own, ROUND(AVG(dps.value))::int
             FROM workout_windows ww
             JOIN data_point_series dps
                 ON dps.data_source_id = ww.data_source_id
                 AND dps.series_type_definition_id = :hr_type_id
                 AND dps.recorded_at >= ww.start_time
                 AND dps.recorded_at < ww.end_time
-            GROUP BY ww.record_id
+            GROUP BY ww.record_id, ww.is_own
         """)
 
-        rows = db_session.execute(sql, params).fetchall()
-        return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
+        own_avg: dict[UUID, int] = {}
+        fallback_avg: dict[UUID, int] = {}
+        for record_id, is_own, avg in db_session.execute(sql, params).fetchall():
+            (own_avg if is_own else fallback_avg)[UUID(str(record_id))] = int(avg)
+        return fallback_avg | own_avg
 
     def _local_day_window(
         self, local_date: ColumnElement, start_date: datetime, end_date: datetime

@@ -1,9 +1,10 @@
 import contextlib
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import NamedTuple, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, asc, delete, text
+from sqlalchemy import CursorResult, and_, asc, delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.constants.devices_map import infer_device_type, is_host_model
@@ -421,6 +422,27 @@ class DataSourceRepository(
             .order_by(asc(self.model.provider), asc(self.model.device_model))
             .all()
         )
+
+    def get_writer_siblings(self, db_session: DbSession, data_source_ids: set[UUID]) -> dict[UUID, tuple[UUID, ...]]:
+        """Other sources of the same user, provider and writer (app id, else source) for each given source.
+
+        One writer can be split across sources by its device model (Health Connect apps reporting the model
+        on some records only, Garmin dailies vs workouts), so its samples may sit next to its events.
+        """
+        if not data_source_ids:
+            return {}
+        owners = select(self.model.user_id).where(self.model.id.in_(data_source_ids))
+        rows = db_session.query(self.model).filter(self.model.user_id.in_(owners)).all()
+        writers = {row.id: (row.user_id, row.provider, row.source_app_id or row.source) for row in rows}
+        by_writer: dict[tuple[UUID, str, str | None], list[UUID]] = defaultdict(list)
+        for source_id, writer in writers.items():
+            by_writer[writer].append(source_id)
+        # A source with neither an app id nor a source name has no writer to share
+        return {
+            source_id: tuple(i for i in by_writer[writer] if i != source_id) if writer[2] else ()
+            for source_id, writer in writers.items()
+            if source_id in data_source_ids
+        }
 
     def delete_user_provider_data(
         self,
