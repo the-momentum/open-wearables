@@ -1,12 +1,3 @@
-/**
- * Deployment branding, from the VITE_BRANDING environment variable: one JSON
- * object, so a new option never needs a new variable.
- *
- *   VITE_BRANDING='{"name":"Acme Wearables (Staging)","faviconUrl":"/favicon-staging.png"}'
- *
- * Branding is cosmetic, so a bad value never stops the portal: whatever fails
- * validation is reported through `warn` and left at its default.
- */
 export type Branding = {
 	/** Replaces "Open Wearables" in page titles. */
 	name: string;

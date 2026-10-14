@@ -261,16 +261,13 @@ The frontend reads its configuration at runtime, so the same published image wor
 ```bash
 docker run -p 3000:3000 \
   -e VITE_API_URL=https://api.client1.com \
+  -e VITE_BRANDING='{"name":"Acme Wearables (Staging)","faviconUrl":"https://cdn.acme.com/favicon-staging.png"}' \
   themomentum/open-wearables-frontend:latest
 ```
 
 ### Branding
 
-`VITE_BRANDING` takes one JSON object, so new options never need new variables:
-
-```bash
--e VITE_BRANDING='{"name":"Acme Wearables (Staging)","faviconUrl":"https://cdn.acme.com/favicon-staging.png"}'
-```
+`VITE_BRANDING` takes one JSON object, so new options never need new variables (see the `docker run` example above):
 
 | Field | Type | Rules | Effect |
 |-------|------|-------|--------|
