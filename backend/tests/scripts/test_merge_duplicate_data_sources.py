@@ -41,10 +41,6 @@ def _event(ds: DataSource, start: datetime = START, category: str = "workout") -
     )
 
 
-def _phase_one_candidate() -> DataSource:
-    return DataSourceFactory(provider=ProviderName.POLAR, device_model=None, source=None)
-
-
 class TestMergeDuplicateDataSources:
     def test_placeholder_model_merges_into_existing_source(self, db: Session) -> None:
         user = UserFactory()
@@ -84,7 +80,6 @@ class TestMergeDuplicateDataSources:
         kept = _event(writer, category="sleep")
         score = HealthScoreFactory(data_source=legacy, provider=ProviderName.APPLE, event_record_id=dropped.id)
         dropped_id = dropped.id
-        _phase_one_candidate()
 
         result = merge_duplicate_data_sources(db, dry_run=False)
         db.expire_all()
@@ -100,27 +95,12 @@ class TestMergeDuplicateDataSources:
         for source, external_id in ((ds, "breakfast-eggs"), (ds, "breakfast-coffee"), (other, "lunch")):
             meal = _event(source, category="meal")
             meal.external_id = external_id
-        _phase_one_candidate()
         db.flush()
 
         result = merge_duplicate_data_sources(db, dry_run=False)
 
         assert result["duplicate_events_removed"] == 0
         assert db.query(EventRecord).filter(EventRecord.category == "meal").count() == 3
-
-    def test_duplicates_are_left_alone_without_sources_to_fix(self, db: Session) -> None:
-        user = UserFactory()
-        legacy = DataSourceFactory(user=user, provider=ProviderName.APPLE, device_model="Watch6,2", source="apple")
-        writer = DataSourceFactory(
-            user=user, provider=ProviderName.APPLE, device_model="Watch6,2", source="Apple Watch"
-        )
-        _event(legacy, category="sleep")
-        _event(writer, category="sleep")
-
-        result = merge_duplicate_data_sources(db, dry_run=False)
-
-        assert not any(result.values())
-        assert db.query(EventRecord).filter(EventRecord.category == "sleep").count() == 2
 
     def test_samples_move_in_batches_dropping_copies_the_target_holds(
         self, db: Session, monkeypatch: pytest.MonkeyPatch
@@ -153,7 +133,6 @@ class TestMergeDuplicateDataSources:
         for day in range(5):
             _event(legacy, START + timedelta(days=day), category="sleep")
             _event(writer, START + timedelta(days=day), category="sleep")
-        _phase_one_candidate()
 
         result = merge_duplicate_data_sources(db, dry_run=False)
 
@@ -172,7 +151,6 @@ class TestMergeDuplicateDataSources:
         best_copy, worse_copy = _event(named, category="sleep"), _event(legacy, category="sleep")
         best_score = HealthScoreFactory(data_source=named, provider=ProviderName.APPLE, event_record_id=best_copy.id)
         HealthScoreFactory(data_source=legacy, provider=ProviderName.APPLE, event_record_id=worse_copy.id)
-        _phase_one_candidate()
 
         result = merge_duplicate_data_sources(db, dry_run=False)
         db.expire_all()

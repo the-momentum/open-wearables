@@ -16,7 +16,8 @@ and the rest are deleted (phase 1 does the same for the copies it drops). Sample
 touched here: overlapping samples across sources are different writers, not duplicates.
 
 Idempotent: renamed rows no longer match phase 1 and duplicates are gone, so re-runs are no-ops.
-Phase 2 scans every event, so it only runs while phase 1 finds sources; later startups skip it.
+Phase 2 scans every event, so startup runs the script once: a clean run is recorded in data_migration
+and skipped afterwards, while a run with failures is retried on the next startup.
 Samples, archive rows and duplicate events are processed in committed batches, so a run that is
 interrupted keeps its progress and the next one continues where it stopped.
 
@@ -37,6 +38,7 @@ from sqlalchemy.sql.elements import TextClause
 
 from app.constants.devices_map.device_types import DEVICE_MODEL_PLACEHOLDERS
 from app.database import engine
+from app.services.data_migration_service import data_migration_service
 from app.utils.sentry_helpers import log_and_capture_error
 
 logger = getLogger(__name__)
@@ -292,8 +294,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
     db.execute(_LOCK_TIMEOUT)
     params = {"placeholders": sorted(DEVICE_MODEL_PLACEHOLDERS), "platforms": list(GOOGLE_PLATFORMS)}
     renamed = merged = failed = 0
-    candidates = db.execute(_RENAME_CANDIDATES, params).mappings().all()
-    for row in candidates:
+    for row in db.execute(_RENAME_CANDIDATES, params).mappings().all():
         src: UUID = row["id"]
         target = db.execute(
             _TARGET,
@@ -332,9 +333,9 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
             merged += 1
 
     duplicates = 0
-    if candidates and dry_run:
+    if dry_run:
         duplicates = db.execute(_DUPLICATE_COUNT).scalar() or 0
-    elif candidates:
+    else:
         try:
             duplicates = _remove_duplicate_events(db)
         except SQLAlchemyError as e:
@@ -342,7 +343,12 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
             failed += 1
             log_and_capture_error(e, logger, f"Skipped removing duplicate events: {e}")
 
-    result = {"renamed_sources": renamed, "merged_sources": merged, "duplicate_events_removed": duplicates}
+    result = {
+        "renamed_sources": renamed,
+        "merged_sources": merged,
+        "duplicate_events_removed": duplicates,
+        "failed": failed,
+    }
     verb = "Would" if dry_run else "Did"
     print(
         f"{verb}: rename {renamed} data source(s), merge {merged} into an existing one, "
@@ -353,15 +359,20 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
     return result
 
 
+def _migrate(db: Session, dry_run: bool) -> bool:
+    result = merge_duplicate_data_sources(db, dry_run=dry_run)
+    if dry_run:
+        return False
+    if not any(result.values()):
+        print("Nothing to do — no split data sources or duplicate events found.")
+    elif not result["failed"]:
+        print("Done.")
+    return not result["failed"]
+
+
 def main(dry_run: bool) -> None:
     with engine.connect() as connection, Session(bind=connection) as db:
-        result = merge_duplicate_data_sources(db, dry_run=dry_run)
-        if dry_run:
-            return
-        if not any(result.values()):
-            print("Nothing to do — no split data sources or duplicate events found.")
-            return
-        print("Done.")
+        data_migration_service.run(db, "merge_duplicate_data_sources", lambda: _migrate(db, dry_run), dry_run=dry_run)
 
 
 if __name__ == "__main__":
