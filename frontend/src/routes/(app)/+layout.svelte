@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { navLabelFor } from '$lib/config/nav';
+	import { pageTitle } from '$lib/branding';
 	import AppShell from '$lib/components/layout/AppShell.svelte';
 	import NavigationProgress from '$lib/components/layout/NavigationProgress.svelte';
 
@@ -11,7 +12,7 @@
 </script>
 
 <svelte:head>
-	<title>{title ? `${title} · Open Wearables` : 'Open Wearables'}</title>
+	<title>{pageTitle(page.data.brandName, title)}</title>
 </svelte:head>
 
 <NavigationProgress />

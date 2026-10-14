@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
 	import { setLucideProps } from '@lucide/svelte';
 
 	// The design's icons are 1px on screen at every size.
@@ -9,7 +10,7 @@
 </script>
 
 <svelte:head>
-	<title>Open Wearables</title>
+	<title>{page.data.brandName}</title>
 </svelte:head>
 
 {@render children()}

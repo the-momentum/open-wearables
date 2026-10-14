@@ -10,6 +10,11 @@ declare global {
 			theme: Theme;
 		}
 
+		/** Set by the root layout for every page. */
+		interface PageData {
+			brandName: string;
+		}
+
 		/** Filters that are URL-visible but must not re-run a load. */
 		interface PageState {
 			syncProvider?: string;

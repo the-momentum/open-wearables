@@ -1,5 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { createAuthContext } from '$lib/server/auth';
+import { applyFavicon, getBranding } from '$lib/server/branding';
 import { parseTheme, THEME_COOKIE, themeClass } from '$lib/theme';
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -7,7 +8,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.theme = parseTheme(event.cookies.get(THEME_COOKIE));
 
 	// Rendered into <html> so a chosen theme is there before the first paint.
+	const { faviconUrl } = getBranding();
 	return resolve(event, {
-		transformPageChunk: ({ html }) => html.replace('%ow.theme%', themeClass(event.locals.theme))
+		transformPageChunk: ({ html }) =>
+			applyFavicon(html.replace('%ow.theme%', themeClass(event.locals.theme)), faviconUrl)
 	});
 };
