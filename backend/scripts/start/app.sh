@@ -85,6 +85,13 @@ echo 'Running device type backfill...'
 uv run python scripts/data_migrations/backfill_device_types.py \
     || echo "Warning: device type backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Types Google Health sleep rows saved without 'sleep_session', so re-fetches update them
+# instead of inserting duplicates. Idempotent, no-op once typed.
+echo 'Running Google sleep type backfill...'
+uv run python scripts/data_migrations/backfill_google_sleep_type.py \
+    || echo "Warning: Google sleep type backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
