@@ -169,6 +169,10 @@ The defaults in `.env.example` are development values. Override at least these f
 
 Open Wearables does not use `OTEL_PROPAGATORS`, but FastAPI loads the propagators it lists at startup. If your platform sets it to one that is not installed in the image, such as `b3`, every backend container fails with `ValueError: Propagator b3 not found`. Unset it for these containers.
 
+### Mobile SDK syncs
+
+By default every mobile SDK sync payload is queued in Redis. That's fine for ongoing syncs, but a historical backfill sends a lot of data at once. How much depends on whether your app runs a backfill and how far back it goes, which you set in the SDK. With many users backfilling long periods, Redis can run out of memory. In that case we recommend setting `SDK_PAYLOAD_S3_OFFLOAD=true`. Payloads then go to an S3-compatible bucket and Redis only holds a reference. See [SDK Payload Offload](/dev-guides/raw-payload-storage#sdk-payload-offload) for the required bucket settings.
+
 ### Running it
 
 <Steps>

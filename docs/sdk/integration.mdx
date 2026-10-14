@@ -175,6 +175,9 @@ Report the disconnect to Open Wearables with [`DELETE /api/v1/users/{user_id}/co
     - Request `POST_NOTIFICATIONS` at runtime on Android 13+, otherwise the sync notification is hidden.
     - For Samsung Health, see [Samsung Health production requirements](/sdk/android/integration#samsung-health-production-requirements).
   </Accordion>
+  <Accordion title="Backend">
+    - If your app runs a historical backfill, especially over a long period, enable [SDK payload offload](/dev-guides/raw-payload-storage#sdk-payload-offload) so it doesn't fill up Redis.
+  </Accordion>
 </AccordionGroup>
 
 ## Platform Guides
