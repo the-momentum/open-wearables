@@ -626,6 +626,32 @@ class TestActivityTotals:
         assert totals.steps == sum(day.steps or 0 for day in days) == 6000
         assert totals.avg_steps == 2000
 
+    def test_a_day_without_steps_has_none_and_stays_out_of_the_average(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        start = _dt("2026-01-01T00:00:00+00:00")
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            value=3000,
+            recorded_at=start + timedelta(hours=10),
+        )
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            value=60,
+            recorded_at=start + timedelta(days=1, hours=10),
+        )
+        end = _dt("2026-01-03T00:00:00+00:00")
+
+        days = service.get_activity_summaries(db, user.id, start, end, cursor=None, limit=10).data
+        totals = service.get_activity_totals(db, user.id, start, end)
+
+        assert [day.steps for day in days] == [3000, None]
+        assert (totals.days, totals.avg_steps) == (2, 3000)
+
     def test_is_empty_without_data(self, db: Session, service: SummariesService) -> None:
         totals = service.get_activity_totals(
             db, UserFactory().id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-02-01T00:00:00+00:00")

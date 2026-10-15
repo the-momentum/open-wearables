@@ -469,7 +469,6 @@ class DataPointSeriesArchiveRepository:
                 func.sum(
                     case(
                         (DataPointSeriesArchive.series_type_definition_id == steps_id, DataPointSeriesArchive.value),
-                        else_=0,
                     )
                 ).label("steps_sum"),
                 func.sum(
@@ -550,7 +549,7 @@ class DataPointSeriesArchiveRepository:
                     "source": row.source,
                     "device_model": row.device_model,
                     "device_type": row.device_type,
-                    "steps_sum": int(row.steps_sum) if row.steps_sum else 0,
+                    "steps_sum": int(row.steps_sum) if row.steps_sum is not None else None,
                     "active_energy_sum": float(row.active_energy_sum) if row.active_energy_sum is not None else None,
                     "basal_energy_sum": float(row.basal_energy_sum) if row.basal_energy_sum is not None else None,
                     "total_energy_sum": float(row.total_energy_sum) if row.total_energy_sum is not None else None,
