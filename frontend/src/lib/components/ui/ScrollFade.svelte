@@ -28,13 +28,22 @@
 
 	$effect(track);
 
+	// Firefox reports a mouse wheel in lines, not pixels; a line is roughly this many pixels
+	const LINE_PX = 40;
+
 	// A mouse wheel only scrolls vertically and the bar is hidden, so it moves the strip sideways
 	// while there is room, and leaves the page to scroll once the strip reaches its end
 	function wheel(event: WheelEvent) {
 		if (!scroller || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
 		if (event.deltaY > 0 ? atEnd : atStart) return;
 		event.preventDefault();
-		scroller.scrollLeft += event.deltaY;
+		const unit =
+			event.deltaMode === WheelEvent.DOM_DELTA_LINE
+				? LINE_PX
+				: event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+					? scroller.clientWidth
+					: 1;
+		scroller.scrollLeft += event.deltaY * unit;
 	}
 
 	function step(direction: -1 | 1) {

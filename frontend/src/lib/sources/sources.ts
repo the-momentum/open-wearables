@@ -39,18 +39,25 @@ export function groupByProvider(ranked: DataSource[]): SourceGroup[] {
 	return [...groups].map(([provider, sources]) => ({ provider, sources }));
 }
 
-/** No model means data the provider keeps per account rather than per device: dailies, sleep. */
-export const sourceTitle = (source: DataSource) => source.device_name ?? 'No device reported';
+/** The device's model, by its marketing name when the API resolves one. */
+export const deviceOf = (source: DataSource) => source.device_name ?? source.device_model;
 
-const SLUG = /^[a-z0-9_]+$/;
+/** No model means data the provider keeps per account rather than per device: dailies, sleep. */
+export const sourceTitle = (source: DataSource) => deviceOf(source) ?? 'No device reported';
+
+/** The provider naming itself: its slug, or one built on it (`google_health_api`, `apple_health_sdk`). */
+const namesProvider = (name: string, provider: string) =>
+	name === provider || name.startsWith(`${provider}_`);
 
 /**
  * The provider's own name for the source, when it adds something: a device's
- * given name ("Kuba's Apple Watch") or the app that wrote the data. A provider
- * slug like `garmin` or `google_health_api` says nothing the logo does not.
+ * given name ("Kuba's Apple Watch") or the app that wrote the data. The
+ * provider's own identifier says nothing the logo does not.
  */
 export function sourceDetail(source: DataSource): string | null {
 	const name = source.source?.trim();
-	if (!name || SLUG.test(name) || name === source.device_name) return null;
+	if (!name || namesProvider(name.toLowerCase(), source.provider) || name === deviceOf(source)) {
+		return null;
+	}
 	return name;
 }

@@ -224,6 +224,16 @@ test('scrolls the tabs sideways with a mouse wheel when they do not fit', async 
 	await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 });
 
+test('scrolls the tabs with a wheel that reports lines, as Firefox does', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 800 });
+	await page.goto(`/users/${CONNECTED}`);
+	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+
+	await strip.dispatchEvent('wheel', { deltaY: 3, deltaMode: 1 });
+
+	await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(60);
+});
+
 test('scrolls the tabs with the edge arrows when they do not fit', async ({ page }) => {
 	await page.setViewportSize({ width: 1024, height: 800 });
 	await page.goto(`/users/${CONNECTED}`);

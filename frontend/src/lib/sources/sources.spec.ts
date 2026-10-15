@@ -77,23 +77,29 @@ describe('groupByProvider', () => {
 });
 
 describe('source labels', () => {
-	it('names a source with no model as account-level data', () => {
-		expect(sourceTitle(source({ device_name: 'Apple Watch Series 6' }))).toBe(
-			'Apple Watch Series 6'
+	it('names the device, falling back to its raw model on an older API', () => {
+		expect(
+			sourceTitle(source({ device_model: 'Watch6,2', device_name: 'Apple Watch Series 6' }))
+		).toBe('Apple Watch Series 6');
+		expect(sourceTitle(source({ device_model: 'Watch6,2', device_name: undefined }))).toBe(
+			'Watch6,2'
 		);
 		expect(sourceTitle(source({}))).toBe('No device reported');
 	});
 
 	it.each([
-		['garmin', null],
-		['google_health_api', null],
-		['Apple Watch Series 6', null],
-		["Kuba's Apple Watch", "Kuba's Apple Watch"],
-		['com.fitbit.FitbitMobile', 'com.fitbit.FitbitMobile'],
-		['  ', null]
-	])('shows the source name %j only when it adds something', (name, expected) => {
-		expect(sourceDetail(source({ source: name, device_name: 'Apple Watch Series 6' }))).toBe(
-			expected
-		);
+		['garmin', 'garmin', null],
+		['oura', 'Oura', null],
+		['google_health', 'google_health_api', null],
+		['apple', 'apple_health_sdk', null],
+		['apple', 'Apple Watch Series 6', null],
+		['apple', "Kuba's Apple Watch", "Kuba's Apple Watch"],
+		['apple', 'myfitnesspal', 'myfitnesspal'],
+		['health_connect', 'com.fitbit.FitbitMobile', 'com.fitbit.FitbitMobile'],
+		['garmin', '  ', null]
+	])('for %s, shows the source name %j only when it adds something', (provider, name, expected) => {
+		expect(
+			sourceDetail(source({ provider, source: name, device_name: 'Apple Watch Series 6' }))
+		).toBe(expected);
 	});
 });

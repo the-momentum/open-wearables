@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { MICRO } from '$lib/components/ui/typography';
 	import { deviceIcon, deviceLabel } from '$lib/providers/devices';
-	import { sourceDetail, sourceTitle } from '$lib/sources/sources';
+	import { deviceOf, sourceDetail, sourceTitle } from '$lib/sources/sources';
 	import type { DataSource } from '$lib/sources/types';
 	import { cn } from '$lib/utils/cn';
 
@@ -30,7 +30,7 @@
 			<span
 				class={cn(
 					'truncate text-sm font-medium',
-					source.device_name ? 'text-foreground' : 'text-muted-foreground'
+					deviceOf(source) ? 'text-foreground' : 'text-muted-foreground'
 				)}
 			>
 				{sourceTitle(source)}
