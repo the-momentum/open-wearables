@@ -70,6 +70,102 @@ _TRIM_SERIES = text(f"""
 """)
 
 
+_BACKFILL_BATCH_SIZE = 500
+
+_NEXT_SOURCES = text("""
+    SELECT id FROM data_source
+    WHERE id > :after
+    ORDER BY id
+    LIMIT :batch_size
+""")
+# Held until the batch commits, so deleting a provider's data waits for it rather than
+# losing its coverage row to spans read just before the delete.
+_LOCK_SOURCES = text("SELECT 1 FROM data_source WHERE id > :after AND id <= :upto FOR SHARE")
+
+
+def _pair_spans(table: str, at: str) -> str:
+    """Span per (data source, series type) in one table, for the sources in (:after, :upto]."""
+    return f"""
+        SELECT p.data_source_id, p.series_type_definition_id,
+            (SELECT min(t.{at}) FROM {table} t
+             WHERE t.data_source_id = p.data_source_id
+               AND t.series_type_definition_id = p.series_type_definition_id) AS first_at,
+            (SELECT max(t.{at}) FROM {table} t
+             WHERE t.data_source_id = p.data_source_id
+               AND t.series_type_definition_id = p.series_type_definition_id) AS last_at
+        FROM (
+            WITH RECURSIVE pairs AS (
+                (
+                    SELECT data_source_id, series_type_definition_id FROM {table}
+                    WHERE data_source_id > :after AND data_source_id <= :upto
+                    ORDER BY data_source_id, series_type_definition_id
+                    LIMIT 1
+                )
+                UNION ALL
+                SELECT next.data_source_id, next.series_type_definition_id
+                FROM pairs
+                CROSS JOIN LATERAL (
+                    SELECT t.data_source_id, t.series_type_definition_id FROM {table} t
+                    WHERE (t.data_source_id, t.series_type_definition_id)
+                          > (pairs.data_source_id, pairs.series_type_definition_id)
+                      AND t.data_source_id <= :upto
+                    ORDER BY t.data_source_id, t.series_type_definition_id
+                    LIMIT 1
+                ) AS next
+            )
+            SELECT * FROM pairs
+        ) p
+    """
+
+
+_HELD_SERIES_SPANS = f"""
+    SELECT ds.user_id, ds.provider, std.code AS data_type, CAST(:series AS varchar) AS kind,
+           min(s.first_at) AS coverage_start, max(s.last_at) AS coverage_end
+    FROM (
+        {_pair_spans("data_point_series", "recorded_at")}
+        UNION ALL
+        {_pair_spans("data_point_series_archive", "bucket_start_at")}
+    ) s
+    JOIN data_source ds ON ds.id = s.data_source_id
+    JOIN series_type_definition std ON std.id = s.series_type_definition_id
+    GROUP BY ds.user_id, ds.provider, std.code
+"""
+
+_HELD_EVENT_SPANS = """
+    SELECT ds.user_id, ds.provider, er.category AS data_type, CAST(:event AS varchar) AS kind,
+           min(er.start_datetime) AS coverage_start, max(er.end_datetime) AS coverage_end
+    FROM event_record er
+    JOIN data_source ds ON ds.id = er.data_source_id
+    WHERE er.data_source_id > :after AND er.data_source_id <= :upto
+      AND er.category IS NOT NULL AND er.category <> ''
+    GROUP BY ds.user_id, ds.provider, er.category
+"""
+
+
+def _widen_with(spans: str) -> str:
+    return f"""
+        INSERT INTO data_type_coverage
+            (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
+        SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, coverage_end
+        FROM ({spans}) spans
+        ORDER BY user_id, provider, data_type, kind
+        ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
+            coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
+            coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+            last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
+    """
+
+
+_BACKFILL_WRITES = {
+    DataTypeKind.SERIES: text(_widen_with(_HELD_SERIES_SPANS)),
+    DataTypeKind.EVENT: text(_widen_with(_HELD_EVENT_SPANS)),
+}
+_BACKFILL_COUNTS = {
+    DataTypeKind.SERIES: text(f"SELECT count(*) FROM ({_HELD_SERIES_SPANS}) spans"),
+    DataTypeKind.EVENT: text(f"SELECT count(*) FROM ({_HELD_EVENT_SPANS}) spans"),
+}
+
+
 class DataTypeCoverageRepository:
     """The span of data we hold per user, provider and data type.
 
@@ -166,6 +262,29 @@ class DataTypeCoverageRepository:
             )
             db_session.commit()
             after = upto
+
+    def backfill_from_held_data(self, db_session: DbSession, *, dry_run: bool) -> dict[DataTypeKind, int]:
+        """Widen coverage to the series, archive and event rows already held, per batch of data sources.
+
+        For data written before coverage existed. Only widens, so it never undoes what the
+        write paths recorded meanwhile. Returns the spans recorded (or, in a dry run, found)
+        per kind, one per type and batch. Commits per batch.
+        """
+        found = {DataTypeKind.SERIES: 0, DataTypeKind.EVENT: 0}
+        after = UUID(int=0)
+        while sources := (
+            db_session.execute(_NEXT_SOURCES, {"after": after, "batch_size": _BACKFILL_BATCH_SIZE}).scalars().all()
+        ):
+            params = {"after": after, "upto": sources[-1], "series": DataTypeKind.SERIES, "event": DataTypeKind.EVENT}
+            db_session.execute(_LOCK_SOURCES, params)
+            for kind in found:
+                if dry_run:
+                    found[kind] += db_session.execute(_BACKFILL_COUNTS[kind], params).scalar() or 0
+                else:
+                    found[kind] += db_session.execute(_BACKFILL_WRITES[kind], params).rowcount  # ty: ignore[unresolved-attribute]
+            db_session.commit()
+            after = sources[-1]
+        return found
 
     def list_for_user(
         self,

@@ -1,25 +1,33 @@
 """Tests for data_type_coverage, written from the series and event write paths."""
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataTypeCoverage, EventRecord
+from app.integrations.celery.tasks.backfill_data_type_coverage_task import backfill_data_type_coverage
+from app.models import DataPointSeries, DataPointSeriesArchive, DataTypeCoverage, EventRecord
 from app.repositories.archival_repository import BatchedRun
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.data_type_coverage import CoverageSpan
-from app.schemas.enums import ProviderName, SeriesType
+from app.schemas.enums import AggregationMethod, ProviderName, SeriesType
 from app.schemas.model_crud.activities import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.sync_status import DataTypeKind
 from app.services.archival_service import archival_service
 from app.services.event_record_service import event_record_service
-from tests.factories import DataSourceFactory, UserFactory
+from tests.factories import (
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    SeriesTypeDefinitionFactory,
+    UserFactory,
+)
 
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -354,3 +362,85 @@ class TestCoverageFollowsRemovals:
             archival_service.run_daily_archival(MagicMock())
 
         assert trim.called is trimmed
+
+
+def _garmin_span(db: Session, user_id: UUID, data_type: str, kind: DataTypeKind) -> tuple[datetime, datetime] | None:
+    db.expire_all()
+    row = data_type_coverage_repository.get(db, user_id, "garmin", data_type, kind)
+    return (row.coverage_start, row.coverage_end) if row else None
+
+
+class TestBackfillFromHeldData:
+    def test_spans_live_series_archive_and_events_across_batches(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("app.repositories.data_type_coverage_repository._BACKFILL_BATCH_SIZE", 1)
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="Forerunner 965")
+        phone = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="Edge 1040")
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        DataPointSeriesFactory(data_source=watch, series_type=heart_rate, recorded_at=NOW)
+        DataPointSeriesFactory(data_source=phone, series_type=heart_rate, recorded_at=NOW + timedelta(days=2))
+        db.add(
+            DataPointSeriesArchive(
+                id=uuid4(),
+                data_source_id=watch.id,
+                series_type_definition_id=heart_rate.id,
+                bucket_start_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                aggregation_type=AggregationMethod.AVG,
+                value=Decimal(60),
+                sample_count=100,
+            )
+        )
+        EventRecordFactory(
+            data_source=phone, category="workout", start_datetime=NOW, end_datetime=NOW + timedelta(hours=1)
+        )
+        db.flush()
+
+        written = data_type_coverage_repository.backfill_from_held_data(db, dry_run=False)
+
+        assert written == {DataTypeKind.SERIES: 2, DataTypeKind.EVENT: 1}
+        assert _garmin_span(db, user.id, "heart_rate", DataTypeKind.SERIES) == (
+            datetime(2025, 1, 1, tzinfo=timezone.utc),
+            NOW + timedelta(days=2),
+        )
+        assert _garmin_span(db, user.id, "workout", DataTypeKind.EVENT) == (NOW, NOW + timedelta(hours=1))
+
+    def test_only_widens_what_the_write_paths_already_hold(self, db: Session) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        DataPointSeriesFactory(
+            data_source=source, series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(), recorded_at=NOW
+        )
+        later = NOW + timedelta(days=30)
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user.id, "garmin", "heart_rate", DataTypeKind.SERIES, later, later)]
+        )
+        db.flush()
+
+        data_type_coverage_repository.backfill_from_held_data(db, dry_run=False)
+
+        assert _garmin_span(db, user.id, "heart_rate", DataTypeKind.SERIES) == (NOW, later)
+
+    def test_dry_run_counts_and_writes_nothing(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        DataPointSeriesFactory(
+            data_source=source, series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(), recorded_at=NOW
+        )
+        db.flush()
+
+        assert data_type_coverage_repository.backfill_from_held_data(db, dry_run=True) == {
+            DataTypeKind.SERIES: 1,
+            DataTypeKind.EVENT: 0,
+        }
+        assert db.query(DataTypeCoverage).count() == 0
+
+
+def test_backfill_task_runs_once_under_its_migration_name() -> None:
+    task = "app.integrations.celery.tasks.backfill_data_type_coverage_task"
+    with patch(f"{task}.engine"), patch(f"{task}.data_migration_service") as service:
+        backfill_data_type_coverage()
+
+    name, migrate = service.run.call_args.args[1:3]
+    assert (name, service.run.call_args.kwargs["dry_run"]) == ("backfill_data_type_coverage", False)
+    assert callable(migrate)
