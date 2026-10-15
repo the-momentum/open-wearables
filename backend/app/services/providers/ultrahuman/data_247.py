@@ -311,21 +311,8 @@ class Ultrahuman247Data(Base247DataTemplate):
             sleep_stages=normalized_sleep.get("stage_timestamps") or None,
         )
 
-        try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
-            return True
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Error saving sleep record",
-                provider="ultrahuman",
-                task="save_sleep_data",
-                sleep_id=str(sleep_id),
-                user_id=str(user_id),
-                error=str(e),
-            )
-            return False
+        event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+        return True
 
     # -------------------------------------------------------------------------
     # Recovery Data
@@ -544,7 +531,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             items_by_type = self._fetch_items_by_type(db, user_id, current_date, run)
 
             if "Sleep" in items_by_type:
-                with run.step("sleep", accumulate=True, rollback_on_error=False) as step:
+                with run.step("sleep", accumulate=True) as step:
                     normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
                     step.record(1 if self.save_sleep_data(db, user_id, normalized_sleep) else 0)
 
@@ -579,7 +566,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             run.fail("daily_metrics", e)
             return {}
 
-        return {item["type"]: item["object"] for item in metrics_list if item.get("type") and "object" in item}
+        return {item["type"]: item["object"] for item in metrics_list if item.get("type") and item.get("object")}
 
     def _save_daily_activity(
         self,

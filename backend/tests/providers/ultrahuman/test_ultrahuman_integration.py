@@ -773,6 +773,31 @@ class TestUltrahumanSyncCountContract:
         assert not results.split_complete  # sleep has no split to report
         assert not results.any_failed
 
+    def test_a_null_metric_object_does_not_drop_its_siblings(
+        self, db: Session, sample_ultrahuman_api_response: dict
+    ) -> None:
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
+        provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        response = {
+            "data": {
+                "metric_data": [
+                    *sample_ultrahuman_api_response["data"]["metric_data"],
+                    {"type": "temp", "object": None},
+                ]
+            }
+        }
+        day = datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+        with patch.object(provider_impl, "_make_api_request", return_value=response):
+            results = provider_impl.load_and_save_all(db, user.id, start_time=day, end_time=day)
+
+        assert not results.any_failed
+        assert results["activity_samples"] > 0
+
     def test_resync_upserts_instead_of_duplicating(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """Re-syncing the same day must upsert (dedupe), not insert duplicate rows."""
         user = UserFactory()

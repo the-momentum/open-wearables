@@ -582,7 +582,7 @@ class Garmin247Data(Base247DataTemplate):
         if samples:
             counts = self.data_point_repo.bulk_create(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            counts += health_score_service.bulk_create(db, health_scores)
             db.commit()
         return counts
 

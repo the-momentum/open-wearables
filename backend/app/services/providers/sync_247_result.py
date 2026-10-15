@@ -126,9 +126,13 @@ class Sync247Result(Mapping[str, int]):
     ) -> None:
         """Accumulate into a data type — for providers that sync one chunk (e.g. day) at a time."""
         current = self.outcomes.get(data_type, DataTypeOutcome(rows_written=0))
+        # The split stays known only while every chunk that wrote rows reported one.
         counts = current.counts
-        if isinstance(rows_written, WriteCounts):
+        split_known = counts is not None or not current.rows_written
+        if isinstance(rows_written, WriteCounts) and split_known:
             counts = rows_written if counts is None else counts + rows_written
+        elif rows_written:
+            counts = None
         self.outcomes[data_type] = replace(
             current,
             rows_written=current.rows_written + int(rows_written),
@@ -309,7 +313,8 @@ class Sync247Run:
         except Exception as e:
             if rollback_on_error is None:
                 rollback_on_error = not savepoint
-            if rollback_on_error:
+            # An inactive session (failed flush/commit, savepoint never opened) must be reset regardless.
+            if rollback_on_error or not self.db.is_active:
                 self.db.rollback()
             self.fail(data_type, e, capture=capture)
             return

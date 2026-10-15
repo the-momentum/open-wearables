@@ -763,22 +763,16 @@ class Suunto247Data(Base247DataTemplate):
             step.record(self.load_and_save_recovery(db, user_id, start_dt, end_dt))
 
         # 3. Activity samples → DataPointSeries (HR, steps, SpO2, energy, HRV)
-        with run.step("activity_samples", rollback_on_error=False) as step:
+        with run.step("activity_samples", commit=True) as step:
             raw_activity = self.get_activity_samples(db, user_id, start_dt, end_dt)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
             step.record(self.save_activity_samples(db, user_id, normalized_activity))
 
         # 4. Daily aggregated statistics → DataPointSeries (steps, energy)
-        with run.step("daily_activity", rollback_on_error=False) as step:
+        with run.step("daily_activity", commit=True) as step:
             raw_daily = self.get_daily_activity_statistics(db, user_id, start_dt, end_dt)
             normalized_daily = [self.normalize_daily_activity(item, user_id) for item in raw_daily]
             step.record(self.save_daily_activity_statistics(db, user_id, normalized_daily))
-
-        # Commit all pending bulk inserts (activity samples, daily stats) that were
-        # not committed within their individual save methods. Sleep and recovery
-        # commit per-record via crud.create/try_commit, but bulk_create_samples
-        # defers commit to the caller intentionally for batching efficiency.
-        db.commit()
 
         run.log_summary()
         return run.result

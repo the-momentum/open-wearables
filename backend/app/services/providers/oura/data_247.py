@@ -348,7 +348,7 @@ class Oura247Data(Base247DataTemplate):
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            counts += health_score_service.bulk_create(db, health_scores)
         if samples or health_scores:
             db.commit()
         return counts
@@ -581,7 +581,7 @@ class Oura247Data(Base247DataTemplate):
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            counts += health_score_service.bulk_create(db, health_scores)
         if samples or health_scores:
             db.commit()
         return counts
