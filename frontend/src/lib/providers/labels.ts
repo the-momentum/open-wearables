@@ -30,3 +30,11 @@ export function providerLabel(providers: Provider[], slug: string): string {
 		humanise(slug)
 	);
 }
+
+/** A provider's logo and name, or a bare one for a slug the catalogue no longer lists. */
+export const brandOf = (providers: Provider[], slug: string): ProviderBrand =>
+	providers.find((provider) => provider.provider === slug) ?? {
+		provider: slug,
+		name: providerLabel(providers, slug),
+		icon_url: ''
+	};

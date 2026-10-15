@@ -12454,6 +12454,17 @@
             ],
             "title": "Original Source Name"
           },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          },
           "display_name": {
             "anyOf": [
               {

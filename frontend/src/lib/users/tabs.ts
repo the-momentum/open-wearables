@@ -2,6 +2,7 @@ import Activity from '@lucide/svelte/icons/activity';
 import ChartColumn from '@lucide/svelte/icons/chart-column';
 import Dumbbell from '@lucide/svelte/icons/dumbbell';
 import Heart from '@lucide/svelte/icons/heart';
+import MonitorSmartphone from '@lucide/svelte/icons/monitor-smartphone';
 import Moon from '@lucide/svelte/icons/moon';
 import Scale from '@lucide/svelte/icons/scale';
 import Trophy from '@lucide/svelte/icons/trophy';
@@ -24,6 +25,7 @@ export const USER_TABS: readonly UserTab[] = [
 	// Not "Profile": the profile is the header, visible above every tab.
 	{ slug: '', label: 'Connections', icon: Plug },
 	{ slug: 'data', label: 'Data Summary', icon: ChartColumn },
+	{ slug: 'sources', label: 'Sources', icon: MonitorSmartphone },
 	{ slug: 'workouts', label: 'Workouts', icon: Dumbbell },
 	{ slug: 'activity', label: 'Activity', icon: Activity },
 	{ slug: 'sleep', label: 'Sleep', icon: Moon },
