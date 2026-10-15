@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import LiteralString, NamedTuple
+from typing import LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
 
@@ -106,11 +106,20 @@ class WriteCounts(int):
         obj.covered_end = covered_end
         return obj
 
-    # ty:ignore[invalid-method-override] — narrower than int.__add__ on purpose; a plain int yields an int.
-    def __add__(self, other: "WriteCounts") -> "WriteCounts":
-        """Keep the split and widen the covered span when accumulating counts."""
+    # Overloads are for the type checker: they tell it which addition keeps the split.
+    @overload
+    def __add__(self, other: "WriteCounts") -> "WriteCounts": ...
+
+    @overload
+    def __add__(self, other: int) -> int: ...
+
+    def __add__(self, other: int) -> int:
+        """Keep the split and widen the covered span when accumulating counts.
+
+        A plain int has no split to keep, so adding one yields a plain int.
+        """
         if not isinstance(other, WriteCounts):
-            return NotImplemented
+            return int(self) + other
         starts = [d for d in (self.covered_start, other.covered_start) if d is not None]
         ends = [d for d in (self.covered_end, other.covered_end) if d is not None]
         return WriteCounts(
