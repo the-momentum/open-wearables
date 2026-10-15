@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, SeriesTypeDefinition
 from app.schemas.enums.provider import ProviderName
+from app.schemas.enums.series_types import SeriesType, get_series_type_id
 from tests.factories import DataPointSeriesFactory, DataSourceFactory
 
-ACTIVE_ENERGY_ID = 81
-TOTAL_ENERGY_ID = 89
+ACTIVE_ENERGY_ID = get_series_type_id(SeriesType.active_energy)
+TOTAL_ENERGY_ID = get_series_type_id(SeriesType.total_energy)
 
 _SCRIPT_PATH = (
     Path(__file__).resolve().parents[2]
@@ -62,6 +63,19 @@ def test_relabels_whoop_energy_and_drops_zero_rows(db: Session) -> None:
 
     assert result["series_updated"] == 1
     assert result["series_deleted"] == 1
+    assert _rows(db) == [(TOTAL_ENERGY_ID, Decimal("2150"))]
+
+
+def test_drops_energy_already_stored_as_total(db: Session) -> None:
+    source = DataSourceFactory(provider=ProviderName.WHOOP)
+    for type_id, value in ((ACTIVE_ENERGY_ID, "2100"), (TOTAL_ENERGY_ID, "2150")):
+        DataPointSeriesFactory(
+            data_source=source, series_type=db.get(SeriesTypeDefinition, type_id), recorded_at=T, value=Decimal(value)
+        )
+
+    result = relabel_whoop_active_energy(db, dry_run=False)
+
+    assert (result["series_updated"], result["series_deleted"]) == (0, 1)
     assert _rows(db) == [(TOTAL_ENERGY_ID, Decimal("2150"))]
 
 

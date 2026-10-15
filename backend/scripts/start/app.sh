@@ -78,8 +78,8 @@ uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
     || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
 
 # TODO: Remove this after ~2027-01-01 once all deployments have migrated.
-# Relabels Whoop cycle energy stored as active_energy (id=81) to total_energy (id=89):
-# it includes BMR. Drops 0 kJ no-wear rows. Scoped to provider='whoop', no-op once done.
+# Relabels Whoop cycle energy stored as active_energy to total_energy: it includes BMR.
+# Drops 0 kJ no-wear rows. Runs once per instance (data_migration).
 echo 'Running Whoop active_energy->total_energy relabel...'
 uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py \
     || echo "Warning: Whoop energy relabel failed — will retry on next startup."

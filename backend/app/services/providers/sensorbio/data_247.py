@@ -36,6 +36,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import energy_difference
 from app.utils.dates import as_utc
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -732,15 +733,14 @@ class SensorBio247Data(Base247DataTemplate):
             return None
 
         values = {(m.name or m.type): m.value for m in parsed.metrics}
+        # A day without resting calories is a day without data, so its 0 is not kept
         resting = values.get("Resting Calories") or None
-        total = values.get("Total Calories")
-        active = total - resting if total is not None and resting is not None else None
         return {
             "user_id": user_id,
             "provider": self.provider_name,
             "timestamp": datetime.fromisoformat(f"{parsed.date}T00:00:00+00:00"),
             "basal_energy": resting,
-            "energy": active if active and active > 0 else None,
+            "energy": energy_difference(values.get("Total Calories"), resting),
         }
 
     def save_daily_activity(self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]) -> int:

@@ -538,13 +538,15 @@ class TestActivitySummaryEndpoint:
         assert activity["active_calories_kcal"] == 400.5  # 250.5 + 150.0
         assert activity["total_calories_kcal"] == 2000.5  # 400.5 + 1600.0
 
-    def test_get_activity_summary_total_calories_null_without_basal(self, client: TestClient, db: Session) -> None:
+    @pytest.mark.parametrize("reported", ["get_or_create_energy", "get_or_create_basal_energy"])
+    def test_get_activity_summary_total_calories_null_without_both_parts(
+        self, client: TestClient, db: Session, reported: str
+    ) -> None:
         user = UserFactory()
         mapping = DataSourceFactory(user=user, source="garmin")
-        energy_type = SeriesTypeDefinitionFactory.get_or_create_energy()
         DataPointSeriesFactory(
             mapping=mapping,
-            series_type=energy_type,
+            series_type=getattr(SeriesTypeDefinitionFactory, reported)(),
             value=Decimal("400.0"),
             recorded_at=datetime(2025, 12, 26, 10, 0, 0, tzinfo=timezone.utc),
         )
@@ -558,7 +560,6 @@ class TestActivitySummaryEndpoint:
 
         assert response.status_code == 200
         activity = response.json()["data"][0]
-        assert activity["active_calories_kcal"] == 400.0
         assert activity["total_calories_kcal"] is None
 
     def test_get_activity_summary_total_calories_from_total_energy(self, client: TestClient, db: Session) -> None:

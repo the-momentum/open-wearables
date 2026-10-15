@@ -7,7 +7,7 @@ data_point_series and data_point_series_archive:
 - already has a total_energy row at the same key (re-synced after deploy): deleted
 - everything else: relabeled to total_energy, value unchanged
 
-Idempotent; runs on startup.
+Runs once per instance (``data_migration``), one committed batch per Whoop data source.
 
 Usage (inside Docker), with --dry-run to preview without changes:
     docker compose exec app uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py
@@ -17,147 +17,95 @@ import argparse
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.elements import TextClause
 
-from app.database import SessionLocal
+from app.database import engine
+from app.schemas.enums import ProviderName
+from app.schemas.enums.series_types import SeriesType, get_series_type_id
+from app.services.data_migration_service import data_migration_service
 
-PROVIDER = "whoop"
-ACTIVE_ENERGY_ID = 81
-TOTAL_ENERGY_ID = 89
+_PARAMS = {
+    "active_energy": get_series_type_id(SeriesType.active_energy),
+    "total_energy": get_series_type_id(SeriesType.total_energy),
+}
 
-_PARAMS = {"provider": PROVIDER, "active_energy": ACTIVE_ENERGY_ID, "total_energy": TOTAL_ENERGY_ID}
+_SOURCES = text("SELECT id FROM data_source WHERE provider = :provider ORDER BY id")
 
 # data_point_series: unique on (data_source_id, series_type_definition_id, recorded_at)
-_SERIES_SCOPE = """
-    FROM data_point_series dps
-    JOIN data_source ds ON ds.id = dps.data_source_id
-    WHERE ds.provider = :provider
-      AND dps.series_type_definition_id = :active_energy
-"""
-_SERIES_HAS_TOTAL = """
-    EXISTS (
-        SELECT 1 FROM data_point_series e
-        WHERE e.data_source_id = dps.data_source_id
-          AND e.series_type_definition_id = :total_energy
-          AND e.recorded_at = dps.recorded_at
-    )
-"""
+_SERIES_SCOPE = "dps.data_source_id = :source AND dps.series_type_definition_id = :active_energy"
 # Rows deleted rather than relabeled: no-wear zeros, and duplicates of an existing total_energy row.
-_SERIES_DROP = f"(dps.value = 0 OR {_SERIES_HAS_TOTAL})"
+_SERIES_DROP = """(dps.value = 0 OR EXISTS (
+    SELECT 1 FROM data_point_series e
+    WHERE e.data_source_id = dps.data_source_id
+      AND e.series_type_definition_id = :total_energy
+      AND e.recorded_at = dps.recorded_at
+))"""
 
-_SERIES_COUNT = text(f"SELECT COUNT(*) {_SERIES_SCOPE}")
-_SERIES_DROP_COUNT = text(f"SELECT COUNT(*) {_SERIES_SCOPE} AND {_SERIES_DROP}")
+# data_point_series_archive: unique on (data_source_id, series_type_definition_id, bucket_start_at, aggregation_type)
+_ARCHIVE_SCOPE = "a.data_source_id = :source AND a.series_type_definition_id = :active_energy"
+_ARCHIVE_DROP = """(a.value = 0 OR EXISTS (
+    SELECT 1 FROM data_point_series_archive e
+    WHERE e.data_source_id = a.data_source_id
+      AND e.series_type_definition_id = :total_energy
+      AND e.bucket_start_at = a.bucket_start_at
+      AND e.aggregation_type = a.aggregation_type
+))"""
 
-_SERIES_DELETE = text(f"""
-    DELETE FROM data_point_series dps
-    USING data_source ds
-    WHERE ds.id = dps.data_source_id
-      AND ds.provider = :provider
-      AND dps.series_type_definition_id = :active_energy
-      AND {_SERIES_DROP}
+_COUNTS = text(f"""
+    SELECT
+        (SELECT count(*) FROM data_point_series dps WHERE {_SERIES_SCOPE}),
+        (SELECT count(*) FROM data_point_series dps WHERE {_SERIES_SCOPE} AND {_SERIES_DROP}),
+        (SELECT count(*) FROM data_point_series_archive a WHERE {_ARCHIVE_SCOPE}),
+        (SELECT count(*) FROM data_point_series_archive a WHERE {_ARCHIVE_SCOPE} AND {_ARCHIVE_DROP})
 """)
-
-_SERIES_UPDATE = text("""
-    UPDATE data_point_series dps
-    SET series_type_definition_id = :total_energy
-    FROM data_source ds
-    WHERE ds.id = dps.data_source_id
-      AND ds.provider = :provider
-      AND dps.series_type_definition_id = :active_energy
-""")
-
-# data_point_series_archive: unique on (data_source_id, series_type_definition_id,
-# bucket_start_at, aggregation_type)
-_ARCHIVE_SCOPE = """
-    FROM data_point_series_archive a
-    JOIN data_source ds ON ds.id = a.data_source_id
-    WHERE ds.provider = :provider
-      AND a.series_type_definition_id = :active_energy
-"""
-_ARCHIVE_HAS_TOTAL = """
-    EXISTS (
-        SELECT 1 FROM data_point_series_archive e
-        WHERE e.data_source_id = a.data_source_id
-          AND e.series_type_definition_id = :total_energy
-          AND e.bucket_start_at = a.bucket_start_at
-          AND e.aggregation_type = a.aggregation_type
-    )
-"""
-_ARCHIVE_DROP = f"(a.value = 0 OR {_ARCHIVE_HAS_TOTAL})"
-
-_ARCHIVE_COUNT = text(f"SELECT COUNT(*) {_ARCHIVE_SCOPE}")
-_ARCHIVE_DROP_COUNT = text(f"SELECT COUNT(*) {_ARCHIVE_SCOPE} AND {_ARCHIVE_DROP}")
-
-_ARCHIVE_DELETE = text(f"""
-    DELETE FROM data_point_series_archive a
-    USING data_source ds
-    WHERE ds.id = a.data_source_id
-      AND ds.provider = :provider
-      AND a.series_type_definition_id = :active_energy
-      AND {_ARCHIVE_DROP}
-""")
-
-_ARCHIVE_UPDATE = text("""
-    UPDATE data_point_series_archive a
-    SET series_type_definition_id = :total_energy
-    FROM data_source ds
-    WHERE ds.id = a.data_source_id
-      AND ds.provider = :provider
-      AND a.series_type_definition_id = :active_energy
-""")
-
-
-def _scalar_count(db: Session, query: TextClause) -> int:
-    return db.execute(query, _PARAMS).scalar() or 0
+# Deletes run before updates, so the updates only see rows that can be relabeled without
+# hitting the unique constraint
+_SERIES_DELETE = text(f"DELETE FROM data_point_series dps WHERE {_SERIES_SCOPE} AND {_SERIES_DROP}")
+_SERIES_UPDATE = text(
+    f"UPDATE data_point_series dps SET series_type_definition_id = :total_energy WHERE {_SERIES_SCOPE}"
+)
+_ARCHIVE_DELETE = text(f"DELETE FROM data_point_series_archive a WHERE {_ARCHIVE_SCOPE} AND {_ARCHIVE_DROP}")
+_ARCHIVE_UPDATE = text(
+    f"UPDATE data_point_series_archive a SET series_type_definition_id = :total_energy WHERE {_ARCHIVE_SCOPE}"
+)
 
 
 def relabel_whoop_active_energy(db: Session, *, dry_run: bool) -> dict[str, int]:
-    """Relabel Whoop active_energy rows to total_energy. Does not commit — caller owns the transaction.
+    """Commits per data source, so an interrupted run keeps what it relabeled."""
+    result = dict.fromkeys(("series_updated", "series_deleted", "archive_updated", "archive_deleted"), 0)
+    sources = db.execute(_SOURCES, {"provider": ProviderName.WHOOP.value}).scalars().all()
+    for source in sources:
+        params = {**_PARAMS, "source": source}
+        if dry_run:
+            series, series_dropped, archive, archive_dropped = db.execute(_COUNTS, params).one()
+            result["series_updated"] += series - series_dropped
+            result["series_deleted"] += series_dropped
+            result["archive_updated"] += archive - archive_dropped
+            result["archive_deleted"] += archive_dropped
+            continue
+        result["series_deleted"] += db.execute(_SERIES_DELETE, params).rowcount  # ty: ignore[unresolved-attribute]
+        result["series_updated"] += db.execute(_SERIES_UPDATE, params).rowcount  # ty: ignore[unresolved-attribute]
+        result["archive_deleted"] += db.execute(_ARCHIVE_DELETE, params).rowcount  # ty: ignore[unresolved-attribute]
+        result["archive_updated"] += db.execute(_ARCHIVE_UPDATE, params).rowcount  # ty: ignore[unresolved-attribute]
+        db.commit()
 
-    Deletes run before updates, so the updates only ever see rows that can be relabeled
-    without hitting the unique constraint.
-    """
+    verb = ("Would relabel", "remove") if dry_run else ("Relabeled", "removed")
+    print(f"data_point_series:         {verb[0]} {result['series_updated']}, {verb[1]} {result['series_deleted']}")
+    print(f"data_point_series_archive: {verb[0]} {result['archive_updated']}, {verb[1]} {result['archive_deleted']}")
     if dry_run:
-        series_deleted = _scalar_count(db, _SERIES_DROP_COUNT)
-        series_updated = _scalar_count(db, _SERIES_COUNT) - series_deleted
-        archive_deleted = _scalar_count(db, _ARCHIVE_DROP_COUNT)
-        archive_updated = _scalar_count(db, _ARCHIVE_COUNT) - archive_deleted
-        print(f"data_point_series:         Would relabel {series_updated}, remove {series_deleted}")
-        print(f"data_point_series_archive: Would relabel {archive_updated}, remove {archive_deleted}")
         print("\nDry run — no changes made.")
-        return {
-            "series_updated": series_updated,
-            "series_deleted": series_deleted,
-            "archive_updated": archive_updated,
-            "archive_deleted": archive_deleted,
-        }
+    return result
 
-    series_deleted = db.execute(_SERIES_DELETE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
-    series_updated = db.execute(_SERIES_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
-    archive_deleted = db.execute(_ARCHIVE_DELETE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
-    archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
 
-    print(f"data_point_series:         Relabeled {series_updated}, removed {series_deleted}")
-    print(f"data_point_series_archive: Relabeled {archive_updated}, removed {archive_deleted}")
-
-    return {
-        "series_updated": series_updated,
-        "series_deleted": series_deleted,
-        "archive_updated": archive_updated,
-        "archive_deleted": archive_deleted,
-    }
+def _migrate(db: Session, dry_run: bool) -> bool:
+    relabel_whoop_active_energy(db, dry_run=dry_run)
+    return not dry_run
 
 
 def main(dry_run: bool) -> None:
-    with SessionLocal() as db:
-        result = relabel_whoop_active_energy(db, dry_run=dry_run)
-        if dry_run:
-            return
-        if not any(result.values()):
-            print("Nothing to do — no Whoop active_energy rows found.")
-            return
-        db.commit()
-        print("Done.")
+    with engine.connect() as connection, Session(bind=connection) as db:
+        data_migration_service.run(
+            db, "relabel_whoop_active_energy_to_total_energy", lambda: _migrate(db, dry_run), dry_run=dry_run
+        )
 
 
 if __name__ == "__main__":

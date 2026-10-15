@@ -45,8 +45,8 @@ class ActivitySummary(BaseModel):
     total_calories_kcal: float | None = Field(
         None,
         description=(
-            "Total energy burned: the provider's reported total when available, otherwise active + basal energy; "
-            "null when neither is available"
+            "Total energy burned: the provider's reported total when available, otherwise active + basal energy "
+            "when both are reported; null otherwise"
         ),
         example=2150.0,
     )

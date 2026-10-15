@@ -606,8 +606,8 @@ class SummariesService:
             active_cal = result.get("active_energy_sum")
             basal_cal = result.get("basal_energy_sum")
             total_cal = result.get("total_energy_sum")
-            if total_cal is None and basal_cal is not None:
-                total_cal = (active_cal or 0.0) + basal_cal
+            if total_cal is None and active_cal is not None and basal_cal is not None:
+                total_cal = active_cal + basal_cal
 
             # Active minutes: prefer the provider-reported daily active time (Garmin
             # activeTimeInSeconds, Oura high+medium+low activity time, Polar active_duration).
@@ -706,6 +706,7 @@ class SummariesService:
                 "steps_sum": None,
                 "active_energy_sum": None,
                 "basal_energy_sum": None,
+                "total_energy_sum": None,
                 "hr_avg": None,
                 "hr_max": None,
                 "hr_min": None,
