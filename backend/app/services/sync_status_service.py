@@ -203,6 +203,7 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
     if not outcomes or not is_persisted_scope(scope):
         return
 
+    outcomes = _one_per_data_type(outcomes)
     try:
         with SessionLocal() as db:
             run = sync_run_repository.get_by_run_key(db, run_key)
@@ -226,52 +227,83 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
         )
 
 
+def _one_per_data_type(outcomes: list[DataTypeOutcome]) -> list[DataTypeOutcome]:
+    """Merge outcomes reporting the same data type, as two fetch tasks writing one series type do.
+
+    Stored one after another, the later verdict would replace the earlier one: a task that
+    wrote nothing would turn a type another task filled into SKIPPED.
+    """
+    by_type: dict[str, list[DataTypeOutcome]] = {}
+    for outcome in outcomes:
+        by_type.setdefault(outcome.data_type, []).append(outcome)
+    return [group[0] if len(group) == 1 else _merged(group) for group in by_type.values()]
+
+
+def _merged(group: list[DataTypeOutcome]) -> DataTypeOutcome:
+    verdicts = [o for o in group if o.status != SyncStatus.IN_PROGRESS]
+    reported = [o.reported_records for o in group if o.reported_records is not None]
+    starts = [o.covered_start for o in group if o.covered_start is not None]
+    ends = [o.covered_end for o in group if o.covered_end is not None]
+    return group[0].model_copy(
+        update={
+            "status": run_status_from(verdicts) if verdicts else SyncStatus.IN_PROGRESS,
+            "reported_records": sum(reported) if reported else None,
+            "items_inserted": sum(o.items_inserted for o in group),
+            "items_updated": sum(o.items_updated for o in group),
+            "covered_start": min(starts, default=None),
+            "covered_end": max(ends, default=None),
+            "error_code": next((o.error_code for o in group if o.error_code), None),
+            "error": next((o.error for o in group if o.error), None),
+        }
+    )
+
+
 def _dispatch_data_type_webhooks(db: DbSession, run: SyncRun, outcomes: list[DataTypeOutcome]) -> None:
-    """Forward the per-data-type outcomes that reached a verdict.
+    """Forward the data types that reached a verdict, as stored for the run.
 
     IN_PROGRESS outcomes are skipped: an SDK export reports its types once per batch long
     before they are done, and only the log's end event knows how each one turned out.
+    The stored row is sent rather than the outcome, so the counts and span cover every
+    batch the type reported, not only the last one.
 
-    Fires per outcome rather than per run, so a consumer learns a type's history is in
+    Fires per type rather than per run, so a consumer learns a type's history is in
     without waiting for the whole backfill. The idempotency key is the run and type, so a
     type reporting the same verdict twice is delivered once.
     """
-    terminal = [o for o in outcomes if o.status != SyncStatus.IN_PROGRESS]
-    if not terminal:
+    finished = [o.data_type for o in outcomes if o.status != SyncStatus.IN_PROGRESS]
+    if not finished:
         return
 
+    rows = sync_run_repository.get_data_types(db, run.id, finished)
     coverage = {
-        (row.data_type, row.kind): row
-        for row in data_type_coverage_repository.list_for_user(
-            db,
-            run.user_id,
-            provider=run.provider,
-            data_types=[o.data_type for o in terminal],
+        (held.data_type, held.kind): held
+        for held in data_type_coverage_repository.list_for_user(
+            db, run.user_id, provider=run.provider, data_types=finished
         )
     }
 
-    for outcome in terminal:
-        held = coverage.get((outcome.data_type, str(outcome.kind)))
+    for row in rows:
+        held = coverage.get((row.data_type, row.kind))
         outgoing.on_sync_data_type_finished(
             user_id=run.user_id,
             provider=run.provider,
             source=str(run.source),
             scope=str(run.scope),
             run_id=run.run_key,
-            data_type=outcome.data_type,
-            kind=str(outcome.kind),
-            status=str(outcome.status),
-            succeeded=outcome.status not in _FAILED_DATA_TYPE_STATUSES,
-            native_data_type=outcome.native_type,
-            reported_records=outcome.reported_records,
-            items_inserted=outcome.items_inserted,
-            items_updated=outcome.items_updated,
-            covered_start=_iso(outcome.covered_start),
-            covered_end=_iso(outcome.covered_end),
+            data_type=row.data_type,
+            kind=row.kind,
+            status=str(row.status),
+            succeeded=row.status not in _FAILED_DATA_TYPE_STATUSES,
+            native_data_type=row.native_type,
+            reported_records=row.reported_records,
+            items_inserted=row.items_inserted,
+            items_updated=row.items_updated,
+            covered_start=_iso(row.covered_start),
+            covered_end=_iso(row.covered_end),
             coverage_start=_iso(held.coverage_start) if held else None,
             coverage_end=_iso(held.coverage_end) if held else None,
-            error_code=outcome.error_code,
-            error=outcome.error,
+            error_code=row.error_code,
+            error=row.error,
         )
 
 

@@ -11,27 +11,27 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-from app.schemas.sync_status import SyncRunContext, SyncScope, SyncSource
+from app.schemas.sync_status import SyncRunContext
 
 trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)
 
 sync_run_var: ContextVar[SyncRunContext | None] = ContextVar("sync_run", default=None)
 
 
+def current_sync_payload() -> dict[str, str] | None:
+    """The run being ingested, as data events carry it; None outside of one."""
+    run = sync_run_var.get()
+    return run.as_payload() if run else None
+
+
 @contextmanager
-def sync_run_context(
-    *,
-    run_id: str,
-    source: SyncSource | str,
-    scope: SyncScope | str,
-) -> Iterator[SyncRunContext]:
+def sync_run_context(run: SyncRunContext) -> Iterator[SyncRunContext]:
     """Mark everything ingested in this block as belonging to one sync run.
 
     Resets on exit, so a worker reusing the thread for the next task does not inherit it.
     """
-    context = SyncRunContext(run_id=run_id, source=SyncSource(source), scope=SyncScope(scope))
-    token = sync_run_var.set(context)
+    token = sync_run_var.set(run)
     try:
-        yield context
+        yield run
     finally:
         sync_run_var.reset(token)

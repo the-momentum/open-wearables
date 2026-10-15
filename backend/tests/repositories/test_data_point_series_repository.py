@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource
-from app.repositories.data_point_series_repository import DataPointSeriesRepository
+from app.repositories.data_point_series_repository import DataPointSeriesRepository, TypeCounts, WriteCounts
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
 from tests.factories import DataSourceFactory, UserFactory
@@ -1000,3 +1000,20 @@ class TestPerTypeWriteCounts:
         assert total.by_type["heart_rate"].inserted == 2
         assert total.by_type["heart_rate"].covered_start == now
         assert total.by_type["heart_rate"].covered_end == now + timedelta(days=1)
+
+    def test_adding_a_plain_count_keeps_the_totals_types_and_span(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        counts = WriteCounts(
+            2,
+            1,
+            {
+                "steps": TypeCounts(2, 1, start, start + timedelta(days=1)),
+                "heart_rate": TypeCounts(0, 0, start - timedelta(days=1), start),
+            },
+        )
+
+        total = counts + 5
+
+        assert (total.inserted, total.updated, int(total)) == (7, 1, 8)
+        assert set(total.by_type) == {"steps", "heart_rate"}
+        assert (total.covered_start, total.covered_end) == (start - timedelta(days=1), start + timedelta(days=1))

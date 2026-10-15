@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.schemas.providers.apple.apple_xml import CompletedPart
-from app.schemas.sync_status import SyncScope, SyncSource, SyncStatus
+from app.schemas.sync_status import SyncRunContext, SyncScope, SyncSource, SyncStatus
 from app.services import event_record_service
 from app.services.providers.apple.apple_xml.aws_service import get_s3_client
 from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
@@ -157,6 +157,7 @@ def _run_import_task(
     parts: list[CompletedPart] | None = None,
 ) -> dict[str, str]:
     run_id = task.request.id or new_run_id("xml-s3")
+    run = SyncRunContext(run_id=run_id, source=SyncSource.XML_IMPORT, scope=SyncScope.HISTORICAL)
     claim_status, persisted_result = _claim_import(bucket_name, object_key, user_id, run_id)
     if persisted_result is not None:
         return persisted_result
@@ -175,9 +176,9 @@ def _run_import_task(
         emit_sync_started(
             user_uuid,
             "apple",
-            SyncSource.XML_IMPORT,
-            scope=SyncScope.HISTORICAL,
-            run_id=run_id,
+            run.source,
+            scope=run.scope,
+            run_id=run.run_id,
             message="Importing Apple Health XML file from object storage",
             metadata=metadata,
         )
@@ -190,16 +191,16 @@ def _run_import_task(
         ):
             _ensure_upload_completed(bucket_name, object_key, upload_id, parts, user_id)
             _store_upload_completion(bucket_name, object_key, user_id)
-        with sync_run_context(run_id=run_id, source=SyncSource.XML_IMPORT, scope=SyncScope.HISTORICAL):
+        with sync_run_context(run):
             result = _process_aws_upload(bucket_name, object_key, user_id)
         _store_completed_import(bucket_name, object_key, user_id, result)
         if user_uuid is not None:
             emit_sync_completed(
                 user_uuid,
                 "apple",
-                SyncSource.XML_IMPORT,
-                scope=SyncScope.HISTORICAL,
-                run_id=run_id,
+                run.source,
+                scope=run.scope,
+                run_id=run.run_id,
                 status=SyncStatus.SKIPPED if result["status"] == "skipped" else SyncStatus.SUCCESS,
                 message=result.get("message") or result.get("reason") or "Apple Health XML import completed",
                 metadata=metadata,
@@ -216,9 +217,9 @@ def _run_import_task(
             emit_sync_failed(
                 user_uuid,
                 "apple",
-                SyncSource.XML_IMPORT,
-                scope=SyncScope.HISTORICAL,
-                run_id=run_id,
+                run.source,
+                scope=run.scope,
+                run_id=run.run_id,
                 error=str(exc),
                 message="Apple Health XML import failed",
                 metadata=metadata,

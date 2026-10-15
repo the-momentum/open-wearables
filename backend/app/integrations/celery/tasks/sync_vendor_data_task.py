@@ -1,4 +1,4 @@
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from typing import Any, cast
@@ -39,7 +39,7 @@ from app.services.sync_status_service import (
     try_record_data_types,
 )
 from app.utils.config_utils import format_duration
-from app.utils.context import sync_run_var, trace_id_var
+from app.utils.context import sync_run_context, trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 from app.utils.sync_params import build_sync_params
@@ -64,6 +64,10 @@ def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
         )
 
 
+def _written_status(written: int) -> SyncStatus:
+    return SyncStatus.SUCCESS if written else SyncStatus.SKIPPED
+
+
 def _task_outcomes(task: str, count: Any) -> list[DataTypeOutcome]:
     """Per-series-type outcomes for one provider fetch task.
 
@@ -78,7 +82,7 @@ def _task_outcomes(task: str, count: Any) -> list[DataTypeOutcome]:
                 data_type=series_type,
                 kind=DataTypeKind.SERIES,
                 native_type=task,
-                status=SyncStatus.SUCCESS if counts.inserted or counts.updated else SyncStatus.SKIPPED,
+                status=_written_status(counts.inserted + counts.updated),
                 items_inserted=counts.inserted,
                 items_updated=counts.updated,
                 covered_start=counts.covered_start,
@@ -91,9 +95,7 @@ def _task_outcomes(task: str, count: Any) -> list[DataTypeOutcome]:
             data_type=task,
             kind=DataTypeKind.TASK,
             native_type=task,
-            status=SyncStatus.SUCCESS
-            if getattr(count, "inserted", count) or getattr(count, "updated", 0)
-            else SyncStatus.SKIPPED,
+            status=_written_status(int(count)),
             items_inserted=getattr(count, "inserted", 0),
             items_updated=getattr(count, "updated", 0),
             # A plain int only says how many rows the provider saved, with no split.
@@ -307,7 +309,10 @@ def sync_vendor_data(
                 )
 
                 # Set here, not earlier: the skip paths above must not leave it set.
-                sync_run_token = sync_run_var.set(SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope))
+                run_context = ExitStack()
+                run_context.enter_context(
+                    sync_run_context(SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope))
+                )
                 try:
                     # Inside the try: the finally below is what stops the renewal thread.
                     bind_primary_lease(provider_name, connection.provider_user_id, user_uuid, shared_token)
@@ -373,7 +378,7 @@ def sync_vendor_data(
                                     data_type="workouts",
                                     kind=DataTypeKind.TASK,
                                     native_type="workouts",
-                                    status=SyncStatus.SUCCESS if success else SyncStatus.SKIPPED,
+                                    status=_written_status(int(success or 0)),
                                     items_inserted=int(success or 0),
                                     # Workouts are event records, which do not report a
                                     # written span, so coverage stays unknown here.
@@ -630,7 +635,7 @@ def sync_vendor_data(
                     result.errors[provider_name] = str(e)
                     continue
                 finally:
-                    sync_run_var.reset(sync_run_token)
+                    run_context.close()
                     clear_primary_lease()
 
             return result.model_dump()

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesSampleCreate
-from app.schemas.sync_status import SyncScope, SyncSource
+from app.schemas.sync_status import SyncRunContext, SyncScope, SyncSource
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import (
@@ -800,7 +800,9 @@ class TestDataEventSyncProvenance:
             patch("app.services.timeseries_service.threading.Thread") as thread,
         ):
             thread.side_effect = lambda target, args, daemon: captured.append(args) or MagicMock()
-            with sync_run_context(run_id="pull_abc", source=SyncSource.BACKFILL, scope=SyncScope.HISTORICAL):
+            with sync_run_context(
+                SyncRunContext(run_id="pull_abc", source=SyncSource.BACKFILL, scope=SyncScope.HISTORICAL)
+            ):
                 timeseries_service.bulk_create_samples(
                     db,
                     [
@@ -818,7 +820,7 @@ class TestDataEventSyncProvenance:
                 db.commit()
 
         assert captured, "webhook thread was never started"
-        assert captured[0][1].as_payload() == {
+        assert captured[0][1] == {
             "run_id": "pull_abc",
             "source": "backfill",
             "scope": "historical",

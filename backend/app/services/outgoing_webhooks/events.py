@@ -272,8 +272,8 @@ def on_timeseries_batch_saved(
       narrow subscriptions to a specific metric
 
     ``sync`` identifies the run that produced the batch, so a consumer can tell a
-    historical backfill from a live reading. It is None where no run owns the write
-    (seed data, linked-account fan-out).
+    historical backfill from a live reading. It is None where no run owns the write, such
+    as seed data and pushes from providers that do not track runs.
     """
     group_event = SERIES_TYPE_TO_GROUP_EVENT.get(series_type)
     if group_event is None:

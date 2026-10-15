@@ -500,6 +500,48 @@ class TestDataTypeWebhooks:
         assert sent["items_inserted"] == 41230
         assert sent["succeeded"] is True
 
+    def test_two_tasks_writing_one_type_send_one_merged_outcome(self, db: Session) -> None:
+        """Oura's sleep and heart_rate tasks both write heart_rate; one wrote nothing new."""
+        user = UserFactory()
+
+        emit = self._record(
+            db,
+            user.id,
+            [
+                self._outcome(
+                    native_type="sleep",
+                    items_inserted=10,
+                    covered_start=datetime(2026, 3, 5, tzinfo=timezone.utc),
+                    covered_end=datetime(2026, 3, 6, tzinfo=timezone.utc),
+                ),
+                self._outcome(native_type="heart_rate", status=SyncStatus.SKIPPED),
+            ],
+            "pull_merged",
+        )
+
+        emit.assert_called_once()
+        sent = emit.call_args.kwargs
+        assert (sent["status"], sent["items_inserted"]) == (SyncStatus.SUCCESS, 10)
+        assert sent["covered_start"] == "2026-03-05T00:00:00+00:00"
+
+    def test_a_finished_export_reports_what_all_its_batches_wrote(self, db: Session) -> None:
+        user = UserFactory()
+        with (
+            patch("app.services.sync_status_service.SessionLocal") as session_local,
+            patch("app.services.sync_status_service.outgoing.on_sync_data_type_finished") as emit,
+        ):
+            session_local.return_value.__enter__.return_value = db
+            try_persist_run(_event(user.id, run_id="sdk_export", source=SyncSource.SDK))
+            for outcome in (
+                self._outcome(status=SyncStatus.IN_PROGRESS, items_inserted=300),
+                self._outcome(status=SyncStatus.IN_PROGRESS, items_inserted=200),
+                self._outcome(status=SyncStatus.SUCCESS),
+            ):
+                try_record_data_types("sdk_export", [outcome], scope=SyncScope.HISTORICAL)
+
+        emit.assert_called_once()
+        assert emit.call_args.kwargs["items_inserted"] == 500
+
     def test_failed_outcome_is_forwarded_as_a_failure(self, db: Session) -> None:
         user = UserFactory()
 
