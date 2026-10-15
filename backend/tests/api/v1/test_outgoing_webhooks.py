@@ -694,7 +694,7 @@ class TestDataEventSyncProvenance:
             "source": {"provider": "garmin", "device": "Forerunner 255"},
         }
 
-    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    @patch("app.services.outgoing_webhooks.events.celery_app")
     def test_timeseries_payload_carries_the_run(self, mock_task: MagicMock) -> None:
         on_timeseries_batch_saved(
             user_id=uuid4(),
@@ -705,10 +705,10 @@ class TestDataEventSyncProvenance:
             sync={"run_id": "pull_abc", "source": "backfill", "scope": "historical"},
         )
 
-        data = mock_task.delay.call_args_list[0][0][1]["data"]
+        data = mock_task.send_task.call_args_list[0].kwargs["args"][1]["data"]
         assert data["sync"] == {"run_id": "pull_abc", "source": "backfill", "scope": "historical"}
 
-    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    @patch("app.services.outgoing_webhooks.events.celery_app")
     def test_every_chunk_of_a_split_batch_carries_the_run(self, mock_task: MagicMock) -> None:
         sync = {"run_id": "sdk_abc", "source": "sdk", "scope": "historical"}
         on_timeseries_batch_saved(
@@ -720,12 +720,12 @@ class TestDataEventSyncProvenance:
             sync=sync,
         )
 
-        payloads = [c[0][1]["data"] for c in mock_task.delay.call_args_list]
+        payloads = [c.kwargs["args"][1]["data"] for c in mock_task.send_task.call_args_list]
         assert len(payloads) > 2  # split into chunks, two events each
         assert all(p["sync"] == sync for p in payloads)
         assert {p["chunk_index"] for p in payloads} == {0, 1}
 
-    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    @patch("app.services.outgoing_webhooks.events.celery_app")
     def test_payload_says_null_when_no_run_owns_the_write(self, mock_task: MagicMock) -> None:
         """Seed data and linked-account fan-out write without a run of their own."""
         on_timeseries_batch_saved(
@@ -736,7 +736,7 @@ class TestDataEventSyncProvenance:
             samples=[self._sample("2026-04-16T06:00:00+00:00")],
         )
 
-        assert mock_task.delay.call_args_list[0][0][1]["data"]["sync"] is None
+        assert mock_task.send_task.call_args_list[0].kwargs["args"][1]["data"]["sync"] is None
 
     def test_bulk_create_samples_captures_the_context_for_the_emit_thread(self, db: Session) -> None:
         """The emit runs in a thread, which a ContextVar does not reach on its own."""
@@ -784,10 +784,10 @@ class TestTimeseriesIdempotencyKey:
 
     @staticmethod
     def _keys(mock_task: MagicMock) -> list[str]:
-        return [c[1]["idempotency_key"] for c in mock_task.delay.call_args_list]
+        return [c.kwargs["kwargs"]["idempotency_key"] for c in mock_task.send_task.call_args_list]
 
     def _emit(self, mock_task: MagicMock, uid: UUID, sync: dict | None) -> list[str]:
-        mock_task.delay.reset_mock()
+        mock_task.send_task.reset_mock()
         on_timeseries_batch_saved(
             user_id=uid,
             provider="garmin",
@@ -800,7 +800,7 @@ class TestTimeseriesIdempotencyKey:
         )
         return self._keys(mock_task)
 
-    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    @patch("app.services.outgoing_webhooks.events.celery_app")
     def test_separate_runs_over_the_same_window_get_distinct_keys(self, mock_task: MagicMock) -> None:
         uid = uuid4()
         backfill = self._emit(mock_task, uid, {"run_id": "backfill_1", "source": "backfill", "scope": "historical"})
@@ -808,7 +808,7 @@ class TestTimeseriesIdempotencyKey:
 
         assert set(backfill).isdisjoint(live)
 
-    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    @patch("app.services.outgoing_webhooks.events.celery_app")
     def test_the_same_run_re_emitting_still_dedupes(self, mock_task: MagicMock) -> None:
         """A retried task must not deliver the batch twice."""
         uid = uuid4()
@@ -816,7 +816,7 @@ class TestTimeseriesIdempotencyKey:
 
         assert self._emit(mock_task, uid, sync) == self._emit(mock_task, uid, sync)
 
-    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    @patch("app.services.outgoing_webhooks.events.celery_app")
     def test_writes_without_a_run_keep_the_original_key_format(self, mock_task: MagicMock) -> None:
         uid = uuid4()
 

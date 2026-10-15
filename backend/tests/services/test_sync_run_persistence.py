@@ -473,7 +473,7 @@ class TestDataTypeWebhooks:
     def _record(self, db: Session, user_id: UUID, outcomes: list[DataTypeOutcome], run_id: str) -> MagicMock:
         with (
             patch("app.services.sync_status_service.SessionLocal") as session_local,
-            patch("app.services.sync_status_service.outgoing_events.on_sync_data_type_finished") as emit,
+            patch("app.services.sync_status_service.outgoing.on_sync_data_type_finished") as emit,
         ):
             session_local.return_value.__enter__.return_value = db
             try_persist_run(_event(user_id, run_id=run_id))
