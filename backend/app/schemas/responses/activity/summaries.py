@@ -19,6 +19,18 @@ class HeartRateStats(BaseModel):
     min_bpm: int | None = None
 
 
+class ActivityTotals(BaseModel):
+    """The period's daily activity added up: the same days the daily summaries return."""
+
+    days: int = Field(..., description="Days with activity data, one per date after source priority", example=365)
+    steps: int = Field(..., description="Sum of daily steps", example=2841230)
+    distance_meters: float = Field(..., description="Sum of daily distance", example=2104380.5)
+    active_calories_kcal: float = Field(..., description="Sum of daily active energy", example=152340.0)
+    avg_steps: int | None = Field(
+        None, description="Mean steps over the days that report steps; null when none do", example=7784
+    )
+
+
 class ActivitySummary(BaseModel):
     date: date
     source: SourceMetadata
@@ -30,7 +42,14 @@ class ActivitySummary(BaseModel):
     elevation_meters: float | None = Field(None, description="Raw total elevation gain", example=36.0)
     # Energy metrics
     active_calories_kcal: float | None = Field(None, description="Active energy burned", example=342.5)
-    total_calories_kcal: float | None = Field(None, description="Active + basal energy", example=2150.0)
+    total_calories_kcal: float | None = Field(
+        None,
+        description=(
+            "Total energy burned: the provider's reported total when available, otherwise active + basal energy "
+            "when both are reported; null otherwise"
+        ),
+        example=2150.0,
+    )
     # Duration metrics (based on step threshold)
     active_minutes: int | None = Field(None, description="Minutes with activity above threshold", example=60)
     sedentary_minutes: int | None = Field(None, description="Minutes with minimal activity", example=480)

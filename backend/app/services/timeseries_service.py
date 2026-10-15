@@ -1,6 +1,7 @@
 import threading
 from collections import defaultdict
 from datetime import datetime
+from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Any
 from uuid import UUID
@@ -8,10 +9,12 @@ from uuid import UUID
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataPointSeries
-from app.repositories import DataPointSeriesRepository
-from app.repositories.data_point_series_repository import WriteCounts
+from app.models import DataPointSeries, DataSource, ProviderPriority
+from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
+from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
+from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import (
+    Resolution,
     SeriesType,
     get_series_type_from_id,
     get_series_type_unit,
@@ -36,7 +39,78 @@ from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.context import sync_run_var
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import encode_cursor
+from app.utils.pagination import encode_bucket_cursor, encode_cursor
+
+
+def _trim_to_whole_buckets(
+    samples: list[AggregatedSample],
+    limit: int,
+    truncated: bool,
+) -> tuple[list[AggregatedSample], bool]:
+    """Cut at a bucket boundary: the cursor is a bucket start, so a bucket split across two
+    pages would be skipped or repeated. Rows arrive ordered by bucket."""
+    seen, previous = 0, None
+    for index, sample in enumerate(samples):
+        if sample.bucket != previous:
+            if seen == limit:
+                return samples[:index], True
+            seen += 1
+            previous = sample.bucket
+    return samples, truncated
+
+
+def _to_sample(
+    timestamp: datetime,
+    zone_offset: str | None,
+    series_type_definition_id: int,
+    value: Decimal,
+    is_daily_total: bool | None,
+    data_source: DataSource | None,
+) -> TimeSeriesSample:
+    series_type = get_series_type_from_id(series_type_definition_id)
+    source = None
+    if data_source is not None:
+        source = SourceMetadata(
+            provider=data_source.provider or "unknown",
+            source=data_source.source,
+            device=data_source.device_model,
+            device_type=data_source.device_type,
+            device_id=data_source.device_id,
+        )
+    return TimeSeriesSample(
+        timestamp=timestamp,
+        zone_offset=zone_offset,
+        type=series_type,
+        value=float(value),
+        unit=get_series_type_unit(series_type),
+        source=source,
+        is_daily_total=is_daily_total,
+    )
+
+
+def _page(
+    data: list[TimeSeriesSample],
+    params: TimeSeriesQueryParams,
+    has_more: bool,
+    next_cursor: str | None,
+    previous_cursor: str | None,
+    total_count: int | None = None,
+) -> PaginatedResponse[TimeSeriesSample]:
+    return PaginatedResponse(
+        data=data,
+        pagination=Pagination(
+            has_more=has_more,
+            next_cursor=next_cursor,
+            previous_cursor=previous_cursor,
+            total_count=total_count,
+        ),
+        metadata=TimeseriesMetadata(
+            resolution=params.resolution,
+            sample_count=len(data),
+            start_time=params.start_datetime,
+            end_time=params.end_datetime,
+        ),
+    )
 
 
 class TimeSeriesService(
@@ -51,6 +125,8 @@ class TimeSeriesService(
 
     def __init__(self, log: Logger):
         super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
+        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
+        self.device_type_priority_repo = DeviceTypePriorityRepository()
 
     def bulk_create_samples(
         self,
@@ -145,6 +221,59 @@ class TimeSeriesService(
         """Get count of data points grouped by source."""
         return self.crud.get_count_by_source(db_session)
 
+    def _winning_sources(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        params: TimeSeriesQueryParams,
+    ) -> dict[int, UUID]:
+        """Resolve one data source per series type, using the ranking sleep and summaries use."""
+        return self.crud.winning_source_by_series_type(
+            db_session,
+            params,
+            types,
+            user_id,
+            self.provider_priority_repo.get_priority_order(db_session),
+            self.device_type_priority_repo.get_priority_order(db_session),
+        )
+
+    def _aggregated_timeseries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        params: TimeSeriesQueryParams,
+        source_by_type: dict[int, UUID] | None = None,
+    ) -> PaginatedResponse[TimeSeriesSample]:
+        """Downsampled variant of :meth:`get_timeseries`.
+
+        total_count stays unset: counting buckets would scan the whole requested range, which
+        is the work the bucket cap exists to avoid.
+        """
+        rows, truncated = self.crud.get_aggregated_samples(db_session, params, types, user_id, source_by_type)
+        samples, has_more = _trim_to_whole_buckets(rows, params.limit or 50, truncated)
+        is_backward = bool(params.cursor and params.cursor.startswith("prev_"))
+        if is_backward:
+            # Paging back reads newest-first; responses are always ascending.
+            samples = list(reversed(samples))
+        # Paging back, has_more means older buckets exist, so it gates previous_cursor too.
+        has_next = bool(samples) and has_more
+        has_previous = bool(samples) and bool(params.cursor) and (has_more or not is_backward)
+
+        return _page(
+            data=[
+                _to_sample(
+                    s.bucket, s.zone_offset, s.series_type_definition_id, s.value, s.is_daily_total, s.data_source
+                )
+                for s in samples
+            ],
+            params=params,
+            has_more=has_more,
+            next_cursor=encode_bucket_cursor(samples[-1].bucket) if has_next else None,
+            previous_cursor=encode_bucket_cursor(samples[0].bucket, "prev") if has_previous else None,
+        )
+
     @handle_exceptions
     def get_timeseries(
         self,
@@ -152,8 +281,13 @@ class TimeSeriesService(
         user_id: UUID,
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
+        filter_by_priority: bool = False,
     ) -> PaginatedResponse[TimeSeriesSample]:
-        samples, total_count = self.crud.get_samples(db_session, params, types, user_id)
+        source_by_type = self._winning_sources(db_session, user_id, types, params) if filter_by_priority else None
+        if params.resolution is not Resolution.RAW:
+            return self._aggregated_timeseries(db_session, user_id, types, params, source_by_type)
+
+        samples, total_count = self.crud.get_samples(db_session, params, types, user_id, source_by_type)
 
         limit = params.limit or 50
         has_more = len(samples) > limit
@@ -189,47 +323,19 @@ class TimeSeriesService(
                     first_sample = samples[0][0]
                     previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
 
-        # Map to response format
-        data = []
-        for sample, data_source in samples:
-            series_type = get_series_type_from_id(sample.series_type_definition_id)
-            unit = get_series_type_unit(series_type)
-
-            # Build source from data source info if available
-            source = None
-            if data_source:
-                source = SourceMetadata(
-                    provider=data_source.provider or "unknown",
-                    source=data_source.source,
-                    device=data_source.device_model,
-                    device_type=data_source.device_type,
-                )
-
-            item = TimeSeriesSample(
-                timestamp=sample.recorded_at,
-                zone_offset=sample.zone_offset,
-                type=series_type,
-                value=float(sample.value),
-                unit=unit,
-                source=source,
-                is_daily_total=sample.is_daily_total,
+        data = [
+            _to_sample(
+                sample.recorded_at,
+                sample.zone_offset,
+                sample.series_type_definition_id,
+                sample.value,
+                sample.is_daily_total,
+                data_source,
             )
-            data.append(item)
+            for sample, data_source in samples
+        ]
 
-        return PaginatedResponse(
-            data=data,
-            pagination=Pagination(
-                has_more=has_more,
-                next_cursor=next_cursor,
-                previous_cursor=previous_cursor,
-                total_count=total_count,
-            ),
-            metadata=TimeseriesMetadata(
-                sample_count=len(data),
-                start_time=params.start_datetime,
-                end_time=params.end_datetime,
-            ),
-        )
+        return _page(data, params, has_more, next_cursor, previous_cursor, total_count)
 
 
 timeseries_service = TimeSeriesService(log=getLogger(__name__))

@@ -11,12 +11,16 @@ Tests cover:
 - DELETE /api/v1/developers/{developer_id} - delete developer
 """
 
+from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import DEFAULT_ADMIN_PASSWORD, settings
 from app.schemas.model_crud.user_management import DeveloperUpdate
 from app.services import developer_service
+from app.utils.config_utils import EnvironmentType
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -108,6 +112,49 @@ class TestLogin:
 
         # Assert
         assert response.status_code == 401
+
+    def test_login_with_own_password_needs_no_change(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Arrange
+        DeveloperFactory(email="test@example.com", password="test123")
+
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/auth/login",
+            data={"username": "test@example.com", "password": "test123"},
+        )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["password_change"] is None
+
+    @pytest.mark.parametrize(
+        ("environment", "expected"),
+        [
+            (EnvironmentType.PRODUCTION, "required"),
+            (EnvironmentType.LOCAL, "recommended"),
+        ],
+    )
+    def test_login_with_default_password_asks_for_a_change(
+        self,
+        client: TestClient,
+        db: Session,
+        api_v1_prefix: str,
+        environment: EnvironmentType,
+        expected: str,
+    ) -> None:
+        # Arrange
+        DeveloperFactory(email="admin@admin.com", password=DEFAULT_ADMIN_PASSWORD)
+
+        # Act
+        with patch.object(settings, "environment", environment):
+            response = client.post(
+                f"{api_v1_prefix}/auth/login",
+                data={"username": "admin@admin.com", "password": DEFAULT_ADMIN_PASSWORD},
+            )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["password_change"] == expected
 
 
 class TestLogout:

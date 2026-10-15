@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or help
+    url: https://discord.gg/qrcfFnNE6H
+    about: Ask on Discord instead of opening an issue

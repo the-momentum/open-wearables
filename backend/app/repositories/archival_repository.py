@@ -12,10 +12,11 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource
 from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
-from app.repositories.repositories import utc_bucket_start
+from app.repositories.repositories import timeline_key_column, utc_bucket_start
 from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
+    ProviderName,
     SeriesType,
     TimelineBucket,
     TimelineGroupBy,
@@ -369,6 +370,7 @@ class DataPointSeriesArchiveRepository:
         group_by: TimelineGroupBy,
         start_datetime: datetime | None = None,
         end_datetime: datetime | None = None,
+        provider: ProviderName | None = None,
     ) -> list[tuple[str, date, int]]:
         """Archived data point counts for a user, bucketed by time like the live timeline.
 
@@ -379,7 +381,7 @@ class DataPointSeriesArchiveRepository:
         """
         days = self._deduped_archive_days(db, user_id, _archive_range_filters(start_datetime, end_datetime))
         bucket_start = utc_bucket_start(bucket, days.c.bucket_start_at)
-        key_column = DataSource.provider if group_by is TimelineGroupBy.PROVIDER else SeriesTypeDefinition.code
+        key_column = timeline_key_column(group_by)
 
         query = (
             db.query(key_column, bucket_start, func.sum(days.c.sample_count).label("total"))
@@ -388,6 +390,8 @@ class DataPointSeriesArchiveRepository:
         )
         if group_by is TimelineGroupBy.SERIES_TYPE:
             query = query.join(SeriesTypeDefinition, days.c.series_type_definition_id == SeriesTypeDefinition.id)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
 
         rows = query.group_by(key_column, bucket_start).order_by(key_column, bucket_start).all()
         return [(key, bucket_start_value, int(total)) for key, bucket_start_value, total in rows]
@@ -434,8 +438,9 @@ class DataPointSeriesArchiveRepository:
         so the summaries service can merge both result sets.
         """
         steps_id = get_series_type_id(SeriesType.steps)
-        energy_id = get_series_type_id(SeriesType.energy)
+        energy_id = get_series_type_id(SeriesType.active_energy)
         basal_energy_id = get_series_type_id(SeriesType.basal_energy)
+        total_energy_id = get_series_type_id(SeriesType.total_energy)
         hr_id = get_series_type_id(SeriesType.heart_rate)
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
@@ -460,16 +465,15 @@ class DataPointSeriesArchiveRepository:
                 DataSource.provider.label("provider"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
+                DataSource.device_type.label("device_type"),
                 func.sum(
                     case(
                         (DataPointSeriesArchive.series_type_definition_id == steps_id, DataPointSeriesArchive.value),
-                        else_=0,
                     )
                 ).label("steps_sum"),
                 func.sum(
                     case(
                         (DataPointSeriesArchive.series_type_definition_id == energy_id, DataPointSeriesArchive.value),
-                        else_=0,
                     )
                 ).label("active_energy_sum"),
                 func.sum(
@@ -478,9 +482,16 @@ class DataPointSeriesArchiveRepository:
                             DataPointSeriesArchive.series_type_definition_id == basal_energy_id,
                             DataPointSeriesArchive.value,
                         ),
-                        else_=0,
                     )
                 ).label("basal_energy_sum"),
+                func.sum(
+                    case(
+                        (
+                            DataPointSeriesArchive.series_type_definition_id == total_energy_id,
+                            DataPointSeriesArchive.value,
+                        ),
+                    )
+                ).label("total_energy_sum"),
                 func.avg(
                     case(
                         (DataPointSeriesArchive.series_type_definition_id == hr_id, DataPointSeriesArchive.value),
@@ -524,6 +535,7 @@ class DataPointSeriesArchiveRepository:
                 DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                DataSource.device_type,
             )
             .all()
         )
@@ -536,9 +548,11 @@ class DataPointSeriesArchiveRepository:
                     "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
-                    "steps_sum": int(row.steps_sum) if row.steps_sum else 0,
-                    "active_energy_sum": float(row.active_energy_sum) if row.active_energy_sum else 0.0,
-                    "basal_energy_sum": float(row.basal_energy_sum) if row.basal_energy_sum else 0.0,
+                    "device_type": row.device_type,
+                    "steps_sum": int(row.steps_sum) if row.steps_sum is not None else None,
+                    "active_energy_sum": float(row.active_energy_sum) if row.active_energy_sum is not None else None,
+                    "basal_energy_sum": float(row.basal_energy_sum) if row.basal_energy_sum is not None else None,
+                    "total_energy_sum": float(row.total_energy_sum) if row.total_energy_sum is not None else None,
                     "hr_avg": int(round(float(row.hr_avg))) if row.hr_avg is not None else None,
                     "hr_max": None,  # Not available in simplified archive
                     "hr_min": None,  # Not available in simplified archive

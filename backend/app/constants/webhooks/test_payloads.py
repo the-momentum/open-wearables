@@ -164,6 +164,35 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "is_nap": False,
         },
     },
+    WebhookEventType.MEAL_CREATED: {
+        "type": WebhookEventType.MEAL_CREATED,
+        "data": {
+            "id": _RECORD_ID,
+            "user_id": _USER_ID,
+            "title": "Grilled Chicken Breast",
+            "meal_type": "lunch",
+            "start_time": "2024-01-01T12:30:00+00:00",
+            "end_time": "2024-01-01T12:30:00+00:00",
+            "zone_offset": "+00:00",
+            "source": _SOURCE_APPLE,
+            "calories_kcal": 550.0,
+            "macros": {
+                "protein_g": 38.2,
+                "carbohydrates_g": 42.0,
+                "fat_g": 18.5,
+                "fiber_g": 4.0,
+            },
+            "water_ml": None,
+            "nutrients": {
+                "dietary_energy_consumed": {"value": 550.0, "unit": "kcal"},
+                "dietary_protein": {"value": 38.2, "unit": "g"},
+                "dietary_carbohydrates": {"value": 42.0, "unit": "g"},
+                "dietary_fat_total": {"value": 18.5, "unit": "g"},
+                "dietary_fiber": {"value": 4.0, "unit": "g"},
+                "dietary_sodium": {"value": 620.0, "unit": "mg"},
+            },
+        },
+    },
     # ------------------------------------------------------------------
     # Timeseries — GROUP events
     # ------------------------------------------------------------------
@@ -175,7 +204,7 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     ),
     WebhookEventType.STEPS_CREATED: _ts_payload(WebhookEventType.STEPS_CREATED, "steps", "garmin", "count", 8432.0),
     WebhookEventType.CALORIES_CREATED: _ts_payload(
-        WebhookEventType.CALORIES_CREATED, "energy", "garmin", "kcal", 320.0
+        WebhookEventType.CALORIES_CREATED, "active_energy", "garmin", "kcal", 320.0
     ),
     WebhookEventType.SPO2_CREATED: _ts_payload(WebhookEventType.SPO2_CREATED, "oxygen_saturation", "oura", "%", 97.0),
     WebhookEventType.RESPIRATORY_RATE_CREATED: _ts_payload(
@@ -347,9 +376,14 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     ),
     # Steps & calories
     WebhookEventType.SERIES_STEPS: _ts_payload(WebhookEventType.SERIES_STEPS, "steps", "garmin", "count", 8432.0),
-    WebhookEventType.SERIES_ENERGY: _ts_payload(WebhookEventType.SERIES_ENERGY, "energy", "garmin", "kcal", 320.0),
+    WebhookEventType.SERIES_ACTIVE_ENERGY: _ts_payload(
+        WebhookEventType.SERIES_ACTIVE_ENERGY, "active_energy", "garmin", "kcal", 320.0
+    ),
     WebhookEventType.SERIES_BASAL_ENERGY: _ts_payload(
         WebhookEventType.SERIES_BASAL_ENERGY, "basal_energy", "apple", "kcal", 1850.0
+    ),
+    WebhookEventType.SERIES_TOTAL_ENERGY: _ts_payload(
+        WebhookEventType.SERIES_TOTAL_ENERGY, "total_energy", "whoop", "kcal", 2150.0
     ),
     WebhookEventType.SERIES_ACTIVE_TIME: _ts_payload(
         WebhookEventType.SERIES_ACTIVE_TIME, "active_time", "garmin", "minutes", 312.0

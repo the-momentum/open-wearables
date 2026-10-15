@@ -20,46 +20,12 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.handlers.tasks import REGISTER_USER_WEBHOOKS_TASK
+from app.services.providers.withings.handlers.errors import WithingsTokenError
+from app.services.providers.withings.handlers.tasks import SYNC_USER_SUBSCRIPTIONS_TASK
+from app.services.providers.withings.webhook_service import WithingsWebhookService
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
-
-# Token-request statuses caused by invalid request inputs rather than provider faults.
-_TOKEN_CLIENT_ERROR_STATUSES = {247, 250, 283, 286, 293, 303, 304, 342}
-# Withings' "Authentication failed" family. On refresh these also mean the grant
-# is spent; on exchange they usually mean an expired authorization code.
-_AUTHENTICATION_FAILED_STATUSES = {100, 101, 102, 200, 401}
-_RATE_LIMIT_STATUS = 601
-
-
-class WithingsTokenError(HTTPException):
-    """Typed token failure preserving provider status and grant finality."""
-
-    def __init__(
-        self,
-        *,
-        task: str,
-        withings_status: int | None = None,
-        http_status: int | None = None,
-        detail: str | None = None,
-    ) -> None:
-        self.withings_status = withings_status
-        self.http_status = http_status
-        authentication_failed = withings_status in _AUTHENTICATION_FAILED_STATUSES or http_status in {400, 401}
-        self.invalid_grant = task == "refresh_access_token" and authentication_failed
-        if withings_status == _RATE_LIMIT_STATUS or http_status == 429:
-            status_code = 429
-        elif authentication_failed:
-            status_code = 401
-        elif withings_status in _TOKEN_CLIENT_ERROR_STATUSES or (http_status is not None and http_status < 500):
-            status_code = 400
-        else:
-            status_code = 500
-        super().__init__(
-            status_code=status_code,
-            detail=detail or f"Withings token error (status={withings_status})",
-        )
 
 
 class WithingsOAuth(BaseOAuthTemplate):
@@ -97,7 +63,9 @@ class WithingsOAuth(BaseOAuthTemplate):
         }
         return self._request_token(payload, task="exchange_token")
 
-    def refresh_access_token(self, db: DbSession, user_id: UUID, refresh_token: str) -> OAuthTokenResponse:
+    def refresh_access_token(
+        self, db: DbSession, user_id: UUID, refresh_token: str, *, revoke_on_failure: bool = True
+    ) -> OAuthTokenResponse:
         payload = {
             "action": "requesttoken",
             "grant_type": "refresh_token",
@@ -108,7 +76,7 @@ class WithingsOAuth(BaseOAuthTemplate):
         try:
             token_response = self._request_token(payload, task="refresh_access_token")
         except WithingsTokenError as exc:
-            if exc.invalid_grant:
+            if exc.invalid_grant and revoke_on_failure:
                 self._revoke_connection(db, user_id, reason="refresh_failed")
             raise
 
@@ -210,8 +178,8 @@ class WithingsOAuth(BaseOAuthTemplate):
             return
         try:
             celery_app.send_task(
-                REGISTER_USER_WEBHOOKS_TASK,
-                args=[self.provider_name, str(user_id)],
+                SYNC_USER_SUBSCRIPTIONS_TASK,
+                args=[str(user_id)],
                 queue="webhook_sync",
             )
         except Exception as e:
@@ -241,9 +209,6 @@ class WithingsOAuth(BaseOAuthTemplate):
             linked = self.connection_repo.get_all_by_provider_user_id(db, self.provider_name, provider_user_id)
             if len(linked) != 1:
                 return
-            # Imported here: webhook_service imports WithingsTokenError from this module.
-            from app.services.providers.withings.webhook_service import WithingsWebhookService
-
             service = WithingsWebhookService(connection_repo=self.connection_repo, oauth=self)
             # Reconciling toward PULL means "no subscriptions desired", which
             # prunes exactly the set this account owns.

@@ -38,7 +38,7 @@ def _generate_time_series_samples(
     fake: Faker,
     *,
     user_id: UUID,
-    source: str,
+    source: str | None,
     device_model: str | None = None,
     provider: str | None = None,
     software_version: str | None = None,

@@ -88,7 +88,7 @@ class BaseWorkoutsTemplate(ABC):
         """Fetch workouts from API with flexible parameters (for API endpoint).
 
         Override this method in subclasses that support cloud API access.
-        For push-only providers (like Apple Health), this can return an empty result.
+        Providers without a cloud API can return an empty result.
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support API-based workout fetching")
 
@@ -96,7 +96,7 @@ class BaseWorkoutsTemplate(ABC):
         """Fetch detailed workout from API (for API endpoint).
 
         Override this method in subclasses that support cloud API access.
-        For push-only providers (like Apple Health), this is not supported.
+        Providers without a cloud API do not support it.
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support API-based workout detail fetching")
 
@@ -104,26 +104,9 @@ class BaseWorkoutsTemplate(ABC):
         """Load data from provider API.
 
         Override this method in subclasses that support cloud API access.
-        For push-only providers (like Apple Health), use process_payload instead.
+        SDK-based providers are ingested by ``app/services/sdk/`` instead.
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support API-based data loading")
-
-    def process_payload(self, db: DbSession, user_id: UUID, payload: Any, source_type: str) -> None:
-        """Template method to process a pushed payload (Push flow).
-
-        Args:
-            db: Database session.
-            user_id: The ID of the user.
-            payload: The raw data payload (e.g. from webhook or file upload).
-            source_type: Identifier for the source (e.g. 'healthkit', 'garmin_push').
-        """
-        # This method can be overridden or extended by subclasses to handle specific payload structures
-        # For example, a payload might contain a list of workouts or a single workout
-
-        # Default implementation assumes payload might be a list or single item,
-        # but subclasses should probably override this to parse the specific format
-        # and then call _process_single_workout.
-        pass
 
     def _process_single_workout(self, db: DbSession, user_id: UUID, raw_workout: Any) -> None:
         """Internal method to normalize and save a single workout."""

@@ -2,12 +2,17 @@
 
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from logging import Logger
 from typing import Any, NamedTuple
 from uuid import UUID
 
+from app.config import settings
+from app.integrations.otel import export_structured
+from app.utils.config_utils import LogFormat
 from app.utils.context import trace_id_var
+from app.utils.logging_setup import format_text_line, level_number, min_log_level
 
 
 class LogContext(NamedTuple):
@@ -39,6 +44,10 @@ def log_structured(
     """
     Emit structured JSON log compatible with various logging platforms.
 
+    With ``LOG_FORMAT=legacy`` (default) or ``json`` this prints one JSON line to stdout;
+    with ``LOG_FORMAT=text`` it prints a human-readable line instead. ``LOG_LEVEL``, when
+    set, drops calls below that level.
+
     This function emits logs in JSON format on a single line, making them compatible
     with platforms that support structured logging, including (but not limited to):
     - Railway
@@ -50,7 +59,7 @@ def log_structured(
 
 
     Args:
-        logger: Logger instance (used for compatibility, but output goes directly to stdout)
+        logger: Logger whose name appears in text output; output goes directly to stdout
         level: Log level (debug, info, warning, error)
         message: Log message (required)
         provider: Provider name (optional)
@@ -90,15 +99,25 @@ def log_structured(
     # Emit as single-line JSON directly to stdout
     # This bypasses logger formatters (like Celery's) that add prefixes
     # Platforms will parse this JSON string correctly
+    # Serialized in every mode and before filtering, so an unserializable value raises the
+    # same TypeError whatever LOG_FORMAT and LOG_LEVEL are set to.
     json_str = json.dumps(log_entry, default=json_serial)
+
+    levelno = level_number(level)
+    threshold = min_log_level()
+    if threshold is not None and levelno < threshold:
+        return
+
+    if settings.log_format is LogFormat.TEXT:
+        line = format_text_line(time.time(), level, logger.name, message, {"provider": provider, **attributes})
+        print(line, file=sys.stdout, flush=True)
+        export_structured(logger, levelno, message, provider, attributes)
+        return
 
     # Always use stdout to avoid Railway's automatic level conversion
     # Platforms can convert stderr logs to level.error automatically, which creates
     # "attributes":{"level":"error"} that overrides our JSON level field.
     # By using stdout, platforms sets level.info by default, but our JSON level
     # field in the structured log should take precedence.
-    #
-    # IMPORTANT: Celery workers and other services must redirect stderr to stdout
-    # in their startup scripts (using `exec 2>&1`) to prevent platforms from
-    # converting all logs to level.error. See scripts/start/*.sh for examples.
     print(json_str, file=sys.stdout, flush=True)
+    export_structured(logger, levelno, message, provider, attributes)

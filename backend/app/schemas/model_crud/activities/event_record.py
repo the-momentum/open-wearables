@@ -1,12 +1,30 @@
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.enums import EntrySource, WorkoutIntensity
+from app.constants.devices_map import normalize_device_model
+from app.schemas.enums import DeviceType, EntrySource, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
+from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+
+from .source_filters import SourceFilterParams
+
+
+class WorkoutInclude(StrEnum):
+    """Optional expansions for workout read models, requested via the `include` query parameter."""
+
+    ZONES = "zones"
+    SEGMENTS = "segments"
+
+
+class SleepInclude(StrEnum):
+    """Optional expansions for sleep read models, requested via the `include` query parameter."""
+
+    STAGES = "stages"
 
 
 class EventRecordMetrics(TypedDict, total=False):
@@ -57,6 +75,8 @@ class EventRecordBase(BaseModel):
     end_datetime: datetime
     zone_offset: ZoneOffset = None
 
+    _normalize_device_model = field_validator("device_model")(normalize_device_model)
+
 
 class EventRecordCreate(EventRecordBase):
     id: UUID
@@ -67,6 +87,10 @@ class EventRecordCreate(EventRecordBase):
     user_connection_id: UUID | None = None
     data_source_id: UUID | None = None
     software_version: str | None = None
+    device_type: DeviceType | None = None
+    device_id: str | None = None
+    source_app_id: str | None = None
+    device_manufacturer: str | None = None
 
 
 class EventRecordUpdate(EventRecordBase):
@@ -83,12 +107,12 @@ class EventRecordResponse(EventRecordBase):
     data_source_id: UUID | None
 
 
-class EventRecordQueryParams(BaseModel):
+class EventRecordQueryParams(SourceFilterParams):
     """Filtering and sorting parameters for event records."""
 
     # Pagination
     cursor: str | None = Field(None, description="Pagination cursor")
-    limit: int = Field(50, ge=1, le=1000, description="Maximum number of records to return")
+    limit: int = Field(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Maximum number of records to return")
     offset: int = Field(0, ge=0, description="Number of results to skip (for non-cursor pagination)")
 
     # Date filtering
@@ -100,13 +124,16 @@ class EventRecordQueryParams(BaseModel):
         "workout",
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
-    record_type: str | None = Field(None, description="Subtype filter (e.g. HKWorkoutActivityTypeRunning)")
+    record_type: str | None = Field(
+        None, description="Subtype filter, substring match (e.g. HKWorkoutActivityTypeRunning)"
+    )
+    workout_type: WorkoutType | None = Field(None, description="Exact normalized workout type filter")
 
-    # Source filtering
-    device_model: str | None = Field(None, description="Filter by device model")
+    # Source filtering (provider, source, device_model, data_source_id come from SourceFilterParams)
     source_name: str | None = Field(None, description="Filter by source/app name")
-    source: str | None = Field(None, description="Filter by data source")
-    data_source_id: UUID | None = Field(None, description="Filter by data source identifier")
+
+    # Sleep filtering
+    is_nap: bool | None = Field(None, description="Sleep only: true for naps, false for main sleep, None for both")
 
     # Duration filtering
     min_duration: int | None = Field(None, description="Minimum duration in seconds")

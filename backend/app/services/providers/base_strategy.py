@@ -42,6 +42,7 @@ class ProviderCoverage:
     sleep_fields:           EventRecordDetail fields populated in sleep records
     menstrual_cycle_fields: EventRecordDetail fields populated in menstrual-cycle records
     health_scores:          HealthScoreCategory values produced by this provider
+    meal_fields:            EventRecordDetail fields populated in meal records
 
     Define the frozensets in the provider's coverage.py and assign here in
     strategy.py — keeps implementation files free of metadata declarations.
@@ -54,6 +55,7 @@ class ProviderCoverage:
     sleep_fields: frozenset[str] = field(default_factory=frozenset)
     menstrual_cycle_fields: frozenset[str] = field(default_factory=frozenset)
     health_scores: frozenset[HealthScoreCategory] = field(default_factory=frozenset)
+    meal_fields: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -84,8 +86,9 @@ class ProviderCapabilities:
         ``True``). Oura, Strava, Fitbit, Polar.
     webhook_registration_api:
         Provider exposes an API to programmatically register and update
-        webhook subscriptions. When ``True``, switching to webhook live-sync
-        mode triggers the ``register_provider_webhooks`` Celery task.
+        webhook subscriptions. When ``True``, any live-sync mode change
+        triggers the ``reconcile_provider_webhooks`` Celery task, which
+        registers on ``webhook`` and deletes on ``pull``.
         Polar, Oura, Strava, Withings.
     webhook_subscription_per_user:
         Subscriptions are created with a connection's own bearer token, so one
@@ -191,6 +194,22 @@ class BaseProviderStrategy(ABC):
                     webhook_ping=True,
                 )
         """
+
+    def apply_live_sync_mode(self, mode: LiveSyncMode) -> None:
+        """Bring this provider's webhook subscriptions in line with a new live-sync mode.
+
+        Dispatched rather than run inline: reconciliation talks to the provider's
+        API and, for per-user providers, fans out one task per connection.
+        Override for a provider that reconciles by some other means.
+        """
+        if not self.capabilities.webhook_registration_api:
+            return
+
+        celery_app.send_task(
+            "app.integrations.celery.tasks.provider_webhooks_task.reconcile_provider_webhooks",
+            args=[self.name, mode],
+            queue="webhook_sync",
+        )
 
     def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
         """Dispatch an async historical data sync.

@@ -59,6 +59,20 @@ PROVIDER_CONFIGS: dict[ProviderName, dict] = {
 
 SEED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
 
+# Series the daily activity summary aggregates per (day, provider, device).
+# Seeded from one device so that device's day carries all of them.
+DAILY_ACTIVITY_SERIES: frozenset[SeriesType] = frozenset(
+    {
+        SeriesType.steps,
+        SeriesType.active_energy,
+        SeriesType.basal_energy,
+        SeriesType.heart_rate,
+        SeriesType.distance_walking_running,
+        SeriesType.flights_climbed,
+        SeriesType.active_time,
+    }
+)
+
 # Workout types where elevation gain is realistic
 OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
     {
@@ -75,6 +89,16 @@ OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
         WorkoutType.DOWNHILL_SKIING,
     }
 )
+
+
+DEFAULT_MEAL_TYPES: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
+
+MEAL_TITLES: dict[str, list[str]] = {
+    "breakfast": ["Oatmeal with Berries", "Scrambled Eggs & Toast", "Greek Yogurt Bowl", "Avocado Toast"],
+    "lunch": ["Grilled Chicken Salad", "Turkey Sandwich", "Quinoa Bowl", "Vegetable Stir Fry"],
+    "dinner": ["Salmon with Rice", "Pasta Bolognese", "Grilled Steak & Veggies", "Vegetable Curry"],
+    "snack": ["Protein Bar", "Mixed Nuts", "Apple with Peanut Butter", "Greek Yogurt"],
+}
 
 # ---------------------------------------------------------------------------
 # Health score component keys (match real provider API formats)

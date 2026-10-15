@@ -59,6 +59,29 @@ class TestPriorityServiceGetProviderPriorities:
         assert result.items[2].provider == ProviderName.POLAR
         assert result.items[2].priority == 3
 
+    def test_get_provider_priorities_includes_name_and_icon(
+        self, db: Session, priority_service: PriorityService
+    ) -> None:
+        """Each item carries the strategy's display name and relative icon URL, like provider settings."""
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+
+        result = priority_service.get_provider_priorities(db)
+
+        assert result.items[0].name == "Garmin"
+        assert result.items[0].icon_url == "/static/provider-icons/garmin.svg"
+
+    def test_get_provider_priorities_without_strategy_has_no_icon(
+        self, db: Session, priority_service: PriorityService
+    ) -> None:
+        """Rows for providers with no strategy (e.g. legacy 'unknown') still load, just without name/icon."""
+        priority_service.update_provider_priority(db, ProviderName.UNKNOWN, 1)
+
+        result = priority_service.get_provider_priorities(db)
+
+        assert result.items[0].provider == ProviderName.UNKNOWN
+        assert result.items[0].name is None
+        assert result.items[0].icon_url is None
+
 
 class TestPriorityServiceUpdateProviderPriority:
     """Test updating individual provider priority."""
@@ -158,7 +181,18 @@ class TestPriorityServiceGetUserDataSources:
         result = priority_service.get_user_data_sources(db, user.id)
 
         assert result.total == 1
-        assert result.items[0].display_name == "Apple - Watch7,1"
+        assert result.items[0].device_name == "Apple Watch Series 9 41mm (GPS)"
+        assert result.items[0].display_name == "Apple - Apple Watch Series 9 41mm (GPS)"
+
+    def test_unmapped_model_is_its_own_device_name(self, db: Session, priority_service: PriorityService) -> None:
+        user = UserFactory()
+        DataSourceFactory(user=user, provider=ProviderName.OURA, device_model=None, source="oura")
+        DataSourceFactory(user=user, provider=ProviderName.SUUNTO, device_model="Suunto Vertical")
+
+        items = {item.provider: item for item in priority_service.get_user_data_sources(db, user.id).items}
+
+        assert items[ProviderName.OURA].device_name is None
+        assert items[ProviderName.SUUNTO].device_name == "Suunto Vertical"
 
 
 class TestPriorityServiceGetDeviceTypePriorities:

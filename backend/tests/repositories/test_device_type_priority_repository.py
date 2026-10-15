@@ -133,3 +133,14 @@ class TestDeviceTypePriorityRepository:
         assert DeviceType.BAND in priority_order
         assert priority_order[DeviceType.WATCH] == 1
         assert priority_order[DeviceType.BAND] == 2
+
+    def test_initialize_defaults_adds_missing_types_only(
+        self, db: Session, repo: DeviceTypePriorityRepository, seeded_priorities: None
+    ) -> None:
+        repo.upsert(db, DeviceType.WATCH, 9)
+
+        order = {p.device_type: p.priority for p in repo.initialize_defaults(db)}
+
+        assert order[DeviceType.WATCH] == 9
+        assert order[DeviceType.CHEST_STRAP] == 6
+        assert set(order) == set(DeviceType)

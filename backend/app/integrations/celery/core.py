@@ -2,14 +2,20 @@ import logging
 import ssl
 import sys
 from logging import Formatter, LogRecord, StreamHandler, getLogger
-from typing import cast
+from typing import Any, cast
 
 from celery import Celery, signals
 from celery import current_app as current_celery_app
+from celery.concurrency import get_implementation
+from celery.concurrency.prefork import TaskPool as PreforkPool
 from celery.schedules import crontab
 
 from app.config import settings
+from app.extensions import collect_beat_schedule, collect_event_handlers, events, get_active_extensions
+from app.integrations.otel import init_otel, shutdown_otel
 from app.services import raw_payload_storage
+from app.utils.config_utils import LogFormat
+from app.utils.logging_setup import configure_logging
 
 _WEBHOOK_TASK = "emit_webhook_event_task.emit_webhook_event"
 
@@ -35,32 +41,108 @@ def setup_celery_logging(**kwargs) -> None:
     Some platforms convert stderr logs to level.error automatically, so we must use stdout
     to ensure platforms correctly identify log levels from JSON structured logs.
 
-    This signal is called when Celery sets up its logging configuration.
+    This signal is called when Celery sets up its logging configuration. With
+    LOG_FORMAT=json or text the Celery logger has no handler of its own and its records
+    go through the root handler instead, so every line shares one format.
     """
     # Get Celery's logger
     celery_logger = getLogger("celery")
 
     # Remove existing handlers that might use stderr
     celery_logger.handlers.clear()
-
-    # Create a handler that uses stdout
-    stdout_handler = StreamHandler(sys.stdout)
-    stdout_handler.setFormatter(
-        Formatter(
-            "[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-
-    # Add stdout handler to Celery logger
-    celery_logger.addHandler(stdout_handler)
     celery_logger.setLevel(logging.INFO)
-    celery_logger.propagate = False
+
+    if settings.log_format is LogFormat.LEGACY:
+        # Create a handler that uses stdout
+        stdout_handler = StreamHandler(sys.stdout)
+        stdout_handler.setFormatter(
+            Formatter(
+                "[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        celery_logger.addHandler(stdout_handler)
+        celery_logger.propagate = False
+    else:
+        celery_logger.propagate = True
 
     # celery.app.trace logs "Task ... succeeded in Xs: {result}" at INFO for
     # every task execution.  Suppress those lines only for the high-frequency
     # webhook emit task to avoid log spam while keeping traces for all others.
     getLogger("celery.app.trace").addFilter(_WebhookTraceFilter())
+
+    configure_logging()
+
+
+_worker_service_name = "open-wearables-worker"
+
+
+def _worker_service_name_for(hostname: str | None) -> str:
+    # scripts/start/worker.sh names its workers io@%h and cpu@%h.
+    prefix = (hostname or "").split("@", 1)[0]
+    return f"open-wearables-worker-{prefix}" if prefix and prefix != "celery" else "open-wearables-worker"
+
+
+def _uses_prefork(pool_cls: Any) -> bool:
+    try:
+        # Resolves aliases such as "prefork" and "processes" and "module:Class" paths.
+        pool = get_implementation(pool_cls) if isinstance(pool_cls, str) else pool_cls
+    except Exception:
+        return False
+    return isinstance(pool, type) and issubclass(pool, PreforkPool)
+
+
+@signals.worker_init.connect
+def init_worker_log_export(sender: Any, **kwargs) -> None:
+    """Start OTel log export in thread and solo pool workers.
+
+    Prefork workers start it in each child instead (worker_process_init): the export
+    thread of a provider created here would not survive the fork.
+    """
+    global _worker_service_name
+    _worker_service_name = _worker_service_name_for(getattr(sender, "hostname", None))
+    if not _uses_prefork(getattr(sender, "pool_cls", "")):
+        init_otel(_worker_service_name)
+
+
+@signals.worker_process_init.connect
+def init_worker_process_log_export(**kwargs) -> None:
+    init_otel(_worker_service_name)
+
+
+@signals.worker_process_shutdown.connect
+def stop_worker_process_log_export(**kwargs) -> None:
+    # Prefork children leave through os._exit, which skips atexit handlers.
+    shutdown_otel()
+
+
+@signals.worker_shutdown.connect
+def stop_worker_log_export(**kwargs) -> None:
+    shutdown_otel()
+
+
+@signals.beat_init.connect
+def init_beat_log_export(**kwargs) -> None:
+    init_otel("open-wearables-beat")
+
+
+@signals.worker_ready.connect
+def enqueue_startup_telemetry_ping(sender: Any, **kwargs) -> None:
+    """Send the "startup" telemetry ping once the worker can reach the broker.
+
+    Multiple workers may each enqueue this; the 12h debounce in
+    TelemetryService turns the extras into no-ops.
+    """
+    if not settings.telemetry_enabled:
+        return
+    try:
+        sender.app.send_task(
+            "app.integrations.celery.tasks.telemetry_task.send_telemetry_ping",
+            kwargs={"event": "startup"},
+            queue="default",
+        )
+    except Exception:
+        getLogger(__name__).debug("Could not enqueue startup telemetry ping", exc_info=True)
 
 
 @signals.worker_init.connect
@@ -130,7 +212,11 @@ def create_celery() -> Celery:
         celery_app.conf.broker_use_ssl = ssl_options
         celery_app.conf.redis_backend_use_ssl = ssl_options
 
-    celery_app.autodiscover_tasks(["app.integrations.celery.tasks", "app.integrations.celery.tasks.garmin"])
+    extensions = get_active_extensions()
+    celery_app.autodiscover_tasks(
+        ["app.integrations.celery.tasks", "app.integrations.celery.tasks.garmin"]
+        + [package for extension in extensions for package in extension.celery_task_packages]
+    )
 
     celery_app.conf.beat_schedule = {
         "sync-all-users-periodic": {
@@ -142,30 +228,6 @@ def create_celery() -> Celery:
         "finalize-stale-sleeps-periodic": {
             "task": "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps",
             "schedule": float(settings.sleep_sync_interval_seconds),
-            "args": (),
-            "kwargs": {},
-        },
-        "gc-stuck-garmin-backfills": {
-            "task": "app.integrations.celery.tasks.garmin.gc_task.gc_stuck_backfills",
-            "schedule": 180.0,  # Every 3 minutes
-            "args": (),
-            "kwargs": {},
-        },
-        "run-daily-archival": {
-            "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
-            "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
-            "args": (),
-            "kwargs": {},
-        },
-        "fill-missing-sleep-scores": {
-            "task": "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores",
-            "schedule": float(settings.sleep_score_interval_seconds),
-            "args": (),
-            "kwargs": {},
-        },
-        "fill-missing-resilience-scores": {
-            "task": "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores",
-            "schedule": float(settings.resilience_score_interval_seconds),
             "args": (),
             "kwargs": {},
         },
@@ -182,5 +244,48 @@ def create_celery() -> Celery:
             "kwargs": {},
         },
     }
+
+    if settings.data_lifecycle_enabled:
+        celery_app.conf.beat_schedule["run-daily-archival"] = {
+            "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
+            "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
+            "args": (),
+            "kwargs": {},
+        }
+
+    if settings.ow_scores_enabled:
+        celery_app.conf.beat_schedule["fill-missing-sleep-scores"] = {
+            "task": "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores",
+            "schedule": float(settings.sleep_score_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        }
+        celery_app.conf.beat_schedule["fill-missing-resilience-scores"] = {
+            "task": "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores",
+            "schedule": float(settings.resilience_score_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        }
+
+    if settings.telemetry_enabled:
+        # Hourly due-check, not an hourly ping: the task delivers at most one
+        # ping per 24h (see TelemetryService) and the hourly cadence doubles as
+        # the retry mechanism after failed deliveries.
+        celery_app.conf.beat_schedule["send-telemetry-ping"] = {
+            "task": "app.integrations.celery.tasks.telemetry_task.send_telemetry_ping",
+            "schedule": settings.telemetry_beat_interval_seconds,
+            "args": (),
+            "kwargs": {"event": "daily"},
+        }
+
+    event_handlers = collect_event_handlers()
+    events.register(event_handlers)
+    if event_handlers:
+        celery_app.conf.beat_schedule["dispatch-extension-events"] = {
+            "task": "app.integrations.celery.tasks.extension_events_task.dispatch_extension_events",
+            "schedule": float(settings.extension_event_sweep_interval_seconds),
+        }
+
+    celery_app.conf.beat_schedule.update(collect_beat_schedule(reserved=set(celery_app.conf.beat_schedule)))
 
     return celery_app

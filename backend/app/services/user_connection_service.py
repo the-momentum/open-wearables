@@ -10,6 +10,7 @@ from app.schemas.enums import ProviderName, SdkConnectionOutcome
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
 from app.schemas.responses.upload import ConnectionsCoverage, ProviderConnectionCount
 from app.services.outgoing_webhooks.events import on_connection_created, on_connection_revoked
+from app.services.providers.api_client import get_valid_token
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
@@ -48,6 +49,11 @@ class UserConnectionService(
     def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all connections for a user."""
         return self.crud.get_by_user_id(db_session, user_id)
+
+    @handle_exceptions
+    def get_connection(self, db_session: DbSession, user_id: UUID, provider: str) -> UserConnection | None:
+        """Get a user's connection for one provider, or None if there is none."""
+        return self.crud.get_by_user_and_provider(db_session, user_id, provider)
 
     def get_linked_user_ids(
         self,
@@ -95,15 +101,22 @@ class UserConnectionService(
 
     @handle_exceptions
     def disconnect(
-        self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate | None = None
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        provider: str,
+        oauth: BaseOAuthTemplate | None = None,
+        reason: str = "user_disconnected",
     ) -> None:
         """Disconnect a user from a provider. Raises 404 if connection not found.
 
         If oauth is provided, calls the provider's deregistration API before clearing tokens.
         Deregistration failures are logged but do not block the disconnect.
+
+        ``reason`` reaches the log line and the ``connection.revoked`` webhook.
         """
         if oauth:
-            self._deregister_from_provider(db_session, user_id, provider, oauth)
+            self.deregister_from_provider(db_session, user_id, provider, oauth)
 
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
@@ -113,7 +126,7 @@ class UserConnectionService(
                 "info",
                 "Connection revoked",
                 action="connection_revoked",
-                reason="user_disconnected",
+                reason=reason,
                 provider=provider,
                 user_id=str(user_id),
                 connection_id=str(connection.id) if connection else None,
@@ -123,7 +136,7 @@ class UserConnectionService(
                     user_id=user_id,
                     provider=provider,
                     connection_id=connection.id,
-                    reason="user_disconnected",
+                    reason=reason,
                     revoked_at=connection.updated_at.isoformat(),
                 )
             return
@@ -161,17 +174,23 @@ class UserConnectionService(
         if connection:
             self.crud.update_last_synced_at(db_session, connection)
 
-    def _deregister_from_provider(
+    def deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate
     ) -> None:
-        """Best-effort call to provider's deregistration API."""
+        """Best-effort call to provider's deregistration API.
+
+        Refreshes the access token first if it is expired. Push-based providers like Garmin
+        rarely call their API after the initial backfill, so the stored token is usually stale
+        by the time the user disconnects.
+        """
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
         if not connection or not connection.access_token:
             return
 
         try:
+            access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth)
             oauth.deregister_user(
-                connection.access_token,
+                access_token,
                 provider_user_id=connection.provider_user_id,
             )
             log_structured(

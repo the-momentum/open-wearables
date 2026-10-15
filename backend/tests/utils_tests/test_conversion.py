@@ -6,10 +6,11 @@ Tests SQLAlchemy model to dictionary conversion.
 
 from datetime import datetime, timezone
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
-from app.utils.conversion import base_to_dict
+from app.utils.conversion import base_to_dict, seconds_to_minutes
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -435,3 +436,17 @@ class TestBaseToDictIntegration:
         # Assert
         assert dict1["user_id"] == dict2["user_id"]
         assert dict1["device_model"] != dict2["device_model"]
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        ((), None),
+        ((None, None), None),
+        ((0,), 0),
+        ((119,), 1),
+        ((1800, None, 1830), 60),
+    ],
+)
+def test_seconds_to_minutes(seconds: tuple[int | None, ...], expected: int | None) -> None:
+    assert seconds_to_minutes(*seconds) == expected

@@ -13,3 +13,4 @@ class TimelineGroupBy(StrEnum):
 
     PROVIDER = "provider"
     SERIES_TYPE = "series_type"
+    WORKOUT_TYPE = "workout_type"

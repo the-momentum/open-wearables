@@ -1,6 +1,7 @@
 """Tests for the seed data generation service."""
 
-from datetime import date
+from datetime import date, datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -8,13 +9,17 @@ from app.models import (
     DataPointSeries,
     DataSource,
     EventRecord,
+    MealDetails,
     PersonalRecord,
+    ProviderPriority,
     SeriesTypeDefinition,
     User,
     UserConnection,
+    WorkoutDetails,
 )
 from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.utils.seed_data import (
+    MealConfig,
     SeedDataRequest,
     SeedProfileConfig,
     SleepConfig,
@@ -22,6 +27,7 @@ from app.schemas.utils.seed_data import (
     WorkoutConfig,
 )
 from app.services.seed_data import seed_data_service
+from app.services.summaries_service import summaries_service
 
 
 class TestSeedDataServiceGenerate:
@@ -130,6 +136,34 @@ class TestSeedDataServiceGenerate:
         workouts = db.query(EventRecord).filter_by(category="workout").all()
         for w in workouts:
             assert w.type in ("boxing", "running")
+
+    def test_distance_only_for_pace_based_workouts(self, db: Session) -> None:
+        """Pace-based sports get a distance; others (e.g. boxing) don't."""
+        request = SeedDataRequest(
+            num_users=1,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=False,
+                generate_time_series=False,
+                workout_config=WorkoutConfig(
+                    count=20,
+                    workout_types=[WorkoutType.BOXING, WorkoutType.RUNNING],
+                ),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        rows = (
+            db.query(EventRecord, WorkoutDetails).join(WorkoutDetails).filter(EventRecord.category == "workout").all()
+        )
+        assert rows
+        for record, detail in rows:
+            if record.type == "running":
+                assert detail.distance is not None
+                assert detail.distance > 0
+            else:
+                assert detail.distance is None
 
     def test_generate_with_specific_providers(self, db: Session) -> None:
         """Connections should use the specified providers."""
@@ -307,3 +341,180 @@ class TestContinuousTimeSeries:
         summary = seed_data_service.generate(db, request)
 
         assert summary["time_series_samples"] == 0
+
+    def test_every_activity_day_has_steps(self, db: Session) -> None:
+        """Daily activity series share the top-priority device, so the day the summary picks has steps."""
+        now = datetime.now(timezone.utc)
+        db.add_all(
+            [
+                ProviderPriority(id=uuid4(), provider=ProviderName.GARMIN, priority=1, updated_at=now),
+                ProviderPriority(id=uuid4(), provider=ProviderName.POLAR, priority=2, updated_at=now),
+            ]
+        )
+        db.flush()
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=1926769294,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=False,
+                generate_time_series=True,
+                providers=[ProviderName.POLAR, ProviderName.GARMIN],
+                num_connections=2,
+                workout_config=WorkoutConfig(
+                    count=10,
+                    date_from=date(2024, 11, 1),
+                    date_to=date(2024, 11, 7),
+                ),
+                time_series_config=TimeSeriesConfig(
+                    enabled_types=[SeriesType.steps, SeriesType.active_energy, SeriesType.heart_rate],
+                    date_from=date(2024, 11, 1),
+                    date_to=date(2024, 11, 7),
+                ),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        user = db.query(User).one()
+        page = summaries_service.get_activity_summaries(
+            db,
+            user.id,
+            datetime(2024, 11, 1, tzinfo=timezone.utc),
+            datetime(2024, 11, 8, tzinfo=timezone.utc),
+            cursor=None,
+            limit=100,
+        )
+        assert page.data
+        for day in page.data:
+            assert day.steps, f"no steps on {day.date}"
+
+
+class TestSeededDataSourceProviders:
+    """Seeded records must resolve to a real provider, never the `unknown` fallback."""
+
+    def test_oura_records_keep_their_provider(self, db: Session) -> None:
+        """Oura exposes no device info, which used to drop the provider along with it."""
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=7,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=True,
+                generate_time_series=False,
+                providers=[ProviderName.OURA],
+                num_connections=1,
+                workout_config=WorkoutConfig(count=5),
+                sleep_config=SleepConfig(count=5),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        providers = {provider for (provider,) in db.query(DataSource.provider).distinct()}
+        assert providers == {ProviderName.OURA.value}
+
+    def test_records_without_device_info_keep_their_provider(self, db: Session) -> None:
+        """Roughly a fifth of non-Oura records carry no device info; they still know their provider."""
+        request = SeedDataRequest(
+            num_users=2,
+            random_seed=11,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=True,
+                generate_time_series=False,
+                workout_config=WorkoutConfig(count=20),
+                sleep_config=SleepConfig(count=20),
+            ),
+        )
+
+        seed_data_service.generate(db, request)
+
+        # The regression: records with device_model unset landed in a per-user `unknown` bucket.
+        assert db.query(DataSource).filter(DataSource.device_model.is_(None)).count() > 0
+        assert db.query(DataSource).filter(DataSource.provider == ProviderName.UNKNOWN.value).count() == 0
+
+
+class TestMealGeneration:
+    """Meals are opt-in and produce an EventRecord + MealDetails with nutrients."""
+
+    def test_meals_disabled_by_default(self, db: Session) -> None:
+        """Existing presets/defaults must stay meal-free unless generate_meals is set."""
+        request = SeedDataRequest(
+            num_users=1,
+            profile=SeedProfileConfig(
+                generate_workouts=False,
+                generate_sleep=False,
+                generate_time_series=False,
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["meals"] == 0
+        assert db.query(EventRecord).filter_by(category="meal").count() == 0
+
+    def test_generate_meals(self, db: Session) -> None:
+        """Meals create an EventRecord and a MealDetails row carrying the nutrients."""
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=123,
+            profile=SeedProfileConfig(
+                generate_workouts=False,
+                generate_sleep=False,
+                generate_time_series=False,
+                providers=[ProviderName.APPLE],
+                num_connections=1,
+                generate_meals=True,
+                meal_config=MealConfig(
+                    meal_count=5,
+                    date_from=date(2024, 6, 1),
+                    date_to=date(2024, 6, 1),
+                ),
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["meals"] == 5
+        meal_records = db.query(EventRecord).filter_by(category="meal").all()
+        assert len(meal_records) == 5
+
+        meal_ids = {record.id for record in meal_records}
+        details = db.query(MealDetails).filter(MealDetails.record_id.in_(meal_ids)).all()
+        assert len(details) == 5
+        for detail in details:
+            assert detail.meal_type in ("breakfast", "lunch", "dinner", "snack")
+            assert detail.title is not None
+
+        for detail in details:
+            assert set(detail.nutrients) == {
+                "dietary_energy_consumed",
+                "dietary_protein",
+                "dietary_carbohydrates",
+                "dietary_fat_total",
+                "dietary_fiber",
+                "hydration",
+            }
+        assert summary["time_series_samples"] == 0
+        assert db.query(DataPointSeries).count() == 0
+
+    def test_meals_are_skipped_for_providers_that_do_not_deliver_them(self, db: Session) -> None:
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=123,
+            profile=SeedProfileConfig(
+                generate_workouts=False,
+                generate_sleep=False,
+                generate_time_series=False,
+                providers=[ProviderName.GARMIN],
+                num_connections=1,
+                generate_meals=True,
+                meal_config=MealConfig(meal_count=5),
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["meals"] == 0
+        assert db.query(EventRecord).filter_by(category="meal").count() == 0

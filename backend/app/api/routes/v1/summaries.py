@@ -4,9 +4,10 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
-from app.schemas.enums import TimelineBucket, TimelineGroupBy
+from app.schemas.enums import ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.activity import (
     ActivitySummary,
+    ActivityTotals,
     BodySummary,
     RecoverySummary,
     SleepSummary,
@@ -15,7 +16,8 @@ from app.schemas.responses.dashboard import UserDataSummaryResponse, UserDataTim
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
-from app.utils.dates import DateTimeQueryParam, parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime, parse_query_end_datetime
+from app.utils.pagination import DEFAULT_PAGE_SIZE, PageLimitQueryParam
 
 router = APIRouter()
 
@@ -28,7 +30,7 @@ def get_activity_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=400)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
     sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
@@ -36,9 +38,27 @@ def get_activity_summary(
     Aggregates time-series data (steps, energy, heart rate, etc.) by day.
     """
     start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_activity_summaries(
         db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
+    )
+
+
+@router.get("/users/{user_id}/summaries/activity/totals")
+def get_activity_totals(
+    user_id: UUID,
+    start_date: DateTimeQueryParam,
+    end_date: DateTimeQueryParam,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> ActivityTotals:
+    """Returns the period's daily activity added up: days, steps, distance and active energy.
+
+    The same days the daily summaries return, one per date after source priority,
+    so a total matches what paging through them would add up to.
+    """
+    return summaries_service.get_activity_totals(
+        db, user_id, parse_query_datetime(start_date), parse_query_end_datetime(end_date)
     )
 
 
@@ -50,11 +70,11 @@ def get_sleep_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
 ) -> PaginatedResponse[SleepSummary]:
     """Returns daily sleep metrics."""
     start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
@@ -66,7 +86,7 @@ def get_recovery_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: PageLimitQueryParam = DEFAULT_PAGE_SIZE,
 ) -> PaginatedResponse[RecoverySummary]:
     """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2).
 
@@ -80,7 +100,7 @@ def get_recovery_summary(
     returned for all providers that supply the underlying data.
     """
     start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    end_datetime = parse_query_end_datetime(end_date)
     return summaries_service.get_recovery_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
@@ -123,7 +143,7 @@ def get_data_summary(
     filtered by `recorded_at`, events by their start time). Omitting both returns all-time counts.
     """
     start_datetime = parse_query_datetime(start_date) if start_date is not None else None
-    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
+    end_datetime = parse_query_end_datetime(end_date) if end_date is not None else None
     return system_info_service.get_user_data_summary(db, user_id, start_datetime, end_datetime)
 
 
@@ -136,6 +156,7 @@ def get_data_timeline(
     end_date: DateTimeQueryParam | None = None,
     bucket: Annotated[TimelineBucket, Query(description="Bucket width.")] = TimelineBucket.DAY,
     group_by: Annotated[TimelineGroupBy, Query(description="What each series counts.")] = TimelineGroupBy.PROVIDER,
+    provider: ProviderName | None = None,
 ) -> UserDataTimelineResponse:
     """Returns when a user has data, as counts per time bucket.
 
@@ -147,5 +168,7 @@ def get_data_timeline(
     both returns the user's whole history.
     """
     start_datetime = parse_query_datetime(start_date) if start_date is not None else None
-    end_datetime = parse_query_datetime(end_date) if end_date is not None else None
-    return system_info_service.get_user_data_timeline(db, user_id, bucket, group_by, start_datetime, end_datetime)
+    end_datetime = parse_query_end_datetime(end_date) if end_date is not None else None
+    return system_info_service.get_user_data_timeline(
+        db, user_id, bucket, group_by, start_datetime, end_datetime, provider
+    )

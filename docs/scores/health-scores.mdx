@@ -35,3 +35,11 @@ Neither score is a diagnostic tool. They are intended to surface trends and patt
 In addition to the OW native scores described above, users may also see scores fetched directly from their connected device providers - for example, a sleep score from Garmin or a readiness score from Oura. These provider scores are always clearly labelled with their source and are kept separate from the OW computed scores. They do not influence each other.
 
 This means you can surface both in your application - the OW scores for a consistent cross-device baseline, and the provider scores for users who want to compare against what their device reports.
+
+---
+
+## Disabling OW Native Scores
+
+Self-hosted deployments compute both OW scores by default. To turn them off, set `OW_SCORES_ENABLED=false` in the backend `.env`.
+
+Provider scores are still stored and shown. Scores computed before the switch stay in the database. Re-enabling backfills the last `SCORE_BACKFILL_DAYS` (30 by default).

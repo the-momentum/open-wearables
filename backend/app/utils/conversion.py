@@ -1,10 +1,15 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from logging import getLogger
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.inspection import inspect
 
 from app.database import BaseDbModel
+from app.utils.structured_logging import log_structured
+
+logger = getLogger(__name__)
 
 
 def to_decimal(value: Any) -> Decimal | None:
@@ -27,6 +32,54 @@ def as_int(value: Any) -> int | None:
         return None
 
 
+def as_float(value: Any) -> float | None:
+    """Coerce a value to float; None if missing or not convertible. Zero is kept."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def as_model[ModelT: BaseModel](model: type[ModelT], value: Any) -> ModelT | None:
+    """Validate a raw mapping (e.g. a json_binary column) into a model; None if empty or malformed."""
+    if not value:
+        return None
+    try:
+        return model.model_validate(value)
+    except ValidationError as exc:
+        # Log field locations only - the raw value / pydantic message may carry health data.
+        locs = [".".join(str(x) for x in err["loc"]) for err in exc.errors()]
+        log_structured(
+            logger,
+            "warning",
+            "Discarding malformed payload",
+            action="discard_malformed_payload",
+            model=model.__name__,
+            invalid_fields=locs,
+        )
+        return None
+
+
+def as_dict_list(value: Any) -> list[dict] | None:
+    """Coerce a raw json_binary array (e.g. workout segments) to objects; None if empty or malformed."""
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, dict)] or None
+
+
+def minutes_to_seconds(minutes: int | None) -> int | None:
+    return minutes * 60 if minutes is not None else None
+
+
+def seconds_to_minutes(*seconds: int | None) -> int | None:
+    """Whole minutes in the summed durations; None when none of them is reported."""
+    if all(s is None for s in seconds):
+        return None
+    return sum(s or 0 for s in seconds) // 60
+
+
 _KCAL_PER_KJ = Decimal("0.239006")  # 1 kcal = 4.184 kJ
 
 
@@ -34,6 +87,13 @@ def kilojoules_to_kcal(kilojoules: Any) -> Decimal | None:
     """Convert kilojoules to kilocalories; None if not numeric."""
     kj = to_decimal(kilojoules)
     return kj * _KCAL_PER_KJ if kj is not None else None
+
+
+def energy_difference(total: float | None, part: float | None) -> float | None:
+    """The rest of a total energy once part of it is taken out; None when either is missing or part exceeds it."""
+    if total is None or part is None or part > total:
+        return None
+    return total - part
 
 
 def base_to_dict(instance: BaseDbModel) -> dict[str, str | None]:

@@ -33,6 +33,7 @@ from app.services.providers.garmin.handlers.lifecycle import (
     process_user_permissions,
 )
 from app.services.providers.garmin.handlers.wellness import process_wellness_items
+from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
@@ -73,10 +74,11 @@ class GarminWebhookHandler(BaseWebhookHandler):
     failing closed when the value is not configured.
     """
 
-    def __init__(self, garmin_workouts: GarminWorkouts, garmin_247: Garmin247Data) -> None:
+    def __init__(self, garmin_workouts: GarminWorkouts, garmin_247: Garmin247Data, oauth: GarminOAuth) -> None:
         super().__init__("garmin")
         self.garmin_workouts = garmin_workouts
         self.garmin_247 = garmin_247
+        self.oauth = oauth
         self.connection_repo = UserConnectionRepository()
 
     def extract_user_id(self, payload: dict[str, Any]) -> str | None:
@@ -321,7 +323,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
         if "deregistrations" in payload:
             try:
                 response["deregistrations"] = process_deregistrations(
-                    db, self.connection_repo, payload["deregistrations"], request_trace_id
+                    db, self.connection_repo, self.oauth, payload["deregistrations"], request_trace_id
                 )
             except Exception as e:
                 log_structured(

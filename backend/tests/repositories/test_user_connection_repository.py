@@ -435,6 +435,15 @@ class TestUserConnectionRepository:
         # Check that user1 appears only once despite having 2 connections
         assert results.count(user1.id) == 1
 
+    def test_get_all_active_users_by_providers(self, db: Session, connection_repo: UserConnectionRepository) -> None:
+        pull_user = UserFactory()
+        push_user = UserFactory()
+        UserConnectionFactory(user=pull_user, provider="whoop", status=ConnectionStatus.ACTIVE)
+        UserConnectionFactory(user=push_user, provider="garmin", status=ConnectionStatus.ACTIVE)
+
+        assert connection_repo.get_all_active_users(db, ["whoop", "polar"]) == [pull_user.id]
+        assert connection_repo.get_all_active_users(db, []) == []
+
     def test_update(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test updating a connection using the base update method."""
         # Arrange

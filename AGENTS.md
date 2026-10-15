@@ -1,12 +1,12 @@
 # Open Wearables
 
-Open Wearables is a health/wearable data aggregation platform with a Python/FastAPI backend and React/TypeScript frontend.
+Open Wearables is a health/wearable data aggregation platform with a Python/FastAPI backend and a SvelteKit developer portal.
 
 ## Documentation Structure
 
 - **This file** - Project overview, development workflow, general guidelines
 - **[backend/AGENTS.md](backend/AGENTS.md)** - Backend-specific patterns and code examples
-- **[frontend/AGENTS.md](frontend/AGENTS.md)** - Frontend-specific patterns and code examples
+- **[frontend/AGENTS.md](frontend/AGENTS.md)** - Frontend architecture, testing, and review rules
 - **[mcp/README.md](mcp/README.md)** - MCP server setup and available tools
 - **[docs/dev-guides/how-to-add-new-provider.mdx](docs/dev-guides/how-to-add-new-provider.mdx)** - Adding wearable providers
 
@@ -15,7 +15,7 @@ Open Wearables is a health/wearable data aggregation platform with a Python/Fast
 ```
 open-wearables/
 ├── backend/           # Python/FastAPI backend
-├── frontend/          # React/TypeScript frontend
+├── frontend/          # SvelteKit developer portal
 ├── mcp/               # MCP server for AI assistants
 └── docs/              # Documentation (Mintlify)
 ```
@@ -24,12 +24,12 @@ open-wearables/
 
 | Backend | Frontend | MCP |
 |---------|----------|-----|
-| Python 3.13+ | React 19 + TypeScript | Python 3.13+ |
-| FastAPI | TanStack Router/Query | FastMCP |
-| SQLAlchemy 2.0 | React Hook Form + Zod | httpx |
-| PostgreSQL | Tailwind + shadcn/ui | |
-| Celery + Redis | Vitest | |
-| Ruff + ty | oxlint + Prettier | Ruff + ty |
+| Python 3.14+ | SvelteKit 2 + Svelte 5 + TypeScript | Python 3.13+ |
+| FastAPI | Bun | FastMCP |
+| SQLAlchemy 2.0 | Tailwind CSS v4 | httpx |
+| PostgreSQL | | |
+| Celery + Redis | Vitest + Playwright | |
+| Ruff + ty | ESLint + Prettier | Ruff + ty |
 
 ## Development Workflow
 
@@ -69,6 +69,7 @@ make stop
 | `make migrate` | Apply database migrations |
 | `make create_migration m="..."` | Create new migration |
 | `make seed` | Seed sample data |
+| `make frontend_verify` | Run every frontend check CI runs |
 
 ### Code Quality
 
@@ -79,8 +80,16 @@ cd backend && uv run pre-commit run --all-files
 
 **Frontend:**
 ```bash
-cd frontend && pnpm run lint:fix && pnpm run format
+cd frontend && bun run format && bun run lint && bun run check
 ```
+
+### Database Migrations
+
+When you rebase and `main` gained a migration in the meantime, `alembic heads` shows two heads. Resolve it by moving **your** migration to the end of the chain. Never touch a migration that is already on `main`: databases that applied it treat everything inserted before it as already done and skip it silently.
+
+1. Set `down_revision` of your migration to the head from `main`.
+2. Rename your file so its date is later than the last migration on `main`. Keep the `rev` id. If your dev database already ran this migration, run `make downgrade` before re-pointing and `make migrate` after; otherwise the database keeps your revision as current and never applies the migration from `main`.
+3. CI checks the chain and fails on a second head, on a changed `down_revision` in a migration already on `main`, and on a deleted or renamed migration.
 
 ## Guidelines for AI Agents
 
@@ -90,8 +99,9 @@ cd frontend && pnpm run lint:fix && pnpm run format
 4. **Run quality checks** - Always run lint/format after changes
 5. **Use type hints** - All Python functions must have type annotations
 6. **Test your changes** - Run relevant tests before considering work complete
-7. **Update documentation** - When adding or changing endpoints, providers, integration logic, API contracts, or features, update the relevant pages in `docs/`
+7. **Update documentation** - When adding or changing endpoints, providers, API contracts, or features that integrators or operators can see or have to configure, update the relevant pages in `docs/`. Internal mechanisms (token handling, background tasks, tables that don't change the API) don't need docs
 8. **Update API Reference navigation** - When adding, removing, or renaming **external** API endpoints (tagged `External: *`), update the `API Reference` tab in `docs/docs.json` to keep the endpoint list in sync
+9. **Think beyond the current feature** - Before adding provider-specific or otherwise narrow logic, ask whether the same behavior will be needed elsewhere (other providers, entities). If likely, propose a shared abstraction upfront instead of a one-off implementation.
 
 ## Documentation Standards (docs/)
 

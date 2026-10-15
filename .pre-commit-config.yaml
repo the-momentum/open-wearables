@@ -25,12 +25,18 @@ repos:
         language: system
         files: ^backend/app/(services/providers/.*/coverage\.py|services/providers/base_strategy\.py|api/routes/v1/meta\.py)$
         pass_filenames: false
+      - id: export-openapi
+        name: export openapi spec to docs/openapi.json
+        entry: sh -c 'cd backend && uv run python scripts/export_openapi.py'
+        language: system
+        files: ^backend/app/.*\.py$
+        pass_filenames: false
 
       - id: prettier-check
         name: prettier check
-        entry: sh -c 'cd frontend && pnpm run format:check'
+        entry: sh -c 'cd frontend && bun run format:check'
         language: system
-        files: ^frontend/src/.*\.(ts|tsx|js|jsx|json|css|md)$
+        files: ^frontend/.*\.(ts|js|svelte|json|css|md|html)$
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

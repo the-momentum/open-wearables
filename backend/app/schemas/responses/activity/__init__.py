@@ -5,12 +5,15 @@ from .data_point_responses import (
     TimeSeriesSample,
 )
 from .events import (
+    Macros,
     Meal,
     Measurement,
     MenstrualCycleRecord,
+    NutrientValue,
     SleepSession,
+    SleepTotals,
     Workout,
-    WorkoutDetailed,
+    WorkoutTotals,
 )
 from .resilience import (
     DailyHrvScore,
@@ -18,6 +21,7 @@ from .resilience import (
 )
 from .summaries import (
     ActivitySummary,
+    ActivityTotals,
     BloodPressure,
     BodyAveraged,
     BodyLatest,
@@ -42,13 +46,17 @@ __all__ = [
     "IntensityMinutesResult",
     # Events
     "Workout",
-    "WorkoutDetailed",
+    "WorkoutTotals",
     "Meal",
+    "Macros",
+    "NutrientValue",
     "Measurement",
     "MenstrualCycleRecord",
     "SleepSession",
+    "SleepTotals",
     # Summaries
     "ActivitySummary",
+    "ActivityTotals",
     "BodySummary",
     "BloodPressure",
     "BodyAveraged",

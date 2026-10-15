@@ -172,5 +172,11 @@ CLAUDE.local.md
 .claude/
 *.local.mdc
 
+# Exception: generated OpenAPI spec that feeds the docs API Reference
+!docs/openapi.json
+
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
+# Locally checked-out extensions
+extensions/*
+!extensions/.gitkeep

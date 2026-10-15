@@ -16,7 +16,7 @@ keywords: ["flutter health data sdk", "flutter healthkit", "flutter health conne
 
 The Open Wearables Flutter SDK (`open_wearables_health_sdk`) enables secure background synchronization of health data from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
 
-On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open-wearables-android-sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
+On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open_wearables_android_sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
 
 <CardGroup cols={3}>
   <Card title="Flutter SDK Repository" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk">
@@ -77,7 +77,7 @@ On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (
 
     ```yaml
     dependencies:
-      open_wearables_health_sdk: ^0.0.14
+      open_wearables_health_sdk: ^0.0.25
     ```
 
     Then run:
@@ -226,7 +226,7 @@ await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.none);
 The SDK exposes streams for logging and auth errors:
 
 ```dart
-import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 
 // Log stream from native SDK
 MethodChannelOpenWearablesHealthSdk.logStream.listen((message) {
@@ -269,6 +269,18 @@ The SDK supports 40+ health data types across multiple categories:
     | `sixMinuteWalkTestDistance` | 6-minute walk test |
     | `activeEnergy` | Active energy burned |
     | `basalEnergy` | Basal (resting) energy burned |
+  </Accordion>
+
+  <Accordion title="Running & Cycling">
+    | Type | Description |
+    |------|-------------|
+    | `runningPower` | Running power (iOS 16+). On Android, reads power for any activity |
+    | `runningVerticalOscillation` | Running vertical oscillation (iOS 16+, iOS only) |
+    | `runningGroundContactTime` | Running ground contact time (iOS 16+, iOS only) |
+    | `cyclingSpeed` | Cycling speed (iOS 17+). On Android, reads speed for any activity |
+    | `cyclingPower` | Cycling power (iOS 17+). On Android, reads power for any activity |
+    | `cyclingCadence` | Cycling cadence (iOS 17+) |
+    | `cyclingFunctionalThresholdPower` | Cycling functional threshold power (iOS 17+, iOS only) |
   </Accordion>
 
   <Accordion title="Heart & Vitals">
@@ -334,6 +346,15 @@ The SDK supports 40+ health data types across multiple categories:
     | Type | Description |
     |------|-------------|
     | `workout` | All workout types with metadata |
+    | `workoutEffortScore` | Workout effort rated by the user (iOS 18+, iOS only) |
+    | `estimatedWorkoutEffortScore` | Workout effort estimated by Apple Watch (iOS 18+, iOS only) |
+  </Accordion>
+
+  <Accordion title="Aliases">
+    | Type | Alias For |
+    |------|-----------|
+    | `restingEnergy` | `basalEnergy` (iOS only) |
+    | `bloodOxygen` | `oxygenSaturation` (iOS only) |
   </Accordion>
 </AccordionGroup>
 

@@ -106,7 +106,7 @@ def test_save_connection_enqueues_subscriptions_only_in_webhook_mode(
     mock_super.assert_called_once()
     assert mock_send.called is enqueued
     if enqueued:
-        assert mock_send.call_args.kwargs["args"] == ["withings", str(user_id)]
+        assert mock_send.call_args.kwargs["args"] == [str(user_id)]
 
 
 @patch("app.services.providers.withings.oauth.celery_app.send_task", side_effect=RuntimeError("broker down"))

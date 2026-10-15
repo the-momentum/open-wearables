@@ -1,31 +1,9 @@
-# Dependencies
-node_modules
+# Package Managers
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+bun.lockb
 
-# Build outputs
-dist
-build
-.output
-.nitro
-
-# Generated files
-*.gen.ts
-routeTree.gen.ts
-
-# Cache
-.vite
-.cache
-
-# Logs
-*.log
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# IDE
-.vscode
-.idea
-
-# Test coverage
-coverage
+# Miscellaneous
+/static/

@@ -114,9 +114,16 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "maxCadence": SeriesType.cadence,
     "vo2Max": SeriesType.vo2_max,
     # Legacy mappings
-    "totalEnergyBurned": SeriesType.energy,
+    "totalEnergyBurned": SeriesType.active_energy,
     "totalDistance": SeriesType.distance_walking_running,
     "totalSteps": SeriesType.steps,
+}
+
+# Of the above, only these exist on Samsung's ExerciseSession; the rest are HealthKit-only.
+SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
+    k: v
+    for k, v in WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.items()
+    if k in {WorkoutStatisticType.MEAN_CADENCE, WorkoutStatisticType.MAX_CADENCE, WorkoutStatisticType.VO2_MAX}
 }
 
 

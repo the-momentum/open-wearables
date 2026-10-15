@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any
 
+from celery import current_app as celery_app
 from celery import shared_task
 
-from app.integrations.celery.tasks.garmin.backfill_task import trigger_next_pending_type
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     DELAY_BETWEEN_TYPES,
@@ -20,9 +20,9 @@ from app.services.providers.garmin.backfill_state import (
     _get_key,
     complete_backfill,
     get_current_window,
+    get_pending_types,
     get_trace_id,
     get_type_skip_count,
-    is_cancelled,
     is_retry_phase,
     mark_type_failed,
     mark_type_timed_out,
@@ -33,6 +33,8 @@ from app.services.providers.garmin.backfill_state import (
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
+
+_TRIGGER_NEXT_TASK = "app.integrations.celery.tasks.garmin.backfill_task.trigger_next_pending_type"
 
 
 def _classify_chain_stop_error(status_code: int | None, error_text: str) -> tuple[str, str] | None:
@@ -70,8 +72,6 @@ def _classify_chain_stop_error(status_code: int | None, error_text: str) -> tupl
 
 def _finalize_chain_stop(user_id: str, current_window: int, error_msg: str) -> None:
     """Mark all pending types as failed and finalize the backfill."""
-    from app.services.providers.garmin.backfill_state import get_pending_types
-
     pending = get_pending_types(user_id)
     for pending_type in pending:
         mark_type_failed(user_id, pending_type, error_msg)
@@ -90,21 +90,6 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     user_id_str = str(user_id)
     trace_id = get_trace_id(user_id_str)
     type_trace_id = get_trace_id(user_id_str, data_type)
-
-    if is_cancelled(user_id_str):
-        current_window = get_current_window(user_id_str)
-        persist_window_results(user_id_str, current_window)
-        log_structured(
-            logger,
-            "info",
-            "Timeout check: backfill cancelled, stopping",
-            provider="garmin",
-            trace_id=trace_id,
-            type_trace_id=type_trace_id,
-            data_type=data_type,
-            user_id=user_id_str,
-        )
-        return {"status": "cancelled"}
 
     status = get_redis_client().get(_get_key(user_id_str, "types", data_type, "status"))
 
@@ -153,7 +138,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     else:
         record_timed_out_entry(user_id_str, data_type, get_current_window(user_id_str))
 
-    trigger_next_pending_type.apply_async(args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
+    celery_app.send_task(_TRIGGER_NEXT_TASK, args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
 
     skip_count = get_type_skip_count(user_id_str, data_type)
     return {

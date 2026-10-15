@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from base64 import b64encode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID
 
 import httpx
@@ -133,8 +134,14 @@ class BaseOAuthTemplate(ABC):
 
         return oauth_state
 
-    def refresh_access_token(self, db: DbSession, user_id: UUID, refresh_token: str) -> OAuthTokenResponse:
-        """Refreshes the access token using the refresh token."""
+    def refresh_access_token(
+        self, db: DbSession, user_id: UUID, refresh_token: str, *, revoke_on_failure: bool = True
+    ) -> OAuthTokenResponse:
+        """Refreshes the access token using the refresh token.
+
+        Pass ``revoke_on_failure=False`` when the caller revokes the connection itself with a
+        more specific reason than ``refresh_failed``.
+        """
         data, headers = self._prepare_refresh_request(refresh_token)
 
         try:
@@ -180,7 +187,8 @@ class BaseOAuthTemplate(ABC):
             )
             # 400/401 = refresh token is dead so revoke + notify
             if e.response.status_code in (HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED):
-                self._revoke_connection(db, user_id, reason="refresh_failed")
+                if revoke_on_failure:
+                    self._revoke_connection(db, user_id, reason="refresh_failed")
                 raise HTTPException(
                     status_code=HTTP_401_UNAUTHORIZED,
                     detail=f"Refresh token rejected for {self.provider_name}; reconnection required",
@@ -203,6 +211,16 @@ class BaseOAuthTemplate(ABC):
         if not connection or connection.status == ConnectionStatus.REVOKED:
             return
         self.connection_repo.mark_as_revoked(db, connection)
+        log_structured(
+            logger,
+            "info",
+            "Connection revoked",
+            action="connection_revoked",
+            reason=reason,
+            provider=self.provider_name,
+            user_id=str(user_id),
+            connection_id=str(connection.id),
+        )
         on_connection_revoked(
             user_id=user_id,
             provider=self.provider_name,
@@ -235,8 +253,6 @@ class BaseOAuthTemplate(ABC):
         )
 
         if self.credentials.default_scope:
-            from urllib.parse import quote
-
             encoded_scope = quote(self.credentials.default_scope)
             auth_url += f"&scope={encoded_scope}"
 

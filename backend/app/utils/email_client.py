@@ -1,4 +1,8 @@
 import logging
+import smtplib
+import ssl
+from email.message import EmailMessage
+from email.utils import formataddr
 from html import escape
 from typing import Any, cast
 
@@ -10,6 +14,8 @@ from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 _email_validator = TypeAdapter(EmailStr)
+
+SMTP_TIMEOUT_SECONDS = 30
 
 
 def is_valid_email(email: str) -> bool:
@@ -23,49 +29,71 @@ def is_valid_email(email: str) -> bool:
 
 def _get_from_address() -> str:
     """Get the formatted from address."""
-    return f"{settings.email_from_name} <{settings.email_from_address}>"
+    return formataddr((settings.email_from_name, cast(str, settings.email_from_address)))
 
 
-def _is_email_configured() -> bool:
-    """Check if email sending is properly configured."""
-    if not settings.resend_api_key:
-        log_structured(
-            logger,
-            "warning",
-            "RESEND_API_KEY not configured, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
+def get_email_config_error() -> str | None:
+    """Return why email cannot be sent, or None when delivery is configured."""
+    if not settings.smtp_host and not settings.resend_api_key:
+        return "Neither SMTP_HOST nor RESEND_API_KEY configured"
+    if settings.smtp_host and settings.smtp_security == "none" and settings.smtp_username and settings.smtp_password:
+        return "SMTP_SECURITY=none does not allow sending SMTP_USERNAME/SMTP_PASSWORD unencrypted"
     if not settings.email_from_address:
-        log_structured(
-            logger,
-            "warning",
-            "EMAIL_FROM_ADDRESS not configured, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
+        return "EMAIL_FROM_ADDRESS not configured"
     if not settings.email_from_name:
-        log_structured(
-            logger,
-            "warning",
-            "EMAIL_FROM_NAME not configured, skipping email send",
-            provider="email",
-            task="is_email_configured",
-        )
-        return False
-    return True
+        return "EMAIL_FROM_NAME not configured"
+    return None
 
 
-def _configure_resend() -> None:
-    """Configure Resend API key.
+def is_email_configured() -> bool:
+    """Check if email sending is properly configured."""
+    return get_email_config_error() is None
+
+
+def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> None:
+    """Send an email through the Resend API.
 
     Note: The Resend library uses module-level configuration.
     Since we use a single API key for the entire application,
     this is safe even in concurrent environments.
     """
     resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[unresolved-attribute]
+    params = cast(Any, {"from": _get_from_address(), "to": [to_email], "subject": subject, "html": html, "text": text})
+    result = resend.Emails.send(params)
+    logger.info(f"Email sent via Resend, result: {result}")
+
+
+def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> None:
+    """Send an email through the configured SMTP server."""
+    msg = EmailMessage()
+    msg["From"] = _get_from_address()
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(text)
+    msg.add_alternative(html, subtype="html")
+
+    host = cast(str, settings.smtp_host)
+    # smtplib skips certificate verification unless given a context
+    tls_context = ssl.create_default_context()
+    if settings.smtp_security == "ssl":
+        server = smtplib.SMTP_SSL(host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS, context=tls_context)
+    else:
+        server = smtplib.SMTP(host, settings.smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
+    with server:
+        if settings.smtp_security == "starttls":
+            server.starttls(context=tls_context)
+        if settings.smtp_username and settings.smtp_password:
+            server.login(settings.smtp_username, settings.smtp_password.get_secret_value())
+        server.send_message(msg)
+    logger.info(f"Email sent via SMTP ({host}:{settings.smtp_port})")
+
+
+def _send_email(to_email: str, subject: str, html: str, text: str) -> None:
+    """Send an email using SMTP when SMTP_HOST is set, otherwise Resend."""
+    if settings.smtp_host:
+        _send_via_smtp(to_email, subject, html, text)
+    else:
+        _send_via_resend(to_email, subject, html, text)
 
 
 def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str | None = None) -> bool:
@@ -85,26 +113,25 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
             logger, "warning", "Invalid email address provided", provider="email", task="send_invitation_email"
         )
         return False
-    if not _is_email_configured():
+    if config_error := get_email_config_error():
+        log_structured(
+            logger, "warning", f"{config_error}, skipping email send", provider="email", task="send_invitation_email"
+        )
         return False
 
-    _configure_resend()
-    invited_by_text = f" by {escape(invited_by_email)}" if invited_by_email else ""
+    invited_by_text = f" by {invited_by_email}" if invited_by_email else ""
+    expiry_text = f"This invitation will expire in {settings.invitation_expire_days} days."
+    ignore_text = "If you didn't expect this invitation, you can safely ignore this email."
 
     try:
-        from_addr = _get_from_address()
-        logger.info(f"Sending invitation email from '{from_addr}'")
-
-        params = cast(
-            Any,
-            {
-                "from": from_addr,
-                "to": [to_email],
-                "subject": f"You've been invited to join {escape(settings.email_from_name)}",
-                "html": f"""
+        logger.info(f"Sending invitation email from '{_get_from_address()}'")
+        _send_email(
+            to_email,
+            subject=f"You've been invited to join {settings.email_from_name}",
+            html=f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2>You're Invited!</h2>
-                    <p>You've been invited{invited_by_text} to join the team.</p>
+                    <p>You've been invited{escape(invited_by_text)} to join the team.</p>
                     <p style="margin: 30px 0;">
                         <a href="{escape(invite_url)}"
                            style="background-color: #000; color: #fff; padding: 12px 24px;
@@ -112,18 +139,16 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
                             Accept Invitation
                         </a>
                     </p>
-                    <p style="color: #666; font-size: 14px;">
-                        This invitation will expire in {settings.invitation_expire_days} days.
-                    </p>
-                    <p style="color: #666; font-size: 14px;">
-                        If you didn't expect this invitation, you can safely ignore this email.
-                    </p>
+                    <p style="color: #666; font-size: 14px;">{expiry_text}</p>
+                    <p style="color: #666; font-size: 14px;">{ignore_text}</p>
                 </div>
             """,
-            },
+            text=(
+                f"You've been invited{invited_by_text} to join the team.\n\n"
+                f"Accept the invitation: {invite_url}\n\n"
+                f"{expiry_text}\n{ignore_text}\n"
+            ),
         )
-        result = resend.Emails.send(params)
-        logger.info(f"Invitation email sent successfully, result: {result}")
         return True
     except Exception as e:
         log_structured(

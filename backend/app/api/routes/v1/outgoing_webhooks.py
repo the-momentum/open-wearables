@@ -39,7 +39,7 @@ def _ep_to_response(ep: EndpointOut) -> EndpointResponse:
         id=ep.id,
         url=ep.url,
         description=ep.description,
-        filter_types=ep.filter_types,
+        filter_types=ep.event_types,
         user_id=svix_service.user_id_from_endpoint(ep),
     )
 
@@ -172,6 +172,7 @@ def list_endpoint_attempts(
         after=after,
         status=MessageStatus(status) if status is not None else None,
         event_types=event_types,
+        with_content=True,
     )
     result = svix_service.list_message_attempts(app_id, endpoint_id, options)
 

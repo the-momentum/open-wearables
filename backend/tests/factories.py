@@ -9,7 +9,7 @@ Usage:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
@@ -25,6 +25,7 @@ from app.models import (
     Developer,
     EventRecord,
     HealthScore,
+    MealDetails,
     PersonalRecord,
     ProviderSetting,
     SeriesTypeDefinition,
@@ -101,6 +102,16 @@ class SeriesTypeDefinitionFactory(BaseFactory):
             if existing:
                 return existing
         return cls(id=82, code="basal_energy", unit="kcal")
+
+    @classmethod
+    def get_or_create_total_energy(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded total_energy series type (ID=89)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 89).first()
+            if existing:
+                return existing
+        return cls(id=89, code="total_energy", unit="kcal")
 
     @classmethod
     def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
@@ -397,7 +408,8 @@ class UserConnectionFactory(BaseFactory):
     provider_username = factory.Faker("user_name")
     access_token = LazyFunction(lambda: f"access_{uuid4().hex}")  # Optional for SDK providers
     refresh_token = LazyFunction(lambda: f"refresh_{uuid4().hex}")
-    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))  # Optional for SDK providers
+    # Optional for SDK providers
+    token_expires_at = LazyFunction(lambda: datetime.now(timezone.utc) + timedelta(days=1))
     scope = "read_all"
     status = ConnectionStatus.ACTIVE
     last_synced_at = None
@@ -578,6 +590,28 @@ class SleepDetailsFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
+class MealDetailsFactory(BaseFactory):
+    """Factory for MealDetails model."""
+
+    class Meta:
+        model = MealDetails
+
+    title = "Grilled Chicken Breast"
+    meal_type = "lunch"
+    nutrients = LazyFunction(dict)
+
+    @classmethod
+    def _create(cls, model_class: type[MealDetails], *args: Any, **kwargs: Any) -> MealDetails:
+        """Override create to handle event_record relationship."""
+        event_record = kwargs.pop("event_record", None)
+        # Remove any stale record_id that might have been set
+        kwargs.pop("record_id", None)
+        if event_record is None:
+            event_record = EventRecordFactory(category="meal")
+        kwargs["record_id"] = event_record.id
+        return super()._create(model_class, *args, **kwargs)
+
+
 __all__ = [
     "BaseFactory",
     "SeriesTypeDefinitionFactory",
@@ -593,4 +627,5 @@ __all__ = [
     "ProviderSettingFactory",
     "WorkoutDetailsFactory",
     "SleepDetailsFactory",
+    "MealDetailsFactory",
 ]

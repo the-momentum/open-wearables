@@ -11,6 +11,9 @@ IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in t
 
 from enum import Enum
 
+# TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_ below.
+RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {"energy": "active_energy"}
+
 
 class SeriesType(str, Enum):
     """All supported time-series metric types."""
@@ -75,7 +78,7 @@ class SeriesType(str, Enum):
     # ACTIVITY - Basic (IDs 80-99)
     # =========================================================================
     steps = "steps"
-    energy = "energy"  # Active energy burned
+    active_energy = "active_energy"
     basal_energy = "basal_energy"
     stand_time = "stand_time"
     exercise_time = "exercise_time"
@@ -83,6 +86,7 @@ class SeriesType(str, Enum):
     flights_climbed = "flights_climbed"
     average_met = "average_met"
     active_time = "active_time"  # Provider-reported daily active time (non-sedentary)
+    total_energy = "total_energy"  # Provider-reported total energy (active + basal), no split available
 
     # =========================================================================
     # ACTIVITY - Distance (IDs 100-119)
@@ -164,6 +168,52 @@ class SeriesType(str, Enum):
     withings_metabolic_age = "withings_metabolic_age"
 
     # =========================================================================
+    # NUTRITION - Dietary intake (IDs 260-301)
+    # =========================================================================
+    dietary_energy_consumed = "dietary_energy_consumed"
+    dietary_carbohydrates = "dietary_carbohydrates"
+    dietary_fiber = "dietary_fiber"
+    dietary_sugar = "dietary_sugar"
+    dietary_fat_total = "dietary_fat_total"
+    dietary_fat_saturated = "dietary_fat_saturated"
+    dietary_fat_monounsaturated = "dietary_fat_monounsaturated"
+    dietary_fat_polyunsaturated = "dietary_fat_polyunsaturated"
+    dietary_cholesterol = "dietary_cholesterol"
+    dietary_protein = "dietary_protein"
+    dietary_sodium = "dietary_sodium"
+    dietary_potassium = "dietary_potassium"
+    dietary_calcium = "dietary_calcium"
+    dietary_iron = "dietary_iron"
+    dietary_magnesium = "dietary_magnesium"
+    dietary_phosphorus = "dietary_phosphorus"
+    dietary_zinc = "dietary_zinc"
+    dietary_copper = "dietary_copper"
+    dietary_manganese = "dietary_manganese"
+    dietary_selenium = "dietary_selenium"
+    dietary_chromium = "dietary_chromium"
+    dietary_molybdenum = "dietary_molybdenum"
+    dietary_iodine = "dietary_iodine"
+    dietary_chloride = "dietary_chloride"
+    dietary_vitamin_a = "dietary_vitamin_a"
+    dietary_vitamin_b6 = "dietary_vitamin_b6"
+    dietary_vitamin_b12 = "dietary_vitamin_b12"
+    dietary_vitamin_c = "dietary_vitamin_c"
+    dietary_vitamin_d = "dietary_vitamin_d"
+    dietary_vitamin_e = "dietary_vitamin_e"
+    dietary_vitamin_k = "dietary_vitamin_k"
+    dietary_thiamin = "dietary_thiamin"
+    dietary_riboflavin = "dietary_riboflavin"
+    dietary_niacin = "dietary_niacin"
+    dietary_folate = "dietary_folate"
+    dietary_pantothenic_acid = "dietary_pantothenic_acid"
+    dietary_biotin = "dietary_biotin"
+    dietary_caffeine = "dietary_caffeine"
+    dietary_fat_trans = "dietary_fat_trans"
+    dietary_energy_from_fat = "dietary_energy_from_fat"
+    dietary_fat_unsaturated = "dietary_fat_unsaturated"
+    dietary_folic_acid = "dietary_folic_acid"
+
+    # =========================================================================
     # OTHER (IDs 500-)
     # =========================================================================
 
@@ -175,6 +225,12 @@ class SeriesType(str, Enum):
     number_of_alcoholic_beverages = "number_of_alcoholic_beverages"
     nike_fuel = "nike_fuel"
     hydration = "hydration"
+
+    # TEMPORARY until 1.0: lookup only, so `.value` stays current and responses carry the new name.
+    @classmethod
+    def _missing_(cls, value: object) -> "SeriesType | None":
+        renamed = RETIRED_SERIES_TYPE_NAMES.get(value) if isinstance(value, str) else None
+        return cls(renamed) if renamed else None
 
 
 # =============================================================================
@@ -235,7 +291,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # ACTIVITY - Basic (IDs 80-99)
     # -------------------------------------------------------------------------
     (80, SeriesType.steps, "count"),
-    (81, SeriesType.energy, "kcal"),
+    (81, SeriesType.active_energy, "kcal"),
     (82, SeriesType.basal_energy, "kcal"),
     (83, SeriesType.stand_time, "minutes"),
     (84, SeriesType.exercise_time, "minutes"),
@@ -243,6 +299,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (86, SeriesType.flights_climbed, "count"),
     (87, SeriesType.average_met, "met"),
     (88, SeriesType.active_time, "minutes"),
+    (89, SeriesType.total_energy, "kcal"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Distance (IDs 100-119)
     # -------------------------------------------------------------------------
@@ -313,6 +370,51 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (240, SeriesType.withings_pulse_wave_velocity, "m_per_s"),
     (241, SeriesType.withings_metabolic_age, "years"),
     # -------------------------------------------------------------------------
+    # NUTRITION - Dietary intake (IDs 260-301)
+    # -------------------------------------------------------------------------
+    (260, SeriesType.dietary_energy_consumed, "kcal"),
+    (261, SeriesType.dietary_carbohydrates, "g"),
+    (262, SeriesType.dietary_fiber, "g"),
+    (263, SeriesType.dietary_sugar, "g"),
+    (264, SeriesType.dietary_fat_total, "g"),
+    (265, SeriesType.dietary_fat_saturated, "g"),
+    (266, SeriesType.dietary_fat_monounsaturated, "g"),
+    (267, SeriesType.dietary_fat_polyunsaturated, "g"),
+    (268, SeriesType.dietary_cholesterol, "mg"),
+    (269, SeriesType.dietary_protein, "g"),
+    (270, SeriesType.dietary_sodium, "mg"),
+    (271, SeriesType.dietary_potassium, "mg"),
+    (272, SeriesType.dietary_calcium, "mg"),
+    (273, SeriesType.dietary_iron, "mg"),
+    (274, SeriesType.dietary_magnesium, "mg"),
+    (275, SeriesType.dietary_phosphorus, "mg"),
+    (276, SeriesType.dietary_zinc, "mg"),
+    (277, SeriesType.dietary_copper, "mg"),
+    (278, SeriesType.dietary_manganese, "mg"),
+    (279, SeriesType.dietary_selenium, "mcg"),
+    (280, SeriesType.dietary_chromium, "mcg"),
+    (281, SeriesType.dietary_molybdenum, "mcg"),
+    (282, SeriesType.dietary_iodine, "mcg"),
+    (283, SeriesType.dietary_chloride, "mg"),
+    (284, SeriesType.dietary_vitamin_a, "mcg"),
+    (285, SeriesType.dietary_vitamin_b6, "mg"),
+    (286, SeriesType.dietary_vitamin_b12, "mcg"),
+    (287, SeriesType.dietary_vitamin_c, "mg"),
+    (288, SeriesType.dietary_vitamin_d, "mcg"),
+    (289, SeriesType.dietary_vitamin_e, "mg"),
+    (290, SeriesType.dietary_vitamin_k, "mcg"),
+    (291, SeriesType.dietary_thiamin, "mg"),
+    (292, SeriesType.dietary_riboflavin, "mg"),
+    (293, SeriesType.dietary_niacin, "mg"),
+    (294, SeriesType.dietary_folate, "mcg"),
+    (295, SeriesType.dietary_pantothenic_acid, "mg"),
+    (296, SeriesType.dietary_biotin, "mcg"),
+    (297, SeriesType.dietary_caffeine, "mg"),
+    (298, SeriesType.dietary_fat_trans, "g"),
+    (299, SeriesType.dietary_energy_from_fat, "kcal"),
+    (300, SeriesType.dietary_fat_unsaturated, "g"),
+    (301, SeriesType.dietary_folic_acid, "mcg"),
+    # -------------------------------------------------------------------------
     # OTHER (IDs 500-)
     # -------------------------------------------------------------------------
     (500, SeriesType.electrodermal_activity, "count"),
@@ -378,6 +480,7 @@ _CATEGORY_RANGES: list[tuple[range, str]] = [
     (range(180, 200), "Activity - Generic"),
     (range(200, 220), "Environmental"),
     (range(220, 250), "Provider-Specific"),  # 220-239 Garmin, 240-249 Withings
+    (range(260, 302), "Nutrition"),
     (range(500, 600), "Other"),
 ]
 

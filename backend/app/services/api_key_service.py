@@ -11,7 +11,7 @@ from app.models import ApiKey, Developer
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 from app.services.services import AppService
-from app.utils.auth import get_current_developer_optional, oauth2_scheme
+from app.utils.auth import get_current_developer_optional, oauth2_scheme, validate_api_key
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 from app.utils.security import hash_api_key
 
@@ -82,9 +82,7 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
     @handle_exceptions
     def validate_api_key(self, db: DbSession, key: str) -> ApiKey:
         """Validate the raw API key against stored hashes. Raises 401 if invalid."""
-        if not key or not (api_key := self.crud.get_by_hash(db, hash_api_key(key))):
-            raise HTTPException(status_code=401, detail="Invalid or missing API key")
-        return api_key
+        return validate_api_key(db, key)
 
 
 api_key_service = ApiKeyService(log=getLogger(__name__))
@@ -120,5 +118,6 @@ async def _require_api_key_detached(
         return await _authenticate(db, await get_current_developer_optional(db, token), x_open_wearables_api_key)
 
 
-ApiKeyDep = Annotated[str, Depends(_require_api_key)]
+API_KEY_REQUIRED = Depends(_require_api_key)
+ApiKeyDep = Annotated[str, API_KEY_REQUIRED]
 StreamingApiKeyDep = Annotated[str, Depends(_require_api_key_detached)]

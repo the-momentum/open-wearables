@@ -3,7 +3,7 @@
 This file extends the root AGENTS.md with backend-specific patterns.
 
 ## Tech Stack
-- Python 3.13+
+- Python 3.14+
 - FastAPI for API framework
 - SQLAlchemy 2.0 for ORM
 - PostgreSQL for database
@@ -177,9 +177,7 @@ except Exception as e:
 try:
     process_item(item)
 except Exception as e:
-    log_and_capture_error(
-        e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id, "error": str(e)}
-    )
+    log_and_capture_error(e, logger, "Failed to process item", extra={"item_id": item.id, "user_id": user_id})
     continue
 ```
 
@@ -188,6 +186,8 @@ except Exception as e:
 - ✅ Batch processing where you want to continue despite errors
 - ✅ Multi-provider sync where one provider failure shouldn't stop others
 - ❌ Don't use if exception is re-raised or allowed to propagate naturally
+
+**Keep health data and PII out of Sentry:** `extra` is sent to Sentry as event context. Put only identifiers and categories in it (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise and to `logger.error(...)` text, since both become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 
 ### Logging
 
@@ -215,6 +215,7 @@ log_structured(
 
 - Pass the message as a stable, human-readable string and put the variable parts in `**attributes` (don't f-string them into the message).
 - `trace_id` is injected automatically from context when not supplied.
+- Output format follows `LOG_FORMAT` (`legacy` default, `json`, `text`) and `LOG_LEVEL` (see `app/utils/logging_setup.py`). Keep attribute values JSON-serializable: an unserializable value raises `TypeError` at the call site in every mode, also when `LOG_LEVEL` filters the call out.
 - For handled exceptions in background tasks you still want in Sentry, use `log_and_capture_error` (see above) rather than plain `logger.error`. Keep its `message` stable there too and pass variables via `extra` - note that `extra` becomes Sentry event context, not queryable log attributes.
 
 ### Provider Strategy Pattern
@@ -233,6 +234,8 @@ class GarminStrategy(BaseProviderStrategy):
         return "https://apis.garmin.com"
 ```
 
+When adding a capability to one provider, check whether other providers will need it. If so, define it on the relevant shared base (`BaseProviderStrategy`, `BaseOAuthTemplate`, `BaseWebhookService`, `BaseWorkoutsTemplate`, ...) following that base's existing convention for unsupported operations, and override it in the specific provider rather than implementing it in isolation.
+
 ## Database Migrations
 
 Schema changes use Alembic:
@@ -243,6 +246,14 @@ make migrate                               # Apply
 make downgrade                             # Rollback
 ```
 
+### Resolving migration conflicts
+
+When you rebase and `main` gained a migration in the meantime, `alembic heads` shows two heads. Resolve it by moving **your** migration to the end of the chain. Never touch a migration that is already on `main`: databases that applied it treat everything inserted before it as already done and skip it silently.
+
+1. Set `down_revision` of your migration to the head from `main`.
+2. Rename your file so its date is later than the last migration on `main`. Keep the `rev` id. If your dev database already ran this migration, run `make downgrade` before re-pointing and `make migrate` after; otherwise the database keeps your revision as current and never applies the migration from `main`.
+3. CI checks the chain and fails on a second head, on a changed `down_revision` in a migration already on `main`, and on a deleted or renamed migration.
+
 ### Data migrations
 
 One-off data corrections, backfills, or clean-ups that can't be expressed as a
@@ -250,6 +261,11 @@ zero-downtime Alembic migration live in `scripts/data_migrations/`. Each must be
 idempotent and support a `--dry-run` flag, and its **module docstring is the source
 of truth** for the rationale (the problem it fixes, what it changes, and any details
 such as conflict handling) — put it there, not in the docs.
+
+A script whose idle run is expensive (it has to scan a large table to find there is nothing
+to do) runs through `data_migration_service.run`, which records a clean run in the
+`data_migration` table and skips the script afterwards. Cheap scripts stay unrecorded, so they
+keep catching rows an old pod writes during a rolling deploy.
 
 See `docs/dev-guides/data-migrations.mdx` for how to run them and how they're wired
 into startup.
@@ -393,7 +409,8 @@ app/api/routes/
 
 **Route implementation:**
 - Use `@router.method()` decorator with HTTP method and path
-- Add `response_model` (Pydantic) and `status_code` (fastapi.status)
+- Add `response_model` (Pydantic)
+- Set `status_code` (fastapi.status) only when the success response is not 200: `HTTP_201_CREATED` for creates, `HTTP_202_ACCEPTED` for background work, `HTTP_204_NO_CONTENT` for deletes without a body. FastAPI defaults to 200, so never write `status_code=status.HTTP_200_OK`
 - Define functions as `async` by default
 - Use **kebab-case** for paths: `/heart-rate`, `/import-data`
 - Keep route code minimal, delegate to services

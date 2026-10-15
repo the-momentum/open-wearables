@@ -1,4 +1,4 @@
-"""Generators for workout, sleep, and personal record seed data."""
+"""Generators for workout, sleep, meal, and personal record seed data."""
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -7,17 +7,116 @@ from uuid import UUID, uuid4
 from faker import Faker
 
 from app.constants.sleep import SleepStageType
-from app.schemas.enums import ProviderName, WorkoutType
+from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.enums.workout_types import WORKOUTS_WITH_PACE
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    MealDetailCreate,
     PersonalRecordCreate,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
-from app.schemas.utils.seed_data import SLEEP_STAGE_PROFILES, SleepConfig, WorkoutConfig
+from app.schemas.model_crud.activities.zones import HRZone, HRZones, PowerZone, PowerZones
+from app.schemas.utils.seed_data import SLEEP_STAGE_PROFILES, MealConfig, SleepConfig, WorkoutConfig
 
-from .constants import GENDERS, OUTDOOR_WORKOUT_TYPES, PROVIDER_CONFIGS
+from .constants import (
+    DEFAULT_MEAL_TYPES,
+    GENDERS,
+    MEAL_TITLES,
+    OUTDOOR_WORKOUT_TYPES,
+    PROVIDER_CONFIGS,
+)
+from .time_series_generators import ProviderDescriptor
+
+# Zones reach us from a FIT file (Garmin) or from per-zone durations in the
+# provider's own payload (Whoop). Nobody else reports them, and seeding them
+# elsewhere would make dev data claim a capability the integration does not have.
+ZONE_PROVIDERS = frozenset({ProviderName.GARMIN, ProviderName.WHOOP})
+
+# Power zones only where power samples also arrive: Garmin's activity details
+# carry watts, Whoop's payload does not, and zones describing a metric nobody
+# recorded are zones with nothing to draw them against.
+POWER_ZONE_PROVIDERS = frozenset({ProviderName.GARMIN})
+
+# Power is a bike metric: no other sport reports watts often enough to seed.
+CYCLING_WORKOUT_TYPES = frozenset(
+    {
+        WorkoutType.CYCLING,
+        WorkoutType.MOUNTAIN_BIKING,
+        WorkoutType.INDOOR_CYCLING,
+        WorkoutType.CYCLOCROSS,
+    }
+)
+
+# Average speed (m/s) per pace-based sport; distance and Garmin's average_speed
+# both derive from it so they agree with the workout duration.
+_SPEED_RANGES: dict[frozenset[WorkoutType], tuple[float, float]] = {
+    frozenset({WorkoutType.SWIMMING, WorkoutType.POOL_SWIMMING, WorkoutType.OPEN_WATER_SWIMMING}): (0.6, 1.4),
+    frozenset(
+        {
+            WorkoutType.WALKING,
+            WorkoutType.HIKING,
+            WorkoutType.MOUNTAINEERING,
+            WorkoutType.TRAIL_HIKING,
+            WorkoutType.WALKING_FITNESS,
+            WorkoutType.CASUAL_WALKING,
+        }
+    ): (1.0, 1.8),
+    frozenset({WorkoutType.RUNNING, WorkoutType.TRAIL_RUNNING, WorkoutType.TREADMILL}): (2.3, 4.5),
+    frozenset(
+        {
+            WorkoutType.CYCLING,
+            WorkoutType.MOUNTAIN_BIKING,
+            WorkoutType.INDOOR_CYCLING,
+            WorkoutType.CYCLOCROSS,
+            WorkoutType.E_BIKING,
+        }
+    ): (5.0, 10.0),
+}
+_DEFAULT_SPEED_RANGE = (1.5, 5.0)
+
+
+def _pick_speed(workout_type: WorkoutType, fake: Faker) -> float:
+    low, high = next((r for types, r in _SPEED_RANGES.items() if workout_type in types), _DEFAULT_SPEED_RANGE)
+    return round(fake.random.uniform(low, high), 3)
+
+
+# Fractions of max heart rate, the boundaries a FIT file carries.
+HR_ZONE_CEILINGS = (0.6, 0.7, 0.8, 0.9, 1.0)
+
+# Most of a session sits in the middle; the top zone is where it hurts.
+ZONE_SHARES = (0.12, 0.28, 0.32, 0.20, 0.08)
+
+
+def _generate_hr_zones(duration_seconds: int, heart_rate_max: int) -> HRZones:
+    """Time in five zones, bounded as a FIT file bounds them."""
+    return HRZones(
+        zones=[
+            HRZone(
+                zone=index,
+                seconds=round(duration_seconds * share, 1),
+                max_bpm=round(heart_rate_max * ceiling),
+            )
+            for index, (share, ceiling) in enumerate(zip(ZONE_SHARES, HR_ZONE_CEILINGS, strict=True))
+        ],
+        max_hr=heart_rate_max,
+        threshold_hr=round(heart_rate_max * 0.87),
+    )
+
+
+def _generate_power_zones(duration_seconds: int, ftp_watts: int) -> PowerZones:
+    """Only the bike reports these, and only from a FIT file."""
+    return PowerZones(
+        zones=[
+            PowerZone(
+                zone=index,
+                seconds=round(duration_seconds * share, 1),
+                max_watts=round(ftp_watts * ceiling),
+            )
+            for index, (share, ceiling) in enumerate(zip(ZONE_SHARES, (0.6, 0.8, 0.95, 1.1, 1.5), strict=True))
+        ],
+        ftp_watts=ftp_watts,
+    )
 
 
 def _resolve_date_bounds(
@@ -93,8 +192,9 @@ def _generate_workout(
     provider: ProviderName,
     last_synced_at: datetime,
     config: WorkoutConfig,
+    device: ProviderDescriptor | None = None,
 ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
-    """Generate a single workout with parameters from *config*."""
+    """Generate a single workout with parameters from *config*, recorded on *device* if given."""
     start_bound, end_bound = _resolve_date_bounds(
         config.date_from,
         config.date_to,
@@ -125,24 +225,31 @@ def _generate_workout(
 
     # Oura doesn't expose device info via its API
     device_name: str | None = None
-    device_provider: str | None = None
     sw_version: str | None = None
-    if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
+    if device is not None:
+        device_name = device.device_model
+        sw_version = device.software_version
+    elif provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
-        device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
 
     # Provider-specific workout detail fields
     energy_burned: Decimal | None = None
     elevation_gain: Decimal | None = None
     average_speed: Decimal | None = None
+    distance: Decimal | None = None
+
+    # Every seeded provider reports distance for pace-based sports
+    speed = _pick_speed(workout_type, fake) if workout_type in WORKOUTS_WITH_PACE else None
+    if speed is not None:
+        distance = Decimal(round(speed * duration_seconds))
 
     if provider == ProviderName.GARMIN:
         energy_burned = Decimal(fake.random_int(min=200, max=800))
         if workout_type in OUTDOOR_WORKOUT_TYPES:
             elevation_gain = Decimal(fake.random_int(min=10, max=500))
-        if workout_type in WORKOUTS_WITH_PACE:
-            average_speed = Decimal(str(round(fake.random.uniform(1.5, 8.0), 3)))
+        if speed is not None:
+            average_speed = Decimal(str(speed))
     elif provider == ProviderName.APPLE:
         energy_burned = Decimal(fake.random_int(min=150, max=700))
         if workout_type in OUTDOOR_WORKOUT_TYPES:
@@ -152,16 +259,23 @@ def _generate_workout(
         if workout_type in OUTDOOR_WORKOUT_TYPES:
             elevation_gain = Decimal(fake.random_int(min=5, max=400))
 
+    hr_zones = None
+    power_zones = None
+    if provider in ZONE_PROVIDERS:
+        hr_zones = _generate_hr_zones(duration_seconds, heart_rate_max)
+        if provider in POWER_ZONE_PROVIDERS and workout_type in CYCLING_WORKOUT_TYPES:
+            power_zones = _generate_power_zones(duration_seconds, fake.random_int(min=180, max=280))
+
     record = EventRecordCreate(
         id=workout_id,
-        source=device_provider,
+        source=provider.value,
         user_id=user_id,
         category="workout",
         type=workout_type,
         duration_seconds=duration_seconds,
         source_name=prov_config["source_name"],
         device_model=device_name,
-        provider=device_provider,
+        provider=provider.value,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -174,8 +288,11 @@ def _generate_workout(
         heart_rate_avg=heart_rate_avg,
         steps_count=steps,
         energy_burned=energy_burned,
+        distance=distance,
         total_elevation_gain=elevation_gain,
         average_speed=average_speed,
+        hr_zones=hr_zones,
+        power_zones=power_zones,
     )
 
     return record, detail
@@ -258,23 +375,21 @@ def _generate_sleep(
 
     # Oura doesn't expose device info via its API
     device_name: str | None = None
-    device_provider: str | None = None
     sw_version: str | None = None
     if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
-        device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
 
     record = EventRecordCreate(
         id=sleep_id,
-        source=device_provider,
+        source=provider.value,
         user_id=user_id,
         category="sleep",
         type=None,
         duration_seconds=sleep_duration_seconds,
         source_name=prov_config["source_name"],
         device_model=device_name,
-        provider=device_provider,
+        provider=provider.value,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -303,3 +418,77 @@ def _generate_personal_record(user_id: UUID, fake: Faker) -> PersonalRecordCreat
         birth_date=fake.date_of_birth(minimum_age=18, maximum_age=80),
         gender=fake.random.choice(GENDERS) if fake.boolean(chance_of_getting_true=80) else None,
     )
+
+
+def _generate_spread_timestamps(fake: Faker, start: datetime, end: datetime, count: int) -> list[datetime]:
+    """*count* timestamps, one random draw per equal-width slice of [start, end]."""
+    if count <= 0:
+        return []
+    bucket_width = (end - start) / count
+    return [
+        start + i * bucket_width + timedelta(seconds=fake.random.uniform(0, bucket_width.total_seconds()))
+        for i in range(count)
+    ]
+
+
+def _generate_meal(
+    user_id: UUID,
+    fake: Faker,
+    provider: ProviderName,
+    start_datetime: datetime,
+    config: MealConfig,
+) -> tuple[EventRecordCreate, MealDetailCreate]:
+    """Generate a single meal at *start_datetime*, its nutrients on the meal detail."""
+    meal_type = fake.random.choice(DEFAULT_MEAL_TYPES)
+    title = fake.random.choice(MEAL_TITLES[meal_type])
+
+    end_datetime = start_datetime + timedelta(minutes=fake.random_int(min=5, max=30))
+
+    calories = fake.random_int(min=config.calories_range[0], max=config.calories_range[1])
+    protein_pct = fake.random.uniform(0.15, 0.30)
+    fat_pct = fake.random.uniform(0.20, 0.35)
+    carbs_pct = 1 - protein_pct - fat_pct
+
+    protein_g = round(calories * protein_pct / 4, 1)
+    fat_g = round(calories * fat_pct / 9, 1)
+    carbs_g = round(calories * carbs_pct / 4, 1)
+    fiber_g = round(carbs_g * fake.random.uniform(0.08, 0.15), 1)
+
+    meal_id = uuid4()
+    prov_config = PROVIDER_CONFIGS[provider]
+
+    device_name: str | None = None
+    sw_version: str | None = None
+    if fake.boolean(chance_of_getting_true=80):
+        device_name = fake.random.choice(prov_config["devices"])
+        sw_version = fake.random.choice(prov_config["os_versions"])
+
+    record = EventRecordCreate(
+        id=meal_id,
+        external_id=str(meal_id),
+        source=provider.value,
+        user_id=user_id,
+        category="meal",
+        type=None,
+        duration_seconds=int((end_datetime - start_datetime).total_seconds()),
+        source_name=prov_config["source_name"],
+        device_model=device_name,
+        provider=provider.value,
+        software_version=sw_version,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    detail = MealDetailCreate(
+        record_id=meal_id,
+        title=title,
+        meal_type=meal_type,
+        nutrients={
+            SeriesType.dietary_energy_consumed: float(calories),
+            SeriesType.dietary_protein: protein_g,
+            SeriesType.dietary_carbohydrates: carbs_g,
+            SeriesType.dietary_fat_total: fat_g,
+            SeriesType.dietary_fiber: fiber_g,
+            SeriesType.hydration: float(fake.random_int(min=100, max=500)),
+        },
+    )
+    return record, detail

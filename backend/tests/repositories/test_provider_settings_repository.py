@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import LiveSyncMode
+from app.schemas.enums import DataGranularity
 from tests.factories import ProviderSettingFactory
 
 
@@ -201,3 +202,41 @@ class TestProviderSettingsRepository:
 
         db.expire_all()
         assert provider_repo.get_all(db)["strava"].live_sync_mode == LiveSyncMode.PULL
+
+
+class TestGetDataGranularity:
+    """The column is a plain String, so reads must be coerced back to the enum (#1544)."""
+
+    @pytest.fixture
+    def provider_repo(self) -> ProviderSettingsRepository:
+        return ProviderSettingsRepository()
+
+    def test_returns_none_when_unset(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
+        provider_repo.upsert(db, provider="google", is_enabled=True)
+
+        assert provider_repo.get_data_granularity(db, "google") is None
+
+    def test_returns_none_for_unknown_provider(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
+        assert provider_repo.get_data_granularity(db, "nope") is None
+
+    @pytest.mark.parametrize("granularity", list(DataGranularity))
+    def test_round_trips_as_an_enum_member(
+        self, db: Session, provider_repo: ProviderSettingsRepository, granularity: DataGranularity
+    ) -> None:
+        provider_repo.upsert(db, provider="google", is_enabled=True, data_granularity=granularity)
+
+        stored = provider_repo.get_data_granularity(db, "google")
+
+        assert stored is granularity
+        assert stored.value == granularity.value  # the attribute access that raised in #1544
+
+    def test_coerces_a_value_written_as_a_bare_string(
+        self, db: Session, provider_repo: ProviderSettingsRepository
+    ) -> None:
+        """A value stored through the API arrives as a str; the read must still yield the enum."""
+        provider_repo.upsert(db, provider="google", is_enabled=True, data_granularity="daily")  # ty:ignore
+
+        stored = provider_repo.get_data_granularity(db, "google")
+
+        assert isinstance(stored, DataGranularity)
+        assert stored is DataGranularity.DAILY

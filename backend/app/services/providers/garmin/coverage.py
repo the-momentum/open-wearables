@@ -19,18 +19,20 @@ ACTIVITY_SAMPLE_SERIES: list[tuple[str, SeriesType]] = [
 # Daily summary field → SeriesType (/wellness-api/rest/dailies).
 DAILIES_SERIES: list[tuple[str, SeriesType]] = [
     ("steps", SeriesType.steps),
-    ("active_calories", SeriesType.energy),
+    ("active_calories", SeriesType.active_energy),
+    ("bmr_calories", SeriesType.basal_energy),
     ("resting_heart_rate", SeriesType.resting_heart_rate),
     ("floors_climbed", SeriesType.flights_climbed),
     ("distance_meters", SeriesType.distance_walking_running),
     ("active_time", SeriesType.active_time),
+    ("exercise_time", SeriesType.exercise_time),
 ]
 
 # Epoch sample category → SeriesType (/wellness-api/rest/epochs).
 EPOCHS_SERIES: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
     "steps": SeriesType.steps,
-    "energy": SeriesType.energy,
+    "energy": SeriesType.active_energy,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
@@ -52,7 +54,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.blood_pressure_diastolic,  # /wellness-api/rest/bloodPressures
         SeriesType.vo2_max,  # /wellness-api/rest/userMetrics
         SeriesType.garmin_fitness_age,  # /wellness-api/rest/userMetrics
-        SeriesType.skin_temperature,  # /wellness-api/rest/skinTemp
+        SeriesType.skin_temperature_deviation,  # /wellness-api/rest/skinTemp (avgDeviationCelsius)
     }
 )
 
@@ -70,6 +72,9 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
         "total_elevation_gain",
         "entry_source",
         "label",
+        "hr_zones",
+        "power_zones",
+        "segments",
     }
 )
 

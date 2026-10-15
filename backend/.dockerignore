@@ -15,3 +15,8 @@ celerybeat-schedule-wal
 *.log
 *.tmp
 *.bak
+
+# Local secrets. Without this a local build copies config/.env into the image.
+config/.env
+config/.env.*
+!config/.env.example

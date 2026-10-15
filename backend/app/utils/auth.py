@@ -7,12 +7,22 @@ from jose import JWTError, jwt
 
 from app.config import settings
 from app.database import DbSession
-from app.models import Developer
+from app.models import ApiKey, Developer
+from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.developer_repository import DeveloperRepository
 from app.schemas.auth import SDKAuthContext
+from app.utils.security import hash_api_key
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 developer_repository = DeveloperRepository(Developer)
+api_key_repository = ApiKeyRepository(ApiKey)
+
+
+def validate_api_key(db: DbSession, key: str | None) -> ApiKey:
+    """Validate the raw API key against stored hashes. Raises 401 if invalid."""
+    if not key or not (api_key := api_key_repository.get_by_hash(db, hash_api_key(key))):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
 
 
 async def get_current_developer(
@@ -107,9 +117,6 @@ async def get_sdk_auth(
 
     Returns SDKAuthContext with auth_type and relevant identifiers.
     """
-    # Import here to avoid circular imports
-    from app.services.api_key_service import api_key_service
-
     # Try SDK user token first
     if token:
         try:
@@ -130,7 +137,7 @@ async def get_sdk_auth(
 
     # Fall back to API key (backwards compatibility)
     if x_open_wearables_api_key:
-        api_key = api_key_service.validate_api_key(db, x_open_wearables_api_key)
+        api_key = validate_api_key(db, x_open_wearables_api_key)
         return SDKAuthContext(auth_type="api_key", api_key_id=str(api_key.id))
 
     raise HTTPException(
@@ -140,3 +147,24 @@ async def get_sdk_auth(
 
 
 SDKAuthDep = Annotated[SDKAuthContext, Depends(get_sdk_auth)]
+
+
+async def get_combined_auth(
+    db: DbSession,
+    token: Annotated[str | None, Depends(oauth2_scheme)] = None,
+    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
+) -> SDKAuthContext:
+    """Accept a developer JWT, an API key, or an SDK user token.
+
+    For endpoints both the dashboard and the mobile SDK call.
+    ``get_current_developer_optional`` returns None for SDK-scoped tokens, so they fall
+    through to ``get_sdk_auth``. An ``sdk_token`` caller speaks only for its own user, so
+    endpoints branching on ``auth_type`` have to scope it themselves.
+    """
+    if developer := await get_current_developer_optional(db, token):
+        return SDKAuthContext(auth_type="developer", developer_id=str(developer.id))
+
+    return await get_sdk_auth(db, token, x_open_wearables_api_key)
+
+
+CombinedAuthDep = Annotated[SDKAuthContext, Depends(get_combined_auth)]

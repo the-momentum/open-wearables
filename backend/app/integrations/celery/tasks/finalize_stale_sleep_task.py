@@ -8,7 +8,7 @@ from celery import shared_task
 from app.config import settings
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
-from app.services.apple.healthkit.sleep_service import (
+from app.services.sdk.sleep_service import (
     active_users_key,
     finish_sleep,
     load_sleep_state,

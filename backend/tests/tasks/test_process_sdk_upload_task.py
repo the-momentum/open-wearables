@@ -68,7 +68,7 @@ class TestProcessSDKUploadTask:
         self,
         mock_user_repo_class: MagicMock,
         mock_session_local: MagicMock,
-        mock_hk_import_service: MagicMock,
+        mock_sdk_import_service: MagicMock,
         db: Session,
         mock_celery_app: MagicMock,
     ) -> None:
@@ -84,7 +84,7 @@ class TestProcessSDKUploadTask:
 
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"status_code": 200, "message": "Import successful"}
-        mock_hk_import_service.import_data_from_request.return_value = mock_response
+        mock_sdk_import_service.import_data_from_request.return_value = mock_response
 
         content = '{"data":{"workouts":[],"records":[]}}'
         content_type = "application/json"
@@ -99,7 +99,7 @@ class TestProcessSDKUploadTask:
 
         # Assert
         assert result["status_code"] == 200
-        mock_hk_import_service.import_data_from_request.assert_called_once()
+        mock_sdk_import_service.import_data_from_request.assert_called_once()
 
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")

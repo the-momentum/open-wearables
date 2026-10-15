@@ -777,10 +777,14 @@ Some providers expose an API to register webhook subscriptions programmatically 
 To enable this:
 
 1. Set `webhook_registration_api=True` in your strategy's `ProviderCapabilities`.
-2. Override `register_webhooks(callback_url)` in your strategy to call your provider's subscription registration API. It should be idempotent — skip existing subscriptions, create missing ones.
+2. Implement `register_subscriptions(callback_url)` on your webhook service (wired as `self.webhook_service` in the strategy) to call your provider's subscription registration API. It should be idempotent — skip existing subscriptions, create missing ones.
 
 ```python
 class MyProviderStrategy(BaseProviderStrategy):
+    def __init__(self) -> None:
+        super().__init__()
+        self.webhook_service = MyProviderWebhookService()
+
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
@@ -788,12 +792,45 @@ class MyProviderStrategy(BaseProviderStrategy):
             webhook_ping=True,
             webhook_registration_api=True,
         )
-
-    async def register_webhooks(self, callback_url: str) -> Any:
-        return await my_provider_webhook_service.register_subscriptions(callback_url)
 ```
 
-When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform automatically dispatches a Celery task (`register_provider_webhooks`) that calls `strategy.register_webhooks(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+When an admin changes the sync mode via `PUT /api/v1/oauth/providers/{provider}`, the settings service hands the new mode to `strategy.apply_live_sync_mode(mode)`, which dispatches the `reconcile_provider_webhooks` Celery task so the request is not blocked on the provider's API. The task registers on `webhook` and deletes on `pull`. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+
+Implement `deregister_subscriptions()` on your webhook service on top of the list/delete methods it already has — that is the `pull` half, and without it no events stop arriving when an admin switches back to periodic pull. Override `apply_live_sync_mode()` on the strategy only if reconciliation cannot go through that task at all.
+
+```python
+class MyProviderWebhookService(BaseWebhookService):
+    async def deregister_subscriptions(self) -> list[WebhookOperationResult]:
+        """Delete every subscription this application holds."""
+        subscriptions = await self.list_subscriptions()  # raises on an API failure
+        return [await self.delete_subscription(sub.id) for sub in subscriptions]
+
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(f"{_API_URL}/subscriptions/{subscription_id}", timeout=30.0)
+                response.raise_for_status()
+        except httpx.HTTPError as e:
+            return WebhookOperationResult(
+                subscription_id=subscription_id,
+                status=WebhookSubscriptionStatus.ERROR,
+                error=str(e),
+            )
+        return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.DELETED)
+```
+
+The task counts the statuses it gets back, so each outcome has to be distinguishable:
+
+| Outcome | Return | What `reconcile_provider_webhooks` does |
+|---|---|---|
+| Subscriptions deleted | one `DELETED` result each | Logs `deleted=N, errors=0` and succeeds |
+| Provider confirms none registered | `[]` | Logs `deleted=0, errors=0` and succeeds |
+| A delete is rejected | an `ERROR` result for it | Raises, so the task retries; the next attempt lists again |
+| The *listing* fails | let the exception propagate | Retries |
+
+<Warning>
+Never turn a failed lookup into `[]`. A helper that swallows HTTP errors and returns `None` or an empty list makes an outage indistinguishable from "nothing is registered", and the task then reports success while live subscriptions keep delivering. Where the provider addresses a subscription by an id you chose, skip the listing entirely: `google_health` deletes its stable `open-wearables` subscriber directly and reports a `404` as `skipped`, so absence and failure can never be confused.
+</Warning>
 
 <Note>
 If `webhook_registration_api=False` (the default), switching sync mode to `webhook` only updates the database — you must register subscriptions manually in the provider's developer portal pointing to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
@@ -803,13 +840,13 @@ If `webhook_registration_api=False` (the default), switching sync mode to `webho
 
 Some providers create subscriptions with each user's own bearer token rather than one app-level registration (Withings). For those, also set `webhook_subscription_per_user=True` and:
 
-1. Make `register_subscriptions(callback_url)` dispatch one `register_user_webhooks` task per active connection (`UserConnectionRepository.get_all_active_by_provider`) instead of registering anything itself. The `callback_url` argument is unused — each per-user task builds its own.
-2. Implement `register_user_subscriptions(db, user_id)` on your own webhook service — it stays provider-local rather than going on `BaseWebhookService`, and the task resolves it dynamically. That is what the per-user task calls; work against the provider's currently configured live-sync mode (`ProviderSettingsRepository.get_live_sync_mode`), listing the provider's existing subscriptions first and changing only the gap, so a redelivered task is safe and a mode of `pull` revokes rather than creates.
+1. Make `register_subscriptions(callback_url)` and `deregister_subscriptions()` dispatch one per-connection task each (`UserConnectionRepository.get_all_active_by_provider`) instead of subscribing anything themselves, and return no results — nothing is subscribed or deleted there. The `callback_url` argument is unused; each per-connection task builds its own.
+2. Add that task under `app/integrations/celery/tasks/<provider>/`, next to `garmin/`. It stays provider-scoped rather than shared, so it can call your own service directly instead of forcing a per-user method onto `BaseWebhookService`. Give it a single `user_id` argument and have it work against the provider's currently configured live-sync mode (`ProviderSettingsRepository.get_live_sync_mode`), listing the provider's existing subscriptions first and changing only the gap, so a redelivered task is safe and a mode of `pull` revokes rather than creates.
 3. Drive both ends from `BaseOAuthTemplate` rather than adding new hooks. Override `_save_connection` to enqueue that task after calling `super()` — the connection and its token are committed by then — and `deregister_user` to revoke, which disconnect, data purge and account deletion all already call while the connection is still active.
 
 Each result entry's `status` drives the task's retry policy: `error` retries with the failures attached, anything else counts as success. Return `skipped` for what retrying cannot fix, such as an unusable callback URL or a revoked grant.
 
-Because each connection holds its own subscription, `register_provider_webhooks` is dispatched on *any* live-sync mode change for these providers, not only the switch to `webhook`, so that switching back to `pull` revokes them. `app/services/providers/withings/webhook_service.py` is the reference implementation.
+Because each connection holds its own subscription, both `register_subscriptions()` and `deregister_subscriptions()` fan out the same way — the per-connection task reads the configured mode and revokes when it is `pull`, so neither direction is special-cased in shared code. `app/services/providers/withings/webhook_service.py` and `app/integrations/celery/tasks/withings/notify_sync_task.py` are the reference implementation.
 
 ---
 
@@ -852,8 +889,8 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Verified data in database
 - [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
-- [ ] If `webhook_registration_api=True`: implemented `register_webhooks()` in strategy and verified auto-registration fires on sync mode switch
-- [ ] If `webhook_subscription_per_user=True`: implemented `register_user_subscriptions()` on your webhook service, overrode `_save_connection` and `deregister_user`, and verified the fan-out registers one subscription per active connection
+- [ ] If `webhook_registration_api=True`: implemented `register_subscriptions()` and `deregister_subscriptions()` on the webhook service, and verified both fire on the sync mode switch
+- [ ] If `webhook_subscription_per_user=True`: implemented the per-connection reconcile on your webhook service plus its provider-scoped task, overrode `_save_connection` and `deregister_user`, and verified the fan-out reconciles one connection per active link in both directions
 - [ ] Added error handling and logging
 - [ ] Updated API documentation
 

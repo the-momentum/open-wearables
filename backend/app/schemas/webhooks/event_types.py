@@ -47,6 +47,7 @@ class WebhookEventType(StrEnum):
     # -------------------------------------------------------------------------
     WORKOUT_CREATED = "workout.created"
     SLEEP_CREATED = "sleep.created"
+    MEAL_CREATED = "meal.created"
     MENSTRUAL_CYCLE_CREATED = "menstrual_cycle.created"
 
     # -------------------------------------------------------------------------
@@ -140,8 +141,9 @@ class WebhookEventType(StrEnum):
 
     # Steps & calories
     SERIES_STEPS = "series.steps.created"
-    SERIES_ENERGY = "series.energy.created"
+    SERIES_ACTIVE_ENERGY = "series.active_energy.created"
     SERIES_BASAL_ENERGY = "series.basal_energy.created"
+    SERIES_TOTAL_ENERGY = "series.total_energy.created"
 
     # Activity basic
     SERIES_STAND_TIME = "series.stand_time.created"
@@ -219,6 +221,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     ),
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
+    WebhookEventType.MEAL_CREATED: "A new meal or nutrition-log entry was saved.",
     WebhookEventType.MENSTRUAL_CYCLE_CREATED: "A new menstrual cycle record was saved.",
     # Group events
     WebhookEventType.HEART_RATE_CREATED: "Any heart-rate samples (all HR variants) were ingested.",
@@ -287,8 +290,13 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_CARDIOVASCULAR_AGE: "Cardiovascular age samples were ingested.",
     WebhookEventType.SERIES_GARMIN_FITNESS_AGE: "Garmin fitness age estimates were ingested.",
     WebhookEventType.SERIES_STEPS: "Step count samples were ingested.",
-    WebhookEventType.SERIES_ENERGY: "Active energy (calories) samples were ingested.",
+    WebhookEventType.SERIES_ACTIVE_ENERGY: (
+        "Active energy (calories) samples were ingested. Not total energy - basal is a separate series and event."
+    ),
     WebhookEventType.SERIES_BASAL_ENERGY: "Basal energy samples were ingested.",
+    WebhookEventType.SERIES_TOTAL_ENERGY: (
+        "Total energy (active + basal) samples were ingested, from providers that don't split the two."
+    ),
     WebhookEventType.SERIES_STAND_TIME: "Stand time samples were ingested.",
     WebhookEventType.SERIES_EXERCISE_TIME: "Exercise time samples were ingested.",
     WebhookEventType.SERIES_PHYSICAL_EFFORT: "Physical effort samples were ingested.",
@@ -406,8 +414,9 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_STEPS,
     ],
     WebhookEventType.CALORIES_CREATED: [
-        WebhookEventType.SERIES_ENERGY,
+        WebhookEventType.SERIES_ACTIVE_ENERGY,
         WebhookEventType.SERIES_BASAL_ENERGY,
+        WebhookEventType.SERIES_TOTAL_ENERGY,
     ],
     WebhookEventType.ACTIVITY_CREATED_TIMESERIES: [
         WebhookEventType.SERIES_STAND_TIME,

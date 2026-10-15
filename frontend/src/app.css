@@ -1,0 +1,163 @@
+@import 'tailwindcss';
+
+/* The design system's own files: Switzer (ITF Free Font License) in the two
+   weights the design allows, and Fragment Mono (SIL OFL) for taglines. */
+@font-face {
+	font-family: 'Switzer';
+	src: url('./lib/assets/fonts/Switzer-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Switzer';
+	src: url('./lib/assets/fonts/Switzer-Medium.woff2') format('woff2');
+	font-weight: 500;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'Fragment Mono';
+	src: url('./lib/assets/fonts/FragmentMono-Regular.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+/* Theme follows the OS by default; `light` or `dark` on <html>, set from the
+   theme cookie, wins. Every token is one light-dark() pair, which resolves
+   against the element's color-scheme, so the class only has to set that. */
+@custom-variant dark {
+	&:where(.dark, .dark *) {
+		@slot;
+	}
+	@media (prefers-color-scheme: dark) {
+		&:where(:root:not(.light), :root:not(.light) *) {
+			@slot;
+		}
+	}
+}
+
+/* ---------------------------------------------------------------------------
+   Tokens
+   ---------------------------------------------------------------------------
+   The Open Wearables design system's palette, named for what the dashboard
+   uses each for (design-system/foundations/colors). Values marked "not in the
+   design" fill a gap the design leaves; they are chosen to sit in its palette
+   and pass WCAG AA as text, and wait on the designer's own.
+   ------------------------------------------------------------------------- */
+
+:root {
+	--ow-radius: 0.625rem;
+
+	--ow-background: light-dark(#ffffff, #000000); /* surface-1 */
+	--ow-surface: light-dark(#f7f8fa, #1a1a1a); /* surface-2 */
+	--ow-surface-muted: light-dark(#ebeef2, #2c2c2c); /* surface-3 */
+	--ow-surface-hover: light-dark(#dfe2e6, #545454); /* surface-4 */
+	--ow-foreground: light-dark(#000000, #ffffff); /* ink-1 */
+	--ow-secondary-foreground: light-dark(#414141, #c6c8cc); /* ink-2 */
+	--ow-muted-foreground: light-dark(#747678, #747678); /* ink-3 */
+	--ow-border: light-dark(#e6e8ec, #414141); /* line */
+
+	/* ink-brand in light. Dark keeps the dashboard's original accent: the
+	   design's #2353c4 is 2.6:1 on a dark card and read as murky. */
+	--ow-primary: light-dark(#2353c4, #39d4e4);
+	--ow-inverted: light-dark(#2c2c2c, #f7f8fa); /* surface-inverted-1 */
+	--ow-inverted-hover: light-dark(#414141, #ebeef2); /* surface-inverted-2 */
+	--ow-inverted-foreground: light-dark(#ffffff, #000000); /* ink-inverted */
+
+	/* Not in the design: its green fails as small text on a light card (4.2:1),
+	   it has no dark green, no red, and its orange is 1.7:1 on white. */
+	--ow-success: light-dark(#187a2c, #5cc16f);
+	--ow-warning: light-dark(#a85a0c, #ffb16c); /* dark: ink-assets-orange */
+	--ow-danger: light-dark(#c4302b, #f07a72);
+	--ow-danger-foreground: light-dark(#ffffff, #000000);
+
+	/* shadow-focus: a 2px ring in ink-1, set off from the control by 2px. */
+	--ow-ring: var(--ow-foreground);
+}
+
+/* `inline` keeps the generated utilities pointing at the var rather than
+   baking in the resolved value, so a theme swap is a variable change. */
+@theme inline {
+	--color-background: var(--ow-background);
+	--color-surface: var(--ow-surface);
+	--color-surface-muted: var(--ow-surface-muted);
+	--color-surface-hover: var(--ow-surface-hover);
+	--color-foreground: var(--ow-foreground);
+	--color-secondary-foreground: var(--ow-secondary-foreground);
+	--color-muted-foreground: var(--ow-muted-foreground);
+	--color-border: var(--ow-border);
+
+	--color-primary: var(--ow-primary);
+	--color-inverted: var(--ow-inverted);
+	--color-inverted-hover: var(--ow-inverted-hover);
+	--color-inverted-foreground: var(--ow-inverted-foreground);
+
+	--color-success: var(--ow-success);
+	--color-warning: var(--ow-warning);
+	--color-danger: var(--ow-danger);
+	--color-danger-foreground: var(--ow-danger-foreground);
+
+	--color-ring: var(--ow-ring);
+
+	--font-sans: 'Switzer', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: 'Fragment Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+	/* Rounder than the design's 1px corners, on purpose: square buttons and
+	   cards looked harsh in a dashboard. */
+	--radius-lg: var(--ow-radius);
+	--radius-xl: calc(var(--ow-radius) + 0.25rem);
+
+	/* 200ms ease for colour, outline and hover, the design's first step. */
+	--default-transition-duration: 200ms;
+	--default-transition-timing-function: ease;
+
+	--animate-progress: progress 1.1s ease-in-out infinite;
+
+	@keyframes progress {
+		from {
+			transform: translateX(-100%);
+		}
+		to {
+			transform: translateX(300%);
+		}
+	}
+}
+
+@layer base {
+	* {
+		border-color: var(--ow-border);
+	}
+
+	html {
+		background-color: var(--ow-background);
+		color-scheme: light dark;
+	}
+
+	/* Native controls and scrollbars follow the chosen theme, not the OS. */
+	html.light {
+		color-scheme: light;
+	}
+
+	html.dark {
+		color-scheme: dark;
+	}
+
+	body {
+		background-color: var(--ow-background);
+		color: var(--ow-foreground);
+		-webkit-font-smoothing: antialiased;
+		/* Kills the ~300ms tap delay and the grey flash on tap in mobile Safari
+		   and Chrome. Both are a large part of why a web UI feels non-native. */
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--ow-ring);
+		outline-offset: 2px;
+	}
+}

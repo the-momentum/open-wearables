@@ -43,6 +43,7 @@
             "group": "Architecture",
             "pages": [
               "architecture/system-overview",
+              "architecture/data-flow",
               "architecture/unified-data-model",
               "architecture/data-types",
               "architecture/multi-account-sync"
@@ -74,6 +75,7 @@
             "group": "Mobile SDK",
             "pages": [
               "sdk/index",
+              "sdk/integration",
               {
                 "group": "iOS (Swift)",
                 "pages": [
@@ -149,7 +151,9 @@
             "group": "Configuration",
             "pages": [
               "dev-guides/aws-setup",
-              "dev-guides/raw-payload-storage"
+              "dev-guides/raw-payload-storage",
+              "dev-guides/log-export",
+              "dev-guides/telemetry"
             ]
           },
           {
@@ -170,7 +174,7 @@
       },
       {
         "tab": "API Reference",
-        "openapi": "https://api.openwearables.io/openapi.json",
+        "openapi": "openapi.json",
         "groups": [
           {
             "group": "Overview",
@@ -204,6 +208,8 @@
               "POST /api/v1/users",
               "GET /api/v1/users/{user_id}",
               "PATCH /api/v1/users/{user_id}",
+              "GET /api/v1/users/{user_id}/personal-record",
+              "PUT /api/v1/users/{user_id}/personal-record",
               "DELETE /api/v1/users/{user_id}"
             ]
           },
@@ -227,8 +233,6 @@
             "pages": [
               "POST /api/v1/providers/{provider}/users/{user_id}/sync",
               "GET /api/v1/providers/garmin/users/{user_id}/backfill/status",
-              "POST /api/v1/providers/garmin/users/{user_id}/backfill/cancel",
-              "POST /api/v1/providers/garmin/users/{user_id}/backfill/{type_name}/retry",
               "POST /api/v1/providers/{provider}/users/{user_id}/sync/historical"
             ]
           },
@@ -236,6 +240,7 @@
             "group": "Summaries",
             "pages": [
               "GET /api/v1/users/{user_id}/summaries/activity",
+              "GET /api/v1/users/{user_id}/summaries/activity/totals",
               "GET /api/v1/users/{user_id}/summaries/sleep",
               "GET /api/v1/users/{user_id}/summaries/body",
               "GET /api/v1/users/{user_id}/summaries/recovery",
@@ -253,9 +258,13 @@
             "group": "Events",
             "pages": [
               "GET /api/v1/users/{user_id}/events/workouts",
+              "GET /api/v1/users/{user_id}/events/workouts/totals",
               "DELETE /api/v1/users/{user_id}/events/workouts/{workout_id}",
               "GET /api/v1/users/{user_id}/events/sleep",
-              "DELETE /api/v1/users/{user_id}/events/sleep/{sleep_id}"
+              "GET /api/v1/users/{user_id}/events/sleep/totals",
+              "DELETE /api/v1/users/{user_id}/events/sleep/{sleep_id}",
+              "GET /api/v1/users/{user_id}/events/meals",
+              "DELETE /api/v1/users/{user_id}/events/meals/{meal_id}"
             ]
           },
           {

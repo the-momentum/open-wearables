@@ -63,6 +63,9 @@ def fill_missing_resilience_scores() -> dict[str, int]:
     Dates where there is insufficient HRV data remain unscored so they are
     retried on the next run once more data arrives.
     """
+    if not settings.ow_scores_enabled:
+        return {"saved": 0, "skipped": 0}
+
     with SessionLocal() as db:
         rows = db.execute(
             _MISSING_RESILIENCE_SCORES_QUERY,

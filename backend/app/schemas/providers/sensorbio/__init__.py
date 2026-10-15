@@ -8,8 +8,10 @@ than silently producing None values in DB writes.
 from .models import (
     Activity,
     BiometricsRecord,
+    CalorieDetailsResponse,
     ScoresRecord,
     SleepRecord,
+    SleepStageIntervalRecord,
     StepDetailMetric,
     StepDetailsResponse,
     WorkoutStats,
@@ -17,8 +19,10 @@ from .models import (
 
 __all__ = [
     "SleepRecord",
+    "SleepStageIntervalRecord",
     "ScoresRecord",
     "BiometricsRecord",
+    "CalorieDetailsResponse",
     "StepDetailMetric",
     "StepDetailsResponse",
     "WorkoutStats",

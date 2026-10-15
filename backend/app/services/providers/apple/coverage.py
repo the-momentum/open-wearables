@@ -3,7 +3,7 @@ from app.constants.series_types.sdk.workout_statistics import WORKOUT_STATISTIC_
 from app.schemas.enums import SeriesType
 from app.schemas.enums.health_score_category import HealthScoreCategory
 
-# Apple HealthKit emits only HKQuantityTypeIdentifier... metrics (SDNN, not RMSSD).
+# Apple HealthKit emits only HKQuantityTypeIdentifier... metrics (HRV as SDNN, plus RMSSD on iOS 27+).
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *APPLE_METRIC_TYPE_TO_SERIES_TYPE.values(),
@@ -11,7 +11,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
     }
 )
 
-# EventRecordDetail fields populated by workouts.py (workout records)
+# EventRecordDetail fields populated by the shared SDK import service (workout records)
 WORKOUT_FIELDS: frozenset[str] = frozenset(
     {
         "heart_rate_min",
@@ -31,7 +31,7 @@ WORKOUT_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-# EventRecordDetail fields populated by the shared healthkit sleep service
+# EventRecordDetail fields populated by the shared SDK sleep service
 SLEEP_FIELDS: frozenset[str] = frozenset(
     {
         "sleep_total_duration_minutes",
@@ -45,5 +45,7 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
         "sleep_stages",
     }
 )
+
+MEAL_FIELDS: frozenset[str] = frozenset({"title", "meal_type", "nutrients"})
 
 HEALTH_SCORES: frozenset[HealthScoreCategory] = frozenset()

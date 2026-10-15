@@ -422,8 +422,8 @@ class TestUpdateUser:
         # Assert
         assert response.status_code == 401
 
-    def test_update_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test updating user requires bearer token, not API key."""
+    def test_update_user_with_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test updating user works with an API key, not only a developer token."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
@@ -434,8 +434,9 @@ class TestUpdateUser:
         # Act
         response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
 
-        # Assert - API key auth is rejected, requires bearer token
-        assert response.status_code == 401
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["email"] == "new@example.com"
 
 
 class TestDeleteUser:
@@ -501,19 +502,25 @@ class TestDeleteUser:
         # Assert
         assert response.status_code == 401
 
-    def test_delete_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test deleting user requires bearer token, not API key."""
+    def test_delete_user_with_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test deleting user works with an API key, not only a developer token."""
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
         user = UserFactory(email="user@example.com")
         headers = api_key_headers(api_key.plain_key)
+        user_id = user.id
 
         # Act
-        response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=headers)
+        response = client.delete(f"{api_v1_prefix}/users/{user_id}", headers=headers)
 
-        # Assert - API key auth is rejected, requires bearer token
-        assert response.status_code == 401
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["id"] == str(user_id)
+
+        from app.services import user_service
+
+        assert user_service.get(db, user_id, raise_404=False) is None
 
 
 class TestListUsersConnections:

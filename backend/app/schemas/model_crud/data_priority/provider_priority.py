@@ -23,6 +23,14 @@ class ProviderPriorityResponse(ProviderPriorityBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+    name: str | None = Field(None, description="Display name (e.g., 'Apple Health', 'Garmin').")
+    icon_url: str | None = Field(
+        None,
+        description=(
+            "Relative URL to provider icon (e.g., '/static/provider-icons/garmin.svg')."
+            " Resolve against the API base URL."
+        ),
+    )
 
     model_config = {"from_attributes": True}
 

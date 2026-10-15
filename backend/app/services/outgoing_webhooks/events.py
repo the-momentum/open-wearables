@@ -12,12 +12,16 @@ import re
 from typing import Any
 from uuid import UUID
 
+from celery import current_app as celery_app
+
 from app.constants.devices_map import resolve_device_name
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
 
 logger = logging.getLogger(__name__)
+
+_EMIT_TASK = "app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event"
 
 # Maximum number of samples included in a single Svix message.
 # At ~200 bytes per serialised sample, 2 500 samples ≈ 500 KB — well within
@@ -52,9 +56,11 @@ def _dispatch(
     if not svix_service.is_enabled():
         return
     try:
-        from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
-
-        emit_webhook_event.delay(event_type, payload, channels=channels, idempotency_key=idempotency_key)
+        celery_app.send_task(
+            _EMIT_TASK,
+            args=[event_type, payload],
+            kwargs={"channels": channels, "idempotency_key": idempotency_key},
+        )
     except Exception:
         logger.warning("Could not enqueue webhook event %s", event_type, exc_info=True)
 
@@ -101,6 +107,47 @@ def on_workout_created(
             },
         },
         idempotency_key=f"workout.created.{record_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
+def on_meal_created(
+    *,
+    record_id: UUID,
+    user_id: UUID,
+    provider: str,
+    device: str | None,
+    start_time: str,
+    end_time: str,
+    zone_offset: str | None,
+    title: str | None = None,
+    meal_type: str | None = None,
+    calories_kcal: float | None = None,
+    macros: dict[str, float | None] | None = None,
+    water_ml: float | None = None,
+    nutrients: dict[str, dict[str, float | str]] | None = None,
+) -> None:
+    """Dispatch the meal.created webhook for a newly saved meal."""
+    _dispatch(
+        WebhookEventType.MEAL_CREATED,
+        {
+            "type": WebhookEventType.MEAL_CREATED,
+            "data": {
+                "id": str(record_id),
+                "user_id": str(user_id),
+                "title": title,
+                "meal_type": meal_type,
+                "start_time": start_time,
+                "end_time": end_time,
+                "zone_offset": zone_offset,
+                "source": {"provider": provider, "device": device},
+                "calories_kcal": calories_kcal,
+                "macros": macros,
+                "water_ml": water_ml,
+                "nutrients": nutrients or {},
+            },
+        },
+        idempotency_key=f"meal.created.{record_id}",
         channels=[f"user.{user_id}"],
     )
 

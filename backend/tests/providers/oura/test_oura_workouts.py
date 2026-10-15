@@ -100,6 +100,27 @@ class TestOuraWorkoutsNormalization:
         assert detail.intensity == WorkoutIntensity.MODERATE
         assert detail.label == "Morning Run"
 
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("manual", EntrySource.MANUAL),
+            ("autodetected", EntrySource.AUTOMATIC),
+            ("confirmed", EntrySource.AUTOMATIC),
+            ("workout_heart_rate", EntrySource.AUTOMATIC),
+            ("live_third_party_heart_rate", EntrySource.AUTOMATIC),
+            ("live_oura_heart_rate", EntrySource.AUTOMATIC),
+            ("something_new", EntrySource.UNKNOWN),
+        ],
+    )
+    def test_normalize_workout_entry_source(
+        self, workouts: OuraWorkouts, sample_oura_workout: OuraWorkoutJSON, source: str, expected: EntrySource
+    ) -> None:
+        """Every value of Oura's PublicWorkoutSource enum (as of spec 1.40) maps to a known EntrySource."""
+        workout = sample_oura_workout.model_copy(update={"source": source})
+        _, detail = workouts._normalize_workout(workout, uuid4())
+
+        assert detail.entry_source == expected
+
     def test_normalize_workout_no_activity(self, workouts: OuraWorkouts) -> None:
         workout = OuraWorkoutJSON(
             id="oura-workout-no-activity",

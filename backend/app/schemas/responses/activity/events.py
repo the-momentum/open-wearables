@@ -6,10 +6,23 @@ from pydantic import BaseModel, Field
 
 from app.schemas.enums import EntrySource, WorkoutIntensity
 from app.schemas.model_crud.activities import SleepStage
+from app.schemas.model_crud.activities.zones import HRZones, PowerZones
 from app.schemas.utils import SourceMetadata
 
-from .data_point_responses import TimeSeriesSample
 from .summaries import SleepStagesSummary
+
+
+class WorkoutTotals(BaseModel):
+    """Workouts matching a filter, added up in the database rather than paged."""
+
+    count: int = Field(..., description="Workouts that match the filters", example=42)
+    duration_seconds: int = Field(..., description="Sum of their durations", example=95400)
+    calories_kcal: float | None = Field(
+        None, description="Sum of reported energy burned; null when none reported any", example=18250.5
+    )
+    distance_meters: float | None = Field(
+        None, description="Sum of reported distance; null when none reported any", example=212400.0
+    )
 
 
 class Workout(BaseModel):
@@ -37,10 +50,19 @@ class Workout(BaseModel):
     max_heart_rate_bpm: int | None = None
     avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
-
-
-class WorkoutDetailed(Workout):
-    heart_rate_samples: list[TimeSeriesSample] | None = None
+    heart_rate_min: int | None = None
+    steps_count: int | None = None
+    average_speed: float | None = None
+    max_speed: float | None = None
+    average_cadence: float | None = None
+    average_watts: float | None = None
+    max_watts: float | None = None
+    moving_time_seconds: int | None = None
+    elev_high: float | None = None
+    elev_low: float | None = None
+    hr_zones: HRZones | None = None
+    power_zones: PowerZones | None = None
+    segments: list[dict] | None = None
 
 
 class Macros(BaseModel):
@@ -50,15 +72,25 @@ class Macros(BaseModel):
     fiber_g: float | None = None
 
 
+class NutrientValue(BaseModel):
+    value: float
+    unit: str
+
+
 class Meal(BaseModel):
     id: UUID
     timestamp: datetime
-    meal_type: Literal["breakfast", "lunch", "dinner", "snack"] | None = None
+    meal_type: str | None = None
     name: str | None = None
     source: SourceMetadata
     calories_kcal: float | None = None
     macros: Macros | None = None
     water_ml: float | None = None
+    nutrients: dict[str, NutrientValue] = Field(
+        default_factory=dict,
+        description="All nutrient values recorded for the meal, keyed by series type (e.g. dietary_sugar)",
+        example={"dietary_sugar": {"value": 12.5, "unit": "g"}},
+    )
 
 
 class Measurement(BaseModel):
@@ -69,6 +101,20 @@ class Measurement(BaseModel):
     values: dict[str, float | str] = Field(..., description="Measurement-specific values", example={"weight_kg": 72.5})
 
 
+class SleepTotals(BaseModel):
+    """Sleep sessions matching a filter, added up in the database rather than paged."""
+
+    count: int = Field(..., description="Sessions that match the filters, naps included", example=30)
+    naps: int = Field(..., description="Of those, how many are naps", example=4)
+    sleep_duration_seconds: int = Field(..., description="Sum of time asleep", example=799200)
+    time_in_bed_seconds: int = Field(
+        ..., description="Sum of time in bed, or of the session's span where none was reported", example=871200
+    )
+    avg_efficiency_percent: float | None = Field(
+        None, description="Mean efficiency over the sessions that report one", example=91.4
+    )
+
+
 class SleepSession(BaseModel):
     id: UUID
     start_time: datetime
@@ -77,6 +123,7 @@ class SleepSession(BaseModel):
     source: SourceMetadata
     duration_seconds: int
     sleep_duration_seconds: int | None = None
+    time_in_bed_seconds: int | None = None
     efficiency_percent: float | None = None
     stages: SleepStagesSummary | None = None
     sleep_stage_intervals: list[SleepStage] | None = None

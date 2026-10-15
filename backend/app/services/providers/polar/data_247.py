@@ -20,7 +20,7 @@ from app.constants.series_types.polar import (
 )
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -63,6 +63,17 @@ from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 _T = TypeVar("_T", bound=BaseModel)
+
+
+def _expand_repeated_steps(points: list[tuple[datetime, int]], interval: timedelta) -> dict[datetime, int]:
+    """Polar omits a sample repeating the previous count, so a longer gap after a non-zero one holds repeats."""
+    expanded: dict[datetime, int] = {}
+    next_times: list[datetime | None] = [at for at, _ in points[1:]]
+    for (at, count), next_at in zip(points, [*next_times, None], strict=True):
+        repeats = (next_at - at) // interval if count and next_at and interval > timedelta(0) else 1
+        for step in range(max(repeats, 1)):
+            expanded[at + step * interval] = count
+    return expanded
 
 
 class Polar247Data(Base247DataTemplate):
@@ -256,6 +267,8 @@ class Polar247Data(Base247DataTemplate):
                 category="sleep",
                 type="sleep_session",
                 source_name="Polar",
+                source=ProviderName.POLAR,
+                device_id=parsed.device_id,
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
@@ -302,6 +315,7 @@ class Polar247Data(Base247DataTemplate):
                 if parsed.heart_rate_samples
                 else []
             )
+            hr_samples = [s.model_copy(update={"device_id": parsed.device_id}) for s in hr_samples]
             results.append((record, detail, score, hr_samples))
         return results
 
@@ -325,7 +339,7 @@ class Polar247Data(Base247DataTemplate):
                 "from": chunk_start.date().isoformat(),
                 "to": chunk_end.date().isoformat(),
                 "steps": "true",
-                "activity_zones": "false",
+                "activity_zones": "true",
                 "inactivity_stamps": "false",
             }
             response = self._make_api_request(db, user_id, "/v3/users/activities", params=params)
@@ -358,10 +372,48 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=series_type,
-                        is_daily_total=True,
+                        is_daily_total=daily_total_flag(series_type, is_daily=True),
                     )
                 )
+            samples.extend(self._build_step_samples(parsed, user_id, recorded_at))
         return samples
+
+    def _build_step_samples(
+        self,
+        parsed: DailyActivityJSON,
+        user_id: UUID,
+        daily_total_at: datetime,
+    ) -> list[TimeSeriesSampleCreate]:
+        """The row's intraday step samples, except on ``daily_total_at``, where the day's total is stored."""
+        steps = parsed.samples.steps if parsed.samples else None
+        if not steps:
+            return []
+        points: list[tuple[datetime, int]] = []
+        for sample in steps.samples:
+            try:
+                points.append((datetime.fromisoformat(sample.timestamp), sample.steps))
+            except ValueError:
+                self.logger.warning("Skipping Polar step sample with an unreadable timestamp")
+        points.sort()
+        counts = _expand_repeated_steps(points, timedelta(milliseconds=steps.interval_ms))
+        if sum(counts.values()) > steps.total_steps:
+            # A gap that is not a run of repeats, e.g. the device stopped; keep only what was sent.
+            self.logger.warning("Polar step samples exceed the day's total once expanded; storing them as sent")
+            counts = dict(points)
+        return [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=ProviderName.POLAR,
+                source=ProviderName.POLAR,
+                recorded_at=recorded_at,
+                value=Decimal(count),
+                series_type=SeriesType.steps,
+                is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
+            )
+            for recorded_at, count in sorted(counts.items())
+            if recorded_at != daily_total_at
+        ]
 
     # -------------------------------------------------------------------------
     # Continuous Heart Rate - GET /v3/users/continuous-heart-rate/{date}
@@ -489,16 +541,46 @@ class Polar247Data(Base247DataTemplate):
         response = self._make_api_request(db, user_id, "/v3/users/nightly-recharge")
         return (response or {}).get("recharges", [])
 
+    NightlyRechargeNormalized = tuple[list[HealthScoreCreate], list[TimeSeriesSampleCreate]]
+
     def normalize_nightly_recharge(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[HealthScoreCreate]:
+    ) -> NightlyRechargeNormalized:
+        """HRV and breathing rate are four-hour averages from early sleep, so one sample per night.
+
+        Samples are emitted only for records processed by future syncs; existing database rows
+        are not updated. Historical records not processed again by a sync require a separate
+        backfill or replay to populate their time-series samples.
+        """
         scores: list[HealthScoreCreate] = []
+        samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, NightlyRechargeJSON, user_id, "nightly_recharge")) is None:
                 continue
-            if parsed.nightly_recharge_status is None or not parsed.date:
+            if not parsed.date:
+                continue
+            # Polar sends a bare date, so anchor the night to UTC midnight instead of leaving it naive.
+            recorded_at = datetime.fromisoformat(parsed.date).replace(tzinfo=timezone.utc)
+            for value, series_type in (
+                (parsed.heart_rate_variability_avg, SeriesType.heart_rate_variability_rmssd),
+                (parsed.breathing_rate_avg, SeriesType.respiratory_rate),
+            ):
+                if value is not None:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            provider=ProviderName.POLAR,
+                            source=ProviderName.POLAR,
+                            recorded_at=recorded_at,
+                            value=value,
+                            series_type=series_type,
+                        )
+                    )
+            # Polar withholds the status until it has three nights to compare against.
+            if parsed.nightly_recharge_status is None:
                 continue
             components: dict[str, ScoreComponent] = {}
             for key, val in {
@@ -523,11 +605,11 @@ class Polar247Data(Base247DataTemplate):
                     category=HealthScoreCategory.RECOVERY,
                     value=parsed.nightly_recharge_status,
                     qualifier=NIGHTLY_RECHARGE_STATUS_LABELS.get(parsed.nightly_recharge_status),
-                    recorded_at=datetime.fromisoformat(parsed.date),
+                    recorded_at=recorded_at,
                     components=components or None,
                 )
             )
-        return scores
+        return scores, samples
 
     # -------------------------------------------------------------------------
     # SleepWise — Alertness: GET /v3/users/sleepwise/alertness
@@ -865,7 +947,8 @@ class Polar247Data(Base247DataTemplate):
         path: str,
     ) -> dict[str, int]:
         """Fetch a single entity from the webhook URL path and save it. Used by webhook handler."""
-        raw = self._make_api_request(db, user_id, path)
+        params = {"activity_zones": "true"} if event_type == PolarWebhookEventType.ACTIVITY_SUMMARY else None
+        raw = self._make_api_request(db, user_id, path, params=params)
         if not raw:
             return {}
 
@@ -887,11 +970,7 @@ class Polar247Data(Base247DataTemplate):
                 return {"daily_activity": self._save_timeseries(db, self.normalize_daily_activity([raw], user_id))}
 
             case PolarWebhookEventType.CONTINUOUS_HEART_RATE:
-                return {
-                    "continuous_hr": self._save_timeseries(
-                        db, self.normalize_continuous_hr(raw.get("heart_rates", []), user_id)
-                    )
-                }
+                return {"continuous_hr": self._save_timeseries(db, self.normalize_continuous_hr([raw], user_id))}
 
             case PolarWebhookEventType.SLEEP_WISE_ALERTNESS:
                 return {"alertness": self._save_scores(db, self.normalize_alertness([raw], user_id))}
@@ -907,6 +986,24 @@ class Polar247Data(Base247DataTemplate):
                     provider="polar",
                 )
                 return {}
+
+    def _save_nightly_recharge(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """Save the night's score and samples, reporting the series writes.
+
+        The sync report splits inserts from updates, which only the series write can tell it:
+        health scores are inserted with on_conflict_do_nothing and report nothing back.
+        """
+        scores, samples = self.normalize_nightly_recharge(
+            self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
+        )
+        self._save_scores(db, scores)
+        return self._save_timeseries(db, samples)
 
     def _save_sleep(
         self,
@@ -976,12 +1073,7 @@ class Polar247Data(Base247DataTemplate):
             "cardio_load": lambda: self._save_scores(
                 db, self.normalize_cardio_load(self.get_cardio_load_data(db, user_id, start_time, end_time), user_id)
             ),
-            "nightly_recharge": lambda: self._save_scores(
-                db,
-                self.normalize_nightly_recharge(
-                    self.get_nightly_recharge_data(db, user_id, start_time, end_time), user_id
-                ),
-            ),
+            "nightly_recharge": lambda: self._save_nightly_recharge(db, user_id, start_time, end_time),
             "alertness": lambda: self._save_scores(
                 db, self.normalize_alertness(self.get_alertness_data(db, user_id, start_time, end_time), user_id)
             ),

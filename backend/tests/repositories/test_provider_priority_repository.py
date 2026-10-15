@@ -116,3 +116,75 @@ class TestProviderPriorityRepository:
         # Verify via repo
         updated = repo.ensure_provider_exists(db, provider)
         assert updated.priority == new_priority_value
+
+
+class TestSeedMissingProviders:
+    """Test ProviderPriorityRepository.seed_missing_providers."""
+
+    @pytest.fixture
+    def repo(self) -> ProviderPriorityRepository:
+        return ProviderPriorityRepository(ProviderPriority)
+
+    def test_empty_table_gets_given_order(self, db: Session, repo: ProviderPriorityRepository) -> None:
+        """On a fresh table every provider is created, numbered 1..N in the order given."""
+        providers = [ProviderName.GARMIN, ProviderName.APPLE, ProviderName.OURA]
+
+        created = repo.seed_missing_providers(db, providers)
+        db.commit()
+
+        assert [p.provider for p in created] == providers
+        assert [p.priority for p in created] == [1, 2, 3]
+        assert [p.provider for p in repo.get_all_ordered(db)] == providers
+
+    def test_missing_providers_are_appended_after_existing(self, db: Session, repo: ProviderPriorityRepository) -> None:
+        """A deployment's configured order stays on top; new providers land below it."""
+        repo.bulk_update(db, [(ProviderName.OURA, 1), (ProviderName.APPLE, 2)])
+        db.commit()
+
+        created = repo.seed_missing_providers(
+            db, [ProviderName.APPLE, ProviderName.GARMIN, ProviderName.OURA, ProviderName.POLAR]
+        )
+        db.commit()
+
+        assert [(p.provider, p.priority) for p in created] == [(ProviderName.GARMIN, 3), (ProviderName.POLAR, 4)]
+        ordered = [(p.provider, p.priority) for p in repo.get_all_ordered(db)]
+        assert ordered == [
+            (ProviderName.OURA, 1),
+            (ProviderName.APPLE, 2),
+            (ProviderName.GARMIN, 3),
+            (ProviderName.POLAR, 4),
+        ]
+
+    def test_existing_rows_are_untouched(self, db: Session, repo: ProviderPriorityRepository) -> None:
+        """Seeding never changes the priority or timestamps of rows that already exist."""
+        existing = repo.upsert(db, ProviderName.WHOOP, 7)
+        db.commit()
+        before = (existing.id, existing.priority, existing.updated_at)
+
+        repo.seed_missing_providers(db, [ProviderName.WHOOP, ProviderName.SUUNTO])
+        db.commit()
+
+        after = repo.get_by_provider(db, ProviderName.WHOOP)
+        assert after is not None
+        assert (after.id, after.priority, after.updated_at) == before
+
+    def test_is_idempotent(self, db: Session, repo: ProviderPriorityRepository) -> None:
+        """A second run creates nothing and leaves the table as it was."""
+        providers = [ProviderName.APPLE, ProviderName.GARMIN]
+        repo.seed_missing_providers(db, providers)
+        db.commit()
+        snapshot = [(p.provider, p.priority) for p in repo.get_all_ordered(db)]
+
+        created = repo.seed_missing_providers(db, providers)
+        db.commit()
+
+        assert created == []
+        assert [(p.provider, p.priority) for p in repo.get_all_ordered(db)] == snapshot
+
+    def test_default_order_covers_every_connectable_provider(self) -> None:
+        """Every provider except UNKNOWN/INTERNAL has a default priority, with no duplicate numbers."""
+        from app.schemas.enums import DEFAULT_PROVIDER_PRIORITY
+
+        expected = {p for p in ProviderName if p not in (ProviderName.UNKNOWN, ProviderName.INTERNAL)}
+        assert set(DEFAULT_PROVIDER_PRIORITY) == expected
+        assert len(set(DEFAULT_PROVIDER_PRIORITY.values())) == len(DEFAULT_PROVIDER_PRIORITY)

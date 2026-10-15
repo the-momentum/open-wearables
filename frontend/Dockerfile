@@ -1,42 +1,35 @@
 # Build stage
-FROM node:22-alpine AS builder
-
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+FROM oven/bun:1.4-alpine AS builder
 
 WORKDIR /app
 
-# Build arguments for environment variables
-ARG VITE_API_URL=http://localhost:8000
-ENV VITE_API_URL=${VITE_API_URL}
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Install dependencies
-RUN pnpm install --frozen-lockfile
-
-# Copy source files
 COPY . .
 
-# Build the application in production mode
 ENV NODE_ENV=production
-RUN pnpm run build
+RUN bun run build
 
 # Production stage
-FROM node:22-alpine
+FROM oven/bun:1.4-alpine
 
 WORKDIR /app
-# Copy the Nitro build output (server + static public assets) from the builder
-COPY --from=builder /app/.output ./.output
 
-# Expose port
-EXPOSE 3000
+# adapter-node emits the server into build/ but leaves runtime dependencies to
+# us, so install the production subset alongside it.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 
-# Set the port for Nitro
+COPY --from=builder /app/build ./build
+
+# PORT/HOST are read by adapter-node at boot. VITE_API_URL is deliberately
+# not baked in: it is resolved per-container at runtime, so one image can point
+# at any backend.
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-# Run the Nitro server
-CMD ["node", ".output/server/index.mjs"]
+EXPOSE 3000
+
+CMD ["bun", "./build/index.js"]

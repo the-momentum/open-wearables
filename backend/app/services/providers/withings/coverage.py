@@ -48,7 +48,6 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
     137: "QT interval duration; no core series type",
     138: "corrected QT interval duration; no core series type",
     139: "AFib result from PPG; classification, not a core series",
-    140: "vascular age contract conflict; deferred/source-gated and not requested",
     158: "left-foot Nerve Health Score; no core series type",
     159: "right-foot Nerve Health Score; no core series type",
     167: (
@@ -66,18 +65,32 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
     229: "electrochemical skin conductance; no core series type",
 }
 
-# Withings ``/v2/measure?action=getactivity`` field -> unified SeriesType.
-ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
+# ``WithingsIntradayActivity`` attribute (from ``getintradayactivity``) -> unified SeriesType.
+INTRADAY_ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "distance": SeriesType.distance_walking_running,
-    "calories": SeriesType.energy,
+    "calories": SeriesType.active_energy,
+}
+
+# ``WithingsActivity`` attribute (from ``getactivity``) -> unified SeriesType; the day adds intensity minutes.
+ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
+    **INTRADAY_ACTIVITY_FIELD_MAP,
+    "active_minutes": SeriesType.exercise_time,
+}
+
+# Withings ``/v2/sleep?action=get`` HRV field -> unified SeriesType.
+SLEEP_HRV_FIELD_MAP: dict[str, SeriesType] = {
+    "rmssd": SeriesType.heart_rate_variability_rmssd,
+    "sdnn_1": SeriesType.heart_rate_variability_sdnn,
 }
 
 TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *MEASURE_TYPE_MAP.values(),
         *ACTIVITY_FIELD_MAP.values(),
+        *SLEEP_HRV_FIELD_MAP.values(),  # /v2/sleep get
         SeriesType.basal_energy,
+        SeriesType.resting_heart_rate,  # /v2/sleep getsummary (hr_min)
     }
 )
 
@@ -104,6 +117,7 @@ SLEEP_FIELDS: frozenset[str] = frozenset(
         "sleep_rem_minutes",
         "sleep_awake_minutes",
         "is_nap",
+        "sleep_stages",
     }
 )
 

@@ -22,10 +22,10 @@ from app.schemas.providers.apple.apple_xml import (
 )
 from app.schemas.responses.upload import UploadDataResponse
 from app.services import ApiKeyDep
-from app.services.apple.apple_xml.aws_service import require_bucket_name
-from app.services.apple.apple_xml.multipart_upload_service import multipart_upload_service
-from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
-from app.services.apple.apple_xml.sns_service import sns_service
+from app.services.providers.apple.apple_xml.aws_service import require_bucket_name
+from app.services.providers.apple.apple_xml.multipart_upload_service import multipart_upload_service
+from app.services.providers.apple.apple_xml.presigned_url_service import presigned_url_service
+from app.services.providers.apple.apple_xml.sns_service import sns_service
 
 router = APIRouter()
 
@@ -60,7 +60,6 @@ def create_multipart_upload(
 
 @router.post(
     "/users/{user_id}/import/apple/xml/s3/multipart/sign",
-    status_code=status.HTTP_200_OK,
 )
 def sign_multipart_parts(
     user_id: str,
@@ -141,7 +140,6 @@ def complete_multipart_upload(
 
 @router.post(
     "/users/{user_id}/import/apple/xml/s3/multipart/abort",
-    status_code=status.HTTP_200_OK,
 )
 def abort_multipart_upload(
     user_id: str,

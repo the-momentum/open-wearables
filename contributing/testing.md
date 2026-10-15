@@ -35,14 +35,17 @@ uv run pytest -v
 ```bash
 cd frontend
 
-# Run all tests
-pnpm test
+# Unit and component tests (watch mode)
+bun run test:unit
 
-# Run tests in watch mode
-pnpm test:watch
+# Run once
+bun run test:unit --run
 
 # Run specific test file
-pnpm test src/components/Button.test.tsx
+bun run test:unit --run src/lib/utils/utils.spec.ts
+
+# End-to-end tests
+bun run test:e2e
 ```
 
 ## Writing Tests
@@ -66,22 +69,28 @@ Test files should be placed in the `backend/tests/` directory and named with `te
 
 ### Frontend Tests
 
-Frontend tests use **Vitest** with **React Testing Library**.
+The frontend has three tiers, chosen by file suffix:
+
+| Suffix              | Runner                                  | For                                       |
+| ------------------- | --------------------------------------- | ----------------------------------------- |
+| `*.spec.ts`         | Vitest, node                            | Pure logic: parsing, formatting           |
+| `*.browser.spec.ts` | Vitest in real Chromium                 | Component behaviour                       |
+| `*.e2e.ts`          | Playwright against a build and mock API | User flows, from sign-in onwards          |
 
 ```typescript
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
-import { Button } from './Button';
+import { page } from 'vitest/browser';
+import { render } from 'vitest-browser-svelte';
+import { expect, it } from 'vitest';
+import Button from './Button.svelte';
 
-describe('Button', () => {
-  it('renders correctly', () => {
-    render(<Button>Click me</Button>);
-    expect(screen.getByRole('button')).toHaveTextContent('Click me');
-  });
+it('passes ARIA state through', async () => {
+	render(Button, { 'aria-expanded': true });
+	await expect.element(page.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
 });
 ```
 
-Test files should be colocated with components using `.test.tsx` or `.test.ts` suffix.
+Specs are colocated, one per directory rather than one per component. See
+[frontend/AGENTS.md](../frontend/AGENTS.md) for what is worth testing.
 
 ## Test Requirements
 

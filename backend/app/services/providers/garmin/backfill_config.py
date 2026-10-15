@@ -30,8 +30,9 @@ TRIGGERED_TIMEOUT_SECONDS = 300  # 5 min before skipping a triggered type
 # ---------------------------------------------------------------------------
 # Concurrency lock
 # ---------------------------------------------------------------------------
-# 1 window * 5 types * 5min timeout + 1hr buffer
-BACKFILL_LOCK_TTL = (1 * 5 * 300) + 3600  # 5100 seconds (~1.4 hours)
+# Safety net for a chain that dies without releasing the lock (worker crash,
+# lost Celery task): 1 window * 5 types * 5min timeout + 5min buffer.
+BACKFILL_LOCK_TTL = (1 * 5 * TRIGGERED_TIMEOUT_SECONDS) + 300  # 1800 seconds (30 min)
 
 # ---------------------------------------------------------------------------
 # Backfill windows & API limits
@@ -45,11 +46,8 @@ BACKFILL_WINDOW_COUNT = 1  # Single 30-day window (Garmin's max allowed range)
 DEFAULT_BACKFILL_DAYS = 1  # Default for subsequent syncs
 
 # ---------------------------------------------------------------------------
-# Recovery / GC
+# Misc
 # ---------------------------------------------------------------------------
-GC_MAX_ATTEMPTS = 3  # Max GC-and-retry cycles before permanently failed
-GC_STUCK_THRESHOLD_SECONDS = 600  # 10 minutes of no activity = stuck
-GC_SCAN_INTERVAL_SECONDS = 180  # Every 3 minutes (used by celery beat in Plan 02)
 SUMMARY_DAYS = 0  # No summary coverage gap (REST endpoints removed)
 REQUEST_DELAY_SECONDS = 0.5  # Small delay between requests (prod limit: 10,000 days/min)
 

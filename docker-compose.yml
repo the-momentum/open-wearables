@@ -30,6 +30,8 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      # Keeps root-owned __pycache__ out of the mounted extensions
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -37,6 +39,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync
@@ -68,10 +72,13 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     depends_on:
       - redis
       - db
       - app
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync+restart
@@ -91,10 +98,13 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     depends_on:
       - redis
       - db
       - app
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync+restart
@@ -114,12 +124,15 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - PYTHONPYCACHEPREFIX=/tmp/pycache
     ports:
       - "${FLOWER_PORT:-5555}:5555"
     depends_on:
       - redis
       - db
       - app
+    volumes:
+      - ./extensions:/root_project/extensions
     develop:
       watch:
         - action: sync
@@ -155,7 +168,7 @@ services:
 
   svix-server:
     container_name: svix-server__open-wearables
-    image: svix/svix-server:v1
+    image: svix/svix-server:v1.101.0
     entrypoint:
       - sh
       - -c
@@ -199,6 +212,10 @@ services:
       - ./frontend/.env.example
       - path: ./frontend/.env
         required: false
+    environment:
+      # The server's own hop to the API stays inside the network; VITE_API_URL
+      # from the env file is the address a browser or phone dials.
+      - API_URL=http://app:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -209,12 +226,12 @@ services:
           path: ./frontend/src
           target: /app/src
         - action: sync
-          path: ./frontend/public
-          target: /app/public
+          path: ./frontend/static
+          target: /app/static
         - action: rebuild
           path: ./frontend/package.json
         - action: rebuild
-          path: ./frontend/pnpm-lock.yaml
+          path: ./frontend/bun.lock
         - action: rebuild
           path: ./frontend/vite.config.ts
     restart: on-failure

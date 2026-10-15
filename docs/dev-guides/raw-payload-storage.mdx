@@ -117,6 +117,10 @@ Each object includes metadata for filtering and querying:
 | `user_id` | User identifier (if available) |
 | `trace_id` | Request trace/batch ID (if available) |
 
+#### Finding the payload behind a Sentry error
+
+Each stored payload also adds a Sentry breadcrumb (category `raw_payload`) with the `s3://` reference, source, provider and trace ID - never the payload itself. An error later in the same request or Celery task shows it under breadcrumbs, so you can open the exact file. With the `log` backend the breadcrumb has no reference, but the trace ID lets you find the payload in stdout.
+
 ## Supported Ingestion Points
 
 Raw payloads storage is currently enabled at two ingestion points:
@@ -124,7 +128,11 @@ Raw payloads storage is currently enabled at two ingestion points:
 | Endpoint | Source | Provider | Trace ID |
 |----------|--------|----------|----------|
 | `POST /api/v1/garmin/push` | `webhook` | `garmin` | 8-char request trace ID |
-| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `google` | UUID4 batch ID |
+| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `health_connect` | UUID4 batch ID |
+
+<Note>
+  The Android SDK sends `provider: "google"` for Health Connect; the endpoint normalizes it to `health_connect` before the payload is stored. Objects written before the provider split are still under the `google/` prefix.
+</Note>
 
 ## SDK Payload Offload
 

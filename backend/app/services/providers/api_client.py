@@ -9,6 +9,7 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
@@ -22,16 +23,19 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
 
 
-def _get_valid_token(
+def get_valid_token(
     db: DbSession,
     user_id: UUID,
     provider_name: str,
     connection_repo: UserConnectionRepository,
     oauth: BaseOAuthTemplate,
+    *,
+    revoke_on_failure: bool = True,
 ) -> str:
     """Get a valid access token, refreshing if necessary.
 
-    Private function used internally by make_authenticated_request.
+    Used by make_authenticated_request and by calls that send the token outside
+    of it, e.g. provider deregistration.
     """
     connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
     if not connection:
@@ -88,7 +92,9 @@ def _get_valid_token(
                     detail=f"Token expired and no refresh token available for {provider_name}",
                 )
 
-            token_response = oauth.refresh_access_token(db, user_id, connection.refresh_token)
+            token_response = oauth.refresh_access_token(
+                db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
+            )
             return token_response.access_token
 
     return connection.access_token
@@ -109,6 +115,7 @@ def make_authenticated_request(
     json_data: dict[str, Any] | None = None,
     expect_json: bool = True,
     http2: bool = False,
+    check_body_errors: bool = True,
 ) -> Any:
     """Make authenticated request to provider API.
 
@@ -133,6 +140,9 @@ def make_authenticated_request(
         http2: Enable HTTP/2 for this request (default False). Requires the h2
             package (installed via httpx[http2]).  Use for providers that require
             HTTP/2, e.g. Sensor Bio.  Other providers are unaffected.
+        check_body_errors: Raise when a 200 body carries an ``error`` or a non-200 ``code``
+            (default True). Set to False for providers whose envelope carries its own
+            status, e.g. Withings, so the caller can tell a throttle from a failure.
 
     Returns:
         Any: API response JSON, or dict with status_code if expect_json=False
@@ -144,7 +154,7 @@ def make_authenticated_request(
         raise ValueError("form_data and json_data are mutually exclusive")
 
     # Get valid token (will auto-refresh if needed)
-    access_token = _get_valid_token(db, user_id, provider_name, connection_repo, oauth)
+    access_token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
 
     # Prepare headers
     request_headers = {
@@ -167,7 +177,7 @@ def make_authenticated_request(
                     params=params or {},
                     data=form_data,
                     json=json_data,
-                    timeout=30.0,
+                    timeout=settings.provider_request_timeout_seconds,
                 )
 
             # Handle 429 rate limiting with retry
@@ -211,7 +221,7 @@ def make_authenticated_request(
             result = response.json()
 
             # Some APIs (like Suunto) return 200 OK but include error in response body
-            if isinstance(result, dict):
+            if check_body_errors and isinstance(result, dict):
                 # Check for common error patterns
                 # Only treat as error if "error" field has a value (not None/null)
                 has_error = result.get("error") is not None and result.get("error")
@@ -304,11 +314,13 @@ def download_binary_content(
     The URL may contain additional auth params (e.g. token=...) alongside the Bearer header.
     Retries up to MAX_RETRIES times on 429 with exponential backoff.
     """
-    access_token = _get_valid_token(db, user_id, provider_name, connection_repo, oauth)
+    access_token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
     headers = {"Authorization": f"Bearer {access_token}"}
 
     for attempt in range(MAX_RETRIES + 1):
-        response = httpx.get(url, headers=headers, timeout=30.0, follow_redirects=True)
+        response = httpx.get(
+            url, headers=headers, timeout=settings.provider_request_timeout_seconds, follow_redirects=True
+        )
         if response.status_code == 429 and attempt < MAX_RETRIES:
             backoff_delay = RETRY_BASE_DELAY * (2**attempt)
             log_structured(

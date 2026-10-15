@@ -55,8 +55,7 @@ class DeviceTypePriorityRepository:
         return self.get_all_ordered(db)
 
     def initialize_defaults(self, db: DbSession) -> list[DeviceTypePriority]:
-        existing = self.get_all_ordered(db)
-        if existing:
-            return existing
-        priorities = list(DEFAULT_DEVICE_TYPE_PRIORITY.items())
-        return self.bulk_update(db, priorities)
+        """Seed default priorities for device types without a row; existing rows are kept."""
+        existing = {p.device_type for p in self.get_all_ordered(db)}
+        missing = [(t, p) for t, p in DEFAULT_DEVICE_TYPE_PRIORITY.items() if t not in existing]
+        return self.bulk_update(db, missing) if missing else self.get_all_ordered(db)

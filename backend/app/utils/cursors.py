@@ -5,6 +5,7 @@ import binascii
 from datetime import datetime
 from uuid import UUID
 
+from app.utils.dates import parse_query_datetime
 from app.utils.exceptions import InvalidCursorError
 
 
@@ -52,8 +53,6 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID, str]:
         cursor_ts_str, cursor_id_str = decoded_cursor.split("|")
 
         # Parse timestamp and UUID
-        from app.utils.dates import parse_query_datetime
-
         cursor_ts = parse_query_datetime(cursor_ts_str)
         cursor_id = UUID(cursor_id_str)
 
