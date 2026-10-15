@@ -32,6 +32,7 @@ from app.services.outgoing_webhooks.events import (
     on_connection_created,
     on_connection_revoked,
     on_sleep_created,
+    on_sync_data_type_finished,
     on_timeseries_batch_saved,
     on_workout_created,
 )
@@ -673,6 +674,56 @@ class TestUpdateEndpointClearingContract:
 # ---------------------------------------------------------------------------
 # Run provenance on data events (issue #1495)
 # ---------------------------------------------------------------------------
+
+
+class TestSyncDataTypePayload:
+    @pytest.fixture(autouse=True)
+    def _webhooks_enabled(self) -> Generator[None, None, None]:
+        with patch("app.services.outgoing_webhooks.svix.is_enabled", return_value=True):
+            yield
+
+    @patch("app.services.outgoing_webhooks.events.celery_app")
+    def test_separates_what_the_run_wrote_from_what_is_held(self, mock_task: MagicMock) -> None:
+        on_sync_data_type_finished(
+            user_id=uuid4(),
+            provider="apple",
+            source="sdk",
+            scope="historical",
+            run_id="sdk_abc",
+            data_type="heart_rate",
+            kind="series",
+            status="success",
+            succeeded=True,
+            reported_records=41230,
+            items_inserted=41230,
+            covered_start="2024-01-01T00:00:00+00:00",
+            covered_end="2024-03-31T23:59:00+00:00",
+            coverage_start="2019-03-14T06:00:00+00:00",
+            coverage_end="2024-03-31T23:59:00+00:00",
+        )
+
+        data = mock_task.send_task.call_args.kwargs["args"][1]["data"]
+        assert data["items_reported"] == 41230
+        assert data["written"] == {"start": "2024-01-01T00:00:00+00:00", "end": "2024-03-31T23:59:00+00:00"}
+        assert data["coverage"] == {"start": "2019-03-14T06:00:00+00:00", "end": "2024-03-31T23:59:00+00:00"}
+
+    @patch("app.services.outgoing_webhooks.events.celery_app")
+    def test_a_failed_type_without_data_has_no_spans(self, mock_task: MagicMock) -> None:
+        on_sync_data_type_finished(
+            user_id=uuid4(),
+            provider="apple",
+            source="sdk",
+            scope="historical",
+            run_id="sdk_abc",
+            data_type="sleep",
+            kind="event",
+            status="failed",
+            succeeded=False,
+            error_code="authorization_denied",
+        )
+
+        data = mock_task.send_task.call_args.kwargs["args"][1]["data"]
+        assert (data["written"], data["coverage"]) == (None, None)
 
 
 class TestDataEventSyncProvenance:

@@ -507,8 +507,8 @@ def on_sync_data_type_finished(
     only says the whole run finished, which for a months-long backfill arrives long after
     an individual type is fully in.
 
-    ``covered_*`` is what this run wrote, ``coverage_*`` the total span now held for the
-    type. They differ, and the second is the one that answers "is the history complete".
+    ``written`` is what this run wrote, ``coverage`` the total span now held for the type.
+    They differ, and the second is the one that answers "is the history complete".
     """
     event_type = WebhookEventType.SYNC_DATA_TYPE_COMPLETED if succeeded else WebhookEventType.SYNC_DATA_TYPE_FAILED
     _dispatch(
@@ -525,11 +525,10 @@ def on_sync_data_type_finished(
                 "native_data_type": native_data_type,
                 "kind": kind,
                 "status": status,
-                "reported_records": reported_records,
+                "items_reported": reported_records,
                 "items_inserted": items_inserted,
                 "items_updated": items_updated,
-                "covered_start": covered_start,
-                "covered_end": covered_end,
+                "written": {"start": covered_start, "end": covered_end} if covered_end else None,
                 "coverage": {"start": coverage_start, "end": coverage_end} if coverage_end else None,
                 "error_code": error_code,
                 "error": error,
