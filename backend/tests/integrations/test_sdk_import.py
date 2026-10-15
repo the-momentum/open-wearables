@@ -598,6 +598,39 @@ class TestAppleSDKImportEdgeCases:
         assert details.distance is None
         assert details.energy_burned is None
 
+    def test_import_workout_without_energy_statistic_leaves_calories_unset(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """A session with statistics but no calories, as third-party Health Connect apps send."""
+        user = UserFactory()
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {
+                "workouts": [
+                    {
+                        "id": "CCCC1111-2222-3333-4444-555566667777",
+                        "type": "running",
+                        "startDate": "2025-01-29T16:00:00Z",
+                        "endDate": "2025-01-29T16:30:00Z",
+                        "source": {"name": "Strava", "bundleIdentifier": "com.strava.stravaride"},
+                        "values": [
+                            {"type": "duration", "unit": "s", "value": 1800},
+                            {"type": "distance", "unit": "m", "value": 5000},
+                        ],
+                    }
+                ],
+            },
+        }
+
+        import_service.load_data(db, payload, str(user.id))
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+        assert details.distance == Decimal("5000")
+        assert details.energy_burned is None
+
 
 class TestSDKImportUnitConversion:
     """Unit conversions applied in `_build_statistic_bundles`.

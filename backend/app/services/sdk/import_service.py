@@ -381,7 +381,6 @@ class ImportService:
             return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
-        stats_dict["energy_burned"] = Decimal("0")
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
 
@@ -424,7 +423,9 @@ class ImportService:
                     | WorkoutStatisticType.CALORIES
                     | WorkoutStatisticType.TOTAL_CALORIES
                 ):
-                    stats_dict["energy_burned"] += value
+                    # Summed across the energy statistics, and left unset when the payload reports none
+                    energy = stats_dict.get("energy_burned")
+                    stats_dict["energy_burned"] = value if energy is None else energy + value
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:

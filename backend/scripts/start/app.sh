@@ -92,6 +92,13 @@ echo 'Running data source merge...'
 uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
     || echo "Warning: data source merge failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no
+# calories. Runs once per instance (data_migration).
+echo 'Running SDK workout calories cleanup...'
+uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
+    || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

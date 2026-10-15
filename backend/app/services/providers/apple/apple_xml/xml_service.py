@@ -266,7 +266,7 @@ class XMLService:
 
     def _init_metrics(self) -> EventRecordMetrics:
         return {
-            "energy_burned": Decimal("0"),
+            "energy_burned": None,
             "heart_rate_min": None,
             "heart_rate_max": None,
             "heart_rate_avg": None,
@@ -299,8 +299,11 @@ class XMLService:
             if avg_value is not None:
                 metrics["heart_rate_avg"] = avg_value
 
-        if "energyburned" in lowered and metrics["energy_burned"] is not None:
-            metrics["energy_burned"] += self._decimal_from_stat(statistic.get("sum")) or Decimal("0")
+        # Summed across the energy statistics, and left unset when the export reports none
+        energy = self._decimal_from_stat(statistic.get("sum")) if "energyburned" in lowered else None
+        if energy is not None:
+            current = metrics["energy_burned"]
+            metrics["energy_burned"] = energy if current is None else current + energy
 
     def _wrap_sleep_data(self, sleep_records: list[SleepRecord]) -> SyncRequest:
         """Wrap sleep data in a SyncRequest
