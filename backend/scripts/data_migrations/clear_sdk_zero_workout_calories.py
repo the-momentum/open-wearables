@@ -11,7 +11,7 @@ a writer did report is cleared too.
 
 Cloud providers never had the bug: their zeros are what the provider reported and stay.
 
-Runs once per instance (``data_migration``), in committed batches.
+Runs once per instance (``data_migration``): one pass collects the workouts, then committed batches\nclear them.
 
 Usage (inside Docker):
     docker compose exec app uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py --dry-run
@@ -37,27 +37,36 @@ _ZEROS = """
     WHERE wd.energy_burned = 0 AND ds.provider = ANY(:providers)
 """
 _COUNT = text(f"SELECT count(*) FROM ({_ZEROS}) zeros")
-_CLEAR_BATCH = text(f"""
-    UPDATE workout_details SET energy_burned = NULL
-    WHERE record_id IN ({_ZEROS} LIMIT :batch_size)
-""")
+# Collected in one pass into a session temp table, so batches cost a key lookup each and not a
+# rescan of workout_details; the session must stay on one connection (see main)
+_DROP = text("DROP TABLE IF EXISTS sdk_zero_kcal")
+_COLLECT = text(f"CREATE TEMP TABLE sdk_zero_kcal AS {_ZEROS}")
+_INDEX = text("CREATE INDEX ON sdk_zero_kcal (record_id)")
+_NEXT = text("SELECT record_id FROM sdk_zero_kcal ORDER BY record_id LIMIT :batch_size")
+_CLEAR = text("UPDATE workout_details SET energy_burned = NULL WHERE record_id = ANY(:ids)")
+_FORGET = text("DELETE FROM sdk_zero_kcal WHERE record_id = ANY(:ids)")
 
 
 def clear_sdk_zero_workout_calories(db: Session, *, dry_run: bool) -> int:
     """Commits per batch, so an interrupted run keeps what it cleared."""
-    providers = sorted(SDK_PROVIDERS)
+    params = {"providers": sorted(SDK_PROVIDERS)}
     if dry_run:
-        found = db.execute(_COUNT, {"providers": providers}).scalar() or 0
+        found = db.execute(_COUNT, params).scalar() or 0
         print(f"Would clear 0 kcal on {found} SDK workout(s).\n\nDry run — no changes made.")
         return found
 
+    db.execute(_DROP)
+    db.execute(_COLLECT, params)
+    db.execute(_INDEX)
+    db.commit()
     cleared = 0
-    while True:
-        batch = db.execute(_CLEAR_BATCH, {"providers": providers, "batch_size": _BATCH_SIZE}).rowcount  # ty: ignore[unresolved-attribute]
+    while ids := list(db.execute(_NEXT, {"batch_size": _BATCH_SIZE}).scalars()):
+        db.execute(_CLEAR, {"ids": ids})
+        db.execute(_FORGET, {"ids": ids})
         db.commit()
-        cleared += batch
-        if batch < _BATCH_SIZE:
-            break
+        cleared += len(ids)
+    db.execute(_DROP)
+    db.commit()
     print(f"Cleared 0 kcal on {cleared} SDK workout(s).")
     return cleared
 
