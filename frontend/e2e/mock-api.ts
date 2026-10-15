@@ -555,9 +555,7 @@ const server = Bun.serve({
 						last_synced_at: latest?.last_synced_at ?? null,
 						last_synced_provider: latest?.provider ?? null,
 						has_active_connection: connected,
-						connections: null,
-						// Only one user gates the tab on, so a test can assert both cases.
-						has_womens_health_data: user.first_name === 'Zofia'
+						connections: null
 					});
 				}
 				case '/connections':

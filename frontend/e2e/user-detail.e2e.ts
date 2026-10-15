@@ -165,12 +165,12 @@ test('offers the empty states rather than blank panels when nothing is connected
 	await expect(page.getByText('Nothing in the last 24 hours')).toBeVisible();
 });
 
-test("gates Women's Health on the user actually having that data", async ({ page }) => {
-	await page.goto(`/users/${CONNECTED}`);
-	await expect(page.getByRole('link', { name: "Women's Health" })).toBeVisible();
-
+test("shows Women's Health to a user without that data, as an empty tab", async ({ page }) => {
 	await page.goto(`/users/${UNCONNECTED}`);
-	await expect(page.getByRole('link', { name: "Women's Health" })).toHaveCount(0);
+	await page.getByRole('link', { name: "Women's Health" }).click();
+
+	await expect(page).toHaveURL(`/users/${UNCONNECTED}/womens-health`);
+	await expect(page.getByText('No cycles recorded')).toBeVisible();
 });
 
 test('gives every tab a real URL, and 404s on one that is not a tab', async ({ page }) => {
