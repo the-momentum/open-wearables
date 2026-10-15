@@ -16,9 +16,13 @@ The Seed Data Generator creates synthetic users with configurable workouts, slee
 
 Open the dashboard and go to **Settings → Seed Data**. Generation runs in the background via Celery; the dispatch call returns immediately with the seed that was used.
 
+<Warning>
+Seeded data does not reflect real device volumes or sampling frequency. Don't use it to estimate how much data a real user generates.
+</Warning>
+
 ## When to use it
 
-- Populating a fresh dev/staging instance with realistic data.
+- Populating a fresh dev/staging instance with test data.
 - Testing charts, filters, and aggregations across many users and date ranges.
 - Reproducing a bug report - the reporter shares their seed and preset, you regenerate the same dataset locally.
 
@@ -117,7 +121,7 @@ Every generated user's first name is prefixed with the seed and preset:
 If the preset is `custom`, you also need the other form values - seed alone isn't enough to reproduce a hand-tuned configuration.
 
 <Note>
-Data is anchored to a fixed reference date (2025-01-01) inside the service, so the same seed produces the same dates regardless of when you run the generator. Explicit **Date range** inputs override this anchor.
+Data is anchored to the current day (midnight UTC), so seeded users always have recent data. The same seed produces the same values, shifted to end around the day you run the generator. Explicit **Date range** inputs override this anchor.
 </Note>
 
 ## API

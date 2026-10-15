@@ -407,6 +407,15 @@ def sample_ultrahuman_api_response() -> dict:
                     },
                 },
                 {
+                    "type": "temperature_deviation",
+                    "object": {
+                        "day_start_timestamp": 1705276800,
+                        "title": "Temperature Deviation",
+                        "value": -0.2,
+                        "unit": "°C",
+                    },
+                },
+                {
                     "type": "sleep_rhr",
                     "object": {
                         "value": 51,

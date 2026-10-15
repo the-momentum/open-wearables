@@ -33,6 +33,12 @@ class HealthScore(BaseDbModel):
             unique=True,
             postgresql_where=text("event_record_id IS NOT NULL"),
         ),
+        # Only internal and SDK sleep scores carry a source; deleting a data_source checks this FK
+        Index(
+            "ix_health_score_data_source_id",
+            "data_source_id",
+            postgresql_where=text("data_source_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]

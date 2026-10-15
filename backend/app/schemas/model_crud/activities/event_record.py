@@ -4,8 +4,9 @@ from enum import StrEnum
 from typing import Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.constants.devices_map import normalize_device_model
 from app.schemas.enums import DeviceType, EntrySource, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
@@ -74,6 +75,8 @@ class EventRecordBase(BaseModel):
     end_datetime: datetime
     zone_offset: ZoneOffset = None
 
+    _normalize_device_model = field_validator("device_model")(normalize_device_model)
+
 
 class EventRecordCreate(EventRecordBase):
     id: UUID
@@ -85,6 +88,9 @@ class EventRecordCreate(EventRecordBase):
     data_source_id: UUID | None = None
     software_version: str | None = None
     device_type: DeviceType | None = None
+    device_id: str | None = None
+    source_app_id: str | None = None
+    device_manufacturer: str | None = None
 
 
 class EventRecordUpdate(EventRecordBase):

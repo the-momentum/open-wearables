@@ -37,6 +37,7 @@ export type Draft = {
 		awake: Range;
 	};
 	series: { on: boolean; types: string[]; bloodPressure: boolean };
+	meals: { on: boolean; count: number; calories: Range };
 };
 
 export const LIMITS = {
@@ -47,7 +48,9 @@ export const LIMITS = {
 	workoutMinutes: [5, 600],
 	nights: [0, 365],
 	sleepMinutes: [60, 720],
-	percent: [0, 100]
+	percent: [0, 100],
+	meals: [0, 10_000],
+	calories: [0, 5000]
 } as const;
 
 export const WINDOW_MONTHS = [1, 3, 6, 12, 24];
@@ -60,7 +63,7 @@ export function datesFor(months: number, now = new Date()): { from: string; to: 
 }
 
 export function draftFrom(profile: SeedProfile, keep: Pick<Draft, 'users' | 'seed'>): Draft {
-	const { workout_config: w, sleep_config: s, time_series_config: t } = profile;
+	const { workout_config: w, sleep_config: s, time_series_config: t, meal_config: m } = profile;
 
 	return {
 		...keep,
@@ -94,6 +97,11 @@ export function draftFrom(profile: SeedProfile, keep: Pick<Draft, 'users' | 'see
 			on: profile.generate_time_series,
 			types: [...t.enabled_types],
 			bloodPressure: t.include_blood_pressure
+		},
+		meals: {
+			on: profile.generate_meals,
+			count: m.meal_count,
+			calories: [...m.calories_range]
 		}
 	};
 }
@@ -117,6 +125,7 @@ export function profileOf(draft: Draft, preset: string | null): SeedProfile {
 		generate_workouts: draft.workouts.on,
 		generate_sleep: draft.sleep.on,
 		generate_time_series: draft.series.on,
+		generate_meals: draft.meals.on,
 		providers: picked ? [...draft.providers] : null,
 		num_connections: picked ? draft.providers.length : draft.connections,
 		workout_config: {
@@ -146,6 +155,11 @@ export function profileOf(draft: Draft, preset: string | null): SeedProfile {
 		time_series_config: {
 			enabled_types: [...draft.series.types],
 			include_blood_pressure: draft.series.bloodPressure,
+			...window
+		},
+		meal_config: {
+			meal_count: draft.meals.count,
+			calories_range: draft.meals.calories,
 			...window
 		}
 	};
@@ -194,7 +208,8 @@ function normalise(profile: SeedProfile): SeedProfile {
 		...profile,
 		workout_config: { ...profile.workout_config, ...dates(profile.workout_config) },
 		sleep_config: { ...profile.sleep_config, ...dates(profile.sleep_config) },
-		time_series_config: { ...profile.time_series_config, ...dates(profile.time_series_config) }
+		time_series_config: { ...profile.time_series_config, ...dates(profile.time_series_config) },
+		meal_config: { ...profile.meal_config, ...dates(profile.meal_config) }
 	};
 }
 
@@ -229,7 +244,7 @@ export function problems(draft: Draft): string[] {
 	}
 
 	need(
-		draft.workouts.on || draft.sleep.on || draft.series.on,
+		draft.workouts.on || draft.sleep.on || draft.series.on || draft.meals.on,
 		'Turn on at least one kind of data.'
 	);
 
@@ -272,6 +287,15 @@ export function problems(draft: Draft): string[] {
 		need(
 			draft.series.types.length > 0 || draft.series.bloodPressure,
 			'Pick at least one series type, or turn time series off.'
+		);
+	}
+
+	if (draft.meals.on) {
+		const m = draft.meals;
+		need(between(m.count, LIMITS.meals), 'Meals must be 0 to 10,000.');
+		need(
+			ordered(m.calories) && m.calories.every((kcal) => between(kcal, LIMITS.calories)),
+			'Calories must run low to high, within 0 to 5,000 kcal.'
 		);
 	}
 

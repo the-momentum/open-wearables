@@ -1,10 +1,11 @@
 """Withings 24/7 data: body measures (``getmeas``), daily activity (``getactivity``),
-and sleep (``getsummary`` for the night's totals, ``get`` for its hypnogram). Continuous
-metrics become ``DataPointSeries`` samples; sleep becomes an ``EventRecord`` +
-``EventRecordDetail``, mirroring Oura.
+intraday activity (``getintradayactivity``) and sleep (``getsummary`` for the night's
+totals, ``get`` for its hypnogram). Continuous metrics become ``DataPointSeries``
+samples; sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 """
 
 import logging
+from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, NamedTuple, NoReturn
@@ -14,7 +15,7 @@ from pydantic import ValidationError
 
 from app.config import settings
 from app.constants.series_types.withings import SLEEP_STATE_STAGE_MAP
-from app.constants.withings_requests import ACTIVITY, MEASURES, SLEEP_SERIES, SLEEP_SUMMARY
+from app.constants.withings_requests import ACTIVITY, INTRADAY_ACTIVITY, MEASURES, SLEEP_SERIES, SLEEP_SUMMARY
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -27,6 +28,7 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.providers.withings import (
     WithingsActivity,
+    WithingsIntradayActivity,
     WithingsMeasureGroup,
     WithingsSleepSummary,
 )
@@ -36,6 +38,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.coverage import (
     ACTIVITY_FIELD_MAP,
+    INTRADAY_ACTIVITY_FIELD_MAP,
     MEASURE_TYPE_MAP,
     MEASURE_UNIT_FACTOR,
     SLEEP_HRV_FIELD_MAP,
@@ -43,6 +46,7 @@ from app.services.providers.withings.coverage import (
 from app.services.providers.withings.handlers.rpc_client import (
     WithingsAPIError,
     paginate,
+    paginate_mapping,
     scale_measure,
     withings_request,
 )
@@ -78,9 +82,40 @@ class _SleepSeries(NamedTuple):
 # Trailing window used when a caller supplies no bounds.
 _DEFAULT_SYNC_WINDOW = timedelta(days=30)
 
+# getintradayactivity answers at most 24 h per call, so a window is walked a day at a time.
+_INTRADAY_MAX_WINDOW = timedelta(days=1)
+
+# Below any relayed third-party tracker (see WithingsIntradayActivity), above Withings hardware.
+_RELAYED_MODEL_ID_FLOOR = 1000
+
+# Withings documents brand=18 as an externally sourced activity row and brand=1 as its own.
+_EXTERNAL_BRAND = 18
+
 # Every mapped meastype is requested in one getmeas call. Derived from the
 # coverage map, so it lives here rather than with the request definitions.
 _REQUESTED_MEASTYPES = ",".join(str(code) for code in MEASURE_TYPE_MAP)
+
+
+def _zone_for(timezones: dict[date_type, str | None], moment: datetime) -> str | None:
+    """The zone reported for the slice's day, falling back to the most recent earlier day.
+
+    A slice near midnight UTC belongs to a local day the map may key differently, and a
+    day Withings reported no activity for has no row of its own.
+    """
+    day = moment.date()
+    if day in timezones:
+        return timezones[day]
+    earlier = [known for known in timezones if known < day]
+    return timezones[max(earlier)] if earlier else None
+
+
+def _daily_total_instants(timezones: dict[date_type, str | None]) -> set[datetime]:
+    """Where ``save_activity`` stores each day's totals; a slice on one would upsert the total away."""
+    instants: set[datetime] = set()
+    for day, zone_name in timezones.items():
+        day_start, _ = local_day_start(day, zone_name, logger, action="intraday_day_start_invalid")
+        instants.add(day_start)
+    return instants
 
 
 class Withings247Data(Base247DataTemplate):
@@ -197,15 +232,10 @@ class Withings247Data(Base247DataTemplate):
 
     # ---------------------- Daily activity (getactivity) ----------------------
 
-    def normalize_activity(
-        self,
-        rows: list[dict],
-        user_id: UUID,
-        user_connection_id: UUID | None = None,
-    ) -> list[TimeSeriesSampleCreate]:
-        samples: list[TimeSeriesSampleCreate] = []
+    def _parse_activities(self, rows: list[dict], user_id: UUID) -> list[WithingsActivity]:
+        """The Withings-sourced daily rows; a malformed one is skipped without dropping the rest."""
+        activities: list[WithingsActivity] = []
         for row in rows:
-            # Tolerate a malformed row without dropping the rest of the batch.
             try:
                 activity = WithingsActivity.model_validate(row)
             except ValidationError as e:
@@ -219,11 +249,20 @@ class Withings247Data(Base247DataTemplate):
                     error=str(e),
                 )
                 continue
-            # Withings documents brand=18 as external and brand=1 as Withings.
-            # deviceid is only an identifier and may be absent on valid rows.
-            if activity.brand == 18:
+            if activity.brand == _EXTERNAL_BRAND:
                 logger.debug("Skipping externally sourced Withings activity for %s", activity.date)
                 continue
+            activities.append(activity)
+        return activities
+
+    def normalize_activity(
+        self,
+        rows: list[dict],
+        user_id: UUID,
+        user_connection_id: UUID | None = None,
+    ) -> list[TimeSeriesSampleCreate]:
+        samples: list[TimeSeriesSampleCreate] = []
+        for activity in self._parse_activities(rows, user_id):
             ts, zone_offset = local_day_start(
                 activity.date,
                 activity.timezone,
@@ -275,16 +314,9 @@ class Withings247Data(Base247DataTemplate):
         """Widen a UTC window to cover the local-date boundaries Withings queries."""
         return (start - timedelta(days=1)).strftime("%Y-%m-%d"), (end + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    def save_activity(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start: datetime,
-        end: datetime,
-    ) -> int:
-        user_connection_id = self._active_connection_id(db, user_id)
+    def _fetch_activity_rows(self, db: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
         start_ymd, end_ymd = self._ymd_window(start, end)
-        rows = paginate(
+        return paginate(
             db=db,
             user_id=user_id,
             connection_repo=self.connection_repo,
@@ -298,7 +330,152 @@ class Withings247Data(Base247DataTemplate):
             },
             list_key=ACTIVITY.list_key,
         ).rows
+
+    def save_activity(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start: datetime,
+        end: datetime,
+        rows: list[dict] | None = None,
+    ) -> int:
+        """``rows`` are the window's getactivity rows when the caller already fetched them."""
+        user_connection_id = self._active_connection_id(db, user_id)
+        if rows is None:
+            rows = self._fetch_activity_rows(db, user_id, start, end)
         samples = self.normalize_activity(rows, user_id, user_connection_id)
+        if not samples:
+            return 0
+        counts = timeseries_service.bulk_create_samples(db, samples)
+        db.commit()
+        return counts
+
+    # ---------------------- Intraday activity (getintradayactivity) ----------------------
+
+    def _day_timezones(self, rows: list[dict], user_id: UUID) -> dict[date_type, str | None]:
+        """Each day with a Withings daily row, mapped to its zone; a day without one stays in."""
+        return {activity.date: activity.timezone for activity in self._parse_activities(rows, user_id)}
+
+    def normalize_intraday_activity(
+        self,
+        series: dict[str, Any],
+        user_id: UUID,
+        user_connection_id: UUID | None = None,
+        timezones: dict[date_type, str | None] | None = None,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Epoch-keyed slices to samples; each takes its day's zone from ``timezones``, as the response has none."""
+        samples: list[TimeSeriesSampleCreate] = []
+        reserved = _daily_total_instants(timezones or {})
+        for epoch, row in series.items():
+            try:
+                recorded_at = datetime.fromtimestamp(int(epoch), tz=timezone.utc)
+            except (TypeError, ValueError):
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping Withings intraday slice keyed by an unreadable epoch",
+                    provider=self.provider_name,
+                    action="intraday_epoch_invalid",
+                    user_id=str(user_id),
+                    epoch=str(epoch),
+                )
+                continue
+            try:
+                activity_slice = WithingsIntradayActivity.model_validate(row)
+            except ValidationError as e:
+                log_structured(
+                    logger,
+                    "warning",
+                    "Skipping unparseable Withings intraday slice",
+                    provider=self.provider_name,
+                    action="intraday_slice_validation_failed",
+                    user_id=str(user_id),
+                    error=str(e),
+                )
+                continue
+            if activity_slice.model_id is not None and activity_slice.model_id >= _RELAYED_MODEL_ID_FLOOR:
+                continue
+            if recorded_at in reserved:
+                continue
+            zone_name = _zone_for(timezones or {}, recorded_at)
+            zone_offset = (
+                zone_offset_at(
+                    zone_name,
+                    recorded_at,
+                    logger,
+                    action="intraday_timezone_invalid",
+                    user_id=str(user_id),
+                )
+                if zone_name
+                else None
+            )
+            for field, series_type in INTRADAY_ACTIVITY_FIELD_MAP.items():
+                value = getattr(activity_slice, field)
+                if value is None:
+                    continue
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        provider=self.provider_name,
+                        user_connection_id=user_connection_id,
+                        external_id=f"intraday:{epoch}:{series_type.value}",
+                        recorded_at=recorded_at,
+                        zone_offset=zone_offset,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                        is_daily_total=daily_total_flag(series_type, is_daily=False),
+                    )
+                )
+        return samples
+
+    def save_intraday_activity(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start: datetime,
+        end: datetime,
+        rows: list[dict] | None = None,
+    ) -> int:
+        """One request per day that has a daily row, so the per-minute quota is not spent on empty days."""
+        user_connection_id = self._active_connection_id(db, user_id)
+        if rows is None:
+            rows = self._fetch_activity_rows(db, user_id, start, end)
+        timezones = self._day_timezones(rows, user_id)
+        series: dict[str, Any] = {}
+        for day, zone_name in sorted(timezones.items()):
+            day_start, _ = local_day_start(day, zone_name, logger, action="intraday_day_start_invalid")
+            try:
+                series.update(
+                    paginate_mapping(
+                        db=db,
+                        user_id=user_id,
+                        connection_repo=self.connection_repo,
+                        oauth=self.oauth,
+                        service_path=INTRADAY_ACTIVITY.service_path,
+                        action=INTRADAY_ACTIVITY.action,
+                        params={
+                            "startdate": int(day_start.timestamp()),
+                            "enddate": int((day_start + _INTRADAY_MAX_WINDOW).timestamp()),
+                            "data_fields": ",".join(INTRADAY_ACTIVITY.data_fields),
+                        },
+                        map_key=INTRADAY_ACTIVITY.list_key,
+                    )
+                )
+            except Exception as e:
+                if not series:
+                    raise
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Returning partial Withings intraday activity due to error: {e}",
+                    provider=self.provider_name,
+                    action="withings_api_partial_data",
+                    user_id=str(user_id),
+                )
+                break
+        samples = self.normalize_intraday_activity(series, user_id, user_connection_id, timezones)
         if not samples:
             return 0
         counts = timeseries_service.bulk_create_samples(db, samples)
@@ -666,14 +843,28 @@ class Withings247Data(Base247DataTemplate):
         end_time = parse_datetime_or_default(end_time, datetime.now(timezone.utc))
         start_time = parse_datetime_or_default(start_time, end_time - _DEFAULT_SYNC_WINDOW)
 
+        activity_rows: list[dict] | None = None
+
+        def fetch_activity_rows() -> list[dict]:
+            # Daily and intraday activity both start from getactivity; fetch it once per sync.
+            nonlocal activity_rows
+            if activity_rows is None:
+                activity_rows = self._fetch_activity_rows(db, user_id, start_time, end_time)
+            return activity_rows
+
         results: dict[str, int] = {}
-        for name, fn in (
-            ("measures", self.save_measures),
-            ("activity", self.save_activity),
-            ("sleep", self.save_sleep),
+        for name, run in (
+            ("measures", lambda: self.save_measures(db, user_id, start_time, end_time)),
+            ("activity", lambda: self.save_activity(db, user_id, start_time, end_time, fetch_activity_rows())),
+            ("sleep", lambda: self.save_sleep(db, user_id, start_time, end_time)),
+            # Last: one request per active day, so a throttle it triggers cannot starve the others.
+            (
+                "intraday_activity",
+                lambda: self.save_intraday_activity(db, user_id, start_time, end_time, fetch_activity_rows()),
+            ),
         ):
             try:
-                results[name] = fn(db, user_id, start_time, end_time)
+                results[name] = run()
             except Exception as e:
                 # A failed domain reports zero rows rather than going missing, so a
                 # caller reading the counts sees the gap instead of a short dict.

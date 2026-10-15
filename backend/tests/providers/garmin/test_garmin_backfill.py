@@ -297,9 +297,7 @@ class TestBackfillTaskStopChain:
     """
 
     TASK_MODULE = "app.integrations.celery.tasks.garmin.backfill_trigger"
-    ORCHESTRATOR_MODULE = "app.integrations.celery.tasks.garmin.backfill_task"
     TIMEOUT_MODULE = "app.integrations.celery.tasks.garmin.backfill_timeout"
-    BACKFILL_STATE_MODULE = "app.services.providers.garmin.backfill_state"
     USER_ID = "c079cf7e-70b3-4529-a325-401a658f5cba"
 
     def _run_task(
@@ -345,8 +343,8 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TIMEOUT_MODULE}.mark_type_failed", shared_mark_failed),
             patch(f"{self.TIMEOUT_MODULE}.persist_window_results"),
             patch(f"{self.TIMEOUT_MODULE}.complete_backfill"),
-            patch(f"{self.BACKFILL_STATE_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
-            patch(f"{self.ORCHESTRATOR_MODULE}.trigger_next_pending_type") as mock_next,
+            patch(f"{self.TIMEOUT_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
+            patch(f"{self.TASK_MODULE}.celery_app") as mock_celery,
             patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
             patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
         ):
@@ -368,7 +366,7 @@ class TestBackfillTaskStopChain:
             return {
                 "result": result,
                 "mock_mark_failed": shared_mark_failed,
-                "mock_next": mock_next,
+                "mock_send_task": mock_celery.send_task,
             }
 
     def _run_task_with_status(self, status_code: int, detail: str) -> dict:
@@ -391,7 +389,7 @@ class TestBackfillTaskStopChain:
         assert "activities" in failed_types
 
         # Should NOT trigger next type
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_401_stops_chain_and_fails_pending_types(self) -> None:
         """401 should stop the chain and mark all pending types as failed."""
@@ -405,7 +403,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_403_stops_chain_and_fails_pending_types(self) -> None:
         """403 should stop the chain and mark all pending types as failed."""
@@ -418,7 +416,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_400_min_start_time_stops_chain_via_exception(self) -> None:
         """400 'min start time' should stop the chain (HTTPException path)."""
@@ -436,7 +434,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_400_min_start_time_stops_chain_via_result(self) -> None:
         """400 'min start time' via result dict should stop the chain (production path)."""
@@ -461,7 +459,7 @@ class TestBackfillTaskStopChain:
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        ctx["mock_next"].apply_async.assert_not_called()
+        ctx["mock_send_task"].assert_not_called()
 
     def test_500_does_not_stop_chain(self) -> None:
         """500 should NOT stop the chain — next type should still be triggered."""
@@ -475,4 +473,4 @@ class TestBackfillTaskStopChain:
         assert "dailies" not in failed_types
 
         # Should trigger next type
-        ctx["mock_next"].apply_async.assert_called_once()
+        ctx["mock_send_task"].assert_called_once()

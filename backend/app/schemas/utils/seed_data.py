@@ -149,8 +149,9 @@ class MealConfig(BaseModel):
 
     meal_count: int = Field(50, ge=0, le=10_000, description="Total number of meals to generate.")
     calories_range: tuple[int, int] = (150, 900)
-    date_from: date | None = Field(None, description="Explicit start date. Defaults to a 6-month lookback.")
-    date_to: date | None = Field(None, description="Explicit end date. Defaults to the last synced date.")
+    date_range_months: int = Field(6, ge=1, le=24)
+    date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
+    date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
 
     @model_validator(mode="after")
     def _validate_ranges(self) -> "MealConfig":

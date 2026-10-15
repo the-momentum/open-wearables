@@ -65,11 +65,16 @@ DEFERRED_MEASURE_TYPES: dict[int, str] = {
     229: "electrochemical skin conductance; no core series type",
 }
 
-# ``WithingsActivity`` attribute (from ``/v2/measure?action=getactivity``) -> unified SeriesType.
-ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
+# ``WithingsIntradayActivity`` attribute (from ``getintradayactivity``) -> unified SeriesType.
+INTRADAY_ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
     "steps": SeriesType.steps,
     "distance": SeriesType.distance_walking_running,
     "calories": SeriesType.active_energy,
+}
+
+# ``WithingsActivity`` attribute (from ``getactivity``) -> unified SeriesType; the day adds intensity minutes.
+ACTIVITY_FIELD_MAP: dict[str, SeriesType] = {
+    **INTRADAY_ACTIVITY_FIELD_MAP,
     "active_minutes": SeriesType.exercise_time,
 }
 

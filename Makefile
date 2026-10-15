@@ -36,7 +36,7 @@ migrate:  ## Apply all migrations
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head
 
 seed:  ## Seed sample data (test users and activity data)
-	$(DOCKER_EXEC) uv sync --group dev --extra otel
+	$(DOCKER_EXEC) uv sync --inexact --group dev --extra otel
 	$(DOCKER_EXEC) uv run python scripts/init/seed_activity_data.py
 
 create_migration:  ## Create a new migration. Use 'make create_migration m="Description of the change"'

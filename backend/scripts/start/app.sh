@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e -x
 
+scripts/start/install_extensions.sh
+
 # Ensure svix database exists (idempotent)
 echo 'Ensuring svix database...'
 uv run python scripts/init/create_svix_db.py
@@ -90,6 +92,20 @@ echo 'Running device type backfill...'
 uv run python scripts/data_migrations/backfill_device_types.py \
     || echo "Warning: device type backfill failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Merges data sources split by placeholder models / platform names / Polar's missing source,
+# then drops events duplicated across a user's sources. Idempotent, no-op once merged.
+echo 'Running data source merge...'
+uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
+    || echo "Warning: data source merge failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no
+# calories. Runs once per instance (data_migration).
+echo 'Running SDK workout calories cleanup...'
+uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
+    || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
@@ -105,7 +121,7 @@ done || echo "Warning: Could not register webhook event types with Svix. Will re
 # Init app
 echo "Starting the FastAPI application..."
 if [ "$ENVIRONMENT" = "local" ]; then
-    uv run fastapi dev app/main.py --host 0.0.0.0 --port "${API_PORT:-8000}"
+    exec uv run fastapi dev app/main.py --host 0.0.0.0 --port "${API_PORT:-8000}"
 else
-    uv run fastapi run app/main.py --host 0.0.0.0 --port "${API_PORT:-8000}"
+    exec uv run fastapi run app/main.py --host 0.0.0.0 --port "${API_PORT:-8000}"
 fi

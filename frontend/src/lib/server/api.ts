@@ -26,7 +26,12 @@ export type TokenResponse = {
 	token_type: string;
 	refresh_token: string | null;
 	expires_in: number | null;
+	/** Login only: the account still uses the public default password. */
+	password_change?: PasswordChangePrompt | null;
 };
+
+/** `required` in production, where the portal cannot be used until it changes. */
+export type PasswordChangePrompt = 'required' | 'recommended';
 
 export type Developer = {
 	id: string;

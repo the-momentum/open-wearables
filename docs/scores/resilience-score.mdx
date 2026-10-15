@@ -23,9 +23,9 @@ HRV-CV during sleep is an established marker of autonomic nervous system resilie
 
 ### Data syncing
 
-- The user must have at least one connected provider that syncs **heart rate data** and **sleep data**.
+- The user must have at least one connected provider that syncs **heart rate variability (RMSSD)** and **sleep data**.
 - The device must support RMSSD as HRV metric.
-- The device must be **worn during sleep** - overnight HR samples outside of detected sleep windows are excluded from the calculation.
+- The device must be **worn during sleep** - HRV samples outside of detected sleep windows are excluded from the calculation.
 
 ### Minimum data threshold
 
@@ -35,7 +35,6 @@ A Resilience Score is only computed when there is sufficient data to produce a m
 |------------------------------|----------|
 | Lookback window              | 7 nights |
 | Minimum nights with HRV data | 5 nights |
-| Minimum HR samples per night | 20 samples |
 
 If fewer than 5 of the 7 nights have valid overnight HRV recordings, the score is returned as `null`. The daily breakdown is still returned so you can show users how many nights have been counted and encourage consistent device wear.
 
@@ -51,11 +50,11 @@ The metric type used (RMSSD) is returned in the score response so it can be surf
 
 ### Sleep-window filtering
 
-Only HR samples recorded during confirmed sleep are used. The algorithm:
+Only HRV samples recorded during confirmed sleep are used. The algorithm:
 
 1. Fetches all sleep sessions in the lookback window.
 2. Extracts stage-level windows where the user was in any asleep stage (Light, Deep, REM, or generic Sleeping).
-3. Filters HR data points to those timestamps - excluding awake periods and sleep latency.
+3. Filters HRV samples to those windows - excluding awake periods and sleep latency.
 
 If a sleep session has no stage-level data, the full session window is used as a conservative fallback.
 

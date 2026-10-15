@@ -154,6 +154,39 @@ class TestSDKLogsHappyPath:
         )
         assert response.status_code == 202
 
+    @patch("app.api.routes.v1.sdk_logs.log_structured")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_attribution_headers_are_logged(
+        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        response = client.post(
+            _url(),
+            headers={
+                "X-Open-Wearables-API-Key": api_key.plain_key,
+                "X-Open-Wearables-SDK-Version": "1.3.0",
+                "X-Open-Wearables-SDK-Platform": "ios",
+                "X-Request-Id": "req-1",
+            },
+            json=_payload(DEVICE_STATE_EVENT),
+        )
+        assert response.status_code == 202
+        attributes = mock_log.call_args.kwargs
+        assert attributes["sdk_version"] == "1.3.0"
+        assert attributes["sdk_platform"] == "ios"
+        assert attributes["request_id"] == "req-1"
+
+    @patch("app.api.routes.v1.sdk_logs.log_structured")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_body_version_logged_without_headers(
+        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        client.post(_url(), headers={"X-Open-Wearables-API-Key": api_key.plain_key}, json=_payload(DEVICE_STATE_EVENT))
+        attributes = mock_log.call_args.kwargs
+        assert attributes["sdk_version"] == "1.2.0"
+        assert "sdk_platform" not in attributes
+
 
 class TestSDKLogsEventFields:
     """The flattened fields are what makes per-type outcomes queryable in the logs."""

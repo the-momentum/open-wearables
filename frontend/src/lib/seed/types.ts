@@ -44,18 +44,30 @@ export type TimeSeriesConfig = {
 	date_to?: string | null;
 };
 
+/** Mirrors `MealConfig`. */
+export type MealConfig = {
+	meal_count: number;
+	calories_range: Range;
+	date_range_months: number;
+	date_from?: string | null;
+	date_to?: string | null;
+};
+
 /** Mirrors `SeedProfileConfig`. */
 export type SeedProfile = {
 	preset: string | null;
 	generate_workouts: boolean;
 	generate_sleep: boolean;
 	generate_time_series: boolean;
+	/** Only providers that deliver meals get any. */
+	generate_meals: boolean;
 	/** Null picks at random; a list is cut to `num_connections` in its order. */
 	providers: string[] | null;
 	num_connections: number;
 	workout_config: WorkoutConfig;
 	sleep_config: SleepConfig;
 	time_series_config: TimeSeriesConfig;
+	meal_config: MealConfig;
 };
 
 export type SeedPreset = { id: string; label: string; description: string; profile: SeedProfile };

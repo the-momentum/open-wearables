@@ -1,23 +1,29 @@
 """Tests for SummariesService."""
 
+import math
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from logging import getLogger
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas.enums import ProviderName
+from app.models import ProviderPriority
+from app.repositories import ProviderPriorityRepository
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.services.summaries_service import SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
     EventRecordFactory,
+    HealthScoreFactory,
     PersonalRecordFactory,
     SeriesTypeDefinitionFactory,
     SleepDetailsFactory,
     UserFactory,
+    WorkoutDetailsFactory,
 )
 
 
@@ -262,6 +268,79 @@ class TestGetSleepSummaries:
         assert result.pagination.next_cursor is not None
 
 
+class TestSleepPagingPerDate:
+    """A page holds `limit` nights, however many sources recorded each one."""
+
+    NIGHTS = [date(2026, 1, day) for day in range(2, 7)]
+    START = _dt("2026-01-01T00:00:00+00:00")
+    END = _dt("2026-01-31T00:00:00+00:00")
+
+    def _two_sources_per_night(self, db: Session) -> Any:
+        """Garmin and Oura both record every night; Garmin wins each one.
+
+        The losing Oura record gets the lower id, so within a night it sorts first:
+        a page cut between the two rows would elect Oura.
+        """
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.OURA, 2)
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin", device_type="watch")
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura", device_type="ring")
+        for n, night in enumerate(self.NIGHTS):
+            wake = datetime(night.year, night.month, night.day, 7, tzinfo=timezone.utc)
+            for ds, id_prefix in ((oura, "00000000"), (garmin, "ffffffff")):
+                EventRecordFactory(
+                    id=UUID(f"{id_prefix}-0000-0000-0000-{n:012d}"),
+                    data_source=ds,
+                    category="sleep",
+                    type="sleep",
+                    start_datetime=wake - timedelta(hours=8),
+                    end_datetime=wake,
+                    duration_seconds=8 * 3600,
+                    zone_offset="+00:00",
+                )
+        return user
+
+    @pytest.mark.parametrize("limit", [1, 2])
+    def test_pages_forward_through_every_night_once(self, db: Session, service: SummariesService, limit: int) -> None:
+        user = self._two_sources_per_night(db)
+
+        seen: list[tuple[date, str]] = []
+        has_more: list[bool] = []
+        cursor = None
+        while True:
+            page = service.get_sleep_summaries(db, user.id, self.START, self.END, cursor=cursor, limit=limit)
+            seen += [(summary.date, summary.source.provider) for summary in page.data]
+            has_more.append(page.pagination.has_more)
+            if not page.pagination.next_cursor:
+                break
+            cursor = page.pagination.next_cursor
+
+        assert seen == [(night, "garmin") for night in self.NIGHTS]
+        # Only the last page says there is nothing more
+        assert has_more == [True] * (math.ceil(len(self.NIGHTS) / limit) - 1) + [False]
+
+    def test_previous_cursor_returns_the_page_before(self, db: Session, service: SummariesService) -> None:
+        user = self._two_sources_per_night(db)
+        first = service.get_sleep_summaries(db, user.id, self.START, self.END, cursor=None, limit=2)
+        second = service.get_sleep_summaries(
+            db, user.id, self.START, self.END, cursor=first.pagination.next_cursor, limit=2
+        )
+        third = service.get_sleep_summaries(
+            db, user.id, self.START, self.END, cursor=second.pagination.next_cursor, limit=2
+        )
+
+        back = service.get_sleep_summaries(
+            db, user.id, self.START, self.END, cursor=third.pagination.previous_cursor, limit=2
+        )
+
+        assert sorted((s.date, s.source.provider) for s in back.data) == [
+            (night, "garmin") for night in self.NIGHTS[2:4]
+        ]
+        assert back.pagination.has_more is True
+
+
 # ---------------------------------------------------------------------------
 # get_recovery_summaries
 # ---------------------------------------------------------------------------
@@ -285,7 +364,7 @@ class TestGetRecoverySummaries:
             "spo2_percentage": 98.4,
         }
         monkeypatch.setattr(service.health_score_repo, "get_recovery_summaries", lambda *_: [row])
-        monkeypatch.setattr(service, "_filter_by_priority", lambda *_args, **_kwargs: [row])
+        monkeypatch.setattr(service, "_priority_orders", lambda *_: ({}, {}))
 
         result = service.get_recovery_summaries(
             db_session=None,
@@ -299,6 +378,79 @@ class TestGetRecoverySummaries:
         summary = result.data[0]
         assert summary.avg_hrv_sdnn_ms is None
         assert summary.avg_hrv_rmssd_ms == 63.2
+
+
+class TestRecoveryPagingPerDate:
+    """A page holds `limit` days, however many providers scored each one."""
+
+    DAYS = [date(2026, 1, day) for day in range(2, 7)]
+    START = _dt("2026-01-01T00:00:00+00:00")
+    END = _dt("2026-01-31T00:00:00+00:00")
+
+    def _two_providers_per_day(self, db: Session) -> Any:
+        """WHOOP and Polar both score every day; WHOOP wins each one.
+
+        The losing Polar score gets the lower id at the same timestamp, so within a day
+        it sorts first: a page cut between the two rows would elect Polar.
+        """
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.WHOOP, 1)
+        priorities.upsert(db, ProviderName.POLAR, 2)
+        user = UserFactory()
+        whoop = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop", device_type="band")
+        polar = DataSourceFactory(user=user, provider=ProviderName.POLAR, source="polar", device_type="watch")
+        for n, day in enumerate(self.DAYS):
+            scored_at = datetime(day.year, day.month, day.day, 7, tzinfo=timezone.utc)
+            for ds, provider, id_prefix in (
+                (polar, ProviderName.POLAR, "00000000"),
+                (whoop, ProviderName.WHOOP, "ffffffff"),
+            ):
+                HealthScoreFactory(
+                    id=UUID(f"{id_prefix}-0000-0000-0000-{n:012d}"),
+                    data_source=ds,
+                    provider=provider,
+                    category=HealthScoreCategory.RECOVERY,
+                    recorded_at=scored_at,
+                )
+        return user
+
+    @pytest.mark.parametrize("limit", [1, 2])
+    def test_pages_forward_through_every_day_once(self, db: Session, service: SummariesService, limit: int) -> None:
+        user = self._two_providers_per_day(db)
+
+        seen: list[tuple[date, str]] = []
+        has_more: list[bool] = []
+        cursor = None
+        while True:
+            page = service.get_recovery_summaries(db, user.id, self.START, self.END, cursor=cursor, limit=limit)
+            seen += [(summary.date, summary.source.provider) for summary in page.data]
+            has_more.append(page.pagination.has_more)
+            if not page.pagination.next_cursor:
+                break
+            cursor = page.pagination.next_cursor
+
+        assert seen == [(day, "whoop") for day in self.DAYS]
+        # Only the last page says there is nothing more
+        assert has_more == [True] * (math.ceil(len(self.DAYS) / limit) - 1) + [False]
+
+    def test_previous_cursor_returns_the_page_before(self, db: Session, service: SummariesService) -> None:
+        user = self._two_providers_per_day(db)
+        first = service.get_recovery_summaries(db, user.id, self.START, self.END, cursor=None, limit=2)
+        second = service.get_recovery_summaries(
+            db, user.id, self.START, self.END, cursor=first.pagination.next_cursor, limit=2
+        )
+        third = service.get_recovery_summaries(
+            db, user.id, self.START, self.END, cursor=second.pagination.next_cursor, limit=2
+        )
+
+        back = service.get_recovery_summaries(
+            db, user.id, self.START, self.END, cursor=third.pagination.previous_cursor, limit=2
+        )
+
+        assert sorted((s.date, s.source.provider) for s in back.data) == [
+            (self.DAYS[2], "whoop"),
+            (self.DAYS[3], "whoop"),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +494,59 @@ class TestGetActivitySummaries:
         )
         assert len(result.data) == 1
         assert result.data[0].steps == 3000
+
+    def test_includes_days_with_only_a_workout(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.STRAVA, source="strava")
+        EventRecordFactory(
+            data_source=ds,
+            category="workout",
+            type="running",
+            start_datetime=_dt("2026-01-01T10:00:00+00:00"),
+            end_datetime=_dt("2026-01-01T11:00:00+00:00"),
+            zone_offset="+00:00",
+        )
+
+        result = service.get_activity_summaries(
+            db,
+            user.id,
+            _dt("2026-01-01T00:00:00+00:00"),
+            _dt("2026-01-02T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+        assert [(d.date, d.source.provider, d.steps) for d in result.data] == [(date(2026, 1, 1), "strava", None)]
+
+    def test_takes_elevation_from_the_winning_provider_only(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        elevations = {ProviderName.GARMIN: "100", ProviderName.STRAVA: "900"}
+        for provider, elevation in elevations.items():
+            ds = DataSourceFactory(user=user, provider=provider, source="watch", device_model="Forerunner 965")
+            WorkoutDetailsFactory(
+                event_record=EventRecordFactory(
+                    data_source=ds,
+                    category="workout",
+                    start_datetime=_dt("2026-01-01T10:00:00+00:00"),
+                    end_datetime=_dt("2026-01-01T11:00:00+00:00"),
+                    zone_offset="+00:00",
+                ),
+                total_elevation_gain=Decimal(elevation),
+            )
+            if provider == ProviderName.GARMIN:
+                DataPointSeriesFactory(
+                    data_source=ds, series_type=steps_type, value=1000, recorded_at=_dt("2026-01-01T10:00:00+00:00")
+                )
+
+        result = service.get_activity_summaries(
+            db,
+            user.id,
+            _dt("2026-01-01T00:00:00+00:00"),
+            _dt("2026-01-02T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+        assert [(d.source.provider, d.elevation_meters) for d in result.data] == [("garmin", 100.0)]
 
     def test_does_not_return_other_users_data(self, db: Session, service: SummariesService) -> None:
         user_a = UserFactory()

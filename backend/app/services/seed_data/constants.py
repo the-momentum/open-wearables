@@ -59,6 +59,20 @@ PROVIDER_CONFIGS: dict[ProviderName, dict] = {
 
 SEED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
 
+# Series the daily activity summary aggregates per (day, provider, device).
+# Seeded from one device so that device's day carries all of them.
+DAILY_ACTIVITY_SERIES: frozenset[SeriesType] = frozenset(
+    {
+        SeriesType.steps,
+        SeriesType.active_energy,
+        SeriesType.basal_energy,
+        SeriesType.heart_rate,
+        SeriesType.distance_walking_running,
+        SeriesType.flights_climbed,
+        SeriesType.active_time,
+    }
+)
+
 # Workout types where elevation gain is realistic
 OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
     {
@@ -76,8 +90,6 @@ OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
     }
 )
 
-# Lookback when MealConfig.date_from/date_to are unset.
-MEAL_DEFAULT_LOOKBACK_MONTHS = 6
 
 DEFAULT_MEAL_TYPES: tuple[str, ...] = ("breakfast", "lunch", "dinner", "snack")
 

@@ -5,6 +5,7 @@
 
 	let {
 		icon: Icon,
+		leading,
 		title,
 		description,
 		action,
@@ -14,6 +15,8 @@
 	}: {
 		/** Gives a section a mark of its own where several stack up. */
 		icon?: Component;
+		/** In place of the icon, for a mark that is not one: a provider's logo. */
+		leading?: Snippet;
 		title?: string;
 		description?: string;
 		/** Rendered on the right of the header - a button, a count, a filter. */
@@ -33,7 +36,9 @@
 	{#if title}
 		<header class="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
 			<div class="flex min-w-0 items-start gap-3">
-				{#if Icon}
+				{#if leading}
+					{@render leading()}
+				{:else if Icon}
 					<span
 						aria-hidden="true"
 						class="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"

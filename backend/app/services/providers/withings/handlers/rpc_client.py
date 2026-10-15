@@ -9,6 +9,7 @@ callers; the HTTP transport, token refresh and HTTP 429 retries stay in
 
 import logging
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -136,7 +137,7 @@ class PaginatedResult:
     envelope: dict[str, Any]
 
 
-def paginate(
+def _walk_pages(
     *,
     db: DbSession,
     user_id: UUID,
@@ -145,12 +146,9 @@ def paginate(
     service_path: str,
     action: str,
     params: dict[str, Any],
-    list_key: str,
-    api_base_url: str = WITHINGS_API_BASE_URL,
-) -> PaginatedResult:
-    """Follow Withings ``more``/``offset`` pagination, collecting ``body[list_key]``."""
-    collected: list[dict[str, Any]] = []
-    envelope: dict[str, Any] | None = None
+    api_base_url: str,
+) -> Iterator[dict[str, Any]]:
+    """Yield each page body, following Withings ``more``/``offset`` pagination."""
     offset = 0
     for _ in range(_MAX_PAGES):
         page_params = {**params}
@@ -166,11 +164,9 @@ def paginate(
             params=page_params,
             api_base_url=api_base_url,
         )
-        if envelope is None:
-            envelope = {key: value for key, value in body.items() if key != list_key}
-        collected.extend(body.get(list_key, []) or [])
+        yield body
         if not body.get("more"):
-            return PaginatedResult(collected, envelope)
+            return
         next_offset = int(body.get("offset") or 0)
         if next_offset <= offset:
             # Non-advancing offset would refetch the same page indefinitely.
@@ -196,3 +192,68 @@ def paginate(
         user_id=str(user_id),
     )
     raise WithingsPaginationError(action, f"exceeded {_MAX_PAGES} pages")
+
+
+def paginate(
+    *,
+    db: DbSession,
+    user_id: UUID,
+    connection_repo: UserConnectionRepository,
+    oauth: BaseOAuthTemplate,
+    service_path: str,
+    action: str,
+    params: dict[str, Any],
+    list_key: str,
+    api_base_url: str = WITHINGS_API_BASE_URL,
+) -> PaginatedResult:
+    """Follow Withings ``more``/``offset`` pagination, collecting ``body[list_key]``."""
+    collected: list[dict[str, Any]] = []
+    envelope: dict[str, Any] = {}
+    for page, body in enumerate(
+        _walk_pages(
+            db=db,
+            user_id=user_id,
+            connection_repo=connection_repo,
+            oauth=oauth,
+            service_path=service_path,
+            action=action,
+            params=params,
+            api_base_url=api_base_url,
+        )
+    ):
+        if page == 0:
+            envelope = {key: value for key, value in body.items() if key != list_key}
+        collected.extend(body.get(list_key, []) or [])
+    return PaginatedResult(collected, envelope)
+
+
+def paginate_mapping(
+    *,
+    db: DbSession,
+    user_id: UUID,
+    connection_repo: UserConnectionRepository,
+    oauth: BaseOAuthTemplate,
+    service_path: str,
+    action: str,
+    params: dict[str, Any],
+    map_key: str,
+    api_base_url: str = WITHINGS_API_BASE_URL,
+) -> dict[str, Any]:
+    """Same pagination for an action whose rows arrive keyed by id rather than as a list.
+
+    ``getintradayactivity`` answers with ``body.series`` as an object keyed by the start
+    epoch of each slice, which ``paginate`` would flatten into its keys.
+    """
+    collected: dict[str, Any] = {}
+    for body in _walk_pages(
+        db=db,
+        user_id=user_id,
+        connection_repo=connection_repo,
+        oauth=oauth,
+        service_path=service_path,
+        action=action,
+        params=params,
+        api_base_url=api_base_url,
+    ):
+        collected.update(body.get(map_key) or {})
+    return collected

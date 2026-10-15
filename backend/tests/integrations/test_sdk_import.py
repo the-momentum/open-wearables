@@ -42,7 +42,7 @@ def mock_sleep_redis() -> Any:
 
     with (
         patch("app.services.sdk.sleep_service.get_redis_client") as mock_get_redis,
-        patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps"),
+        patch("app.services.sdk.sleep_service.celery_app"),
     ):
         mock_get_redis.return_value = mock_redis
         yield mock_redis
@@ -598,6 +598,39 @@ class TestAppleSDKImportEdgeCases:
         assert details.distance is None
         assert details.energy_burned is None
 
+    def test_import_workout_without_energy_statistic_leaves_calories_unset(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """A session with statistics but no calories, as third-party Health Connect apps send."""
+        user = UserFactory()
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {
+                "workouts": [
+                    {
+                        "id": "CCCC1111-2222-3333-4444-555566667777",
+                        "type": "running",
+                        "startDate": "2025-01-29T16:00:00Z",
+                        "endDate": "2025-01-29T16:30:00Z",
+                        "source": {"name": "Strava", "bundleIdentifier": "com.strava.stravaride"},
+                        "values": [
+                            {"type": "duration", "unit": "s", "value": 1800},
+                            {"type": "distance", "unit": "m", "value": 5000},
+                        ],
+                    }
+                ],
+            },
+        }
+
+        import_service.load_data(db, payload, str(user.id))
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+        assert details.distance == Decimal("5000")
+        assert details.energy_burned is None
+
 
 class TestSDKImportUnitConversion:
     """Unit conversions applied in `_build_statistic_bundles`.
@@ -651,6 +684,27 @@ class TestSDKImportUnitConversion:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.body_fat_percentage
         assert samples[0].value == Decimal("30.400")
+
+    def test_apple_hrv_sdnn_and_rmssd_map_to_separate_series(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """iOS 27 adds RMSSD next to SDNN - each must land in its own series, in ms."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [
+                self._record("HKQuantityTypeIdentifierHeartRateVariabilitySDNN", 48.2, unit="ms"),
+                self._record("HKQuantityTypeIdentifierHeartRateVariabilityRMSSD", 36.7, unit="ms"),
+            ],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        values = {sample.series_type: sample.value for sample in samples}
+        assert values == {
+            SeriesType.heart_rate_variability_sdnn: Decimal("48.200"),
+            SeriesType.heart_rate_variability_rmssd: Decimal("36.700"),
+        }
 
     def test_health_connect_body_fat_percentage_not_scaled(
         self,

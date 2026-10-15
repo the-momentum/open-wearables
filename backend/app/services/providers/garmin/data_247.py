@@ -88,6 +88,14 @@ class Garmin247Data(Base247DataTemplate):
         """Convert UTC Unix timestamp (seconds) to datetime."""
         return datetime.fromtimestamp(ts, tz=timezone.utc)
 
+    @staticmethod
+    def _from_calendar_date(calendar_date: str) -> datetime | None:
+        """Noon UTC of Garmin's calendar date, so the value stays on that day in any timezone."""
+        try:
+            return datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
     def _make_api_request(
         self,
         db: DbSession,
@@ -452,9 +460,8 @@ class Garmin247Data(Base247DataTemplate):
         if start_ts:
             recorded_at = self._from_epoch_seconds(start_ts)
         elif calendar_date:
-            try:
-                recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
-            except ValueError:
+            recorded_at = self._from_calendar_date(calendar_date)
+            if recorded_at is None:
                 return scores
         else:
             return scores
@@ -527,9 +534,8 @@ class Garmin247Data(Base247DataTemplate):
         if start_ts:
             recorded_at = self._from_epoch_seconds(start_ts)
         elif calendar_date:
-            try:
-                recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
-            except ValueError:
+            recorded_at = self._from_calendar_date(calendar_date)
+            if recorded_at is None:
                 return samples
         else:
             return samples
@@ -1452,9 +1458,8 @@ class Garmin247Data(Base247DataTemplate):
         if not calendar_date:
             return samples
 
-        try:
-            recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
-        except ValueError:
+        recorded_at = self._from_calendar_date(calendar_date)
+        if recorded_at is None:
             return samples
 
         # VO2 max
@@ -1516,26 +1521,28 @@ class Garmin247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         """Build time series samples from skin temperature data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
-        start_ts = raw_skin_temp.get("startTimeInSeconds", 0)
+        calendar_date = raw_skin_temp.get("calendarDate")
         summary_id = raw_skin_temp.get("summaryId")
 
-        if not start_ts:
+        if not calendar_date:
             return samples
 
-        recorded_at = self._from_epoch_seconds(start_ts)
-        zone_offset = offset_to_iso(raw_skin_temp.get("startTimeOffsetInSeconds"))
+        # The measurement window often starts before midnight while Garmin calls the night by the morning.
+        recorded_at = self._from_calendar_date(calendar_date)
+        if recorded_at is None:
+            return samples
 
-        skin_temp = raw_skin_temp.get("skinTemperature")
-        if skin_temp is not None:
+        # Garmin reports the night as a deviation from the user's baseline, not a reading.
+        deviation = raw_skin_temp.get("avgDeviationCelsius")
+        if deviation is not None:
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
-                    zone_offset=zone_offset,
-                    value=Decimal(str(skin_temp)),
-                    series_type=SeriesType.skin_temperature,
+                    value=Decimal(str(deviation)),
+                    series_type=SeriesType.skin_temperature_deviation,
                     external_id=summary_id,
                 )
             )

@@ -10,6 +10,7 @@ from app.schemas.enums import ProviderName, SdkConnectionOutcome
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
 from app.schemas.responses.upload import ConnectionsCoverage, ProviderConnectionCount
 from app.services.outgoing_webhooks.events import on_connection_created, on_connection_revoked
+from app.services.providers.api_client import get_valid_token
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
@@ -115,7 +116,7 @@ class UserConnectionService(
         ``reason`` reaches the log line and the ``connection.revoked`` webhook.
         """
         if oauth:
-            self._deregister_from_provider(db_session, user_id, provider, oauth)
+            self.deregister_from_provider(db_session, user_id, provider, oauth)
 
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
@@ -173,17 +174,23 @@ class UserConnectionService(
         if connection:
             self.crud.update_last_synced_at(db_session, connection)
 
-    def _deregister_from_provider(
+    def deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate
     ) -> None:
-        """Best-effort call to provider's deregistration API."""
+        """Best-effort call to provider's deregistration API.
+
+        Refreshes the access token first if it is expired. Push-based providers like Garmin
+        rarely call their API after the initial backfill, so the stored token is usually stale
+        by the time the user disconnects.
+        """
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
         if not connection or not connection.access_token:
             return
 
         try:
+            access_token = get_valid_token(db_session, user_id, provider, self.crud, oauth)
             oauth.deregister_user(
-                connection.access_token,
+                access_token,
                 provider_user_id=connection.provider_user_id,
             )
             log_structured(

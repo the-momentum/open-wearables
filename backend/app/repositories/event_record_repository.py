@@ -1,4 +1,3 @@
-import contextlib
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -17,7 +16,6 @@ from sqlalchemy import (
     desc,
     func,
     lateral,
-    literal,
     literal_column,
     select,
     text,
@@ -30,8 +28,13 @@ from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
-from app.repositories.data_source_repository import DataSourceRepository
-from app.repositories.repositories import CrudRepository, source_filter_conditions, utc_bucket_start
+from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
+from app.repositories.repositories import (
+    CrudRepository,
+    source_filter_conditions,
+    source_priority_order,
+    utc_bucket_start,
+)
 from app.schemas.enums import DeviceType, ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -40,9 +43,6 @@ from app.schemas.model_crud.activities import (
 )
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
-
-# Identity tuple: (user_id, device_model, source)
-DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
 def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
@@ -63,35 +63,13 @@ class EventRecordRepository(
         if creator.data_source_id:
             data_source_id = creator.data_source_id
         else:
-            provider = self.data_source_repo.infer_provider_from_source(creator.source)
-            if creator.provider:
-                with contextlib.suppress(ValueError):
-                    provider = ProviderName(creator.provider)
-            data_source = self.data_source_repo.ensure_data_source(
-                db_session,
-                user_id=creator.user_id,
-                provider=provider,
-                user_connection_id=creator.user_connection_id,
-                device_model=creator.device_model,
-                source=creator.source,
-                software_version=creator.software_version,
-                original_source_name=creator.source,
-                reported_type=creator.device_type,
+            data_source = self.data_source_repo.ensure_for_creator(
+                db_session, creator, original_source_name=creator.source
             )
             data_source_id = data_source.id
 
-        creation_data = creator.model_dump()
+        creation_data = creator.model_dump(exclude=set(DATA_SOURCE_FIELDS))
         creation_data["data_source_id"] = data_source_id
-        for redundant_key in (
-            "user_id",
-            "source",
-            "device_model",
-            "provider",
-            "user_connection_id",
-            "software_version",
-            "device_type",
-        ):
-            creation_data.pop(redundant_key, None)
         return data_source_id, self.model(**creation_data)
 
     def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
@@ -190,36 +168,11 @@ class EventRecordRepository(
 
     def _resolve_values(self, db_session: DbSession, creators: list[EventRecordCreate]) -> list[dict]:
         """Resolve data sources in batch and build event_record row values."""
-        # Group by provider for batch processing
-        by_provider: dict[ProviderName, list[EventRecordCreate]] = {}
-        for c in creators:
-            provider = self.data_source_repo.infer_provider_from_source(c.source)
-            if c.provider:
-                with contextlib.suppress(ValueError):
-                    provider = ProviderName(c.provider)
-            by_provider.setdefault(provider, []).append(c)
-
-        identity_to_source_id: dict[DataSourceIdentity, UUID] = {}
-
-        for provider, provider_creators in by_provider.items():
-            unique_identities: set[DataSourceIdentity] = set()
-            reported_types: dict[DataSourceIdentity, DeviceType] = {}
-            user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
-            for c in provider_creators:
-                identity = (c.user_id, c.device_model, c.source)
-                unique_identities.add(identity)
-                if c.device_type:
-                    reported_types.setdefault(identity, c.device_type)
-
-            batch_result = self.data_source_repo.batch_ensure_data_sources(
-                db_session, provider, user_connection_id, unique_identities, reported_types
-            )
-            identity_to_source_id.update(batch_result)
+        identity_to_source_id = self.data_source_repo.resolve_creators(db_session, creators)
 
         values_list = []
         for creator in creators:
-            identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
-            source_id = identity_to_source_id.get(identity)
+            source_id = identity_to_source_id.get(DataSourceIdentity.of(creator))
 
             if not source_id:
                 continue
@@ -538,17 +491,6 @@ class EventRecordRepository(
             EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
             Date,
         )
-        provider_rank = (
-            case(*[(DataSource.provider == p, r) for p, r in provider_order.items()], else_=99)
-            if provider_order
-            else literal(99)
-        )
-        device_rank = (
-            case(*[(DataSource.device_type == dt.value, r) for dt, r in device_type_order.items()], else_=99)
-            if device_type_order
-            else literal(99)
-        )
-
         filters = [
             DataSource.user_id == UUID(user_id),
             EventRecord.category == "sleep",
@@ -566,7 +508,7 @@ class EventRecordRepository(
                 func.dense_rank()
                 .over(
                     partition_by=local_sleep_date,
-                    order_by=(provider_rank, device_rank, func.coalesce(DataSource.device_model, "")),
+                    order_by=source_priority_order(provider_order, device_type_order),
                 )
                 .label("source_rank"),
             )
@@ -743,8 +685,13 @@ class EventRecordRepository(
         end_date: datetime,
         cursor: str | None,
         limit: int,
+        provider_order: dict[ProviderName, int],
+        device_type_order: dict[DeviceType, int],
     ) -> list[dict]:
-        """Get daily sleep summaries aggregated by date, source, and device_model.
+        """Get daily sleep summaries: per date, the aggregate of its highest-priority source.
+
+        The source is picked before pagination, so a page holds `limit` dates however many
+        sources recorded each night.
 
         Returns list of dicts with keys:
         - sleep_date, min_start_time, max_end_time, total_duration_minutes
@@ -798,6 +745,15 @@ class EventRecordRepository(
                 # so grouping by it as well cannot change the number of groups.
                 DataSource.device_type,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
+                func.row_number()
+                .over(
+                    partition_by=local_sleep_date,
+                    order_by=(
+                        *source_priority_order(provider_order, device_type_order),
+                        func.min(cast(EventRecord.id, String)),
+                    ),
+                )
+                .label("source_rank"),
                 # Sleep details aggregations - main sleep only (minutes stored, convert to seconds later)
                 func.sum(case((is_main_sleep, SleepDetails.sleep_time_in_bed_minutes), else_=None)).label(
                     "time_in_bed_minutes"
@@ -910,6 +866,7 @@ class EventRecordRepository(
             physio_lateral.c.avg_resp,
             physio_lateral.c.avg_spo2,
         ).outerjoin(physio_lateral, true())
+        query = query.filter(subquery.c.source_rank == 1)
 
         # Handle cursor pagination
         if cursor:
@@ -1063,7 +1020,7 @@ class EventRecordRepository(
         Aggregates WorkoutDetails data by date for activity summaries.
 
         Returns list of dicts with keys:
-        - workout_date, source, device_model
+        - workout_date, provider, source, device_model, device_type
         - elevation_meters, distance_meters, energy_burned_kcal
         """
         local_workout_date = cast(
@@ -1074,8 +1031,10 @@ class EventRecordRepository(
         results = (
             db_session.query(
                 local_workout_date.label("workout_date"),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                DataSource.device_type,
                 # Sum elevation gain for all workouts on that day
                 func.sum(WorkoutDetails.total_elevation_gain).label("elevation_sum"),
                 # Sum distance for all workouts
@@ -1095,8 +1054,10 @@ class EventRecordRepository(
             )
             .group_by(
                 local_workout_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                DataSource.device_type,
             )
             .order_by(asc(local_workout_date))
             .all()
@@ -1107,8 +1068,10 @@ class EventRecordRepository(
             aggregates.append(
                 {
                     "workout_date": row.workout_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
+                    "device_type": row.device_type,
                     "elevation_meters": float(row.elevation_sum) if row.elevation_sum is not None else None,
                     "distance_meters": float(row.distance_sum) if row.distance_sum is not None else None,
                     "energy_burned_kcal": float(row.energy_sum) if row.energy_sum is not None else None,

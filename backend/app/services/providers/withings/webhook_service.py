@@ -28,9 +28,9 @@ from app.schemas.responses.incoming_webhooks import WebhookOperationResult
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
+from app.services.providers.withings.handlers.errors import WithingsTokenError
 from app.services.providers.withings.handlers.rpc_client import withings_request
 from app.services.providers.withings.handlers.tasks import SYNC_USER_SUBSCRIPTIONS_TASK
-from app.services.providers.withings.oauth import WithingsTokenError
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 

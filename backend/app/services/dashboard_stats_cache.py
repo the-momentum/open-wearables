@@ -15,12 +15,15 @@ from logging import getLogger
 from uuid import uuid4
 
 import redis
+from celery import current_app as celery_app
 
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.services.timeseries_service import timeseries_service
 
 logger = getLogger(__name__)
+
+_REFRESH_TASK = "app.integrations.celery.tasks.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"
 
 _CACHE_KEY = "dashboard:total_data_points"
 _FRESH_KEY = "dashboard:total_data_points:fresh"
@@ -60,13 +63,10 @@ def _trigger_refresh(client: redis.Redis) -> None:
     token = uuid4().hex
     if not client.set(_LOCK_KEY, token, nx=True, ex=_LOCK_TTL_SECONDS):
         return
-    # Imported lazily to avoid a circular import (task -> this module -> task).
-    from app.integrations.celery.tasks.refresh_dashboard_stats_task import refresh_dashboard_total_data_points
-
     # retry=False: never let broker connection retries block the dashboard request. The task
     # releases the lock (matching this token) when it finishes.
     try:
-        refresh_dashboard_total_data_points.apply_async(args=[token], retry=False)
+        celery_app.send_task(_REFRESH_TASK, args=[token], retry=False)
     except Exception:
         # Dispatch failed (e.g. broker down): free our lock so a later request can retry.
         logger.warning("Failed to dispatch dashboard stats refresh", exc_info=True)

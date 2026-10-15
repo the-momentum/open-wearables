@@ -26,6 +26,7 @@ from .constants import (
     OUTDOOR_WORKOUT_TYPES,
     PROVIDER_CONFIGS,
 )
+from .time_series_generators import ProviderDescriptor
 
 # Zones reach us from a FIT file (Garmin) or from per-zone durations in the
 # provider's own payload (Whoop). Nobody else reports them, and seeding them
@@ -46,6 +47,39 @@ CYCLING_WORKOUT_TYPES = frozenset(
         WorkoutType.CYCLOCROSS,
     }
 )
+
+# Average speed (m/s) per pace-based sport; distance and Garmin's average_speed
+# both derive from it so they agree with the workout duration.
+_SPEED_RANGES: dict[frozenset[WorkoutType], tuple[float, float]] = {
+    frozenset({WorkoutType.SWIMMING, WorkoutType.POOL_SWIMMING, WorkoutType.OPEN_WATER_SWIMMING}): (0.6, 1.4),
+    frozenset(
+        {
+            WorkoutType.WALKING,
+            WorkoutType.HIKING,
+            WorkoutType.MOUNTAINEERING,
+            WorkoutType.TRAIL_HIKING,
+            WorkoutType.WALKING_FITNESS,
+            WorkoutType.CASUAL_WALKING,
+        }
+    ): (1.0, 1.8),
+    frozenset({WorkoutType.RUNNING, WorkoutType.TRAIL_RUNNING, WorkoutType.TREADMILL}): (2.3, 4.5),
+    frozenset(
+        {
+            WorkoutType.CYCLING,
+            WorkoutType.MOUNTAIN_BIKING,
+            WorkoutType.INDOOR_CYCLING,
+            WorkoutType.CYCLOCROSS,
+            WorkoutType.E_BIKING,
+        }
+    ): (5.0, 10.0),
+}
+_DEFAULT_SPEED_RANGE = (1.5, 5.0)
+
+
+def _pick_speed(workout_type: WorkoutType, fake: Faker) -> float:
+    low, high = next((r for types, r in _SPEED_RANGES.items() if workout_type in types), _DEFAULT_SPEED_RANGE)
+    return round(fake.random.uniform(low, high), 3)
+
 
 # Fractions of max heart rate, the boundaries a FIT file carries.
 HR_ZONE_CEILINGS = (0.6, 0.7, 0.8, 0.9, 1.0)
@@ -158,8 +192,9 @@ def _generate_workout(
     provider: ProviderName,
     last_synced_at: datetime,
     config: WorkoutConfig,
+    device: ProviderDescriptor | None = None,
 ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
-    """Generate a single workout with parameters from *config*."""
+    """Generate a single workout with parameters from *config*, recorded on *device* if given."""
     start_bound, end_bound = _resolve_date_bounds(
         config.date_from,
         config.date_to,
@@ -191,7 +226,10 @@ def _generate_workout(
     # Oura doesn't expose device info via its API
     device_name: str | None = None
     sw_version: str | None = None
-    if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
+    if device is not None:
+        device_name = device.device_model
+        sw_version = device.software_version
+    elif provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
         sw_version = fake.random.choice(prov_config["os_versions"])
 
@@ -199,13 +237,19 @@ def _generate_workout(
     energy_burned: Decimal | None = None
     elevation_gain: Decimal | None = None
     average_speed: Decimal | None = None
+    distance: Decimal | None = None
+
+    # Every seeded provider reports distance for pace-based sports
+    speed = _pick_speed(workout_type, fake) if workout_type in WORKOUTS_WITH_PACE else None
+    if speed is not None:
+        distance = Decimal(round(speed * duration_seconds))
 
     if provider == ProviderName.GARMIN:
         energy_burned = Decimal(fake.random_int(min=200, max=800))
         if workout_type in OUTDOOR_WORKOUT_TYPES:
             elevation_gain = Decimal(fake.random_int(min=10, max=500))
-        if workout_type in WORKOUTS_WITH_PACE:
-            average_speed = Decimal(str(round(fake.random.uniform(1.5, 8.0), 3)))
+        if speed is not None:
+            average_speed = Decimal(str(speed))
     elif provider == ProviderName.APPLE:
         energy_burned = Decimal(fake.random_int(min=150, max=700))
         if workout_type in OUTDOOR_WORKOUT_TYPES:
@@ -244,6 +288,7 @@ def _generate_workout(
         heart_rate_avg=heart_rate_avg,
         steps_count=steps,
         energy_burned=energy_burned,
+        distance=distance,
         total_elevation_gain=elevation_gain,
         average_speed=average_speed,
         hr_zones=hr_zones,

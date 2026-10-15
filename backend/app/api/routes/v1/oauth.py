@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.config import settings
 from app.constants.provider_urls import from_url_slug
 from app.database import DbSession
+from app.integrations.celery.tasks import start_garmin_full_backfill, sync_vendor_data
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
 from app.schemas.model_crud.data_priority import (
@@ -116,13 +117,8 @@ def oauth_callback(
     if settings.historical_sync_on_connect:
         caps = strategy.capabilities
         if caps.webhook_callback:
-            # this code is going to be removed later, so leave inner imports heres
-            from app.integrations.celery.tasks import start_garmin_full_backfill
-
             start_garmin_full_backfill.delay(str(oauth_state.user_id))
         elif caps.rest_pull:
-            from app.integrations.celery.tasks import sync_vendor_data
-
             now = datetime.now(timezone.utc)
             start_date = (now - timedelta(days=90)).isoformat()
             sync_vendor_data.delay(

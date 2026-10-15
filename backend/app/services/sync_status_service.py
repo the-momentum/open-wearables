@@ -35,6 +35,7 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession, SessionLocal
+from app.extensions import events as extension_events
 from app.integrations.redis_client import get_redis_client
 from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import (
@@ -49,6 +50,7 @@ from app.schemas.sync_status import (
     SyncStatus,
     SyncStatusEvent,
 )
+from app.services.outgoing_webhooks import events as outgoing
 from app.utils.context import trace_id_var
 from app.utils.sse import format_comment, format_event
 from app.utils.structured_logging import log_structured
@@ -248,6 +250,10 @@ def get_stored_run(db: DbSession, run_key: str) -> SyncRunDetail | None:
     return SyncRunDetail.model_validate(run) if run is not None else None
 
 
+def _brings_new_data(event: SyncStatusEvent) -> bool:
+    return event.stage == SyncStage.COMPLETED and event.status in (SyncStatus.SUCCESS, SyncStatus.PARTIAL)
+
+
 def emit(event: SyncStatusEvent) -> None:
     """Persist and broadcast a sync status event.
 
@@ -315,6 +321,8 @@ def emit(event: SyncStatusEvent) -> None:
         pipe.set(_run_key(event.run_id), payload, ex=HISTORY_TTL_SECONDS)
         if event.stage == SyncStage.STARTED and event.started_at is not None:
             pipe.set(_run_started_key(event.run_id), event.started_at.isoformat(), ex=HISTORY_TTL_SECONDS, nx=True)
+        if _brings_new_data(event) and extension_events.subscribed(extension_events.SYNC_COMPLETED):
+            extension_events.record(pipe, extension_events.SYNC_COMPLETED, user_id)
         pipe.publish(_user_channel(user_id), payload)
         pipe.publish(_global_channel(), payload)
         pipe.execute()
@@ -337,9 +345,6 @@ def _maybe_dispatch_outgoing_webhook(event: SyncStatusEvent) -> None:
     avoid spamming subscribers with intermediate progress updates.
     """
     try:
-        # Imported lazily to avoid circular imports between services.
-        from app.services.outgoing_webhooks import events as outgoing
-
         stage = event.stage if isinstance(event.stage, str) else event.stage.value
         status = event.status if isinstance(event.status, str) else event.status.value
         source = event.source if isinstance(event.source, str) else event.source.value

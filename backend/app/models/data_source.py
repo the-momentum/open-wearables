@@ -21,8 +21,26 @@ class DataSource(BaseDbModel):
     """
 
     __tablename__ = "data_source"
+    # Identity tiers, most stable first: provider device id, writer app id + model, then model + source.
     __table_args__ = (
         Index("ix_data_source_user_provider", "user_id", "provider"),
+        Index(
+            "uq_data_source_device",
+            "user_id",
+            "provider",
+            "device_id",
+            unique=True,
+            postgresql_where=text("device_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_data_source_app",
+            "user_id",
+            "provider",
+            "source_app_id",
+            text("COALESCE(device_model, '')"),
+            unique=True,
+            postgresql_where=text("device_id IS NULL AND source_app_id IS NOT NULL"),
+        ),
         Index(
             "uq_data_source_identity",
             "user_id",
@@ -30,6 +48,7 @@ class DataSource(BaseDbModel):
             text("COALESCE(device_model, '')"),
             text("COALESCE(source, '')"),
             unique=True,
+            postgresql_where=text("device_id IS NULL AND source_app_id IS NULL"),
         ),
     )
 
@@ -49,6 +68,11 @@ class DataSource(BaseDbModel):
     source: Mapped[str_100 | None]
     device_type: Mapped[str_32 | None]
     original_source_name: Mapped[str_100 | None]
+    # Stable identifiers from the provider: a per-device id (Polar device_id, Samsung deviceId)
+    # and the writer app id (HealthKit/Health Connect appId)
+    device_id: Mapped[str_100 | None]
+    source_app_id: Mapped[str_100 | None]
+    device_manufacturer: Mapped[str_100 | None]
 
     event_records: Mapped[OneToMany["EventRecord"]]
     data_points: Mapped[OneToMany["DataPointSeries"]]
