@@ -246,6 +246,33 @@ class TestSyncVendorDataTask:
         assert result["providers_synced"]["garmin"]["params"]["workouts"]["success"] is False
         assert "Provider API unavailable" in result["providers_synced"]["garmin"]["params"]["workouts"]["error"]
 
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.try_record_data_types")
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
+    @patch("app.services.providers.factory.ProviderFactory.get_provider")
+    def test_a_run_where_everything_failed_still_records_its_data_types(
+        self,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
+        mock_record: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
+        mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
+        mock_strategy.workouts.load_data.side_effect = Exception("Provider API unavailable")
+        mock_strategy.data_247 = None
+        mock_get_provider.return_value = mock_strategy
+
+        sync_vendor_data(str(user.id))
+
+        outcomes = mock_record.call_args.args[1]
+        assert [(o.data_type, o.status) for o in outcomes] == [("workouts", SyncStatus.FAILED)]
+
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_sync_returns_false(

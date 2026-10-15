@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from logging import Logger, getLogger
 
 from app.database import DbSession
@@ -145,9 +145,7 @@ class ArchivalService:
                     summary["deleted_rows"] = deleted_archive
 
             if everything_moved:
-                data_type_coverage_repository.trim_series_before(
-                    db, datetime.combine(cutoff, datetime.min.time(), tzinfo=timezone.utc)
-                )
+                data_type_coverage_repository.trim_series_before(db, cutoff)
 
         return summary
 

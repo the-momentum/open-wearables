@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import delete, func, select, text
@@ -47,6 +47,7 @@ _REFRESH_EVENTS = text(f"""
 """)
 
 # Walks the primary key in ranges, so each batch is an index range scan and the trim one pass.
+# The cutoff day starts in the session's time zone, where retention compares recorded_at::date.
 _NEXT_SERIES_KEYS = text("""
     SELECT user_id, provider, data_type, kind FROM data_type_coverage
     WHERE (user_id, provider, data_type, kind) > (:user_id, :provider, :data_type, :kind)
@@ -54,19 +55,21 @@ _NEXT_SERIES_KEYS = text("""
     LIMIT :batch_size
 """)
 _TRIM_SERIES = text(f"""
-    WITH s AS (
-        SELECT user_id, provider, data_type, kind, coverage_end FROM data_type_coverage
+    WITH bound AS (SELECT CAST(:cutoff AS date)::timestamptz AS cutoff),
+    s AS (
+        SELECT user_id, provider, data_type, kind, coverage_end, bound.cutoff
+        FROM data_type_coverage, bound
         WHERE (user_id, provider, data_type, kind) > (:after_user_id, :after_provider, :after_data_type, :after_kind)
           AND (user_id, provider, data_type, kind) <= (:upto_user_id, :upto_provider, :upto_data_type, :upto_kind)
-          AND kind = :series AND coverage_start < :cutoff
+          AND kind = :series AND coverage_start < bound.cutoff
         ORDER BY user_id, provider, data_type, kind
-        FOR UPDATE
+        FOR UPDATE OF data_type_coverage
     ), emptied AS (
-        DELETE FROM data_type_coverage c USING s WHERE {_SAME_KEY} AND s.coverage_end < :cutoff
+        DELETE FROM data_type_coverage c USING s WHERE {_SAME_KEY} AND s.coverage_end < s.cutoff
     )
-    UPDATE data_type_coverage c SET coverage_start = :cutoff
+    UPDATE data_type_coverage c SET coverage_start = s.cutoff
     FROM s
-    WHERE {_SAME_KEY} AND s.coverage_end >= :cutoff
+    WHERE {_SAME_KEY} AND s.coverage_end >= s.cutoff
 """)
 
 
@@ -227,7 +230,7 @@ class DataTypeCoverageRepository:
             delete(DataTypeCoverage).where(DataTypeCoverage.user_id == user_id, DataTypeCoverage.provider == provider)
         )
 
-    def trim_series_before(self, db_session: DbSession, cutoff: datetime) -> None:
+    def trim_series_before(self, db_session: DbSession, cutoff: date) -> None:
         """Move series spans up to a retention cutoff, once everything older is deleted.
 
         A span that ended before the cutoff is gone. Others start at the cutoff, which is at

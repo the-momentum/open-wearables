@@ -1,11 +1,12 @@
 """Tests for data_type_coverage, written from the series and event write paths."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.backfill_data_type_coverage_task import backfill_data_type_coverage
@@ -308,7 +309,7 @@ class TestCoverageFollowsRemovals:
 
         assert event_record_service.delete_event_record(db, user.id, workout.id, "workout")
         DataSourceRepository().delete_user_provider_data(db, user.id, ProviderName.OURA)
-        data_type_coverage_repository.trim_series_before(db, NOW)
+        data_type_coverage_repository.trim_series_before(db, NOW.date())
 
         assert data_type_coverage_repository.list_for_user(db, user.id) == []
 
@@ -325,7 +326,7 @@ class TestCoverageFollowsRemovals:
     def test_retention_moves_series_up_to_the_cutoff(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("app.repositories.data_type_coverage_repository._TRIM_BATCH_SIZE", 1)
         user = UserFactory()
-        cutoff = NOW - timedelta(days=30)
+        cutoff = datetime(2026, 5, 1, tzinfo=timezone.utc)
         data_type_coverage_repository.record(
             db,
             [
@@ -343,12 +344,29 @@ class TestCoverageFollowsRemovals:
         )
         db.commit()
 
-        data_type_coverage_repository.trim_series_before(db, cutoff)
+        data_type_coverage_repository.trim_series_before(db, cutoff.date())
 
         assert self._span(db, user.id, "heart_rate", DataTypeKind.SERIES) == (cutoff, NOW)
         assert self._span(db, user.id, "steps", DataTypeKind.SERIES) is None
         # Events are never retention-deleted.
         assert self._span(db, user.id, "workout") == (cutoff - timedelta(days=9), NOW)
+
+    def test_retention_cutoff_day_starts_in_the_session_time_zone(self, db: Session) -> None:
+        """Retention compares recorded_at::date, so the cutoff day starts where the session says."""
+        user = UserFactory()
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user.id, "oura", "heart_rate", DataTypeKind.SERIES, NOW - timedelta(days=90), NOW)]
+        )
+        db.commit()
+        db.execute(text("SET TIME ZONE 'Europe/Warsaw'"))
+
+        data_type_coverage_repository.trim_series_before(db, date(2026, 5, 1))
+
+        db.execute(text("SET TIME ZONE 'UTC'"))
+        assert self._span(db, user.id, "heart_rate", DataTypeKind.SERIES) == (
+            datetime(2026, 4, 30, 22, tzinfo=timezone.utc),
+            NOW,
+        )
 
     @pytest.mark.parametrize(("complete", "trimmed"), [(True, True), (False, False)])
     def test_retention_trims_only_once_nothing_older_is_left(self, complete: bool, trimmed: bool) -> None:
@@ -362,6 +380,9 @@ class TestCoverageFollowsRemovals:
             archival_service.run_daily_archival(MagicMock())
 
         assert trim.called is trimmed
+        if trimmed:
+            # The day retention cut at, so the trim counts it in the same time zone.
+            assert trim.call_args.args[1] == date.today() - timedelta(days=30)
 
 
 def _garmin_span(db: Session, user_id: UUID, data_type: str, kind: DataTypeKind) -> tuple[datetime, datetime] | None:
