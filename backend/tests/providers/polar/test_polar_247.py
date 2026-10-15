@@ -5,11 +5,14 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
+from app.models import DataSource, EventRecord
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, SeriesType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
+from tests.factories import UserFactory
 
 
 @pytest.fixture
@@ -60,6 +63,11 @@ class TestPolar247SleepNormalization:
         assert record.start_datetime.isoformat() == "2024-01-14T23:00:00+02:00"
         assert record.end_datetime.isoformat() == "2024-01-15T07:00:00+02:00"
         assert record.duration_seconds == 8 * 3600
+
+    def test_external_id_is_the_sleep_date(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        record, _, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert record.external_id == "sleep-2024-01-15"
 
     def test_sleep_stage_minutes(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()
@@ -124,8 +132,43 @@ class TestPolar247SleepNormalization:
         user_id = uuid4()
         assert data_247.normalize_sleep([sample_sleep], user_id) == []
 
+    def test_missing_date_skipped(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep.pop("date")
+        user_id = uuid4()
+        assert data_247.normalize_sleep([sample_sleep], user_id) == []
+
     def test_empty_input(self, data_247: Polar247Data) -> None:
         assert data_247.normalize_sleep([], uuid4()) == []
+
+
+class TestPolar247SleepSave:
+    NIGHT = {
+        "polar_user": "https://www.polaraccesslink.com/v3/users/123",
+        "date": "2024-01-15",
+        "sleep_start_time": "2024-01-14T23:00:00+02:00",
+        "sleep_end_time": "2024-01-15T07:00:00+02:00",
+        "light_sleep": 14400,
+        "deep_sleep": 5400,
+        "rem_sleep": 7200,
+        "hypnogram": {"23:00": 0, "23:30": 2, "00:30": 4, "02:30": 1, "04:00": 2},
+    }
+
+    def test_resync_keeps_one_copy_of_the_night(self, db: Session, data_247: Polar247Data) -> None:
+        user = UserFactory()
+        window = (datetime(2024, 1, 14, tzinfo=timezone.utc), datetime(2024, 1, 16, tzinfo=timezone.utc))
+        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+            for _ in range(3):
+                data_247._save_sleep(db, user.id, *window)
+
+        records = (
+            db.query(EventRecord)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user.id, EventRecord.category == "sleep")
+            .all()
+        )
+        assert len(records) == 1
+        assert len(records[0].sleep_detail.sleep_stages) == 5
+        assert records[0].sleep_detail.sleep_time_in_bed_minutes == 8 * 60
 
 
 # ---------------------------------------------------------------------------

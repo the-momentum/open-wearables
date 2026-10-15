@@ -242,11 +242,11 @@ class Polar247Data(Base247DataTemplate):
         for raw in raw_items:
             if (parsed := self._parse(raw, SleepJSON, user_id, "sleep")) is None:
                 continue
-            if not parsed.sleep_start_time or not parsed.sleep_end_time:
+            if not parsed.date or not parsed.sleep_start_time or not parsed.sleep_end_time:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Polar sleep record missing start/end time: {parsed.date}",
+                    f"Polar sleep record missing date or start/end time: {parsed.date}",
                     provider="polar",
                     user_id=str(user_id),
                 )
@@ -272,6 +272,7 @@ class Polar247Data(Base247DataTemplate):
                 duration_seconds=duration_seconds,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
+                external_id=f"sleep-{parsed.date}",
                 provider=ProviderName.POLAR,
                 user_id=user_id,
             )
