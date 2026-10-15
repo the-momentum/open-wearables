@@ -523,10 +523,10 @@ class SummariesService:
             db_session, user_id, page_start, page_end
         )
 
-        # Build lookup dict for workout data by (date, provider, device)
+        # Build lookup dict for workout data by (date, provider, source, device)
         workout_lookup: dict[tuple, dict] = {}
         for wa in workout_aggregates:
-            key = (wa["workout_date"], wa["source"], wa.get("device_model"))
+            key = (wa["workout_date"], wa["provider"], wa["source"], wa.get("device_model"))
             workout_lookup[key] = wa
 
         # Get active/sedentary minutes from step data
@@ -566,7 +566,9 @@ class SummariesService:
         for result in results:
             # Look up workout data for this day/provider/device
             result_key = (result["activity_date"], result["source"], result.get("device_model"))
-            workout_data = workout_lookup.get(result_key, {})
+            workout_data = workout_lookup.get(
+                (result["activity_date"], result.get("provider"), result["source"], result.get("device_model")), {}
+            )
             activity_data = activity_lookup.get(result_key, {})
             intensity_data = intensity_lookup.get(result_key, {})
 
