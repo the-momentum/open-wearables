@@ -435,10 +435,11 @@ def sync_vendor_data(
                             log_structured(
                                 logger,
                                 "info",
-                                f"247 data synced for {provider_name}: {results_247}",
+                                f"247 data synced for {provider_name}",
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
+                                data_247=results_247.as_dict(),
                             )
                         except Exception as e:
                             log_structured(
