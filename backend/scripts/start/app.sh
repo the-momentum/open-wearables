@@ -106,6 +106,14 @@ echo 'Running SDK workout calories cleanup...'
 uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
     || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Fills data_type_coverage from the series, archive and event rows held before it existed.
+# Runs last among the data migrations, so it sees the data they leave. Runs once per instance
+# (data_migration).
+echo 'Running data type coverage backfill...'
+uv run python scripts/data_migrations/backfill_data_type_coverage.py \
+    || echo "Warning: data type coverage backfill failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

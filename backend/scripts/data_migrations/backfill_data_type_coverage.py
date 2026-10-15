@@ -2,165 +2,171 @@
 """Backfill data_type_coverage from the data already in the database.
 
 Coverage is maintained going forward by the write paths (DataPointSeriesRepository and
-EventRecordRepository queue spans that are upserted on commit). This fills in everything
-written before that existed.
+EventRecordRepository record spans in the same transaction as the data). This fills in
+everything written before that existed. Without it, coverage starts at the first write after
+the deploy, so a user with years of history reports it as starting that day.
 
-PERFORMANCE: the series pass never scans data_point_series. It enumerates the distinct
-(data_source_id, series_type_definition_id) pairs with a loose index scan over
-uq_data_point_series_source_type_time, then takes MIN/MAX per pair, which with both
-leading columns fixed are index endpoint lookups with no heap fetches. Cost follows the
-number of pairs, not the number of samples. The event pass is a plain aggregate --
-event_record is small enough that it does not need the same treatment.
+Series coverage spans both the live table and the archive, where archival moves old samples
+as daily aggregates: on an instance that archives, the oldest data is only there. An archive
+bucket counts from the start of its day.
+
+PERFORMANCE: the series pass never scans data_point_series or its archive. Per batch of data
+sources it enumerates the distinct (data_source_id, series_type_definition_id) pairs with a
+loose index scan over the unique index of each table, then takes MIN/MAX per pair, which
+with both leading columns fixed are index endpoint lookups. Cost follows the number of
+pairs, not the number of samples. The event pass aggregates one batch of data sources
+through ix_event_record_source_category.
 
 last_written_at is set to coverage_end. We do not know when historical rows were actually
 written, and reading created_at would force a heap fetch per row; the approximation only
 affects "when did we last hear about this type", which corrects itself on the next write.
 
-SAFETY + IDEMPOTENCY: every write is an upsert that only ever widens the stored range and
-moves last_written_at forward, so re-runs are no-ops and a concurrent live sync cannot be
-clobbered by a stale value from this script.
+SAFETY: every write is an upsert that only ever widens the stored range and moves
+last_written_at forward, so a concurrent live sync cannot be clobbered by a stale value
+from this script. Runs once per instance (``data_migration``), committing per batch of
+data sources.
 
-Usage (inside Docker):
-    docker compose exec app uv run python scripts/data_migrations/backfill_data_type_coverage.py --dry-run
+Usage (inside Docker), with --dry-run to count the rows it would write:
     docker compose exec app uv run python scripts/data_migrations/backfill_data_type_coverage.py
 """
 
 import argparse
-import os
-import sys
-from typing import LiteralString
+from uuid import UUID
 
-import psycopg
-from psycopg.conninfo import make_conninfo
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-# Loose index scan: one index probe per distinct pair, rather than a scan of every row.
-SERIES_SPANS_SQL = """
-WITH RECURSIVE pairs AS (
-    (
-        SELECT data_source_id, series_type_definition_id
-        FROM data_point_series
-        ORDER BY data_source_id, series_type_definition_id
-        LIMIT 1
-    )
-    UNION ALL
-    SELECT next.data_source_id, next.series_type_definition_id
-    FROM pairs
-    CROSS JOIN LATERAL (
-        SELECT d.data_source_id, d.series_type_definition_id
-        FROM data_point_series d
-        WHERE (d.data_source_id, d.series_type_definition_id)
-              > (pairs.data_source_id, pairs.series_type_definition_id)
-        ORDER BY d.data_source_id, d.series_type_definition_id
-        LIMIT 1
-    ) AS next
-)
-SELECT
-    ds.user_id,
-    ds.provider,
-    std.code,
-    (
-        SELECT MIN(d.recorded_at) FROM data_point_series d
-        WHERE d.data_source_id = p.data_source_id
-          AND d.series_type_definition_id = p.series_type_definition_id
-    ) AS coverage_start,
-    (
-        SELECT MAX(d.recorded_at) FROM data_point_series d
-        WHERE d.data_source_id = p.data_source_id
-          AND d.series_type_definition_id = p.series_type_definition_id
-    ) AS coverage_end
-FROM pairs p
-JOIN data_source ds ON ds.id = p.data_source_id
-JOIN series_type_definition std ON std.id = p.series_type_definition_id
-"""
+from app.database import engine
+from app.schemas.sync_status import DataTypeKind
+from app.services.data_migration_service import data_migration_service
 
-EVENT_SPANS_SQL = """
-SELECT ds.user_id, ds.provider, er.category,
-       MIN(er.start_datetime) AS coverage_start,
-       MAX(er.end_datetime) AS coverage_end
-FROM event_record er
-JOIN data_source ds ON ds.id = er.data_source_id
-WHERE er.category IS NOT NULL AND er.category <> ''
-GROUP BY ds.user_id, ds.provider, er.category
-"""
+_BATCH_SIZE = 500
 
-UPSERT_SQL = """
-INSERT INTO data_type_coverage
-    (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
-VALUES (%(user_id)s, %(provider)s, %(data_type)s, %(kind)s, %(start)s, %(end)s, %(end)s)
-ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
-    coverage_start  = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
-    coverage_end    = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
-    last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
-"""
+_NEXT_SOURCES = text("""
+    SELECT id FROM data_source
+    WHERE id > :after
+    ORDER BY id
+    LIMIT :batch_size
+""")
 
 
-def get_conninfo() -> str:
-    required = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
-    missing = [v for v in required if not os.environ.get(v)]
-    if missing:
-        print(f"ERROR: missing environment variables: {', '.join(missing)}", file=sys.stderr)
-        sys.exit(1)
-    return make_conninfo(
-        host=os.environ["DB_HOST"],
-        port=int(os.environ["DB_PORT"]),
-        dbname=os.environ["DB_NAME"],
-        user=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
-    )
-
-
-def backfill(conn: psycopg.Connection, select_sql: LiteralString, kind: str, *, dry_run: bool, batch: int) -> int:
-    """Upsert one kind's spans, committing every ``batch`` rows.
-
-    One row per (data source, type) pair, so the result set is bounded by how many types
-    a user's devices produce and fits in memory comfortably.
+def _pair_spans(table: str, at: str) -> str:
+    """Span per (data source, series type) in one table, for the sources in (:after, :upto]."""
+    return f"""
+        SELECT p.data_source_id, p.series_type_definition_id,
+            (SELECT min(t.{at}) FROM {table} t
+             WHERE t.data_source_id = p.data_source_id
+               AND t.series_type_definition_id = p.series_type_definition_id) AS first_at,
+            (SELECT max(t.{at}) FROM {table} t
+             WHERE t.data_source_id = p.data_source_id
+               AND t.series_type_definition_id = p.series_type_definition_id) AS last_at
+        FROM (
+            WITH RECURSIVE pairs AS (
+                (
+                    SELECT data_source_id, series_type_definition_id FROM {table}
+                    WHERE data_source_id > :after AND data_source_id <= :upto
+                    ORDER BY data_source_id, series_type_definition_id
+                    LIMIT 1
+                )
+                UNION ALL
+                SELECT next.data_source_id, next.series_type_definition_id
+                FROM pairs
+                CROSS JOIN LATERAL (
+                    SELECT t.data_source_id, t.series_type_definition_id FROM {table} t
+                    WHERE (t.data_source_id, t.series_type_definition_id)
+                          > (pairs.data_source_id, pairs.series_type_definition_id)
+                      AND t.data_source_id <= :upto
+                    ORDER BY t.data_source_id, t.series_type_definition_id
+                    LIMIT 1
+                ) AS next
+            )
+            SELECT * FROM pairs
+        ) p
     """
-    with conn.cursor() as cur:
-        cur.execute(select_sql)
-        rows = [
-            {
-                "user_id": user_id,
-                "provider": provider,
-                "data_type": data_type,
-                "kind": kind,
-                "start": start,
-                "end": end,
-            }
-            # A pair whose rows were deleted between the probe and the aggregate, or a
-            # record with no end datetime.
-            for user_id, provider, data_type, start, end in cur.fetchall()
-            if start is not None and end is not None
-        ]
-
-    if not dry_run:
-        with conn.cursor() as cur:
-            for i in range(0, len(rows), batch):
-                cur.executemany(UPSERT_SQL, rows[i : i + batch])
-                conn.commit()
-    return len(rows)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Backfill data_type_coverage from existing data.")
-    parser.add_argument("--dry-run", action="store_true", help="Count rows that would be written; change nothing.")
-    parser.add_argument("--batch", type=int, default=1000, help="Rows per commit (default 1000).")
-    args = parser.parse_args()
-    if args.batch <= 0:
-        parser.error("--batch must be a positive integer")
+_SERIES_SPANS = f"""
+    SELECT ds.user_id, ds.provider, std.code AS data_type, CAST(:series AS varchar) AS kind,
+           min(s.first_at) AS coverage_start, max(s.last_at) AS coverage_end
+    FROM (
+        {_pair_spans("data_point_series", "recorded_at")}
+        UNION ALL
+        {_pair_spans("data_point_series_archive", "bucket_start_at")}
+    ) s
+    JOIN data_source ds ON ds.id = s.data_source_id
+    JOIN series_type_definition std ON std.id = s.series_type_definition_id
+    GROUP BY ds.user_id, ds.provider, std.code
+"""
 
-    verb = "would write" if args.dry_run else "wrote"
-    with psycopg.connect(get_conninfo()) as conn:
-        grand = 0
-        for label, select_sql, kind in (
-            ("series", SERIES_SPANS_SQL, "series"),
-            ("event", EVENT_SPANS_SQL, "event"),
-        ):
-            n = backfill(conn, select_sql, kind, dry_run=args.dry_run, batch=args.batch)
-            print(f"{verb} {n:>10}  {label}")
-            grand += n
+_EVENT_SPANS = """
+    SELECT ds.user_id, ds.provider, er.category AS data_type, CAST(:event AS varchar) AS kind,
+           min(er.start_datetime) AS coverage_start, max(er.end_datetime) AS coverage_end
+    FROM event_record er
+    JOIN data_source ds ON ds.id = er.data_source_id
+    WHERE er.data_source_id > :after AND er.data_source_id <= :upto
+      AND er.category IS NOT NULL AND er.category <> ''
+    GROUP BY ds.user_id, ds.provider, er.category
+"""
 
-        print(f"\n{'Would write' if args.dry_run else 'Wrote'} {grand} coverage row(s).")
+
+def _upsert(spans: str) -> str:
+    return f"""
+        INSERT INTO data_type_coverage
+            (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
+        SELECT user_id, provider, data_type, kind, coverage_start, coverage_end, coverage_end
+        FROM ({spans}) spans
+        ORDER BY user_id, provider, data_type, kind
+        ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
+            coverage_start = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
+            coverage_end = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
+            last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)
+    """
+
+
+_WRITES = {
+    DataTypeKind.SERIES: text(_upsert(_SERIES_SPANS)),
+    DataTypeKind.EVENT: text(_upsert(_EVENT_SPANS)),
+}
+_COUNTS = {
+    DataTypeKind.SERIES: text(f"SELECT count(*) FROM ({_SERIES_SPANS}) spans"),
+    DataTypeKind.EVENT: text(f"SELECT count(*) FROM ({_EVENT_SPANS}) spans"),
+}
+
+
+def backfill_data_type_coverage(db: Session, *, dry_run: bool) -> dict[DataTypeKind, int]:
+    """Spans recorded (or, in a dry run, found) per kind, one per type and batch. Commits per batch."""
+    found = dict.fromkeys(_WRITES, 0)
+    after = UUID(int=0)
+    while sources := db.execute(_NEXT_SOURCES, {"after": after, "batch_size": _BATCH_SIZE}).scalars().all():
+        params = {"after": after, "upto": sources[-1], "series": DataTypeKind.SERIES, "event": DataTypeKind.EVENT}
+        for kind in found:
+            if dry_run:
+                found[kind] += db.execute(_COUNTS[kind], params).scalar() or 0
+            else:
+                found[kind] += db.execute(_WRITES[kind], params).rowcount  # ty: ignore[unresolved-attribute]
+        db.commit()
+        after = sources[-1]
+
+    verb = "Would record" if dry_run else "Recorded"
+    for kind, spans in found.items():
+        print(f"{verb} {spans} {kind} span(s).")
+    if dry_run:
+        print("\nDry run — no changes made.")
+    return found
+
+
+def _migrate(db: Session, dry_run: bool) -> bool:
+    backfill_data_type_coverage(db, dry_run=dry_run)
+    return not dry_run
+
+
+def main(dry_run: bool) -> None:
+    with engine.connect() as connection, Session(bind=connection) as db:
+        data_migration_service.run(db, "backfill_data_type_coverage", lambda: _migrate(db, dry_run), dry_run=dry_run)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true", help="Count the rows it would write without writing them")
+    args = parser.parse_args()
+    main(dry_run=args.dry_run)
