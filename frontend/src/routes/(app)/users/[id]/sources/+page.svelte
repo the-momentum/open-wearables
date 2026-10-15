@@ -10,9 +10,6 @@
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-
-	// Ranked first overall, so whenever it has data for a day, the summaries use it
-	const preferredId = $derived(data.groups[0]?.sources[0]?.id ?? null);
 </script>
 
 {#if data.groups.length === 0}
@@ -28,7 +25,7 @@
 		<Caption>In priority order</Caption>
 		<div class="flex flex-col gap-3">
 			{#each data.groups as group (group.provider)}
-				<SourceGroupCard {group} brand={brandOf(data.providers, group.provider)} {preferredId} />
+				<SourceGroupCard {group} brand={brandOf(data.providers, group.provider)} />
 			{/each}
 		</div>
 		<p class={FOOTNOTE}>

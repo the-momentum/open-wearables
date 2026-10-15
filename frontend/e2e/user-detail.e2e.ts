@@ -185,7 +185,7 @@ test('gives every tab a real URL, and 404s on one that is not a tab', async ({ p
 	expect(response?.status()).toBe(404);
 });
 
-test('lists the sources in priority order, the first one preferred', async ({ page }) => {
+test('lists the sources in priority order', async ({ page }) => {
 	await page.goto(`/users/${CONNECTED}/sources`);
 
 	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
@@ -194,9 +194,8 @@ test('lists the sources in priority order, the first one preferred', async ({ pa
 		'Apple',
 		'Health connect'
 	]);
-	const garmin = page.getByRole('listitem').filter({ hasText: 'Garmin fenix 8' });
-	await expect(garmin.getByText('Preferred')).toBeVisible();
-	await expect(page.getByText('Preferred')).toHaveCount(1);
+	const garmin = page.getByRole('region', { name: 'Garmin' }).getByRole('listitem');
+	await expect(garmin.first()).toContainText('Garmin fenix 8');
 	await expect(page.getByText('No device reported')).toHaveCount(3);
 	await expect(page.getByText("Kuba's Apple Watch")).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Change the order' })).toHaveAttribute(

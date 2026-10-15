@@ -6,11 +6,7 @@
 	import type { SourceGroup } from '$lib/sources/types';
 	import SourceRow from './SourceRow.svelte';
 
-	let {
-		group,
-		brand,
-		preferredId
-	}: { group: SourceGroup; brand: ProviderBrand; preferredId: string | null } = $props();
+	let { group, brand }: { group: SourceGroup; brand: ProviderBrand } = $props();
 
 	const count = $derived(group.sources.length);
 </script>
@@ -24,7 +20,7 @@
 	{/snippet}
 	<ul class="divide-y divide-border">
 		{#each group.sources as source (source.id)}
-			<SourceRow {source} preferred={source.id === preferredId} />
+			<SourceRow {source} />
 		{/each}
 	</ul>
 </Card>
