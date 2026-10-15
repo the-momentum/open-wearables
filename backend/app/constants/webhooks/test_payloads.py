@@ -12,7 +12,7 @@ from app.schemas.webhooks.event_types import WebhookEventType
 _USER_ID = "00000000-0000-0000-0000-000000000002"
 _RECORD_ID = "00000000-0000-0000-0000-000000000001"
 _CONNECTION_ID = "00000000-0000-0000-0000-000000000003"
-_RUN_ID = "backfill_9f3c8ea41b2d5c07"
+_RUN_ID = "sdk_9f3c8ea41b2d5c07"
 
 _SOURCE_GARMIN = {"provider": "garmin", "device": "Garmin Fenix 7"}
 _SOURCE_OURA = {
@@ -82,12 +82,12 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         "type": WebhookEventType.SYNC_DATA_TYPE_COMPLETED,
         "data": {
             "user_id": _USER_ID,
-            "provider": "garmin",
-            "source": "backfill",
+            "provider": "apple",
+            "source": "sdk",
             "scope": "historical",
             "run_id": _RUN_ID,
             "data_type": "heart_rate",
-            "native_data_type": "dailies",
+            "native_data_type": "HKQuantityTypeIdentifierHeartRate",
             "kind": "series",
             "status": "success",
             "reported_records": 41230,
@@ -104,13 +104,13 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         "type": WebhookEventType.SYNC_DATA_TYPE_FAILED,
         "data": {
             "user_id": _USER_ID,
-            "provider": "garmin",
-            "source": "backfill",
+            "provider": "apple",
+            "source": "sdk",
             "scope": "historical",
             "run_id": _RUN_ID,
             "data_type": "sleep",
-            "native_data_type": "sleeps",
-            "kind": "series",
+            "native_data_type": "HKCategoryTypeIdentifierSleepAnalysis",
+            "kind": "event",
             "status": "failed",
             "reported_records": None,
             "items_inserted": 0,

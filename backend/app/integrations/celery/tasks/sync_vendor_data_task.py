@@ -64,6 +64,46 @@ def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
         )
 
 
+def _task_outcomes(task: str, count: Any) -> list[DataTypeOutcome]:
+    """Per-series-type outcomes for one provider fetch task.
+
+    A task writes several series types, so it reports per type where the write path told
+    us which ones -- the task name survives as native_type. Without that breakdown the
+    task itself is the only thing left to report.
+    """
+    by_type = getattr(count, "by_type", None)
+    if by_type:
+        return [
+            DataTypeOutcome(
+                data_type=series_type,
+                kind=DataTypeKind.SERIES,
+                native_type=task,
+                status=SyncStatus.SUCCESS if counts.inserted or counts.updated else SyncStatus.SKIPPED,
+                items_inserted=counts.inserted,
+                items_updated=counts.updated,
+                covered_start=counts.covered_start,
+                covered_end=counts.covered_end,
+            )
+            for series_type, counts in by_type.items()
+        ]
+    return [
+        DataTypeOutcome(
+            data_type=task,
+            kind=DataTypeKind.TASK,
+            native_type=task,
+            status=SyncStatus.SUCCESS
+            if getattr(count, "inserted", count) or getattr(count, "updated", 0)
+            else SyncStatus.SKIPPED,
+            items_inserted=getattr(count, "inserted", 0),
+            items_updated=getattr(count, "updated", 0),
+            # A plain int only says how many rows the provider saved, with no split.
+            reported_records=None if hasattr(count, "inserted") else int(count),
+            covered_start=getattr(count, "covered_start", None),
+            covered_end=getattr(count, "covered_end", None),
+        )
+    ]
+
+
 @shared_task
 def sync_vendor_data(
     user_id: str,
@@ -266,9 +306,7 @@ def sync_vendor_data(
                     },
                 )
 
-                # Stamps every data event written below with the run that produced it.
-                # Set here rather than earlier so the paths that skip the sync entirely
-                # never leave it set; the matching reset is this block's finally.
+                # Set here, not earlier: the skip paths above must not leave it set.
                 sync_run_token = sync_run_var.set(SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope))
                 try:
                     # Inside the try: the finally below is what stops the renewal thread.
@@ -406,27 +444,7 @@ def sync_vendor_data(
                                         continue
                                     pull_inserted += getattr(_count, "inserted", 0)
                                     pull_updated += getattr(_count, "updated", 0)
-                                    # Pull reports per fetch task, not per series type: one
-                                    # task can write several types and returns a single count.
-                                    data_type_outcomes.append(
-                                        DataTypeOutcome(
-                                            data_type=_task,
-                                            kind=DataTypeKind.TASK,
-                                            native_type=_task,
-                                            status=SyncStatus.SUCCESS
-                                            if getattr(_count, "inserted", _count) or getattr(_count, "updated", 0)
-                                            else SyncStatus.SKIPPED,
-                                            items_inserted=getattr(_count, "inserted", 0),
-                                            items_updated=getattr(_count, "updated", 0),
-                                            # A plain int only says how many rows the provider
-                                            # saved, with no insert/update split to record.
-                                            reported_records=None if hasattr(_count, "inserted") else int(_count),
-                                            # Span of the rows written, not the window asked
-                                            # for. Absent when the task wrote nothing.
-                                            covered_start=getattr(_count, "covered_start", None),
-                                            covered_end=getattr(_count, "covered_end", None),
-                                        )
-                                    )
+                                    data_type_outcomes.extend(_task_outcomes(_task, _count))
                             else:
                                 results_247 = strategy.data_247.load_all_247_data(
                                     db,

@@ -38,7 +38,7 @@ class DataTypeCoverageRepository:
                 "coverage_end": end,
                 "last_written_at": datetime.now(timezone.utc),
             }
-            for (user_id, provider, data_type, kind), (start, end) in _merge(spans).items()
+            for (user_id, provider, data_type, kind), (start, end) in sorted(_merge(spans).items())
         ]
         if not rows:
             return
