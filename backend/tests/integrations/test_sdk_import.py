@@ -554,6 +554,41 @@ class TestAppleSDKImportEdgeCases:
         assert workout is not None
         assert workout.duration_seconds == 1800
 
+    def test_unsupported_record_types_are_counted(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """Types this backend can't map (e.g. from a newer SDK) are skipped and reported by type."""
+        user = UserFactory()
+
+        def record(record_id: str, metric_type: str, value: float, unit: str) -> dict[str, Any]:
+            return {
+                "id": record_id,
+                "type": metric_type,
+                "unit": unit,
+                "value": value,
+                "startDate": "2025-04-10T12:00:00Z",
+                "endDate": "2025-04-10T12:00:00Z",
+                "source": {"name": "Test Device", "bundleIdentifier": "test"},
+            }
+
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {
+                "records": [
+                    record("hr-1", "HKQuantityTypeIdentifierHeartRate", 70, "count/min"),
+                    record("future-1", "HKQuantityTypeIdentifierSomeFutureMetric", 42, "ms"),
+                    record("future-2", "HKQuantityTypeIdentifierSomeFutureMetric", 55, "ms"),
+                ],
+            },
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["records_saved"] == 1
+        assert result["unsupported_types"] == {"HKQuantityTypeIdentifierSomeFutureMetric": 2}
+
     def test_import_workout_null_statistics(
         self,
         db: Session,
