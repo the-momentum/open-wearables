@@ -286,3 +286,50 @@ class TestDataSourceRepository:
 
         assert watch.id != other.id
         assert watch.device_model == "Watch6,2"
+
+    def test_app_keyed_source_follows_a_rename_but_not_its_app_id(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        app = "com.apple.health.0BA80355"
+        ids = {"user_id": user.id, "provider": ProviderName.APPLE, "device_model": "Watch6,2", "source_app_id": app}
+
+        first = repo.ensure_data_source(db, **ids, source="Bart's Apple Watch")
+        renamed = repo.ensure_data_source(db, **ids, source="Bart's Watch")
+        unnamed = repo.ensure_data_source(db, **ids, source=app)
+
+        assert first.id == renamed.id == unnamed.id
+        assert unnamed.source == "Bart's Watch"
+
+    def test_device_keyed_source_keeps_its_name(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.SAMSUNG,
+            "device_model": "motorola edge 60 pro",
+            "device_id": "58mpO9uLb3",
+            "source_app_id": "com.sec.android.app.shealth",
+        }
+
+        first = repo.ensure_data_source(db, **ids, source="My Device")
+        repo.ensure_data_source(db, **ids, source="motorola edge 60 pro")
+
+        assert first.source == "My Device"
+
+    def test_software_version_only_moves_up(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.APPLE,
+            "device_model": "Watch6,2",
+            "source": "Apple Watch",
+            "source_app_id": "com.apple.health.0BA80355",
+        }
+
+        row = repo.ensure_data_source(db, **ids, software_version="26.2")
+        repo.ensure_data_source(db, **ids, software_version="26.10")
+        repo.ensure_data_source(db, **ids, software_version="25.4.1")
+        repo.ensure_data_source(db, **ids, software_version="beta")
+
+        assert row.software_version == "26.10"

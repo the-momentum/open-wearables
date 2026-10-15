@@ -83,6 +83,19 @@ _INSERT_FIELDS = (
 )
 
 
+def _version_key(version: str) -> tuple[int, ...] | None:
+    parts = version.split(".")
+    return tuple(int(part) for part in parts) if all(part.isdigit() for part in parts) else None
+
+
+def _is_newer_version(candidate: str, current: str | None) -> bool:
+    """A history sync replays old versions in any order, so only a higher one replaces the stored one."""
+    if current is None:
+        return True
+    new, old = _version_key(candidate), _version_key(current)
+    return new is not None and old is not None and new > old
+
+
 class DataSourceRepository(
     CrudRepository[DataSource, DataSourceCreate, DataSourceUpdate],
 ):
@@ -348,13 +361,21 @@ class DataSourceRepository(
         user_connection_id: UUID | None,
         details: SourceDetails,
     ) -> None:
-        _, device_model, _, device_id, source_app_id = identity
+        _, device_model, source, device_id, source_app_id = identity
         software_version, original_source_name, reported_type, device_manufacturer = details
         updates: dict[str, object] = {}
         if device_id and existing.device_id is None:
             updates["device_id"] = device_id
         if source_app_id and existing.source_app_id is None:
             updates["source_app_id"] = source_app_id
+        # A writer's name (a renamed Apple Watch) is not part of an app-keyed row's identity, so it follows
+        # the latest one. Not on device-id rows: Samsung names one device differently per data type. The
+        # app id itself is only a fallback name and never replaces a real one.
+        keyed_by_app = updates.get("source_app_id", existing.source_app_id) and not updates.get(
+            "device_id", existing.device_id
+        )
+        if keyed_by_app and source and source != source_app_id and source != existing.source:
+            updates["source"] = source
         # Keyed rows learn their model later (Polar sleep before the exercise, a writer's first model);
         # a relaying host's code is replaced by the producing device's model
         replaces_host = is_host_model(existing.source_app_id, existing.device_model) and not is_host_model(
@@ -366,7 +387,7 @@ class DataSourceRepository(
         effective_model = device_model if model_replaced else existing.device_model or device_model
         if user_connection_id and existing.user_connection_id is None:
             updates["user_connection_id"] = user_connection_id
-        if software_version and existing.software_version is None:
+        if software_version and _is_newer_version(software_version, existing.software_version):
             updates["software_version"] = software_version
         if device_manufacturer and existing.device_manufacturer is None:
             updates["device_manufacturer"] = device_manufacturer
