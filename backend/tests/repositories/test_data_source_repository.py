@@ -12,7 +12,7 @@ The column is now ``VARCHAR(100)``.
 from sqlalchemy.orm import Session
 
 from app.models import DataSource
-from app.repositories.data_source_repository import DataSourceRepository
+from app.repositories.data_source_repository import DataSourceRepository, SourceDetails
 from app.schemas.enums import DeviceType, ProviderName
 from tests.factories import UserFactory
 
@@ -78,8 +78,7 @@ class TestDataSourceRepository:
             db,
             ProviderName.SAMSUNG,
             None,
-            {(user.id, "unlisted-model", "tab")},
-            {(user.id, "unlisted-model", "tab"): DeviceType.BAND},
+            {(user.id, "unlisted-model", "tab", None, None): SourceDetails(reported_type=DeviceType.BAND)},
         )
         assert repo.get_by_identity(db, **identity).device_type == DeviceType.WATCH
 
@@ -102,12 +101,239 @@ class TestDataSourceRepository:
     def test_batch_upgrades_unset_device_type(self, db: Session) -> None:
         user = UserFactory()
         repo = DataSourceRepository(DataSource)
-        identity = (user.id, None, "com.fitbit.FitbitMobile")
-        repo.batch_ensure_data_sources(db, ProviderName.HEALTH_CONNECT, None, {identity})
+        identity = (user.id, None, "com.fitbit.FitbitMobile", None, None)
+        repo.batch_ensure_data_sources(db, ProviderName.HEALTH_CONNECT, None, {identity: SourceDetails()})
         ds = repo.get_by_identity(db, user.id, ProviderName.HEALTH_CONNECT, None, "com.fitbit.FitbitMobile")
         assert ds.device_type is None
 
-        repo.batch_ensure_data_sources(db, ProviderName.HEALTH_CONNECT, None, {identity}, {identity: DeviceType.BAND})
+        repo.batch_ensure_data_sources(
+            db, ProviderName.HEALTH_CONNECT, None, {identity: SourceDetails(reported_type=DeviceType.BAND)}
+        )
         db.expire_all()
         ds = repo.get_by_identity(db, user.id, ProviderName.HEALTH_CONNECT, None, "com.fitbit.FitbitMobile")
         assert ds.device_type == DeviceType.BAND
+
+    def test_batch_resolves_stored_empty_model_and_stores_software_version(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        stored = repo.ensure_data_source(
+            db, user_id=user.id, provider=ProviderName.STRAVA, device_model="", source="strava"
+        )
+        identity = (user.id, None, "strava", None, None)
+        new_identity = (user.id, "SM-L315F", "Galaxy Watch7", None, None)
+
+        result = repo.batch_ensure_data_sources(db, ProviderName.STRAVA, None, {identity: SourceDetails()})
+        repo.batch_ensure_data_sources(
+            db, ProviderName.SAMSUNG, None, {new_identity: SourceDetails(software_version="5.0.1")}
+        )
+
+        assert result[identity] == stored.id
+        created = repo.get_by_identity(db, user.id, ProviderName.SAMSUNG, "SM-L315F", "Galaxy Watch7")
+        assert created.software_version == "5.0.1"
+
+    def test_device_id_links_records_and_fills_model(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        sleep = repo.ensure_data_source(
+            db, user_id=user.id, provider=ProviderName.POLAR, source="polar", device_id="15995F33"
+        )
+        workout = repo.ensure_data_source(
+            db,
+            user_id=user.id,
+            provider=ProviderName.POLAR,
+            device_model="Polar Vantage M3",
+            source="polar",
+            device_id="15995F33",
+        )
+
+        assert workout.id == sleep.id
+        assert workout.device_model == "Polar Vantage M3"
+
+    def test_stable_ids_are_stamped_onto_legacy_row(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        legacy = repo.ensure_data_source(
+            db, user_id=user.id, provider=ProviderName.APPLE, device_model="Watch6,2", source="Apple Watch"
+        )
+
+        keyed = repo.ensure_data_source(
+            db,
+            user_id=user.id,
+            provider=ProviderName.APPLE,
+            device_model="Watch6,2",
+            source="Apple Watch",
+            source_app_id="com.apple.health.X",
+            device_manufacturer="Apple Inc.",
+        )
+        renamed = repo.ensure_data_source(
+            db,
+            user_id=user.id,
+            provider=ProviderName.APPLE,
+            device_model="Watch6,2",
+            source="Kuba's Watch",
+            source_app_id="com.apple.health.X",
+        )
+
+        assert keyed.id == legacy.id == renamed.id
+        assert keyed.source_app_id == "com.apple.health.X"
+        assert keyed.device_manufacturer == "Apple Inc."
+
+    def test_record_without_ids_joins_the_only_keyed_row_of_its_model(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {"user_id": user.id, "provider": ProviderName.SAMSUNG, "device_model": "SM-M127F"}
+        keyed = repo.ensure_data_source(
+            db, **ids, source="Kamil's M12", device_id="loGXfm78JC", source_app_id="com.sec.android.app.shealth"
+        )
+
+        steps = repo.ensure_data_source(db, **ids, source="m12")
+        repo.ensure_data_source(
+            db, **ids, source="Galaxy M12", device_id="other", source_app_id="com.sec.android.app.shealth"
+        )
+        ambiguous = repo.ensure_data_source(db, **ids, source="m12")
+
+        assert steps.id == keyed.id
+        assert ambiguous.id != keyed.id
+
+    def test_record_without_ids_prefers_keyed_row_over_legacy_row(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {"user_id": user.id, "provider": ProviderName.SAMSUNG, "device_model": "SM-M127F"}
+        legacy = repo.ensure_data_source(db, **ids, source="m12")
+        keyed = repo.ensure_data_source(
+            db, **ids, source="Kamil's M12", device_id="loGXfm78JC", source_app_id="com.sec.android.app.shealth"
+        )
+
+        steps = repo.ensure_data_source(db, **ids, source="m12")
+
+        assert keyed.id != legacy.id
+        assert steps.id == keyed.id
+
+    def test_records_without_ids_join_keyed_row_created_in_the_same_batch(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        steps = (user.id, "SM-M127F", "m12", None, None)
+        keyed = (user.id, "SM-M127F", "Kamil's M12", "loGXfm78JC", "com.sec.android.app.shealth")
+
+        result = repo.batch_ensure_data_sources(
+            db, ProviderName.SAMSUNG, None, {steps: SourceDetails(), keyed: SourceDetails()}
+        )
+
+        assert result[steps] == result[keyed]
+
+    def test_writer_row_learns_model_and_matches_unknown_model(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {"user_id": user.id, "provider": ProviderName.HEALTH_CONNECT, "source_app_id": "com.fitbit.FitbitMobile"}
+
+        first = repo.ensure_data_source(db, **ids, source="com.fitbit.FitbitMobile")
+        known = repo.ensure_data_source(db, **ids, device_model="Charge 6", source="com.fitbit.FitbitMobile")
+        unknown_again = repo.ensure_data_source(db, **ids, source="com.fitbit.FitbitMobile")
+
+        assert first.id == known.id == unknown_again.id
+        assert known.device_model == "Charge 6"
+
+    def test_writer_converges_within_one_batch(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        app = "com.fitbit.FitbitMobile"
+        unknown = (user.id, None, app, None, app)
+        known = (user.id, "Charge 6", app, None, app)
+
+        result = repo.batch_ensure_data_sources(
+            db, ProviderName.HEALTH_CONNECT, None, {unknown: SourceDetails(), known: SourceDetails()}
+        )
+
+        assert result[unknown] == result[known]
+        assert repo.get_by_identity(db, user.id, ProviderName.HEALTH_CONNECT, "Charge 6", app, None, app) is not None
+
+    def test_writer_with_several_models_keeps_separate_sources(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {"user_id": user.id, "provider": ProviderName.HEALTH_CONNECT, "source_app_id": "com.fitbit.FitbitMobile"}
+
+        charge = repo.ensure_data_source(db, **ids, device_model="Charge 6")
+        watch = repo.ensure_data_source(db, **ids, device_model="Pixel Watch 2")
+        unknown = repo.ensure_data_source(db, **ids)
+
+        assert len({charge.id, watch.id, unknown.id}) == 3
+
+    def test_host_model_is_replaced_by_producer_model(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.APPLE,
+            "source": "Oura",
+            "source_app_id": "com.ouraring.oura",
+        }
+
+        relayed = repo.ensure_data_source(db, **ids, device_model="iPhone16,1", reported_type=DeviceType.PHONE)
+        produced = repo.ensure_data_source(db, **ids, device_model="Oura Ring Gen3")
+        old_client = repo.ensure_data_source(db, **ids, device_model="iPhone16,1", reported_type=DeviceType.PHONE)
+
+        assert relayed.id == produced.id == old_client.id
+        assert produced.device_model == "Oura Ring Gen3"
+        assert produced.device_type == DeviceType.RING
+
+    def test_apple_own_source_keeps_product_type(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {"user_id": user.id, "provider": ProviderName.APPLE, "source_app_id": APPLE_HEALTH_SOURCE}
+
+        watch = repo.ensure_data_source(db, **ids, device_model="Watch6,2")
+        other = repo.ensure_data_source(db, **ids, device_model="Watch7,5")
+
+        assert watch.id != other.id
+        assert watch.device_model == "Watch6,2"
+
+    def test_app_keyed_source_follows_a_rename_but_not_its_app_id(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        app = "com.apple.health.0BA80355"
+        ids = {"user_id": user.id, "provider": ProviderName.APPLE, "device_model": "Watch6,2", "source_app_id": app}
+
+        first = repo.ensure_data_source(db, **ids, source="Bart's Apple Watch")
+        renamed = repo.ensure_data_source(db, **ids, source="Bart's Watch")
+        unnamed = repo.ensure_data_source(db, **ids, source=app)
+        without_app_id = {**ids, "source_app_id": None}
+        repo.ensure_data_source(db, **without_app_id, source=app)
+
+        assert first.id == renamed.id == unnamed.id
+        assert unnamed.source == "Bart's Watch"
+
+    def test_device_keyed_source_keeps_its_name(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.SAMSUNG,
+            "device_model": "motorola edge 60 pro",
+            "device_id": "58mpO9uLb3",
+            "source_app_id": "com.sec.android.app.shealth",
+        }
+
+        first = repo.ensure_data_source(db, **ids, source="My Device")
+        repo.ensure_data_source(db, **ids, source="motorola edge 60 pro")
+
+        assert first.source == "My Device"
+
+    def test_software_version_only_moves_up(self, db: Session) -> None:
+        user = UserFactory()
+        repo = DataSourceRepository(DataSource)
+        ids = {
+            "user_id": user.id,
+            "provider": ProviderName.APPLE,
+            "device_model": "Watch6,2",
+            "source": "Apple Watch",
+            "source_app_id": "com.apple.health.0BA80355",
+        }
+
+        row = repo.ensure_data_source(db, **ids, software_version="beta")
+        repo.ensure_data_source(db, **ids, software_version="26.2")
+        repo.ensure_data_source(db, **ids, software_version="26.10")
+        repo.ensure_data_source(db, **ids, software_version="25.4.1")
+        for odd in ("beta", "26.²", "26..1", "", "9" * 5000):
+            repo.ensure_data_source(db, **ids, software_version=odd)
+
+        assert row.software_version == "26.10"

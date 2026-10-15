@@ -6511,6 +6511,7 @@
                                     "HKQuantityTypeIdentifierRestingHeartRate",
                                     "RESTING_HEART_RATE",
                                     "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                    "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD",
                                     "HEART_RATE_VARIABILITY",
                                     "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute",
                                     "HKQuantityTypeIdentifierWalkingHeartRateAverage",
@@ -12454,6 +12455,17 @@
             ],
             "title": "Original Source Name"
           },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -16958,6 +16970,18 @@
               }
             ],
             "example": "phone"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "example": "R9ZW30ABC12"
           },
           "device_name": {
             "anyOf": [

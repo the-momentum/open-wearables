@@ -60,6 +60,7 @@ import {
 	makeActivity,
 	activityTotals,
 	makeBody,
+	makeDataSources,
 	deleteWorkout,
 	makeCycles,
 	makeMeals,
@@ -583,6 +584,8 @@ const server = Bun.serve({
 				}
 				case '/summaries/body':
 					return json(connected ? makeBody() : null);
+				case '/data-sources':
+					return json(connected ? makeDataSources() : { items: [], total: 0 });
 				case '/timeseries': {
 					const query = new URL(request.url).searchParams;
 					// The body tab asks for vitals; every other caller asks for a

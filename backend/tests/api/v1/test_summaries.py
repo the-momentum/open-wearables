@@ -382,6 +382,41 @@ class TestSleepSummaryEndpoint:
         assert sleep_data["duration_minutes"] == 480  # 8 hours
         assert sleep_data["efficiency_percent"] == 90.0
 
+    def test_get_sleep_summary_pages_nights_not_sources(self, client: TestClient, db: Session) -> None:
+        """Paging through nights two sources recorded returns what one big page does."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_type="watch")
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, device_type="ring")
+        for day in range(1, 6):
+            sleep_start = datetime(2025, 12, day, 23, 0, 0, tzinfo=timezone.utc)
+            for data_source in (watch, ring):
+                EventRecordFactory(
+                    data_source=data_source,
+                    category="sleep",
+                    start_datetime=sleep_start,
+                    end_datetime=sleep_start + timedelta(hours=8),
+                    duration_seconds=8 * 3600,
+                )
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+        url = f"/api/v1/users/{user.id}/summaries/sleep"
+        params = {"start_date": "2025-12-01T00:00:00Z", "end_date": "2025-12-31T00:00:00Z"}
+
+        everything = client.get(url, headers=headers, params={**params, "limit": 50}).json()["data"]
+        paged: list[dict] = []
+        page_params: dict[str, str | int] = {**params, "limit": 2}
+        while True:
+            page = client.get(url, headers=headers, params=page_params)
+            assert page.status_code == 200
+            paged += page.json()["data"]
+            if not page.json()["pagination"]["has_more"]:
+                break
+            page_params["cursor"] = page.json()["pagination"]["next_cursor"]
+
+        assert [(s["date"], s["source"]["provider"]) for s in everything] == [
+            (f"2025-12-0{day}", "garmin") for day in range(2, 7)
+        ]
+        assert paged == everything
+
 
 class TestActivitySummaryEndpoint:
     """Test suite for activity summaries endpoint."""
@@ -1654,6 +1689,42 @@ class TestRecoverySummaryEndpoint:
         assert len(data["data"]) == 3
         assert data["pagination"]["has_more"] is True
         assert data["pagination"]["next_cursor"] is not None
+
+    def test_pagination_pages_days_not_scores(self, client: TestClient, db: Session) -> None:
+        """A provider that scores many times a day still pages one summary per day.
+
+        Suunto stores one recovery score per Balance sample, without a data source.
+        """
+        user = UserFactory()
+        for day in range(1, 6):
+            for hour, balance in ((0, 10), (6, 20), (12, 30), (18, 40)):
+                HealthScoreFactory(
+                    user_id=user.id,
+                    data_source_id=None,
+                    provider=ProviderName.SUUNTO,
+                    category=HealthScoreCategory.RECOVERY,
+                    value=Decimal(balance),
+                    recorded_at=datetime(2025, 12, day, hour, 30, tzinfo=timezone.utc),
+                )
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+        params = {"start_date": "2025-12-01T00:00:00Z", "end_date": "2025-12-31T00:00:00Z"}
+
+        everything = client.get(self._url(user.id), headers=headers, params={**params, "limit": 50}).json()["data"]
+        paged: list[dict] = []
+        page_params: dict[str, str | int] = {**params, "limit": 2}
+        while True:
+            page = client.get(self._url(user.id), headers=headers, params=page_params)
+            assert page.status_code == 200
+            paged += page.json()["data"]
+            if not page.json()["pagination"]["has_more"]:
+                break
+            page_params["cursor"] = page.json()["pagination"]["next_cursor"]
+
+        # Each day is summarised from its first sample.
+        assert [(s["date"], s["recovery_score"]) for s in everything] == [
+            (f"2025-12-0{day}", 10) for day in range(1, 6)
+        ]
+        assert paged == everything
 
 
 class TestDataTimelineEndpoint:

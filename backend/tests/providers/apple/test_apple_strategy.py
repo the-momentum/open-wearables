@@ -9,10 +9,15 @@ Tests cover:
 - Apple-specific behavior
 """
 
+from decimal import Decimal
+from logging import getLogger
+from pathlib import Path
+
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
+from app.services.providers.apple.apple_xml.xml_service import XMLService
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 
@@ -96,3 +101,29 @@ class TestAppleStrategy:
         assert strategy1.user_repo is not strategy2.user_repo
         assert strategy1.connection_repo is not strategy2.connection_repo
         assert strategy1.workout_repo is not strategy2.workout_repo
+
+
+class TestAppleXmlWorkoutCalories:
+    """An exported workout keeps its calories unset when the export reports none."""
+
+    def _metrics(self, statistics: list[dict]) -> dict:
+        service = XMLService(Path("export.xml"), getLogger(__name__))
+        metrics = service._init_metrics()
+        for statistic in statistics:
+            service._update_metrics_from_stat(metrics, statistic)
+        return dict(metrics)
+
+    def test_sums_active_and_basal_energy(self) -> None:
+        metrics = self._metrics(
+            [
+                {"type": "HKQuantityTypeIdentifierActiveEnergyBurned", "sum": "131.41"},
+                {"type": "HKQuantityTypeIdentifierBasalEnergyBurned", "sum": "48.59"},
+            ]
+        )
+
+        assert metrics["energy_burned"] == Decimal("180.00")
+
+    def test_leaves_calories_unset_without_an_energy_statistic(self) -> None:
+        metrics = self._metrics([{"type": "HKQuantityTypeIdentifierHeartRate", "average": "120"}])
+
+        assert metrics["energy_burned"] is None

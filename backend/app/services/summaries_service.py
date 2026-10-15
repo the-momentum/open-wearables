@@ -109,6 +109,13 @@ class SummariesService:
         self.archive_repo = DataPointSeriesArchiveRepository()
         self.health_score_repo = HealthScoreRepository(HealthScore)
 
+    @staticmethod
+    def _priority_orders(db_session: DbSession) -> tuple[dict[ProviderName, int], dict[DeviceType, int]]:
+        return (
+            ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session),
+            DeviceTypePriorityRepository().get_priority_order(db_session),
+        )
+
     def _filter_by_priority(
         self,
         db_session: DbSession,
@@ -128,8 +135,7 @@ class SummariesService:
         if not results:
             return results
 
-        provider_order = ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session)
-        device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
+        provider_order, device_type_order = self._priority_orders(db_session)
 
         # Group results by date
         by_date: dict[date, list[dict]] = defaultdict(list)
@@ -266,11 +272,9 @@ class SummariesService:
         """Get daily sleep summaries aggregated by date, provider, and device."""
         self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
 
-        # Get aggregated data from repository (now returns list of dicts)
-        results = self.event_record_repo.get_sleep_summaries(db_session, user_id, start_date, end_date, cursor, limit)
-
-        # Filter by priority to get best source per date
-        results = self._filter_by_priority(db_session, user_id, results, date_key="sleep_date")
+        results = self.event_record_repo.get_sleep_summaries(
+            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
+        )
 
         # Check if there's more data
         has_more = len(results) > limit
@@ -402,10 +406,8 @@ class SummariesService:
         resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
         """
         results = self.health_score_repo.get_recovery_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit
+            db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
         )
-
-        results = self._filter_by_priority(db_session, user_id, results, date_key="recovery_date")
 
         has_more = len(results) > limit
         if has_more:

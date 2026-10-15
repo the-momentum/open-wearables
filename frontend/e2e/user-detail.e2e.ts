@@ -185,6 +185,73 @@ test('gives every tab a real URL, and 404s on one that is not a tab', async ({ p
 	expect(response?.status()).toBe(404);
 });
 
+test('lists the sources in priority order', async ({ page }) => {
+	await page.goto(`/users/${CONNECTED}/sources`);
+
+	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
+		'Garmin',
+		'Oura',
+		'Apple',
+		'Health connect'
+	]);
+	const garmin = page.getByRole('region', { name: 'Garmin' }).getByRole('listitem');
+	await expect(garmin.first()).toContainText('Garmin fenix 8');
+	await expect(page.getByText('No device reported')).toHaveCount(3);
+	await expect(page.getByText("Kuba's Apple Watch")).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Change the order' })).toHaveAttribute(
+		'href',
+		'/settings/priorities'
+	);
+});
+
+test('fits the sources of a user on a phone', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto(`/users/${CONNECTED}/sources`);
+	await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible();
+
+	const width = await page.evaluate(() => document.documentElement.scrollWidth);
+	expect(width).toBeLessThanOrEqual(390);
+});
+
+test('scrolls the tabs sideways with a mouse wheel when they do not fit', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 800 });
+	await page.goto(`/users/${CONNECTED}`);
+	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+
+	await strip.hover();
+	await page.mouse.wheel(0, 300);
+
+	await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+});
+
+test('scrolls the tabs with a wheel that reports lines, as Firefox does', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 800 });
+	await page.goto(`/users/${CONNECTED}`);
+	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+
+	await strip.dispatchEvent('wheel', { deltaY: 3, deltaMode: 1 });
+
+	await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(60);
+});
+
+test('scrolls the tabs with the edge arrows when they do not fit', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 800 });
+	await page.goto(`/users/${CONNECTED}`);
+	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+	await expect(page.getByRole('button', { name: 'Scroll left' })).toHaveCount(0);
+
+	await page.getByRole('button', { name: 'Scroll right' }).click();
+
+	await expect.poll(() => strip.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+	await expect(page.getByRole('button', { name: 'Scroll left' })).toBeVisible();
+});
+
+test('says when a user has no sources yet', async ({ page }) => {
+	await page.goto(`/users/${UNCONNECTED}/sources`);
+
+	await expect(page.getByText('No sources yet')).toBeVisible();
+});
+
 // The header sits in the layout, so `?/update` resolves against whichever tab
 // is showing. Every built tab has to carry those actions or the button 404s.
 test.describe('header actions reach the server from a built tab', () => {
@@ -195,6 +262,7 @@ test.describe('header actions reach the server from a built tab', () => {
 		'meals',
 		'body',
 		'data',
+		'sources',
 		'scores',
 		'womens-health'
 	]) {
