@@ -84,16 +84,23 @@ _INSERT_FIELDS = (
 
 
 def _version_key(version: str) -> tuple[int, ...] | None:
+    """Dotted ASCII numbers, else None; never raises, so an odd version only skips the update."""
     parts = version.split(".")
-    return tuple(int(part) for part in parts) if all(part.isdigit() for part in parts) else None
+    if not all(part.isascii() and part.isdigit() for part in parts):
+        return None
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError:  # past Python's digit limit for int()
+        return None
 
 
 def _is_newer_version(candidate: str, current: str | None) -> bool:
     """A history sync replays old versions in any order, so only a higher one replaces the stored one."""
-    if current is None:
-        return True
-    new, old = _version_key(candidate), _version_key(current)
-    return new is not None and old is not None and new > old
+    new = _version_key(candidate)
+    if new is None:
+        return current is None
+    old = _version_key(current) if current is not None else None
+    return old is None or new > old
 
 
 class DataSourceRepository(
@@ -374,7 +381,8 @@ class DataSourceRepository(
         keyed_by_app = updates.get("source_app_id", existing.source_app_id) and not updates.get(
             "device_id", existing.device_id
         )
-        if keyed_by_app and source and source != source_app_id and source != existing.source:
+        app_id = source_app_id or existing.source_app_id
+        if keyed_by_app and source and source != app_id and source != existing.source:
             updates["source"] = source
         # Keyed rows learn their model later (Polar sleep before the exercise, a writer's first model);
         # a relaying host's code is replaced by the producing device's model

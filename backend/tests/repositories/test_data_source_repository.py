@@ -296,6 +296,8 @@ class TestDataSourceRepository:
         first = repo.ensure_data_source(db, **ids, source="Bart's Apple Watch")
         renamed = repo.ensure_data_source(db, **ids, source="Bart's Watch")
         unnamed = repo.ensure_data_source(db, **ids, source=app)
+        without_app_id = {**ids, "source_app_id": None}
+        repo.ensure_data_source(db, **without_app_id, source=app)
 
         assert first.id == renamed.id == unnamed.id
         assert unnamed.source == "Bart's Watch"
@@ -327,9 +329,11 @@ class TestDataSourceRepository:
             "source_app_id": "com.apple.health.0BA80355",
         }
 
-        row = repo.ensure_data_source(db, **ids, software_version="26.2")
+        row = repo.ensure_data_source(db, **ids, software_version="beta")
+        repo.ensure_data_source(db, **ids, software_version="26.2")
         repo.ensure_data_source(db, **ids, software_version="26.10")
         repo.ensure_data_source(db, **ids, software_version="25.4.1")
-        repo.ensure_data_source(db, **ids, software_version="beta")
+        for odd in ("beta", "26.²", "26..1", "", "9" * 5000):
+            repo.ensure_data_source(db, **ids, software_version=odd)
 
         assert row.software_version == "26.10"
