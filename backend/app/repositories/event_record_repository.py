@@ -14,6 +14,7 @@ from sqlalchemy import (
     asc,
     case,
     cast,
+    delete,
     desc,
     func,
     lateral,
@@ -136,16 +137,28 @@ class EventRecordRepository(
         if provider is not None:
             source_ids_query = source_ids_query.filter(DataSource.provider == provider)
 
-        deleted = (
-            db_session.query(self.model)
-            .filter(
+        deleted = db_session.execute(
+            delete(self.model)
+            .where(
                 self.model.external_id == external_id,
                 self.model.data_source_id.in_(source_ids_query.scalar_subquery()),
             )
-            .delete(synchronize_session=False)
-        )
+            .returning(self.model.data_source_id, self.model.category)
+        ).all()
+        if deleted:
+            providers = {
+                source_id: provider
+                for source_id, provider in db_session.execute(
+                    select(DataSource.id, DataSource.provider).where(
+                        DataSource.id.in_({row.data_source_id for row in deleted})
+                    )
+                )
+            }
+            data_type_coverage_repository.refresh_events(
+                db_session, [(user_id, providers[row.data_source_id], row.category) for row in deleted]
+            )
         db_session.commit()
-        return deleted
+        return len(deleted)
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:

@@ -31,6 +31,7 @@ from app.repositories import (
     ProviderPriorityRepository,
 )
 from app.repositories.data_point_series_repository import WorkoutWindow
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import HealthScoreCategory, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import (
@@ -1246,7 +1247,11 @@ class EventRecordService(
         data_source = self.data_source_repo.get(db_session, record.data_source_id)
         if not data_source or data_source.user_id != user_id:
             return False
-        self.crud.delete(db_session, record)
+        self.crud.delete_flush(db_session, record)
+        data_type_coverage_repository.refresh_events(
+            db_session, [(data_source.user_id, data_source.provider, record.category)]
+        )
+        db_session.commit()
         return True
 
 
