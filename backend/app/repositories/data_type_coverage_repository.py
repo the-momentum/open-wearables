@@ -12,6 +12,7 @@ from app.schemas.sync_status import DataTypeKind
 
 type _SpanKey = tuple[UUID, str, str, DataTypeKind]
 type EventKey = tuple[UUID, str, str]
+type _CoverageKey = tuple[UUID, str, str, str]
 
 _TRIM_BATCH_SIZE = 5_000
 
@@ -19,18 +20,19 @@ _KEYS = """
     SELECT * FROM unnest(CAST(:user_ids AS uuid[]), CAST(:providers AS text[]), CAST(:data_types AS text[]))
         AS k(user_id, provider, data_type)
 """
-_SAME_KEY = "(c.user_id, c.provider, c.data_type) = (s.user_id, s.provider, s.data_type)"
+_SAME_KEY = "(c.user_id, c.provider, c.data_type, c.kind) = (s.user_id, s.provider, s.data_type, s.kind)"
 
 # Locked first and in key order, as record() upserts, so a write committing meanwhile is
 # either seen by the next statement or widens its result afterwards.
 _LOCK_KEYS = text(f"""
     SELECT 1 FROM data_type_coverage c JOIN ({_KEYS}) k USING (user_id, provider, data_type)
-    ORDER BY c.user_id, c.provider, c.data_type
+    WHERE c.kind = :event
+    ORDER BY c.user_id, c.provider, c.data_type, c.kind
     FOR UPDATE OF c
 """)
 _REFRESH_EVENTS = text(f"""
     WITH spans AS (
-        SELECT k.user_id, k.provider, k.data_type,
+        SELECT k.user_id, k.provider, k.data_type, CAST(:event AS varchar) AS kind,
                min(er.start_datetime) AS first_start, max(er.end_datetime) AS last_end
         FROM ({_KEYS}) k
         LEFT JOIN data_source ds ON ds.user_id = k.user_id AND ds.provider = k.provider
@@ -46,18 +48,18 @@ _REFRESH_EVENTS = text(f"""
 
 # Walks the primary key in ranges, so each batch is an index range scan and the trim one pass.
 _NEXT_SERIES_KEYS = text("""
-    SELECT user_id, provider, data_type FROM data_type_coverage
-    WHERE (user_id, provider, data_type) > (:user_id, :provider, :data_type)
-    ORDER BY user_id, provider, data_type
+    SELECT user_id, provider, data_type, kind FROM data_type_coverage
+    WHERE (user_id, provider, data_type, kind) > (:user_id, :provider, :data_type, :kind)
+    ORDER BY user_id, provider, data_type, kind
     LIMIT :batch_size
 """)
 _TRIM_SERIES = text(f"""
     WITH s AS (
-        SELECT user_id, provider, data_type, coverage_end FROM data_type_coverage
-        WHERE (user_id, provider, data_type) > (:after_user_id, :after_provider, :after_data_type)
-          AND (user_id, provider, data_type) <= (:upto_user_id, :upto_provider, :upto_data_type)
+        SELECT user_id, provider, data_type, kind, coverage_end FROM data_type_coverage
+        WHERE (user_id, provider, data_type, kind) > (:after_user_id, :after_provider, :after_data_type, :after_kind)
+          AND (user_id, provider, data_type, kind) <= (:upto_user_id, :upto_provider, :upto_data_type, :upto_kind)
           AND kind = :series AND coverage_start < :cutoff
-        ORDER BY user_id, provider, data_type
+        ORDER BY user_id, provider, data_type, kind
         FOR UPDATE
     ), emptied AS (
         DELETE FROM data_type_coverage c USING s WHERE {_SAME_KEY} AND s.coverage_end < :cutoff
@@ -101,7 +103,7 @@ class DataTypeCoverageRepository:
         stmt = insert(DataTypeCoverage).values(rows)
         db_session.execute(
             stmt.on_conflict_do_update(
-                index_elements=["user_id", "provider", "data_type"],
+                index_elements=["user_id", "provider", "data_type", "kind"],
                 set_={
                     "coverage_start": func.least(stmt.excluded.coverage_start, DataTypeCoverage.coverage_start),
                     "coverage_end": func.greatest(stmt.excluded.coverage_end, DataTypeCoverage.coverage_end),
@@ -119,7 +121,7 @@ class DataTypeCoverageRepository:
         unique = sorted(set(keys))
         if not unique:
             return
-        params = _key_params(unique)
+        params = {**_key_params(unique), "event": DataTypeKind.EVENT}
         db_session.execute(_LOCK_KEYS, params)
         db_session.execute(_REFRESH_EVENTS, params)
 
@@ -135,10 +137,16 @@ class DataTypeCoverageRepository:
         A span that ended before the cutoff is gone. Others start at the cutoff, which is at
         or before their first sample left. Commits per batch.
         """
-        after: EventKey = (UUID(int=0), "", "")
+        after: _CoverageKey = (UUID(int=0), "", "", "")
         while keys := db_session.execute(
             _NEXT_SERIES_KEYS,
-            {"user_id": after[0], "provider": after[1], "data_type": after[2], "batch_size": _TRIM_BATCH_SIZE},
+            {
+                "user_id": after[0],
+                "provider": after[1],
+                "data_type": after[2],
+                "kind": after[3],
+                "batch_size": _TRIM_BATCH_SIZE,
+            },
         ).all():
             upto = keys[-1].tuple()
             db_session.execute(
@@ -147,9 +155,11 @@ class DataTypeCoverageRepository:
                     "after_user_id": after[0],
                     "after_provider": after[1],
                     "after_data_type": after[2],
+                    "after_kind": after[3],
                     "upto_user_id": upto[0],
                     "upto_provider": upto[1],
                     "upto_data_type": upto[2],
+                    "upto_kind": upto[3],
                     "cutoff": cutoff,
                     "series": DataTypeKind.SERIES,
                 },
@@ -168,7 +178,7 @@ class DataTypeCoverageRepository:
         stmt = (
             select(DataTypeCoverage)
             .where(DataTypeCoverage.user_id == user_id)
-            .order_by(DataTypeCoverage.provider, DataTypeCoverage.data_type)
+            .order_by(DataTypeCoverage.provider, DataTypeCoverage.data_type, DataTypeCoverage.kind)
         )
         if provider is not None:
             stmt = stmt.where(DataTypeCoverage.provider == provider)
@@ -176,8 +186,10 @@ class DataTypeCoverageRepository:
             stmt = stmt.where(DataTypeCoverage.data_type.in_(list(data_types)))
         return list(db_session.execute(stmt).scalars().all())
 
-    def get(self, db_session: DbSession, user_id: UUID, provider: str, data_type: str) -> DataTypeCoverage | None:
-        return db_session.get(DataTypeCoverage, (user_id, provider, data_type))
+    def get(
+        self, db_session: DbSession, user_id: UUID, provider: str, data_type: str, kind: DataTypeKind
+    ) -> DataTypeCoverage | None:
+        return db_session.get(DataTypeCoverage, (user_id, provider, data_type, kind))
 
 
 def _key_params(keys: list[EventKey]) -> dict[str, list]:

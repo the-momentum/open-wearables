@@ -95,7 +95,7 @@ class TestSeriesCoverage:
         series_repo.bulk_create(db, [_sample(user.id, NOW - timedelta(days=30), SeriesType.heart_rate)])
         db.commit()
 
-        coverage = data_type_coverage_repository.get(db, user.id, "oura", "heart_rate")
+        coverage = data_type_coverage_repository.get(db, user.id, "oura", "heart_rate", DataTypeKind.SERIES)
 
         assert coverage is not None
         assert coverage.coverage_start == NOW - timedelta(days=30)
@@ -105,7 +105,7 @@ class TestSeriesCoverage:
         user = UserFactory()
         series_repo.bulk_create(db, [_sample(user.id, NOW, SeriesType.heart_rate)])
         db.commit()
-        first = data_type_coverage_repository.get(db, user.id, "oura", "heart_rate")
+        first = data_type_coverage_repository.get(db, user.id, "oura", "heart_rate", DataTypeKind.SERIES)
         assert first is not None
         first_written_at = first.last_written_at
 
@@ -113,7 +113,7 @@ class TestSeriesCoverage:
         db.commit()
         db.expire_all()
 
-        coverage = data_type_coverage_repository.get(db, user.id, "oura", "heart_rate")
+        coverage = data_type_coverage_repository.get(db, user.id, "oura", "heart_rate", DataTypeKind.SERIES)
         assert coverage is not None
         assert coverage.coverage_start == NOW
         assert coverage.coverage_end == NOW
@@ -166,7 +166,7 @@ class TestEventCoverage:
         user = UserFactory()
         event_repo.create_and_flush(db, _event(user.id, NOW, NOW + timedelta(hours=1), "workout"))
 
-        coverage = data_type_coverage_repository.get(db, user.id, "oura", "workout")
+        coverage = data_type_coverage_repository.get(db, user.id, "oura", "workout", DataTypeKind.EVENT)
         assert coverage is not None
         assert coverage.coverage_end == NOW + timedelta(hours=1)
 
@@ -200,15 +200,21 @@ def test_rollback_takes_coverage_with_it(db: Session) -> None:
     assert db.query(DataTypeCoverage).filter_by(user_id=user.id).count() == 0
 
 
-def test_event_categories_do_not_collide_with_series_slugs() -> None:
-    """Coverage is keyed by data_type alone, so the two vocabularies must stay disjoint.
+def test_a_series_and_an_event_sharing_a_name_keep_separate_spans(db: Session) -> None:
+    user = UserFactory()
+    data_type_coverage_repository.record(
+        db,
+        [
+            CoverageSpan(user.id, "apple", "mindfulness", DataTypeKind.SERIES, NOW - timedelta(days=600), NOW),
+            CoverageSpan(user.id, "apple", "mindfulness", DataTypeKind.EVENT, NOW - timedelta(days=30), NOW),
+        ],
+    )
+    db.commit()
 
-    A category that is also a SeriesType slug would merge a series and an event into one
-    row, widening the span across both and flip-flopping kind between writers.
-    """
-    categories = {"activity", "menstrual_cycle", "sleep", "workout"}
-
-    assert categories & {series.value for series in SeriesType} == set()
+    event = data_type_coverage_repository.get(db, user.id, "apple", "mindfulness", DataTypeKind.EVENT)
+    assert event is not None
+    assert event.coverage_start == NOW - timedelta(days=30)
+    assert len(data_type_coverage_repository.list_for_user(db, user.id)) == 2
 
 
 def test_coverage_follows_the_referenced_data_source_not_the_payload(db: Session) -> None:
@@ -233,8 +239,8 @@ def test_coverage_follows_the_referenced_data_source_not_the_payload(db: Session
     EventRecordRepository(EventRecord).create_and_flush(db, record)
     db.commit()
 
-    assert data_type_coverage_repository.get(db, user.id, "unknown", "workout") is None
-    coverage = data_type_coverage_repository.get(db, user.id, "garmin", "workout")
+    assert data_type_coverage_repository.get(db, user.id, "unknown", "workout", DataTypeKind.EVENT) is None
+    coverage = data_type_coverage_repository.get(db, user.id, "garmin", "workout", DataTypeKind.EVENT)
     assert coverage is not None
     assert coverage.coverage_end == NOW + timedelta(hours=1)
 
@@ -246,9 +252,11 @@ class TestCoverageFollowsRemovals:
     def event_repo(self) -> EventRecordRepository:
         return EventRecordRepository(EventRecord)
 
-    def _span(self, db: Session, user_id: UUID, data_type: str) -> tuple[datetime, datetime] | None:
+    def _span(
+        self, db: Session, user_id: UUID, data_type: str, kind: DataTypeKind = DataTypeKind.EVENT
+    ) -> tuple[datetime, datetime] | None:
         db.expire_all()
-        row = data_type_coverage_repository.get(db, user_id, "oura", data_type)
+        row = data_type_coverage_repository.get(db, user_id, "oura", data_type, kind)
         return (row.coverage_start, row.coverage_end) if row else None
 
     def test_deleting_the_latest_event_moves_the_end_back(self, db: Session, event_repo: EventRecordRepository) -> None:
@@ -329,8 +337,8 @@ class TestCoverageFollowsRemovals:
 
         data_type_coverage_repository.trim_series_before(db, cutoff)
 
-        assert self._span(db, user.id, "heart_rate") == (cutoff, NOW)
-        assert self._span(db, user.id, "steps") is None
+        assert self._span(db, user.id, "heart_rate", DataTypeKind.SERIES) == (cutoff, NOW)
+        assert self._span(db, user.id, "steps", DataTypeKind.SERIES) is None
         # Events are never retention-deleted.
         assert self._span(db, user.id, "workout") == (cutoff - timedelta(days=9), NOW)
 

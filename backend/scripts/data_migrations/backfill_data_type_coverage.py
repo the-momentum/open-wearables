@@ -87,7 +87,7 @@ UPSERT_SQL = """
 INSERT INTO data_type_coverage
     (user_id, provider, data_type, kind, coverage_start, coverage_end, last_written_at)
 VALUES (%(user_id)s, %(provider)s, %(data_type)s, %(kind)s, %(start)s, %(end)s, %(end)s)
-ON CONFLICT (user_id, provider, data_type) DO UPDATE SET
+ON CONFLICT (user_id, provider, data_type, kind) DO UPDATE SET
     coverage_start  = LEAST(EXCLUDED.coverage_start, data_type_coverage.coverage_start),
     coverage_end    = GREATEST(EXCLUDED.coverage_end, data_type_coverage.coverage_end),
     last_written_at = GREATEST(EXCLUDED.last_written_at, data_type_coverage.last_written_at)

@@ -22,7 +22,7 @@ class DataTypeCoverage(BaseDbModel):
     # A SeriesType slug for series, an event record's category for events.
     data_type: Mapped[PrimaryKey[str_64]]
     # series | event -- which of those data_type is.
-    kind: Mapped[str_32]
+    kind: Mapped[PrimaryKey[str_32]]
 
     coverage_start: Mapped[datetime]
     coverage_end: Mapped[datetime]

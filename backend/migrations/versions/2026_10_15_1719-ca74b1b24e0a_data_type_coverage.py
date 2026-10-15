@@ -1,6 +1,6 @@
 """data type coverage
 
-Revision ID: 47040682b5b4
+Revision ID: ca74b1b24e0a
 Revises: b679f6226f99
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "47040682b5b4"
+revision: str = "ca74b1b24e0a"
 down_revision: Union[str, None] = "b679f6226f99"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("last_written_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["user.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("user_id", "provider", "data_type"),
+        sa.PrimaryKeyConstraint("user_id", "provider", "data_type", "kind"),
     )
     # ### end Alembic commands ###
 

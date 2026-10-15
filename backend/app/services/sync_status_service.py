@@ -241,7 +241,7 @@ def _dispatch_data_type_webhooks(db: DbSession, run: SyncRun, outcomes: list[Dat
         return
 
     coverage = {
-        row.data_type: row
+        (row.data_type, row.kind): row
         for row in data_type_coverage_repository.list_for_user(
             db,
             run.user_id,
@@ -251,7 +251,7 @@ def _dispatch_data_type_webhooks(db: DbSession, run: SyncRun, outcomes: list[Dat
     }
 
     for outcome in terminal:
-        held = coverage.get(outcome.data_type)
+        held = coverage.get((outcome.data_type, str(outcome.kind)))
         outgoing.on_sync_data_type_finished(
             user_id=run.user_id,
             provider=run.provider,
