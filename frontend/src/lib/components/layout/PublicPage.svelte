@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
-	import { pageTitle } from '$lib/branding';
+	import { pageTitle } from '$lib/branding/branding';
 	import Wordmark from './Wordmark.svelte';
 
 	let { title, description, children }: { title: string; description: string; children: Snippet } =

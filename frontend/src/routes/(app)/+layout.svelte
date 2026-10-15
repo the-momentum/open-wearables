@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { pageTitle } from '$lib/branding/branding';
 	import { navLabelFor } from '$lib/config/nav';
-	import { pageTitle } from '$lib/branding';
 	import AppShell from '$lib/components/layout/AppShell.svelte';
 	import NavigationProgress from '$lib/components/layout/NavigationProgress.svelte';
 

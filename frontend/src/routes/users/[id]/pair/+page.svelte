@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Unplug from '@lucide/svelte/icons/unplug';
-	import { pageTitle } from '$lib/branding';
+	import { pageTitle } from '$lib/branding/branding';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import PairingShell from '$lib/components/pairing/PairingShell.svelte';

@@ -25,9 +25,9 @@ that app, which lives on only in git history.
 - **No new environment variables.** Customers set them in their deployments, so a new
   name breaks compatibility. The only ones are `VITE_API_URL`
   (required; browser-facing, also the server's fallback), `API_URL` (optional
-  server-side shortcut) and `VITE_BRANDING` (optional JSON object; a new branding
-  option is a new key in it, never a new variable). All are read via
-  `$env/dynamic/*`, so one image fits any backend.
+  server-side shortcut) and `INSTANCE_BRANDING` (optional, server-only JSON
+  object; a new branding option is a new key in it, never a new variable). All
+  are read via `$env/dynamic/*`, so one image fits any backend.
 - **No dependency before the code that needs it.** Say what it buys over the
   platform. `bits-ui`, `shadcn-svelte` and `svelte-query` are deliberately absent.
 - **Backend changes only when the task asks for them**, and never migrations
