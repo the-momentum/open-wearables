@@ -26,4 +26,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Count the spans it would record without writing them")
     args = parser.parse_args()
-    run_backfill(dry_run=args.dry_run)
+    if found := run_backfill(dry_run=args.dry_run):
+        verb = "Would record" if args.dry_run else "Recorded"
+        for kind, spans in found.items():
+            print(f"{verb} {spans} {kind} span(s).")

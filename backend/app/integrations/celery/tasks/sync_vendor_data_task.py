@@ -548,6 +548,9 @@ def sync_vendor_data(
                     )
 
                     final_status = run_status_from(data_type_outcomes)
+                    # Before the run's terminal event: a consumer acting on it reads the per-type
+                    # outcomes from the history. The run itself was stored when it started.
+                    try_record_data_types(run_id, data_type_outcomes, scope=sync_scope)
 
                     if final_status == SyncStatus.FAILED:
                         _emit_sync_status(
@@ -602,8 +605,6 @@ def sync_vendor_data(
                             window_start=start_dt,
                             window_end=end_dt,
                         )
-                    # After the run's own event, which stores the run the outcomes belong to.
-                    try_record_data_types(run_id, data_type_outcomes, scope=sync_scope)
 
                 except Exception as e:
                     if shared_token and connection.provider_user_id:

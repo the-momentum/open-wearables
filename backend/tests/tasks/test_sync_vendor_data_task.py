@@ -275,6 +275,37 @@ class TestSyncVendorDataTask:
 
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
+    def test_records_data_types_before_the_runs_terminal_event(
+        self,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        """A consumer acting on sync.completed reads the per-type outcomes from the history."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
+        mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
+        mock_strategy.workouts.load_data.return_value = 3
+        mock_strategy.data_247 = None
+        mock_get_provider.return_value = mock_strategy
+        calls = MagicMock()
+        task = "app.integrations.celery.tasks.sync_vendor_data_task"
+
+        with (
+            patch(f"{task}.try_record_data_types", calls.record),
+            patch(f"{task}.emit_sync_completed", calls.completed),
+        ):
+            sync_vendor_data(str(user.id))
+
+        assert [name for name, *_ in calls.mock_calls] == ["record", "completed"]
+
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
+    @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_sync_returns_false(
         self,
         mock_get_provider: MagicMock,

@@ -81,9 +81,12 @@ _NEXT_SOURCES = text("""
     ORDER BY id
     LIMIT :batch_size
 """)
-# Held until the batch commits, so deleting a provider's data waits for it rather than
-# losing its coverage row to spans read just before the delete.
-_LOCK_SOURCES = text("SELECT 1 FROM data_source WHERE id > :after AND id <= :upto FOR SHARE")
+# Everything that narrows coverage takes this lock exclusively, the backfill shared per batch.
+# A narrowing then waits for any batch that read the data before it was removed, and a batch
+# starting later reads it already gone, so the backfill cannot widen back what was removed.
+_NARROWING = "hashtextextended('data_type_coverage:narrowing', 0)"
+_LOCK_FOR_NARROWING = text(f"SELECT pg_advisory_xact_lock({_NARROWING})")
+_LOCK_FOR_BACKFILL = text(f"SELECT pg_advisory_xact_lock_shared({_NARROWING})")
 
 
 def _pair_spans(table: str, at: str) -> str:
@@ -221,11 +224,13 @@ class DataTypeCoverageRepository:
         if not unique:
             return
         params = {**_key_params(unique), "event": DataTypeKind.EVENT}
+        db_session.execute(_LOCK_FOR_NARROWING)
         db_session.execute(_LOCK_KEYS, params)
         db_session.execute(_REFRESH_EVENTS, params)
 
     def delete_for_provider(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
         """Forget everything held for a user's provider, whose data is being deleted. Does not commit."""
+        db_session.execute(_LOCK_FOR_NARROWING)
         db_session.execute(
             delete(DataTypeCoverage).where(DataTypeCoverage.user_id == user_id, DataTypeCoverage.provider == provider)
         )
@@ -248,6 +253,7 @@ class DataTypeCoverageRepository:
             },
         ).all():
             upto = keys[-1].tuple()
+            db_session.execute(_LOCK_FOR_NARROWING)
             db_session.execute(
                 _TRIM_SERIES,
                 {
@@ -279,7 +285,7 @@ class DataTypeCoverageRepository:
             db_session.execute(_NEXT_SOURCES, {"after": after, "batch_size": _BACKFILL_BATCH_SIZE}).scalars().all()
         ):
             params = {"after": after, "upto": sources[-1], "series": DataTypeKind.SERIES, "event": DataTypeKind.EVENT}
-            db_session.execute(_LOCK_SOURCES, params)
+            db_session.execute(_LOCK_FOR_BACKFILL)
             for kind in found:
                 if dry_run:
                     found[kind] += db_session.execute(_BACKFILL_COUNTS[kind], params).scalar() or 0

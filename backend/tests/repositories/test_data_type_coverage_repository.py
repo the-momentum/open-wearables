@@ -313,6 +313,27 @@ class TestCoverageFollowsRemovals:
 
         assert data_type_coverage_repository.list_for_user(db, user.id) == []
 
+    @pytest.mark.parametrize("narrow", ["refresh_events", "delete_for_provider"])
+    def test_narrowing_holds_the_lock_the_backfill_shares(self, db: Session, narrow: str) -> None:
+        """Held until commit, so a backfill batch that read the data before it went cannot widen it back."""
+        user = UserFactory()
+        if narrow == "refresh_events":
+            data_type_coverage_repository.refresh_events(db, [(user.id, "oura", "workout")])
+        else:
+            data_type_coverage_repository.delete_for_provider(db, user.id, "oura")
+
+        held = (
+            db.execute(
+                text(
+                    "SELECT mode FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()"
+                    " AND objid = (hashtextextended('data_type_coverage:narrowing', 0) & 4294967295)::oid"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert held == ["ExclusiveLock"]
+
     def test_purging_a_provider_forgets_its_coverage(self, db: Session, event_repo: EventRecordRepository) -> None:
         user = UserFactory()
         DataPointSeriesRepository(DataPointSeries).bulk_create(db, [_sample(user.id, NOW, SeriesType.heart_rate)])
