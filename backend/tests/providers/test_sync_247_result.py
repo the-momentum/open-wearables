@@ -247,6 +247,30 @@ class TestSync247RunStep:
         # the next data type still ran
         assert run.result.outcomes["recovery"].status is SyncStatus.SUCCESS
 
+    def test_swallowed_write_failure_is_reported_on_its_own_step(self, run: Sync247Run) -> None:
+        """Provider code that catches a failed write leaves the session unusable for the next step."""
+        with run.step("sleep") as step:
+            step.record(2)  # committed one by one before the third write failed
+            run.db.is_active = False
+
+        run.db.is_active = True
+        with run.step("activity") as step:
+            step.record(WriteCounts(3, 0))
+
+        assert run.result.outcomes["sleep"].status is SyncStatus.PARTIAL
+        assert run.result.failures == {"sleep": "SwallowedWriteError"}
+        assert run.result.outcomes["activity"].status is SyncStatus.SUCCESS
+        run.db.rollback.assert_called_once()
+
+    def test_swallowed_write_failure_in_a_committing_step_reports_nothing_written(self, run: Sync247Run) -> None:
+        with run.step("sleep", commit=True) as step:
+            step.record(2)
+            run.db.is_active = False
+
+        assert run.result.outcomes["sleep"].status is SyncStatus.FAILED
+        assert run.result.rows_written == 0
+        run.db.commit.assert_not_called()
+
     def test_savepoint_confines_the_write_without_a_full_rollback(self, run: Sync247Run) -> None:
         with run.step("heart_rate", savepoint=True):
             raise RuntimeError("bad write")

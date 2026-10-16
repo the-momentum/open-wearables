@@ -1205,7 +1205,7 @@ class Garmin247Data(Base247DataTemplate):
         if samples:
             counts = self.data_point_repo.bulk_create(db, samples)
         if score := self._normalize_body_battery_health_score(user_id, raw_stress):
-            health_score_service.bulk_create(db, [score])
+            counts += health_score_service.bulk_create(db, [score])
             db.commit()
         return counts
 

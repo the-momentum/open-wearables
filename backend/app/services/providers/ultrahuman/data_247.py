@@ -531,7 +531,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             items_by_type = self._fetch_items_by_type(db, user_id, current_date, run)
 
             if "Sleep" in items_by_type:
-                with run.step("sleep", accumulate=True) as step:
+                with run.step("sleep", accumulate=True, commit=True) as step:
                     normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
                     step.record(1 if self.save_sleep_data(db, user_id, normalized_sleep) else 0)
 

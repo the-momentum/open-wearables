@@ -28,6 +28,10 @@ from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
+class SwallowedWriteError(Exception):
+    """A write in a step failed and the provider code caught it, leaving the session unusable."""
+
+
 def error_code_of(error: BaseException) -> str:
     """A short, value-free label for an error: the HTTP status when it has one, else its type.
 
@@ -289,6 +293,14 @@ class Sync247Run:
                     yield step
             else:
                 yield step
+            if not self.db.is_active:
+                # Rows the body committed before the failure stay counted; the rest is rolled back.
+                self.db.rollback()
+                if not commit:
+                    writer = self.result.add if accumulate else self.result.record
+                    writer(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
+                self.fail(data_type, SwallowedWriteError(), capture=capture)
+                return
             # Commit before recording: a failed commit wrote nothing, so the outcome must
             # come out FAILED rather than a success carrying rows that never landed.
             if commit:
@@ -319,12 +331,14 @@ class Sync247Run:
     def fail(self, data_type: str, error: Exception, *, capture: bool = False) -> None:
         """Record and log a failure outside a ``step`` — e.g. a shared fetch feeding several types."""
         self.result.fail(data_type, error)
-        message = f"Failed to sync {data_type} data: {error}"
+        # The error's text stays out: a database error carries the rows it failed on.
+        message = "Failed to sync data type"
         extra = {
             "provider": self.result.provider,
             "task": self.task,
             "data_type": data_type,
             "user_id": str(self.user_id),
+            "error_code": error_code_of(error),
         }
         if capture:
             log_and_capture_error(error, self.logger, message, extra=extra)

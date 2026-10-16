@@ -389,7 +389,8 @@ def sync_vendor_data(
                             log_structured(
                                 logger,
                                 "warning",
-                                f"Workouts sync failed for {provider_name}: {e}",
+                                "Workouts sync failed",
+                                error_code=error_code_of(e),
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -397,7 +398,7 @@ def sync_vendor_data(
                             log_and_capture_error(
                                 e,
                                 logger,
-                                f"Workouts sync failed for {provider_name}: {e}",
+                                "Workouts sync failed",
                                 extra={
                                     "user_id": user_id,
                                     "provider": provider_name,
@@ -405,14 +406,14 @@ def sync_vendor_data(
                                     "trace_id": trace_id,
                                 },
                             )
-                            provider_result.params["workouts"] = {"success": False, "error": str(e)}
+                            provider_result.params["workouts"] = {"success": False, "error_code": error_code_of(e)}
                             data_type_outcomes.append(
                                 DataTypeOutcome(
                                     data_type="workouts",
                                     kind=DataTypeKind.TASK,
                                     native_type="workouts",
                                     status=SyncStatus.FAILED,
-                                    error=str(e),
+                                    error_code=error_code_of(e),
                                 )
                             )
 
@@ -461,7 +462,8 @@ def sync_vendor_data(
                             log_structured(
                                 logger,
                                 "warning",
-                                f"247 data sync failed for {provider_name}: {e}",
+                                "24/7 data sync failed",
+                                error_code=error_code_of(e),
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -469,7 +471,7 @@ def sync_vendor_data(
                             log_and_capture_error(
                                 e,
                                 logger,
-                                f"247 data sync failed for {provider_name}: {e}",
+                                "24/7 data sync failed",
                                 extra={
                                     "user_id": user_id,
                                     "provider": provider_name,
@@ -491,7 +493,7 @@ def sync_vendor_data(
                                     kind=DataTypeKind.TASK,
                                     native_type="data_247",
                                     status=SyncStatus.FAILED,
-                                    error=str(e),
+                                    error_code=error_code_of(e),
                                 )
                             )
 
@@ -620,14 +622,14 @@ def sync_vendor_data(
                         sync_source,
                         scope=sync_scope,
                         run_id=run_id,
-                        error=str(e),
+                        error=error_code_of(e),
                         message=f"Sync from {provider_name} failed",
                         metadata={"is_historical": is_historical},
                     )
                     log_and_capture_error(
                         e,
                         logger,
-                        f"Error syncing {provider_name} for user {user_id}: {str(e)}",
+                        "Provider sync failed",
                         extra={
                             "user_id": user_id,
                             "provider": provider_name,
@@ -635,7 +637,7 @@ def sync_vendor_data(
                             "trace_id": trace_id,
                         },
                     )
-                    result.errors[provider_name] = str(e)
+                    result.errors[provider_name] = error_code_of(e)
                     continue
                 finally:
                     run_context.close()
@@ -647,8 +649,8 @@ def sync_vendor_data(
             log_and_capture_error(
                 e,
                 logger,
-                f"Error processing user {user_id}: {str(e)}",
+                "User sync failed",
                 extra={"user_id": user_id, "task": "sync_vendor_data", "trace_id": trace_id},
             )
-            result.errors["general"] = str(e)
+            result.errors["general"] = error_code_of(e)
             return result.model_dump()
