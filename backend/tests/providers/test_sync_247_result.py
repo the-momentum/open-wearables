@@ -58,14 +58,6 @@ class TestSync247Result:
         assert result.rows_written == 15
         assert result.inserted == 10
         assert result.updated == 2
-        assert not result.split_complete  # sleep can't report a split
-
-    def test_split_complete_when_every_writing_type_reports_one(self) -> None:
-        result = Sync247Result(provider="p")
-        result.record("heart_rate", WriteCounts(10, 2))
-        result.record("sleep", 0)  # wrote nothing, so nothing to split
-
-        assert result.split_complete
 
     def test_status_is_derived_from_what_happened(self) -> None:
         result = Sync247Result(provider="p")
@@ -91,7 +83,6 @@ class TestSync247Result:
 
         result.record("steps", 5)
         assert not result.all_failed
-        assert result.any_failed
 
     def test_empty_result_is_not_a_failure(self) -> None:
         # A provider whose data arrives by push attempts nothing at all.
@@ -117,16 +108,6 @@ class TestSync247Result:
 
         assert result.outcomes["sleep"].status is SyncStatus.PARTIAL
         assert result.failures == {"sleep": "RuntimeError"}
-
-    def test_behaves_as_a_mapping_of_data_type_to_rows_written(self) -> None:
-        result = Sync247Result(provider="p")
-        result.record("heart_rate", WriteCounts(4, 0))
-        result.record("sleep", 1)
-
-        assert dict(result) == {"heart_rate": 4, "sleep": 1}
-        assert result["heart_rate"] == 4
-        assert len(result) == 2
-        assert set(result) == {"heart_rate", "sleep"}
 
     def test_as_dict_has_every_key_and_null_where_unknown(self) -> None:
         result = Sync247Result(provider="p")
@@ -195,7 +176,7 @@ class TestSync247RunStep:
         with run.step("heart_rate") as step:
             step.record(WriteCounts(3, 1))
 
-        assert run.result["heart_rate"] == 4
+        assert run.result.outcomes["heart_rate"].rows_written == 4
         assert run.result.inserted == 3
 
     def test_step_that_writes_nothing_is_skipped(self, run: Sync247Run) -> None:
@@ -292,7 +273,7 @@ class TestSync247RunStep:
             with run.step("activity", accumulate=True) as step:
                 step.record(WriteCounts(2, 0))
 
-        assert run.result["activity"] == 6
+        assert run.result.outcomes["activity"].rows_written == 6
         assert run.result.inserted == 6
 
     def test_expect_keeps_untouched_data_types_in_the_result(self, run: Sync247Run) -> None:

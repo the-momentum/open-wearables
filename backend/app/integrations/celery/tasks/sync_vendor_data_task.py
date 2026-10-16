@@ -23,8 +23,7 @@ from app.schemas.sync_status import (
 )
 from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
 from app.services.providers.factory import ProviderFactory
-from app.services.providers.sync_247_result import DataTypeOutcome as Sync247DataTypeOutcome
-from app.services.providers.sync_247_result import error_code_of
+from app.services.providers.sync_247_result import Sync247TaskOutcome, error_code_of
 from app.services.sync_coordination import (
     bind_primary_lease,
     clear_primary_lease,
@@ -67,7 +66,7 @@ def _written_status(written: int) -> SyncStatus:
     return SyncStatus.SUCCESS if written else SyncStatus.SKIPPED
 
 
-def _task_outcomes(task: str, outcome: Sync247DataTypeOutcome) -> list[DataTypeOutcome]:
+def _task_outcomes(task: str, outcome: Sync247TaskOutcome) -> list[DataTypeOutcome]:
     """Per-series-type outcomes for one provider fetch task.
 
     A task writes several series types, so a task that went through reports per type where

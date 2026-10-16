@@ -1,19 +1,5 @@
-"""Normalized result of a provider 24/7 sync.
-
-Every provider's ``load_and_save_all`` returns a :class:`Sync247Result`: one
-:class:`DataTypeOutcome` per data type it attempted, plus run-level aggregates.
-Providers build it through :class:`Sync247Run`, whose ``step`` context manager
-carries the per-data-type isolation (log, roll back, mark failed, keep going)
-that every provider used to hand-roll.
-
-Rows written are reported as :class:`WriteCounts` wherever the write path knows
-the new-vs-updated split, and as a plain int where it doesn't — ``inserted`` /
-``updated`` aggregate only the known splits, so a provider that can't report one
-yet shows up as unsplit rather than as zero new rows.
-"""
-
 import logging
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -42,12 +28,8 @@ def error_code_of(error: BaseException) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class DataTypeOutcome:
-    """What happened for a single data type.
-
-    ``status`` is derived from the counters rather than set by hand, so a
-    provider only has to report what it did.
-    """
+class Sync247TaskOutcome:
+    """What one provider fetch task did; its status follows from the counters."""
 
     rows_written: int = 0
     counts: WriteCounts | None = None  # new-vs-updated split, when the write path reports one
@@ -82,19 +64,14 @@ class DataTypeOutcome:
 
 
 @dataclass
-class Sync247Result(Mapping[str, int]):
-    """Outcome of one 24/7 sync, keyed by the provider's own data type names.
+class Sync247Result:
+    """Outcome of one 24/7 sync, keyed by the provider's own task names.
 
-    Behaves as a ``Mapping[str, int]`` of data type -> rows written, so results
-    stay spreadable into logs (``**result``) and comparable in tests. Callers
-    that need the new-vs-updated split read :attr:`inserted` / :attr:`updated`
-    instead of probing individual values for attributes.
+    inserted/updated add up only the tasks that report the new-vs-updated split.
     """
 
     provider: str
-    outcomes: dict[str, DataTypeOutcome] = field(default_factory=dict)
-
-    # -- recording -------------------------------------------------------------
+    outcomes: dict[str, Sync247TaskOutcome] = field(default_factory=dict)
 
     def record(
         self,
@@ -104,13 +81,14 @@ class Sync247Result(Mapping[str, int]):
         skipped: int = 0,
         truncated: bool = False,
     ) -> None:
-        """Record a successful write, replacing anything previously recorded for the type."""
-        self.outcomes[data_type] = DataTypeOutcome(
+        """Record a successful write, replacing the counters recorded for the type so far."""
+        self.outcomes[data_type] = replace(
+            self._current(data_type),
             rows_written=int(rows_written),
             counts=rows_written if isinstance(rows_written, WriteCounts) else None,
             skipped=skipped,
             truncated=truncated,
-            error_codes=self.outcomes[data_type].error_codes if data_type in self.outcomes else (),
+            attempted=True,
         )
 
     def add(
@@ -122,7 +100,7 @@ class Sync247Result(Mapping[str, int]):
         truncated: bool = False,
     ) -> None:
         """Accumulate into a data type — for providers that sync one chunk (e.g. day) at a time."""
-        current = self.outcomes.get(data_type, DataTypeOutcome(rows_written=0))
+        current = self._current(data_type)
         # The split stays known only while every chunk that wrote rows reported one.
         counts = current.counts
         split_known = counts is not None or not current.rows_written
@@ -141,16 +119,17 @@ class Sync247Result(Mapping[str, int]):
 
     def fail(self, data_type: str, error: BaseException) -> None:
         """Mark an attempt at ``data_type`` as failed, keeping any rows already written."""
-        current = self.outcomes.get(data_type, DataTypeOutcome())
+        current = self._current(data_type)
         self.outcomes[data_type] = replace(
             current, error_codes=(*current.error_codes, error_code_of(error)), attempted=True
         )
 
     def skip(self, data_type: str) -> None:
         """Mark a data type as not attempted (unsupported, or no window to fetch)."""
-        self.outcomes[data_type] = DataTypeOutcome(attempted=False)
+        self.outcomes[data_type] = Sync247TaskOutcome(attempted=False)
 
-    # -- aggregates ------------------------------------------------------------
+    def _current(self, data_type: str) -> Sync247TaskOutcome:
+        return self.outcomes.get(data_type, Sync247TaskOutcome())
 
     @property
     def rows_written(self) -> int:
@@ -166,11 +145,6 @@ class Sync247Result(Mapping[str, int]):
     def updated(self) -> int:
         """Rows refreshed in place, summed over the data types that report a split."""
         return sum(o.counts.updated for o in self.outcomes.values() if o.counts is not None)
-
-    @property
-    def split_complete(self) -> bool:
-        """True when every data type that wrote rows reported its new-vs-updated split."""
-        return all(o.counts is not None for o in self.outcomes.values() if o.rows_written)
 
     @property
     def synced(self) -> tuple[str, ...]:
@@ -192,10 +166,6 @@ class Sync247Result(Mapping[str, int]):
         attempted = [o for o in self.outcomes.values() if o.attempted]
         return bool(attempted) and all(o.status is SyncStatus.FAILED for o in attempted)
 
-    @property
-    def any_failed(self) -> bool:
-        return any(o.error_codes for o in self.outcomes.values() if o.attempted)
-
     def summary(self) -> Sync247Summary:
         outcomes = list(self.outcomes.values())
         split = [o.counts for o in outcomes if o.counts is not None]
@@ -207,17 +177,6 @@ class Sync247Result(Mapping[str, int]):
             items_reported=sum(unsplit) if unsplit else None,
             tasks={k: o.summary() for k, o in self.outcomes.items()},
         )
-
-    # -- Mapping ---------------------------------------------------------------
-
-    def __getitem__(self, data_type: str) -> int:
-        return self.outcomes[data_type].rows_written
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.outcomes)
-
-    def __len__(self) -> int:
-        return len(self.outcomes)
 
     def __repr__(self) -> str:
         body = ", ".join(f"{k}={o.rows_written}({o.status.value})" for k, o in self.outcomes.items())
@@ -241,11 +200,10 @@ class Sync247Step:
 
 
 class Sync247Run:
-    """Builds a :class:`Sync247Result`, isolating failures to one data type at a time.
+    """Builds a Sync247Result, isolating failures to one task at a time.
 
-    ``fatal`` exception types propagate instead of being recorded — use it for
-    errors that invalidate the whole run (an expired token, say) rather than one
-    data type.
+    ``fatal`` exceptions propagate instead of being recorded: errors that end the whole
+    run, such as an expired token.
     """
 
     def __init__(
@@ -287,6 +245,7 @@ class Sync247Run:
             replacing them (for providers that loop over chunks of the window).
         """
         step = Sync247Step()
+        save = self.result.add if accumulate else self.result.record
         try:
             if savepoint:
                 with self.db.begin_nested():
@@ -297,16 +256,14 @@ class Sync247Run:
                 # Rows the body committed before the failure stay counted; the rest is rolled back.
                 self.db.rollback()
                 if not commit:
-                    writer = self.result.add if accumulate else self.result.record
-                    writer(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
+                    save(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
                 self.fail(data_type, SwallowedWriteError(), capture=capture)
                 return
             # Commit before recording: a failed commit wrote nothing, so the outcome must
             # come out FAILED rather than a success carrying rows that never landed.
             if commit:
                 self.db.commit()
-            writer = self.result.add if accumulate else self.result.record
-            writer(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
+            save(data_type, step.rows_written, skipped=step.skipped, truncated=step.truncated)
         except self.fatal:
             raise
         except Exception as e:
@@ -319,12 +276,7 @@ class Sync247Run:
             return
 
     def expect(self, *data_types: str) -> None:
-        """Declare the data types this run covers, before any of them is attempted.
-
-        Keeps the result shape stable across runs for providers whose steps are
-        conditional: a type nothing was fetched for stays in the result as
-        SKIPPED instead of vanishing from it.
-        """
+        """List the tasks up front, so a conditional one that never ran shows as skipped."""
         for data_type in data_types:
             self.result.skip(data_type)
 
