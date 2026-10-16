@@ -8,5 +8,8 @@ class DeveloperRepository(CrudRepository[Developer, DeveloperCreateInternal, Dev
     def __init__(self, model: type[Developer]):
         super().__init__(model)
 
+    def get_by_email(self, db_session: DbSession, email: str) -> Developer | None:
+        return db_session.query(self.model).filter(self.model.email == email).one_or_none()
+
     def list_all(self, db_session: DbSession) -> list[Developer]:
         return db_session.query(self.model).all()

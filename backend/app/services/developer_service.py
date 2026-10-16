@@ -34,8 +34,7 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
         return super().create(db_session, internal_creator)
 
     def get_by_email(self, db_session: DbSession, email: str) -> Developer | None:
-        developers = self.crud.get_all(db_session, filters={"email": email}, offset=0, limit=1, sort_by=None)
-        return developers[0] if developers else None
+        return self.crud.get_by_email(db_session, email)
 
     def list_all(self, db_session: DbSession) -> list[Developer]:
         return self.crud.list_all(db_session)
