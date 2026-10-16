@@ -23,7 +23,7 @@ class User(BaseDbModel):
 
     external_user_id: Mapped[Unique[str_255] | None]
 
-    # Synthetic user created by the seed data generator, excluded from telemetry counts
+    # Synthetic user created by the seed data generator
     is_seed: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
 
     personal_record: Mapped["PersonalRecord | None"] = relationship(
