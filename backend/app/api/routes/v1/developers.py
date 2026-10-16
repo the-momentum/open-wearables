@@ -12,7 +12,7 @@ router = APIRouter()
 @router.get("", response_model=list[DeveloperRead])
 def list_developers(db: DbSession, _auth: DeveloperDep):
     """List all developers (team members)."""
-    return db.query(developer_service.crud.model).all()
+    return developer_service.list_all(db)
 
 
 @router.get("/{developer_id}", response_model=DeveloperRead)

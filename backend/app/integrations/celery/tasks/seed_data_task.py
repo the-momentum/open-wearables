@@ -4,6 +4,7 @@ from logging import getLogger
 
 from celery import shared_task
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.seed_data import seed_data_service
@@ -12,7 +13,7 @@ logger = getLogger(__name__)
 
 
 @shared_task(
-    name="app.integrations.celery.tasks.seed_data_task.generate_seed_data",
+    name=CeleryTask.GENERATE_SEED_DATA,
     soft_time_limit=600,  # 10 min soft limit
     time_limit=660,  # 11 min hard limit
     acks_late=True,

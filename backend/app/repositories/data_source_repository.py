@@ -11,6 +11,7 @@ from app.constants.devices_map import infer_device_type, is_host_model
 from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import DbSession
 from app.models import DataSource, HealthScore, ProviderPriority
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import DeviceType, ProviderName
@@ -500,5 +501,6 @@ class DataSourceRepository(
                 ),
             ),
         )
+        data_type_coverage_repository.delete_for_provider(db_session, user_id, provider)
         db_session.commit()
         return result.rowcount

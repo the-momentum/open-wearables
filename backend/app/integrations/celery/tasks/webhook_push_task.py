@@ -14,6 +14,7 @@ from uuid import UUID
 from celery import Task, shared_task
 from fastapi import HTTPException
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
@@ -130,6 +131,7 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
 
 
 @shared_task(
+    name=CeleryTask.PROCESS_WEBHOOK_PUSH,
     bind=True,
     acks_late=True,
     reject_on_worker_lost=True,

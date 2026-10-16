@@ -1,3 +1,4 @@
+import contextlib
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -13,6 +14,7 @@ from sqlalchemy import (
     asc,
     case,
     cast,
+    delete,
     desc,
     func,
     lateral,
@@ -29,18 +31,21 @@ from sqlalchemy.orm import Query, selectinload
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.repositories import (
     CrudRepository,
     source_filter_conditions,
     source_priority_order,
     utc_bucket_start,
 )
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import DeviceType, ProviderName, SeriesType, TimelineBucket, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
     EventRecordUpdate,
 )
+from app.schemas.sync_status import DataTypeKind
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -58,10 +63,20 @@ class EventRecordRepository(
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
 
-    def _build_creation(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[UUID, EventRecord]:
+    def _build_creation(
+        self, db_session: DbSession, creator: EventRecordCreate
+    ) -> tuple[UUID, ProviderName, EventRecord]:
         """Resolve the data source and build the ORM object without touching the session."""
+        provider = self.data_source_repo.provider_of(creator)
         if creator.data_source_id:
             data_source_id = creator.data_source_id
+            # The referenced source decides the provider, whatever the payload claims:
+            # it is what the record is filed under, so coverage must agree with it.
+            existing = db_session.get(DataSource, data_source_id)
+            if existing is not None:
+                # Loaded as a plain str: the column is String, not an enum type.
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(existing.provider)
         else:
             data_source = self.data_source_repo.ensure_for_creator(
                 db_session, creator, original_source_name=creator.source
@@ -70,7 +85,7 @@ class EventRecordRepository(
 
         creation_data = creator.model_dump(exclude=set(DATA_SOURCE_FIELDS))
         creation_data["data_source_id"] = data_source_id
-        return data_source_id, self.model(**creation_data)
+        return data_source_id, provider, self.model(**creation_data)
 
     def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
         return (
@@ -122,22 +137,35 @@ class EventRecordRepository(
         if provider is not None:
             source_ids_query = source_ids_query.filter(DataSource.provider == provider)
 
-        deleted = (
-            db_session.query(self.model)
-            .filter(
+        deleted = db_session.execute(
+            delete(self.model)
+            .where(
                 self.model.external_id == external_id,
                 self.model.data_source_id.in_(source_ids_query.scalar_subquery()),
             )
-            .delete(synchronize_session=False)
-        )
+            .returning(self.model.data_source_id, self.model.category)
+        ).all()
+        if deleted:
+            providers = {
+                source_id: provider
+                for source_id, provider in db_session.execute(
+                    select(DataSource.id, DataSource.provider).where(
+                        DataSource.id.in_({row.data_source_id for row in deleted})
+                    )
+                )
+            }
+            data_type_coverage_repository.refresh_events(
+                db_session, [(user_id, providers[row.data_source_id], row.category) for row in deleted]
+            )
         db_session.commit()
-        return deleted
+        return len(deleted)
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        data_source_id, creation = self._build_creation(db_session, creator)
+        data_source_id, provider, creation = self._build_creation(db_session, creator)
         try:
             db_session.add(creation)
+            self._record_coverage(db_session, [(creator, provider)])
             db_session.commit()
             db_session.refresh(creation)
             return creation
@@ -153,18 +181,19 @@ class EventRecordRepository(
         Uses a savepoint for IntegrityError handling so a conflict rolls back only
         the INSERT and leaves the outer transaction intact.
         """
-        data_source_id, creation = self._build_creation(db_session, creator)
+        data_source_id, provider, creation = self._build_creation(db_session, creator)
         nested = db_session.begin_nested()
         try:
             db_session.add(creation)
             db_session.flush()
             nested.commit()
-            return creation
         except IntegrityError:
             nested.rollback()
             if existing := self._fetch_existing(db_session, data_source_id, creation):
                 return existing
             raise
+        self._record_coverage(db_session, [(creator, provider)])
+        return creation
 
     def _resolve_values(self, db_session: DbSession, creators: list[EventRecordCreate]) -> list[dict]:
         """Resolve data sources in batch and build event_record row values."""
@@ -223,9 +252,32 @@ class EventRecordRepository(
             )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
+
+        self._record_coverage(
+            db_session, [(c, self.data_source_repo.provider_of(c)) for c in creators if c.id in inserted_ids]
+        )
         # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
+
+    @staticmethod
+    def _record_coverage(db_session: DbSession, records: list[tuple[EventRecordCreate, ProviderName]]) -> None:
+        """Widen what we hold per event category, in the caller's transaction."""
+        data_type_coverage_repository.record(
+            db_session,
+            (
+                CoverageSpan(
+                    user_id=creator.user_id,
+                    provider=provider.value,
+                    data_type=creator.category,
+                    kind=DataTypeKind.EVENT,
+                    start=creator.start_datetime,
+                    end=creator.end_datetime,
+                )
+                for creator, provider in records
+                if creator.category
+            ),
+        )
 
     @handle_exceptions
     def bulk_upsert_meals(
@@ -275,6 +327,8 @@ class EventRecordRepository(
             for creator, values in chunk:
                 result[creator.id] = stored[(values["data_source_id"], values["external_id"])]
         db_session.flush()
+        upserted = [creators_by_id[creator_id] for creator_id in result]
+        self._record_coverage(db_session, [(c, self.data_source_repo.provider_of(c)) for c in upserted])
         return result
 
     def get_record_with_details(

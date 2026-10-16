@@ -1,4 +1,4 @@
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from typing import Any
@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from celery import shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -14,6 +15,7 @@ from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResul
 from app.schemas.sync_status import (
     DataTypeKind,
     DataTypeOutcome,
+    SyncRunContext,
     SyncScope,
     SyncSource,
     SyncStage,
@@ -40,7 +42,7 @@ from app.services.sync_status_service import (
     try_record_data_types,
 )
 from app.utils.config_utils import format_duration
-from app.utils.context import trace_id_var
+from app.utils.context import sync_run_context, trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 from app.utils.sync_params import build_sync_params
@@ -52,12 +54,6 @@ _SYNC_247_STATUS = {
     Sync247Status.FAILED: SyncStatus.FAILED,
     Sync247Status.SKIPPED: SyncStatus.SKIPPED,
 }
-
-
-def _sync_status_of(outcome: Sync247DataTypeOutcome) -> SyncStatus:
-    if outcome.status is Sync247Status.OK:
-        return SyncStatus.SUCCESS if outcome.rows_written else SyncStatus.SKIPPED
-    return _SYNC_247_STATUS[outcome.status]
 
 
 def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
@@ -73,7 +69,56 @@ def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
         )
 
 
-@shared_task
+def _written_status(written: int) -> SyncStatus:
+    return SyncStatus.SUCCESS if written else SyncStatus.SKIPPED
+
+
+def _sync_status_of(outcome: Sync247DataTypeOutcome) -> SyncStatus:
+    if outcome.status is Sync247Status.OK:
+        return _written_status(outcome.rows_written)
+    return _SYNC_247_STATUS[outcome.status]
+
+
+def _task_outcomes(task: str, outcome: Sync247DataTypeOutcome) -> list[DataTypeOutcome]:
+    """Per-series-type outcomes for one provider fetch task.
+
+    A task writes several series types, so a task that went through reports per type where
+    the write path told us which ones -- the task name survives as native_type. A task that
+    failed, or wrote without that breakdown, reports as itself, with its error.
+    """
+    counts = outcome.counts
+    if outcome.status is Sync247Status.OK and counts is not None and counts.by_type:
+        return [
+            DataTypeOutcome(
+                data_type=series_type,
+                kind=DataTypeKind.SERIES,
+                native_type=task,
+                status=_written_status(type_counts.inserted + type_counts.updated),
+                items_inserted=type_counts.inserted,
+                items_updated=type_counts.updated,
+                covered_start=type_counts.covered_start,
+                covered_end=type_counts.covered_end,
+            )
+            for series_type, type_counts in counts.by_type.items()
+        ]
+    return [
+        DataTypeOutcome(
+            data_type=task,
+            kind=DataTypeKind.TASK,
+            native_type=task,
+            status=_sync_status_of(outcome),
+            items_inserted=counts.inserted if counts is not None else 0,
+            items_updated=counts.updated if counts is not None else 0,
+            # Without a split, only the provider's row count is known.
+            reported_records=None if counts is not None else outcome.rows_written,
+            covered_start=counts.covered_start if counts is not None else None,
+            covered_end=counts.covered_end if counts is not None else None,
+            error=outcome.error,
+        )
+    ]
+
+
+@shared_task(name=CeleryTask.SYNC_VENDOR_DATA)
 def sync_vendor_data(
     user_id: str,
     start_date: str | None = None,
@@ -195,7 +240,6 @@ def sync_vendor_data(
                     else (SyncSource.BACKFILL if is_historical else SyncSource.PULL)
                 )
                 sync_scope = SyncScope.HISTORICAL if is_historical else SyncScope.LIVE
-
                 # If this provider account is shared across OW profiles, only one
                 # should make the API call at a time.  The first to acquire the lock
                 # is primary; concurrent duplicates skip and wait for the fan-out.
@@ -276,6 +320,11 @@ def sync_vendor_data(
                     },
                 )
 
+                # Set here, not earlier: the skip paths above must not leave it set.
+                run_context = ExitStack()
+                run_context.enter_context(
+                    sync_run_context(SyncRunContext(run_id=run_id, source=sync_source, scope=sync_scope))
+                )
                 try:
                     # Inside the try: the finally below is what stops the renewal thread.
                     bind_primary_lease(provider_name, connection.provider_user_id, user_uuid, shared_token)
@@ -342,7 +391,7 @@ def sync_vendor_data(
                                     data_type="workouts",
                                     kind=DataTypeKind.TASK,
                                     native_type="workouts",
-                                    status=SyncStatus.SUCCESS if success else SyncStatus.SKIPPED,
+                                    status=_written_status(int(success or 0)),
                                     items_inserted=int(success or 0),
                                     # Workouts are event records, which do not report a
                                     # written span, so coverage stays unknown here.
@@ -412,26 +461,8 @@ def sync_vendor_data(
                             pull_inserted += results_247.inserted
                             pull_updated += results_247.updated
                             pull_written += results_247.rows_written
-                            # Pull reports per fetch task, not per series type: one
-                            # task can write several types and returns a single count.
                             for _task, _outcome in results_247.outcomes.items():
-                                _counts = _outcome.counts
-                                data_type_outcomes.append(
-                                    DataTypeOutcome(
-                                        data_type=_task,
-                                        kind=DataTypeKind.TASK,
-                                        native_type=_task,
-                                        status=_sync_status_of(_outcome),
-                                        items_inserted=_counts.inserted if _counts is not None else 0,
-                                        items_updated=_counts.updated if _counts is not None else 0,
-                                        # Without a split, only the provider's row count is known.
-                                        reported_records=None if _counts is not None else _outcome.rows_written,
-                                        # Span of the rows written, not the window asked for.
-                                        covered_start=_counts.covered_start if _counts is not None else None,
-                                        covered_end=_counts.covered_end if _counts is not None else None,
-                                        error=_outcome.error,
-                                    )
-                                )
+                                data_type_outcomes.extend(_task_outcomes(_task, _outcome))
                             log_structured(
                                 logger,
                                 "info",
@@ -523,6 +554,9 @@ def sync_vendor_data(
                     )
 
                     final_status = run_status_from(data_type_outcomes)
+                    # Before the run's terminal event: a consumer acting on it reads the per-type
+                    # outcomes from the history. The run itself was stored when it started.
+                    try_record_data_types(run_id, data_type_outcomes, scope=sync_scope)
 
                     if final_status == SyncStatus.FAILED:
                         _emit_sync_status(
@@ -580,7 +614,6 @@ def sync_vendor_data(
                             window_start=start_dt,
                             window_end=end_dt,
                         )
-                        try_record_data_types(run_id, data_type_outcomes, scope=sync_scope)
 
                 except Exception as e:
                     if shared_token and connection.provider_user_id:
@@ -613,6 +646,7 @@ def sync_vendor_data(
                     result.errors[provider_name] = str(e)
                     continue
                 finally:
+                    run_context.close()
                     clear_primary_lease()
 
             return result.model_dump()

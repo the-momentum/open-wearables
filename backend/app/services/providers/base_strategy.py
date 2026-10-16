@@ -6,6 +6,7 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -206,9 +207,9 @@ class BaseProviderStrategy(ABC):
             return
 
         celery_app.send_task(
-            "app.integrations.celery.tasks.provider_webhooks_task.reconcile_provider_webhooks",
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS,
             args=[self.name, mode],
-            queue="webhook_sync",
+            queue=CeleryQueue.WEBHOOK_SYNC,
         )
 
     def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
@@ -226,7 +227,7 @@ class BaseProviderStrategy(ABC):
         start_date = end_date - timedelta(days=days)
 
         task = celery_app.send_task(
-            "app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data",
+            CeleryTask.SYNC_VENDOR_DATA,
             kwargs={
                 "user_id": str(user_id),
                 "start_date": start_date.isoformat(),

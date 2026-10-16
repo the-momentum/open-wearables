@@ -40,6 +40,7 @@ from celery import current_app as celery_app
 from fastapi import HTTPException, Request, status
 from pydantic import ValidationError
 
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession, SessionLocal
 from app.repositories import UserConnectionRepository
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -55,8 +56,6 @@ if TYPE_CHECKING:
     from app.services.providers.polar.workouts import PolarWorkouts
 
 logger = logging.getLogger(__name__)
-
-_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 
 class PolarWebhookHandler(BaseWebhookHandler):
@@ -131,7 +130,9 @@ class PolarWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="polar", payload=raw, trace_id=trace_id)
 
-        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["polar", raw, trace_id], queue="webhook_sync")
+        task = celery_app.send_task(
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["polar", raw, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
+        )
         log_structured(
             logger,
             "info",

@@ -13,12 +13,11 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import Session
 
+from app.constants.celery_tasks import CeleryTask
 from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
-
-_RECONCILE_TASK = "app.integrations.celery.tasks.provider_webhooks_task.reconcile_provider_webhooks"
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -373,7 +372,9 @@ class TestProviderSettingsServiceWebhookDispatch:
         with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
             service.update_provider_setting(db, "oura", ProviderSettingUpdate(live_sync_mode=mode))
 
-        send_task.assert_called_once_with(_RECONCILE_TASK, args=["oura", mode], queue="webhook_sync")
+        send_task.assert_called_once_with(
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS, args=["oura", mode], queue="webhook_sync"
+        )
 
     def test_mode_change_reconciles_per_user_provider_the_same_way(self, db: Session) -> None:
         """Per-user providers take the same path; their fan-out handles the revoke."""
@@ -382,7 +383,9 @@ class TestProviderSettingsServiceWebhookDispatch:
         with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
             service.update_provider_setting(db, "withings", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.PULL))
 
-        send_task.assert_called_once_with(_RECONCILE_TASK, args=["withings", LiveSyncMode.PULL], queue="webhook_sync")
+        send_task.assert_called_once_with(
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS, args=["withings", LiveSyncMode.PULL], queue="webhook_sync"
+        )
 
     def test_provider_without_registration_api_dispatches_nothing(self, db: Session) -> None:
         """Should stay quiet for providers whose subscriptions are not managed by API."""

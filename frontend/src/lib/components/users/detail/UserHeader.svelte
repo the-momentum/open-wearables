@@ -9,13 +9,13 @@
 	import UserFormDialog from '$lib/components/users/UserFormDialog.svelte';
 	import type { InvitationCode } from '$lib/server/invitations';
 	import { fullName } from '$lib/users/avatar';
-	import type { UserDetail } from '$lib/users/types';
+	import type { User } from '$lib/users/types';
 	import InvitationDialog from './InvitationDialog.svelte';
 	import UserHeaderActions from './UserHeaderActions.svelte';
 	import UserIdentityMeta from './UserIdentityMeta.svelte';
 	import { messageFrom } from '$lib/utils/forms.svelte';
 
-	let { user }: { user: UserDetail } = $props();
+	let { user }: { user: User } = $props();
 
 	let editing = $state(false);
 	let deleting = $state(false);

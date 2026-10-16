@@ -13,6 +13,7 @@ from logging import getLogger
 from celery import shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services.archival_service import archival_service
 
@@ -20,7 +21,7 @@ logger = getLogger(__name__)
 
 
 @shared_task(
-    name="app.integrations.celery.tasks.archival_task.run_daily_archival",
+    name=CeleryTask.RUN_DAILY_ARCHIVAL,
     soft_time_limit=300,  # 5 min soft limit — raises SoftTimeLimitExceeded
     time_limit=360,  # 6 min hard limit — kills the worker
     acks_late=True,  # Re-queue if worker dies mid-task
