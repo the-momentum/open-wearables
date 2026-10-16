@@ -179,6 +179,9 @@ class WriteCounts(int):
 
 # Sources whose provider or device type is not ranked sort last, in id order.
 _UNRANKED = 1_000_000
+# The value column is unbounded NUMERIC, so cap the stored scale here. Seven places keeps
+# GPS coordinates at ~1 cm and stops float noise (0.30000000000000004) from bloating rows.
+DATA_POINT_VALUE_SCALE = 7
 SERIES_TYPE_IDS: tuple[int, ...] = tuple(get_series_type_id(t) for t in SeriesType)
 _AGGREGATE_FUNCS = {
     AggregationMethod.AVG: func.avg,
@@ -242,6 +245,7 @@ class DataPointSeriesRepository(
         # Set the proper values
         creation_data["data_source_id"] = data_source.id
         creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
+        creation_data["value"] = round(creator.value, DATA_POINT_VALUE_SCALE)
 
         creation = self.model(**creation_data)
         db_session.add(creation)
@@ -324,7 +328,7 @@ class DataPointSeriesRepository(
                     data_source_id=source_id,
                     recorded_at=creator.recorded_at,
                     zone_offset=creator.zone_offset,
-                    value=creator.value,
+                    value=round(creator.value, DATA_POINT_VALUE_SCALE),
                     series_type_definition_id=get_series_type_id(creator.series_type),
                     is_daily_total=creator.is_daily_total,
                 )
