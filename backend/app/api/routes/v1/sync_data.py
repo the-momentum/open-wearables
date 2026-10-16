@@ -269,18 +269,19 @@ def sync_historical_data(
     days: Annotated[
         int,
         Query(
-            description="Days of historical data to fetch (default: 90, max: 365). "
-            "Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+            description="Days of historical data to fetch (default: 90, max: 3650). "
+            "Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); "
+            "the response `days` reflects the window actually fetched.",
             ge=1,
-            le=365,
+            le=3650,
         ),
     ] = DEFAULT_HISTORICAL_DAYS,
 ) -> dict[str, Any]:
     """Trigger a historical sync of the user's data from a connected provider.
 
     Each provider strategy decides how to dispatch the sync (REST polling,
-    webhook backfill, etc.). The ``days`` parameter may be ignored by
-    providers that enforce their own limits.
+    webhook backfill, etc.). The ``days`` parameter is capped at the
+    provider's ``max_historical_days``.
 
     **Automatic historical sync on connect (grace period)**
 

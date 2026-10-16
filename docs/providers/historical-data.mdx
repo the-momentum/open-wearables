@@ -19,7 +19,7 @@ Use it to compare providers when planning an integration. For the full list of d
 <Info>
 In v0.7 and below, Open Wearables runs a historical sync automatically when a user connects a provider through OAuth (`HISTORICAL_SYNC_ON_CONNECT=true`). If you haven't changed that setting, the range you actually get on connect is **90 days** for pull-based providers, and **30 days** for Garmin, whose webhook-based backfill is capped at 30 days from the user's consent date - no matter how far back the provider itself would let you go. This default is planned to change in a future release.
 
-To control the range yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly, where `days` defaults to 90 and is capped at 365. See [Historical Backfill](/dev-guides/integration-guide#step-3-historical-backfill-automatic) in the Integration Guide for the full flow.
+To control the range yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly, where `days` defaults to 90 and is capped at the provider's max range below (and at 3650 overall). The response's `days`, `start_date` and `end_date` reflect the window actually fetched, not the value you requested. See [Historical Backfill](/dev-guides/integration-guide#step-3-historical-backfill-automatic) in the Integration Guide for the full flow.
 </Info>
 
 ## Maximum Historical Range
@@ -34,9 +34,11 @@ To control the range yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `
 | Ultrahuman | No limit | |
 | Strava | No limit | |
 | Fitbit | No limit | Legacy integration; the Fitbit Web API is turned off on October 30, 2026. Use Google Health API for Fitbit devices. |
-| Polar | 365 days | Data is only available from the user's consent date onward. |
+| Polar | 365 days | 365 days applies to daily activity only. Polar only returns workouts uploaded in the last 30 days (and after the user's consent date), and sleep and Nightly Recharge for the last 28 days. |
 | Suunto | No limit | |
+| Withings | No limit | |
+| Sensor Bio | No limit | |
 | Google Health API | No limit | |
-| Google Health Connect | 30 days | Health Connect only exposes the last 30 days to apps that lack the `READ_HEALTH_DATA_HISTORY` permission, which the Open Wearables SDK does not currently request. |
+| Google Health Connect | 30 days | Counted back from when the user first granted permission, not from today. Health Connect only goes further back for apps holding `PERMISSION_READ_HEALTH_DATA_HISTORY`, which the Open Wearables SDK does not currently request. |
 | Apple Health | No limit | |
 | Samsung Health | No limit | |
