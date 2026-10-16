@@ -1,10 +1,10 @@
-/** Categorical, from theme tokens, and never a status colour: green and red mean success and failure. */
+/** Categorical, opaque (3:1 on the card in both themes), and never a status colour. */
 export const SERIES_TONES = [
 	'var(--color-primary)',
 	'var(--color-foreground)',
-	'color-mix(in oklab, var(--color-primary) 45%, transparent)',
+	'color-mix(in oklab, var(--color-primary) 70%, var(--color-surface))',
 	'var(--color-muted-foreground)',
-	'color-mix(in oklab, var(--color-foreground) 30%, transparent)'
+	'var(--color-secondary-foreground)'
 ];
 
 /**
