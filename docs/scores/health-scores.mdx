@@ -36,6 +36,10 @@ In addition to the OW native scores described above, users may also see scores f
 
 This means you can surface both in your application - the OW scores for a consistent cross-device baseline, and the provider scores for users who want to compare against what their device reports.
 
+### Which OW score the API returns
+
+OW can compute a score from each of a user's data sources. `GET /api/v1/users/{user_id}/health-scores` returns one OW score per category and day: the one from the source ranked highest in the [provider and device type priorities](/developer-portal/settings/priorities), the same ranking the summaries use. If one source has more than one sleep score on a day, for example an unflagged nap, the longest sleep is returned. Each score's `source` tells which source it came from. Provider scores are always returned as they are.
+
 ---
 
 ## Disabling OW Native Scores

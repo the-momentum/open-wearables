@@ -3,11 +3,11 @@ from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
 
-from sqlalchemy import Date, and_, asc, cast, desc, func, select, tuple_
+from sqlalchemy import Date, and_, asc, cast, desc, func, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
-from app.models import DataSource, HealthScore
+from app.models import DataSource, HealthScore, SleepDetails
 from app.repositories.repositories import CrudRepository, source_priority_order
 from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
@@ -28,7 +28,10 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         db_session: DbSession,
         user_id: UUID,
         params: HealthScoreQueryParams,
-    ) -> tuple[list[HealthScore], int]:
+        provider_order: dict[ProviderName, int],
+        device_type_order: dict[DeviceType, int],
+    ) -> tuple[list[tuple[HealthScore, DataSource | None]], int]:
+        """Scores newest first, with their data source; one OW score per category and day, picked before paging."""
         filters = [HealthScore.user_id == user_id]
 
         if params.category:
@@ -42,11 +45,50 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         if params.end_datetime:
             filters.append(HealthScore.recorded_at < params.end_datetime)
 
-        query = db_session.query(HealthScore).filter(and_(*filters))
+        # Ranked by source: an OW score's own provider is always internal
+        ranked = (
+            select(
+                HealthScore.id,
+                func.row_number()
+                .over(
+                    # UTC date: a bare cast follows the session time zone
+                    partition_by=(HealthScore.category, cast(func.timezone("UTC", HealthScore.recorded_at), Date)),
+                    order_by=(
+                        DataSource.id.is_(None),  # a score without a source comes last
+                        *source_priority_order(provider_order, device_type_order),
+                        # Longest sleep first, so an unflagged nap (#938) doesn't beat the night
+                        desc(func.coalesce(SleepDetails.sleep_total_duration_minutes, 0)),
+                        desc(HealthScore.recorded_at),
+                        HealthScore.id,
+                    ),
+                )
+                .label("source_rank"),
+            )
+            .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == HealthScore.event_record_id)
+            .where(*filters, HealthScore.provider == ProviderName.INTERNAL)
+            .subquery()
+        )
+        filters.append(
+            or_(
+                HealthScore.provider != ProviderName.INTERNAL,
+                HealthScore.id.in_(select(ranked.c.id).where(ranked.c.source_rank == 1)),
+            )
+        )
 
+        query = (
+            db_session.query(HealthScore, DataSource)
+            .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
+            .filter(and_(*filters))
+        )
         total_count = query.count()
-        results = query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all()
-        return results, total_count
+        rows = (
+            query.order_by(desc(HealthScore.recorded_at), desc(HealthScore.id))
+            .offset(params.offset)
+            .limit(params.limit)
+            .all()
+        )
+        return [(score, data_source) for score, data_source in rows], total_count
 
     def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> None:
         """Bulk insert health scores, doing nothing on conflict with the unique constraint."""

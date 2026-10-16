@@ -3666,7 +3666,7 @@
           "External: Health Scores"
         ],
         "summary": "List Health Scores",
-        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.",
+        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.\n\nOne OW score (provider `internal`) per category and day, from the highest-priority source.",
         "operationId": "list_health_scores_api_v1_users__user_id__health_scores_get",
         "security": [
           {
@@ -13400,6 +13400,17 @@
             ],
             "title": "Event Record Id",
             "description": "The sleep session or workout this score describes. Null for whole-day scores."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The data source the score was computed from or reported by. Null for scores without one."
           }
         },
         "type": "object",
