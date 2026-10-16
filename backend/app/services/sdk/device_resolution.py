@@ -1,6 +1,6 @@
 """Device resolution utilities for mobile SDK data (HealthKit, Health Connect, Samsung Health)."""
 
-from app.constants.devices_map import is_apple_own_source, map_reported_device_type
+from app.constants.devices_map import is_apple_own_source, is_host_model, map_reported_device_type
 from app.schemas.enums import DeviceType
 from app.schemas.providers.mobile_sdk import OSVersion, SourceInfo
 
@@ -18,14 +18,13 @@ def _get_source_app_id(source: SourceInfo) -> str | None:
 def _get_device_model(source: SourceInfo | None) -> str | None:
     if not source:
         return None
+    app_id = _get_source_app_id(source)
     # Apple's own sources tag some Watch samples with the paired iPhone's model; hardware is the producer
-    if source.device_hardware_version and is_apple_own_source(_get_source_app_id(source)):
+    if source.device_hardware_version and is_apple_own_source(app_id):
         return source.device_hardware_version
-    if source.device_model:
-        return source.device_model
-    if source.product_type:
-        return source.product_type
-    return None
+    model = source.device_model or source.product_type or None
+    # iOS SDKs before the fix for third-party writes report the relaying iPhone as the writer's model
+    return None if is_host_model(app_id, model) else model
 
 
 def _get_original_source_name(source: SourceInfo | None) -> str | None:

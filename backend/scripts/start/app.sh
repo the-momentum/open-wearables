@@ -106,6 +106,13 @@ echo 'Running SDK workout calories cleanup...'
 uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
     || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the relaying iPhone's model (and the phone type inferred from it) from third-party
+# HealthKit data sources. Runs once per instance (data_migration).
+echo 'Running relayed host model cleanup...'
+uv run python scripts/data_migrations/clear_relayed_host_models.py \
+    || echo "Warning: relayed host model cleanup failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
