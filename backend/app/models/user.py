@@ -11,8 +11,6 @@ from app.mappings import PrimaryKey, Unique, email, str_100, str_255
 class User(BaseDbModel):
     """Data owner model"""
 
-    # Seed users are a handful at most, so the partial index stays tiny and lets
-    # telemetry exclude them without scanning the whole table.
     __table_args__ = (Index("ix_user_is_seed", "id", postgresql_where=text("is_seed")),)
 
     id: Mapped[PrimaryKey[UUID]]
