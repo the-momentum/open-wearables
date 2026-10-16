@@ -72,7 +72,7 @@ def _batch_outcomes(types: list[str], workouts_saved: int, sleep_saved: int, sco
     return outcomes
 
 
-@shared_task(name=CeleryTask.PROCESS_SDK_UPLOAD, queue="sdk_sync")
+@shared_task(name=CeleryTask.PROCESS_SDK_UPLOAD)
 def process_sdk_upload(
     content: str | None,
     content_type: str,

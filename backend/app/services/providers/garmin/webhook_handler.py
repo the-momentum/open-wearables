@@ -19,7 +19,7 @@ from celery import current_app as celery_app
 from fastapi import HTTPException, Request
 
 from app.config import settings
-from app.constants.celery_tasks import CeleryTask
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.garmin.backfill_state import (
@@ -168,7 +168,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
         # garmin_sync is isolated from the default queue so high-volume live-push
         # events and backfill-chain tasks don't starve each other.
         task = celery_app.send_task(
-            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["garmin", payload, request_trace_id], queue="garmin_sync"
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["garmin", payload, request_trace_id], queue=CeleryQueue.GARMIN_SYNC
         )
         log_structured(
             logger,

@@ -11,7 +11,7 @@ from celery.concurrency.prefork import TaskPool as PreforkPool
 from celery.schedules import crontab
 
 from app.config import settings
-from app.constants.celery_tasks import CeleryTask
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.extensions import collect_beat_schedule, collect_event_handlers, events, get_active_extensions
 from app.integrations.otel import init_otel, shutdown_otel
 from app.services import raw_payload_storage
@@ -138,7 +138,7 @@ def enqueue_startup_telemetry_ping(sender: Any, **kwargs) -> None:
         sender.app.send_task(
             CeleryTask.SEND_TELEMETRY_PING,
             kwargs={"event": "startup"},
-            queue="default",
+            queue=CeleryQueue.DEFAULT,
         )
     except Exception:
         getLogger(__name__).debug("Could not enqueue startup telemetry ping", exc_info=True)
@@ -182,23 +182,17 @@ def create_celery() -> Celery:
         result_serializer="json",
         timezone="UTC",
         enable_utc=True,
-        task_default_queue="default",
+        task_default_queue=CeleryQueue.DEFAULT,
         task_default_exchange="default",
         result_expires=3 * 24 * 3600,
         control_queue_ttl=300,
         control_queue_expires=300,
-        task_queues={
-            "default": {},
-            "sdk_sync": {},
-            "garmin_sync": {},
-            "webhook_sync": {},
-            "xml_sync": {},
-        },
+        task_queues={queue: {} for queue in CeleryQueue},
         task_routes={
-            CeleryTask.PROCESS_SDK_UPLOAD: {"queue": "sdk_sync"},
-            CeleryTask.PROCESS_AWS_UPLOAD: {"queue": "xml_sync"},
-            CeleryTask.COMPLETE_AND_PROCESS_AWS_UPLOAD: {"queue": "xml_sync"},
-            CeleryTask.PROCESS_XML_UPLOAD: {"queue": "xml_sync"},
+            CeleryTask.PROCESS_SDK_UPLOAD: {"queue": CeleryQueue.SDK_SYNC},
+            CeleryTask.PROCESS_AWS_UPLOAD: {"queue": CeleryQueue.XML_SYNC},
+            CeleryTask.COMPLETE_AND_PROCESS_AWS_UPLOAD: {"queue": CeleryQueue.XML_SYNC},
+            CeleryTask.PROCESS_XML_UPLOAD: {"queue": CeleryQueue.XML_SYNC},
         },
     )
 
@@ -236,7 +230,7 @@ def create_celery() -> Celery:
         },
         # TODO: Remove after ~2027-03-01, with the task. Ends on a data_migration check once done.
         "backfill-data-type-coverage": {
-            "task": "app.integrations.celery.tasks.backfill_data_type_coverage_task.backfill_data_type_coverage",
+            "task": CeleryTask.BACKFILL_DATA_TYPE_COVERAGE,
             "schedule": crontab(minute=0),
             "args": (),
             "kwargs": {},

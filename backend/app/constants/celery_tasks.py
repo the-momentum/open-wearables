@@ -7,6 +7,7 @@ class CeleryTask(StrEnum):
     """Registered Celery task names. Must stay import-free so any layer can use it."""
 
     RUN_DAILY_ARCHIVAL = f"{_PREFIX}.archival_task.run_daily_archival"
+    BACKFILL_DATA_TYPE_COVERAGE = f"{_PREFIX}.backfill_data_type_coverage_task.backfill_data_type_coverage"
     CLOSE_STALE_SYNC_RUNS = f"{_PREFIX}.close_stale_sync_runs_task.close_stale_sync_runs"
     DELETE_USER_WEBHOOK_PAYLOADS = f"{_PREFIX}.delete_user_webhook_payloads_task.delete_user_webhook_payloads"
     EMIT_WEBHOOK_EVENT = f"{_PREFIX}.emit_webhook_event_task.emit_webhook_event"
@@ -32,3 +33,13 @@ class CeleryTask(StrEnum):
     SEND_TELEMETRY_PING = f"{_PREFIX}.telemetry_task.send_telemetry_ping"
     PROCESS_WEBHOOK_PUSH = f"{_PREFIX}.webhook_push_task.process_webhook_push"
     WITHINGS_SYNC_USER_SUBSCRIPTIONS = f"{_PREFIX}.withings.notify_sync_task.sync_user_subscriptions"
+
+
+class CeleryQueue(StrEnum):
+    """Queues the workers consume. A task sent to any other name waits in a queue nobody reads."""
+
+    DEFAULT = "default"
+    SDK_SYNC = "sdk_sync"
+    GARMIN_SYNC = "garmin_sync"
+    WEBHOOK_SYNC = "webhook_sync"
+    XML_SYNC = "xml_sync"

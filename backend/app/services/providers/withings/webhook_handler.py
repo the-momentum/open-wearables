@@ -12,7 +12,7 @@ from fastapi import HTTPException, Request, status
 from pydantic import ValidationError
 
 from app.config import settings
-from app.constants.celery_tasks import CeleryTask
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
@@ -148,7 +148,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
         celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH,
             args=["withings", payload, trace_id],
-            queue="webhook_sync",
+            queue=CeleryQueue.WEBHOOK_SYNC,
         )
         return {"status": "accepted", "appli": notification.appli}
 

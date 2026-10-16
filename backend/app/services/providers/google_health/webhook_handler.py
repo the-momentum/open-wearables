@@ -36,7 +36,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from app.config import settings
-from app.constants.celery_tasks import CeleryTask
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.google import GoogleWebhookNotification
@@ -150,7 +150,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         store_raw_payload(source="webhook", provider="google_health", payload=payload, trace_id=trace_id)
 
         task = celery_app.send_task(
-            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["google_health", payload, trace_id], queue="webhook_sync"
+            CeleryTask.PROCESS_WEBHOOK_PUSH, args=["google_health", payload, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
         )
         log_structured(
             logger,
