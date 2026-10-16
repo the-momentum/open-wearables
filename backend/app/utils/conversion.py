@@ -89,6 +89,13 @@ def kilojoules_to_kcal(kilojoules: Any) -> Decimal | None:
     return kj * _KCAL_PER_KJ if kj is not None else None
 
 
+def energy_difference(total: float | None, part: float | None) -> float | None:
+    """The rest of a total energy once part of it is taken out; None when either is missing or part exceeds it."""
+    if total is None or part is None or part > total:
+        return None
+    return total - part
+
+
 def base_to_dict(instance: BaseDbModel) -> dict[str, str | None]:
     """Function to convert SQLALchemy Base model into dict."""
     b2d = {}

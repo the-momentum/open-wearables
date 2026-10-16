@@ -22,6 +22,7 @@ FEATURE_KEYS = {
     "store_fit_files",
     "historical_sync_on_connect",
     "raw_payload_storage",
+    "sdk_payload_s3_offload",
     "outgoing_webhooks_enabled",
     "default_data_granularity",
 }

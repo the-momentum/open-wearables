@@ -905,6 +905,64 @@ export const makeActivity = (query: URLSearchParams) => {
 	};
 };
 
+/**
+ * Mirrors `DataSourceListResponse`: the shapes the backend actually stores. Garmin
+ * keeps dailies on an account-level source with no model, Apple names a device
+ * after its owner, and a Health Connect app only gives its package name.
+ */
+export const makeDataSources = () => {
+	const items = [
+		{
+			provider: 'apple',
+			device_model: 'Watch6,2',
+			device_name: 'Apple Watch Series 6 44mm (GPS)',
+			device_type: 'watch',
+			source: "Kuba's Apple Watch",
+			software_version: '26.2'
+		},
+		{
+			provider: 'garmin',
+			device_model: null,
+			device_name: null,
+			device_type: null,
+			source: 'garmin',
+			software_version: null
+		},
+		{
+			provider: 'oura',
+			device_model: null,
+			device_name: null,
+			device_type: 'ring',
+			source: 'oura',
+			software_version: null
+		},
+		{
+			provider: 'garmin',
+			device_model: 'Garmin fenix 8',
+			device_name: 'Garmin fenix 8',
+			device_type: 'watch',
+			source: 'garmin',
+			software_version: null
+		},
+		{
+			provider: 'health_connect',
+			device_model: null,
+			device_name: null,
+			device_type: null,
+			source: 'com.google.android.apps.fitness.persistence.background.sync',
+			software_version: null
+		}
+	].map((entry, index) => ({
+		id: `00000000-0000-4000-9000-${String(index + 1).padStart(12, '0')}`,
+		user_id: '00000000-0000-4000-8000-000000000007',
+		user_connection_id: null,
+		original_source_name: null,
+		display_name: null,
+		...entry
+	}));
+	return { items, total: items.length };
+};
+
 /** Mirrors `BodySummary`, including the nulls: this user was never weighed for
  *  body fat, and nothing was measured recently enough to be `latest`. */
 export const makeBody = () => ({

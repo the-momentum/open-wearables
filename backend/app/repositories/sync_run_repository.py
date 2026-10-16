@@ -172,6 +172,12 @@ class SyncRunRepository:
     def get_by_run_key(self, db_session: DbSession, run_key: str) -> SyncRun | None:
         return db_session.execute(select(SyncRun).where(SyncRun.run_key == run_key)).scalar_one_or_none()
 
+    def get_data_types(self, db_session: DbSession, run_id: UUID, data_types: list[str]) -> list[SyncRunDataType]:
+        stmt = select(SyncRunDataType).where(
+            SyncRunDataType.run_id == run_id, SyncRunDataType.data_type.in_(data_types)
+        )
+        return list(db_session.execute(stmt).scalars().all())
+
     def get_with_data_types(self, db_session: DbSession, run_key: str) -> SyncRun | None:
         stmt = select(SyncRun).where(SyncRun.run_key == run_key).options(selectinload(SyncRun.data_types))
         return db_session.execute(stmt).scalar_one_or_none()

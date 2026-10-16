@@ -179,6 +179,14 @@ class StepDetailsResponse(BaseModel):
     steps_goal_achieved_percentage: float | None = None
 
 
+class CalorieDetailsResponse(BaseModel):
+    """Response shape for /v1/calorie/details (same metric shape as step details)."""
+
+    date: str | None = None
+    granularity: str | None = None
+    metrics: list[StepDetailMetric] = Field(default_factory=list)
+
+
 class CardioMetrics(BaseModel):
     """Cardio metrics nested inside an Activity record."""
 

@@ -35,7 +35,7 @@ from app.schemas.providers.mobile_sdk import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
-from app.services.sdk.device_resolution import extract_device_info, extract_device_type
+from app.services.sdk.device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -111,12 +111,18 @@ def _create_new_sleep_state(
     device_model: str | None = None,
     zone_offset: str | None = None,
     device_type: DeviceType | None = None,
+    device_id: str | None = None,
+    source_app_id: str | None = None,
+    device_manufacturer: str | None = None,
 ) -> SleepState:
     return SleepState(
         uuid=id or str(uuid4()),
         source_name=source_name or "unknown",
         device_model=device_model,
         device_type=device_type,
+        device_id=device_id,
+        source_app_id=source_app_id,
+        device_manufacturer=device_manufacturer,
         provider=provider,
         zone_offset=zone_offset,
         start_time=start_time,
@@ -146,6 +152,9 @@ def _apply_transition(
     device_model: str | None = None,
     zone_offset: str | None = None,
     device_type: DeviceType | None = None,
+    device_id: str | None = None,
+    source_app_id: str | None = None,
+    device_manufacturer: str | None = None,
 ) -> SleepState:
     """Apply a transition to the sleep state."""
 
@@ -167,7 +176,17 @@ def _apply_transition(
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
         state = _create_new_sleep_state(
-            start_time, end_time, uuid, provider, source_name, device_model, zone_offset, device_type
+            start_time,
+            end_time,
+            uuid,
+            provider,
+            source_name,
+            device_model,
+            zone_offset,
+            device_type,
+            device_id,
+            source_app_id,
+            device_manufacturer,
         )
 
     if zone_offset and not state.zone_offset:
@@ -288,6 +307,7 @@ def handle_sleep_data(
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(sjson.source)
             device_type = extract_device_type(sjson.source)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(sjson.source)
 
             sleep_phase = get_apple_sleep_phase(sjson.stage)
 
@@ -307,6 +327,9 @@ def handle_sleep_data(
                     device_model,
                     sjson.zoneOffset,
                     device_type,
+                    device_id,
+                    source_app_id,
+                    device_manufacturer,
                 )
 
             current_state = _apply_transition(
@@ -322,6 +345,9 @@ def handle_sleep_data(
                 device_model,
                 sjson.zoneOffset,
                 device_type,
+                device_id,
+                source_app_id,
+                device_manufacturer,
             )
 
             sleep_score = _extract_sleep_score(sjson.values)
@@ -538,6 +564,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         provider=state.provider,
         device_model=state.device_model,
         device_type=state.device_type,
+        device_id=state.device_id,
+        source_app_id=state.source_app_id,
+        device_manufacturer=state.device_manufacturer,
     )
 
     detail = EventRecordDetailCreate(

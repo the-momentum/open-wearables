@@ -262,6 +262,16 @@ idempotent and support a `--dry-run` flag, and its **module docstring is the sou
 of truth** for the rationale (the problem it fixes, what it changes, and any details
 such as conflict handling) — put it there, not in the docs.
 
+A script whose idle run is expensive (it has to scan a large table to find there is nothing
+to do) runs through `data_migration_service.run`, which records a clean run in the
+`data_migration` table and skips the script afterwards. Cheap scripts stay unrecorded, so they
+keep catching rows an old pod writes during a rolling deploy.
+
+`data_type_coverage` holds the span of data we hold per user, provider and type, and only the
+write paths widen it. A script that deletes series or event rows, or moves them to another
+type, provider or user, must narrow the coverage of the keys it touched in the same
+transaction (`DataTypeCoverageRepository` has the primitives).
+
 See `docs/dev-guides/data-migrations.mdx` for how to run them and how they're wired
 into startup.
 

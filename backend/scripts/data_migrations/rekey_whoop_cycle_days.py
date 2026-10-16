@@ -33,7 +33,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import engine
+from app.services.data_migration_service import data_migration_service
 
 # Whoop's longest real cycle is ~29h; past that the next onset opens a later cycle.
 _MAX_CYCLE_SPAN = "30 hours"
@@ -65,12 +66,13 @@ _HEALTH_SCORE = _Table(
 
 _DATA_POINT_SERIES = _Table(
     name="data_point_series",
-    label="data_point_series (active_energy, steps)",
+    label="data_point_series (active_energy, total_energy, steps)",
     eligible=(
         "t.is_daily_total IS TRUE"
         " AND EXISTS (SELECT 1 FROM data_source ds WHERE ds.id = t.data_source_id AND ds.provider = 'whoop')"
         " AND EXISTS (SELECT 1 FROM series_type_definition std"
-        "             WHERE std.id = t.series_type_definition_id AND std.code IN ('active_energy', 'steps'))"
+        "             WHERE std.id = t.series_type_definition_id"
+        "               AND std.code IN ('active_energy', 'total_energy', 'steps'))"
     ),
     user_id="(SELECT ds.user_id FROM data_source ds WHERE ds.id = t.data_source_id)",
     key="t.data_source_id, t.series_type_definition_id",
@@ -175,13 +177,20 @@ def rekey_whoop_cycle_days(db: Session, *, dry_run: bool) -> int:
     return moved
 
 
-def main(dry_run: bool) -> None:
-    with SessionLocal() as db:
-        moved = rekey_whoop_cycle_days(db, dry_run=dry_run)
-        if dry_run or not moved:
-            return
+def _migrate(db: Session, dry_run: bool) -> bool:
+    moved = rekey_whoop_cycle_days(db, dry_run=dry_run)
+    if dry_run:
+        return False
+    if moved:
         db.commit()
         print("Done.")
+    # Contested rows are left for a manual look and never resolve on their own
+    return True
+
+
+def main(dry_run: bool) -> None:
+    with engine.connect() as connection, Session(bind=connection) as db:
+        data_migration_service.run(db, "rekey_whoop_cycle_days", lambda: _migrate(db, dry_run), dry_run=dry_run)
 
 
 if __name__ == "__main__":

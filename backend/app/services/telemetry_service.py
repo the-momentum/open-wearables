@@ -88,6 +88,7 @@ class TelemetryService:
                 "store_fit_files": settings.store_fit_files,
                 "historical_sync_on_connect": settings.historical_sync_on_connect,
                 "raw_payload_storage": settings.raw_payload_storage,
+                "sdk_payload_s3_offload": settings.sdk_payload_s3_offload,
                 "outgoing_webhooks_enabled": settings.outgoing_webhooks_enabled,
                 "default_data_granularity": settings.default_data_granularity,
             },

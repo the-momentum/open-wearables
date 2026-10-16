@@ -85,6 +85,7 @@ One entry per row in the `provider_settings` table.
 | `store_fit_files` | Whether raw FIT files are stored in S3 | `false` | Same, for FIT storage |
 | `historical_sync_on_connect` | Whether historical sync auto-runs after connect | `true` | This flag is scheduled to change its default; tells us when that is safe |
 | `raw_payload_storage` | `disabled`, `log` or `s3` | `s3` | Whether raw payload archival is worth keeping |
+| `sdk_payload_s3_offload` | Whether SDK sync payloads go through S3 instead of the Redis queue | `false` | Whether offload is used by instances that run large SDK backfills |
 | `outgoing_webhooks_enabled` | Whether outgoing webhooks (Svix) are on | `true` | Adoption of outgoing webhooks |
 | `default_data_granularity` | Instance-wide default granularity: `raw`, `hourly` or `daily`. Only the Google Health 24/7 sync uses it at the moment | `raw` | Whether the rollup modes are used |
 
@@ -166,6 +167,7 @@ An example payload:
     "store_fit_files": false,
     "historical_sync_on_connect": true,
     "raw_payload_storage": "s3",
+    "sdk_payload_s3_offload": false,
     "outgoing_webhooks_enabled": false,
     "default_data_granularity": "raw"
   },

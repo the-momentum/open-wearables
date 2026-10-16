@@ -234,6 +234,13 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        # TODO: Remove after ~2027-03-01, with the task. Ends on a data_migration check once done.
+        "backfill-data-type-coverage": {
+            "task": "app.integrations.celery.tasks.backfill_data_type_coverage_task.backfill_data_type_coverage",
+            "schedule": crontab(minute=0),
+            "args": (),
+            "kwargs": {},
+        },
         "renew-oura-webhooks-monthly": {
             "task": CeleryTask.RENEW_OURA_WEBHOOKS,
             "schedule": crontab(day_of_month=1, hour=0, minute=0),  # 1st of each month at 00:00 UTC

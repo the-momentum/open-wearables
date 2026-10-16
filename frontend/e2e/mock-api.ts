@@ -60,6 +60,7 @@ import {
 	makeActivity,
 	activityTotals,
 	makeBody,
+	makeDataSources,
 	deleteWorkout,
 	makeCycles,
 	makeMeals,
@@ -554,9 +555,7 @@ const server = Bun.serve({
 						last_synced_at: latest?.last_synced_at ?? null,
 						last_synced_provider: latest?.provider ?? null,
 						has_active_connection: connected,
-						connections: null,
-						// Only one user gates the tab on, so a test can assert both cases.
-						has_womens_health_data: user.first_name === 'Zofia'
+						connections: null
 					});
 				}
 				case '/connections':
@@ -583,6 +582,8 @@ const server = Bun.serve({
 				}
 				case '/summaries/body':
 					return json(connected ? makeBody() : null);
+				case '/data-sources':
+					return json(connected ? makeDataSources() : { items: [], total: 0 });
 				case '/timeseries': {
 					const query = new URL(request.url).searchParams;
 					// The body tab asks for vitals; every other caller asks for a

@@ -90,7 +90,7 @@ def extract_source(data_source: Any) -> tuple[str, str | None]:
 
     device shapes vary: {displayName} (Fitbit), {manufacturer, formFactor} (Health
     Connect), or empty/absent. device_model falls back displayName -> manufacturer
-    formFactor -> platform; source_name is the platform.
+    formFactor; the platform is not a device, so it is only the source_name.
     """
     if not isinstance(data_source, dict):
         return "Google Health", None
@@ -100,7 +100,6 @@ def extract_source(data_source: Any) -> tuple[str, str | None]:
     device_model = (
         device.get("displayName")
         or " ".join(p for p in (device.get("manufacturer"), form_factor.lower() if form_factor else None) if p)
-        or platform
         or None
     )
     return platform or "Google Health", device_model

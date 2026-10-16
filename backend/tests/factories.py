@@ -104,6 +104,16 @@ class SeriesTypeDefinitionFactory(BaseFactory):
         return cls(id=82, code="basal_energy", unit="kcal")
 
     @classmethod
+    def get_or_create_total_energy(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded total_energy series type (ID=89)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 89).first()
+            if existing:
+                return existing
+        return cls(id=89, code="total_energy", unit="kcal")
+
+    @classmethod
     def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
         """Get the pre-seeded distance_walking_running series type (ID=100)."""
         session = cls._meta.sqlalchemy_session

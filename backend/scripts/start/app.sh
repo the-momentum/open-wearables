@@ -77,6 +77,13 @@ echo 'Running Whoop cycle day re-key...'
 uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
     || echo "Warning: Whoop cycle re-key failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Relabels Whoop cycle energy stored as active_energy to total_energy: it includes BMR.
+# Drops 0 kJ no-wear rows. Runs once per instance (data_migration).
+echo 'Running Whoop active_energy->total_energy relabel...'
+uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py \
+    || echo "Warning: Whoop energy relabel failed — will retry on next startup."
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
 # recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
@@ -84,6 +91,20 @@ uv run python scripts/data_migrations/rekey_whoop_cycle_days.py \
 echo 'Running device type backfill...'
 uv run python scripts/data_migrations/backfill_device_types.py \
     || echo "Warning: device type backfill failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-01-01 once all deployments have migrated.
+# Merges data sources split by placeholder models / platform names / Polar's missing source,
+# then drops events duplicated across a user's sources. Idempotent, no-op once merged.
+echo 'Running data source merge...'
+uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
+    || echo "Warning: data source merge failed — will retry on next startup."
+
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no
+# calories. Runs once per instance (data_migration).
+echo 'Running SDK workout calories cleanup...'
+uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
+    || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'

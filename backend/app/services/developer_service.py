@@ -33,6 +33,12 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
         )
         return super().create(db_session, internal_creator)
 
+    def get_by_email(self, db_session: DbSession, email: str) -> Developer | None:
+        return self.crud.get_by_email(db_session, email)
+
+    def list_all(self, db_session: DbSession) -> list[Developer]:
+        return self.crud.list_all(db_session)
+
     def update_developer_info(
         self,
         db_session: DbSession,
