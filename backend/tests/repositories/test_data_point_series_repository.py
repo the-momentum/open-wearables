@@ -1001,7 +1001,7 @@ class TestPerTypeWriteCounts:
         assert total.by_type["heart_rate"].covered_start == now
         assert total.by_type["heart_rate"].covered_end == now + timedelta(days=1)
 
-    def test_adding_a_plain_count_keeps_the_totals_types_and_span(self) -> None:
+    def test_adding_counts_keeps_the_split_types_and_span_but_a_plain_int_only_the_total(self) -> None:
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         counts = WriteCounts(
             2,
@@ -1012,8 +1012,13 @@ class TestPerTypeWriteCounts:
             },
         )
 
-        total = counts + 5
+        merged = counts + WriteCounts(
+            1, 0, {"steps": TypeCounts(1, 0, start + timedelta(days=2), start + timedelta(days=2))}
+        )
+        with_int = counts + 5
 
-        assert (total.inserted, total.updated, int(total)) == (7, 1, 8)
-        assert set(total.by_type) == {"steps", "heart_rate"}
-        assert (total.covered_start, total.covered_end) == (start - timedelta(days=1), start + timedelta(days=1))
+        assert (merged.inserted, merged.updated) == (3, 1)
+        assert merged.by_type["steps"].inserted == 3
+        assert (merged.covered_start, merged.covered_end) == (start - timedelta(days=1), start + timedelta(days=2))
+        # A plain int has no split to keep, so the sum is a plain int.
+        assert (type(with_int), with_int) == (int, 8)
