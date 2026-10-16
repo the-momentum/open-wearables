@@ -24,6 +24,16 @@ class TestParseQueryDatetime:
             parse_query_datetime("invalid")
         assert "Invalid datetime format" in exc_info.value.detail
 
+    @pytest.mark.parametrize("value", ["inf", "-inf", "1e17", "1e20", "1e309"])
+    def test_out_of_range_timestamp_raises_parse_error(self, value: str) -> None:
+        with pytest.raises(DatetimeParseError):
+            parse_query_datetime(value)
+
+    @pytest.mark.parametrize("value", ["inf", "1e20"])
+    def test_out_of_range_end_bound_raises_parse_error(self, value: str) -> None:
+        with pytest.raises(DatetimeParseError):
+            parse_query_end_datetime(value)
+
 
 class TestParseQueryEndDatetime:
     """Test suite for parse_query_end_datetime."""

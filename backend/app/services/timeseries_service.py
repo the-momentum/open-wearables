@@ -9,9 +9,10 @@ from uuid import UUID
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource
-from app.repositories import DataPointSeriesRepository
+from app.models import DataPointSeries, DataSource, ProviderPriority
+from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
+from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import (
     Resolution,
     SeriesType,
@@ -34,8 +35,8 @@ from app.schemas.utils import (
 )
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
-from app.services.priority_service import priority_service
 from app.services.services import AppService
+from app.utils.context import current_sync_payload
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_bucket_cursor, encode_cursor
 
@@ -73,6 +74,7 @@ def _to_sample(
             source=data_source.source,
             device=data_source.device_model,
             device_type=data_source.device_type,
+            device_id=data_source.device_id,
         )
     return TimeSeriesSample(
         timestamp=timestamp,
@@ -122,6 +124,8 @@ class TimeSeriesService(
 
     def __init__(self, log: Logger):
         super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
+        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
+        self.device_type_priority_repo = DeviceTypePriorityRepository()
 
     def bulk_create_samples(
         self,
@@ -130,6 +134,8 @@ class TimeSeriesService(
     ) -> WriteCounts:
         counts = self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
         samples_copy = list(samples)
+        # Read here, not in the thread: a ContextVar does not cross into one.
+        sync = current_sync_payload()
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _start_webhook_thread(session: DbSession) -> None:  # noqa: ARG001
@@ -137,7 +143,7 @@ class TimeSeriesService(
                 return
             threading.Thread(
                 target=self._emit_timeseries_webhooks,
-                args=(samples_copy,),
+                args=(samples_copy, sync),
                 daemon=True,
             ).start()
 
@@ -146,6 +152,7 @@ class TimeSeriesService(
     @staticmethod
     def _emit_timeseries_webhooks(
         samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+        sync: dict[str, str] | None = None,
     ) -> None:
         """Emit one webhook event per (user, provider, series_type) batch."""
         if not samples:
@@ -179,6 +186,7 @@ class TimeSeriesService(
                     start_time=sorted_samples[0].recorded_at.isoformat(),
                     end_time=sorted_samples[-1].recorded_at.isoformat(),
                     samples=webhook_samples,
+                    sync=sync,
                 )
         except Exception:
             getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)
@@ -225,8 +233,8 @@ class TimeSeriesService(
             params,
             types,
             user_id,
-            priority_service.priority_repo.get_priority_order(db_session),
-            priority_service.device_type_priority_repo.get_priority_order(db_session),
+            self.provider_priority_repo.get_priority_order(db_session),
+            self.device_type_priority_repo.get_priority_order(db_session),
         )
 
     def _aggregated_timeseries(

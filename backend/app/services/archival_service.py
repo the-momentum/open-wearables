@@ -11,6 +11,7 @@ from app.repositories.archival_repository import (
     ArchivalSettingRepository,
     DataPointSeriesArchiveRepository,
 )
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.utils import (
     ArchivalSettingRead,
     ArchivalSettingUpdate,
@@ -71,6 +72,9 @@ class ArchivalService:
 
         archive_days = setting.archive_after_days
         delete_days = setting.delete_after_days
+        # Coverage is trimmed only once nothing older than the retention cutoff is left
+        # anywhere: both loops stop at their safety limits and resume on the next run.
+        everything_moved = True
         both_active = archive_days is not None and delete_days is not None
 
         # When both are active and delete threshold is at or below the archive
@@ -88,7 +92,7 @@ class ArchivalService:
                 archive_after_days=archive_days,
                 cutoff_date=str(cutoff),
             )
-            archived = self.archive_repo.archive_data_before(db, cutoff)
+            archived, everything_moved = self.archive_repo.archive_data_before(db, cutoff)
             summary["archived_rows"] = archived
             log_structured(
                 self.logger,
@@ -127,7 +131,7 @@ class ArchivalService:
                     delete_after_days=delete_days,
                     cutoff_date=str(cutoff),
                 )
-                deleted = self.archive_repo.delete_live_before(db, cutoff)
+                deleted, everything_moved = self.archive_repo.delete_live_before(db, cutoff)
                 summary["deleted_live_rows"] = deleted
                 log_structured(
                     self.logger,
@@ -139,6 +143,9 @@ class ArchivalService:
                 deleted_archive = self.archive_repo.delete_archive_before(db, cutoff)
                 if deleted_archive:
                     summary["deleted_rows"] = deleted_archive
+
+            if everything_moved:
+                data_type_coverage_repository.trim_series_before(db, cutoff)
 
         return summary
 

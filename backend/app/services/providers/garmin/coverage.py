@@ -20,6 +20,7 @@ ACTIVITY_SAMPLE_SERIES: list[tuple[str, SeriesType]] = [
 DAILIES_SERIES: list[tuple[str, SeriesType]] = [
     ("steps", SeriesType.steps),
     ("active_calories", SeriesType.active_energy),
+    ("bmr_calories", SeriesType.basal_energy),
     ("resting_heart_rate", SeriesType.resting_heart_rate),
     ("floors_climbed", SeriesType.flights_climbed),
     ("distance_meters", SeriesType.distance_walking_running),

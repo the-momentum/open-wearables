@@ -3,8 +3,9 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.constants.devices_map import normalize_device_model
 from app.schemas.enums import DeviceType, Resolution, SeriesType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
@@ -28,6 +29,8 @@ class TimeSeriesSampleBase(BaseModel):
     # treats None as False. Set explicitly by the provider save path (Garmin dailies vs epochs).
     is_daily_total: bool | None = None
 
+    _normalize_device_model = field_validator("device_model")(normalize_device_model)
+
 
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):
     id: UUID
@@ -36,6 +39,9 @@ class TimeSeriesSampleCreate(TimeSeriesSampleBase):
     user_connection_id: UUID | None = None
     software_version: str | None = None
     device_type: DeviceType | None = None
+    device_id: str | None = None
+    source_app_id: str | None = None
+    device_manufacturer: str | None = None
 
 
 class TimeSeriesSampleUpdate(TimeSeriesSampleBase):

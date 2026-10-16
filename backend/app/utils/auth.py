@@ -7,12 +7,22 @@ from jose import JWTError, jwt
 
 from app.config import settings
 from app.database import DbSession
-from app.models import Developer
+from app.models import ApiKey, Developer
+from app.repositories.api_key_repository import ApiKeyRepository
 from app.repositories.developer_repository import DeveloperRepository
 from app.schemas.auth import SDKAuthContext
+from app.utils.security import hash_api_key
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 developer_repository = DeveloperRepository(Developer)
+api_key_repository = ApiKeyRepository(ApiKey)
+
+
+def validate_api_key(db: DbSession, key: str | None) -> ApiKey:
+    """Validate the raw API key against stored hashes. Raises 401 if invalid."""
+    if not key or not (api_key := api_key_repository.get_by_hash(db, hash_api_key(key))):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
 
 
 async def get_current_developer(
@@ -107,9 +117,6 @@ async def get_sdk_auth(
 
     Returns SDKAuthContext with auth_type and relevant identifiers.
     """
-    # Import here to avoid circular imports
-    from app.services.api_key_service import api_key_service
-
     # Try SDK user token first
     if token:
         try:
@@ -130,7 +137,7 @@ async def get_sdk_auth(
 
     # Fall back to API key (backwards compatibility)
     if x_open_wearables_api_key:
-        api_key = api_key_service.validate_api_key(db, x_open_wearables_api_key)
+        api_key = validate_api_key(db, x_open_wearables_api_key)
         return SDKAuthContext(auth_type="api_key", api_key_id=str(api_key.id))
 
     raise HTTPException(

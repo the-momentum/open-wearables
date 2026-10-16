@@ -6,6 +6,8 @@ from typing import Any, cast
 
 from celery import Celery, signals
 from celery import current_app as current_celery_app
+from celery.concurrency import get_implementation
+from celery.concurrency.prefork import TaskPool as PreforkPool
 from celery.schedules import crontab
 
 from app.config import settings
@@ -82,9 +84,6 @@ def _worker_service_name_for(hostname: str | None) -> str:
 
 
 def _uses_prefork(pool_cls: Any) -> bool:
-    from celery.concurrency import get_implementation
-    from celery.concurrency.prefork import TaskPool as PreforkPool
-
     try:
         # Resolves aliases such as "prefork" and "processes" and "module:Class" paths.
         pool = get_implementation(pool_cls) if isinstance(pool_cls, str) else pool_cls
@@ -235,6 +234,13 @@ def create_celery() -> Celery:
         "close-stale-sync-runs": {
             "task": "app.integrations.celery.tasks.close_stale_sync_runs_task.close_stale_sync_runs",
             "schedule": float(settings.sync_run_sweep_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
+        # TODO: Remove after ~2027-03-01, with the task. Ends on a data_migration check once done.
+        "backfill-data-type-coverage": {
+            "task": "app.integrations.celery.tasks.backfill_data_type_coverage_task.backfill_data_type_coverage",
+            "schedule": crontab(minute=0),
             "args": (),
             "kwargs": {},
         },

@@ -9,6 +9,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 	if (!session) redirect(303, resolve('/login'));
 
 	if (!(await locals.auth.accessToken())) redirect(303, resolve('/login'));
+	if (session.passwordChange) redirect(303, resolve('/change-password'));
 
 	return { developer: session.developer };
 };

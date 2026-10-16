@@ -99,7 +99,7 @@ When you rebase and `main` gained a migration in the meantime, `alembic heads` s
 4. **Run quality checks** - Always run lint/format after changes
 5. **Use type hints** - All Python functions must have type annotations
 6. **Test your changes** - Run relevant tests before considering work complete
-7. **Update documentation** - When adding or changing endpoints, providers, integration logic, API contracts, or features, update the relevant pages in `docs/`
+7. **Update documentation** - When adding or changing endpoints, providers, API contracts, or features that integrators or operators can see or have to configure, update the relevant pages in `docs/`. Internal mechanisms (token handling, background tasks, tables that don't change the API) don't need docs
 8. **Update API Reference navigation** - When adding, removing, or renaming **external** API endpoints (tagged `External: *`), update the `API Reference` tab in `docs/docs.json` to keep the endpoint list in sync
 9. **Think beyond the current feature** - Before adding provider-specific or otherwise narrow logic, ask whether the same behavior will be needed elsewhere (other providers, entities). If likely, propose a shared abstraction upfront instead of a one-off implementation.
 

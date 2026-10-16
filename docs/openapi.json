@@ -682,6 +682,144 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/personal-record": {
+      "get": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Get Personal Record",
+        "description": "Returns the user's birth date, gender and sex. A field that was never set is null.",
+        "operationId": "get_personal_record_api_v1_users__user_id__personal_record_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Put Personal Record",
+        "description": "Sets the user's birth date, gender and sex.\n\nReplaces the whole record: a field left out of the body is set to null. Open Wearables uses\nthe birth date for the user's age, for example in the body summary and for the maximum heart\nrate behind the intensity minutes of the activity summary.",
+        "operationId": "put_personal_record_api_v1_users__user_id__personal_record_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalRecordUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/connections": {
       "get": {
         "tags": [
@@ -6373,6 +6511,7 @@
                                     "HKQuantityTypeIdentifierRestingHeartRate",
                                     "RESTING_HEART_RATE",
                                     "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                    "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD",
                                     "HEART_RATE_VARIABILITY",
                                     "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute",
                                     "HKQuantityTypeIdentifierWalkingHeartRateAverage",
@@ -11166,7 +11305,7 @@
               }
             ],
             "title": "Total Calories Kcal",
-            "description": "Active + basal energy",
+            "description": "Total energy burned: the provider's reported total when available, otherwise active + basal energy when both are reported; null otherwise",
             "example": 2150.0
           },
           "active_minutes": {
@@ -12315,6 +12454,17 @@
               }
             ],
             "title": "Original Source Name"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
           },
           "display_name": {
             "anyOf": [
@@ -13530,6 +13680,16 @@
               }
             ],
             "title": "Expires In"
+          },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "user_id": {
             "type": "string",
@@ -14790,6 +14950,130 @@
         ],
         "title": "PasswordChange"
       },
+      "PasswordChangePrompt": {
+        "type": "string",
+        "enum": [
+          "required",
+          "recommended"
+        ],
+        "title": "PasswordChangePrompt",
+        "description": "How the portal should ask a developer who signed in with the default password to change it."
+      },
+      "PersonalRecordResponse": {
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date",
+            "description": "Birth date of the user"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male",
+                  "nonbinary",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "description": "Optional self-reported gender"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex",
+            "description": "Biological sex, for norms that differ between women and men"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "PersonalRecordResponse"
+      },
+      "PersonalRecordUpdate": {
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date",
+            "description": "Birth date of the user"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male",
+                  "nonbinary",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "description": "Optional self-reported gender"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex",
+            "description": "Biological sex, for norms that differ between women and men"
+          }
+        },
+        "type": "object",
+        "title": "PersonalRecordUpdate",
+        "description": "The whole record: a field left out is stored as null."
+      },
       "PowerZone": {
         "properties": {
           "zone": {
@@ -15807,6 +16091,7 @@
           "flights_climbed",
           "average_met",
           "active_time",
+          "total_energy",
           "distance_walking_running",
           "distance_cycling",
           "distance_swimming",
@@ -16686,6 +16971,18 @@
               }
             ],
             "example": "phone"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "example": "R9ZW30ABC12"
           },
           "device_name": {
             "anyOf": [
@@ -17946,6 +18243,16 @@
               }
             ],
             "title": "Expires In"
+          },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

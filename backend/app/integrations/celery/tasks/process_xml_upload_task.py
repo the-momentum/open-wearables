@@ -13,6 +13,7 @@ from app.schemas.providers.apple.apple_xml import XMLParseStats
 from app.schemas.sync_status import (
     DataTypeKind,
     DataTypeOutcome,
+    SyncRunContext,
     SyncScope,
     SyncSource,
     SyncStatus,
@@ -29,6 +30,7 @@ from app.services.sync_status_service import (
     try_record_data_types,
 )
 from app.services.timeseries_service import timeseries_service
+from app.utils.context import sync_run_context
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -87,18 +89,22 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         user_uuid = None
 
     run_id = new_run_id(prefix="xml")
+    run = SyncRunContext(run_id=run_id, source=SyncSource.XML_IMPORT, scope=SyncScope.HISTORICAL)
     if user_uuid is not None:
         emit_sync_started(
             user_uuid,
             "apple",
-            SyncSource.XML_IMPORT,
-            scope=SyncScope.HISTORICAL,
-            run_id=run_id,
+            run.source,
+            scope=run.scope,
+            run_id=run.run_id,
             message=f"Importing Apple Health XML file {filename}",
             metadata={"filename": filename},
         )
 
-    with SessionLocal() as db:
+    with (
+        sync_run_context(run),
+        SessionLocal() as db,
+    ):
         try:
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
@@ -113,15 +119,15 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                 emit_sync_completed(
                     user_uuid,
                     "apple",
-                    SyncSource.XML_IMPORT,
-                    scope=SyncScope.HISTORICAL,
-                    run_id=run_id,
+                    run.source,
+                    scope=run.scope,
+                    run_id=run.run_id,
                     status=run_status_from(outcomes),
                     message="Apple Health XML import completed",
                     items_processed=stats.records.processed + stats.workouts.processed + stats.sleep.processed,
                     metadata={"filename": filename},
                 )
-                try_record_data_types(run_id, outcomes, scope=SyncScope.HISTORICAL)
+                try_record_data_types(run.run_id, outcomes, scope=run.scope)
 
             return {
                 "user_id": user_id,
@@ -144,9 +150,9 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                 emit_sync_failed(
                     user_uuid,
                     "apple",
-                    SyncSource.XML_IMPORT,
-                    scope=SyncScope.HISTORICAL,
-                    run_id=run_id,
+                    run.source,
+                    scope=run.scope,
+                    run_id=run.run_id,
                     error=str(e),
                     message=f"Apple Health XML import failed: {filename}",
                     metadata={"filename": filename},

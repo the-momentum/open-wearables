@@ -9,7 +9,7 @@ Usage:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
@@ -102,6 +102,16 @@ class SeriesTypeDefinitionFactory(BaseFactory):
             if existing:
                 return existing
         return cls(id=82, code="basal_energy", unit="kcal")
+
+    @classmethod
+    def get_or_create_total_energy(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded total_energy series type (ID=89)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 89).first()
+            if existing:
+                return existing
+        return cls(id=89, code="total_energy", unit="kcal")
 
     @classmethod
     def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
@@ -398,7 +408,8 @@ class UserConnectionFactory(BaseFactory):
     provider_username = factory.Faker("user_name")
     access_token = LazyFunction(lambda: f"access_{uuid4().hex}")  # Optional for SDK providers
     refresh_token = LazyFunction(lambda: f"refresh_{uuid4().hex}")
-    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))  # Optional for SDK providers
+    # Optional for SDK providers
+    token_expires_at = LazyFunction(lambda: datetime.now(timezone.utc) + timedelta(days=1))
     scope = "read_all"
     status = ConnectionStatus.ACTIVE
     last_synced_at = None

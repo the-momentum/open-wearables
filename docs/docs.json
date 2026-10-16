@@ -208,6 +208,8 @@
               "POST /api/v1/users",
               "GET /api/v1/users/{user_id}",
               "PATCH /api/v1/users/{user_id}",
+              "GET /api/v1/users/{user_id}/personal-record",
+              "PUT /api/v1/users/{user_id}/personal-record",
               "DELETE /api/v1/users/{user_id}"
             ]
           },

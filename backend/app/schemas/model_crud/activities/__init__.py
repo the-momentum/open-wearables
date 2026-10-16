@@ -38,6 +38,7 @@ from .personal_record import (
     PersonalRecordCreate,
     PersonalRecordResponse,
     PersonalRecordUpdate,
+    sex_to_db,
 )
 from .sleep import SleepStage
 
@@ -69,6 +70,7 @@ __all__ = [
     "PersonalRecordCreate",
     "PersonalRecordUpdate",
     "PersonalRecordResponse",
+    "sex_to_db",
     # MenstrualCycle
     "MenstrualCycleDetailCreate",
     # Meal

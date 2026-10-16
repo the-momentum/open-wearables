@@ -54,6 +54,9 @@ def parse_query_datetime(dt_str: str) -> datetime:
     try:
         timestamp = float(dt_str)
         return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    except (OverflowError, OSError):
+        # "inf", "1e17", "1e20", ... parse as floats but do not fit a datetime (OSError on some platforms)
+        raise DatetimeParseError(dt_str)
     except ValueError:
         pass
 

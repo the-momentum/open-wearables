@@ -10,10 +10,10 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import { menuItemClass } from '$lib/components/ui/menu';
 	import { pairingLink } from '$lib/pairing/links';
-	import type { UserDetail } from '$lib/users/types';
+	import type { User } from '$lib/users/types';
 	import { createCopier } from '$lib/utils/clipboard.svelte';
 
-	let { user, ondelete }: { user: UserDetail; ondelete: () => void } = $props();
+	let { user, ondelete }: { user: User; ondelete: () => void } = $props();
 
 	let menuOpen = $state(false);
 	const copier = createCopier();

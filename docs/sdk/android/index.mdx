@@ -62,7 +62,7 @@ Then add the `sdk` module in your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.the-momentum.open_wearables_android_sdk:sdk:v0.12.0")
+    implementation("com.github.the-momentum.open_wearables_android_sdk:sdk:v0.13.1")
 }
 ```
 
@@ -96,6 +96,7 @@ The SDK declares these permissions automatically (merged via manifest):
   | `INTERNET` | Network access |
   | `ACCESS_NETWORK_STATE` | Network monitoring |
   | `health.READ_HEALTH_DATA_IN_BACKGROUND` | Background health data access |
+  | `health.READ_HEALTH_DATA_HISTORY` | Health data older than 30 days |
   | `health.READ_STEPS` | Step count |
   | `health.READ_HEART_RATE` | Heart rate |
   | `health.READ_RESTING_HEART_RATE` | Resting heart rate |
@@ -112,6 +113,10 @@ The SDK declares these permissions automatically (merged via manifest):
   | `health.READ_LEAN_BODY_MASS` | Lean body mass |
   | `health.READ_FLOORS_CLIMBED` | Flights climbed |
   | `health.READ_DISTANCE` | Walking/running distance |
+  | `health.READ_SPEED` | Speed |
+  | `health.READ_POWER` | Power |
+  | `health.READ_CYCLING_PEDALING_CADENCE` | Cycling cadence |
+  | `health.READ_TOTAL_CALORIES_BURNED` | Total calories burned |
   | `health.READ_HYDRATION` | Water intake |
   | `health.READ_VO2_MAX` | VO2 max |
   | `health.READ_RESPIRATORY_RATE` | Respiratory rate |
@@ -266,6 +271,10 @@ if (!selected) {
     | `flightsClimbed` | Floors climbed |
     | `distanceWalkingRunning` | Walking/running distance |
     | `distanceCycling` | Cycling distance |
+    | `speed` / `runningSpeed` / `cyclingSpeed` | Speed |
+    | `power` / `runningPower` / `cyclingPower` | Power |
+    | `cyclingPedalingCadence` / `cyclingCadence` | Cycling cadence |
+    | `totalCaloriesBurned` / `totalEnergy` | Total calories for workout sessions (not stored as a time series) |
     | `water` / `dietaryWater` | Water intake |
     | `workout` | All workout types with segments, laps, route, samples |
     | `sleep` | Sleep sessions with stages (awake, light, deep, REM) |

@@ -1,5 +1,6 @@
 import json
 import time
+from collections import Counter
 from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
@@ -48,7 +49,7 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
-from .device_resolution import extract_device_info, extract_device_type
+from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from .sleep_service import handle_sleep_data
 
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
@@ -86,6 +87,7 @@ class LoadDataResult(TypedDict):
     types: list[str]  # series types written
     sleep_saved: int
     dropped: list[InvalidRecord]
+    unsupported_types: dict[str, int]  # record types with no series mapping, skipped
     validation_ms: float
 
 
@@ -166,6 +168,7 @@ class ImportService:
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
             device_type = extract_device_type(wjson.source)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
@@ -177,6 +180,9 @@ class ImportService:
                 provider,
                 original_source_name,
                 device_type,
+                device_id,
+                source_app_id,
+                device_manufacturer,
             )
 
             if duration is None:
@@ -199,6 +205,9 @@ class ImportService:
                 source=original_source_name,
                 software_version=software_version,
                 device_type=device_type,
+                device_id=device_id,
+                source_app_id=source_app_id,
+                device_manufacturer=device_manufacturer,
                 provider=provider,
                 user_id=user_uuid,
             )
@@ -313,6 +322,7 @@ class ImportService:
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
+            device_id, source_app_id, device_manufacturer = extract_device_ids(rjson.source)
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -322,6 +332,9 @@ class ImportService:
                 device_model=device_model,
                 software_version=software_version,
                 device_type=extract_device_type(rjson.source),
+                device_id=device_id,
+                source_app_id=source_app_id,
+                device_manufacturer=device_manufacturer,
                 provider=provider,
                 recorded_at=rjson.startDate,
                 zone_offset=rjson.zoneOffset,
@@ -359,6 +372,9 @@ class ImportService:
         provider: str,
         source_name: str | None,
         device_type: DeviceType | None = None,
+        device_id: str | None = None,
+        source_app_id: str | None = None,
+        device_manufacturer: str | None = None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
         Returns a tuple with the metrics, time series samples, and duration.
@@ -367,7 +383,6 @@ class ImportService:
             return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
-        stats_dict["energy_burned"] = Decimal("0")
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
 
@@ -387,6 +402,9 @@ class ImportService:
                         device_model=device_model,
                         software_version=software_version,
                         device_type=device_type,
+                        device_id=device_id,
+                        source_app_id=source_app_id,
+                        device_manufacturer=device_manufacturer,
                         provider=provider,
                         recorded_at=end_date,
                         zone_offset=zone_offset,
@@ -407,7 +425,9 @@ class ImportService:
                     | WorkoutStatisticType.CALORIES
                     | WorkoutStatisticType.TOTAL_CALORIES
                 ):
-                    stats_dict["energy_burned"] += value
+                    # Summed across the energy statistics, and left unset when the payload reports none
+                    energy = stats_dict.get("energy_burned")
+                    stats_dict["energy_burned"] = value if energy is None else energy + value
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:
@@ -459,6 +479,12 @@ class ImportService:
                 nutrient_records.setdefault(rjson.parentId, []).append(rjson)
             else:
                 records.append(rjson)
+
+        # Types this backend can't map (e.g. sent by a newer SDK) are skipped while
+        # building samples; count them so the summary log shows what was dropped.
+        unsupported_types = Counter(
+            rjson.type or "" for rjson in records if get_series_type_from_metric_type(rjson.type or "") is None
+        )
 
         # Process meals in batch
         meal_bundles = list(self._build_meal_bundles(correlation_records, nutrient_records, request.provider, user_id))
@@ -519,6 +545,7 @@ class ImportService:
             "types": sorted(types),
             "sleep_saved": sleep_saved,
             "dropped": dropped,
+            "unsupported_types": dict(unsupported_types),
             "validation_ms": validation_ms,
         }
 
@@ -586,6 +613,7 @@ class ImportService:
                 records_updated=saved_counts["records_updated"],
                 workouts_saved=saved_counts["workouts_saved"],
                 sleep_saved=saved_counts["sleep_saved"],
+                unsupported_types=saved_counts["unsupported_types"],
                 validation_ms=saved_counts["validation_ms"],
             )
 

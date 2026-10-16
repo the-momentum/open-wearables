@@ -5,15 +5,13 @@ import warnings
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 from urllib.parse import quote
-
-if TYPE_CHECKING:
-    from app.schemas.enums import ProviderName
 
 from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.schemas.enums import ProviderName
 from app.schemas.enums.data_granularity import DataGranularity
 from app.utils.config_utils import (
     AccessLogLevel,
@@ -24,6 +22,9 @@ from app.utils.config_utils import (
     LogLevel,
     parse_duration,
 )
+
+# Public in .env.example and the docs, so an account still using it is open to anyone.
+DEFAULT_ADMIN_PASSWORD = "your-secure-password"
 
 
 class Settings(BaseSettings):
@@ -81,6 +82,9 @@ class Settings(BaseSettings):
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
     SENTRY_SERVER_NAME: str | None = None
+    # Sends request bodies, stack-frame locals, log breadcrumbs and unfiltered error text to
+    # Sentry. These carry health data and PII - only for dev/staging or a Sentry you may store PHI in.
+    SENTRY_SEND_SENSITIVE_DATA: bool = False
     GIT_SHA: str | None = None
 
     # AUTH SETTINGS
@@ -102,7 +106,7 @@ class Settings(BaseSettings):
 
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
-    admin_password: SecretStr = SecretStr("your-secure-password")
+    admin_password: SecretStr = SecretStr(DEFAULT_ADMIN_PASSWORD)
 
     # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
@@ -336,6 +340,10 @@ class Settings(BaseSettings):
     svix_jwt_secret: SecretStr | None = None
     # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
     svix_auth_token: SecretStr | None = None
+    # How long Svix keeps each message payload (health data). Svix accepts 5-90 days.
+    # Must outlast the retry schedule (~28h, up to ~66h with Retry-After): Svix silently
+    # drops a retry once the payload is gone.
+    outgoing_webhook_payload_retention_days: int = Field(7, ge=5, le=90)
 
     # TELEMETRY SETTINGS
     # Anonymous usage telemetry: aggregate counts and config flags only, never
@@ -476,9 +484,7 @@ class Settings(BaseSettings):
         Google Health was reachable at /google/ before it was split from Health Connect,
         and that path is in every pre-0.8.1 deployment's registered redirect URI.
         """
-        from app.schemas.enums import ProviderName as _ProviderName  # runtime-only; see TYPE_CHECKING above
-
-        if provider is _ProviderName.GOOGLE_HEALTH and self.google_legacy_oauth_path:
+        if provider is ProviderName.GOOGLE_HEALTH and self.google_legacy_oauth_path:
             return "google"
         return provider.value
 
@@ -534,6 +540,9 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def _get_settings() -> Settings:
+    # Tests set this so a developer's local config/.env can't change test behaviour
+    if os.environ.get("OW_IGNORE_ENV_FILE"):
+        return Settings(_env_file=None)
     return Settings()
 
 

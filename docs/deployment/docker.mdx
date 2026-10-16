@@ -21,6 +21,8 @@ The single backend image covers every backend role. The start command selects wh
 | `scripts/start/beat.sh` | Celery beat (scheduler) |
 | `scripts/start/flower.sh` | Flower (Celery monitoring UI, port `5555`) |
 
+Once the service is running, the start commands pass `SIGTERM` on to it, so `docker stop` shuts down cleanly. The worker container stops taking new tasks and finishes the ones already running. If that takes longer than the stop timeout (10 seconds by default), Docker kills the remaining tasks; raise `stop_grace_period` on the worker service if your syncs or imports run longer. A stop during startup, while `app.sh` applies migrations and seed scripts or `flower.sh` waits for the workers, is not passed on, so the container may keep running until the stop timeout runs out.
+
 ## Image tags
 
 Both images share the same tag scheme. Choose a tag based on how much stability you need:
@@ -167,6 +169,10 @@ The defaults in `.env.example` are development values. Override at least these f
 
 Open Wearables does not use `OTEL_PROPAGATORS`, but FastAPI loads the propagators it lists at startup. If your platform sets it to one that is not installed in the image, such as `b3`, every backend container fails with `ValueError: Propagator b3 not found`. Unset it for these containers.
 
+### Mobile SDK syncs
+
+By default every mobile SDK sync payload is queued in Redis. That's fine for ongoing syncs, but a historical backfill sends a lot of data at once. How much depends on whether your app runs a backfill and how far back it goes, which you set in the SDK. With many users backfilling long periods, Redis can run out of memory. In that case we recommend setting `SDK_PAYLOAD_S3_OFFLOAD=true`. Payloads then go to an S3-compatible bucket and Redis only holds a reference. See [SDK Payload Offload](/dev-guides/raw-payload-storage#sdk-payload-offload) for the required bucket settings.
+
 ### Running it
 
 <Steps>
@@ -213,7 +219,9 @@ Structured app log lines keep the same fields in `legacy` and `json`: `timestamp
 
 `LOG_LEVEL` (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, case-insensitive) drops log lines below that level, structured app logs included. It cannot lower the level of libraries that are kept quieter on purpose (`httpx` and `httpcore` stay at `WARNING`). When it is not set, other logs start at `INFO` and structured app logs are not filtered.
 
-`LOG_LEVEL` also changes what Sentry sees from standard-library log records (`logger.error(...)` and similar) of app, Celery and uvicorn code: with `CRITICAL`, their errors no longer create Sentry events, and above `INFO` their `INFO` records no longer become breadcrumbs. Libraries with a level of their own (`httpx`, `httpcore`) still report to Sentry as before. `log_structured` lines never reach Sentry, whatever the level, and exceptions captured explicitly (`capture_exception`) or left unhandled always do. `WARN` and `FATAL` are accepted as aliases. Any other value, for example one your platform sets for another tool, is ignored with a warning at startup, as if `LOG_LEVEL` were not set.
+`LOG_LEVEL` also changes what Sentry sees from standard-library log records (`logger.error(...)` and similar) of app, Celery and uvicorn code: with `CRITICAL`, their errors no longer create Sentry events. Log records below `ERROR` never become Sentry breadcrumbs, whatever the level, since free-form log text can carry personal or health data (unless `SENTRY_SEND_SENSITIVE_DATA` is on, see below). Libraries with a level of their own (`httpx`, `httpcore`) still report errors to Sentry as before. `log_structured` lines never reach Sentry, whatever the level, and exceptions captured explicitly (`capture_exception`) or left unhandled always do. `WARN` and `FATAL` are accepted as aliases. Any other value, for example one your platform sets for another tool, is ignored with a warning at startup, as if `LOG_LEVEL` were not set.
+
+By default Sentry events carry no request bodies, query-string values, stack-frame local variables, emails or raw validation input, since Open Wearables handles health data. Set `SENTRY_SEND_SENSITIVE_DATA=true` to send request bodies, local variables of app code and log breadcrumbs, which makes debugging easier. Credentials (tokens, API keys, cookies, `Authorization`) stay masked. These events contain health data and personal data, so enable it only on dev/staging or when your Sentry is approved to store such data. In production, prefer [raw payload storage](/dev-guides/raw-payload-storage): Sentry errors then link to the stored payload instead of including it.
 
 <Note>
   The default will change from `legacy` to `text` in a future release. Set `LOG_FORMAT` explicitly if you depend on the current output.

@@ -1,9 +1,11 @@
 from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
+from .data_migration import DataMigration
 from .data_point_series import DataPointSeries
 from .data_point_series_archive import DataPointSeriesArchive
 from .data_source import DataSource
+from .data_type_coverage import DataTypeCoverage
 from .developer import Developer
 from .device_type_priority import DeviceTypePriority
 from .event_record import EventRecord
@@ -37,6 +39,7 @@ __all__ = [
     "ApiKey",
     "Application",
     "ArchivalSetting",
+    "DataMigration",
     "Developer",
     "DataSource",
     "DataPointSeriesArchive",
@@ -56,6 +59,7 @@ __all__ = [
     "WorkoutDetails",
     "PersonalRecord",
     "DataPointSeries",
+    "DataTypeCoverage",
     "SeriesTypeDefinition",
     "SyncRun",
     "SyncRunDataType",
