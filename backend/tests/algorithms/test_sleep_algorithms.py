@@ -7,7 +7,7 @@ Covers every public (and key private) function in:
 These tests exercise pure-Python logic only — no database, no factories.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,12 +16,15 @@ from app.algorithms.sleep import (
     STAGE_SCORE_BOUNDS,
     _calculate_stage_score,
     _score_duration_hours,
+    awakenings,
     calculate_bedtime_consistency_score,
     calculate_duration_score,
     calculate_interruptions_score,
     calculate_overall_sleep_score,
     calculate_total_stages_score,
 )
+from app.constants.sleep import SleepStageType
+from app.schemas.model_crud.activities.sleep import SleepStage
 
 # ---------------------------------------------------------------------------
 # app.algorithms.scoring_primitives
@@ -306,6 +309,53 @@ class TestCalculateBedtimeConsistencyScore:
 # ---------------------------------------------------------------------------
 # app.algorithms.sleep — interruptions scoring
 # ---------------------------------------------------------------------------
+
+
+class TestAwakenings:
+    """awakenings returns the minutes of each awakening between falling asleep and the final wake-up."""
+
+    @staticmethod
+    def _stages(*blocks: tuple[str, int]) -> list[SleepStage]:
+        """Back-to-back stages from (stage, minutes) pairs."""
+        stages = []
+        current = datetime(2026, 1, 1, 23, tzinfo=timezone.utc)
+        for stage, minutes in blocks:
+            end = current + timedelta(minutes=minutes)
+            stages.append(SleepStage(stage=SleepStageType(stage), start_time=current, end_time=end))
+            current = end
+        return stages
+
+    def test_no_stages(self) -> None:
+        assert awakenings([]) == []
+
+    def test_nothing_counts_without_a_sleep_stage(self) -> None:
+        assert awakenings(self._stages(("in_bed", 10), ("awake", 30))) == []
+
+    def test_awake_before_falling_asleep_and_after_the_final_wake_up_is_not_an_awakening(self) -> None:
+        stages = self._stages(("awake", 15), ("light", 60), ("awake", 10), ("deep", 60), ("awake", 20))
+        assert awakenings(stages) == [10.0]
+
+    def test_touching_awake_blocks_are_one_awakening(self) -> None:
+        stages = self._stages(("light", 60), ("awake", 8), ("awake", 7), ("awake", 14), ("deep", 60))
+        assert awakenings(stages) == [29.0]
+
+    def test_awake_blocks_stay_apart_across_a_gap(self) -> None:
+        light, first, _gap, second, deep = self._stages(
+            ("light", 60), ("awake", 4), ("light", 2), ("awake", 4), ("deep", 60)
+        )
+        assert awakenings([light, first, second, deep]) == [4.0, 4.0]
+
+    def test_in_bed_and_unknown_do_not_open_or_close_the_sleep_period(self) -> None:
+        stages = self._stages(
+            ("in_bed", 10), ("awake", 20), ("light", 60), ("awake", 10), ("deep", 60), ("unknown", 10), ("awake", 5)
+        )
+        assert awakenings(stages) == [10.0]
+
+    def test_orders_stages_by_time(self) -> None:
+        fell_asleep, light, awakening, deep, woke_up = self._stages(
+            ("awake", 15), ("light", 60), ("awake", 10), ("deep", 60), ("awake", 20)
+        )
+        assert awakenings([light, fell_asleep, woke_up, deep, awakening]) == [10.0]
 
 
 class TestCalculateInterruptionsScore:
