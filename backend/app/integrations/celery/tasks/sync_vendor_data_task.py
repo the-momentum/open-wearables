@@ -11,7 +11,7 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
+from app.schemas.responses.upload import ProviderSyncResult, Sync247Summary, SyncVendorDataResult
 from app.schemas.sync_status import (
     DataTypeKind,
     DataTypeOutcome,
@@ -24,7 +24,7 @@ from app.schemas.sync_status import (
 from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.sync_247_result import DataTypeOutcome as Sync247DataTypeOutcome
-from app.services.providers.sync_247_result import Sync247Status
+from app.services.providers.sync_247_result import error_code_of
 from app.services.sync_coordination import (
     bind_primary_lease,
     clear_primary_lease,
@@ -49,12 +49,6 @@ from app.utils.sync_params import build_sync_params
 
 logger = getLogger(__name__)
 
-_SYNC_247_STATUS = {
-    Sync247Status.PARTIAL: SyncStatus.PARTIAL,
-    Sync247Status.FAILED: SyncStatus.FAILED,
-    Sync247Status.SKIPPED: SyncStatus.SKIPPED,
-}
-
 
 def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
     """Best-effort sync status emission — never aborts the sync flow."""
@@ -73,12 +67,6 @@ def _written_status(written: int) -> SyncStatus:
     return SyncStatus.SUCCESS if written else SyncStatus.SKIPPED
 
 
-def _sync_status_of(outcome: Sync247DataTypeOutcome) -> SyncStatus:
-    if outcome.status is Sync247Status.OK:
-        return _written_status(outcome.rows_written)
-    return _SYNC_247_STATUS[outcome.status]
-
-
 def _task_outcomes(task: str, outcome: Sync247DataTypeOutcome) -> list[DataTypeOutcome]:
     """Per-series-type outcomes for one provider fetch task.
 
@@ -87,7 +75,7 @@ def _task_outcomes(task: str, outcome: Sync247DataTypeOutcome) -> list[DataTypeO
     failed, or wrote without that breakdown, reports as itself, with its error.
     """
     counts = outcome.counts
-    if outcome.status is Sync247Status.OK and counts is not None and counts.by_type:
+    if not outcome.error_codes and counts is not None and counts.by_type:
         return [
             DataTypeOutcome(
                 data_type=series_type,
@@ -106,14 +94,14 @@ def _task_outcomes(task: str, outcome: Sync247DataTypeOutcome) -> list[DataTypeO
             data_type=task,
             kind=DataTypeKind.TASK,
             native_type=task,
-            status=_sync_status_of(outcome),
+            status=outcome.status,
             items_inserted=counts.inserted if counts is not None else 0,
             items_updated=counts.updated if counts is not None else 0,
             # Without a split, only the provider's row count is known.
             reported_records=None if counts is not None else outcome.rows_written,
             covered_start=counts.covered_start if counts is not None else None,
             covered_end=counts.covered_end if counts is not None else None,
-            error=outcome.error,
+            error_code=outcome.error_code,
         )
     ]
 
@@ -453,11 +441,8 @@ def sync_vendor_data(
                             )
                             # An all-failed run is a failure, not an empty success: every data
                             # type the provider attempted raised (expired token, unlinked account).
-                            provider_result.params["data_247"] = {
-                                "success": not results_247.all_failed,
-                                "saved": True,
-                                **results_247.as_dict(),
-                            }
+                            summary_247 = results_247.summary().model_dump(mode="json")
+                            provider_result.params["data_247"] = summary_247
                             pull_inserted += results_247.inserted
                             pull_updated += results_247.updated
                             pull_written += results_247.rows_written
@@ -470,7 +455,7 @@ def sync_vendor_data(
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
-                                data_247=results_247.as_dict(),
+                                data_247=summary_247,
                             )
                         except Exception as e:
                             log_structured(
@@ -492,7 +477,14 @@ def sync_vendor_data(
                                     "trace_id": trace_id,
                                 },
                             )
-                            provider_result.params["data_247"] = {"success": False, "error": str(e)}
+                            provider_result.params["data_247"] = Sync247Summary(
+                                status=SyncStatus.FAILED,
+                                items_inserted=None,
+                                items_updated=None,
+                                items_reported=None,
+                                error_code=error_code_of(e),
+                                tasks={},
+                            ).model_dump(mode="json")
                             data_type_outcomes.append(
                                 DataTypeOutcome(
                                     data_type="data_247",

@@ -15,10 +15,11 @@ import pytest
 from fastapi import HTTPException
 
 from app.repositories.data_point_series_repository import WriteCounts
+from app.schemas.sync_status import SyncStatus
 from app.services.providers.sync_247_result import (
     Sync247Result,
     Sync247Run,
-    Sync247Status,
+    error_code_of,
 )
 
 
@@ -70,14 +71,14 @@ class TestSync247Result:
         result = Sync247Result(provider="p")
         result.record("heart_rate", WriteCounts(1, 0))
         result.record("spo2", 2)
-        result.fail("spo2", "partial page failure")
+        result.fail("spo2", RuntimeError("partial page failure"))
         result.fail("steps", RuntimeError("boom"))
-        result.skip("vo2_max", "not in window")
+        result.skip("vo2_max")
 
-        assert result.outcomes["heart_rate"].status is Sync247Status.OK
-        assert result.outcomes["spo2"].status is Sync247Status.PARTIAL
-        assert result.outcomes["steps"].status is Sync247Status.FAILED
-        assert result.outcomes["vo2_max"].status is Sync247Status.SKIPPED
+        assert result.outcomes["heart_rate"].status is SyncStatus.SUCCESS
+        assert result.outcomes["spo2"].status is SyncStatus.PARTIAL
+        assert result.outcomes["steps"].status is SyncStatus.FAILED
+        assert result.outcomes["vo2_max"].status is SyncStatus.SKIPPED
 
     def test_all_failed_only_when_every_attempted_type_failed(self) -> None:
         result = Sync247Result(provider="p")
@@ -86,7 +87,7 @@ class TestSync247Result:
         result.skip("spo2")
 
         assert result.all_failed
-        assert result.failures == {"heart_rate": "401", "sleep": "401"}
+        assert result.failures == {"heart_rate": "RuntimeError", "sleep": "RuntimeError"}
 
         result.record("steps", 5)
         assert not result.all_failed
@@ -94,7 +95,7 @@ class TestSync247Result:
 
     def test_empty_result_is_not_a_failure(self) -> None:
         # A provider whose data arrives by push attempts nothing at all.
-        assert not Sync247Result(provider="p", note="push only").all_failed
+        assert not Sync247Result(provider="p").all_failed
 
     def test_add_accumulates_across_chunks(self) -> None:
         result = Sync247Result(provider="p")
@@ -114,8 +115,8 @@ class TestSync247Result:
         result.fail("sleep", RuntimeError("page 2 failed"))
         result.record("sleep", 4)
 
-        assert result.outcomes["sleep"].status is Sync247Status.PARTIAL
-        assert result.failures == {"sleep": "page 2 failed"}
+        assert result.outcomes["sleep"].status is SyncStatus.PARTIAL
+        assert result.failures == {"sleep": "RuntimeError"}
 
     def test_behaves_as_a_mapping_of_data_type_to_rows_written(self) -> None:
         result = Sync247Result(provider="p")
@@ -127,27 +128,66 @@ class TestSync247Result:
         assert len(result) == 2
         assert set(result) == {"heart_rate", "sleep"}
 
-    def test_as_dict_carries_status_per_type_and_omits_defaults(self) -> None:
-        result = Sync247Result(provider="p", note="partial window")
+    def test_as_dict_has_every_key_and_null_where_unknown(self) -> None:
+        result = Sync247Result(provider="p")
         result.record("heart_rate", WriteCounts(4, 1), truncated=True)
-        result.fail("steps", RuntimeError("boom"))
+        result.record("sleep", 3)
+        result.fail("steps", HTTPException(status_code=401))
+        result.skip("vo2_max")
 
-        payload = result.as_dict()
+        payload = result.summary().model_dump(mode="json")
 
-        assert payload["provider"] == "p"
-        assert payload["rows_written"] == 4 + 1
-        assert payload["inserted"] == 4
-        assert payload["updated"] == 1
-        assert payload["truncated"] == ["heart_rate"]
-        assert payload["note"] == "partial window"
-        assert payload["types"]["heart_rate"] == {
-            "status": "ok",
-            "rows_written": 5,
-            "inserted": 4,
-            "updated": 1,
-            "truncated": True,
+        assert payload["status"] == "partial"
+        assert (payload["items_inserted"], payload["items_updated"], payload["items_reported"]) == (4, 1, 3)
+        assert payload["error_code"] is None
+        assert payload["tasks"] == {
+            "heart_rate": {
+                "status": "success",
+                "items_inserted": 4,
+                "items_updated": 1,
+                "items_reported": None,
+                "items_skipped": 0,
+                "truncated": True,
+                "error_code": None,
+            },
+            "sleep": {
+                "status": "success",
+                "items_inserted": None,
+                "items_updated": None,
+                "items_reported": 3,
+                "items_skipped": 0,
+                "truncated": False,
+                "error_code": None,
+            },
+            "steps": {
+                "status": "failed",
+                "items_inserted": None,
+                "items_updated": None,
+                "items_reported": 0,
+                "items_skipped": 0,
+                "truncated": False,
+                "error_code": "http_401",
+            },
+            "vo2_max": {
+                "status": "skipped",
+                "items_inserted": None,
+                "items_updated": None,
+                "items_reported": None,
+                "items_skipped": 0,
+                "truncated": False,
+                "error_code": None,
+            },
         }
-        assert payload["types"]["steps"] == {"status": "failed", "rows_written": 0, "error": "boom"}
+
+    def test_as_dict_of_a_run_with_nothing_attempted_is_skipped(self) -> None:
+        payload = Sync247Result(provider="p").summary().model_dump(mode="json")
+
+        assert (payload["status"], payload["items_reported"], payload["tasks"]) == ("skipped", None, {})
+
+
+def test_error_code_carries_the_http_status_or_the_error_type_never_its_text() -> None:
+    assert error_code_of(HTTPException(status_code=403, detail="user 42 revoked")) == "http_403"
+    assert error_code_of(RuntimeError("heart_rate=72 violates constraint")) == "RuntimeError"
 
 
 class TestSync247RunStep:
@@ -158,11 +198,11 @@ class TestSync247RunStep:
         assert run.result["heart_rate"] == 4
         assert run.result.inserted == 3
 
-    def test_step_with_no_recording_counts_as_an_empty_success(self, run: Sync247Run) -> None:
+    def test_step_that_writes_nothing_is_skipped(self, run: Sync247Run) -> None:
         with run.step("spo2"):
             pass
 
-        assert run.result.outcomes["spo2"].status is Sync247Status.OK
+        assert run.result.outcomes["spo2"].status is SyncStatus.SKIPPED
         assert run.result.rows_written == 0
 
     def test_failure_is_isolated_to_its_data_type(self, run: Sync247Run) -> None:
@@ -175,7 +215,7 @@ class TestSync247RunStep:
         with run.step("steps") as step:
             step.record(WriteCounts(1, 0))
 
-        assert run.result.failures == {"recovery": "provider 500"}
+        assert run.result.failures == {"recovery": "RuntimeError"}
         assert run.result.rows_written == 3
         assert not run.result.all_failed
         run.db.rollback.assert_called_once()
@@ -200,12 +240,12 @@ class TestSync247RunStep:
             step.record(2)
 
         outcome = run.result.outcomes["sleep"]
-        assert outcome.status is Sync247Status.FAILED
+        assert outcome.status is SyncStatus.FAILED
         assert outcome.rows_written == 0
-        assert run.result.failures == {"sleep": "deferred constraint"}
+        assert run.result.failures == {"sleep": "RuntimeError"}
         run.db.rollback.assert_called_once()
         # the next data type still ran
-        assert run.result.outcomes["recovery"].status is Sync247Status.OK
+        assert run.result.outcomes["recovery"].status is SyncStatus.SUCCESS
 
     def test_savepoint_confines_the_write_without_a_full_rollback(self, run: Sync247Run) -> None:
         with run.step("heart_rate", savepoint=True):
@@ -213,7 +253,7 @@ class TestSync247RunStep:
 
         run.db.begin_nested.assert_called_once()
         run.db.rollback.assert_not_called()
-        assert run.result.outcomes["heart_rate"].status is Sync247Status.FAILED
+        assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
 
     def test_fatal_errors_propagate_instead_of_being_recorded(self, run: Sync247Run) -> None:
         run.fatal = (HTTPException,)
@@ -237,7 +277,7 @@ class TestSync247RunStep:
         with run.step("activity") as step:
             step.record(WriteCounts(2, 0))
 
-        assert run.result.outcomes["sleep"].status is Sync247Status.SKIPPED
-        assert run.result.outcomes["activity"].status is Sync247Status.OK
+        assert run.result.outcomes["sleep"].status is SyncStatus.SKIPPED
+        assert run.result.outcomes["activity"].status is SyncStatus.SUCCESS
         assert run.result.rows_written == 2
         assert not run.result.all_failed

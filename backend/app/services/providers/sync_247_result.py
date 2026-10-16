@@ -16,23 +16,25 @@ import logging
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
+from app.schemas.responses.upload import Sync247Summary, Sync247TaskSummary
+from app.schemas.sync_status import SyncStatus
+from app.services.sync_status_service import run_status_from
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
-class Sync247Status(StrEnum):
-    """Per-data-type outcome of a 24/7 sync."""
+def error_code_of(error: BaseException) -> str:
+    """A short, value-free label for an error: the HTTP status when it has one, else its type.
 
-    OK = "ok"
-    PARTIAL = "partial"  # some records written, some attempts failed
-    FAILED = "failed"  # attempted, nothing written
-    SKIPPED = "skipped"  # not attempted (unsupported, or nothing to fetch)
+    The exception text is left out: a database error carries the rows it failed on.
+    """
+    status_code = getattr(error, "status_code", None) or getattr(getattr(error, "response", None), "status_code", None)
+    return f"http_{status_code}" if isinstance(status_code, int) else type(error).__name__
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,40 +49,32 @@ class DataTypeOutcome:
     counts: WriteCounts | None = None  # new-vs-updated split, when the write path reports one
     skipped: int = 0  # records deliberately not persisted (duplicates, unusable payloads)
     truncated: bool = False  # fetch stopped early (page cap / rate limit) — window is incomplete
-    errors: tuple[str, ...] = ()
+    error_codes: tuple[str, ...] = ()
     attempted: bool = True
-    reason: str | None = None  # why a data type was skipped
 
     @property
-    def status(self) -> Sync247Status:
+    def status(self) -> SyncStatus:
         if not self.attempted:
-            return Sync247Status.SKIPPED
-        if not self.errors:
-            return Sync247Status.OK
-        return Sync247Status.PARTIAL if self.rows_written else Sync247Status.FAILED
+            return SyncStatus.SKIPPED
+        if not self.error_codes:
+            return SyncStatus.SUCCESS if self.rows_written else SyncStatus.SKIPPED
+        return SyncStatus.PARTIAL if self.rows_written else SyncStatus.FAILED
 
     @property
-    def error(self) -> str | None:
-        """First error seen, the representative one for logs and the sync log."""
-        return self.errors[0] if self.errors else None
+    def error_code(self) -> str | None:
+        return self.error_codes[0] if self.error_codes else None
 
-    def as_dict(self) -> dict[str, Any]:
-        """Compact payload for the sync log — default-valued fields are omitted."""
-        payload: dict[str, Any] = {"status": self.status.value, "rows_written": self.rows_written}
-        if self.counts is not None:
-            payload["inserted"] = self.counts.inserted
-            payload["updated"] = self.counts.updated
-        if self.skipped:
-            payload["skipped"] = self.skipped
-        if self.truncated:
-            payload["truncated"] = True
-        if self.errors:
-            payload["error"] = self.errors[0]
-            if len(self.errors) > 1:
-                payload["error_count"] = len(self.errors)
-        if self.reason:
-            payload["reason"] = self.reason
-        return payload
+    def summary(self) -> Sync247TaskSummary:
+        split = self.counts
+        return Sync247TaskSummary(
+            status=self.status,
+            items_inserted=split.inserted if split is not None else None,
+            items_updated=split.updated if split is not None else None,
+            items_reported=self.rows_written if split is None and self.attempted else None,
+            items_skipped=self.skipped,
+            truncated=self.truncated,
+            error_code=self.error_code,
+        )
 
 
 @dataclass
@@ -95,7 +89,6 @@ class Sync247Result(Mapping[str, int]):
 
     provider: str
     outcomes: dict[str, DataTypeOutcome] = field(default_factory=dict)
-    note: str | None = None  # free-text run-level remark (e.g. "data arrives via webhooks")
 
     # -- recording -------------------------------------------------------------
 
@@ -113,7 +106,7 @@ class Sync247Result(Mapping[str, int]):
             counts=rows_written if isinstance(rows_written, WriteCounts) else None,
             skipped=skipped,
             truncated=truncated,
-            errors=self.outcomes[data_type].errors if data_type in self.outcomes else (),
+            error_codes=self.outcomes[data_type].error_codes if data_type in self.outcomes else (),
         )
 
     def add(
@@ -142,14 +135,16 @@ class Sync247Result(Mapping[str, int]):
             attempted=True,
         )
 
-    def fail(self, data_type: str, error: BaseException | str) -> None:
+    def fail(self, data_type: str, error: BaseException) -> None:
         """Mark an attempt at ``data_type`` as failed, keeping any rows already written."""
         current = self.outcomes.get(data_type, DataTypeOutcome())
-        self.outcomes[data_type] = replace(current, errors=(*current.errors, str(error)), attempted=True)
+        self.outcomes[data_type] = replace(
+            current, error_codes=(*current.error_codes, error_code_of(error)), attempted=True
+        )
 
-    def skip(self, data_type: str, reason: str | None = None) -> None:
+    def skip(self, data_type: str) -> None:
         """Mark a data type as not attempted (unsupported, or no window to fetch)."""
-        self.outcomes[data_type] = DataTypeOutcome(attempted=False, reason=reason)
+        self.outcomes[data_type] = DataTypeOutcome(attempted=False)
 
     # -- aggregates ------------------------------------------------------------
 
@@ -175,16 +170,12 @@ class Sync247Result(Mapping[str, int]):
 
     @property
     def synced(self) -> tuple[str, ...]:
-        return tuple(k for k, o in self.outcomes.items() if o.status is Sync247Status.OK)
+        return tuple(k for k, o in self.outcomes.items() if o.attempted and not o.error_codes)
 
     @property
     def failures(self) -> dict[str, str]:
-        """Data type -> representative error, for types that failed outright or partially."""
-        return {
-            k: o.error
-            for k, o in self.outcomes.items()
-            if o.error and o.status in (Sync247Status.FAILED, Sync247Status.PARTIAL)
-        }
+        """Data type -> its first error code, for types that failed outright or partially."""
+        return {k: o.error_code for k, o in self.outcomes.items() if o.error_code is not None}
 
     @property
     def truncated(self) -> tuple[str, ...]:
@@ -195,27 +186,23 @@ class Sync247Result(Mapping[str, int]):
     def all_failed(self) -> bool:
         """Every attempted data type failed — the run is a failure, not an empty success."""
         attempted = [o for o in self.outcomes.values() if o.attempted]
-        return bool(attempted) and all(o.status is Sync247Status.FAILED for o in attempted)
+        return bool(attempted) and all(o.status is SyncStatus.FAILED for o in attempted)
 
     @property
     def any_failed(self) -> bool:
-        return any(o.errors for o in self.outcomes.values() if o.attempted)
+        return any(o.error_codes for o in self.outcomes.values() if o.attempted)
 
-    def as_dict(self) -> dict[str, Any]:
-        """Payload for the sync log / API response — flat, JSON-safe, no provider-private keys."""
-        payload: dict[str, Any] = {
-            "provider": self.provider,
-            "rows_written": self.rows_written,
-            "types": {k: o.as_dict() for k, o in self.outcomes.items()},
-        }
-        if self.inserted or self.updated:
-            payload["inserted"] = self.inserted
-            payload["updated"] = self.updated
-        if self.truncated:
-            payload["truncated"] = list(self.truncated)
-        if self.note:
-            payload["note"] = self.note
-        return payload
+    def summary(self) -> Sync247Summary:
+        outcomes = list(self.outcomes.values())
+        split = [o.counts for o in outcomes if o.counts is not None]
+        unsplit = [o.rows_written for o in outcomes if o.counts is None and o.attempted]
+        return Sync247Summary(
+            status=run_status_from(outcomes) if outcomes else SyncStatus.SKIPPED,
+            items_inserted=sum(c.inserted for c in split) if split else None,
+            items_updated=sum(c.updated for c in split) if split else None,
+            items_reported=sum(unsplit) if unsplit else None,
+            tasks={k: o.summary() for k, o in self.outcomes.items()},
+        )
 
     # -- Mapping ---------------------------------------------------------------
 
@@ -327,7 +314,7 @@ class Sync247Run:
         SKIPPED instead of vanishing from it.
         """
         for data_type in data_types:
-            self.result.skip(data_type, "nothing to sync in window")
+            self.result.skip(data_type)
 
     def fail(self, data_type: str, error: Exception, *, capture: bool = False) -> None:
         """Record and log a failure outside a ``step`` — e.g. a shared fetch feeding several types."""

@@ -2190,10 +2190,7 @@ class Garmin247Data(Base247DataTemplate):
             is_first_sync: Unused (kept for interface compatibility)
 
         Returns:
-            An empty result noting that data arrives by push
+            An empty result: data arrives by push
         """
         self.logger.info(f"Garmin 247 data for user {user_id} arrives via webhooks (no REST fetch)")
-        return Sync247Result(
-            provider=self.provider_name,
-            note="Garmin data arrives via webhooks. No REST fetch performed.",
-        )
+        return Sync247Result(provider=self.provider_name)

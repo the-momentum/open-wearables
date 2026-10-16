@@ -4515,21 +4515,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": true
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SyncResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SyncQueuedResponse"
+                    }
+                  ],
                   "title": "Response Sync User Data Api V1 Providers  Provider  Users  User Id  Sync Post"
                 }
               }
@@ -17134,6 +17127,152 @@
         "title": "StorageEstimate",
         "description": "Storage sizes across all database tables."
       },
+      "Sync247Summary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Set when the whole sync failed before any task ran"
+          },
+          "tasks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Sync247TaskSummary"
+            },
+            "type": "object",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "tasks"
+        ],
+        "title": "Sync247Summary",
+        "description": "A 24/7 sync: totals over its provider fetch tasks, and each task."
+      },
+      "Sync247TaskSummary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted",
+            "description": "New rows, when the write path reports the split"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated",
+            "description": "Rows refreshed in place, when the write path reports the split"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported",
+            "description": "Rows written, when only a total is known"
+          },
+          "items_skipped": {
+            "type": "integer",
+            "title": "Items Skipped",
+            "description": "Records deliberately not stored, such as duplicates"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "The fetch stopped early, so the window is incomplete"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "HTTP status (http_401) or error type of the first failure"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "items_skipped",
+          "truncated",
+          "error_code"
+        ],
+        "title": "Sync247TaskSummary",
+        "description": "One provider fetch task of a 24/7 sync. Counters mean what they do in sync.data_type events."
+      },
       "SyncDataType": {
         "type": "string",
         "enum": [
@@ -17143,6 +17282,81 @@
         ],
         "title": "SyncDataType",
         "description": "Types of data to sync from provider."
+      },
+      "SyncDetails": {
+        "properties": {
+          "workouts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workouts",
+            "description": "Workouts saved, when workouts were synced"
+          },
+          "data_247": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sync247Summary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SyncDetails"
+      },
+      "SyncQueuedResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "async": {
+            "type": "boolean",
+            "title": "Async"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "async",
+          "task_id",
+          "message"
+        ],
+        "title": "SyncQueuedResponse",
+        "description": "A sync queued to run in the background."
+      },
+      "SyncResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "details": {
+            "$ref": "#/components/schemas/SyncDetails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "details"
+        ],
+        "title": "SyncResponse",
+        "description": "A synchronous sync's outcome."
       },
       "SyncRunDataTypeRecord": {
         "properties": {

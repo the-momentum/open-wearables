@@ -193,7 +193,7 @@ class Base247DataTemplate(ABC):
         so failures stay isolated to one data type. The default is an empty
         result, for providers whose 24/7 data only ever arrives by push.
         """
-        return Sync247Result(provider=self.provider_name, note="No pull-based 24/7 sync for this provider")
+        return Sync247Result(provider=self.provider_name)
 
     def sync_run(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Sync247Run:
         """Start a 24/7 sync run bound to this provider."""

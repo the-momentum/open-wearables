@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.base_strategy import HistoricalSyncResult
 from app.services.providers.sync_247_result import Sync247Result
@@ -53,6 +54,48 @@ class TestSyncDataEndpoint:
         assert data["success"] is True
         mock_provider_factory.get_provider.assert_called_once_with("garmin")
         mock_provider_factory.get_provider.return_value.workouts.load_data.assert_called_once()
+
+    def test_sync_returns_the_24_7_summary(
+        self, client: TestClient, db: Session, mock_provider_factory: MagicMock
+    ) -> None:
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        result = Sync247Result(provider="garmin")
+        result.record("sleep", WriteCounts(2, 1))
+        mock_provider_factory.get_provider.return_value.data_247.load_and_save_all.return_value = result
+
+        response = client.post(
+            f"/api/v1/providers/garmin/users/{user.id}/sync",
+            headers={"X-Open-Wearables-API-Key": api_key.plain_key},
+            params={"async": "false", "data_type": "247"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "success": True,
+            "details": {
+                "workouts": None,
+                "data_247": {
+                    "status": "success",
+                    "items_inserted": 2,
+                    "items_updated": 1,
+                    "items_reported": None,
+                    "error_code": None,
+                    "tasks": {
+                        "sleep": {
+                            "status": "success",
+                            "items_inserted": 2,
+                            "items_updated": 1,
+                            "items_reported": None,
+                            "items_skipped": 0,
+                            "truncated": False,
+                            "error_code": None,
+                        }
+                    },
+                },
+            },
+        }
 
     @patch("app.api.routes.v1.sync_data.sync_vendor_data")
     def test_sync_garmin_async_mode(

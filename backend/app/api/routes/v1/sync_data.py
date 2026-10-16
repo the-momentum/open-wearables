@@ -12,6 +12,7 @@ from app.integrations.celery.tasks import (
     sync_vendor_data,
 )
 from app.schemas.enums import ProviderName
+from app.schemas.responses.upload import SyncDetails, SyncQueuedResponse, SyncResponse
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.utils.exceptions import UnsupportedProviderError
@@ -96,7 +97,7 @@ def sync_user_data(
             description="Run sync asynchronously via Celery (default: true). Set false for sync.",
         ),
     ] = True,
-) -> dict[str, bool | dict | str]:
+) -> SyncResponse | SyncQueuedResponse:
     """
     Synchronize data from fitness provider API for a specific user.
 
@@ -148,17 +149,17 @@ def sync_user_data(
             start_date_iso = summary_start_time
 
         task = _queue_pull_sync(user_id, provider.value, start_date_iso, summary_end_time)
-        return {
-            "success": True,
-            "async": True,
-            "task_id": task.id,
-            "message": f"Sync task queued for {provider.value}. Check task status for results.",
-        }
+        return SyncQueuedResponse(
+            success=True,
+            is_async=True,
+            task_id=task.id,
+            message=f"Sync task queued for {provider.value}. Check task status for results.",
+        )
 
     # Synchronous mode
     strategy = factory.get_provider(provider.value)
 
-    results: dict[str, Any] = {}
+    details = SyncDetails()
     succeeded: list[bool] = []  # per data type, so a partial 24/7 sync isn't reported as a full success
 
     # Collect all parameters. start_date/end_date come from build_sync_params so
@@ -177,8 +178,8 @@ def sync_user_data(
     # Sync workouts if requested
     if data_type in (SyncDataType.WORKOUTS, SyncDataType.ALL):
         if strategy.workouts:
-            results["workouts"] = strategy.workouts.load_data(db, user_id, **params)
-            succeeded.append(bool(results["workouts"]))
+            details.workouts = strategy.workouts.load_data(db, user_id, **params)
+            succeeded.append(bool(details.workouts))
         elif data_type == SyncDataType.WORKOUTS:
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -190,7 +191,7 @@ def sync_user_data(
             end_dt = datetime.now(timezone.utc)
             start_dt = datetime.fromtimestamp(since, timezone.utc) if since else end_dt - timedelta(days=30)
             result_247 = strategy.data_247.load_and_save_all(db, user_id, start_time=start_dt, end_time=end_dt)
-            results["data_247"] = result_247.as_dict()
+            details.data_247 = result_247.summary()
             succeeded.append(not result_247.all_failed)
         elif data_type == SyncDataType.DATA_247:
             raise HTTPException(
@@ -198,13 +199,13 @@ def sync_user_data(
                 detail=f"Provider '{provider.value}' does not support 247 data (sleep/recovery/activity)",
             )
 
-    if not results:
+    if not succeeded:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=f"Provider '{provider.value}' does not support any requested data types",
         )
 
-    return {"success": all(succeeded), "details": results}
+    return SyncResponse(success=all(succeeded), details=details)
 
 
 # =============================================================================

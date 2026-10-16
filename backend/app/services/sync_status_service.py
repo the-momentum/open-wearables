@@ -27,10 +27,10 @@ Keys (all TTL'd to ``HISTORY_TTL_SECONDS``):
 import logging
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import suppress
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from app.config import settings
@@ -133,7 +133,12 @@ def is_persisted_scope(scope: SyncScope | str) -> bool:
     return SyncScope(scope) == SyncScope.HISTORICAL or settings.persist_live_sync_runs
 
 
-def run_status_from(outcomes: list[DataTypeOutcome]) -> SyncStatus:
+class _HasStatus(Protocol):
+    @property
+    def status(self) -> SyncStatus: ...
+
+
+def run_status_from(outcomes: Iterable[_HasStatus]) -> SyncStatus:
     """Overall status of a run, from the outcomes of its data types."""
     match {outcome.status for outcome in outcomes}:
         case seen if seen == {SyncStatus.SKIPPED}:

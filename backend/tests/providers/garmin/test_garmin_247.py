@@ -450,8 +450,6 @@ class TestGarmin247Data:
 
         assert results.rows_written == 0
         assert not results.outcomes  # nothing attempted — data arrives by push
-        assert results.note is not None
-        assert "webhooks" in results.note.lower()
 
     def test_load_and_save_all_with_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with custom dates is still a no-op."""
