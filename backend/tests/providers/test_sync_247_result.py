@@ -81,6 +81,10 @@ class TestSync247Result:
         assert result.all_failed
         assert result.failures == {"heart_rate": "RuntimeError", "sleep": "RuntimeError"}
 
+        result.record("hrv", 0)
+        assert result.all_failed  # nothing written anywhere, so still a failure
+        assert result.summary().status is SyncStatus.FAILED
+
         result.record("steps", 5)
         assert not result.all_failed
 

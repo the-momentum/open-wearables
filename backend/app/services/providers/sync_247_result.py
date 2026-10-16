@@ -162,9 +162,8 @@ class Sync247Result:
 
     @property
     def all_failed(self) -> bool:
-        """Every attempted data type failed — the run is a failure, not an empty success."""
-        attempted = [o for o in self.outcomes.values() if o.attempted]
-        return bool(attempted) and all(o.status is SyncStatus.FAILED for o in attempted)
+        """The run failed by the same rule as ``summary().status`` — not an empty success."""
+        return run_status_from(self.outcomes.values()) is SyncStatus.FAILED
 
     def summary(self) -> Sync247Summary:
         outcomes = list(self.outcomes.values())
