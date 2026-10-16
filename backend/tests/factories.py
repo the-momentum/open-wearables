@@ -256,6 +256,7 @@ class UserFactory(BaseFactory):
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
     external_user_id = None
+    is_seed = False
 
 
 class PersonalRecordFactory(BaseFactory):

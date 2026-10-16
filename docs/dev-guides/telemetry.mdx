@@ -40,7 +40,7 @@ count, reported as an order-of-magnitude bucket rather than an exact number, or 
 | `instance_id` | Random UUID generated locally on first run and stored in the `telemetry_state` table. Not derived from any secret, hostname or account. | `f11594b65f92...` | Count distinct instances and tell a new install from a restart |
 | `event` | What triggered the ping: `daily` or `startup` | `daily` | Separate scheduled pings from restart pings |
 | `sent_at` | Time the ping was built, UTC | `2026-07-23T04:12:00+00:00` | Order pings and detect gaps |
-| `schema_version` | Version of this payload format | `1` | Parse old and new payloads correctly |
+| `schema_version` | Version of this payload format | `2` | Parse old and new payloads correctly |
 | `app_version` | Open Wearables version | `0.6.3` | See how fast releases are adopted and which versions are still in use |
 | `python_version` | Python interpreter version | `3.13.1` | Know when it is safe to drop a Python version |
 | `platform` | OS and architecture string from Python's `platform.platform()` | `Linux-6.1.0-x86_64-with-glibc2.36` | Know which OS and CPU targets to test and support |
@@ -54,9 +54,13 @@ Counts are sent as order-of-magnitude buckets, never exact numbers: `0`, `1-10`,
 pings of a small instance read day-to-day activity off the differences, or match a total against a
 public profile. A bucket only moves when the count crosses an order of magnitude.
 
+Seed users and everything they own (connections, data points, workouts, sleep) are left out of every
+count below except `seed_users`, so test data never shows up as real usage.
+
 | Field | What it is | Example | Why we track it |
 |-------|------------|---------|-----------------|
-| `total_users` | Number of rows in the `users` table | `"11-100"` | Deployment size |
+| `total_users` | Number of users, not counting seed users | `"11-100"` | Deployment size |
+| `seed_users` | Synthetic users created by the [seed data generator](/developer-portal/settings/seed-data-generator) | `"0"` | Tell test and demo data apart from real usage |
 | `users_with_active_connection` | Users with at least one active provider connection | `"11-100"` | How many users are actually syncing data |
 | `active_connections` | Provider connections with status `active` | `"11-100"` | Deployment size and connections per user |
 | `inactive_connections` | Provider connections with status `revoked` or `expired` | `"1-10"` | How often connections break, which drives reconnect and token refresh work |
@@ -114,7 +118,7 @@ An example payload:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "instance_id": "e0aaddaff6e648e0b1fbed12d9b73152",
   "event": "daily",
   "sent_at": "2026-09-23T09:02:16.598747+00:00",
@@ -124,6 +128,7 @@ An example payload:
   "environment": "local",
   "instance_age_days": 5,
   "total_users": "1-10",
+  "seed_users": "0",
   "users_with_active_connection": "1-10",
   "active_connections": "1-10",
   "inactive_connections": "1-10",

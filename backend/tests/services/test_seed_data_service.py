@@ -56,6 +56,7 @@ class TestSeedDataServiceGenerate:
 
         # Verify data in DB
         assert db.query(User).count() == 1
+        assert db.query(User).one().is_seed is True
         assert db.query(PersonalRecord).count() == 1
         assert db.query(UserConnection).count() >= 1
         assert db.query(EventRecord).filter_by(category="workout").count() == 2

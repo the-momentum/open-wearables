@@ -151,6 +151,7 @@ class SeedDataService:
                     email=identity_fake.unique.email(),
                     external_user_id=identity_fake.unique.uuid4() if fake.boolean(chance_of_getting_true=80) else None,
                 ),
+                is_seed=True,
             )
             summary["users"] += 1
 

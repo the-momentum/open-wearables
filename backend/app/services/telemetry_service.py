@@ -21,7 +21,7 @@ from app.services.endpoint_usage import endpoint_usage, usage_bucket
 
 logger = getLogger(__name__)
 
-TELEMETRY_SCHEMA_VERSION = 1
+TELEMETRY_SCHEMA_VERSION = 2
 SEND_TIMEOUT_SECONDS = 5.0
 
 
@@ -66,6 +66,7 @@ class TelemetryService:
             "environment": settings.environment.value,
             "instance_age_days": max((now - created_at).days, 0),
             "total_users": count_bucket(self.repo.count_users(db)),
+            "seed_users": count_bucket(self.repo.count_seed_users(db)),
             "users_with_active_connection": count_bucket(self.repo.count_users_with_active_connection(db)),
             "active_connections": count_bucket(sum(connections_by_provider.values())),
             "inactive_connections": count_bucket(self.repo.count_inactive_connections(db)),
