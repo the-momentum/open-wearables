@@ -1,14 +1,10 @@
-/**
- * Theme tokens, so a chart line cannot drift from the rest of the palette, and
- * ordered least to most alarming: with two lines on a chart nothing is drawn in
- * the colour of an error.
- */
-const TONES = [
+/** Categorical, from theme tokens, and never a status colour: green and red mean success and failure. */
+export const SERIES_TONES = [
 	'var(--color-primary)',
-	'var(--color-warning)',
-	'var(--color-success)',
-	'var(--color-danger)',
-	'var(--color-muted-foreground)'
+	'var(--color-foreground)',
+	'color-mix(in oklab, var(--color-primary) 45%, transparent)',
+	'var(--color-muted-foreground)',
+	'color-mix(in oklab, var(--color-foreground) 30%, transparent)'
 ];
 
 /**
@@ -17,6 +13,6 @@ const TONES = [
  * indistinguishable curves is the one thing a legend cannot fix.
  */
 export function tones(keys: string[]): (key: string) => string {
-	const byKey = new Map(keys.map((key, index) => [key, TONES[index % TONES.length]]));
-	return (key) => byKey.get(key) ?? TONES[TONES.length - 1];
+	const byKey = new Map(keys.map((key, index) => [key, SERIES_TONES[index % SERIES_TONES.length]]));
+	return (key) => byKey.get(key) ?? SERIES_TONES[SERIES_TONES.length - 1];
 }
