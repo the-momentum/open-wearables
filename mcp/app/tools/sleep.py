@@ -49,7 +49,7 @@ async def get_sleep_summary(
                     "date": "2026-01-11",
                     "start_datetime": "2026-01-11T23:15:00+00:00",
                     "end_datetime": "2026-01-12T07:30:00+00:00",
-                    "duration_minutes": 495,
+                    "duration_minutes": 465,
                     "source": "whoop"
                 }
             ],
@@ -67,7 +67,9 @@ async def get_sleep_summary(
         - Calculate dates based on user queries:
           "last week" → start_date = 7 days ago, end_date = today
           "January 2026" → start_date = "2026-01-01", end_date = "2026-01-31"
-        - Duration is in minutes.
+        - duration_minutes is time asleep in the main sleep, in minutes, naps excluded. Awake time
+          is excluded too, except for sessions that report no time asleep, which count with their
+          full start-to-end time.
         - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
         - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically
           spans midnight, so end_datetime is often the day after start_datetime.

@@ -227,7 +227,7 @@ class SensorBio247Data(Base247DataTemplate):
         score = parsed.score
         start_dt = self._from_epoch_seconds(parsed.start_timestamp)
         end_dt = self._from_epoch_seconds(parsed.end_timestamp)
-        duration_seconds = int((parsed.total_sleep_mins or 0) * 60)
+        duration_seconds = int((end_dt - start_dt).total_seconds()) if start_dt and end_dt else 0
 
         return {
             "id": uuid4(),
@@ -260,11 +260,11 @@ class SensorBio247Data(Base247DataTemplate):
         sleep_id = normalized_sleep["id"]
         start_dt = normalized_sleep.get("start_time")
         end_dt = normalized_sleep.get("end_time")
-        if not start_dt or not end_dt:
+        if not start_dt or not end_dt or end_dt <= start_dt:
             log_structured(
                 self.logger,
                 "warning",
-                "Skipping sleep record: missing start/end time",
+                "Skipping sleep record: missing or degenerate start/end window",
                 provider="sensorbio",
                 task="save_sleep_data",
                 sleep_id=str(sleep_id),

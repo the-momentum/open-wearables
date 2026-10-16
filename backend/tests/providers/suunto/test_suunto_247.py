@@ -428,6 +428,18 @@ def _normalized_sleep(**overrides: Any) -> dict[str, Any]:
     return base
 
 
+class TestSuuntoSleepWindow:
+    @patch("app.services.providers.suunto.data_247.event_record_service")
+    def test_duration_and_time_in_bed_follow_the_window_not_duration(
+        self, mock_event: MagicMock, data_247: Suunto247Data
+    ) -> None:
+        assert data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(duration_seconds=21600)) is True
+
+        record, detail = mock_event.create_or_merge_sleep.call_args[0][2:4]
+        assert record.duration_seconds == 23520
+        assert detail.sleep_time_in_bed_minutes == 392
+
+
 class TestSuuntoSleepSyncStats:
     """The sleep sync loop must skip unsaveable sessions and report accurate
     (saved, skipped) counts, so a fully-dropped backfill is never reported as a

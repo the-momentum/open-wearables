@@ -121,9 +121,20 @@ class SleepSession(BaseModel):
     end_time: datetime
     zone_offset: str | None = None
     source: SourceMetadata
-    duration_seconds: int
-    sleep_duration_seconds: int | None = None
-    time_in_bed_seconds: int | None = None
+    duration_seconds: int = Field(
+        ...,
+        description=(
+            "Time from start_time to end_time, awake time included; for a night merged from several "
+            "sessions, the gaps between them too"
+        ),
+        example=28800,
+    )
+    sleep_duration_seconds: int | None = Field(
+        None, description="Time asleep, awake time excluded; whole minutes, so a multiple of 60", example=25800
+    )
+    time_in_bed_seconds: int | None = Field(
+        None, description="Time in bed, awake time included; whole minutes, so a multiple of 60", example=28200
+    )
     efficiency_percent: float | None = None
     stages: SleepStagesSummary | None = None
     sleep_stage_intervals: list[SleepStage] | None = None
