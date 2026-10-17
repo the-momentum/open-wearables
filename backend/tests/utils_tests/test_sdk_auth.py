@@ -4,8 +4,8 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.auth import get_current_developer, get_sdk_auth
+from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory, DeveloperFactory
 
 
@@ -16,7 +16,7 @@ class TestGetSDKAuth:
     async def test_sdk_token_returns_context(self, db: Session) -> None:
         """Valid SDK token should return SDKAuthContext."""
         user_id = "123e4567-e89b-12d3-a456-426614174000"
-        token = create_sdk_user_token("app_123", user_id)
+        token = create_access_token(subject=user_id, scope="sdk", app_id="app_123")
 
         result = await get_sdk_auth(db=db, token=token, x_open_wearables_api_key=None)
 
@@ -55,7 +55,7 @@ class TestGetSDKAuth:
         """SDK token should be used even if API key is also provided."""
         api_key = ApiKeyFactory()
         user_id = "123e4567-e89b-12d3-a456-426614174001"
-        token = create_sdk_user_token("app_123", user_id)
+        token = create_access_token(subject=user_id, scope="sdk", app_id="app_123")
 
         result = await get_sdk_auth(db=db, token=token, x_open_wearables_api_key=api_key.plain_key)
 
@@ -72,7 +72,7 @@ class TestSDKTokenBlockedFromDeveloperEndpoints:
         # Create a real developer for the DB (but token is SDK-scoped)
         DeveloperFactory()
         user_id = "123e4567-e89b-12d3-a456-426614174001"
-        sdk_token = create_sdk_user_token("app_123", user_id)
+        sdk_token = create_access_token(subject=user_id, scope="sdk", app_id="app_123")
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_developer(db=db, token=sdk_token)

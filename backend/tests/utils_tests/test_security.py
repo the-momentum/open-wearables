@@ -1,7 +1,7 @@
 """
 Tests for security utility functions.
 
-Tests JWT token creation, password hashing, and password verification.
+Tests JWT token creation (developer and SDK user tokens), password hashing, and password verification.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -137,6 +137,48 @@ class TestCreateAccessToken:
         # Decoding with wrong algorithm should fail
         with pytest.raises(JWTError):
             jwt.decode(token, settings.secret_key, algorithms=["HS512"])
+
+
+class TestCreateAccessTokenExtraClaims:
+    """SDK user tokens are developer tokens plus `scope` and `app_id` claims."""
+
+    def test_sdk_token_carries_scope_and_app_id(self) -> None:
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+        assert payload["sub"] == "user_456"
+        assert payload["scope"] == "sdk"
+        assert payload["app_id"] == "app_123"
+
+    def test_sdk_token_expires_after_configured_minutes(self) -> None:
+        before = datetime.now(timezone.utc)
+        token = create_access_token(subject="user_456", scope="sdk", app_id="app_123")
+        after = datetime.now(timezone.utc)
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+        assert before + timedelta(minutes=settings.access_token_expire_minutes - 1) < exp
+        assert exp < after + timedelta(minutes=settings.access_token_expire_minutes + 1)
+
+    def test_developer_token_has_no_extra_claims(self) -> None:
+        token = create_access_token(subject="developer_1")
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+        assert set(payload) == {"sub", "exp"}
+
+    def test_different_apps_and_users_get_distinct_claims(self) -> None:
+        token1 = create_access_token(subject="user_1", scope="sdk", app_id="app_1")
+        token2 = create_access_token(subject="user_2", scope="sdk", app_id="app_2")
+        payload1 = jwt.decode(token1, settings.secret_key, algorithms=[settings.algorithm])
+        payload2 = jwt.decode(token2, settings.secret_key, algorithms=[settings.algorithm])
+
+        assert (payload1["sub"], payload1["app_id"]) == ("user_1", "app_1")
+        assert (payload2["sub"], payload2["app_id"]) == ("user_2", "app_2")
+
+    @pytest.mark.parametrize("claim", ["sub", "exp"])
+    def test_reserved_claims_cannot_be_overridden(self, claim: str) -> None:
+        with pytest.raises(ValueError, match=claim):
+            create_access_token(subject="user_456", **{claim: "forged"})
 
 
 class TestPasswordHashing:
