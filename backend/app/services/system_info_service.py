@@ -5,7 +5,7 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
-from app.schemas.enums import ProviderName, TimelineBucket, TimelineGroupBy
+from app.schemas.enums import EventCategory, ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.responses.dashboard import (
     ProviderDataCount,
     TimelineMetric,
@@ -54,9 +54,9 @@ class SystemInfoService:
         category_counts = dict(self.event_record_service.get_category_counts(db_session))
         event_records = EventRecordsInfo(
             count=sum(category_counts.values()),
-            workouts=category_counts.get("workout", 0),
-            sleep=category_counts.get("sleep", 0),
-            menstrual_cycles=category_counts.get("menstrual_cycle", 0),
+            workouts=category_counts.get(EventCategory.WORKOUT, 0),
+            sleep=category_counts.get(EventCategory.SLEEP, 0),
+            menstrual_cycles=category_counts.get(EventCategory.MENSTRUAL_CYCLE, 0),
         )
 
         return SystemInfoResponse(
@@ -114,12 +114,12 @@ class SystemInfoService:
 
         has_womens_health_data = False
         for provider, category, event_type, count in event_rows:
-            if category == "workout":
+            if category == EventCategory.WORKOUT:
                 provider_workouts[provider] += count
                 workout_type_totals[event_type or "unknown"] += count
-            elif category == "sleep":
+            elif category == EventCategory.SLEEP:
                 provider_sleep[provider] += count
-            elif category == "menstrual_cycle" and count > 0:
+            elif category == EventCategory.MENSTRUAL_CYCLE and count > 0:
                 has_womens_health_data = True
 
         # Build per-provider breakdown

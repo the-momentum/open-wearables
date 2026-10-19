@@ -4,6 +4,7 @@ from typing import ClassVar
 from sqlalchemy.orm import Mapped
 
 from app.mappings import FKEventRecord, json_binary, str_32
+from app.schemas.enums import EventCategory
 
 from .event_record_detail import DetailType, EventRecordDetail
 
@@ -13,7 +14,7 @@ class MenstrualCycleDetails(EventRecordDetail):
 
     __tablename__ = "menstrual_cycle_details"
 
-    detail_type: ClassVar[DetailType] = "menstrual_cycle"
+    detail_type: ClassVar[DetailType] = EventCategory.MENSTRUAL_CYCLE
 
     record_id: Mapped[FKEventRecord]
 

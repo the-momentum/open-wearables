@@ -15,6 +15,7 @@ from app.models import (
     UserConnection,
 )
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import EventCategory
 
 _ACTIVE = UserConnection.status == ConnectionStatus.ACTIVE
 # Users made by the seed data generator. A small set served by the partial index
@@ -106,7 +107,7 @@ class TelemetryRepository:
     def count_data_points_by_provider(self, db: DbSession) -> dict[str, int]:
         return self._count_by_provider(db, DataPointSeries)
 
-    def count_events_by_provider(self, db: DbSession, category: str) -> dict[str, int]:
+    def count_events_by_provider(self, db: DbSession, category: EventCategory) -> dict[str, int]:
         return self._count_by_provider(db, EventRecord, category=category)
 
     def get_provider_settings(self, db: DbSession) -> list[ProviderSetting]:

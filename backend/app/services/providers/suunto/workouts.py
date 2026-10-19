@@ -7,7 +7,7 @@ from app.constants.workout_types.suunto import get_unified_workout_type
 from app.database import DbSession
 from app.models import DataSource
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -191,7 +191,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         moving_time = duration_seconds
 
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=source_name,
             device_model=device_model,

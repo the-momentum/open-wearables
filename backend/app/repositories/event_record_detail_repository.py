@@ -14,6 +14,7 @@ from app.models import (
     WorkoutDetails,
 )
 from app.repositories.repositories import CrudRepository
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     EventRecordDetailUpdate,
@@ -33,7 +34,7 @@ class EventRecordDetailRepository(
         if model is None:
             raise ValueError(f"Unknown detail type: {detail_type}")
         creation_data = creator.model_dump(exclude_none=True)
-        if detail_type == "sleep" and creator.sleep_stages:
+        if detail_type == EventCategory.SLEEP and creator.sleep_stages:
             # sleep_stages contains datetime fields that JSONB cannot serialize directly;
             # use Pydantic's JSON mode to convert datetimes to ISO strings.
             creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
@@ -44,7 +45,7 @@ class EventRecordDetailRepository(
         self,
         db_session: DbSession,
         creator: EventRecordDetailCreate,
-        detail_type: DetailType = "workout",
+        detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
         """Create a detail record using the appropriate polymorphic model.
 
@@ -69,7 +70,7 @@ class EventRecordDetailRepository(
         self,
         db_session: DbSession,
         creator: EventRecordDetailCreate,
-        detail_type: DetailType = "workout",
+        detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
         """Like create() but flushes instead of committing; caller is responsible for the commit.
 
@@ -96,7 +97,7 @@ class EventRecordDetailRepository(
         self,
         db_session: DbSession,
         creators: list[EventRecordDetailCreate],
-        detail_type: DetailType = "workout",
+        detail_type: DetailType = EventCategory.WORKOUT,
     ) -> None:
         """Bulk create detail records using batch insert."""
         if not creators:
@@ -112,7 +113,7 @@ class EventRecordDetailRepository(
         child_values = []
         for creator in creators:
             data = creator.model_dump()
-            if detail_type == "sleep" and data.get("sleep_stages"):
+            if detail_type == EventCategory.SLEEP and data.get("sleep_stages"):
                 data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)

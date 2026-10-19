@@ -18,7 +18,7 @@ from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -258,7 +258,7 @@ class Suunto247Data(Base247DataTemplate):
         # EventRecord
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Suunto",
             device_model=None,

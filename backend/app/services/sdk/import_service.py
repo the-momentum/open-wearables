@@ -21,7 +21,7 @@ from app.constants.series_types.sdk import (
 from app.constants.workout_types import get_unified_sdk_workout_type
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import DeviceType, SeriesType, daily_total_flag
+from app.schemas.enums import DeviceType, EventCategory, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -192,7 +192,7 @@ class ImportService:
             type = get_unified_sdk_workout_type(workout_type).value if workout_type else None
 
             record = EventRecordCreate(
-                category="workout",
+                category=EventCategory.WORKOUT,
                 type=type,
                 source_name=original_source_name or "unknown",
                 device_model=device_model,
@@ -242,7 +242,7 @@ class ImportService:
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
 
             record = EventRecordCreate(
-                category="meal",
+                category=EventCategory.MEAL,
                 type=rjson.type,
                 source_name=original_source_name or "unknown",
                 device_model=device_model,
@@ -508,7 +508,9 @@ class ImportService:
 
             # Bulk create details (requires event_record to exist due to FK)
             if details_to_insert:
-                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="workout")
+                self.event_record_service.bulk_create_details(
+                    db_session, details_to_insert, detail_type=EventCategory.WORKOUT
+                )
             workouts_saved = len(inserted_ids)
 
             # Bulk create time series samples

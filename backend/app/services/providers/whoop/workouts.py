@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.whoop import get_unified_workout_type
 from app.database import DbSession
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -297,7 +297,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
         # Create EventRecordCreate
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Whoop",
             device_model=None,  # Whoop doesn't provide device info in workout

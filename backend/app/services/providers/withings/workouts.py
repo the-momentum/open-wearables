@@ -12,6 +12,7 @@ from app.config import settings
 from app.constants.withings_requests import WORKOUTS
 from app.constants.workout_types.withings import OFFICIAL_WITHINGS_CATEGORY_IDS, get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.event_record_service import event_record_service
@@ -121,7 +122,7 @@ class WithingsWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             id=record_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Withings",
             duration_seconds=duration_seconds,

@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from app.constants.entry_source import get_unified_garmin_entry_source
 from app.constants.workout_types.garmin import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -228,7 +229,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         zone_offset = offset_to_iso(raw_workout.startTimeOffsetInSeconds)
 
         record = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=device_name,
             device_model=raw_workout.deviceName,

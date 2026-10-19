@@ -19,7 +19,7 @@ from app.constants.withings_requests import ACTIVITY, INTRADAY_ACTIVITY, MEASURE
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas.enums import SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -745,7 +745,7 @@ class Withings247Data(Base247DataTemplate):
         sleep_stages = self._stages_within(window.stages, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Withings",
             duration_seconds=time_in_bed_seconds,

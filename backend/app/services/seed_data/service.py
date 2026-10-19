@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import PersonalRecord, ProviderPriority, UserConnection
 from app.repositories import CrudRepository, ProviderPriorityRepository
-from app.schemas.enums import ProviderName, SeriesType, WorkoutType
+from app.schemas.enums import EventCategory, ProviderName, SeriesType, WorkoutType
 from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCreate
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.event_record_service import event_record_service
@@ -221,7 +221,7 @@ class SeedDataService:
                         user.id, fake, prov, provider_sync_times[prov], profile.sleep_config
                     )
                     event_record_service.create(db, record)
-                    event_record_service.create_detail(db, detail, detail_type="sleep")
+                    event_record_service.create_detail(db, detail, detail_type=EventCategory.SLEEP)
                     summary["sleeps"] += 1
 
             # Only providers that actually deliver meals, so seed data doesn't claim a capability they lack.

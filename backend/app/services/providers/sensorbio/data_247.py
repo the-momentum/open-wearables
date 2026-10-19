@@ -12,7 +12,7 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, SleepStage
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
@@ -273,7 +273,7 @@ class SensorBio247Data(Base247DataTemplate):
 
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Sensor Bio",
             device_model=None,
@@ -309,7 +309,7 @@ class SensorBio247Data(Base247DataTemplate):
         try:
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
-            event_record_service.create_detail(db, detail, detail_type="sleep")
+            event_record_service.create_detail(db, detail, detail_type=EventCategory.SLEEP)
             return True
         except Exception as e:
             log_structured(

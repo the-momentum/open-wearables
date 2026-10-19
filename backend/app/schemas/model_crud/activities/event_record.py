@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.devices_map import normalize_device_model
-from app.schemas.enums import DeviceType, EntrySource, WorkoutIntensity, WorkoutType
+from app.schemas.enums import DeviceType, EntrySource, EventCategory, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -61,7 +61,7 @@ class EventRecordMetrics(TypedDict, total=False):
 class EventRecordBase(BaseModel):
     """Base schema for event record."""
 
-    category: str = Field("workout", description="High-level category such as workout or sleep")
+    category: EventCategory = Field(EventCategory.WORKOUT, description="High-level category such as workout or sleep")
     type: str | None = Field(None, description="Provider-specific subtype, e.g. running")
 
     source_name: str = Field(description="Source/app name")
@@ -120,8 +120,8 @@ class EventRecordQueryParams(SourceFilterParams):
     end_datetime: datetime | None = Field(None, description="End datetime for filtering records")
 
     # Category and type filtering
-    category: str | None = Field(
-        "workout",
+    category: EventCategory | None = Field(
+        EventCategory.WORKOUT,
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
     record_type: str | None = Field(

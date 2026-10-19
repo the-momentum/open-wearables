@@ -15,7 +15,7 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -743,7 +743,7 @@ class Oura247Data(Base247DataTemplate):
 
             record = EventRecordCreate(
                 id=sleep_id,
-                category="sleep",
+                category=EventCategory.SLEEP,
                 type="sleep_session",
                 source_name="Oura",
                 device_model=None,

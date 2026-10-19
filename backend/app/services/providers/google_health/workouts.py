@@ -15,7 +15,7 @@ from app.constants.workout_types import get_unified_google_workout_type
 from app.database import DbSession
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.services.event_record_service import event_record_service
 from app.services.providers.google_health.helpers import (
@@ -118,7 +118,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             id=workout_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=get_unified_google_workout_type(exercise.get("exerciseType", "")).value,
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,

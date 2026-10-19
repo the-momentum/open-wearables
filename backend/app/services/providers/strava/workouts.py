@@ -7,7 +7,7 @@ from app.config import settings
 from app.constants.entry_source import get_unified_strava_entry_source
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
-from app.schemas.enums import SeriesType, WorkoutType
+from app.schemas.enums import EventCategory, SeriesType, WorkoutType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -226,7 +226,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         device_model = raw_workout.device_name or None
 
         record = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=source_name,
             device_model=device_model,

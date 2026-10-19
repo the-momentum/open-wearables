@@ -13,7 +13,7 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import daily_total_flag
+from app.schemas.enums import EventCategory, daily_total_flag
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
@@ -273,7 +273,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         # Create EventRecord for sleep
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Ultrahuman Ring Air",
             duration_seconds=normalized_sleep.get("duration_seconds"),

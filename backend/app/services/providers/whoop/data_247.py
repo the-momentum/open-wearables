@@ -12,7 +12,7 @@ from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -351,7 +351,7 @@ class Whoop247Data(Base247DataTemplate):
         # Create EventRecord for sleep
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Whoop",
             device_model=None,
