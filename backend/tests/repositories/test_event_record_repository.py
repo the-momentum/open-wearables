@@ -9,7 +9,7 @@ Tests cover:
 - Pagination and sorting
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordQueryParams
 from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 
@@ -508,3 +509,65 @@ class TestEventRecordRepository:
         assert event.type is not None
         assert "running" in event.type
         assert mapping_result.device_model == "watch1"
+
+
+class TestGetSleepEndDates:
+    """Wake-up dates of stored sleep, used to skip re-fetching nights."""
+
+    @pytest.fixture
+    def event_repo(self) -> EventRecordRepository:
+        return EventRecordRepository(EventRecord)
+
+    def _sleep(self, data_source: object, end: datetime, zone_offset: str | None = None) -> None:
+        EventRecordFactory(
+            data_source=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=end - timedelta(hours=8),
+            end_datetime=end,
+            duration_seconds=8 * 3600,
+            zone_offset=zone_offset,
+        )
+
+    def test_dates_by_local_wake_up_date(self, db: Session, event_repo: EventRecordRepository) -> None:
+        user = UserFactory()
+        polar = DataSourceFactory(user=user, provider=ProviderName.POLAR, source=None)
+        # 01:00 local in UTC+3 is the evening before in UTC
+        self._sleep(polar, datetime(2026, 9, 4, 22, 0, tzinfo=timezone.utc), "+03:00")
+        # 20:00 local in UTC-8 is the next morning in UTC
+        self._sleep(polar, datetime(2026, 9, 3, 4, 0, tzinfo=timezone.utc), "-08:00")
+        # Window edges are local dates too: in on 2026-09-01, out on 2026-09-08
+        self._sleep(polar, datetime(2026, 8, 31, 22, 30, tzinfo=timezone.utc), "+02:00")
+        self._sleep(polar, datetime(2026, 9, 7, 23, 0, tzinfo=timezone.utc), "+02:00")
+
+        dates = event_repo.get_sleep_end_dates(db, user.id, "polar", date(2026, 9, 1), date(2026, 9, 7))
+
+        assert dates == {date(2026, 9, 5), date(2026, 9, 2), date(2026, 9, 1)}
+
+    def test_matches_provider_when_source_is_empty(self, db: Session, event_repo: EventRecordRepository) -> None:
+        user = UserFactory()
+        # Pull-ingested rows carry the provider but no source
+        polar = DataSourceFactory(user=user, provider=ProviderName.POLAR, source=None)
+        self._sleep(polar, datetime(2026, 9, 1, 7, 0, tzinfo=timezone.utc))
+        self._sleep(polar, datetime(2026, 9, 3, 6, 30, tzinfo=timezone.utc))
+
+        dates = event_repo.get_sleep_end_dates(db, user.id, "polar", date(2026, 9, 1), date(2026, 9, 7))
+
+        assert dates == {date(2026, 9, 1), date(2026, 9, 3)}
+
+    def test_ignores_other_providers_users_categories_and_dates(
+        self, db: Session, event_repo: EventRecordRepository
+    ) -> None:
+        user = UserFactory()
+        polar = DataSourceFactory(user=user, provider=ProviderName.POLAR, source=None)
+        self._sleep(
+            DataSourceFactory(user=user, provider=ProviderName.OURA, source=None),
+            datetime(2026, 9, 2, 7, 0, tzinfo=timezone.utc),
+        )
+        self._sleep(
+            DataSourceFactory(provider=ProviderName.POLAR, source=None), datetime(2026, 9, 2, 7, 0, tzinfo=timezone.utc)
+        )
+        self._sleep(polar, datetime(2026, 8, 20, 7, 0, tzinfo=timezone.utc))
+        EventRecordFactory(data_source=polar, start_datetime=datetime(2026, 9, 4, 7, 0, tzinfo=timezone.utc))
+
+        assert event_repo.get_sleep_end_dates(db, user.id, "polar", date(2026, 9, 1), date(2026, 9, 7)) == set()
