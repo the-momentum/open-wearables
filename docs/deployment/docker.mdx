@@ -245,12 +245,27 @@ The frontend reads its configuration at runtime, so the same published image wor
 |----------|----------|---------|
 | `VITE_API_URL` | yes | Public URL of the API, as a browser or phone reaches it. Shown in the portal wherever a client needs the API address. |
 | `API_URL` | no | A shorter route from the frontend server to the API, e.g. `http://app:8000` on the same Docker network. Defaults to `VITE_API_URL`. |
+| `INSTANCE_BRANDING` | no | A JSON object that tells this instance apart, e.g. staging from production, in browser tabs, bookmarks and password managers. Read only by the frontend server. See [Instance branding](#instance-branding). |
 
 ```bash
 docker run -p 3000:3000 \
   -e VITE_API_URL=https://api.client1.com \
+  -e INSTANCE_BRANDING='{"name":"Acme Wearables (Staging)","faviconUrl":"https://cdn.acme.com/favicon-staging.png"}' \
   themomentum/open-wearables-frontend:latest
 ```
+
+### Instance branding
+
+`INSTANCE_BRANDING` takes one JSON object, so new options never need new variables (see the `docker run` example above):
+
+| Field | Type | Rules | Effect |
+|-------|------|-------|--------|
+| `name` | string | 1 to 60 characters | Replaces "Open Wearables" in page titles, e.g. `Users · Acme Wearables (Staging)` |
+| `faviconUrl` | string | An `https://` URL | Replaces the bundled favicons |
+
+The value is read and validated once when the frontend starts; change it and restart to apply. A bad value never stops the portal: invalid JSON, an unknown key or an invalid field is logged as a `[branding]` warning at startup, and that part falls back to the default while every valid field still applies.
+
+`faviconUrl` must be `https://`: an `http://` icon on an https portal is blocked as mixed content, and the published image's bundled `static/` files cannot be replaced, so host the icon elsewhere (a CDN or your own site).
 
 ### How it works
 
