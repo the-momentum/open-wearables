@@ -9,6 +9,7 @@ from .data_type_coverage import DataTypeCoverage
 from .developer import Developer
 from .device_type_priority import DeviceTypePriority
 from .event_record import EventRecord
+from .event_record_aggregate import EventRecordAggregate
 from .event_record_detail import DetailType, EventRecordDetail
 from .health_score import HealthScore
 from .invitation import Invitation
@@ -18,6 +19,7 @@ from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
+from .series_aggregate import SeriesAggregate
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .sync_run import SyncRun
@@ -52,6 +54,7 @@ __all__ = [
     "UserConnection",
     "UserInvitationCode",
     "EventRecord",
+    "EventRecordAggregate",
     "EventRecordDetail",
     "MealDetails",
     "MenstrualCycleDetails",
@@ -60,6 +63,7 @@ __all__ = [
     "PersonalRecord",
     "DataPointSeries",
     "DataTypeCoverage",
+    "SeriesAggregate",
     "SeriesTypeDefinition",
     "SyncRun",
     "SyncRunDataType",
