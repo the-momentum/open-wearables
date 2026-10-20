@@ -344,7 +344,11 @@ class DataSourceRepository(
     ) -> DataSource:
         user_id, device_model, source, device_id, source_app_id = identity
         device_type = infer_device_type(
-            provider, device_model, details.original_source_name or source, details.reported_type
+            provider,
+            device_model=device_model,
+            original_source_name=details.original_source_name or source,
+            reported_type=details.reported_type,
+            source_app_id=source_app_id,
         )
         return self.model(
             id=uuid4(),
@@ -387,9 +391,8 @@ class DataSourceRepository(
             updates["source"] = source
         # Keyed rows learn their model later (Polar sleep before the exercise, a writer's first model);
         # a relaying host's code is replaced by the producing device's model
-        replaces_host = is_host_model(existing.source_app_id, existing.device_model) and not is_host_model(
-            source_app_id, device_model
-        )
+        host_row = is_host_model(existing.source_app_id, existing.device_model)
+        replaces_host = host_row and not is_host_model(source_app_id, device_model)
         if device_model and (existing.device_model is None or replaces_host):
             updates["device_model"] = device_model
         model_replaced = "device_model" in updates
@@ -404,12 +407,13 @@ class DataSourceRepository(
             updates["original_source_name"] = original_source_name
         resolved = infer_device_type(
             provider,
-            effective_model,
-            original_source_name or existing.original_source_name or existing.source,
-            reported_type,
+            device_model=effective_model,
+            original_source_name=original_source_name or existing.original_source_name or existing.source,
+            reported_type=reported_type,
+            source_app_id=source_app_id or existing.source_app_id,
         )
-        # The stored type came from the host code, so it is replaced along with the model
-        if model_replaced and replaces_host:
+        # The stored type came from the host code, so it is always recomputed
+        if host_row:
             device_type = resolved.value if resolved != DeviceType.UNKNOWN else None
         else:
             device_type = self.next_device_type(provider, existing.device_type, resolved)
