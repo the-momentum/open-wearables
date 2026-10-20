@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource
+from app.models import DataSource, SeriesSample
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, TypeCounts, WriteCounts
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
@@ -29,7 +29,7 @@ class TestDataPointSeriesRepository:
     @pytest.fixture
     def series_repo(self) -> DataPointSeriesRepository:
         """Create DataPointSeriesRepository instance."""
-        return DataPointSeriesRepository(DataPointSeries)
+        return DataPointSeriesRepository(SeriesSample)
 
     def test_create_with_existing_mapping(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test creating a data point with an existing external mapping."""
@@ -730,14 +730,14 @@ class TestDataPointSeriesRepository:
         # Act
         series_repo.bulk_create(db, [sample])
         db.commit()
-        row_id = db.query(DataPointSeries.id).filter(DataPointSeries.recorded_at == ts).one()[0]
-        xmin_before = db.execute(text("SELECT xmin FROM data_point_series WHERE id = :id"), {"id": row_id}).scalar()
+        row_id = db.query(SeriesSample.id).filter(SeriesSample.recorded_at == ts).one()[0]
+        xmin_before = db.execute(text("SELECT xmin FROM series_sample WHERE id = :id"), {"id": row_id}).scalar()
 
         # Re-send the exact same row: same value, same everything -> conflicts, but
         # nothing actually differs.
         counts = series_repo.bulk_create(db, [sample])
         db.commit()
-        xmin_after = db.execute(text("SELECT xmin FROM data_point_series WHERE id = :id"), {"id": row_id}).scalar()
+        xmin_after = db.execute(text("SELECT xmin FROM series_sample WHERE id = :id"), {"id": row_id}).scalar()
 
         # Assert
         assert counts.updated == 1  # still reported as a conflict, per WriteCounts' contract
@@ -770,7 +770,7 @@ class TestDataPointSeriesRepository:
         db.commit()
 
         # Assert
-        stored = db.query(DataPointSeries.value).filter(DataPointSeries.recorded_at == ts).scalar()
+        stored = db.query(SeriesSample.value).filter(SeriesSample.recorded_at == ts).scalar()
         assert stored == 2000
 
     def test_bulk_create_null_fields_round_trip_through_copy(
@@ -800,7 +800,7 @@ class TestDataPointSeriesRepository:
         db.commit()
 
         # Assert
-        stored = db.query(DataPointSeries).filter(DataPointSeries.id == sample.id).one()
+        stored = db.query(SeriesSample).filter(SeriesSample.id == sample.id).one()
         assert stored.external_id is None
         assert stored.zone_offset is None
         assert stored.is_daily_total is None
@@ -909,7 +909,7 @@ class TestPerTypeWriteCounts:
 
     @pytest.fixture
     def series_repo(self) -> DataPointSeriesRepository:
-        return DataPointSeriesRepository(DataPointSeries)
+        return DataPointSeriesRepository(SeriesSample)
 
     @staticmethod
     def _sample(user_id: UUID, recorded_at: datetime, series_type: SeriesType) -> TimeSeriesSampleCreate:

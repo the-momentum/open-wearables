@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource, EventRecord, SeriesTypeDefinition, SleepDetails
+from app.models import DataSource, EventRecord, SeriesSample, SeriesTypeDefinition, SleepDetails
 from app.schemas.enums.series_types import SeriesType
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
@@ -296,7 +296,7 @@ class TestUltrahumanActivitySamplesIntegration:
             )
 
             samples = (
-                db.query(DataPointSeries)
+                db.query(SeriesSample)
                 .join(DataSource)
                 .filter(
                     DataSource.user_id == user.id,
@@ -321,7 +321,7 @@ class TestUltrahumanActivitySamplesIntegration:
                 assert code in synced_codes, f"{code} missing from synced samples"
 
     def test_vo2_max_saved_with_mocked_api(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
-        """Verify VO2 max value is saved as a DataPointSeries after sync."""
+        """Verify VO2 max value is saved as a SeriesSample after sync."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
         DataSourceFactory(user_id=user.id, provider="ultrahuman")
@@ -339,9 +339,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(DataPointSeries)
+            db.query(SeriesSample)
             .join(DataSource)
-            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.vo2_max.value,
@@ -375,9 +375,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(DataPointSeries)
+            db.query(SeriesSample)
             .join(DataSource)
-            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.skin_temperature_deviation.value,
@@ -406,9 +406,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(DataPointSeries)
+            db.query(SeriesSample)
             .join(DataSource)
-            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.resting_heart_rate.value,
@@ -438,10 +438,10 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         codes_and_values = (
-            db.query(SeriesTypeDefinition.code, DataPointSeries.value)
-            .select_from(DataPointSeries)
-            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
-            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            db.query(SeriesTypeDefinition.code, SeriesSample.value)
+            .select_from(SeriesSample)
+            .join(DataSource, SeriesSample.data_source_id == DataSource.id)
+            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code.in_([SeriesType.exercise_time.value, SeriesType.active_time.value]),
@@ -472,9 +472,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(DataPointSeries)
+            db.query(SeriesSample)
             .join(DataSource)
-            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.heart_rate.value,
@@ -508,9 +508,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(DataPointSeries)
+            db.query(SeriesSample)
             .join(DataSource)
-            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.skin_temperature.value,
@@ -541,7 +541,7 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
+        samples = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).all()
 
         assert len(samples) > 0, "No activity samples found"
         for sample in samples:
@@ -608,7 +608,7 @@ class TestUltrahumanAPIEndpoints:
             assert results.outcomes["activity_samples"].rows_written > 0, (
                 "Fixture has activity data, expected synced samples"
             )
-            samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
+            samples = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).all()
 
             assert len(samples) > 0, "Should have activity samples after sync"
 
@@ -822,7 +822,7 @@ class TestUltrahumanSyncCountContract:
 
         def _sample_rows() -> int:
             return (
-                db.query(DataPointSeries)
+                db.query(SeriesSample)
                 .join(DataSource)
                 .filter(DataSource.user_id == user.id, DataSource.provider == "ultrahuman")
                 .count()

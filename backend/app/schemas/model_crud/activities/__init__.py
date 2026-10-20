@@ -43,7 +43,7 @@ from .personal_record import (
 from .sleep import SleepStage
 
 __all__ = [
-    # DataPointSeries (rename from timeseries maybe)
+    # SeriesSample (rename from timeseries maybe)
     "TimeSeriesSampleBase",
     "TimeSeriesSampleCreate",
     "TimeSeriesSampleUpdate",

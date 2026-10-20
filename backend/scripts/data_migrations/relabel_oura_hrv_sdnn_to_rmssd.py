@@ -6,7 +6,7 @@ under the SDNN series type (id=3) instead of RMSSD (id=7). The values themselves
 are correct — only the label/unit is wrong — so this is a pure relabel, scoped
 strictly to provider='oura' so other providers' genuine SDNN data (e.g. Apple) is
 left untouched. The ingestion path was fixed separately (oura/data_247.py); this
-script corrects pre-existing rows in data_point_series and data_point_series_archive.
+script corrects pre-existing rows in series_sample and data_point_series_archive.
 
 Conflict handling: after the ingestion fix, a re-sync can write a correct RMSSD row
 at the same (data_source, recorded_at) as an old SDNN row, which would collide with
@@ -35,10 +35,10 @@ RMSSD_ID = 7
 
 _PARAMS = {"provider": PROVIDER, "sdnn": SDNN_ID, "rmssd": RMSSD_ID}
 
-# data_point_series: unique on (data_source_id, series_type_definition_id, recorded_at)
+# series_sample: unique on (data_source_id, series_type_definition_id, recorded_at)
 _SERIES_COUNT = text("""
     SELECT COUNT(*)
-    FROM data_point_series dps
+    FROM series_sample dps
     JOIN data_source ds ON ds.id = dps.data_source_id
     WHERE ds.provider = :provider
       AND dps.series_type_definition_id = :sdnn
@@ -47,12 +47,12 @@ _SERIES_COUNT = text("""
 # SDNN rows that collide with an already-correct RMSSD row — these get deleted, not relabeled.
 _SERIES_CONFLICT_COUNT = text("""
     SELECT COUNT(*)
-    FROM data_point_series dps
+    FROM series_sample dps
     JOIN data_source ds ON ds.id = dps.data_source_id
     WHERE ds.provider = :provider
       AND dps.series_type_definition_id = :sdnn
       AND EXISTS (
-          SELECT 1 FROM data_point_series e
+          SELECT 1 FROM series_sample e
           WHERE e.data_source_id = dps.data_source_id
             AND e.series_type_definition_id = :rmssd
             AND e.recorded_at = dps.recorded_at
@@ -60,14 +60,14 @@ _SERIES_CONFLICT_COUNT = text("""
 """)
 
 _SERIES_UPDATE = text("""
-    UPDATE data_point_series dps
+    UPDATE series_sample dps
     SET series_type_definition_id = :rmssd
     FROM data_source ds
     WHERE ds.id = dps.data_source_id
       AND ds.provider = :provider
       AND dps.series_type_definition_id = :sdnn
       AND NOT EXISTS (
-          SELECT 1 FROM data_point_series e
+          SELECT 1 FROM series_sample e
           WHERE e.data_source_id = dps.data_source_id
             AND e.series_type_definition_id = :rmssd
             AND e.recorded_at = dps.recorded_at
@@ -79,13 +79,13 @@ _SERIES_UPDATE = text("""
 # counterpart (e.g. written by an old pod during a rolling deploy) are left for the
 # next startup run to pick up via _SERIES_UPDATE.
 _SERIES_DELETE_DUPLICATES = text("""
-    DELETE FROM data_point_series dps
+    DELETE FROM series_sample dps
     USING data_source ds
     WHERE ds.id = dps.data_source_id
       AND ds.provider = :provider
       AND dps.series_type_definition_id = :sdnn
       AND EXISTS (
-          SELECT 1 FROM data_point_series e
+          SELECT 1 FROM series_sample e
           WHERE e.data_source_id = dps.data_source_id
             AND e.series_type_definition_id = :rmssd
             AND e.recorded_at = dps.recorded_at
@@ -166,7 +166,7 @@ def relabel_oura_hrv(db: Session, *, dry_run: bool) -> dict[str, int]:
         series_updated = _scalar_count(db, _SERIES_COUNT) - series_deleted
         archive_deleted = _scalar_count(db, _ARCHIVE_CONFLICT_COUNT)
         archive_updated = _scalar_count(db, _ARCHIVE_COUNT) - archive_deleted
-        print(f"data_point_series:         Would relabel {series_updated}, remove {series_deleted} duplicate(s)")
+        print(f"series_sample:         Would relabel {series_updated}, remove {series_deleted} duplicate(s)")
         print(f"data_point_series_archive: Would relabel {archive_updated}, remove {archive_deleted} duplicate(s)")
         print("\nDry run — no changes made.")
         return {
@@ -181,7 +181,7 @@ def relabel_oura_hrv(db: Session, *, dry_run: bool) -> dict[str, int]:
     archive_updated = db.execute(_ARCHIVE_UPDATE, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
     archive_deleted = db.execute(_ARCHIVE_DELETE_DUPLICATES, _PARAMS).rowcount  # ty: ignore[unresolved-attribute]
 
-    print(f"data_point_series:         Relabeled {series_updated}, removed {series_deleted} duplicate(s)")
+    print(f"series_sample:         Relabeled {series_updated}, removed {series_deleted} duplicate(s)")
     print(f"data_point_series_archive: Relabeled {archive_updated}, removed {archive_deleted} duplicate(s)")
 
     return {

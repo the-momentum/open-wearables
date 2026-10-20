@@ -37,7 +37,7 @@ _MISSING_RESILIENCE_SCORES_QUERY = text("""
     ) AS gs(target_date)
     CROSS JOIN (
         SELECT DISTINCT ds.user_id
-        FROM data_point_series dp
+        FROM series_sample dp
         JOIN data_source ds ON ds.id = dp.data_source_id
         WHERE dp.series_type_definition_id IN (:rmssd_id, :sdnn_id)
           AND dp.recorded_at >= CURRENT_DATE - :data_lookback_days * INTERVAL '1 day'

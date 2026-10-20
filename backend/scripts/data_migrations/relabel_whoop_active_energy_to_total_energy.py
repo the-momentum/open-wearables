@@ -2,7 +2,7 @@
 """Move Whoop cycle energy from active_energy (81) to total_energy (89) (#1658).
 
 Whoop's cycle kilojoule includes BMR, so it was never active energy. For Whoop rows in
-data_point_series and data_point_series_archive:
+series_sample and data_point_series_archive:
 - value 0 (strap not worn): deleted, ingestion no longer writes these
 - already has a total_energy row at the same key (re-synced after deploy): deleted
 - everything else: relabeled to total_energy, value unchanged
@@ -30,11 +30,11 @@ _PARAMS = {
 
 _SOURCES = text("SELECT id FROM data_source WHERE provider = :provider ORDER BY id")
 
-# data_point_series: unique on (data_source_id, series_type_definition_id, recorded_at)
+# series_sample: unique on (data_source_id, series_type_definition_id, recorded_at)
 _SERIES_SCOPE = "dps.data_source_id = :source AND dps.series_type_definition_id = :active_energy"
 # Rows deleted rather than relabeled: no-wear zeros, and duplicates of an existing total_energy row.
 _SERIES_DROP = """(dps.value = 0 OR EXISTS (
-    SELECT 1 FROM data_point_series e
+    SELECT 1 FROM series_sample e
     WHERE e.data_source_id = dps.data_source_id
       AND e.series_type_definition_id = :total_energy
       AND e.recorded_at = dps.recorded_at
@@ -52,17 +52,15 @@ _ARCHIVE_DROP = """(a.value = 0 OR EXISTS (
 
 _COUNTS = text(f"""
     SELECT
-        (SELECT count(*) FROM data_point_series dps WHERE {_SERIES_SCOPE}),
-        (SELECT count(*) FROM data_point_series dps WHERE {_SERIES_SCOPE} AND {_SERIES_DROP}),
+        (SELECT count(*) FROM series_sample dps WHERE {_SERIES_SCOPE}),
+        (SELECT count(*) FROM series_sample dps WHERE {_SERIES_SCOPE} AND {_SERIES_DROP}),
         (SELECT count(*) FROM data_point_series_archive a WHERE {_ARCHIVE_SCOPE}),
         (SELECT count(*) FROM data_point_series_archive a WHERE {_ARCHIVE_SCOPE} AND {_ARCHIVE_DROP})
 """)
 # Deletes run before updates, so the updates only see rows that can be relabeled without
 # hitting the unique constraint
-_SERIES_DELETE = text(f"DELETE FROM data_point_series dps WHERE {_SERIES_SCOPE} AND {_SERIES_DROP}")
-_SERIES_UPDATE = text(
-    f"UPDATE data_point_series dps SET series_type_definition_id = :total_energy WHERE {_SERIES_SCOPE}"
-)
+_SERIES_DELETE = text(f"DELETE FROM series_sample dps WHERE {_SERIES_SCOPE} AND {_SERIES_DROP}")
+_SERIES_UPDATE = text(f"UPDATE series_sample dps SET series_type_definition_id = :total_energy WHERE {_SERIES_SCOPE}")
 _ARCHIVE_DELETE = text(f"DELETE FROM data_point_series_archive a WHERE {_ARCHIVE_SCOPE} AND {_ARCHIVE_DROP}")
 _ARCHIVE_UPDATE = text(
     f"UPDATE data_point_series_archive a SET series_type_definition_id = :total_energy WHERE {_ARCHIVE_SCOPE}"
@@ -89,7 +87,7 @@ def relabel_whoop_active_energy(db: Session, *, dry_run: bool) -> dict[str, int]
         db.commit()
 
     verb = ("Would relabel", "remove") if dry_run else ("Relabeled", "removed")
-    print(f"data_point_series:         {verb[0]} {result['series_updated']}, {verb[1]} {result['series_deleted']}")
+    print(f"series_sample:         {verb[0]} {result['series_updated']}, {verb[1]} {result['series_deleted']}")
     print(f"data_point_series_archive: {verb[0]} {result['archive_updated']}, {verb[1]} {result['archive_deleted']}")
     if dry_run:
         print("\nDry run — no changes made.")

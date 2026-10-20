@@ -2,7 +2,6 @@ from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
 from .data_migration import DataMigration
-from .data_point_series import DataPointSeries
 from .data_point_series_archive import DataPointSeriesArchive
 from .data_source import DataSource
 from .data_type_coverage import DataTypeCoverage
@@ -20,6 +19,7 @@ from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_aggregate import SeriesAggregate
+from .series_sample import SeriesSample
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .sync_run import SyncRun
@@ -61,7 +61,7 @@ __all__ = [
     "SleepDetails",
     "WorkoutDetails",
     "PersonalRecord",
-    "DataPointSeries",
+    "SeriesSample",
     "DataTypeCoverage",
     "SeriesAggregate",
     "SeriesTypeDefinition",

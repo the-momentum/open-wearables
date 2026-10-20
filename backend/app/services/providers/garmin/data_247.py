@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, EventRecordDetail
+from app.models import EventRecord, EventRecordDetail, SeriesSample
 from app.repositories import (
     DataSourceRepository,
     EventRecordDetailRepository,
@@ -74,7 +74,7 @@ class Garmin247Data(Base247DataTemplate):
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
         self.connection_repo = UserConnectionRepository()
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     # -------------------------------------------------------------------------
@@ -572,7 +572,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_daily: tuple[dict[str, Any], list[HealthScoreCreate]],
     ) -> WriteCounts:
-        """Save daily data to DataPointSeries and health scores.
+        """Save daily data to SeriesSample and health scores.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -767,7 +767,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_epochs: dict[str, list[dict[str, Any]]],
     ) -> int:
-        """Save epoch samples to DataPointSeries.
+        """Save epoch samples to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -879,7 +879,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_body_comp: dict[str, Any],
     ) -> int:
-        """Save body composition metrics to DataPointSeries.
+        """Save body composition metrics to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -963,7 +963,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_hrv: dict[str, Any],
     ) -> int:
-        """Save HRV (Heart Rate Variability) data to DataPointSeries.
+        """Save HRV (Heart Rate Variability) data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1045,7 +1045,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_activity_details: dict[str, Any],
     ) -> list[TimeSeriesSampleCreate]:
-        """Build per-second data_point_series rows from activityDetails.samples[].
+        """Build per-second series_sample rows from activityDetails.samples[].
 
         Called only when settings.ingest_workout_samples is True.
         Failures here must never reach the caller — wrap in try/except at call site.
@@ -1275,7 +1275,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_respiration: dict[str, Any],
     ) -> int:
-        """Save respiration rate data to DataPointSeries.
+        """Save respiration rate data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1352,7 +1352,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_pulse_ox: dict[str, Any],
     ) -> int:
-        """Save SpO2 (blood oxygen saturation) data to DataPointSeries.
+        """Save SpO2 (blood oxygen saturation) data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1432,7 +1432,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_bp: dict[str, Any],
     ) -> int:
-        """Save blood pressure data to DataPointSeries.
+        """Save blood pressure data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1501,7 +1501,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_metrics: dict[str, Any],
     ) -> int:
-        """Save user metrics (VO2max, fitness age) to DataPointSeries.
+        """Save user metrics (VO2max, fitness age) to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1556,7 +1556,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_skin_temp: dict[str, Any],
     ) -> int:
-        """Save skin temperature data to DataPointSeries.
+        """Save skin temperature data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1688,7 +1688,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_snapshot: dict[str, Any],
     ) -> int:
-        """Save health snapshot data to DataPointSeries.
+        """Save health snapshot data to SeriesSample.
 
         Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
@@ -1883,7 +1883,7 @@ class Garmin247Data(Base247DataTemplate):
 
         for item in items:
             try:
-                # DataPointSeries types - accumulate samples
+                # SeriesSample types - accumulate samples
                 match summary_type:
                     case "dailies":
                         normalized, health_scores = self.normalize_dailies(item, user_id)
@@ -2070,7 +2070,7 @@ class Garmin247Data(Base247DataTemplate):
 
         count = WriteCounts(0, 0)
 
-        # Single bulk insert for DataPointSeries
+        # Single bulk insert for SeriesSample
         if all_samples:
             count += self.data_point_repo.bulk_create(db, all_samples)
 

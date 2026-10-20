@@ -3,8 +3,8 @@
 Syncs data from three Suunto Cloud API endpoints:
 - /247samples/sleep   → EventRecord (category=sleep) + SleepDetails
 - /247samples/recovery → HealthScore (category=RECOVERY, balance scaled 0-100)
-- /247samples/activity → DataPointSeries (HR, steps, SpO2, energy, HRV)
-- /247/daily-activity-statistics → DataPointSeries (aggregated daily steps/energy)
+- /247samples/activity → SeriesSample (HR, steps, SpO2, energy, HRV)
+- /247/daily-activity-statistics → SeriesSample (aggregated daily steps/energy)
 """
 
 from datetime import datetime, timedelta
@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord
+from app.models import DataSource, EventRecord, SeriesSample
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
@@ -68,7 +68,7 @@ class Suunto247Data(Base247DataTemplate):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
         self.connection_repo = UserConnectionRepository()
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -661,7 +661,7 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_stats: list[dict[str, Any]],
     ) -> WriteCounts:
-        """Save daily activity statistics as DataPointSeries (bulk)."""
+        """Save daily activity statistics as SeriesSample (bulk)."""
         all_samples: list[TimeSeriesSampleCreate] = []
 
         for stat in normalized_stats:
@@ -762,13 +762,13 @@ class Suunto247Data(Base247DataTemplate):
         with run.step("recovery", rollback_on_error=False) as step:
             step.record(self.load_and_save_recovery(db, user_id, start_dt, end_dt))
 
-        # 3. Activity samples → DataPointSeries (HR, steps, SpO2, energy, HRV)
+        # 3. Activity samples → SeriesSample (HR, steps, SpO2, energy, HRV)
         with run.step("activity_samples", commit=True) as step:
             raw_activity = self.get_activity_samples(db, user_id, start_dt, end_dt)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
             step.record(self.save_activity_samples(db, user_id, normalized_activity))
 
-        # 4. Daily aggregated statistics → DataPointSeries (steps, energy)
+        # 4. Daily aggregated statistics → SeriesSample (steps, energy)
         with run.step("daily_activity", commit=True) as step:
             raw_daily = self.get_daily_activity_statistics(db, user_id, start_dt, end_dt)
             normalized_daily = [self.normalize_daily_activity(item, user_id) for item in raw_daily]

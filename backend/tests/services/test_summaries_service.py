@@ -167,7 +167,7 @@ class TestGetSleepSummaries:
         assert result.data == []
 
     def test_physio_averages_within_sleep_window(self, db: Session, service: SummariesService) -> None:
-        """avg_heart_rate_bpm/avg_hrv_sdnn_ms are computed from data_point_series
+        """avg_heart_rate_bpm/avg_hrv_sdnn_ms are computed from series_sample
         samples within [min_start_time, max_end_time), independently per series
         type, and samples outside the window are excluded."""
         user = UserFactory()

@@ -15,16 +15,16 @@ from app.mappings import (
 )
 
 
-class DataPointSeries(BaseDbModel):
+class SeriesSample(BaseDbModel):
     """Unified time-series data points for device metrics (heart rate, steps, energy, etc.)."""
 
-    __tablename__ = "data_point_series"
+    __tablename__ = "series_sample"
     __table_args__ = (
         UniqueConstraint(
             "data_source_id",
             "series_type_definition_id",
             "recorded_at",
-            name="uq_data_point_series_source_type_time",
+            name="uq_series_sample_source_type_time",
         ),
     )
 

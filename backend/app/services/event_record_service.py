@@ -10,7 +10,6 @@ from sqlalchemy.orm import Query
 from app.config import settings
 from app.database import DbSession
 from app.models import (
-    DataPointSeries,
     DataSource,
     DetailType,
     EventRecord,
@@ -19,6 +18,7 @@ from app.models import (
     MealDetails,
     MenstrualCycleDetails,
     ProviderPriority,
+    SeriesSample,
     SleepDetails,
     WorkoutDetails,
 )
@@ -121,7 +121,7 @@ class EventRecordService(
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
-        self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_series_repo = DataPointSeriesRepository(SeriesSample)
         self.health_score_repo = HealthScoreRepository(HealthScore)
         self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
@@ -134,7 +134,7 @@ class EventRecordService(
         """Return avg HR for each workout record.
 
         Uses stored heart_rate_avg where available, falls back to a single batch query
-        against data_point_series for records that don't have it: the workout's own source
+        against series_sample for records that don't have it: the workout's own source
         first, then the other sources of the same writer.
         """
         result: dict[UUID, int | None] = {}

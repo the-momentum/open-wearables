@@ -175,7 +175,7 @@ def get_aggregation_method(series_type: SeriesType) -> AggregationMethod:
 
 
 def daily_total_flag(series_type: SeriesType, is_daily: bool) -> bool | None:
-    """Value for DataPointSeries.is_daily_total at ingestion.
+    """Value for SeriesSample.is_daily_total at ingestion.
 
     Only summable (SUM) series have a meaningful daily-total vs intraday-sample
     distinction — they are the ones the prefer-daily aggregation sums, so a daily
