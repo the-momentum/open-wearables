@@ -25,6 +25,8 @@ class SleepDetails(EventRecordDetail):
 
     record_id: Mapped[FKEventRecord]
 
+    # Whole minutes. Time asleep excludes awake time; time in bed includes it. The session's
+    # start-to-end time is EventRecord.duration_seconds.
     sleep_total_duration_minutes: Mapped[int | None]
     sleep_time_in_bed_minutes: Mapped[int | None]
     sleep_efficiency_score: Mapped[numeric_5_2 | None]

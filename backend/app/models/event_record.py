@@ -52,6 +52,7 @@ class EventRecord(BaseDbModel):
     type: Mapped[str_32 | None]
     source_name: Mapped[str_64]
 
+    # The whole start-to-end span; for sleep, awake time included (time asleep is in SleepDetails).
     duration_seconds: Mapped[int | None]
 
     start_datetime: Mapped[datetime]
