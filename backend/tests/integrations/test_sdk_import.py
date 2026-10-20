@@ -805,6 +805,24 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
 
+    @pytest.mark.parametrize("metric_type", ["ACTIVITY_INTENSITY_MODERATE", "ACTIVITY_INTENSITY_VIGOROUS"])
+    def test_health_connect_activity_intensity_minutes_are_exercise_time(
+        self,
+        import_service: ImportService,
+        metric_type: str,
+    ) -> None:
+        """Moderate and vigorous minutes are both exercise_time, taken from the record's length, not its value."""
+        record = self._record(metric_type, 999, unit="s") | {
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:25:00Z",
+        }
+        request = self._build_request("health_connect", [record])
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.exercise_time
+        assert samples[0].value == Decimal("25")
+
     @pytest.mark.parametrize(
         ("unit", "expected"),
         [

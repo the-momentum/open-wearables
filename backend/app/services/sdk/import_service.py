@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
+    SDKMetricType,
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
     get_series_type_from_metric_type,
@@ -58,6 +59,11 @@ MMOL_L_TO_MG_DL = Decimal("18.0182")
 
 # Energy series stored in kcal.
 _KCAL_SERIES = frozenset({SeriesType.dietary_energy_consumed, SeriesType.dietary_energy_from_fat})
+
+# Health Connect's ActivityIntensityRecord has no value of its own: its minutes are the record's length.
+_INTERVAL_MINUTE_TYPES = frozenset(
+    {SDKMetricType.ANDROID_ACTIVITY_INTENSITY_MODERATE, SDKMetricType.ANDROID_ACTIVITY_INTENSITY_VIGOROUS}
+)
 
 MEAL_CORRELATION_TYPES = frozenset({"HKCorrelationTypeIdentifierFood", "FOOD"})
 
@@ -319,6 +325,9 @@ class ImportService:
             # "Cal" is the food Calorie (= kcal).
             if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
                 value = value / 1000
+
+            if record_type in _INTERVAL_MINUTE_TYPES:
+                value = Decimal(str((rjson.endDate - rjson.startDate).total_seconds() / 60))
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
