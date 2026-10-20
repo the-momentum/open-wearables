@@ -806,6 +806,58 @@ class TestDataPointSeriesRepository:
         assert stored.is_daily_total is None
         assert stored.value == Decimal("1.5")
 
+    def test_bulk_create_keeps_gps_precision(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """Coordinates keep their written precision instead of being rounded to ~110 m."""
+        # Arrange
+        user = UserFactory()
+        ts = datetime(2099, 1, 4, tzinfo=timezone.utc)
+        samples = [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                recorded_at=ts,
+                value=value,
+                series_type=series_type,
+            )
+            for series_type, value in ((SeriesType.latitude, 52.229676), (SeriesType.longitude, -21.0122287))
+        ]
+
+        # Act
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        # Assert
+        stored = {
+            row.id: row.value
+            for row in db.query(DataPointSeries).filter(DataPointSeries.id.in_([s.id for s in samples]))
+        }
+        assert stored[samples[0].id] == Decimal("52.229676")
+        assert stored[samples[1].id] == Decimal("-21.0122287")
+
+    def test_bulk_create_rounds_value_to_seven_places(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Float noise past seven decimal places is not stored in the unbounded column."""
+        # Arrange
+        user = UserFactory()
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="oura",
+            recorded_at=datetime(2099, 1, 5, tzinfo=timezone.utc),
+            value=0.1 + 0.2,
+            series_type=SeriesType.elevation,
+        )
+
+        # Act
+        series_repo.bulk_create(db, [sample])
+        db.commit()
+
+        # Assert
+        stored = db.query(DataPointSeries.value).filter(DataPointSeries.id == sample.id).scalar()
+        assert stored == Decimal("0.3")
+
     # ------------------------------------------------------------------
     # get_daily_activity_aggregates — prefer-daily-total-else-sum logic
     # ------------------------------------------------------------------
