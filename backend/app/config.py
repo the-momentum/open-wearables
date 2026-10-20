@@ -232,6 +232,9 @@ class Settings(BaseSettings):
     strava_webhook_signature_tolerance_seconds: int = Field(300, ge=0)
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
+    # Delayed stream re-fetch when the webhook beats stream processing; delay triples per attempt.
+    strava_stream_retry_max_attempts: int = Field(3, ge=0)
+    strava_stream_retry_base_delay_seconds: int = Field(300, gt=0)
 
     # ULTRAHUMAN OAUTH SETTINGS
     ultrahuman_client_id: str | None = None
