@@ -16765,7 +16765,9 @@
                 "type": "null"
               }
             ],
-            "title": "Interruptions Count"
+            "title": "Interruptions Count",
+            "description": "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage timeline. Null when the day has no main sleep or one of its main sleep sessions has no stage timeline",
+            "example": 2
           },
           "nap_count": {
             "anyOf": [

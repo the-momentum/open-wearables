@@ -15,8 +15,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import sleep_config
-from app.algorithms.sleep import SleepScoreResult, calculate_overall_sleep_score
-from app.constants.sleep import SleepStageType
+from app.algorithms.sleep import SleepScoreResult, awakenings, calculate_overall_sleep_score
 from app.database import DbSession
 from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_repository import EventRecordRepository
@@ -64,30 +63,8 @@ class SleepScoreService:
 
         Returns total WASO minutes and individual awakening durations.
         """
-        if not sleep_stages:
-            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
-
-        sleep_indices = [i for i, s in enumerate(sleep_stages) if s.stage != SleepStageType.AWAKE]
-        if not sleep_indices:
-            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
-
-        first_sleep_idx = sleep_indices[0]
-        last_sleep_idx = sleep_indices[-1]
-
-        true_sleep_period = sleep_stages[first_sleep_idx : last_sleep_idx + 1]
-
-        waso_total_minutes = 0.0
-        awakening_durations: list[float] = []
-        for block in true_sleep_period:
-            if block.stage == SleepStageType.AWAKE:
-                duration_mins = (block.end_time - block.start_time).total_seconds() / 60.0
-                waso_total_minutes += duration_mins
-                awakening_durations.append(duration_mins)
-
-        return WasoData(
-            total_awake_minutes=waso_total_minutes,
-            awakening_durations=awakening_durations,
-        )
+        awakening_durations = awakenings(sleep_stages)
+        return WasoData(total_awake_minutes=sum(awakening_durations), awakening_durations=awakening_durations)
 
     def get_sleep_score(
         self,

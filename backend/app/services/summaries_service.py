@@ -6,6 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
+from app.algorithms.config_algorithms import sleep_config
+from app.algorithms.sleep import awakenings
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
@@ -27,6 +29,7 @@ from app.schemas.enums import (
     SeriesType,
     get_series_type_id,
 )
+from app.schemas.model_crud.activities import SleepStage
 from app.schemas.responses.activity import (
     ActivitySummary,
     ActivityTotals,
@@ -95,6 +98,22 @@ def _midnight(day: date) -> datetime:
 def _activity_key(row: dict) -> tuple:
     """The compound key an activity cursor points at: date, then source, then device."""
     return (row["activity_date"], row["source"] or "", row.get("device_model") or "")
+
+
+def _interruptions_count(sessions: list[dict]) -> int | None:
+    """Awakenings in the day's main sleep longer than the sleep score's threshold.
+
+    None without main sleep or when a main session has no timeline.
+    """
+    main_sessions = [s for s in sessions if not s["is_nap"]]
+    if not main_sessions or any(not s["sleep_stages"] for s in main_sessions):
+        return None
+    return sum(
+        1
+        for session in main_sessions
+        for minutes in awakenings([SleepStage(**stage) for stage in session["sleep_stages"]])
+        if minutes > sleep_config.significant_wake_threshold_mins
+    )
 
 
 class SummariesService:
@@ -367,6 +386,7 @@ class SummariesService:
                 time_in_bed_minutes=result.get("time_in_bed_minutes"),
                 efficiency_percent=result.get("efficiency_percent"),
                 stages=stages,
+                interruptions_count=_interruptions_count(raw_sessions),
                 nap_count=result.get("nap_count"),
                 nap_duration_minutes=result.get("nap_duration_minutes"),
                 avg_heart_rate_bpm=avg_hr,

@@ -1,5 +1,5 @@
 import contextlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -983,7 +983,9 @@ class EventRecordRepository(
 
         # Attach per-session breakdown (individual sleep/nap records) for each summary,
         # keyed by the same (date, provider, source, device_model) grouping identity.
-        sessions_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
+        # Only the page's nights: each session carries its stage timeline.
+        nights = [row.sleep_date for row in results]
+        sessions_by_key = self._get_sleep_sessions(db_session, user_id, min(nights), max(nights)) if nights else {}
         for summary in summaries:
             key = (
                 summary["sleep_date"],
@@ -999,15 +1001,16 @@ class EventRecordRepository(
         self,
         db_session: DbSession,
         user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
+        first_night: date,
+        last_night: date,
     ) -> dict[tuple, list[dict]]:
         """Get individual sleep/nap sessions keyed by (sleep_date, provider, source, device_model).
 
-        Mirrors the date filter and grouping identity of ``get_sleep_summaries`` but returns one
-        entry per underlying EventRecord instead of collapsing them. Per-session duration prefers
-        net sleep time (SleepDetails.sleep_total_duration_minutes) and falls back to wall-clock
-        duration, matching the aggregate duration logic. Sessions are sorted by start time.
+        Covers the nights first_night to last_night, inclusive. Mirrors the grouping identity of
+        ``get_sleep_summaries`` but returns one entry per underlying EventRecord instead of collapsing
+        them. Per-session duration prefers net sleep time (SleepDetails.sleep_total_duration_minutes)
+        and falls back to wall-clock duration, matching the aggregate duration logic. Sessions are
+        sorted by start time.
         """
         local_sleep_date = cast(
             EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
@@ -1031,6 +1034,7 @@ class EventRecordRepository(
                 EventRecord.zone_offset.label("zone_offset"),
                 duration_seconds.label("duration_seconds"),
                 func.coalesce(SleepDetails.is_nap, False).label("is_nap"),
+                SleepDetails.sleep_stages,
                 DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
@@ -1040,9 +1044,8 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
-                EventRecord.end_datetime >= start_date - timedelta(days=1),
-                local_sleep_date >= cast(start_date, Date),
-                local_sleep_date < cast(end_date, Date),
+                EventRecord.end_datetime >= datetime.combine(first_night, time.min, timezone.utc) - timedelta(days=1),
+                local_sleep_date.between(first_night, last_night),
             )
             .order_by(asc(local_sleep_date), asc(EventRecord.start_datetime))
             .all()
@@ -1058,6 +1061,7 @@ class EventRecordRepository(
                     "zone_offset": row.zone_offset,
                     "duration_minutes": int(row.duration_seconds) // 60 if row.duration_seconds is not None else None,
                     "is_nap": bool(row.is_nap),
+                    "sleep_stages": row.sleep_stages,
                 }
             )
         return sessions_by_key

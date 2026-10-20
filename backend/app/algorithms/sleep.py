@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import sleep_config
 from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
+from app.constants.sleep import SleepStageType
+from app.schemas.model_crud.activities.sleep import SleepStage
 
 
 class SleepComponentScore(BaseModel):
@@ -36,6 +38,11 @@ STAGE_SCORE_BOUNDS = ScoreBounds(0, 100)
 CONSISTENCY_SCORE_BOUNDS = ScoreBounds(0, 100)
 INTERRUPTIONS_SCORE_BOUNDS = ScoreBounds(0, 100)
 OVERALL_SCORE_BOUNDS = ScoreBounds(0, 100)
+
+# Stages that open and close the sleep period; awake, in_bed and unknown don't
+SLEEP_PERIOD_STAGES = frozenset(
+    {SleepStageType.SLEEPING, SleepStageType.LIGHT, SleepStageType.DEEP, SleepStageType.REM}
+)
 
 
 def _score_duration_hours(duration_hours: float) -> int:
@@ -132,6 +139,30 @@ def calculate_bedtime_consistency_score(
         )
 
     return max(CONSISTENCY_SCORE_BOUNDS.min, int(CONSISTENCY_SCORE_BOUNDS.max - penalty))
+
+
+def awakenings(stages: list[SleepStage]) -> list[float]:
+    """Minutes of each awakening between falling asleep and the final wake-up.
+
+    Back-to-back awake blocks count as one awakening.
+    """
+    stages = sorted(stages, key=lambda stage: stage.start_time)
+    asleep = [i for i, stage in enumerate(stages) if stage.stage in SLEEP_PERIOD_STAGES]
+    if not asleep:
+        return []
+    minutes: list[float] = []
+    awake_until: datetime | None = None
+    for stage in stages[asleep[0] : asleep[-1] + 1]:
+        if stage.stage != SleepStageType.AWAKE:
+            awake_until = None
+            continue
+        duration = (stage.end_time - stage.start_time).total_seconds() / 60
+        if stage.start_time == awake_until:
+            minutes[-1] += duration
+        else:
+            minutes.append(duration)
+        awake_until = stage.end_time
+    return minutes
 
 
 def calculate_interruptions_score(

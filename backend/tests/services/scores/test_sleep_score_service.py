@@ -544,6 +544,19 @@ class TestParseWearableStagesForInterruptions:
         assert result.total_awake_minutes == pytest.approx(12.0)
         assert result.awakening_durations == [12.0]
 
+    def test_touching_awake_blocks_are_one_awakening(self) -> None:
+        """The same awakenings the sleep summary counts as interruptions."""
+        stages = self._stages(("light", 30), ("awake", 4), ("awake", 4), ("rem", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
+        assert result.total_awake_minutes == pytest.approx(8.0)
+        assert result.awakening_durations == [8.0]
+
+    def test_in_bed_before_falling_asleep_does_not_open_the_sleep_period(self) -> None:
+        stages = self._stages(("in_bed", 10), ("awake", 20), ("light", 30), ("awake", 10), ("deep", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
+        assert result.total_awake_minutes == pytest.approx(10.0)
+        assert result.awakening_durations == [10.0]
+
     def test_waso_data_model_fields(self) -> None:
         """Result must expose total_awake_minutes and awakening_durations."""
         stages = self._stages(("light", 30), ("awake", 10), ("rem", 60))
