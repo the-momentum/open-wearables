@@ -18,6 +18,7 @@ from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
+from .series_aggregate import SeriesAggregate
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .sync_run import SyncRun
@@ -60,6 +61,7 @@ __all__ = [
     "PersonalRecord",
     "DataPointSeries",
     "DataTypeCoverage",
+    "SeriesAggregate",
     "SeriesTypeDefinition",
     "SyncRun",
     "SyncRunDataType",

@@ -1,3 +1,4 @@
+from .aggregate_origin import AggregateOrigin
 from .aggregation_method import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
@@ -16,6 +17,7 @@ from .device_type import (
 from .entry_source import EntrySource
 from .event_category import EventCategory
 from .health_score_category import HealthScoreCategory
+from .period_kind import PeriodKind
 from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
     ProviderName,
@@ -42,6 +44,7 @@ from .workout_types import (
 __all__ = [
     "DeviceType",
     "DEFAULT_DEVICE_TYPE_PRIORITY",
+    "AggregateOrigin",
     "AggregationMethod",
     "AGGREGATION_METHOD_BY_TYPE",
     "daily_total_flag",
@@ -63,6 +66,7 @@ __all__ = [
     "ProviderName",
     "DEFAULT_PROVIDER_PRIORITY",
     "HealthScoreCategory",
+    "PeriodKind",
     "SdkConnectionOutcome",
     "TimelineBucket",
     "TimelineGroupBy",
