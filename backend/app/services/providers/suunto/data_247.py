@@ -20,10 +20,12 @@ from app.repositories.data_point_series_repository import DataPointSeriesReposit
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
     ScoreComponent,
+    SessionValue,
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
@@ -34,7 +36,7 @@ from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import align_tz_awareness, parse_iso_datetime
+from app.utils.dates import align_tz_awareness, offset_of, parse_iso_datetime
 from app.utils.structured_logging import log_structured
 
 # StressState integer → text qualifier (0=Invalid is treated as missing)
@@ -292,7 +294,9 @@ class Suunto247Data(Base247DataTemplate):
         )
 
         try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            stored = event_record_service.create_or_merge_sleep(
+                db, user_id, record, detail, settings.sleep_end_gap_minutes
+            )
         except Exception as e:
             log_structured(
                 self.logger,
@@ -304,7 +308,7 @@ class Suunto247Data(Base247DataTemplate):
             )
             return False
 
-        self._persist_sleep_series(db, user_id, normalized_sleep, end_dt)
+        self._persist_sleep_series(db, user_id, normalized_sleep, end_dt, stored.id)
         return True
 
     def _persist_sleep_series(
@@ -313,6 +317,7 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_sleep: dict[str, Any],
         recorded_at: datetime,
+        sleep_record_id: UUID | None = None,
     ) -> None:
         """Emit the per-night data points Suunto reports only inside a sleep entry.
 
@@ -335,8 +340,9 @@ class Suunto247Data(Base247DataTemplate):
                 series_type=series_type,
                 external_id=str(sleep_id) if sleep_id else None,
                 is_daily_total=True,
+                session=SessionValue(record_id=sleep_record_id, stat=stat) if sleep_record_id else None,
             )
-            for key, series_type in SLEEP_SERIES.items()
+            for key, (series_type, stat) in SLEEP_SERIES.items()
             if normalized_sleep.get(key) is not None
         ]
         if not samples:
@@ -693,6 +699,7 @@ class Suunto247Data(Base247DataTemplate):
                         value=final_value,
                         series_type=series_type,
                         is_daily_total=True,
+                        period=CalendarPeriod.of_date(recorded_at.date(), offset_of(recorded_at)),
                     ),
                 )
 

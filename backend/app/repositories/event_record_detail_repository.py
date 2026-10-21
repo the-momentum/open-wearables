@@ -6,18 +6,22 @@ from sqlalchemy import Table, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.models import (
     DETAIL_MODELS,
     DetailType,
+    EventRecordAggregate,
     EventRecordDetail,
     WorkoutDetails,
 )
+from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas.enums import EventCategory
+from app.schemas.enums import ComputedBy, EventCategory, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     EventRecordDetailUpdate,
+    StatColumn,
 )
 from app.utils.exceptions import handle_exceptions
 
@@ -27,6 +31,34 @@ class EventRecordDetailRepository(
 ):
     def __init__(self, model: type[EventRecordDetail]):
         super().__init__(model)
+        self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
+
+    def _mirror_workout_stats(
+        self, db_session: DbSession, creators: list[EventRecordDetailCreate], detail_type: DetailType
+    ) -> None:
+        """Mirror a workout's statistic columns into event_record_aggregate, one row per series."""
+        if detail_type != EventCategory.WORKOUT:
+            return
+        rows = [
+            {
+                "record_id": creator.record_id,
+                "series_type_definition_id": get_series_type_id(series_type),
+                "computed_by": ComputedBy.PROVIDER,
+                stat: value,
+                "count": 1,
+            }
+            for creator in creators
+            for field, (series_type, stat) in self._workout_stats(creator).items()
+            if (value := getattr(creator, field, None)) is not None
+        ]
+        if rows:
+            self.event_aggregate_repo.upsert(db_session, rows)
+
+    @staticmethod
+    def _workout_stats(creator: EventRecordDetailCreate) -> dict[str, tuple[SeriesType, StatColumn]]:
+        if creator.energy_series is None:
+            return WORKOUT_DETAIL_STATS
+        return {**WORKOUT_DETAIL_STATS, "energy_burned": (creator.energy_series, "sum")}
 
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
         """Construct the concrete detail ORM object without touching the session."""
@@ -53,6 +85,8 @@ class EventRecordDetailRepository(
         """
         detail = self._build_detail(creator, detail_type)
         try:
+            # The aggregate points at the event, not the detail, so it can go first and share the commit.
+            self._mirror_workout_stats(db_session, [creator], detail_type)
             db_session.add(detail)
             db_session.commit()
             db_session.refresh(detail)
@@ -82,6 +116,7 @@ class EventRecordDetailRepository(
         try:
             db_session.add(detail)
             db_session.flush()
+            self._mirror_workout_stats(db_session, [creator], detail_type)
             nested.commit()
             return detail
         except IntegrityError as exc:
@@ -130,6 +165,7 @@ class EventRecordDetailRepository(
         }
         child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
         db_session.execute(child_stmt)
+        self._mirror_workout_stats(db_session, creators, detail_type)
         # NOTE: Caller should commit - allows batching multiple operations
 
     def get_by_record_id(

@@ -131,6 +131,8 @@ class SeriesType(str, Enum):
     cadence = "cadence"
     power = "power"
     speed = "speed"
+    distance = "distance"
+    elevation_gain = "elevation_gain"
 
     # Generic Activity Metrics
     workout_effort_score = "workout_effort_score"
@@ -341,6 +343,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (182, SeriesType.speed, "m_per_s"),
     (183, SeriesType.workout_effort_score, "score"),
     (184, SeriesType.estimated_workout_effort_score, "score"),
+    (185, SeriesType.distance, "meters"),
+    (186, SeriesType.elevation_gain, "meters"),
     # -------------------------------------------------------------------------
     # ENVIRONMENTAL (IDs 200-219)
     # -------------------------------------------------------------------------
@@ -440,6 +444,8 @@ SERIES_TYPE_UNIT_BY_ENUM: dict[SeriesType, str] = {enum: unit for _, enum, unit 
 # Only series types that need a meaningful clarification have an entry here;
 SERIES_TYPE_DESCRIPTION_BY_ENUM: dict[SeriesType, str] = {
     SeriesType.garmin_body_battery: "Intraday body battery readings (0-100), one sample per measurement",
+    SeriesType.distance: "Distance of a whole workout, whatever its type; per-sport distance samples have own types",
+    SeriesType.elevation_gain: "Total ascent of a whole workout; elevation holds the altitude itself",
 }
 
 

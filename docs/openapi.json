@@ -16114,6 +16114,8 @@
           "cadence",
           "power",
           "speed",
+          "distance",
+          "elevation_gain",
           "workout_effort_score",
           "estimated_workout_effort_score",
           "environmental_audio_exposure",

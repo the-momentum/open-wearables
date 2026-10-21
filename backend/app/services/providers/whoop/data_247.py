@@ -14,10 +14,12 @@ from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
     ScoreComponent,
+    SessionValue,
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
@@ -772,6 +774,13 @@ class Whoop247Data(Base247DataTemplate):
         if not timestamp:
             return WriteCounts(0, 0)
 
+        # Recovery belongs to the sleep it was scored on; a sleep not synced yet leaves it unlinked.
+        sleep_id = normalized_recovery.get("sleep_id")
+        sleep = (
+            self.event_record_repo.get_by_external_id(db, user_id, str(sleep_id), provider=self.provider_name)
+            if sleep_id
+            else None
+        )
         samples_to_create: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in RECOVERY_SERIES.items():
             value = normalized_recovery.get(field_name)
@@ -785,6 +794,7 @@ class Whoop247Data(Base247DataTemplate):
                             recorded_at=timestamp,
                             value=Decimal(str(value)),
                             series_type=series_type,
+                            session=SessionValue(record_id=sleep.id) if sleep else None,
                         )
                     )
                 except Exception as e:
@@ -1015,6 +1025,7 @@ class Whoop247Data(Base247DataTemplate):
                 value=value,
                 series_type=series_type,
                 is_daily_total=True,
+                period=CalendarPeriod.local_day(recorded_at, zone_offset=zone_offset),
             )
             for series_type, value in daily_values
         ]

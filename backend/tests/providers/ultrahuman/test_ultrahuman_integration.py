@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, SeriesSample, SeriesTypeDefinition, SleepDetails
+from app.models import DataSource, EventRecord, SeriesAggregate, SeriesSample, SeriesTypeDefinition, SleepDetails
 from app.schemas.enums.series_types import SeriesType
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
@@ -319,6 +319,35 @@ class TestUltrahumanActivitySamplesIntegration:
 
             for code in expected_codes:
                 assert code in synced_codes, f"{code} missing from synced samples"
+
+    def test_daily_scalars_are_mirrored_on_the_requested_day(
+        self, db: Session, sample_ultrahuman_api_response: dict
+    ) -> None:
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        provider_impl = ProviderFactory().get_provider("ultrahuman").data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+            provider_impl.load_and_save_all(
+                db,
+                user.id,
+                start_time=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                end_time=datetime(2024, 1, 16, tzinfo=timezone.utc),
+            )
+            db.commit()
+
+        vo2 = (
+            db.query(SeriesAggregate)
+            .join(SeriesTypeDefinition, SeriesAggregate.series_type_definition_id == SeriesTypeDefinition.id)
+            .filter(SeriesTypeDefinition.code == SeriesType.vo2_max.value)
+            .all()
+        )
+        assert vo2
+        assert {(a.period_start, a.zone_offset) for a in vo2} <= {
+            (datetime(2024, 1, 15, tzinfo=timezone.utc), "+00:00"),
+            (datetime(2024, 1, 16, tzinfo=timezone.utc), "+00:00"),
+        }
 
     def test_vo2_max_saved_with_mocked_api(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """Verify VO2 max value is saved as a SeriesSample after sync."""

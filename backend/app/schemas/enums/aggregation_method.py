@@ -93,6 +93,8 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.speed: AggregationMethod.AVG,
     SeriesType.workout_effort_score: AggregationMethod.AVG,
     SeriesType.estimated_workout_effort_score: AggregationMethod.AVG,
+    SeriesType.distance: AggregationMethod.SUM,
+    SeriesType.elevation_gain: AggregationMethod.SUM,
     # ── Environmental ──
     SeriesType.environmental_audio_exposure: AggregationMethod.AVG,
     SeriesType.headphone_audio_exposure: AggregationMethod.AVG,

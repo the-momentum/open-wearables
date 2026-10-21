@@ -1,5 +1,8 @@
 from .data_point_series import (
+    CalendarPeriod,
     HeartRateSampleCreate,
+    SessionValue,
+    StatColumn,
     StepSampleCreate,
     TimeSeriesQueryParams,
     TimeSeriesSampleBase,
@@ -43,6 +46,9 @@ from .personal_record import (
 from .sleep import SleepStage
 
 __all__ = [
+    "CalendarPeriod",
+    "SessionValue",
+    "StatColumn",
     # SeriesSample (rename from timeseries maybe)
     "TimeSeriesSampleBase",
     "TimeSeriesSampleCreate",

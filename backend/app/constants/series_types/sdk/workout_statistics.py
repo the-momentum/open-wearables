@@ -1,6 +1,7 @@
 from enum import StrEnum
 
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import StatColumn
 
 
 class WorkoutStatisticType(StrEnum):
@@ -117,6 +118,21 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "totalEnergyBurned": SeriesType.active_energy,
     "totalDistance": SeriesType.distance_walking_running,
     "totalSteps": SeriesType.steps,
+}
+
+# Statistics other than their series' own, for event_record_aggregate (max cadence beside the mean).
+WORKOUT_STATISTIC_STAT: dict[str, StatColumn] = {"maxCadence": "max"}
+
+# Energy statistics summed into energy_burned -> the series of that sum. Samsung's ``calories`` is absent:
+# its docs do not say whether it includes BMR.
+WORKOUT_ENERGY_SERIES: dict[frozenset[str], SeriesType] = {
+    frozenset({WorkoutStatisticType.ACTIVE_ENERGY_BURNED}): SeriesType.active_energy,
+    frozenset({WorkoutStatisticType.BASAL_ENERGY_BURNED}): SeriesType.basal_energy,
+    frozenset(
+        {WorkoutStatisticType.ACTIVE_ENERGY_BURNED, WorkoutStatisticType.BASAL_ENERGY_BURNED}
+    ): SeriesType.total_energy,
+    # Health Connect TotalCaloriesBurnedRecord: "including active & basal energy burned (BMR)"
+    frozenset({WorkoutStatisticType.TOTAL_CALORIES}): SeriesType.total_energy,
 }
 
 # Of the above, only these exist on Samsung's ExerciseSession; the rest are HealthKit-only.

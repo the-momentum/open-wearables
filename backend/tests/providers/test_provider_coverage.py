@@ -54,7 +54,7 @@ EXTRA_IMPL_FILES = {"apple": (Path("app/services/providers/apple/apple_xml/xml_s
 SDK_UNREACHABLE_DETAIL_FIELDS = {"samsung": {"steps_count", "moving_time_seconds", "entry_source"}}
 
 # EventRecordDetail fields that are NOT part of the coverage matrix.
-STRUCTURAL_DETAIL_FIELDS = {"record_id"}
+STRUCTURAL_DETAIL_FIELDS = {"record_id", "energy_series"}
 
 
 def _all_detail_fields() -> set[str]:

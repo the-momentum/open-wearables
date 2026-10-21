@@ -38,8 +38,17 @@ from sqlalchemy.schema import CreateTable
 
 from app.database import DbSession
 from app.mappings import SERIES_VALUE_SCALE
-from app.models import DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority, SeriesSample
+from app.models import (
+    DataPointSeriesArchive,
+    DataSource,
+    DeviceTypePriority,
+    EventRecordAggregate,
+    ProviderPriority,
+    SeriesAggregate,
+    SeriesSample,
+)
 from app.models.series_type_definition import SeriesTypeDefinition
+from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.repositories import (
@@ -52,6 +61,7 @@ from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
+    ComputedBy,
     ProviderName,
     Resolution,
     SeriesType,
@@ -241,6 +251,8 @@ class DataPointSeriesRepository(
     def __init__(self, model: type[SeriesSample]):
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
+        self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
+        self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> SeriesSample:
@@ -251,7 +263,9 @@ class DataPointSeriesRepository(
         """
         data_source = self.data_source_repo.ensure_for_creator(db_session, creator)
 
-        creation_data = creator.model_dump(exclude={*DATA_SOURCE_FIELDS, "series_type", "data_source_id"})
+        creation_data = creator.model_dump(
+            exclude={*DATA_SOURCE_FIELDS, "series_type", "data_source_id", "period", "session"}
+        )
 
         # Set the proper values
         creation_data["data_source_id"] = data_source.id
@@ -260,6 +274,7 @@ class DataPointSeriesRepository(
 
         creation = self.model(**creation_data)
         db_session.add(creation)
+        self._mirror_aggregates(db_session, [creator], {DataSourceIdentity.of(creator): data_source.id})
         return self.try_commit(db_session, creation)
 
     @handle_exceptions
@@ -285,6 +300,7 @@ class DataPointSeriesRepository(
             return WriteCounts(0, 0)
         spans = _spans_by_source_and_type(rows)
         counts = self._insert_data_points(db_session, rows, spans)
+        self._mirror_aggregates(db_session, creators, identity_to_source_id)
 
         # 3. Widen what we hold per type, under the same provider the sources resolved to
         data_type_coverage_repository.record(
@@ -303,6 +319,48 @@ class DataPointSeriesRepository(
         )
         return counts
 
+    def _mirror_aggregates(
+        self,
+        db_session: DbSession,
+        creators: list[TimeSeriesSampleCreate],
+        source_map: dict[DataSourceIdentity, UUID],
+    ) -> None:
+        """Mirror provider values that name their calendar period or event into the aggregate tables."""
+        period_rows, session_rows = [], []
+        for creator in creators:
+            if creator.period is None and creator.session is None:
+                continue
+            type_id = get_series_type_id(creator.series_type)
+            canonical = get_aggregation_method(creator.series_type).value
+            if creator.period is not None and (source_id := source_map.get(DataSourceIdentity.of(creator))):
+                period_rows.append(
+                    {
+                        "data_source_id": source_id,
+                        "series_type_definition_id": type_id,
+                        "period_kind": creator.period.kind,
+                        "period_start": creator.period.start,
+                        "period_end": creator.period.end,
+                        "zone_offset": creator.period.zone_offset,
+                        "computed_by": ComputedBy.PROVIDER,
+                        canonical: creator.value,
+                        "count": 1,
+                    }
+                )
+            if creator.session is not None:
+                session_rows.append(
+                    {
+                        "record_id": creator.session.record_id,
+                        "series_type_definition_id": type_id,
+                        "computed_by": ComputedBy.PROVIDER,
+                        creator.session.stat or canonical: creator.value,
+                        "count": 1,
+                    }
+                )
+        if period_rows:
+            self.series_aggregate_repo.upsert(db_session, period_rows)
+        if session_rows:
+            self.event_aggregate_repo.upsert(db_session, session_rows)
+
     class _StagingRow(NamedTuple):
         """One row as loaded into series_sample_staging via COPY, in column order."""
 
@@ -311,6 +369,7 @@ class DataPointSeriesRepository(
         data_source_id: UUID
         recorded_at: datetime
         zone_offset: str | None
+        window_seconds: int | None
         value: Decimal | float | int
         series_type_definition_id: int
         is_daily_total: bool | None
@@ -339,6 +398,7 @@ class DataPointSeriesRepository(
                     data_source_id=source_id,
                     recorded_at=creator.recorded_at,
                     zone_offset=creator.zone_offset,
+                    window_seconds=creator.window_seconds,
                     value=round(creator.value, SERIES_VALUE_SCALE),
                     series_type_definition_id=get_series_type_id(creator.series_type),
                     is_daily_total=creator.is_daily_total,
@@ -397,10 +457,12 @@ class DataPointSeriesRepository(
                             external_id = excluded.external_id,
                             value = excluded.value,
                             zone_offset = excluded.zone_offset,
+                            window_seconds = excluded.window_seconds,
                             is_daily_total = excluded.is_daily_total
                         WHERE series_sample.value IS DISTINCT FROM excluded.value
                            OR series_sample.external_id IS DISTINCT FROM excluded.external_id
                            OR series_sample.zone_offset IS DISTINCT FROM excluded.zone_offset
+                           OR series_sample.window_seconds IS DISTINCT FROM excluded.window_seconds
                            OR series_sample.is_daily_total IS DISTINCT FROM excluded.is_daily_total
                         RETURNING (xmax = 0) AS was_insert, series_type_definition_id
                     )

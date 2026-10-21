@@ -678,6 +678,28 @@ class TestDataPointSeriesRepository:
         assert (second.inserted, second.updated) == (0, 1)
         assert int(second) == 1
 
+    def test_bulk_create_stores_and_refreshes_window_seconds(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        user = UserFactory()
+        ts = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+        def sample(window_seconds: int | None) -> TimeSeriesSampleCreate:
+            return TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user.id,
+                source="garmin",
+                recorded_at=ts,
+                value=120,
+                series_type=SeriesType.steps,
+                window_seconds=window_seconds,
+            )
+
+        series_repo.bulk_create(db, [sample(None)])
+        series_repo.bulk_create(db, [sample(900)])
+
+        assert [row.window_seconds for row in db.query(SeriesSample).all()] == [900]
+
     def test_bulk_create_empty_returns_zero_counts(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """An empty batch writes nothing and reports zero inserted/updated."""
         counts = series_repo.bulk_create(db, [])
