@@ -1,8 +1,9 @@
 """Google Health API sleep handler.
 
 Fetches Sleep sessions via the dataPoints ``list`` operation and stores them as
-``EventRecord(category=EventCategory.SLEEP)`` via ``create_or_merge_sleep`` (merges fragmented
-sessions). Composed into GoogleHealth247Data.load_and_save_all.
+``EventRecord(category=EventCategory.SLEEP)`` via ``upsert_sleep``, keyed on the data
+point name. Google already consolidates sessions, so they are not merged. Composed into
+GoogleHealth247Data.load_and_save_all.
 """
 
 import logging
@@ -11,7 +12,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from app.config import settings
 from app.constants.google_health_endpoints import LIST_ENDPOINT as DATAPOINTS_LIST_ENDPOINT
 from app.constants.series_types.google.sleep_stages import GOOGLE_SLEEP_STAGE_MAP
 from app.constants.sleep import SleepStageType
@@ -52,7 +52,7 @@ class GoogleHealthApiSleep:
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def load_and_save(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
-        """Fetch sleep sessions ending in the window and merge-save each.
+        """Fetch sleep sessions ending in the window and upsert each.
 
         Keyed on the end, like the fetch filter: an overnight session starts before any
         morning window and would never be kept if the start were tested.
@@ -67,7 +67,7 @@ class GoogleHealthApiSleep:
             if start is None or end is None or not (start_time <= end < end_time):
                 continue
             record, detail = self._normalize(point, sleep, interval, start, end, user_id)
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            event_record_service.upsert_sleep(db, user_id, record, detail)
             count += 1
         return count
 
@@ -125,6 +125,7 @@ class GoogleHealthApiSleep:
         record = EventRecordCreate(
             id=record_id,
             category=EventCategory.SLEEP,
+            type="sleep_session",
             provider=ProviderName.GOOGLE_HEALTH.value,
             source=GOOGLE_HEALTH_API_SOURCE,
             source_name=source_name,

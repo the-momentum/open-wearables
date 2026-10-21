@@ -127,7 +127,8 @@ class GoogleHealth247Data(Base247DataTemplate):
             build = partial(self._daily_rollup_samples, db, user_id, daily, start_time, end_time)
             self._store_samples(run, daily.name, build)
 
-        with run.step("sleep", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:
+        # No savepoint: upsert_sleep commits per session, which a begin_nested() would not survive.
+        with run.step("sleep", commit=True, capture=True) as step:
             step.record(self.sleep.load_and_save(db, user_id, start_time, end_time))
 
         with run.step("nutrition-log", savepoint=True, commit=True, rollback_on_error=True, capture=True) as step:

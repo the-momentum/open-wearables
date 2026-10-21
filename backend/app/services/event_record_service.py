@@ -330,55 +330,134 @@ class EventRecordService(
             db_session, user_id, record, detail, threshold_minutes
         )
         if inserted:
-            eff = final_detail.sleep_efficiency_score
-            has_stages = any(
-                [
-                    final_detail.sleep_awake_minutes,
-                    final_detail.sleep_light_minutes,
-                    final_detail.sleep_deep_minutes,
-                    final_detail.sleep_rem_minutes,
-                ]
-            )
-            device_type = None
-            if svix_service.is_enabled() and result.data_source_id is not None:
-                data_source = self.data_source_repo.get(db_session, result.data_source_id)
-                if data_source is not None:
-                    device_type = data_source.device_type
-
-            on_sleep_created(
-                record_id=result.id,
-                user_id=user_id,
-                provider=record.provider or record.source_name,
-                device=record.device_model,
-                start_time=result.start_datetime.isoformat(),
-                end_time=result.end_datetime.isoformat(),
-                zone_offset=record.zone_offset,
-                duration_seconds=result.duration_seconds,
-                efficiency_percent=float(eff) if eff is not None else None,
-                stages={
-                    "awake_minutes": final_detail.sleep_awake_minutes,
-                    "light_minutes": final_detail.sleep_light_minutes,
-                    "deep_minutes": final_detail.sleep_deep_minutes,
-                    "rem_minutes": final_detail.sleep_rem_minutes,
-                }
-                if has_stages
-                else None,
-                is_nap=final_detail.is_nap,
-                source_app=record.source,
-                device_type=device_type,
-                sleep_duration_seconds=(
-                    final_detail.sleep_total_duration_minutes * 60
-                    if final_detail.sleep_total_duration_minutes is not None
-                    else None
-                ),
-                sleep_stage_intervals=(
-                    [stage.model_dump(mode="json") for stage in final_detail.sleep_stages]
-                    if final_detail.sleep_stages
-                    else None
-                ),
-                sync=current_sync_payload(),
-            )
+            self._emit_sleep_created(db_session, user_id, record, result, final_detail)
         return result
+
+    def upsert_sleep(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+    ) -> EventRecord:
+        """Create a sleep record, or refresh the one stored under the same external_id.
+
+        Never merges, so re-fetching a session is idempotent. For providers whose sessions
+        are already consolidated and carry a stable ID.
+        """
+        if record.external_id is not None:
+            stored = self.crud.get_sleep_records_by_external_id(
+                db_session, user_id, record.external_id, source=record.source, provider=record.provider
+            )
+            if stored:
+                current, *copies = stored
+                current.type = record.type  # rows stored before the provider set one
+                for copy in copies:
+                    self.crud.delete_flush(db_session, copy)
+                self._refresh_sleep(db_session, user_id, current, record, detail)
+                return current
+
+        created_record = self.crud.create_and_flush(db_session, record)
+        if created_record.id != record.id:
+            # The data source holds this exact window under another ID: the same session, re-issued.
+            created_record.external_id, created_record.type = record.external_id, record.type
+            self._refresh_sleep(db_session, user_id, created_record, record, detail)
+            return created_record
+        new_detail = detail.model_copy(update={"record_id": created_record.id})
+        self.event_record_detail_repo.create_and_flush(db_session, new_detail, detail_type=EventCategory.SLEEP)
+        db_session.commit()
+        self._emit_sleep_created(db_session, user_id, record, created_record, new_detail)
+        return created_record
+
+    def _refresh_sleep(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        stored: EventRecord,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+    ) -> None:
+        """Overwrite a stored session with a fresh copy of it, then commit."""
+        old_start, old_end, old_zone = stored.start_datetime, stored.end_datetime, stored.zone_offset
+        for field in ("start_datetime", "end_datetime", "zone_offset"):
+            new_val = getattr(record, field, None)
+            if new_val is not None:
+                setattr(stored, field, new_val)
+        stored.duration_seconds = int((stored.end_datetime - stored.start_datetime).total_seconds())
+        db_session.flush()
+        self.event_record_detail_repo.delete_by_record_id(db_session, stored.id, EventCategory.SLEEP)
+        self.event_record_detail_repo.create_and_flush(
+            db_session,
+            detail.model_copy(update={"record_id": stored.id}),
+            detail_type=EventCategory.SLEEP,
+        )
+        self._recompute_sleep_scores(
+            db_session,
+            user_id,
+            {
+                self._local_sleep_date(old_start, old_zone),
+                self._local_sleep_date(old_end, old_zone),  # its old wake date, if it moved nights
+                self._local_sleep_date(stored.start_datetime, stored.zone_offset),
+            },
+        )
+        db_session.commit()
+
+    def _emit_sleep_created(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        record: EventRecordCreate,
+        result: EventRecord,
+        final_detail: EventRecordDetailCreate,
+    ) -> None:
+        eff = final_detail.sleep_efficiency_score
+        has_stages = any(
+            [
+                final_detail.sleep_awake_minutes,
+                final_detail.sleep_light_minutes,
+                final_detail.sleep_deep_minutes,
+                final_detail.sleep_rem_minutes,
+            ]
+        )
+        device_type = None
+        if svix_service.is_enabled() and result.data_source_id is not None:
+            data_source = self.data_source_repo.get(db_session, result.data_source_id)
+            if data_source is not None:
+                device_type = data_source.device_type
+
+        on_sleep_created(
+            record_id=result.id,
+            user_id=user_id,
+            provider=record.provider or record.source_name,
+            device=record.device_model,
+            start_time=result.start_datetime.isoformat(),
+            end_time=result.end_datetime.isoformat(),
+            zone_offset=record.zone_offset,
+            duration_seconds=result.duration_seconds,
+            efficiency_percent=float(eff) if eff is not None else None,
+            stages={
+                "awake_minutes": final_detail.sleep_awake_minutes,
+                "light_minutes": final_detail.sleep_light_minutes,
+                "deep_minutes": final_detail.sleep_deep_minutes,
+                "rem_minutes": final_detail.sleep_rem_minutes,
+            }
+            if has_stages
+            else None,
+            is_nap=final_detail.is_nap,
+            source_app=record.source,
+            device_type=device_type,
+            sleep_duration_seconds=(
+                final_detail.sleep_total_duration_minutes * 60
+                if final_detail.sleep_total_duration_minutes is not None
+                else None
+            ),
+            sleep_stage_intervals=(
+                [stage.model_dump(mode="json") for stage in final_detail.sleep_stages]
+                if final_detail.sleep_stages
+                else None
+            ),
+            sync=current_sync_payload(),
+        )
 
     def _create_or_merge_sleep_inner(
         self,
@@ -403,28 +482,7 @@ class EventRecordService(
             # retry, score update).  Replace the detail with fresh values instead
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
-                old_start, old_zone = adjacent.start_datetime, adjacent.zone_offset
-                for field in ("start_datetime", "end_datetime", "zone_offset"):
-                    new_val = getattr(record, field, None)
-                    if new_val is not None:
-                        setattr(adjacent, field, new_val)
-                adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
-                db_session.flush()
-                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, EventCategory.SLEEP)
-                self.event_record_detail_repo.create_and_flush(
-                    db_session,
-                    detail.model_copy(update={"record_id": adjacent.id}),
-                    detail_type=EventCategory.SLEEP,
-                )
-                self._recompute_sleep_scores(
-                    db_session,
-                    user_id,
-                    {
-                        self._local_sleep_date(old_start, old_zone),
-                        self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset),
-                    },
-                )
-                db_session.commit()
+                self._refresh_sleep(db_session, user_id, adjacent, record, detail)
                 return adjacent, False, detail
 
             adj_detail: SleepDetails | None = adjacent.sleep_detail
