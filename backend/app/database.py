@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import Iterator
 from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
@@ -6,12 +6,6 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy import UUID as SQL_UUID
 from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, func, inspect
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -36,15 +30,10 @@ engine = create_engine(
     pool_timeout=30,
     pool_recycle=3600,
 )
-async_engine = create_async_engine(settings.db_uri)
 
 
 def _prepare_sessionmaker(engine: Engine) -> sessionmaker:
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def _prepare_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker:
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
@@ -84,7 +73,6 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
 
 
 SessionLocal = _prepare_sessionmaker(engine)
-AsyncSessionLocal = _prepare_async_sessionmaker(async_engine)
 
 
 def _get_db_dependency() -> Iterator[Session]:
@@ -98,10 +86,4 @@ def _get_db_dependency() -> Iterator[Session]:
         db.close()
 
 
-async def _get_async_db_dependency() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        yield session
-
-
 DbSession = Annotated[Session, Depends(_get_db_dependency)]
-AsyncDbSession = Annotated[AsyncSession, Depends(_get_async_db_dependency)]
