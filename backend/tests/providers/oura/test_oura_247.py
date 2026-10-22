@@ -460,8 +460,7 @@ class TestOura247MetSeriesExpansion:
         assert samples[0]["zone_offset"] == "+02:00"
 
     def test_met_maps_to_physical_effort(self) -> None:
-        # average_met means one scalar per workout everywhere else (Apple/Google/Samsung);
-        # Oura's series is continuous per-minute data, so it must not share that series type.
+        # Oura's per-minute MET is physical_effort; a workout's average MET is that series' session value.
         assert ACTIVITY_SERIES["met"] == SeriesType.physical_effort
 
     def test_expand_met_series_drops_unmeasured_tail_using_class_5_min_length(self, data_247: Oura247Data) -> None:

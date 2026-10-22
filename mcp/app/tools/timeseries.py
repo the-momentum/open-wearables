@@ -42,7 +42,7 @@ async def get_timeseries(
         end_time: End of the window in ISO-8601 format.
                   Example: "2026-04-05T23:59:59Z"
         types: List of SeriesType codes to include. Common values:
-               - "heart_rate", "resting_heart_rate", "walking_heart_rate_average"
+               - "heart_rate", "resting_heart_rate", "walking_heart_rate"
                - "heart_rate_variability_sdnn", "heart_rate_variability_rmssd"
                - "oxygen_saturation", "respiratory_rate"
                - "blood_glucose", "blood_pressure_systolic", "blood_pressure_diastolic"

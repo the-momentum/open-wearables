@@ -84,6 +84,13 @@ echo 'Running Whoop active_energy->total_energy relabel...'
 uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py \
     || echo "Warning: Whoop energy relabel failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves average_met rows onto physical_effort, the series it merged into: both carry METs.
+# Runs once per instance (data_migration).
+echo 'Running average_met->physical_effort merge...'
+uv run python scripts/data_migrations/merge_average_met_into_physical_effort.py \
+    || echo "Warning: average_met merge failed — will retry on next startup."
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
 # recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies

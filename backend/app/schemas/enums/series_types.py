@@ -12,7 +12,12 @@ IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in t
 from enum import Enum
 
 # TEMPORARY until 1.0: retired name -> current name. Delete with SeriesType._missing_ below.
-RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {"energy": "active_energy"}
+RETIRED_SERIES_TYPE_NAMES: dict[str, str] = {
+    "energy": "active_energy",
+    "walking_heart_rate_average": "walking_heart_rate",
+    # A workout's average MET is that workout's physical_effort average, kept per workout as a session value.
+    "average_met": "physical_effort",
+}
 
 
 class SeriesType(str, Enum):
@@ -25,7 +30,7 @@ class SeriesType(str, Enum):
     resting_heart_rate = "resting_heart_rate"
     heart_rate_variability_sdnn = "heart_rate_variability_sdnn"
     heart_rate_recovery_one_minute = "heart_rate_recovery_one_minute"
-    walking_heart_rate_average = "walking_heart_rate_average"
+    walking_heart_rate = "walking_heart_rate"
     heart_rate_variability_rmssd = "heart_rate_variability_rmssd"
 
     # =========================================================================
@@ -84,7 +89,6 @@ class SeriesType(str, Enum):
     exercise_time = "exercise_time"
     physical_effort = "physical_effort"
     flights_climbed = "flights_climbed"
-    average_met = "average_met"
     active_time = "active_time"  # Provider-reported daily active time (non-sedentary)
     total_energy = "total_energy"  # Provider-reported total energy (active + basal), no split available
 
@@ -249,7 +253,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (2, SeriesType.resting_heart_rate, "bpm"),
     (3, SeriesType.heart_rate_variability_sdnn, "ms"),
     (4, SeriesType.heart_rate_recovery_one_minute, "bpm"),
-    (5, SeriesType.walking_heart_rate_average, "bpm"),
+    (5, SeriesType.walking_heart_rate, "bpm"),
     (7, SeriesType.heart_rate_variability_rmssd, "ms"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Blood & Respiratory (IDs 20-39)
@@ -297,9 +301,9 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (82, SeriesType.basal_energy, "kcal"),
     (83, SeriesType.stand_time, "minutes"),
     (84, SeriesType.exercise_time, "minutes"),
-    (85, SeriesType.physical_effort, "score"),
+    (85, SeriesType.physical_effort, "met"),
     (86, SeriesType.flights_climbed, "count"),
-    (87, SeriesType.average_met, "met"),
+    # 87 was average_met, merged into physical_effort; never reuse it.
     (88, SeriesType.active_time, "minutes"),
     (89, SeriesType.total_energy, "kcal"),
     # -------------------------------------------------------------------------
