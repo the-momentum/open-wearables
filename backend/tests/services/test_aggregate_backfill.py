@@ -592,3 +592,56 @@ class TestHistoryRollup:
         aggregate_backfill_service.run(db, budget_seconds=60)
 
         assert self._ours(db) == [date(2025, 1, 10)]
+
+
+class TestDeleteCopiedSamples:
+    def test_copied_values_go_and_a_genuine_sample_at_midnight_stays(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        midnight = datetime(2025, 6, 2, tzinfo=timezone.utc)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, midnight, "61")
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, midnight + timedelta(days=1), "70")
+        # The provider's own day value for the second night differs: that 00:00 sample is a genuine reading.
+        provider_day(db, source, SeriesType.heart_rate_variability_rmssd, date(2025, 6, 3), avg=Decimal("64"))
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert [(s.recorded_at, s.value) for s in db.query(SeriesSample)] == [
+            (midnight + timedelta(days=1), Decimal("70"))
+        ]
+        assert (source.id, date(2025, 6, 2)) in pop_dirty_days(10)
+
+    def test_a_session_value_goes_only_when_its_sleep_also_carries_its_instant(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.OURA)
+        start = datetime(2025, 6, 1, 22, tzinfo=timezone.utc)
+        EventRecordFactory(
+            data_source=source, category="sleep", type="sleep", start_datetime=start, duration_seconds=8 * 3600
+        )
+        _sample(db, source, SeriesType.resting_heart_rate, start + timedelta(hours=8), "48")
+        # Copied onto the same sleep, but its instant is not the sleep's end: the row cannot say when it was.
+        _sample(db, source, SeriesType.respiratory_rate, start + timedelta(hours=3), "14")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert [(s.recorded_at, s.value) for s in db.query(SeriesSample)] == [
+            (start + timedelta(hours=3), Decimal("14"))
+        ]
+        assert aggregate_backfill_service.is_done(db)
+
+    def test_a_day_value_off_its_midnight_stays(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.WHOOP)
+        # A cycle total stored at the cycle's start, not at the day's midnight.
+        _sample(db, source, SeriesType.steps, datetime(2025, 6, 1, 7, 30, tzinfo=timezone.utc), "9000")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.PROVIDER).count() == 1
+        assert db.query(SeriesSample).count() == 1
+
+    def test_nothing_is_deleted_before_the_history_is_copied(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.SUUNTO)
+        _sample(
+            db, source, SeriesType.steps, datetime(2025, 6, 1, 22, tzinfo=timezone.utc), "9000", is_daily_total=True
+        )
+
+        assert not aggregate_backfill_service._delete_copied_samples(db, deadline=float("inf"))
+        assert db.query(SeriesSample).count() == 1

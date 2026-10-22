@@ -211,6 +211,25 @@ class AggregateBackfillRepository:
             written += db_session.execute(statement, params).rowcount  # ty: ignore[unresolved-attribute]
         return written
 
+    def delete_copied_samples(
+        self, db_session: DbSession, source_id: UUID, provider: str, cutoff: datetime
+    ) -> set[tuple[UUID, date]]:
+        """The source's history samples the backfill copied, recorded before ``cutoff``, deleted where the provider's
+        aggregate row holds the very same value at the very same instant (its period start, or the session's end), so
+        nothing the sample said is lost. Returns the (source, local day) pairs they were on."""
+        days: set[tuple[UUID, date]] = set()
+        for rule, statement in _DELETES:
+            if ProviderName(provider) not in rule.providers:
+                continue
+            params = {
+                "source": source_id,
+                "types": [get_series_type_id(series_type) for series_type, _ in rule.series],
+                "since": None,
+                "cutoff": cutoff,
+            }
+            days.update((row.data_source_id, row.day) for row in db_session.execute(statement, params))
+        return days
+
 
 _DAYS = {
     DayAnchor.LOCAL: "((s.recorded_at AT TIME ZONE 'UTC') + coalesce(s.zone_offset, '+00:00')::interval)::date",
@@ -325,3 +344,40 @@ def _stat_params(rule: HistoryRule) -> dict[str, list[int]]:
         column = stat or get_aggregation_method(series_type).value
         params[f"{column}_types"].append(get_series_type_id(series_type))
     return params
+
+
+_SAME_VALUE = "s.value IN (a.sum, a.avg, a.min, a.max, a.last)"
+
+
+def _delete_day_values(rule: HistoryRule) -> TextClause:
+    assert rule.day is not None
+    return text(f"""
+        DELETE FROM series_sample s
+        WHERE {_RULE_SAMPLES.format(where=rule.where)} AND s.recorded_at < :cutoff
+            AND EXISTS (
+                SELECT 1 FROM series_aggregate a
+                WHERE a.data_source_id = s.data_source_id AND a.series_type_definition_id = s.series_type_definition_id
+                    AND a.period_kind = 'day' AND a.computed_by = 'provider'
+                    AND a.period_start = s.recorded_at
+                    AND {_SAME_VALUE}
+            )
+        RETURNING s.data_source_id, {_DAYS[DayAnchor.LOCAL]} AS day
+    """)
+
+
+def _delete_session_values(rule: HistoryRule) -> TextClause:
+    assert rule.session is not None
+    return text(f"""
+        DELETE FROM series_sample s
+        WHERE {_RULE_SAMPLES.format(where=rule.where)} AND s.recorded_at < :cutoff
+            AND EXISTS (
+                SELECT 1 FROM event_record_aggregate a JOIN event_record e ON e.id = a.record_id
+                WHERE a.record_id = ({_RECORDS[rule.session]}) AND e.end_datetime = s.recorded_at
+                    AND a.series_type_definition_id = s.series_type_definition_id AND a.computed_by = 'provider'
+                    AND {_SAME_VALUE}
+            )
+        RETURNING s.data_source_id, {_DAYS[DayAnchor.LOCAL]} AS day
+    """)
+
+
+_DELETES = [(rule, _delete_day_values(rule) if rule.day else _delete_session_values(rule)) for rule in HISTORY_RULES]

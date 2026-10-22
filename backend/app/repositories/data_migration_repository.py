@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -12,6 +14,11 @@ class DataMigrationRepository:
 
     def is_completed(self, db: DbSession, name: str) -> bool:
         return db.get(DataMigration, name) is not None
+
+    def completed_at(self, db: DbSession, name: str) -> datetime | None:
+        """When the migration completed here, None while it has not."""
+        migration = db.get(DataMigration, name)
+        return migration.created_at if migration else None
 
     def mark_completed(self, db: DbSession, name: str) -> None:
         db.execute(insert(DataMigration).values(name=name).on_conflict_do_nothing())
