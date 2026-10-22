@@ -80,7 +80,7 @@ from app.services.outgoing_webhooks.events import (
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
-from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
+from app.utils.conversion import as_dict_list, as_float, as_int, as_model, minutes_to_seconds
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
@@ -116,6 +116,11 @@ def pace_sec_per_km(distance_meters: float | None, seconds: int | None) -> float
     return round(seconds / (distance_meters / 1000), 1)
 
 
+def _first_number(*values: Decimal | None) -> float | None:
+    """The first value that is set, so a provider's 0 kcal is kept rather than skipped."""
+    return next((float(value) for value in values if value is not None), None)
+
+
 class EventRecordService(
     AppService[EventRecordRepository, EventRecord, EventRecordCreate, EventRecordUpdate],
 ):
@@ -135,20 +140,21 @@ class EventRecordService(
         self,
         db_session: DbSession,
         records: list[EventRecord],
+        statistics: dict[UUID, dict[str, Decimal | None]],
     ) -> dict[UUID, int | None]:
         """Return avg HR for each workout record.
 
-        Uses stored heart_rate_avg where available, falls back to a single batch query
-        against series_sample for records that don't have it: the workout's own source
-        first, then the other sources of the same writer.
+        Uses the workout's heart rate aggregate (the provider's, else ours from its own samples) where
+        available, falls back to a single batch query against series_sample of the other sources of the
+        same writer.
         """
         result: dict[UUID, int | None] = {}
         missing = []
 
         for r in records:
-            details = r.workout_detail
-            if details and details.heart_rate_avg is not None:
-                result[r.id] = round(details.heart_rate_avg)
+            average = statistics.get(r.id, {}).get("heart_rate_avg")
+            if average is not None:
+                result[r.id] = round(average)
             else:
                 result[r.id] = None
                 missing.append(r)
@@ -918,11 +924,16 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
-        computed_hr = self._resolve_avg_hr(db_session, [r for r, _ in records])
+        statistics = self.crud.get_workout_statistics(db_session, [r.id for r, _ in records])
+        computed_hr = self._resolve_avg_hr(db_session, [r for r, _ in records], statistics)
 
         data = []
         for record, data_source in records:
             details: WorkoutDetails | None = record.workout_detail
+            stats = statistics.get(record.id, {})
+            calories = _first_number(
+                stats.get("provider_energy"), details.energy_burned if details else None, stats.get("own_energy")
+            )
             moving_seconds = (
                 details.moving_time_seconds
                 if details and details.moving_time_seconds is not None
@@ -939,24 +950,22 @@ class EventRecordService(
                 source=self._map_source(data_source),
                 entry_source=details.entry_source if details else None,
                 intensity=details.intensity if details else None,
-                calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
-                distance_meters=float(details.distance) if details and details.distance else None,
+                calories_kcal=calories,
+                distance_meters=as_float(stats.get("distance")),
                 avg_heart_rate_bpm=computed_hr.get(record.id),
-                max_heart_rate_bpm=details.heart_rate_max if details else None,
-                avg_pace_sec_per_km=pace_sec_per_km(as_float(details.distance) if details else None, moving_seconds),
-                elevation_gain_meters=float(details.total_elevation_gain)
-                if details and details.total_elevation_gain
-                else None,
-                heart_rate_min=details.heart_rate_min if details else None,
-                steps_count=details.steps_count if details else None,
-                average_speed=as_float(details.average_speed) if details else None,
-                max_speed=as_float(details.max_speed) if details else None,
-                average_cadence=as_float(details.average_cadence) if details else None,
-                average_watts=as_float(details.average_watts) if details else None,
-                max_watts=as_float(details.max_watts) if details else None,
+                max_heart_rate_bpm=as_int(stats.get("heart_rate_max")),
+                avg_pace_sec_per_km=pace_sec_per_km(as_float(stats.get("distance")), moving_seconds),
+                elevation_gain_meters=as_float(stats.get("total_elevation_gain")),
+                heart_rate_min=as_int(stats.get("heart_rate_min")),
+                steps_count=as_int(stats.get("steps_count")),
+                average_speed=as_float(stats.get("average_speed")),
+                max_speed=as_float(stats.get("max_speed")),
+                average_cadence=as_float(stats.get("average_cadence")),
+                average_watts=as_float(stats.get("average_watts")),
+                max_watts=as_float(stats.get("max_watts")),
                 moving_time_seconds=details.moving_time_seconds if details else None,
-                elev_high=as_float(details.elev_high) if details else None,
-                elev_low=as_float(details.elev_low) if details else None,
+                elev_high=as_float(stats.get("elev_high")),
+                elev_low=as_float(stats.get("elev_low")),
                 hr_zones=as_model(HRZones, details.hr_zones) if details and with_zones else None,
                 power_zones=as_model(PowerZones, details.power_zones) if details and with_zones else None,
                 segments=as_dict_list(details.segments) if details and with_segments else None,

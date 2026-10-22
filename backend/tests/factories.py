@@ -18,12 +18,14 @@ import factory
 from factory import LazyAttribute, LazyFunction, Sequence
 from sqlalchemy.orm import Session
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.models import (
     ApiKey,
     Application,
     DataSource,
     Developer,
     EventRecord,
+    EventRecordDetail,
     HealthScore,
     MealDetails,
     PersonalRecord,
@@ -37,10 +39,19 @@ from app.models import (
     WorkoutDetails,
 )
 from app.repositories.aggregate_repository import AggregateRepository
+from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import ComputedBy, HealthScoreCategory, PeriodKind, ProviderName, SeriesType, get_series_type_id
-from app.schemas.model_crud.activities import CalendarPeriod
+from app.schemas.enums import (
+    ComputedBy,
+    EventCategory,
+    HealthScoreCategory,
+    PeriodKind,
+    ProviderName,
+    SeriesType,
+    get_series_type_id,
+)
+from app.schemas.model_crud.activities import CalendarPeriod, EventRecordDetailCreate
 from app.utils.security import get_password_hash, hash_api_key
 
 
@@ -569,7 +580,14 @@ class WorkoutDetailsFactory(BaseFactory):
         if "heart_rate_avg" in kwargs and not isinstance(kwargs["heart_rate_avg"], Decimal):
             kwargs["heart_rate_avg"] = Decimal(str(kwargs["heart_rate_avg"]))
 
-        return super()._create(model_class, *args, **kwargs)
+        detail = super()._create(model_class, *args, **kwargs)
+        # As the detail save path does: the statistics also land in event_record_aggregate.
+        creator = EventRecordDetailCreate(
+            record_id=detail.record_id, **{column: getattr(detail, column) for column in WORKOUT_DETAIL_STATS}
+        )
+        session = cls._meta.sqlalchemy_session
+        EventRecordDetailRepository(EventRecordDetail)._mirror_workout_stats(session, [creator], EventCategory.WORKOUT)
+        return detail
 
 
 class SleepDetailsFactory(BaseFactory):
