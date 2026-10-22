@@ -4,34 +4,29 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ArchivalSettingRead(BaseModel):
-    """Response schema for archival settings."""
+    """Response schema for data lifecycle settings."""
 
     model_config = ConfigDict(from_attributes=True)
 
-    archive_after_days: int | None = Field(
-        None,
-        description="Days before live samples are aggregated into daily archive. NULL = archival disabled.",
+    rollup_enabled: bool = Field(
+        True,
+        description="Roll changed days of samples up into daily and per-session aggregates every night.",
     )
     delete_after_days: int | None = Field(
         None,
-        description="Days before archived data is permanently removed. NULL = kept indefinitely.",
+        description="Days before samples are deleted, rolled up first when rollup is on. NULL = kept indefinitely.",
     )
 
 
 class ArchivalSettingUpdate(BaseModel):
-    """Request schema for updating archival settings."""
+    """Request schema for updating data lifecycle settings."""
 
-    archive_after_days: int | None = Field(
-        None,
-        ge=1,
-        le=3650,
-        description="Days before live data is archived. NULL to disable archival.",
-    )
+    rollup_enabled: bool = Field(True, description="Roll samples up into daily and per-session aggregates.")
     delete_after_days: int | None = Field(
         None,
         ge=1,
         le=7300,
-        description="Days before data is permanently deleted. NULL to keep indefinitely.",
+        description="Days before samples are deleted. NULL to keep indefinitely.",
     )
 
 
@@ -57,7 +52,7 @@ class StorageEstimate(BaseModel):
     archive_index_pretty: str = Field(description="Human-readable archive index size")
     other_tables_pretty: str = Field(description="Human-readable other tables size")
     total_pretty: str = Field(description="Human-readable total DB size")
-    growth_class: str = Field(description="Growth complexity class: 'bounded' | 'linear_efficient' | 'linear'")
+    growth_class: str = Field(description="Growth complexity class: 'bounded' | 'linear'")
 
 
 class ArchivalSettingWithEstimate(BaseModel):

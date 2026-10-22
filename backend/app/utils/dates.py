@@ -181,6 +181,11 @@ def iso_to_timezone(offset: str) -> timezone:
     return timezone(sign * timedelta(hours=int(hours), minutes=int(minutes)))
 
 
+def local_date(dt: datetime, zone_offset: str | None) -> date:
+    """The calendar day of an instant at its offset, as SQL readers compute it; no offset is UTC."""
+    return dt.astimezone(iso_to_timezone(zone_offset or "+00:00")).date()
+
+
 def offset_of(dt: datetime) -> str | None:
     """The ISO 8601 offset of an aware datetime, None for a naive one."""
     offset = dt.utcoffset()

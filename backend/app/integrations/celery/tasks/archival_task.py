@@ -1,11 +1,10 @@
-"""Daily data archival and retention Celery task.
+"""Daily data lifecycle Celery task.
 
 Runs once per day (via beat schedule) to:
-1. Aggregate live series_sample rows older than archive_after_days into daily archive.
-2. Delete archive rows older than delete_after_days.
+1. Roll the days whose samples or events changed up into open_wearables day and session aggregates.
+2. Delete samples older than delete_after_days, rolled up first.
 
-Both thresholds are configured by the admin via archival_settings.
-If both are NULL, the task is a no-op.
+Both are configured by the admin via archival_settings.
 """
 
 from logging import getLogger
@@ -29,7 +28,7 @@ logger = getLogger(__name__)
     default_retry_delay=60,
 )
 def run_daily_archival() -> dict:
-    """Execute the daily archival + retention job.
+    """Execute the daily rollup + retention job.
 
     The service internally limits batch size and wall time so this task
     is safe for first-run scenarios with millions of rows. If not all rows

@@ -4,16 +4,37 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.models import EventRecordAggregate, EventRecordDetail, SeriesAggregate, SeriesSample, WorkoutDetails
+from app.integrations.redis_client import get_redis_client
+from app.integrations.rollup_queue import DIRTY_DAYS_KEY, pop_dirty_days, requeue_dirty_days
+from app.models import (
+    EventRecord,
+    EventRecordAggregate,
+    EventRecordDetail,
+    SeriesAggregate,
+    SeriesSample,
+    SeriesTypeDefinition,
+    WorkoutDetails,
+)
+from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, DataPointSeriesRepository, EventRecordDetailRepository
+from app.repositories.event_record_repository import EventRecordRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     CalendarPeriod,
+    EventRecordCreate,
     EventRecordDetailCreate,
     SessionValue,
     TimeSeriesSampleCreate,
 )
-from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+from app.services.archival_service import archival_service
+from tests.factories import (
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    SeriesTypeDefinitionFactory,
+    UserFactory,
+)
 
 DAY = date(2099, 1, 1)
 
@@ -326,3 +347,175 @@ class TestSessionValuesMirrored:
 
         assert db.query(EventRecordAggregate).count() == 0
         assert db.query(WorkoutDetails).one().energy_burned == Decimal("512")
+
+
+class TestRollupQueue:
+    def test_a_write_queues_the_local_day_of_each_sample_once_committed(self, db: Session) -> None:
+        user = UserFactory()
+        late_evening = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            source="garmin",
+            recorded_at=datetime(2099, 1, 1, 23, 30, tzinfo=timezone.utc),
+            zone_offset="+02:00",
+            value=Decimal("70"),
+            series_type=SeriesType.heart_rate,
+        )
+
+        DataPointSeriesRepository(SeriesSample).bulk_create(db, [late_evening])
+        assert get_redis_client().smembers(DIRTY_DAYS_KEY) == set()
+        db.commit()
+
+        source_id = db.query(SeriesSample).one().data_source_id
+        assert pop_dirty_days(10) == [(source_id, date(2099, 1, 2))]
+
+    def test_an_event_queues_every_local_day_it_touches(self, db: Session) -> None:
+        source = DataSourceFactory()
+        creator = EventRecordCreate(
+            id=uuid4(),
+            user_id=source.user_id,
+            source=source.source,
+            category="sleep",
+            type="sleep",
+            source_name="Apple Watch",
+            duration_seconds=8 * 3600,
+            start_datetime=datetime(2099, 1, 1, 22, tzinfo=timezone.utc),
+            end_datetime=datetime(2099, 1, 2, 6, tzinfo=timezone.utc),
+            zone_offset="+00:00",
+            device_model=source.device_model,
+        )
+
+        EventRecordRepository(EventRecord).create(db, creator)
+
+        assert {day for _, day in pop_dirty_days(10)} == {date(2099, 1, 1), date(2099, 1, 2)}
+
+
+class TestSeriesRollup:
+    def _sample(
+        self, source: object, series_type: SeriesTypeDefinition, at: datetime, value: str, **fields: object
+    ) -> None:
+        DataPointSeriesFactory(mapping=source, series_type=series_type, recorded_at=at, value=Decimal(value), **fields)
+
+    def _day_rows(self, db: Session) -> dict[int, SeriesAggregate]:
+        return {
+            row.series_type_definition_id: row
+            for row in db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)
+        }
+
+    def test_a_day_is_rolled_up_from_its_samples_at_their_local_offset(self, db: Session) -> None:
+        source = DataSourceFactory()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        self._sample(
+            source, heart_rate, datetime(2098, 12, 31, 23, 30, tzinfo=timezone.utc), "50", zone_offset="+02:00"
+        )
+        self._sample(source, heart_rate, datetime(2099, 1, 1, 12, tzinfo=timezone.utc), "90", zone_offset="+02:00")
+        self._sample(source, heart_rate, datetime(2099, 1, 1, 22, 30, tzinfo=timezone.utc), "60", zone_offset="+02:00")
+        self._sample(source, steps, datetime(2099, 1, 1, 10, tzinfo=timezone.utc), "300", zone_offset="+02:00")
+        self._sample(source, steps, datetime(2099, 1, 1, 11, tzinfo=timezone.utc), "500", zone_offset="+02:00")
+        self._sample(
+            source,
+            steps,
+            datetime(2099, 1, 1, 0, tzinfo=timezone.utc),
+            "9000",
+            zone_offset="+02:00",
+            is_daily_total=True,
+        )
+
+        SeriesRollupRepository().roll_up(db, source.id, [DAY])
+
+        rows = self._day_rows(db)
+        hr, step = rows[heart_rate.id], rows[steps.id]
+        # 23:30 UTC on Dec 31 is 01:30 on Jan 1 at +02:00; 22:30 UTC on Jan 1 is already Jan 2.
+        assert (hr.min, hr.max, hr.last, hr.count, hr.sum) == (Decimal("50"), Decimal("90"), Decimal("90"), 2, None)
+        assert (hr.period_start, hr.zone_offset) == (CalendarPeriod.of_date(DAY, "+02:00").start, "+02:00")
+        # The provider's daily total is not one of the samples.
+        assert (step.sum, step.count) == (Decimal("800"), 2)
+
+    def test_a_day_rolled_up_again_reflects_only_the_samples_left(self, db: Session) -> None:
+        source = DataSourceFactory()
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        self._sample(source, steps, datetime(2099, 1, 1, 10, tzinfo=timezone.utc), "300")
+        repo = SeriesRollupRepository()
+        repo.roll_up(db, source.id, [DAY])
+
+        db.query(SeriesSample).delete()
+        self._sample(
+            source,
+            SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            datetime(2099, 1, 1, 9, tzinfo=timezone.utc),
+            "60",
+        )
+        repo.roll_up(db, source.id, [DAY])
+
+        assert list(self._day_rows(db)) == [get_series_type_id(SeriesType.heart_rate)]
+
+    def test_a_workout_gets_its_own_statistics_from_the_samples_inside_it(self, db: Session) -> None:
+        source = DataSourceFactory()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        start = datetime(2099, 1, 1, 10, tzinfo=timezone.utc)
+        workout = EventRecordFactory(data_source=source, start_datetime=start, duration_seconds=1800)
+        self._sample(source, heart_rate, start + timedelta(minutes=5), "120")
+        self._sample(source, heart_rate, start + timedelta(minutes=25), "160")
+        self._sample(source, heart_rate, start + timedelta(hours=2), "70")
+
+        SeriesRollupRepository().roll_up(db, source.id, [DAY])
+
+        row = db.query(EventRecordAggregate).one()
+        assert (row.record_id, row.computed_by) == (workout.id, ComputedBy.OPEN_WEARABLES)
+        assert (row.avg, row.min, row.max, row.count) == (Decimal("140"), Decimal("120"), Decimal("160"), 2)
+
+
+class TestDailyLifecycleJob:
+    def _settings(self, db: Session, rollup_enabled: bool, delete_after_days: int | None) -> None:
+        setting = db.get(ArchivalSetting, 1) or ArchivalSetting(id=1)
+        setting.rollup_enabled, setting.delete_after_days = rollup_enabled, delete_after_days
+        db.add(setting)
+        db.commit()
+
+    def test_the_job_rolls_up_queued_days(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=None)
+        source = DataSourceFactory()
+        DataPointSeriesFactory(mapping=source, recorded_at=datetime(2099, 1, 1, 12, tzinfo=timezone.utc))
+        requeue_dirty_days([(source.id, DAY)])
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert summary["rolled_up_days"] == 1
+        assert db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES).count() == 1
+        assert pop_dirty_days(10) == []
+
+    def test_with_rollup_off_the_queue_is_dropped(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=False, delete_after_days=None)
+        requeue_dirty_days([(uuid4(), DAY)])
+
+        archival_service.run_daily_archival(db)
+
+        assert db.query(SeriesAggregate).count() == 0
+        assert pop_dirty_days(10) == []
+
+    def test_retention_rolls_old_days_up_before_deleting_them_whole(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        source = DataSourceFactory()
+        cutoff = date.today() - timedelta(days=30)
+        old = datetime.combine(cutoff - timedelta(days=2), datetime.min.time(), timezone.utc) + timedelta(hours=12)
+        # Local day = the cutoff at +02:00, though its UTC date is the day before: it stays.
+        kept = datetime.combine(cutoff, datetime.min.time(), timezone.utc) - timedelta(hours=1)
+        DataPointSeriesFactory(mapping=source, recorded_at=old, zone_offset="+02:00")
+        DataPointSeriesFactory(mapping=source, recorded_at=kept, zone_offset="+02:00")
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert summary["deleted_live_rows"] == 1
+        assert [sample.recorded_at for sample in db.query(SeriesSample)] == [kept]
+        day_row = db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES).one()
+        assert day_row.period_start == CalendarPeriod.of_date(cutoff - timedelta(days=2), "+02:00").start
+
+    def test_retention_without_rollup_only_deletes(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=False, delete_after_days=30)
+        DataPointSeriesFactory(recorded_at=datetime.now(timezone.utc) - timedelta(days=60))
+
+        archival_service.run_daily_archival(db)
+
+        assert db.query(SeriesSample).count() == 0
+        assert db.query(SeriesAggregate).count() == 0

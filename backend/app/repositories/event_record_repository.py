@@ -30,6 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
+from app.integrations.rollup_queue import mark_dirty_days
 from app.models import DataSource, EventRecord, SeriesSample, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
@@ -47,6 +48,7 @@ from app.schemas.model_crud.activities import (
     EventRecordUpdate,
 )
 from app.schemas.sync_status import DataTypeKind
+from app.utils.dates import local_date
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -202,6 +204,10 @@ class EventRecordRepository(
         try:
             db_session.add(creation)
             self._record_coverage(db_session, [(creator, provider)])
+            mark_dirty_days(
+                db_session,
+                _local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset),
+            )
             db_session.commit()
             db_session.refresh(creation)
             return creation
@@ -229,6 +235,9 @@ class EventRecordRepository(
                 return existing
             raise
         self._record_coverage(db_session, [(creator, provider)])
+        mark_dirty_days(
+            db_session, _local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset)
+        )
         return creation
 
     def _resolve_values(self, db_session: DbSession, creators: list[EventRecordCreate]) -> list[dict]:
@@ -291,6 +300,17 @@ class EventRecordRepository(
 
         self._record_coverage(
             db_session, [(c, self.data_source_repo.provider_of(c)) for c in creators if c.id in inserted_ids]
+        )
+        mark_dirty_days(
+            db_session,
+            (
+                day
+                for values in values_list
+                if values["id"] in inserted_ids
+                for day in _local_days(
+                    values["data_source_id"], values["start_datetime"], values["end_datetime"], values["zone_offset"]
+                )
+            ),
         )
         # NOTE: Caller should commit - allows batching multiple operations
 
@@ -1240,3 +1260,9 @@ class EventRecordRepository(
             .all()
         )
         return [(event_record, sleep_details) for event_record, sleep_details in rows]
+
+
+def _local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
+    """Every local day an event touches, so its sessions are rolled up with them."""
+    first, last = local_date(start, zone_offset), local_date(end, zone_offset)
+    return [(source_id, first + timedelta(days=n)) for n in range((last - first).days + 1)]
