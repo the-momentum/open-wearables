@@ -9,13 +9,17 @@ Tests cover:
 - Reading time series at raw and downsampled resolutions
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.schemas.enums import Resolution, SeriesType
+from app.models import DataSource, SeriesAggregate
+from app.repositories import AggregateRepository
+from app.schemas.enums import ComputedBy, PeriodKind, Resolution, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     HeartRateSampleCreate,
     StepSampleCreate,
     TimeSeriesQueryParams,
@@ -779,3 +783,148 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Assert
         assert [s.value for s in result.data] == [128]
+
+
+class TestTimeSeriesServicePeriods:
+    """Day, week and month resolutions read series_aggregate, not the samples."""
+
+    def _day(
+        self,
+        db: Session,
+        source: DataSource,
+        series_type: SeriesType,
+        day: date,
+        computed_by: ComputedBy,
+        zone_offset: str = "+00:00",
+        **stats: Decimal | int,
+    ) -> None:
+        period = CalendarPeriod.of_date(day, zone_offset)
+        AggregateRepository(SeriesAggregate).upsert(
+            db,
+            [
+                {
+                    "data_source_id": source.id,
+                    "series_type_definition_id": get_series_type_id(series_type),
+                    "period_kind": PeriodKind.DAY,
+                    "period_start": period.start,
+                    "period_end": period.end,
+                    "zone_offset": period.zone_offset,
+                    "computed_by": computed_by,
+                    "count": 1,
+                    **stats,
+                }
+            ],
+        )
+
+    def _params(self, resolution: Resolution, start: date, end: date, **overrides) -> TimeSeriesQueryParams:
+        return TimeSeriesQueryParams(
+            start_datetime=datetime.combine(start, datetime.min.time(), timezone.utc),
+            end_datetime=datetime.combine(end, datetime.min.time(), timezone.utc),
+            resolution=resolution,
+            **overrides,
+        )
+
+    def test_a_day_takes_the_providers_row_and_falls_back_to_ours(self, db: Session) -> None:
+        source = DataSourceFactory()
+        provider_day, own_day = date(2024, 3, 1), date(2024, 3, 2)
+        self._day(db, source, SeriesType.steps, provider_day, ComputedBy.PROVIDER, sum=Decimal("8432"))
+        # Ours for the same day sits at the user's offset: still the same local day.
+        self._day(db, source, SeriesType.steps, provider_day, ComputedBy.OPEN_WEARABLES, "+02:00", sum=Decimal("8100"))
+        self._day(db, source, SeriesType.steps, own_day, ComputedBy.OPEN_WEARABLES, "+02:00", sum=Decimal("5000"))
+
+        result = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.steps], self._params(Resolution.ONE_DAY, provider_day, date(2024, 3, 3))
+        )
+
+        assert [(s.value, s.computed_by) for s in result.data] == [
+            (8432, ComputedBy.PROVIDER),
+            (5000, ComputedBy.OPEN_WEARABLES),
+        ]
+        second = result.data[1]
+        assert (second.timestamp, second.zone_offset) == (CalendarPeriod.of_date(own_day, "+02:00").start, "+02:00")
+        assert second.period_end == CalendarPeriod.of_date(date(2024, 3, 3), "+02:00").start
+
+    def test_a_day_value_is_the_statistic_its_series_is_read_by(self, db: Session) -> None:
+        source = DataSourceFactory()
+        day = date(2024, 3, 1)
+        self._day(
+            db,
+            source,
+            SeriesType.heart_rate,
+            day,
+            ComputedBy.OPEN_WEARABLES,
+            avg=Decimal("70.5"),
+            min=Decimal("47"),
+            max=Decimal("165"),
+            count=86400,
+        )
+
+        sample = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.heart_rate], self._params(Resolution.ONE_DAY, day, date(2024, 3, 2))
+        ).data[0]
+
+        assert sample.value == 70.5
+        assert sample.stats is not None
+        assert (sample.stats.min, sample.stats.max, sample.stats.count) == (47, 165, 86400)
+
+    def test_a_week_adds_its_days_up_from_monday(self, db: Session) -> None:
+        source = DataSourceFactory()
+        # 2024-03-04 is a Monday.
+        for day, steps in [(date(2024, 3, 4), "1000"), (date(2024, 3, 10), "2000"), (date(2024, 3, 11), "4000")]:
+            self._day(db, source, SeriesType.steps, day, ComputedBy.PROVIDER, sum=Decimal(steps))
+
+        result = timeseries_service.get_timeseries(
+            db,
+            source.user_id,
+            [SeriesType.steps],
+            self._params(Resolution.ONE_WEEK, date(2024, 3, 4), date(2024, 3, 18)),
+        )
+
+        assert [(s.timestamp.date(), s.value) for s in result.data] == [
+            (date(2024, 3, 4), 3000),
+            (date(2024, 3, 11), 4000),
+        ]
+        assert result.data[0].computed_by == ComputedBy.OPEN_WEARABLES
+
+    def test_months_page_forward_and_back_without_gaps(self, db: Session) -> None:
+        source = DataSourceFactory()
+        for month in (1, 2, 3):
+            self._day(db, source, SeriesType.steps, date(2024, month, 15), ComputedBy.PROVIDER, sum=Decimal(month))
+        params = self._params(Resolution.ONE_MONTH, date(2024, 1, 1), date(2024, 4, 1), limit=2)
+
+        first = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
+        second = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.steps], params.model_copy(update={"cursor": first.pagination.next_cursor})
+        )
+        back = timeseries_service.get_timeseries(
+            db,
+            source.user_id,
+            [SeriesType.steps],
+            params.model_copy(update={"cursor": second.pagination.previous_cursor}),
+        )
+
+        assert [s.value for s in first.data] == [1, 2]
+        assert ([s.value for s in second.data], second.pagination.next_cursor) == ([3], None)
+        assert [s.value for s in back.data] == [1, 2]
+
+    def test_a_sparse_range_starts_at_its_first_day_with_data(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._day(db, source, SeriesType.steps, date(2024, 6, 1), ComputedBy.PROVIDER, sum=Decimal("100"))
+        params = self._params(Resolution.ONE_DAY, date(2024, 1, 1), date(2024, 7, 1), limit=2)
+
+        result = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
+
+        assert ([s.value for s in result.data], result.pagination.has_more) == ([100], False)
+
+    def test_samples_carry_their_window(self, db: Session) -> None:
+        source = DataSourceFactory()
+        at = datetime(2024, 3, 1, 12, tzinfo=timezone.utc)
+        DataPointSeriesFactory(mapping=source, recorded_at=at, window_seconds=900)
+        params = TimeSeriesQueryParams(start_datetime=at, end_datetime=at + timedelta(hours=1))
+
+        raw = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.heart_rate], params)
+        hourly = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.heart_rate], params.model_copy(update={"resolution": Resolution.ONE_HOUR})
+        )
+
+        assert (raw.data[0].window_seconds, hourly.data[0].window_seconds) == (900, 3600)

@@ -48,17 +48,21 @@ async def get_timeseries(
                - "blood_glucose", "blood_pressure_systolic", "blood_pressure_diastolic"
                - "weight", "body_fat_percentage", "body_mass_index"
                - "steps", "active_energy", "basal_energy", "distance"
-        resolution: One of "raw", "1min", "5min", "15min", "1hour".
-                    Default "raw" returns every sample as stored; higher
-                    resolutions downsample server-side. Prefer "1min" or
-                    coarser for multi-day windows to keep response size
-                    bounded.
+        resolution: One of "raw", "1min", "5min", "15min", "1hour", "1day",
+                    "1week", "1month". Default "raw" returns every sample as
+                    stored; minute and hour resolutions downsample server-side;
+                    "1day", "1week" and "1month" return one value per local day,
+                    week or month, the provider's own day value where it sent
+                    one, with all statistics under "stats". Prefer "1min" or
+                    coarser for multi-day windows, and "1day" or coarser for
+                    weeks and months, to keep response size bounded.
 
     Returns:
         A dictionary containing:
         - user: Information about the user (id, first_name, last_name)
         - period: The time window queried (start, end, resolution)
-        - records: List of samples, each {timestamp, type, value, unit, source}
+        - records: List of samples, each {timestamp, type, value, unit, source};
+                   day, week and month records also carry stats {avg, min, max, sum, last, count}
         - summary: Per-type aggregates (count, avg, min, max)
         - truncated: True if pagination hit the safety ceiling (rare)
 
@@ -139,6 +143,7 @@ async def get_timeseries(
                         "value": sample.get("value"),
                         "unit": sample.get("unit"),
                         "source": source.get("provider") if isinstance(source, dict) else source,
+                        **({"stats": sample["stats"]} if sample.get("stats") else {}),
                     }
                 )
             cursor = (response.get("pagination") or {}).get("next_cursor")

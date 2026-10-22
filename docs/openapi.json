@@ -12177,6 +12177,15 @@
         ],
         "title": "CompletedPart"
       },
+      "ComputedBy": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "open_wearables"
+        ],
+        "title": "ComputedBy",
+        "description": "Who computed an aggregate: the provider, or Open Wearables from stored samples."
+      },
       "ConfigResponse": {
         "properties": {
           "outgoing_webhooks_enabled": {
@@ -15622,10 +15631,13 @@
           "1min",
           "5min",
           "15min",
-          "1hour"
+          "1hour",
+          "1day",
+          "1week",
+          "1month"
         ],
         "title": "Resolution",
-        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched."
+        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
       },
       "SDKLogRequest": {
         "properties": {
@@ -16027,6 +16039,75 @@
         "type": "object",
         "title": "SeedProfileConfig",
         "description": "Complete seed data generation configuration."
+      },
+      "SeriesStats": {
+        "properties": {
+          "avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "SeriesStats",
+        "description": "Every statistic held for a period. The sample's value is the one its series is read by."
       },
       "SeriesType": {
         "type": "string",
@@ -18238,6 +18319,49 @@
               }
             ],
             "title": "Is Daily Total"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "computed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

@@ -7,6 +7,7 @@ from .computed_by import ComputedBy
 from .data_granularity import (
     BUCKET_SIZES,
     GRANULARITY_WINDOW_SECONDS,
+    PERIOD_RESOLUTIONS,
     DataGranularity,
     Resolution,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "DataGranularity",
     "Resolution",
     "BUCKET_SIZES",
+    "PERIOD_RESOLUTIONS",
     "GRANULARITY_WINDOW_SECONDS",
     "EntrySource",
     "EventCategory",

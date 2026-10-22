@@ -1,6 +1,6 @@
 import threading
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Any
@@ -9,24 +9,31 @@ from uuid import UUID
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataSource, ProviderPriority, SeriesSample
+from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesSample
 from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.series_aggregate_repository import SeriesAggregateRepository
 from app.schemas.enums import (
+    BUCKET_SIZES,
+    PERIOD_RESOLUTIONS,
+    ComputedBy,
+    PeriodKind,
     Resolution,
     SeriesType,
     get_series_type_from_id,
     get_series_type_unit,
 )
+from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     HeartRateSampleCreate,
     StepSampleCreate,
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.responses.activity import TimeSeriesSample
+from app.schemas.responses.activity import SeriesStats, TimeSeriesSample
 from app.schemas.utils import (
     PaginatedResponse,
     Pagination,
@@ -38,7 +45,7 @@ from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import encode_bucket_cursor, encode_cursor
+from app.utils.pagination import decode_date_cursor, encode_bucket_cursor, encode_cursor, encode_date_cursor
 
 
 def _trim_to_whole_buckets(
@@ -65,6 +72,11 @@ def _to_sample(
     value: Decimal,
     is_daily_total: bool | None,
     data_source: DataSource | None,
+    *,
+    window_seconds: int | None = None,
+    period_end: datetime | None = None,
+    computed_by: ComputedBy | None = None,
+    stats: SeriesStats | None = None,
 ) -> TimeSeriesSample:
     series_type = get_series_type_from_id(series_type_definition_id)
     source = None
@@ -84,7 +96,58 @@ def _to_sample(
         unit=get_series_type_unit(series_type),
         source=source,
         is_daily_total=is_daily_total,
+        window_seconds=window_seconds,
+        period_end=period_end,
+        computed_by=computed_by,
+        stats=stats,
     )
+
+
+# Open ends of a period read; far enough from date.min/max that a day's UTC bounds still fit.
+_NO_START, _NO_END = date(1900, 1, 1), date(9000, 1, 1)
+
+
+def _period_of(day: date, kind: PeriodKind) -> date:
+    """First day of the week (Monday) or month a day falls in."""
+    if kind is PeriodKind.WEEK:
+        return day - timedelta(days=day.weekday())
+    if kind is PeriodKind.MONTH:
+        return day.replace(day=1)
+    return day
+
+
+def _shift(period: date, kind: PeriodKind, periods: int) -> date:
+    """The period ``periods`` after (or, negative, before) the one starting on ``period``."""
+    if kind is PeriodKind.MONTH:
+        months = period.year * 12 + period.month - 1 + periods
+        return date(months // 12, months % 12 + 1, 1)
+    return period + timedelta(days=periods * (7 if kind is PeriodKind.WEEK else 1))
+
+
+def _combine(rows: list[SeriesAggregate]) -> SeriesStats:
+    """One period's statistics from its days: sums add up, extremes stay extreme, the average is
+    the mean of the daily averages, and the last value is the latest day's."""
+
+    def values(column: str) -> list[float]:
+        return [float(value) for row in rows if (value := getattr(row, column)) is not None]
+
+    avgs, mins, maxs, sums, lasts = (values(c) for c in ("avg", "min", "max", "sum", "last"))
+    return SeriesStats(
+        avg=sum(avgs) / len(avgs) if avgs else None,
+        min=min(mins) if mins else None,
+        max=max(maxs) if maxs else None,
+        sum=sum(sums) if sums else None,
+        last=lasts[-1] if lasts else None,
+        count=sum(row.count for row in rows),
+    )
+
+
+def _value_of(stats: SeriesStats, series_type: SeriesType) -> float:
+    """The statistic the series is read by, else whichever one the provider sent."""
+    canonical = getattr(stats, get_aggregation_method(series_type).value)
+    if canonical is not None:
+        return canonical
+    return next(v for v in (stats.avg, stats.max, stats.min, stats.sum, stats.last) if v is not None)
 
 
 def _page(
@@ -126,6 +189,7 @@ class TimeSeriesService(
         super().__init__(crud_model=DataPointSeriesRepository, model=SeriesSample, log=log)
         self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
+        self.series_aggregate_repo = SeriesAggregateRepository()
 
     def bulk_create_samples(
         self,
@@ -260,10 +324,17 @@ class TimeSeriesService(
         has_next = bool(samples) and has_more
         has_previous = bool(samples) and bool(params.cursor) and (has_more or not is_backward)
 
+        window = int(BUCKET_SIZES[params.resolution].total_seconds())
         return _page(
             data=[
                 _to_sample(
-                    s.bucket, s.zone_offset, s.series_type_definition_id, s.value, s.is_daily_total, s.data_source
+                    s.bucket,
+                    s.zone_offset,
+                    s.series_type_definition_id,
+                    s.value,
+                    s.is_daily_total,
+                    s.data_source,
+                    window_seconds=window,
                 )
                 for s in samples
             ],
@@ -271,6 +342,93 @@ class TimeSeriesService(
             has_more=has_more,
             next_cursor=encode_bucket_cursor(samples[-1].bucket) if has_next else None,
             previous_cursor=encode_bucket_cursor(samples[0].bucket, "prev") if has_previous else None,
+        )
+
+    def _period_timeseries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        params: TimeSeriesQueryParams,
+        source_by_type: dict[int, UUID] | None = None,
+    ) -> PaginatedResponse[TimeSeriesSample]:
+        """Day, week and month values from series_aggregate, the provider's day before ours.
+
+        Weeks start on Monday and months on the 1st, by the local day; a week or month is built from
+        its days within the requested range. Pages hold ``limit`` periods; the cursor is a period's
+        first day.
+        """
+        kind = PERIOD_RESOLUTIONS[params.resolution]
+        limit = params.limit or 50
+        first_day = params.start_datetime.date() if params.start_datetime else _NO_START
+        last_day = (params.end_datetime - timedelta(microseconds=1)).date() if params.end_datetime else _NO_END
+        backward = False
+        if params.cursor:
+            cursor_period, direction = decode_date_cursor(params.cursor)
+            backward = direction == "prev"
+            if backward:
+                last_day = cursor_period - timedelta(days=1)
+            else:
+                first_day = _shift(cursor_period, kind, 1)
+
+        # Start at the first (or last) day that holds data, then read only the days of limit + 1 periods,
+        # so a sparse range is not paged through empty and a page never scans the whole range.
+        repo = self.series_aggregate_repo
+        edge = repo.edge_day(db_session, user_id, params, types, first_day, last_day, source_by_type, latest=backward)
+        if edge is None:
+            return _page(data=[], params=params, has_more=False, next_cursor=None, previous_cursor=None)
+        if backward:
+            last_day = edge
+            window = (max(first_day, _shift(_period_of(last_day, kind), kind, -limit)), last_day)
+        else:
+            first_day = edge
+            window = (
+                first_day,
+                min(last_day, _shift(_period_of(first_day, kind), kind, limit + 1) - timedelta(days=1)),
+            )
+        rows = repo.get_day_rows(db_session, user_id, params, types, *window, source_by_type)
+
+        groups: dict[tuple[date, UUID, int], list[SeriesAggregate]] = defaultdict(list)
+        for row, day in rows:
+            groups[(_period_of(day, kind), row.data_source_id, row.series_type_definition_id)].append(row)
+        periods = sorted({period for period, _, _ in groups})
+        overflow = len(periods) > limit
+        periods = periods[-limit:] if backward else periods[:limit]
+        rest = (first_day, window[0] - timedelta(days=1)) if backward else (window[1] + timedelta(days=1), last_day)
+        has_more = overflow or (
+            rest[0] <= rest[1] and repo.edge_day(db_session, user_id, params, types, *rest, source_by_type) is not None
+        )
+
+        sources = self.crud._sources_by_id(db_session, {source_id for _, source_id, _ in groups})
+        shown = set(periods)
+        data = []
+        for (period, source_id, type_id), period_rows in sorted(groups.items(), key=lambda item: item[0]):
+            if period not in shown:
+                continue
+            zone_offset = period_rows[0].zone_offset
+            stats = _combine(period_rows)
+            data.append(
+                _to_sample(
+                    CalendarPeriod.of_date(period, zone_offset).start,
+                    zone_offset,
+                    type_id,
+                    Decimal(str(_value_of(stats, get_series_type_from_id(type_id)))),
+                    None,
+                    sources[source_id],
+                    period_end=CalendarPeriod.of_date(_shift(period, kind, 1), zone_offset).start,
+                    computed_by=period_rows[0].computed_by if kind is PeriodKind.DAY else ComputedBy.OPEN_WEARABLES,
+                    stats=stats,
+                )
+            )
+
+        has_next = bool(periods) and has_more
+        has_previous = bool(periods) and bool(params.cursor) and (has_more or not backward)
+        return _page(
+            data=data,
+            params=params,
+            has_more=has_more,
+            next_cursor=encode_date_cursor(periods[-1]) if has_next else None,
+            previous_cursor=encode_date_cursor(periods[0], "prev") if has_previous else None,
         )
 
     @handle_exceptions
@@ -283,6 +441,8 @@ class TimeSeriesService(
         filter_by_priority: bool = False,
     ) -> PaginatedResponse[TimeSeriesSample]:
         source_by_type = self._winning_sources(db_session, user_id, types, params) if filter_by_priority else None
+        if params.resolution in PERIOD_RESOLUTIONS:
+            return self._period_timeseries(db_session, user_id, types, params, source_by_type)
         if params.resolution is not Resolution.RAW:
             return self._aggregated_timeseries(db_session, user_id, types, params, source_by_type)
 
@@ -330,6 +490,7 @@ class TimeSeriesService(
                 sample.value,
                 sample.is_daily_total,
                 data_source,
+                window_seconds=sample.window_seconds,
             )
             for sample, data_source in samples
         ]
