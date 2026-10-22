@@ -95,6 +95,8 @@ _DAYS_BEFORE = text(f"""
         AND s.recorded_at < :hi AND {_SAMPLE_DAY} < :cutoff
 """)
 
+_SOURCES = text("SELECT id FROM data_source WHERE id > :after ORDER BY id LIMIT :limit")
+
 _SESSION_CATEGORIES = [EventCategory.SLEEP.value, EventCategory.WORKOUT.value]
 # A sum is kept only where the series is summed: a day's heart rates added up mean nothing.
 _SUMMED_TYPE_IDS = frozenset(
@@ -128,6 +130,10 @@ class SeriesRollupRepository:
             written += self._roll_up_days(db_session, source_id, run, lo, hi, frozen_before)
             self._roll_up_sessions(db_session, source_id, lo, hi, frozen_before)
         return written
+
+    def sources(self, db_session: DbSession, after: UUID, limit: int) -> list[UUID]:
+        """Data sources in id order, ``limit`` at a time after ``after``."""
+        return list(db_session.execute(_SOURCES, {"after": after, "limit": limit}).scalars())
 
     def days_before(self, db_session: DbSession, source_id: UUID, cutoff: date) -> list[date]:
         """Local days before ``cutoff`` on which the source still has samples."""

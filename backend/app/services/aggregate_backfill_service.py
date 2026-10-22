@@ -16,6 +16,7 @@ from app.repositories.aggregate_backfill_repository import SKIPPED_SOURCE, Aggre
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.local_day import utc_midnight
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import ProviderName, SeriesType
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -25,6 +26,8 @@ BACKFILL_MIGRATION = "aggregate_backfill"
 
 # The span the backfill fills before the rest of the history.
 RECENT = timedelta(days=30)
+# Days rolled up per statement and commit: a month of 1 Hz data is a few million rows.
+ROLLUP_CHUNK_DAYS = 31
 
 _CURSOR_KEY = "aggregate_backfill:cursor:{step}"
 _SOURCES_PER_QUERY = 50
@@ -61,6 +64,7 @@ class AggregateBackfillService:
     def __init__(self) -> None:
         self.repo = AggregateBackfillRepository()
         self.samples = DataPointSeriesArchiveRepository()
+        self.rollup_repo = SeriesRollupRepository()
         self.migrations = DataMigrationRepository()
 
     @property
@@ -70,7 +74,9 @@ class AggregateBackfillService:
             BackfillStep("workout_details", self._workout_details),
             # The last month first: those are the days clients look at, so they come back before the rest.
             BackfillStep("history_recent", self._history(RECENT)),
+            BackfillStep("rollup_recent", self._rollup(RECENT)),
             BackfillStep("history_all", self._history(None)),
+            BackfillStep("rollup_all", self._rollup(None)),
             BackfillStep("garmin_epoch_windows", self._garmin_epoch_windows),
             BackfillStep("archive_days", self._archive_days),
         ]
@@ -150,6 +156,39 @@ class AggregateBackfillService:
                 return self._each_window(db, budget, step, source_id, first, window)
 
             return self._each_source(db, budget, step, self.repo.history_sources, copy)
+
+        return run
+
+    def _rollup(self, period: timedelta | None) -> Callable[[DbSession, Budget], bool]:
+        """Our day and session rows from every source's samples, from the last ``period`` or all, newest days
+        first, ROLLUP_CHUNK_DAYS at a time; a source left halfway goes on from its last finished chunk."""
+        step = "rollup_recent" if period is not None else "rollup_all"
+        day_key = _CURSOR_KEY.format(step=f"{step}:day")
+
+        def run(db: DbSession, budget: Budget) -> bool:
+            since = (datetime.now(timezone.utc) - period).date() if period is not None else None
+            redis = get_redis_client()
+
+            def roll_up(source_id: UUID) -> bool:
+                saved = cast(str | None, redis.get(day_key))
+                done_before = (
+                    date.fromisoformat(saved.split("|")[1]) if saved and saved.startswith(f"{source_id}|") else None
+                )
+                days = [
+                    day
+                    for day in self.rollup_repo.days_before(db, source_id, _past_today())
+                    if (since is None or day >= since) and (done_before is None or day < done_before)
+                ]
+                for chunk in _newest_first(days, ROLLUP_CHUNK_DAYS):
+                    if budget.spent():
+                        return False
+                    self.rollup_repo.roll_up(db, source_id, chunk)
+                    db.commit()
+                    redis.set(day_key, f"{source_id}|{min(chunk).isoformat()}")
+                redis.delete(day_key)
+                return True
+
+            return self._each_source(db, budget, step, self.rollup_repo.sources, roll_up)
 
         return run
 
@@ -265,6 +304,11 @@ class AggregateBackfillService:
 def _past_today() -> date:
     """A cutoff after every local day that has begun anywhere."""
     return datetime.now(timezone.utc).date() + timedelta(days=2)
+
+
+def _newest_first(days: list[date], size: int) -> list[list[date]]:
+    ordered = sorted(days, reverse=True)
+    return [ordered[i : i + size] for i in range(0, len(ordered), size)]
 
 
 def _workout_energy_series() -> dict[ProviderName, SeriesType]:
