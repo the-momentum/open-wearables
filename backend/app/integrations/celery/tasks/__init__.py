@@ -8,6 +8,7 @@ from app.services.providers.garmin.backfill_state import (
     get_pending_types as get_garmin_pending_types,
 )
 
+from .aggregate_backfill_task import run_aggregate_backfill
 from .archival_task import roll_up_queued_days, run_daily_archival
 from .backfill_data_type_coverage_task import backfill_data_type_coverage
 from .close_stale_sync_runs_task import close_stale_sync_runs
@@ -54,6 +55,7 @@ __all__ = [
     "trigger_garmin_next_pending_type",
     # Archival
     "roll_up_queued_days",
+    "run_aggregate_backfill",
     "run_daily_archival",
     # One-off data migrations
     "backfill_data_type_coverage",

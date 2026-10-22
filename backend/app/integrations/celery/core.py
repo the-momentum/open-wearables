@@ -235,6 +235,13 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        # Safety net: picks the one-off aggregate backfill up again if a run was lost; a no-op once it is done.
+        "run-aggregate-backfill": {
+            "task": CeleryTask.RUN_AGGREGATE_BACKFILL,
+            "schedule": crontab(minute="*/15"),
+            "args": (),
+            "kwargs": {},
+        },
         "renew-oura-webhooks-monthly": {
             "task": CeleryTask.RENEW_OURA_WEBHOOKS,
             "schedule": crontab(day_of_month=1, hour=0, minute=0),  # 1st of each month at 00:00 UTC

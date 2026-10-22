@@ -32,6 +32,7 @@ from app.schemas.utils import (
     ArchivalSettingWithEstimate,
     StorageEstimate,
 )
+from app.services.aggregate_backfill_service import aggregate_backfill_service
 from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -114,6 +115,11 @@ class ArchivalService:
             # Retention rolls up the days it deletes itself: a queue that fails must not hold it back.
             db.rollback()
             log_and_capture_error(exc, self.logger, "Rollup: the queued days failed; retention goes on")
+
+        # Old samples still hold day and session values the backfill has not copied yet.
+        if cutoff is not None and not aggregate_backfill_service.is_done(db):
+            log_structured(self.logger, "info", "Retention: waiting for the aggregate backfill")
+            cutoff = None
 
         if cutoff is not None:
             deleted, complete = self._delete_before(db, cutoff, setting.rollup_enabled, frozen_before)

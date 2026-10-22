@@ -206,7 +206,10 @@ class TimeSeriesService(
         samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> WriteCounts:
         counts = self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
-        samples_copy = list(samples)
+        # Day and session values are not samples any more, so they are not series webhook samples either.
+        samples_copy = [
+            s for s in samples if getattr(s, "period", None) is None and getattr(s, "session", None) is None
+        ]
         # Read here, not in the thread: a ContextVar does not cross into one.
         sync = current_sync_payload()
 
