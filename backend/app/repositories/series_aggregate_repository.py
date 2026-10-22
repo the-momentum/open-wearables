@@ -1,8 +1,10 @@
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta
+from typing import cast
 from uuid import UUID
 
-from sqlalchemy import Date, Interval, cast, func, text, tuple_
+from sqlalchemy import Date, Interval, func, text, tuple_
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
@@ -11,9 +13,10 @@ from app.repositories.local_day import OFFSET_REACH, utc_midnight
 from app.repositories.repositories import source_filter_conditions
 from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
+from app.schemas.responses.activity import ActivityAggregateResult
 
-LOCAL_DAY = cast(
-    func.timezone("UTC", SeriesAggregate.period_start) + cast(SeriesAggregate.zone_offset, Interval), Date
+LOCAL_DAY = sql_cast(
+    func.timezone("UTC", SeriesAggregate.period_start) + sql_cast(SeriesAggregate.zone_offset, Interval), Date
 ).label("day")
 
 _ALL_TYPE_IDS = [get_series_type_id(series_type) for series_type in SeriesType]
@@ -165,3 +168,66 @@ class SeriesAggregateRepository:
                 )
             )
         return query
+
+
+# The day sums and heart rate an activity summary shows, by the key its rows carry.
+_ACTIVITY_SUMS = {
+    SeriesType.steps: "steps_sum",
+    SeriesType.active_energy: "active_energy_sum",
+    SeriesType.basal_energy: "basal_energy_sum",
+    SeriesType.total_energy: "total_energy_sum",
+    SeriesType.distance_walking_running: "distance_sum",
+    SeriesType.flights_climbed: "flights_climbed_sum",
+    SeriesType.active_time: "active_time_minutes",
+}
+_INT_SUMS = {"steps_sum", "flights_climbed_sum", "active_time_minutes"}
+
+
+def daily_activity(
+    db_session: DbSession, user_id: UUID, start: datetime, end: datetime
+) -> list[ActivityAggregateResult]:
+    """One row per local day and device in [start, end), from the day rows (the provider's, else ours).
+
+    Data sources that share provider, source, device model and type add up, as their samples did.
+    """
+    types = [*_ACTIVITY_SUMS, SeriesType.heart_rate]
+    rows = SeriesAggregateRepository().get_day_rows(
+        db_session, user_id, TimeSeriesQueryParams(), types, start.date(), (end - timedelta(microseconds=1)).date()
+    )
+    sources = {
+        s.id: s for s in db_session.query(DataSource).filter(DataSource.id.in_({r.data_source_id for r, _ in rows}))
+    }
+    days: dict[tuple, list[SeriesAggregate]] = {}
+    for row, day in rows:
+        source = sources[row.data_source_id]
+        days.setdefault((day, source.provider, source.source, source.device_model, source.device_type), []).append(row)
+
+    heart_rate_id = get_series_type_id(SeriesType.heart_rate)
+    sum_keys = {get_series_type_id(series_type): key for series_type, key in _ACTIVITY_SUMS.items()}
+    results: list[ActivityAggregateResult] = []
+    for (day, provider, source, device_model, device_type), day_rows in days.items():
+        result: dict = {
+            "activity_date": day,
+            "provider": provider,
+            "source": source,
+            "device_model": device_model,
+            "device_type": device_type,
+            **dict.fromkeys(_ACTIVITY_SUMS.values()),
+            "hr_avg": None,
+            "hr_max": None,
+            "hr_min": None,
+        }
+        for type_id, key in sum_keys.items():
+            sums = [float(r.sum) for r in day_rows if r.series_type_definition_id == type_id and r.sum is not None]
+            if sums:
+                result[key] = round(sum(sums)) if key in _INT_SUMS else sum(sums)
+        heart_rate = [r for r in day_rows if r.series_type_definition_id == heart_rate_id]
+        weighted = [(float(r.avg), r.count) for r in heart_rate if r.avg is not None]
+        if weighted:
+            result["hr_avg"] = round(sum(a * c for a, c in weighted) / sum(c for _, c in weighted))
+        if maxes := [int(r.max) for r in heart_rate if r.max is not None]:
+            result["hr_max"] = max(maxes)
+        if mins := [int(r.min) for r in heart_rate if r.min is not None]:
+            result["hr_min"] = min(mins)
+        results.append(cast(ActivityAggregateResult, result))
+    return sorted(results, key=lambda r: r["activity_date"])

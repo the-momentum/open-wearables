@@ -40,6 +40,8 @@ from app.utils.structured_logging import log_structured
 ROLLUP_BATCH_SIZE = 500
 # A source's queued days rolled up per commit: one month-long range scan at most.
 ROLLUP_DAYS_PER_COMMIT = 31
+# A 15-minute rollup run stops after this long, so a busy instance gets later summaries, not more load.
+ROLLUP_SECONDS_PER_RUN = 60
 # Local days a retention batch rolls up and deletes per commit: three days of 1 Hz data is a quarter million rows.
 DELETE_DAYS_PER_BATCH = 3
 # Data sources looked up at once by retention.
@@ -80,32 +82,38 @@ class ArchivalService:
 
     # ── Daily job (called by Celery) ──────────────────────────────
 
-    def run_daily_archival(self, db: DbSession) -> dict:
-        """Roll up the days that changed since the last run, then apply retention.
+    def roll_up_queued_days(self, db: DbSession, budget_seconds: float = ROLLUP_SECONDS_PER_RUN) -> int:
+        """Roll up the days queued since the last run, within ``budget_seconds``; the rest waits for the next run.
 
-        - Rollup on: every queued (data source, local day) gets its open_wearables day and session rows
-          recomputed. Off: the queue is dropped.
-        - Retention: samples of local days older than delete_after_days are deleted, rolled up first when
-          rollup is on, so their days and sessions stay in the aggregate tables.
+        Rollup on: every queued (data source, local day) gets its open_wearables day and session rows
+        recomputed. Off: the queue is dropped. Runs every 15 minutes and before retention.
+        """
+        setting = self.settings_repo.get(db)
+        if not setting.rollup_enabled:
+            rollup_queue.clear_dirty_days()
+            return 0
+        return self._roll_up_queued_days(db, self._cutoff(setting), setting.deleted_before, budget_seconds)
+
+    def run_daily_archival(self, db: DbSession) -> dict:
+        """Roll up what is still queued, then apply retention.
+
+        Retention: samples of local days older than delete_after_days are deleted, rolled up first when
+        rollup is on, so their days and sessions stay in the aggregate tables.
 
         Returns a summary dict for logging/monitoring.
         """
         setting = self.settings_repo.get(db)
-        cutoff = date.today() - timedelta(days=setting.delete_after_days) if setting.delete_after_days else None
+        cutoff = self._cutoff(setting)
         frozen_before = setting.deleted_before
         summary = {"rolled_up_days": 0, "deleted_live_rows": 0}
-
-        if setting.rollup_enabled:
-            try:
-                summary["rolled_up_days"] = self._roll_up_queued_days(db, cutoff, frozen_before)
-            except SoftTimeLimitExceeded:
-                raise
-            except Exception as exc:
-                # Retention rolls up the days it deletes itself: a queue that fails must not hold it back.
-                db.rollback()
-                log_and_capture_error(exc, self.logger, "Rollup: the queued days failed; retention goes on")
-        else:
-            rollup_queue.clear_dirty_days()
+        try:
+            summary["rolled_up_days"] = self.roll_up_queued_days(db, MAX_SECONDS_PER_RUN)
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:
+            # Retention rolls up the days it deletes itself: a queue that fails must not hold it back.
+            db.rollback()
+            log_and_capture_error(exc, self.logger, "Rollup: the queued days failed; retention goes on")
 
         if cutoff is not None:
             deleted, complete = self._delete_before(db, cutoff, setting.rollup_enabled, frozen_before)
@@ -126,13 +134,19 @@ class ArchivalService:
 
         return summary
 
-    def _roll_up_queued_days(self, db: DbSession, cutoff: date | None, frozen_before: date | None) -> int:
-        """Roll up queued days in batches until the queue is empty or the run's time is up."""
+    @staticmethod
+    def _cutoff(setting: ArchivalSetting) -> date | None:
+        return date.today() - timedelta(days=setting.delete_after_days) if setting.delete_after_days else None
+
+    def _roll_up_queued_days(
+        self, db: DbSession, cutoff: date | None, frozen_before: date | None, budget_seconds: float
+    ) -> int:
+        """Roll up queued days in batches until the queue is empty or the budget is spent."""
         rolled_up = 0
         started = time.monotonic()
 
         def out_of_time() -> bool:
-            return time.monotonic() - started >= MAX_SECONDS_PER_RUN
+            return time.monotonic() - started >= budget_seconds
 
         if recovered := rollup_queue.recover_dirty_days():
             log_structured(self.logger, "warning", f"Rollup: {recovered} days left by a run that died, queued again")

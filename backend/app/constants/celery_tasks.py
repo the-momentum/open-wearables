@@ -7,6 +7,7 @@ class CeleryTask(StrEnum):
     """Registered Celery task names. Must stay import-free so any layer can use it."""
 
     RUN_DAILY_ARCHIVAL = f"{_PREFIX}.archival_task.run_daily_archival"
+    ROLL_UP_QUEUED_DAYS = f"{_PREFIX}.archival_task.roll_up_queued_days"
     BACKFILL_DATA_TYPE_COVERAGE = f"{_PREFIX}.backfill_data_type_coverage_task.backfill_data_type_coverage"
     CLOSE_STALE_SYNC_RUNS = f"{_PREFIX}.close_stale_sync_runs_task.close_stale_sync_runs"
     DELETE_USER_WEBHOOK_PAYLOADS = f"{_PREFIX}.delete_user_webhook_payloads_task.delete_user_webhook_payloads"

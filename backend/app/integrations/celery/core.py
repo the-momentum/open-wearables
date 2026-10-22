@@ -250,6 +250,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         }
+        celery_app.conf.beat_schedule["roll-up-queued-days"] = {
+            "task": CeleryTask.ROLL_UP_QUEUED_DAYS,
+            "schedule": crontab(minute="*/15"),
+            "args": (),
+            "kwargs": {},
+        }
 
     if settings.ow_scores_enabled:
         celery_app.conf.beat_schedule["fill-missing-sleep-scores"] = {

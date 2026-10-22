@@ -10,9 +10,9 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import ProviderPriority
-from app.repositories import ProviderPriorityRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.models import EventRecordAggregate, ProviderPriority
+from app.repositories import AggregateRepository, ProviderPriorityRepository
+from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName
 from app.services.summaries_service import SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -24,6 +24,7 @@ from tests.factories import (
     SleepDetailsFactory,
     UserFactory,
     WorkoutDetailsFactory,
+    roll_up_everything,
 )
 
 
@@ -207,6 +208,8 @@ class TestGetSleepSummaries:
             recorded_at=_dt("2026-01-02T12:00:00+00:00"),
         )
 
+        roll_up_everything(db)
+
         result = service.get_sleep_summaries(
             db,
             user.id,
@@ -219,6 +222,52 @@ class TestGetSleepSummaries:
         summary = result.data[0]
         assert summary.avg_heart_rate_bpm == 60
         assert summary.avg_hrv_sdnn_ms == 45
+
+    def test_a_night_takes_its_own_sleeps_values_the_providers_first(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """The ring's own night value wins over ours; the watch worn the same night is not its source."""
+        user = UserFactory()
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        watch = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+        record = EventRecordFactory(
+            data_source=ring,
+            category="sleep",
+            type="sleep",
+            start_datetime=_dt("2026-01-01T23:00:00+00:00"),
+            end_datetime=_dt("2026-01-02T07:00:00+00:00"),
+            duration_seconds=8 * 3600,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=record)
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        hrv_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
+        for hour, value in enumerate([60, 62]):
+            DataPointSeriesFactory(
+                data_source=ring, series_type=hr_type, value=value, recorded_at=_dt(f"2026-01-02T0{hour}:00:00+00:00")
+            )
+        DataPointSeriesFactory(
+            data_source=watch, series_type=hrv_type, value=45, recorded_at=_dt("2026-01-02T02:00:00+00:00")
+        )
+        roll_up_everything(db)
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": record.id,
+                    "series_type_definition_id": hr_type.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        summary = service.get_sleep_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-03T00:00:00+00:00"), cursor=None, limit=10
+        ).data[0]
+
+        assert (summary.avg_heart_rate_bpm, summary.avg_hrv_sdnn_ms) == (52, None)
 
     def test_physio_averages_none_without_physio_data(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
@@ -484,6 +533,8 @@ class TestGetActivitySummaries:
                 recorded_at=_dt(f"2026-01-01T10:0{i}:00+00:00"),
             )
 
+        roll_up_everything(db)
+
         result = service.get_activity_summaries(
             db,
             user.id,
@@ -591,6 +642,7 @@ class TestActivityPagingWindow:
             cursor = None
             pages = []
             while True:
+                roll_up_everything(db)
                 page = service.get_activity_summaries(db, user.id, start, end, cursor=cursor, limit=3, sort_order=order)
                 pages.append(page)
                 seen += [summary.date for summary in page.data]
@@ -619,6 +671,8 @@ class TestActivityTotals:
             )
         end = _dt("2026-02-01T00:00:00+00:00")
 
+        roll_up_everything(db)
+
         totals = service.get_activity_totals(db, user.id, start, end)
         days = service.get_activity_summaries(db, user.id, start, end, cursor=None, limit=100).data
 
@@ -645,6 +699,8 @@ class TestActivityTotals:
             recorded_at=start + timedelta(days=1, hours=10),
         )
         end = _dt("2026-01-03T00:00:00+00:00")
+
+        roll_up_everything(db)
 
         days = service.get_activity_summaries(db, user.id, start, end, cursor=None, limit=10).data
         totals = service.get_activity_totals(db, user.id, start, end)

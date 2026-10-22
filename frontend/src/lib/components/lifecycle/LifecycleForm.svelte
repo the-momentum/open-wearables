@@ -48,9 +48,9 @@
 		<PolicyCard
 			icon={Layers}
 			title="Rollup"
-			description="Every night, the days whose samples changed are summed up into one row a day per series, and one per sleep or workout. Summaries read these rows; the samples stay until deletion removes them."
+			description="Every 15 minutes, the days whose samples changed are summed up into one row a day per series, and one per sleep or workout. Summaries read these rows; the samples stay until deletion removes them."
 			toggle="Roll up samples"
-			on="On - changed days are rolled up at 03:00 UTC."
+			on="On - changed days are rolled up every 15 minutes."
 			off="Off - the days that change are dropped, not kept for later: summaries and day reads for sources without provider day values stop at the last rolled-up day, and deletion removes samples for good."
 			bind:enabled={rollupOn}
 		/>
