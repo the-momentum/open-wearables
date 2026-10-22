@@ -15,10 +15,6 @@ keywords: ["garmin api", "garmin connect api", "garmin health data", "garmin api
 **Garmin API giving you a headache?** We feel your pain - that's exactly why we created Open Wearables. Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
 </Note>
 
-<Warning>
-**The Garmin Connect Developer Program is currently on hold.** Garmin has suspended the developer program and there is no information on when it will be resumed. This means you **cannot create a new developer account at this time**. Existing accounts continue to work normally - only new sign-ups are blocked.
-</Warning>
-
 ## Overview
 
 Garmin Connect provides access to comprehensive fitness and health data from Garmin devices through their Wellness API. The integration supports activities, daily summaries, sleep data, body composition, and more.
@@ -32,9 +28,26 @@ Through the Garmin Connect platform, you can access data from:
 
 Once you get access to the Developer Portal, you’ll find the full docs, including the [FAQ page](https://developerportal.garmin.com/developer-programs/faqs) and [specification documents](https://developerportal.garmin.com/developer-programs/programs-docs).
 
-<Warning>
-**Enterprise only**: Garmin Connect Developer Program does not support personal use. You must apply as a legal entity (company, university, hospital, research institution, etc.). Personal-use applications are rejected.
-</Warning>
+## Access tiers
+
+Garmin has reopened the [Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/overview/) with two business tiers:
+
+| | Starter | Enterprise |
+|---|---|---|
+| Who it's for | Organizations getting started | Companies operating at scale |
+| Data delivery | Push only | Push or Ping/Pull |
+| Historical data | Not included | 1 month+ |
+| User capacity | Limited | Unlimited |
+| Technical support | - | Included |
+| How to get it | [Starter access request form](https://www.garmin.com/en-US/forms/StarterGarminConnectDeveloperAccess/) | Requested through the Garmin Developer Portal, commercial terms agreed with Garmin |
+
+Open Wearables works with push delivery, so both tiers are supported. Starter doesn't include historical data, so the backfill described below is only available on Enterprise. You can move from Starter to Enterprise later.
+
+Both tiers require a legal entity (company, university, hospital, research institution, etc.).
+
+<Note>
+**Personal API**: Garmin also launched a [Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api/) that lets individual users access their own Garmin Connect data with a personal API key. It has a different base URL, authentication and endpoints than the business APIs, so it doesn't work with Open Wearables yet. We may add support for it in the future.
+</Note>
 
 ## What you need by the end
 
@@ -55,13 +68,11 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 
 <Steps>
   <Step title="Apply for Garmin developer access">
-    Garmin access is approval-based. To apply, submit the official form:
+    Garmin access is approval-based. To apply for Starter access, submit the official form:
 
-    - [Garmin Connect Developer Program Access Request Form](https://www.garmin.com/en-US/forms/GarminConnectDeveloperAccess/)
+    - [Starter Garmin Connect Developer Access Request Form](https://www.garmin.com/en-US/forms/StarterGarminConnectDeveloperAccess/)
 
-    <Warning>
-    **The developer program is currently suspended by Garmin**, with no announced resumption date - you cannot create a new developer account right now. Existing accounts still work.
-    </Warning>
+    For Enterprise access, see the [Business page](https://developer.garmin.com/gc-developer-program/enterprise/) or [contact Garmin](https://www.garmin.com/en-US/forms/developercontactus/).
 
     <Note>
     **Tips to avoid rejection:**
@@ -146,6 +157,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 
     <Note>
     **Backfill limits (practical gotchas):**
+    - Backfill needs historical data access, which is only included in the Enterprise tier.
     - Backfill typically returns **~last month** of data.
     - Each data type can usually be **backfilled only once**.
     - Don’t retry backfill over and over—if you need more history, check the Garmin docs for the supported process and limits.
