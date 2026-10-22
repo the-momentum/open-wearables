@@ -314,6 +314,12 @@ class DataTypeCoverageRepository:
             stmt = stmt.where(DataTypeCoverage.data_type.in_(list(data_types)))
         return list(db_session.execute(stmt).scalars().all())
 
+    def exists_for_provider(self, db_session: DbSession, user_id: UUID, provider: str) -> bool:
+        stmt = select(DataTypeCoverage.user_id).where(
+            DataTypeCoverage.user_id == user_id, DataTypeCoverage.provider == provider
+        )
+        return db_session.execute(stmt.limit(1)).first() is not None
+
     def get(
         self, db_session: DbSession, user_id: UUID, provider: str, data_type: str, kind: DataTypeKind
     ) -> DataTypeCoverage | None:
