@@ -1670,16 +1670,16 @@ const MB = 1024 ** 2;
 
 /** Proportions like a real install: the live series is nearly all of it. */
 const buildLifecycle = () => ({
-	settings: { archive_after_days: null as number | null, delete_after_days: null as number | null },
+	settings: { rollup_enabled: true, delete_after_days: null as number | null },
 	storage: {
 		live_data_bytes: 38 * MB,
 		live_index_bytes: 420 * MB,
-		archive_data_bytes: 8 * 1024,
-		archive_index_bytes: 48 * 1024,
+		aggregate_data_bytes: 8 * 1024,
+		aggregate_index_bytes: 48 * 1024,
 		other_tables_bytes: 17 * MB,
 		total_bytes: 475 * MB,
 		live_row_count: 1946,
-		archive_row_count: 0,
+		aggregate_row_count: 0,
 		live_data_span_days: 324
 	}
 });
@@ -1701,7 +1701,7 @@ export const readLifecycle = () => {
 };
 
 export const saveLifecycle = (body: {
-	archive_after_days: number | null;
+	rollup_enabled: boolean;
 	delete_after_days: number | null;
 }) => {
 	LIFECYCLE_SCANS += 1;

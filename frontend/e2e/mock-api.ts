@@ -340,7 +340,7 @@ const server = Bun.serve({
 				const out = (days: unknown, max: number) =>
 					days !== null &&
 					(!Number.isInteger(days) || (days as number) < 1 || (days as number) > max);
-				if (out(body.archive_after_days, 3650) || out(body.delete_after_days, 7300)) {
+				if (out(body.delete_after_days, 7300)) {
 					// FastAPI's shape: a list, no string `detail` to show.
 					return json({ detail: [{ loc: ['body'], msg: 'out of range' }] }, 422);
 				}

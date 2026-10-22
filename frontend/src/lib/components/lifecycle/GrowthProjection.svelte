@@ -6,13 +6,12 @@
 	import { FOOTNOTE, MICRO } from '$lib/components/ui/typography';
 	import { GROWTH } from '$lib/lifecycle/growth';
 	import {
-		ARCHIVE_RATIO_LABEL,
-		archivalEffective,
 		dailyIngest,
 		growthOf,
 		liveBytes,
 		project,
-		PROJECTION_MONTHS
+		PROJECTION_MONTHS,
+		ROLLUP_RATIO_LABEL
 	} from '$lib/lifecycle/projection';
 	import type { Policy, StorageEstimate } from '$lib/lifecycle/types';
 	import { formatBytes } from '$lib/utils/format';
@@ -60,15 +59,14 @@
 						storage.live_data_span_days,
 						1
 					)} days its data covers.
-					{#if archivalEffective(policy)}Archived rows are assumed to take ~{ARCHIVE_RATIO_LABEL} of the
-						raw volume.{/if}
+					{#if policy.rollup}Rolled-up rows are assumed to take ~{ROLLUP_RATIO_LABEL} of the raw volume.{/if}
 				</p>
 			{:else}
 				<p>No live data yet, so the line stays at today's size.</p>
 			{/if}
 			<p>
-				Live and archive tables only; the rest of the database is left out, since no policy here
-				changes it. An estimate - it moves with devices, sampling rates and schema changes.
+				Samples and aggregate tables only; the rest of the database is left out, since no policy
+				here changes it. An estimate - it moves with devices, sampling rates and schema changes.
 			</p>
 		</div>
 	</div>

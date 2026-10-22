@@ -17003,15 +17003,15 @@
             "title": "Live Index Bytes",
             "description": "Index size of series_sample table (bytes)"
           },
-          "archive_data_bytes": {
+          "aggregate_data_bytes": {
             "type": "integer",
-            "title": "Archive Data Bytes",
-            "description": "Data size of archive table (bytes)"
+            "title": "Aggregate Data Bytes",
+            "description": "Data size of the aggregate tables and the legacy archive (bytes)"
           },
-          "archive_index_bytes": {
+          "aggregate_index_bytes": {
             "type": "integer",
-            "title": "Archive Index Bytes",
-            "description": "Index size of archive table (bytes)"
+            "title": "Aggregate Index Bytes",
+            "description": "Index size of the aggregate tables and the legacy archive (bytes)"
           },
           "other_tables_bytes": {
             "type": "integer",
@@ -17028,20 +17028,20 @@
             "title": "Live Row Count",
             "description": "Number of rows in live table"
           },
-          "archive_row_count": {
+          "aggregate_row_count": {
             "type": "integer",
-            "title": "Archive Row Count",
-            "description": "Number of rows in archive table"
+            "title": "Aggregate Row Count",
+            "description": "Number of rows in the aggregate tables and the legacy archive"
           },
           "avg_bytes_per_live_row": {
             "type": "number",
             "title": "Avg Bytes Per Live Row",
             "description": "Average bytes per live row (data+index)"
           },
-          "avg_bytes_per_archive_row": {
+          "avg_bytes_per_aggregate_row": {
             "type": "number",
-            "title": "Avg Bytes Per Archive Row",
-            "description": "Average bytes per archive row (data+index)"
+            "title": "Avg Bytes Per Aggregate Row",
+            "description": "Average bytes per aggregate row (data+index)"
           },
           "live_data_span_days": {
             "type": "integer",
@@ -17063,20 +17063,20 @@
             "title": "Live Index Pretty",
             "description": "Human-readable live index size"
           },
-          "archive_total_pretty": {
+          "aggregate_total_pretty": {
             "type": "string",
-            "title": "Archive Total Pretty",
-            "description": "Human-readable archive total size (data+indexes)"
+            "title": "Aggregate Total Pretty",
+            "description": "Human-readable aggregate total size (data+indexes)"
           },
-          "archive_data_pretty": {
+          "aggregate_data_pretty": {
             "type": "string",
-            "title": "Archive Data Pretty",
-            "description": "Human-readable archive data size"
+            "title": "Aggregate Data Pretty",
+            "description": "Human-readable aggregate data size"
           },
-          "archive_index_pretty": {
+          "aggregate_index_pretty": {
             "type": "string",
-            "title": "Archive Index Pretty",
-            "description": "Human-readable archive index size"
+            "title": "Aggregate Index Pretty",
+            "description": "Human-readable aggregate index size"
           },
           "other_tables_pretty": {
             "type": "string",
@@ -17091,28 +17091,28 @@
           "growth_class": {
             "type": "string",
             "title": "Growth Class",
-            "description": "Growth complexity class: 'bounded' | 'linear'"
+            "description": "Growth complexity class: 'bounded' | 'linear_efficient' | 'linear'"
           }
         },
         "type": "object",
         "required": [
           "live_data_bytes",
           "live_index_bytes",
-          "archive_data_bytes",
-          "archive_index_bytes",
+          "aggregate_data_bytes",
+          "aggregate_index_bytes",
           "other_tables_bytes",
           "total_bytes",
           "live_row_count",
-          "archive_row_count",
+          "aggregate_row_count",
           "avg_bytes_per_live_row",
-          "avg_bytes_per_archive_row",
+          "avg_bytes_per_aggregate_row",
           "live_data_span_days",
           "live_total_pretty",
           "live_data_pretty",
           "live_index_pretty",
-          "archive_total_pretty",
-          "archive_data_pretty",
-          "archive_index_pretty",
+          "aggregate_total_pretty",
+          "aggregate_data_pretty",
+          "aggregate_index_pretty",
           "other_tables_pretty",
           "total_pretty",
           "growth_class"

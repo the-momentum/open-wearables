@@ -278,7 +278,11 @@ class ArchivalService:
     def _get_storage(self, db: DbSession, setting: ArchivalSetting) -> StorageEstimate:
         raw = self.archive_repo.get_storage_estimate(db)
 
-        raw["growth_class"] = "bounded" if setting.delete_after_days is not None else "linear"
+        if setting.delete_after_days is None:
+            raw["growth_class"] = "linear"
+        else:
+            # Deleted samples leave their rolled-up days behind, which keep accumulating.
+            raw["growth_class"] = "linear_efficient" if setting.rollup_enabled else "bounded"
         return StorageEstimate(**raw)
 
 

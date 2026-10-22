@@ -86,13 +86,17 @@ class BatchedRun(NamedTuple):
     complete: bool
 
 
+# What samples are rolled up into, and the archive they replace until it is dropped.
+AGGREGATE_TABLES = frozenset({"series_aggregate", "event_record_aggregate", "data_point_series_archive"})
+
+
 class DataPointSeriesArchiveRepository:
     """Handles aggregation, insertion, and deletion for the archive table."""
 
     def get_storage_estimate(self, db: DbSession) -> dict:
         """Get storage sizes for ALL user tables from pg_catalog.
 
-        Returns live / archive / other breakdowns so the frontend can visualise
+        Returns live / aggregate / other breakdowns so the frontend can visualise
         growth projections accurately.  Also queries the actual date span of
         live data so the frontend doesn't have to guess.
         """
@@ -111,9 +115,9 @@ class DataPointSeriesArchiveRepository:
         live_data_bytes = 0
         live_index_bytes = 0
         live_rows = 0
-        archive_data_bytes = 0
-        archive_index_bytes = 0
-        archive_rows = 0
+        aggregate_data_bytes = 0
+        aggregate_index_bytes = 0
+        aggregate_rows = 0
         other_bytes = 0
 
         for row in result:
@@ -121,10 +125,10 @@ class DataPointSeriesArchiveRepository:
                 live_data_bytes = row.data_bytes
                 live_index_bytes = row.index_bytes
                 live_rows = row.row_count
-            elif row.relname == "data_point_series_archive":
-                archive_data_bytes = row.data_bytes
-                archive_index_bytes = row.index_bytes
-                archive_rows = row.row_count
+            elif row.relname in AGGREGATE_TABLES:
+                aggregate_data_bytes += row.data_bytes
+                aggregate_index_bytes += row.index_bytes
+                aggregate_rows += row.row_count
             else:
                 other_bytes += row.total_bytes
 
@@ -140,30 +144,30 @@ class DataPointSeriesArchiveRepository:
             live_span_days = max(span or 0, 1)
 
         live_total = live_data_bytes + live_index_bytes
-        archive_total = archive_data_bytes + archive_index_bytes
-        total = live_total + archive_total + other_bytes
+        aggregate_total = aggregate_data_bytes + aggregate_index_bytes
+        total = live_total + aggregate_total + other_bytes
 
         avg_live = (live_total / live_rows) if live_rows else 0.0
-        avg_archive = (archive_total / archive_rows) if archive_rows else 0.0
+        avg_aggregate = (aggregate_total / aggregate_rows) if aggregate_rows else 0.0
 
         return {
             "live_data_bytes": live_data_bytes,
             "live_index_bytes": live_index_bytes,
-            "archive_data_bytes": archive_data_bytes,
-            "archive_index_bytes": archive_index_bytes,
+            "aggregate_data_bytes": aggregate_data_bytes,
+            "aggregate_index_bytes": aggregate_index_bytes,
             "other_tables_bytes": other_bytes,
             "total_bytes": total,
             "live_row_count": live_rows,
-            "archive_row_count": archive_rows,
+            "aggregate_row_count": aggregate_rows,
             "avg_bytes_per_live_row": round(avg_live, 1),
-            "avg_bytes_per_archive_row": round(avg_archive, 1),
+            "avg_bytes_per_aggregate_row": round(avg_aggregate, 1),
             "live_data_span_days": live_span_days,
             "live_total_pretty": _pretty_bytes(live_total),
             "live_data_pretty": _pretty_bytes(live_data_bytes),
             "live_index_pretty": _pretty_bytes(live_index_bytes),
-            "archive_total_pretty": _pretty_bytes(archive_total),
-            "archive_data_pretty": _pretty_bytes(archive_data_bytes),
-            "archive_index_pretty": _pretty_bytes(archive_index_bytes),
+            "aggregate_total_pretty": _pretty_bytes(aggregate_total),
+            "aggregate_data_pretty": _pretty_bytes(aggregate_data_bytes),
+            "aggregate_index_pretty": _pretty_bytes(aggregate_index_bytes),
             "other_tables_pretty": _pretty_bytes(other_bytes),
             "total_pretty": _pretty_bytes(total),
         }
