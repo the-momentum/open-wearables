@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
@@ -17,15 +17,30 @@ from app.models import (
     EventRecordAggregate,
     SeriesAggregate,
     SeriesSample,
+    SeriesTypeDefinition,
     WorkoutDetails,
 )
 from app.repositories import AggregateRepository
 from app.repositories.aggregate_backfill_repository import AggregateBackfillRepository
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
-from app.schemas.enums import AggregationMethod, ComputedBy, ProviderName, SeriesType, get_series_type_id
+from app.repositories.series_aggregate_repository import LOCAL_DAY
+from app.schemas.enums import (
+    AggregationMethod,
+    ComputedBy,
+    ProviderName,
+    SeriesType,
+    get_series_type_from_id,
+    get_series_type_id,
+)
 from app.services.aggregate_backfill_service import aggregate_backfill_service
-from tests.factories import DataPointSeriesFactory, DataSourceFactory, EventRecordFactory, SeriesTypeDefinitionFactory
+from tests.factories import (
+    DataPointSeriesFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    SeriesTypeDefinitionFactory,
+    provider_day,
+)
 
 AT = datetime(2025, 6, 1, 8, tzinfo=timezone.utc)
 
@@ -262,3 +277,135 @@ class TestBackfillTask:
         db.commit()
 
         assert db.execute(text("SHOW statement_timeout")).scalar() == "5min"
+
+
+def _series(db: Session, series_type: SeriesType) -> SeriesTypeDefinition:
+    definition = db.get(SeriesTypeDefinition, get_series_type_id(series_type))
+    assert definition is not None
+    return definition
+
+
+def _sample(db: Session, source: object, series_type: SeriesType, at: datetime, value: str, **fields: object) -> None:
+    DataPointSeriesFactory(
+        mapping=source, series_type=_series(db, series_type), recorded_at=at, value=Decimal(value), **fields
+    )
+
+
+def _days(db: Session) -> list[tuple[str, date, str, Decimal | None, Decimal | None]]:
+    rows = db.query(SeriesAggregate, LOCAL_DAY).filter(SeriesAggregate.computed_by == ComputedBy.PROVIDER)
+    return sorted(
+        (get_series_type_from_id(row.series_type_definition_id).value, day, row.zone_offset, row.sum, row.avg)
+        for row, day in rows
+    )
+
+
+class TestHistoryValues:
+    def test_garmin_daily_totals_and_nightly_hrv_but_not_their_samples(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        midnight = datetime(2025, 6, 1, 22, tzinfo=timezone.utc)  # 2025-06-02 00:00 at +02:00
+        _sample(db, source, SeriesType.steps, midnight, "8432", zone_offset="+02:00", is_daily_total=True)
+        _sample(
+            db,
+            source,
+            SeriesType.steps,
+            midnight + timedelta(minutes=15),
+            "120",
+            zone_offset="+02:00",
+            is_daily_total=False,
+        )
+        _sample(db, source, SeriesType.resting_heart_rate, midnight, "52", zone_offset="+02:00")
+        _sample(
+            db,
+            source,
+            SeriesType.heart_rate_variability_rmssd,
+            midnight,
+            "84",
+            zone_offset="+02:00",
+            external_id="hrv-1",
+        )
+        _sample(
+            db,
+            source,
+            SeriesType.heart_rate_variability_rmssd,
+            midnight + timedelta(minutes=5),
+            "70",
+            zone_offset="+02:00",
+            external_id="hrv-1:300",
+        )
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _days(db) == [
+            ("heart_rate_variability_rmssd", date(2025, 6, 2), "+02:00", None, Decimal("84")),
+            ("resting_heart_rate", date(2025, 6, 2), "+02:00", None, Decimal("52")),
+            ("steps", date(2025, 6, 2), "+02:00", Decimal("8432"), None),
+        ]
+
+    def test_suunto_days_recover_the_offset_they_lost(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.SUUNTO)
+        _sample(
+            db, source, SeriesType.steps, datetime(2025, 6, 1, 22, tzinfo=timezone.utc), "9000", is_daily_total=True
+        )
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _days(db) == [("steps", date(2025, 6, 2), "+02:00", Decimal("9000"), None)]
+
+    def test_polar_nightly_values_are_the_ones_at_utc_midnight(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, 3, tzinfo=timezone.utc), "55")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _days(db) == [("heart_rate_variability_rmssd", date(2025, 6, 2), "+00:00", None, Decimal("61"))]
+
+    def test_a_day_the_provider_already_holds_at_another_offset_is_kept(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        provider_day(db, source, SeriesType.vo2_max, date(2025, 6, 2), avg=Decimal("48"))
+        _sample(db, source, SeriesType.vo2_max, datetime(2025, 6, 2, tzinfo=timezone.utc), "47")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert [row[4] for row in _days(db)] == [Decimal("48")]
+
+    def test_nightly_values_land_on_their_sleep(self, db: Session) -> None:
+        oura = DataSourceFactory(provider=ProviderName.OURA)
+        suunto = DataSourceFactory(provider=ProviderName.SUUNTO)
+        whoop = DataSourceFactory(provider=ProviderName.WHOOP)
+        start, end = datetime(2025, 6, 1, 22, tzinfo=timezone.utc), datetime(2025, 6, 2, 6, tzinfo=timezone.utc)
+        sleeps = {
+            source.provider: EventRecordFactory(
+                data_source=source,
+                category="sleep",
+                type="sleep",
+                start_datetime=start,
+                end_datetime=end,
+                duration_seconds=8 * 3600,
+            )
+            for source in (oura, suunto, whoop)
+        }
+        _sample(db, oura, SeriesType.resting_heart_rate, start, "48")
+        _sample(db, suunto, SeriesType.oxygen_saturation, end, "98", is_daily_total=True)
+        _sample(db, whoop, SeriesType.heart_rate_variability_rmssd, end + timedelta(hours=1), "61")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        rows = {row.record_id: row for row in db.query(EventRecordAggregate)}
+        assert rows[sleeps[ProviderName.OURA].id].avg == Decimal("48")
+        assert (rows[sleeps[ProviderName.SUUNTO].id].max, rows[sleeps[ProviderName.SUUNTO].id].avg) == (
+            Decimal("98"),
+            None,
+        )
+        assert rows[sleeps[ProviderName.WHOOP].id].avg == Decimal("61")
+
+    def test_sdk_workout_statistics_land_on_the_workout_they_closed(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.APPLE)
+        workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
+        _sample(db, source, SeriesType.cadence, workout.end_datetime, "82")
+        _sample(db, source, SeriesType.cadence, AT + timedelta(minutes=10), "90")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        (row,) = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == workout.id)
+        assert (row.avg, row.computed_by) == (Decimal("82"), ComputedBy.PROVIDER)

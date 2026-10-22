@@ -22,6 +22,9 @@ from app.utils.structured_logging import log_structured
 # Set once every step is done; retention and the later cleanup wait for it.
 BACKFILL_MIGRATION = "aggregate_backfill"
 
+# The span the backfill fills before the rest of the history.
+RECENT = timedelta(days=30)
+
 _CURSOR_KEY = "aggregate_backfill:cursor:{step}"
 _SOURCES_PER_QUERY = 50
 # The span of one source's workouts or archive one statement covers, so none grows with the history's length.
@@ -63,6 +66,9 @@ class AggregateBackfillService:
         return [
             BackfillStep("suunto_speed", self._suunto_speed),
             BackfillStep("workout_details", self._workout_details),
+            # The last month first: those are the days clients look at, so they come back before the rest.
+            BackfillStep("history_recent", self._history(RECENT)),
+            BackfillStep("history_all", self._history(None)),
             BackfillStep("garmin_epoch_windows", self._garmin_epoch_windows),
             BackfillStep("archive_days", self._archive_days),
         ]
@@ -123,6 +129,22 @@ class AggregateBackfillService:
             return self._each_window(db, budget, "workout_details", source_id, first, window)
 
         return self._each_source(db, budget, "workout_details", self.repo.sources_with_workouts, mirror)
+
+    def _history(self, period: timedelta | None) -> Callable[[DbSession, Budget], bool]:
+        """Day and session values stored as samples before the aggregate tables, from the last ``period`` or all."""
+
+        def run(db: DbSession, budget: Budget) -> bool:
+            since = datetime.now(timezone.utc) - period if period is not None else None
+
+            def copy(source: tuple[UUID, str]) -> bool:
+                source_id, provider = source
+                self.repo.copy_history_values(db, source_id, provider, since)
+                return True
+
+            step = "history_recent" if period is not None else "history_all"
+            return self._each_source(db, budget, step, self.repo.history_sources, copy)
+
+        return run
 
     def _garmin_epoch_windows(self, db: DbSession, budget: Budget) -> bool:
         # Imported here: the providers package pulls in the Celery tasks, which import this module.
