@@ -16,6 +16,7 @@ from app.repositories.device_type_priority_repository import DeviceTypePriorityR
 from app.schemas.enums import (
     Resolution,
     SeriesType,
+    TimeSeriesRole,
     get_series_type_from_id,
     get_series_type_unit,
 )
@@ -64,6 +65,7 @@ def _to_sample(
     series_type_definition_id: int,
     value: Decimal,
     is_daily_total: bool | None,
+    sample_role: TimeSeriesRole | str,
     data_source: DataSource | None,
 ) -> TimeSeriesSample:
     series_type = get_series_type_from_id(series_type_definition_id)
@@ -84,6 +86,7 @@ def _to_sample(
         unit=get_series_type_unit(series_type),
         source=source,
         is_daily_total=is_daily_total,
+        sample_role=TimeSeriesRole(sample_role),
     )
 
 
@@ -175,6 +178,7 @@ class TimeSeriesService(
                         "unit": unit,
                         "source": {"provider": provider, "device": s.device_model},
                         "is_daily_total": s.is_daily_total,
+                        "sample_role": s.sample_role.value,
                     }
                     for s in sorted_samples
                 ]
@@ -263,7 +267,13 @@ class TimeSeriesService(
         return _page(
             data=[
                 _to_sample(
-                    s.bucket, s.zone_offset, s.series_type_definition_id, s.value, s.is_daily_total, s.data_source
+                    s.bucket,
+                    s.zone_offset,
+                    s.series_type_definition_id,
+                    s.value,
+                    s.is_daily_total,
+                    s.sample_role,
+                    s.data_source,
                 )
                 for s in samples
             ],
@@ -329,6 +339,7 @@ class TimeSeriesService(
                 sample.series_type_definition_id,
                 sample.value,
                 sample.is_daily_total,
+                sample.sample_role,
                 data_source,
             )
             for sample, data_source in samples

@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.devices_map import normalize_device_model
-from app.schemas.enums import DeviceType, Resolution, SeriesType
+from app.schemas.enums import DeviceType, Resolution, SeriesType, TimeSeriesRole
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -28,6 +28,7 @@ class TimeSeriesSampleBase(BaseModel):
     # True = daily total. False/None = not a daily total (summable sample); aggregation
     # treats None as False. Set explicitly by the provider save path (Garmin dailies vs epochs).
     is_daily_total: bool | None = None
+    sample_role: TimeSeriesRole = TimeSeriesRole.MEASUREMENT
 
     _normalize_device_model = field_validator("device_model")(normalize_device_model)
 

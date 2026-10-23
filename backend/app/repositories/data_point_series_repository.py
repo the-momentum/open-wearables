@@ -56,6 +56,7 @@ from app.schemas.enums import (
     SeriesType,
     TimelineBucket,
     TimelineGroupBy,
+    TimeSeriesRole,
     get_series_type_from_id,
     get_series_type_id,
 )
@@ -229,6 +230,7 @@ class AggregatedSample(NamedTuple):
     value: Decimal
     zone_offset: str | None
     is_daily_total: bool
+    sample_role: TimeSeriesRole
     data_source: DataSource
 
 
@@ -312,6 +314,7 @@ class DataPointSeriesRepository(
         value: Decimal | float | int
         series_type_definition_id: int
         is_daily_total: bool | None
+        sample_role: str
 
     # Single source of truth for the COPY/INSERT column list, derived from _StagingRow's
     # own field names above so the SQL text and the row shape can't drift apart.
@@ -340,6 +343,7 @@ class DataPointSeriesRepository(
                     value=creator.value,
                     series_type_definition_id=get_series_type_id(creator.series_type),
                     is_daily_total=creator.is_daily_total,
+                    sample_role=creator.sample_role.value,
                 )
             )
 
@@ -395,11 +399,13 @@ class DataPointSeriesRepository(
                             external_id = excluded.external_id,
                             value = excluded.value,
                             zone_offset = excluded.zone_offset,
-                            is_daily_total = excluded.is_daily_total
+                            is_daily_total = excluded.is_daily_total,
+                            sample_role = excluded.sample_role
                         WHERE data_point_series.value IS DISTINCT FROM excluded.value
                            OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
                            OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
                            OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
+                           OR data_point_series.sample_role IS DISTINCT FROM excluded.sample_role
                         RETURNING (xmax = 0) AS was_insert, series_type_definition_id
                     )
                     SELECT series_type_definition_id, count(*) FILTER (WHERE was_insert) AS inserted
@@ -559,12 +565,18 @@ class DataPointSeriesRepository(
                 self.model.data_source_id.label("data_source_id"),
                 self._aggregated_value(types).label("value"),
                 func.min(self.model.zone_offset).label("zone_offset"),
+                self.model.sample_role.label("sample_role"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(DataSource.user_id == user_id)
             # A day's own total would land inside one bucket and double-count the day.
             .filter(self.model.is_daily_total.isnot(True))
-            .group_by(bucket, self.model.series_type_definition_id, self.model.data_source_id)
+            .group_by(
+                bucket,
+                self.model.series_type_definition_id,
+                self.model.data_source_id,
+                self.model.sample_role,
+            )
             .order_by(
                 bucket.desc() if backward else bucket,
                 self.model.data_source_id,
@@ -586,6 +598,7 @@ class DataPointSeriesRepository(
                 value=r.value,
                 zone_offset=r.zone_offset,
                 is_daily_total=False,
+                sample_role=TimeSeriesRole(r.sample_role),
                 data_source=sources[r.data_source_id],
             )
             for r in rows
@@ -1488,6 +1501,7 @@ class DataPointSeriesRepository(
                 self.model.recorded_at >= start_date,
                 self.model.recorded_at < end_date,
                 self.model.series_type_definition_id.in_(type_ids),
+                self.model.sample_role != TimeSeriesRole.NIGHTLY_SAMPLE.value,
             )
             .group_by(self.model.series_type_definition_id)
             .all()

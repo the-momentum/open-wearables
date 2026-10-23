@@ -593,6 +593,41 @@ class TestCreateOrMergeSleep:
         assert result.start_datetime == start
         assert result.end_datetime == end
 
+    def test_exact_same_window_reingestion_replaces_instead_of_accumulating(self, db: Session) -> None:
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        start, end = self._dt(22, 0), self._dt(6, 0, day=22)
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=8 * 3600,
+        )
+        SleepDetailsFactory(
+            event_record=existing,
+            sleep_deep_minutes=60,
+            sleep_light_minutes=300,
+            sleep_rem_minutes=90,
+            sleep_awake_minutes=30,
+            sleep_total_duration_minutes=450,
+            sleep_time_in_bed_minutes=480,
+            sleep_efficiency_score=Decimal("88.2"),
+        )
+        record = self._record(data_source, start, end).model_copy(update={"external_id": "2026-03-22"})
+        detail = self._detail(record.id, deep=60, light=300, rem=90, awake=30, in_bed=480).model_copy(
+            update={"sleep_efficiency_score": None}
+        )
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        db.refresh(result)
+        assert result.id == existing.id
+        assert result.external_id == "2026-03-22"
+        assert result.sleep_detail.sleep_time_in_bed_minutes == 480
+        assert result.sleep_detail.sleep_efficiency_score == Decimal("88.2")
+
     def test_adjacent_within_threshold_is_merged(self, db: Session) -> None:
         """Sessions within threshold_minutes of each other are merged into one record."""
         user = UserFactory()

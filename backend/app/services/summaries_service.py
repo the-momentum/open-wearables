@@ -59,6 +59,18 @@ from app.utils.pagination import (
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
 ACTIVE_STEPS_THRESHOLD = 30  # Steps per minute to be considered "active"
 METERS_PER_FLOOR = 3.0  # Standard floor height for floors_climbed calculation
+ACTIVITY_METRIC_FIELDS = (
+    "steps_sum",
+    "distance_sum",
+    "active_energy_sum",
+    "basal_energy_sum",
+    "total_energy_sum",
+    "flights_climbed_sum",
+    "active_time_minutes",
+    "hr_avg",
+    "hr_max",
+    "hr_min",
+)
 
 # HR zone percentages (as fraction of max HR)
 HR_ZONE_LIGHT = (0.50, 0.63)  # 50-63% of max HR
@@ -122,6 +134,7 @@ class SummariesService:
         user_id: UUID,
         results: list[dict] | list,
         date_key: str = "activity_date",
+        merge_fields: tuple[str, ...] = (),
     ) -> list[dict] | list:
         """Filter results to highest priority source per date.
 
@@ -130,7 +143,7 @@ class SummariesService:
             date_key: Key name for date field (activity_date or sleep_date)
 
         Returns:
-            Filtered list with only highest priority entry per date
+            Highest priority entry per date, optionally filled with complementary fields
         """
         if not results:
             return results
@@ -168,7 +181,18 @@ class SummariesService:
                 return (provider_priority, device_type_priority, device_model or "")
 
             entries_sorted = sorted(entries, key=sort_key)
-            filtered.append(entries_sorted[0])
+            selected = dict(entries_sorted[0])
+            matching_source_entries = [
+                entry
+                for entry in entries_sorted[1:]
+                if entry.get("provider") == selected.get("provider") and entry.get("source") == selected.get("source")
+            ]
+            for field in merge_fields:
+                if selected.get(field) is None:
+                    selected[field] = next(
+                        (entry.get(field) for entry in matching_source_entries if entry.get(field) is not None), None
+                    )
+            filtered.append(selected)
 
         return filtered
 
@@ -606,7 +630,7 @@ class SummariesService:
             active_cal = result.get("active_energy_sum")
             basal_cal = result.get("basal_energy_sum")
             total_cal = result.get("total_energy_sum")
-            if total_cal is None and active_cal is not None and basal_cal is not None:
+            if active_cal is not None and basal_cal is not None:
                 total_cal = active_cal + basal_cal
 
             # Active minutes: prefer the provider-reported daily active time (Garmin
@@ -688,7 +712,9 @@ class SummariesService:
         results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start, end)
         results = self._merge_archive_activity(db_session, user_id, start, end, results)
         results = self._add_workout_only_days(db_session, user_id, start, end, results)
-        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="activity_date", merge_fields=ACTIVITY_METRIC_FIELDS
+        )
 
     def _add_workout_only_days(
         self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, results: list

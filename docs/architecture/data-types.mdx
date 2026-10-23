@@ -14,6 +14,8 @@ keywords: ["health data types api", "wearable data types", "health metrics api r
 
 This page lists all supported data types, units, and formats. For provider-specific availability, see the [Provider Coverage Matrix](/providers/coverage).
 
+Time-series responses include `sample_role` to distinguish ordinary measurements from provider-supplied aggregates and detailed nightly samples. Polar uses `nightly_aggregate` for its Nightly Recharge averages and `nightly_sample` for the individual overnight HRV and breathing readings. Both remain available under their standard series types.
+
 <Tip>
   Not all providers support all data types. Check the [Provider Coverage Matrix](/providers/coverage) to see which metrics are available from each wearable device.
 </Tip>

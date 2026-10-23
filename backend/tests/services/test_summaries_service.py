@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from logging import getLogger
 from typing import Any
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ProviderPriority
 from app.repositories import ProviderPriorityRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.services.summaries_service import SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -69,6 +70,41 @@ class TestFilterByPriority:
         ]
         result = service._filter_by_priority(db, uuid4(), entries, date_key="sleep_date")
         assert len(result) == 1
+
+    def test_activity_metrics_are_filled_from_complementary_sources(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        entries = [
+            {
+                "activity_date": date(2026, 1, 1),
+                "provider": "polar",
+                "source": "polar",
+                "device_model": "Polar Grit X",
+                "device_type": DeviceType.WATCH,
+                "hr_avg": 70,
+                "steps_sum": None,
+            },
+            {
+                "activity_date": date(2026, 1, 1),
+                "provider": "polar",
+                "source": "polar",
+                "device_model": None,
+                "device_type": None,
+                "hr_avg": None,
+                "steps_sum": 8000,
+            },
+        ]
+        with patch.object(
+            service,
+            "_priority_orders",
+            return_value=({ProviderName.POLAR: 0}, {DeviceType.WATCH: 0}),
+        ):
+            result = service._filter_by_priority(db, uuid4(), entries, merge_fields=("steps_sum", "hr_avg"))
+
+        assert len(result) == 1
+        assert result[0]["device_model"] == "Polar Grit X"
+        assert result[0]["steps_sum"] == 8000
+        assert result[0]["hr_avg"] == 70
 
 
 # ---------------------------------------------------------------------------

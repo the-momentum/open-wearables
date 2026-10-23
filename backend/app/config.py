@@ -194,6 +194,8 @@ class Settings(BaseSettings):
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None
     polar_client_secret: SecretStr | None = None
+    polar_v4_client_id: str | None = None
+    polar_v4_client_secret: SecretStr | None = None
     polar_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     polar_default_scope: str = "accesslink.read_all"
 

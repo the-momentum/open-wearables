@@ -90,6 +90,7 @@
 				{#each sessions as session (session.id)}
 					<SleepCard
 						{session}
+						userId={page.params.id ?? ''}
 						providerLabel={label(session.source.provider)}
 						ondelete={() => {
 							removing = session;

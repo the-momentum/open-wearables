@@ -24,10 +24,10 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Exercises | Yes (with optional HR samples, zones, route) |
-| Sleep (with stages) | Yes |
+| Sleep (with stages) | Yes; sleep efficiency is read from AccessLink v4 using a separate `sleep:read` authorization |
 | Daily activity (steps, calories) | Yes, plus timestamped step samples within the day |
 | Continuous heart rate | Yes |
-| Nightly Recharge / Recovery | Yes — recovery score, plus overnight HRV (RMSSD) and breathing rate as one sample per night |
+| Nightly Recharge / Recovery | Yes — recovery score, overnight averages, and individual five-minute HRV (RMSSD) and breathing-rate samples, available separately in sleep details |
 | Cardio Load | Yes |
 | Sleepwise Alertness | Yes (requires Polar Sleepwise subscription) |
 | Sleepwise Circadian Bedtime | Yes (requires Polar Sleepwise subscription) |
@@ -35,6 +35,18 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Sleep Skin Temperature | Yes (requires Polar Elixir device) |
 | SpO2 | Yes (requires Polar Elixir device) |
 | Wrist ECG | Yes (requires Polar Elixir device) |
+
+### Polar workout type mappings
+
+Polar's `sport` and `detailed_sport_info` values are normalized to Open Wearables workout types as follows:
+
+| Polar sport | `detailed_sport_info` | Unified workout type |
+|---|---|---|
+| `TENNIS` | — | `TENNIS` |
+| `OTHER` | `BADMINTON` / `RACKET_SPORTS_BADMINTON` | `BADMINTON` |
+| `OTHER` | `PICKLEBALL` / `RACKET_SPORTS_PICKLEBALL` | `PICKLEBALL` |
+| `OTHER` | `VERTICALSPORTS_WALLCLIMBING` | `INDOOR_CLIMBING` |
+| `STRENGTH_TRAINING` or `OTHER` | `STRENGTH_TRAINING` | `STRENGTH_TRAINING` |
 
 ### Data delivery
 
@@ -81,7 +93,7 @@ Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_S
     - **Business contact (email)**: Your contact email
     - **Description**: Brief description of your application
     - **Application Web site**: Your app's website (optional)
-    - **Authorization redirect URL**: Your OAuth callback URL. Open Wearables derives this from your `API_BASE_URL` as `{API_BASE_URL}/api/v1/oauth/polar/callback`, so register that exact URL here, e.g. `http://localhost:8000/api/v1/oauth/polar/callback` for local development.
+    - **Authorization redirect URLs**: Register both callbacks used by Open Wearables: `{API_BASE_URL}/api/v1/oauth/polar/callback` and `{API_BASE_URL}/api/v1/oauth/polar-sleep/callback` (for local development, `http://localhost:8000/api/v1/oauth/polar/callback` and `http://localhost:8000/api/v1/oauth/polar-sleep/callback`).
     - **Available data types**: Enable all three - **Exercise data**, **Daily activity data**, **Physical information data**
 
     **3. Check Information**
@@ -103,13 +115,15 @@ Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_S
     Add the following to your `.env` file:
 
 ```bash
-# Public base URL of your API. The OAuth redirect URI is derived from this as
-# {API_BASE_URL}/api/v1/oauth/polar/callback.
+# Public base URL of your API. Both v3 and v4 OAuth callback URLs are derived from it.
 API_BASE_URL=http://localhost:8000
 
 #--- Polar ---#
 POLAR_CLIENT_ID=your-polar-client-id
 POLAR_CLIENT_SECRET=your-polar-client-secret
+# Optional separate AccessLink v4 credentials (default to the v3 credentials)
+# POLAR_V4_CLIENT_ID=your-polar-v4-client-id
+# POLAR_V4_CLIENT_SECRET=your-polar-v4-client-secret
 # Optional — required only if using webhooks (set automatically on first registration)
 POLAR_WEBHOOK_SIGNATURE_SECRET=
 ```
@@ -121,10 +135,12 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
     | `API_BASE_URL` | Public base URL of your API. The OAuth redirect URI is derived from it as `{API_BASE_URL}/api/v1/oauth/polar/callback`, which must match the Authorization redirect URL registered in your Polar application |
     | `POLAR_CLIENT_ID` | Client ID from the Polar AccessLink Admin panel |
     | `POLAR_CLIENT_SECRET` | Client Secret from the Polar AccessLink Admin panel |
+    | `POLAR_V4_CLIENT_ID` | Optional AccessLink v4 client ID. Defaults to `POLAR_CLIENT_ID` |
+    | `POLAR_V4_CLIENT_SECRET` | Optional AccessLink v4 client secret. Defaults to `POLAR_CLIENT_SECRET` |
     | `POLAR_WEBHOOK_SIGNATURE_SECRET` | HMAC-SHA256 signing secret returned by Polar on webhook creation. Returned once — save it immediately. Used to verify incoming webhook payloads. |
 
     <Note>
-    The OAuth scope is hardcoded to `accesslink.read_all` which grants full read access to the AccessLink API. No additional scope configuration is needed.
+    Polar v3 and v4 use separate OAuth grants: the existing connection keeps `accesslink.read_all`, while sleep evaluations use only `sleep:read` and store a second token. Open Wearables requests both grants in sequence when a user connects Polar. Register both callback URLs in the Polar application. If Polar rejects `sleep:read` for the existing client, create/configure a v4 client and set `POLAR_V4_CLIENT_ID` and `POLAR_V4_CLIENT_SECRET`. If v4 access is unavailable or declined, v3 sleep sync continues and efficiency remains absent.
     </Note>
   </Step>
 
@@ -146,9 +162,9 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
     }
     ```
 
-    **2. Redirect the user** to the `authorization_url`. They will log in to Polar Flow and authorize your app.
+    **2. Redirect the user** to the `authorization_url`. They will log in to Polar Flow and authorize your app for v3. Open Wearables then redirects them to Polar's v4 consent page for `sleep:read`; after that second consent, they return to the `redirect_uri` supplied above (or the built-in success page if omitted).
 
-    **3. Polar redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/polar/callback`). Open Wearables automatically exchanges the authorization code for access tokens and registers the user with the Polar API.
+    **3. Polar redirects back** to the callback URI derived from `API_BASE_URL` (`{API_BASE_URL}/api/v1/oauth/polar/callback`). Open Wearables exchanges the v3 authorization code and registers the user with the Polar API, then starts the v4 authorization flow. After the v4 callback, both tokens are stored and the initial historical sync is queued.
 
     **4. Verify the connection** was created:
 
@@ -204,6 +220,17 @@ POLAR_WEBHOOK_SIGNATURE_SECRET=
     ```
 
     If data is returned, your Polar integration is working end-to-end.
+  </Step>
+
+  <Step title="Authorize Polar sleep efficiency for existing connections (AccessLink v4)">
+    New Polar connections automatically request both grants. For users who connected before this flow was added, request a separate authorization URL once:
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/polar-sleep/authorize?user_id={user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    Redirect the user to the returned URL and accept the `sleep:read` permission. This grant is saved alongside the v3 connection and does not replace its token. Open Wearables queues a historical sync after the callback to populate efficiency on existing sleep records. You may also pass `redirect_uri` to this endpoint to return the user to your application after consent.
   </Step>
 </Steps>
 

@@ -3,7 +3,7 @@ from typing import TypedDict
 
 from pydantic import BaseModel
 
-from app.schemas.enums import SeriesType
+from app.schemas.enums import SeriesType, TimeSeriesRole
 from app.schemas.utils import SourceMetadata
 from app.utils.dates import ZoneOffset
 
@@ -18,6 +18,7 @@ class TimeSeriesSample(BaseModel):
     # True = daily total. False/None = not a daily total (summable sample); None is a
     # legacy row and is treated as False by the aggregation.
     is_daily_total: bool | None = None
+    sample_role: TimeSeriesRole = TimeSeriesRole.MEASUREMENT
 
 
 class ActivityAggregateResult(TypedDict):

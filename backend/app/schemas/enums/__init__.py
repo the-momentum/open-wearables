@@ -14,7 +14,6 @@ from .device_type import (
     DeviceType,
 )
 from .entry_source import EntrySource
-from .event_category import EventCategory
 from .health_score_category import HealthScoreCategory
 from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
@@ -33,6 +32,7 @@ from .timeline import (
     TimelineBucket,
     TimelineGroupBy,
 )
+from .time_series_role import TimeSeriesRole
 from .workout_intensity import WorkoutIntensity
 from .workout_types import (
     WORKOUTS_WITH_PACE,
@@ -50,7 +50,6 @@ __all__ = [
     "BUCKET_SIZES",
     "GRANULARITY_WINDOW_SECONDS",
     "EntrySource",
-    "EventCategory",
     "SeriesType",
     "SERIES_TYPE_DEFINITIONS",
     "SERIES_TYPE_ID_BY_ENUM",
@@ -66,4 +65,5 @@ __all__ = [
     "SdkConnectionOutcome",
     "TimelineBucket",
     "TimelineGroupBy",
+    "TimeSeriesRole",
 ]

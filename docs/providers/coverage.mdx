@@ -711,7 +711,7 @@ Legend: ✅ supported, ❌ not available.
 | `is_nap` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `sleep_awake_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `sleep_deep_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| `sleep_efficiency_score` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| `sleep_efficiency_score` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `sleep_light_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `sleep_rem_minutes` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | `sleep_stages` | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ |
@@ -799,7 +799,7 @@ Key differences and limitations to be aware of when working with each provider:
 
   - Data synced via periodic polling; real-time webhook notifications for exercise, sleep, activity, nightly recharge, and Sleepwise events
   - Webhooks are notify-only: Polar sends a lightweight event payload, Open Wearables acknowledges immediately and enqueues a targeted sync for the affected data type
-  - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, and stage timestamps from hypnogram; sleep efficiency not available in the API
+  - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, and stage timestamps from hypnogram; sleep efficiency from Polar API v4 when the connection has the `sleep:read` scope
   - Sleep HR timeseries saved from per-night heart rate samples (not summarised avg/min on the sleep record)
   - Continuous 24/7 heart rate sampled at ~5-min intervals via range endpoint (90-day lookback)
   - Daily activity: steps, active calories, and walking/running distance from `/v3/users/activities`

@@ -1,6 +1,7 @@
 """Tests for Polar247Data normalization."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -52,6 +53,7 @@ class TestPolar247SleepNormalization:
         assert record.provider == "polar"
         assert record.category == "sleep"
         assert record.device_model is None
+        assert record.external_id == sample_sleep["date"]
 
     def test_timestamps(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()
@@ -88,6 +90,43 @@ class TestPolar247SleepNormalization:
         assert score.provider.value == "polar"
         assert "sleep_time" in score.components
         assert "actual_sleep" in score.components
+
+    def test_v4_sleep_efficiency_is_stored_when_enriched(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep["sleep_efficiency_percent"] = 87.5
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_efficiency_score == Decimal("87.5")
+
+    def test_sleep_data_enriches_v3_sleep_from_v4_evaluation(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        v4_response = {
+            "nightSleeps": [{"sleepDate": "2024-01-15", "sleepEvaluation": {"analysis": {"efficiencyPercent": 87.5}}}]
+        }
+        response = MagicMock()
+        response.json.return_value = v4_response
+        response.raise_for_status.return_value = None
+        with (
+            patch.object(data_247, "_get_available_sleep_dates", return_value={date(2024, 1, 15)}),
+            patch.object(data_247, "_make_api_request", return_value=sample_sleep),
+            patch.object(data_247.sleep_v4_oauth, "get_sleep_access_token", return_value="v4-access-token"),
+            patch("app.services.providers.polar.data_247.httpx.get", return_value=response) as request,
+            patch("app.services.providers.polar.data_247.store_raw_payload"),
+        ):
+            data = data_247.get_sleep_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 15, tzinfo=timezone.utc),
+                datetime(2024, 1, 15, tzinfo=timezone.utc),
+            )
+
+        assert data[0]["sleep_efficiency_percent"] == 87.5
+        assert request.call_args.args[0] == "https://www.polaraccesslink.com/v4/data/sleeps"
+        assert request.call_args.kwargs["params"] == {
+            "from": "2024-01-15",
+            "to": "2024-01-16",
+            "features": "sleep-evaluation",
+        }
+        assert request.call_args.kwargs["headers"]["Authorization"] == "Bearer v4-access-token"
 
     def test_no_score_when_missing(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         sample_sleep.pop("sleep_score")
@@ -589,6 +628,29 @@ class TestPolar247NightlyRechargeNormalization:
         assert float(by_type[SeriesType.respiratory_rate].value) == 14.5
         assert by_type[SeriesType.heart_rate_variability_rmssd].recorded_at.date().isoformat() == "2024-01-15"
         assert by_type[SeriesType.heart_rate_variability_rmssd].user_id == user_id
+
+    def test_individual_samples_follow_sleep_window_across_midnight(
+        self, data_247: Polar247Data, sample_recharge: dict
+    ) -> None:
+        sample_recharge["hrv_samples"] = {"23:55": 24, "00:00": 26}
+        sample_recharge["breathing_samples"] = {"23:55": 13.1, "00:00": 13.3}
+        sleep_windows = {
+            date(2024, 1, 15): (
+                datetime.fromisoformat("2024-01-14T23:30:00+02:00"),
+                datetime.fromisoformat("2024-01-15T07:30:00+02:00"),
+            )
+        }
+
+        _, samples = data_247.normalize_nightly_recharge([sample_recharge], uuid4(), sleep_windows)
+
+        hrv = [s for s in samples if s.series_type == SeriesType.heart_rate_variability_rmssd]
+        respiration = [s for s in samples if s.series_type == SeriesType.respiratory_rate]
+        assert {s.recorded_at.isoformat() for s in hrv[1:]} == {
+            "2024-01-14T23:55:00+02:00",
+            "2024-01-15T00:00:00+02:00",
+        }
+        assert {float(s.value) for s in hrv[1:]} == {24.0, 26.0}
+        assert {float(s.value) for s in respiration[1:]} == {13.1, 13.3}
 
     def test_night_without_hrv_or_breathing_still_scores_but_yields_no_samples(
         self, data_247: Polar247Data, sample_recharge: dict
