@@ -70,3 +70,19 @@ def test_typed_errors_inherit_from_base() -> None:
     assert issubclass(AuthenticationError, OpenWearablesError)
     assert issubclass(NotFoundError, OpenWearablesError)
     assert issubclass(ConfigurationError, OpenWearablesError)
+
+
+async def test_workouts_and_timeseries_request_priority_filtering(
+    api_client: OpenWearablesClient,
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The MCP view is consolidated, so cross-provider duplicates are filtered by priority."""
+    user_id = "00000000-0000-0000-0000-000000000000"
+    httpx_mock.add_response(json={"data": []})
+    httpx_mock.add_response(json={"data": []})
+
+    await api_client.get_workouts(user_id, "2026-04-01", "2026-04-08")
+    await api_client.get_timeseries(user_id, "2026-04-01T00:00:00Z", "2026-04-08T00:00:00Z", ["weight"])
+
+    for request in httpx_mock.get_requests():
+        assert request.url.params["filter_by_priority"] == "true"

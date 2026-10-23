@@ -2279,6 +2279,18 @@
             }
           },
           {
+            "name": "filter_by_priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When true, drop workouts that a higher-priority source's workout overlaps for at least half their duration (provider/device priority, same ranking as sleep). Defaults to false for backwards compatibility.",
+              "default": false,
+              "title": "Filter By Priority"
+            },
+            "description": "When true, drop workouts that a higher-priority source's workout overlaps for at least half their duration (provider/device priority, same ranking as sleep). Defaults to false for backwards compatibility."
+          },
+          {
             "name": "X-Open-Wearables-API-Key",
             "in": "header",
             "required": false,
@@ -2542,6 +2554,18 @@
               ],
               "title": "Data Source Id"
             }
+          },
+          {
+            "name": "filter_by_priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When true, drop workouts that a higher-priority source's workout overlaps for at least half their duration (provider/device priority, same ranking as sleep). Defaults to false for backwards compatibility.",
+              "default": false,
+              "title": "Filter By Priority"
+            },
+            "description": "When true, drop workouts that a higher-priority source's workout overlaps for at least half their duration (provider/device priority, same ranking as sleep). Defaults to false for backwards compatibility."
           },
           {
             "name": "X-Open-Wearables-API-Key",

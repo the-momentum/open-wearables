@@ -114,6 +114,9 @@ class Settings(BaseSettings):
     # Time between sleep phases to conclude end of sleep session
     sleep_end_gap_minutes: int = 120  # 2 hours
 
+    # Share of a workout a higher-priority source's workout must cover for priority filtering to drop it
+    workout_duplicate_overlap: float = Field(default=0.5, gt=0, le=1)
+
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)

@@ -538,6 +538,28 @@ class TestWorkoutsEndpoints:
         assert len(_fetch_all(client, user.id, data_source_id=str(whoop.id))) == 1
         assert _fetch_all(client, user.id, provider="garmin")[0]["source"]["provider"] == "garmin"
 
+    def test_filter_by_priority_drops_lower_priority_copy(self, client: TestClient, db: Session) -> None:
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE)
+        withings = DataSourceFactory(user=user, provider=ProviderName.WITHINGS)
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
+        priority_service.update_provider_priority(db, ProviderName.WITHINGS, 2)
+        start = datetime.now(timezone.utc) - timedelta(hours=2)
+        original = EventRecordFactory(
+            mapping=apple, category="workout", start_datetime=start, end_datetime=start + timedelta(hours=1)
+        )
+        EventRecordFactory(
+            mapping=withings,
+            category="workout",
+            start_datetime=start + timedelta(minutes=1),
+            end_datetime=start + timedelta(minutes=59),
+        )
+
+        assert len(_fetch_all(client, user.id)) == 2
+        assert [w["id"] for w in _fetch_all(client, user.id, filter_by_priority="true")] == [str(original.id)]
+
     def test_type_matches_exactly_where_record_type_matches_a_substring(self, client: TestClient, db: Session) -> None:
         """`record_type=running` also catches trail_running; `type=running` must not."""
         # Arrange
