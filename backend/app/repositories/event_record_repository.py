@@ -631,7 +631,14 @@ class EventRecordRepository(
         plus ``provider_energy`` in the provider's declared series and ``own_energy`` from the workout's samples."""
         if not record_ids:
             return {}
-        rows = db_session.query(EventRecordAggregate).filter(EventRecordAggregate.record_id.in_(record_ids))
+        # Only the series a statistic is read from: a workout's speed, power or elevation stream is not.
+        needed = {get_series_type_id(series_type) for series_type, _ in WORKOUT_DETAIL_STATS.values()} | {
+            get_series_type_id(SeriesType.total_energy),
+            get_series_type_id(SeriesType.active_energy),
+        }
+        rows = db_session.query(EventRecordAggregate).filter(
+            EventRecordAggregate.record_id.in_(record_ids), EventRecordAggregate.series_type_definition_id.in_(needed)
+        )
         values: dict[ComputedBy, dict[tuple[UUID, int, str], Decimal]] = {origin: {} for origin in ComputedBy}
         for row in rows:
             for stat in ("sum", "avg", "min", "max", "last"):
