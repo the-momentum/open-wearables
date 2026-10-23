@@ -27,6 +27,7 @@ from .user import (
     UserUpdateInternal,
 )
 from .user_connection import (
+    ApiKeyConnectRequest,
     UserConnectionCreate,
     UserConnectionRead,
     UserConnectionUpdate,
@@ -62,6 +63,7 @@ __all__ = [
     "UserConnectionCreate",
     "UserConnectionUpdate",
     "UserConnectionRead",
+    "ApiKeyConnectRequest",
     "UserConnectionSummary",
     "UserConnectionWithCapabilities",
 ]

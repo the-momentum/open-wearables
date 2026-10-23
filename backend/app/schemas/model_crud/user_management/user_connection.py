@@ -58,6 +58,12 @@ class UserConnectionRead(UserConnectionBase):
     updated_at: datetime
 
 
+class ApiKeyConnectRequest(BaseModel):
+    """Body of POST /users/{user_id}/connections/{provider} for api_key_connect providers."""
+
+    api_key: str = Field(min_length=1, description="The user's personal API key issued by the provider.")
+
+
 class UserConnectionWithCapabilities(UserConnectionRead):
     """UserConnectionRead enriched with provider capability metadata.
 
