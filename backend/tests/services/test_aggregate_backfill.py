@@ -351,6 +351,35 @@ class TestHistoryValues:
 
         assert _days(db) == [("steps", date(2025, 6, 2), "+02:00", Decimal("9000"), None)]
 
+    def test_suunto_days_at_plus_thirteen_recover_their_offset_too(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.SUUNTO)
+        # 2025-01-02 00:00 in New Zealand's summer (+13:00)
+        _sample(
+            db, source, SeriesType.steps, datetime(2025, 1, 1, 11, tzinfo=timezone.utc), "9000", is_daily_total=True
+        )
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _days(db) == [("steps", date(2025, 1, 2), "+13:00", Decimal("9000"), None)]
+
+    def test_a_day_sent_more_than_once_is_its_latest_value(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        midnight = datetime(2025, 6, 1, 22, tzinfo=timezone.utc)  # 2025-06-02 00:00 at +02:00
+        _sample(
+            db,
+            source,
+            SeriesType.steps,
+            midnight + timedelta(hours=12),
+            "9500",
+            zone_offset="+02:00",
+            is_daily_total=True,
+        )
+        _sample(db, source, SeriesType.steps, midnight, "8432", zone_offset="+02:00", is_daily_total=True)
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _days(db) == [("steps", date(2025, 6, 2), "+02:00", Decimal("9500"), None)]
+
     def test_polar_nightly_values_are_the_ones_at_utc_midnight(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.POLAR)
         _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")

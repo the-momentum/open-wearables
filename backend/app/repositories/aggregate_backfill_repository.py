@@ -206,7 +206,7 @@ class AggregateBackfillRepository:
 _DAYS = {
     DayAnchor.LOCAL: "((s.recorded_at AT TIME ZONE 'UTC') + coalesce(s.zone_offset, '+00:00')::interval)::date",
     DayAnchor.UTC_DATE: "(s.recorded_at AT TIME ZONE 'UTC')::date",
-    DayAnchor.LOCAL_MIDNIGHT_NO_OFFSET: "((s.recorded_at AT TIME ZONE 'UTC') + interval '12 hours')::date",
+    DayAnchor.LOCAL_MIDNIGHT_NO_OFFSET: "((s.recorded_at AT TIME ZONE 'UTC') + interval '13 hours')::date",
 }
 _ZONES = {
     DayAnchor.LOCAL: "coalesce(s.zone_offset, '+00:00')",
@@ -244,12 +244,13 @@ def _day_values(rule: HistoryRule) -> TextClause:
     assert rule.day is not None
     return text(f"""
         WITH src AS (
-            SELECT s.data_source_id, s.series_type_definition_id AS type_id, s.value,
+            SELECT s.data_source_id, s.series_type_definition_id AS type_id, s.value, s.recorded_at,
                 {_DAYS[rule.day]} AS day, {_ZONES[rule.day]} AS zone
             FROM series_sample s WHERE {_RULE_SAMPLES.format(where=rule.where)}
         ), days AS (
+            -- A day sent more than once (a total re-sent as the day went on) is its latest value.
             SELECT DISTINCT ON (type_id, day) *, (day::timestamp - zone::interval) AT TIME ZONE 'UTC' AS period_start
-            FROM src ORDER BY type_id, day
+            FROM src ORDER BY type_id, day, recorded_at DESC
         )
         INSERT INTO series_aggregate (
             id, data_source_id, series_type_definition_id, period_kind, period_start, period_end, zone_offset,
