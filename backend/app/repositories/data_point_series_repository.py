@@ -38,6 +38,7 @@ from sqlalchemy.orm import Query
 from sqlalchemy.schema import CreateTable
 
 from app.database import DbSession
+from app.integrations.rollup_queue import mark_dirty_days
 from app.models import (
     DataPointSeriesArchive,
     DataSource,
@@ -83,7 +84,7 @@ from app.schemas.responses.activity import (
     IntensityMinutesResult,
 )
 from app.schemas.sync_status import DataTypeKind
-from app.utils.dates import as_utc
+from app.utils.dates import as_utc, local_date
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
 
@@ -276,6 +277,7 @@ class DataPointSeriesRepository(
 
         creation = self.model(**creation_data)
         db_session.add(creation)
+        mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
         created = self.try_commit(db_session, creation)
         # After the commit: a duplicate rolls the sample back and returns the stored one, and its day or
         # session value must still land.
@@ -308,6 +310,9 @@ class DataPointSeriesRepository(
         spans = _spans_by_source_and_type(rows)
         counts = self._insert_data_points(db_session, rows, spans)
         self._mirror_aggregates(db_session, self._with_live_sessions(db_session, creators), identity_to_source_id)
+        mark_dirty_days(
+            db_session, {(row.data_source_id, local_date(row.recorded_at, row.zone_offset)) for row in rows}
+        )
 
         # 3. Widen what we hold per type, under the same provider the sources resolved to
         data_type_coverage_repository.record(

@@ -6,15 +6,20 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, HealthScore, SeriesSample
-from app.schemas.enums import ProviderName
+from app.integrations.rollup_queue import pop_dirty_days
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore, SeriesAggregate, SeriesSample
+from app.repositories import AggregateRepository
+from app.schemas.enums import ComputedBy, PeriodKind, ProviderName, SeriesType, get_series_type_id
+from app.schemas.model_crud.activities import CalendarPeriod
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
     EventRecordFactory,
     HealthScoreFactory,
+    SeriesTypeDefinitionFactory,
     UserFactory,
 )
 
@@ -122,6 +127,112 @@ class TestMergeDuplicateDataSources:
         assert result["merged_sources"] == 1
         assert db.query(DataSource).filter(DataSource.id == platform_id).one_or_none() is None
         assert db.query(SeriesSample).filter(SeriesSample.data_source_id == target.id).count() == 5
+
+    def _day_row(self, source: DataSource, day: datetime, **stats: object) -> dict:
+        period = CalendarPeriod.of_date(day.date())
+        return {
+            "data_source_id": source.id,
+            "series_type_definition_id": get_series_type_id(SeriesType.steps),
+            "period_kind": PeriodKind.DAY,
+            "period_start": period.start,
+            "period_end": period.end,
+            "zone_offset": period.zone_offset,
+            "computed_by": ComputedBy.PROVIDER,
+            "count": 1,
+            **stats,
+        }
+
+    def test_day_rows_move_with_the_samples_and_the_moved_days_are_queued(self, db: Session) -> None:
+        """A provider's day values live only in the aggregate table; the target's own rows are recomputed."""
+        user = UserFactory()
+        unknown = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="unknown", source="garmin")
+        target = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        DataPointSeriesFactory(data_source=unknown, recorded_at=START)
+        repo = AggregateRepository(SeriesAggregate)
+        repo.upsert(
+            db, [self._day_row(unknown, START, sum=8000), self._day_row(unknown, START + timedelta(days=1), sum=9000)]
+        )
+        repo.upsert(db, [self._day_row(target, START, sum=8100)])
+        pop_dirty_days(100)
+
+        merge_duplicate_data_sources(db, dry_run=False)
+        db.expire_all()
+
+        rows = {row.period_start.date(): row.sum for row in db.query(SeriesAggregate)}
+        # The day the target already held keeps the target's value; the other day moved.
+        assert rows == {START.date(): 8100, (START + timedelta(days=1)).date(): 9000}
+        assert all(row.data_source_id == target.id for row in db.query(SeriesAggregate))
+        assert (target.id, START.date()) in pop_dirty_days(100)
+
+    def test_days_moved_before_a_failure_are_queued_too(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        user = UserFactory()
+        unknown = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="unknown", source="garmin")
+        target = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        DataPointSeriesFactory(data_source=unknown, recorded_at=START)
+        monkeypatch.setattr(merge_module, "_MERGE_STEPS", [*merge_module._MERGE_STEPS, text("SELECT 1 / 0")])
+        pop_dirty_days(100)
+
+        result = merge_duplicate_data_sources(db, dry_run=False)
+
+        # The samples' batches were committed before the step failed; their days need the rollup regardless.
+        assert result["failed"] == 1
+        assert db.query(SeriesSample).one().data_source_id == target.id
+        assert (target.id, START.date()) in pop_dirty_days(100)
+
+    def test_a_dropped_events_session_values_move_to_the_kept_copy(self, db: Session) -> None:
+        user = UserFactory()
+        unknown = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="unknown", source="garmin")
+        target = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        dropped, kept = _event(unknown), _event(target)
+        heart_rate = get_series_type_id(SeriesType.heart_rate)
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": dropped.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": 140,
+                    "count": 1,
+                },
+                {
+                    "record_id": kept.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.OPEN_WEARABLES,
+                    "avg": 138,
+                    "count": 100,
+                },
+            ],
+        )
+
+        merge_duplicate_data_sources(db, dry_run=False)
+        db.expire_all()
+
+        rows = {
+            row.computed_by: row.avg
+            for row in db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == kept.id)
+        }
+        assert rows == {ComputedBy.PROVIDER: 140, ComputedBy.OPEN_WEARABLES: 138}
+        assert db.query(EventRecordAggregate).count() == 2
+
+    def test_the_last_batch_moves_every_series_type(self, db: Session) -> None:
+        """The last batch's bound is the greatest key over all its columns, not the first type's latest row."""
+        user = UserFactory()
+        unknown = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="unknown", source="garmin")
+        target = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        for series_type in (
+            SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            SeriesTypeDefinitionFactory.get_or_create_steps(),
+        ):
+            for minute in range(3):
+                DataPointSeriesFactory(
+                    data_source=unknown, series_type=series_type, recorded_at=START + timedelta(minutes=minute)
+                )
+
+        merge_duplicate_data_sources(db, dry_run=False)
+        db.expire_all()
+
+        assert db.query(SeriesSample).filter(SeriesSample.data_source_id == target.id).count() == 6
 
     def test_duplicate_events_are_removed_in_batches(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(merge_module, "_BATCH_SIZE", 2)

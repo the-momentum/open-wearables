@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
 from app.repositories import AggregateRepository, data_point_series_repository
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
@@ -770,6 +771,28 @@ class TestCreateOrMergeSleep:
 
         row = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == merged.id).one()
         assert row.min == Decimal("48")
+
+    def test_a_reingested_sleep_queues_the_days_it_left_and_joined(self, db: Session) -> None:
+        """Its session rows are rolled up over the new window; the days on both sides change."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, 0),
+            end_datetime=self._dt(6, 0, day=22),
+        )
+        pop_dirty_days(100)
+        record = self._record(data_source, self._dt(23, 0), self._dt(7, 0, day=22)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(db, user.id, record, self._detail(record.id), self.THRESHOLD)
+        db.commit()
+
+        assert {day for _, day in pop_dirty_days(100)} == {self._dt(22, 0).date(), self._dt(6, 0, day=22).date()}
 
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""

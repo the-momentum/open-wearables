@@ -9916,7 +9916,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Get data lifecycle settings",
-        "description": "Returns current archival/retention configuration and storage size estimates.",
+        "description": "Returns current rollup/retention configuration and storage size estimates.",
         "operationId": "get_archival_settings_api_v1_settings_archival_get",
         "responses": {
           "200": {
@@ -9941,7 +9941,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure archive_after_days (when live data is aggregated) and delete_after_days (when old data is permanently removed). Set to null to disable.",
+        "description": "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -9987,8 +9987,8 @@
         "tags": [
           "Internal: Data Lifecycle"
         ],
-        "summary": "Trigger archival job manually",
-        "description": "Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
+        "summary": "Trigger the data lifecycle job manually",
+        "description": "Dispatches the daily rollup + retention job via Celery. Returns immediately with the task ID.",
         "operationId": "trigger_archival_api_v1_settings_archival_run_post",
         "responses": {
           "202": {
@@ -11599,17 +11599,11 @@
       },
       "ArchivalSettingRead": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live samples are aggregated into daily archive. NULL = archival disabled."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll changed days of samples up into daily and per-session aggregates every night.",
+            "default": true
           },
           "delete_after_days": {
             "anyOf": [
@@ -11621,28 +11615,20 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before archived data is permanently removed. NULL = kept indefinitely."
+            "description": "Days before samples are deleted, rolled up first when rollup is on. NULL = kept indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingRead",
-        "description": "Response schema for archival settings."
+        "description": "Response schema for data lifecycle settings."
       },
       "ArchivalSettingUpdate": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live data is archived. NULL to disable archival."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll samples up into daily and per-session aggregates.",
+            "default": true
           },
           "delete_after_days": {
             "anyOf": [
@@ -11656,12 +11642,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before data is permanently deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating archival settings."
+        "description": "Request schema for updating data lifecycle settings."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -17100,7 +17086,7 @@
           "growth_class": {
             "type": "string",
             "title": "Growth Class",
-            "description": "Growth complexity class: 'bounded' | 'linear_efficient' | 'linear'"
+            "description": "Growth complexity class: 'bounded' | 'linear'"
           }
         },
         "type": "object",

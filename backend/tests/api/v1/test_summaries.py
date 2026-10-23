@@ -751,7 +751,7 @@ class TestActivitySummaryEndpoint:
 
         # Enable archival (singleton id=1) so the summaries service queries the archive.
         if not db.query(ArchivalSetting).filter(ArchivalSetting.id == 1).first():
-            db.add(ArchivalSetting(id=1, archive_after_days=30, delete_after_days=None))
+            db.add(ArchivalSetting(id=1))
         # Archived daily active_time (archive holds one SUM row per day) for a day with no live data.
         db.add(
             DataPointSeriesArchive(
