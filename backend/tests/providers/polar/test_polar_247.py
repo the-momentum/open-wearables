@@ -657,3 +657,78 @@ class TestPolar247HypnogramParsing:
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         assert data_247._parse_hypnogram({}, start, end) == []
+
+
+# ---------------------------------------------------------------------------
+# Elixir biosensing endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestPolar247ElixirEndpoints:
+    @pytest.mark.parametrize(
+        ("method", "endpoint"),
+        [
+            ("get_body_temperature_data", "/v3/users/biosensing/bodytemperature"),
+            ("get_sleep_skin_temperature_data", "/v3/users/biosensing/skintemperature"),
+            ("get_spo2_data", "/v3/users/biosensing/spo2"),
+            ("get_wrist_ecg_data", "/v3/users/biosensing/ecg"),
+        ],
+    )
+    def test_requests_the_biosensing_path(self, data_247: Polar247Data, method: str, endpoint: str) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=[]) as request:
+            getattr(data_247, method)(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 28, tzinfo=timezone.utc),
+            )
+
+        assert request.call_args.args[2] == endpoint
+        assert request.call_args.kwargs["params"] == {"from": "2024-01-01", "to": "2024-01-28"}
+
+    def test_splits_windows_longer_than_28_days(self, data_247: Polar247Data) -> None:
+        responses = [[{"sleep_date": "2024-01-02"}], None, [{"sleep_date": "2024-02-28"}]]
+        with patch.object(data_247, "_make_api_request", side_effect=responses) as request:
+            raw = data_247.get_sleep_skin_temperature_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 3, 1, tzinfo=timezone.utc),
+            )
+
+        assert [c.kwargs["params"] for c in request.call_args_list] == [
+            {"from": "2024-01-01", "to": "2024-01-28"},
+            {"from": "2024-01-29", "to": "2024-02-25"},
+            {"from": "2024-02-26", "to": "2024-03-01"},
+        ]
+        assert raw == [{"sleep_date": "2024-01-02"}, {"sleep_date": "2024-02-28"}]
+
+    def test_windows_cover_the_last_day_when_it_ends_earlier_in_the_day(self, data_247: Polar247Data) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=None) as request:
+            data_247.get_sleep_skin_temperature_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, 18, 0, tzinfo=timezone.utc),
+                datetime(2024, 1, 29, 9, 0, tzinfo=timezone.utc),
+            )
+
+        assert [c.kwargs["params"] for c in request.call_args_list] == [
+            {"from": "2024-01-01", "to": "2024-01-28"},
+            {"from": "2024-01-29", "to": "2024-01-29"},
+        ]
+
+
+class TestPolar247SleepSkinTemperature:
+    def test_night_is_anchored_to_utc_midnight(self, data_247: Polar247Data) -> None:
+        raw = {
+            "sleep_time_skin_temperature_celsius": 34.2,
+            "deviation_from_baseline_celsius": -0.3,
+            "sleep_date": "2024-01-15",
+        }
+
+        samples = data_247.normalize_sleep_skin_temperature([raw], uuid4())
+
+        by_type = {s.series_type: s for s in samples}
+        assert float(by_type[SeriesType.skin_temperature].value) == 34.2
+        assert float(by_type[SeriesType.skin_temperature_deviation].value) == -0.3
+        assert {s.recorded_at for s in samples} == {datetime(2024, 1, 15, tzinfo=timezone.utc)}
