@@ -415,8 +415,9 @@ class TestUltrahumanActivitySamplesIntegration:
             .all()
         )
 
-        # One day row per requested day (15th and 16th); the mock answers every day alike.
-        assert [float(sample.sum if sample.sum is not None else sample.avg) for sample in samples] == [-0.2, -0.2]
+        # The mock answers both requested days with the same day_start, and a day row sits on the day the
+        # ring reports, so the two answers are one day.
+        assert [float(sample.sum if sample.sum is not None else sample.avg) for sample in samples] == [-0.2]
 
     def test_sleep_rhr_saved_as_resting_heart_rate(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """The ring's overnight resting heart rate reaches the resting_heart_rate series."""
@@ -447,7 +448,8 @@ class TestUltrahumanActivitySamplesIntegration:
             .all()
         )
 
-        assert [float(sample.sum if sample.sum is not None else sample.avg) for sample in samples] == [51, 51]
+        # The mock answers both requested days with the same day_start: one day, on the day the ring reports.
+        assert [float(sample.sum if sample.sum is not None else sample.avg) for sample in samples] == [51]
         assert samples[0].period_start == datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
 
     def test_active_minutes_saved_as_exercise_time(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
@@ -480,7 +482,7 @@ class TestUltrahumanActivitySamplesIntegration:
             .all()
         )
 
-        assert [(code, float(value)) for code, value in codes_and_values] == [(SeriesType.exercise_time.value, 35)] * 2
+        assert [(code, float(value)) for code, value in codes_and_values] == [(SeriesType.exercise_time.value, 35)]
 
     def test_heart_rate_values_are_reasonable_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
