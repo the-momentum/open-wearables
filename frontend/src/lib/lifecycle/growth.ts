@@ -7,7 +7,7 @@ export const GROWTH: Record<Growth, { label: string; tone: Tone; description: st
 		label: 'O(1) · bounded',
 		tone: 'success',
 		description:
-			'Storage is capped: samples past the deletion window are deleted and nothing is rolled up, so the total levels off.'
+			'Samples are capped: those past the deletion window are deleted and nothing is rolled up. Only the much smaller provider day and session rows and the other tables keep growing.'
 	},
 	linear_efficient: {
 		label: 'O(n) · efficient',

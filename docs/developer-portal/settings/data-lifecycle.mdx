@@ -38,7 +38,7 @@ A chart estimates database size over the next 18 months based on the current ing
 | Badge | Meaning |
 |---|---|
 | **Linear** | Deletion is off. Every sample is kept forever. |
-| **Bounded** | Deletion is on and rollup is off. Samples past the window are deleted and nothing else grows, so the total levels off. |
+| **Bounded** | Deletion is on and rollup is off. Samples past the window are deleted, so the sample table stops growing; the provider's day and session rows and the other tables still grow, far more slowly. |
 | **Linear (efficient)** | Deletion is on with rollup on. Samples are capped at the window; the rolled-up rows they leave behind keep accumulating, at roughly 1/500 of the raw rate. |
 
 The projection updates as you edit the policies, before you save.
