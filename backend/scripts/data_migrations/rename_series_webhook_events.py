@@ -9,9 +9,12 @@ A Svix endpoint filters on event-type names, so switching the name we dispatch w
 existing subscription intact but matching a name nothing sends any more: no error, just silence.
 
 Run in two phases around the deploy, so no window exists where the dispatched name is absent
-from a subscriber's filter:
+from a subscriber's filter. The script lives in the new image, so phase 1 runs from a one-off
+container of that image before it takes traffic (or right after the deploy, accepting the gap
+until it finishes):
 
-    1. --phase=add     BEFORE deploying. Appends each new name next to its old one.
+    1. --phase=add     Registers the new event types with Svix, then appends each new name next
+                       to its old one on every endpoint that filters on the old one.
     2. deploy          Dispatch switches to the new names; they match the appended entries.
     3. --phase=remove  AFTER the deploy. Drops the now-dead old names, retired ones included.
 
@@ -28,6 +31,8 @@ Usage (inside Docker):
 import argparse
 import sys
 import time
+
+from svix.api.errors.http_error import HttpError
 
 from app.database import SessionLocal
 from app.models import Developer
@@ -57,6 +62,10 @@ def main(phase: str, dry_run: bool, sleep: float) -> int:
     if not svix.is_enabled():
         print("Svix is disabled — nothing to migrate.")
         return 0
+    if phase == "add" and not dry_run and not svix.register_event_types():
+        # Svix refuses a filter naming an event type it does not know, so the new names go in first.
+        print("Could not register the event types with Svix — nothing patched.")
+        return 1
 
     with SessionLocal() as db:
         developer_ids = [str(d.id) for d in db.query(Developer.id).all()]
@@ -66,7 +75,14 @@ def main(phase: str, dry_run: bool, sleep: float) -> int:
     for app_id in developer_ids:
         try:
             endpoints = list(svix.iter_endpoints(app_id))
-        except Exception as exc:  # noqa: BLE001 - a missing app must not abort the run
+        except HttpError as exc:
+            if exc.status_code == 404:
+                # A developer who never configured webhooks has no Svix application: nothing to migrate.
+                continue
+            print(f"  ! {app_id}: cannot list endpoints ({exc})")
+            failed += 1
+            continue
+        except Exception as exc:  # noqa: BLE001 - one unreachable app must not abort the run
             print(f"  ! {app_id}: cannot list endpoints ({exc})")
             failed += 1
             continue
