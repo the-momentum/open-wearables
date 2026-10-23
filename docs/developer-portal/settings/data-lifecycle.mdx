@@ -1,33 +1,33 @@
 ---
 title: "Data Lifecycle"
 sidebarTitle: "Data Lifecycle"
-description: "Configure archival and retention policies for time-series data, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
-keywords: ["data retention", "time series archival", "storage growth", "delete old data", "postgres storage"]
+description: "Configure the rollup and deletion of time-series samples, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
+keywords: ["data retention", "time series rollup", "storage growth", "delete old data", "postgres storage"]
 "og:title": "Data Lifecycle | Open Wearables"
-"og:description": "Configure archival and retention policies for time-series data, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
+"og:description": "Configure the rollup and deletion of time-series samples, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
 "og:url": "https://docs.openwearables.io/developer-portal/settings/data-lifecycle"
 "og:type": "article"
 "twitter:title": "Data Lifecycle | Open Wearables"
-"twitter:description": "Configure archival and retention policies for time-series data, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
+"twitter:description": "Configure the rollup and deletion of time-series samples, review storage usage, and run the lifecycle job on demand from Settings → Data Lifecycle in the Open Wearables developer portal."
 "twitter:card": "summary_large_image"
 ---
 
-**Settings → Data Lifecycle** keeps the size of per-sample time-series data under control. Raw samples such as heart rate at one-minute resolution grow linearly with time and connected devices. This tab lets you aggregate old samples into daily summaries and delete data past a retention window.
+**Settings → Data Lifecycle** keeps the size of per-sample time-series data under control. Raw samples such as heart rate at one-second resolution grow linearly with time and connected devices. Every changed day is rolled up into one row a day per series, and one per sleep or workout; this tab lets you delete the samples past a retention window while those rows stay.
 
 <Warning>
 This feature is in early access and is not yet ready for production use.
 </Warning>
 
 <Note>
-Self-hosting: set `DATA_LIFECYCLE_ENABLED=false` in the backend `.env` to turn the feature off. The tab disappears from Settings, the `/api/v1/settings/archival` endpoints return `503`, and the daily archival job stops running. Existing archive data is left untouched.
+Self-hosting: set `DATA_LIFECYCLE_ENABLED=false` in the backend `.env` to turn retention off. The tab disappears from Settings, the `/api/v1/settings/archival` endpoints return `503`, and the nightly deletion job stops running. The 15-minute rollup keeps running, because summaries and day reads are served from its rows. Existing data is left untouched.
 </Note>
 
 ## Storage Overview
 
 The top of the page shows the current database footprint:
 
-- **Live Data** - size and row count of the raw time-series table, including indexes.
-- **Archive Data** - size and row count of the archived daily aggregates.
+- **Samples** - size and row count of the time-series table, including indexes.
+- **Aggregates** - size and row count of the day and session rows, including the legacy archive until it is dropped.
 - **Other Tables** - everything else.
 - **Total Database** - the sum.
 
@@ -37,27 +37,27 @@ A chart estimates database size over the next 18 months based on the current ing
 
 | Badge | Meaning |
 |---|---|
-| **Bounded** | Retention is enabled. Old data is deleted after the retention window and total size stabilises. |
-| **Linear (efficient)** | Archival is enabled without retention. Live data is bounded by the archive window, daily aggregates accumulate at roughly 1/500 of the raw rate. |
-| **Linear** | Neither policy is enabled. All raw samples are kept forever. |
+| **Linear** | Deletion is off. Every sample is kept forever. |
+| **Bounded** | Deletion is on and rollup is off. Samples past the window are deleted and nothing else grows, so the total levels off. |
+| **Linear (efficient)** | Deletion is on with rollup on. Samples are capped at the window; the rolled-up rows they leave behind keep accumulating, at roughly 1/500 of the raw rate. |
 
 The projection updates as you edit the policies, before you save.
 
-## Archival Policy
+## Rollup
 
-When enabled, per-sample time-series data older than **Archive data older than N days** is aggregated into daily summaries. This reduces storage substantially while preserving aggregate accuracy. Set the threshold between 1 and 3650 days.
+Every 15 minutes, the days whose samples changed are rolled up into one row a day per series and one row per sleep or workout, for the sources that do not send such values themselves. Summaries, day, week and month reads of `/timeseries`, and the sleep and workout statistics a provider did not send are served from these rows, so rollup is on by default.
 
-## Retention Policy
+Turning it off drops the days that change from then on. They are not queued for later: once rollup is on again, only new changes are rolled up, and the days in between stay as they were. Keep it on unless every connected provider sends its own day and session values.
 
-When enabled, data older than **Delete data older than N days** is permanently deleted. Set the threshold between 1 and 7300 days.
+## Deletion
 
-- Without archival, rows are deleted directly from the live table.
-- With archival, only archived aggregates are deleted. Live rows are always archived first.
+When enabled, samples of local days older than **Delete samples older than N days** are permanently deleted, whole days at a time, at 03:00 UTC. Set the window between 1 and 7300 days; the number can be typed before the switch is turned on.
+
+- With rollup on, a day is rolled up right before its samples go, so its day and session rows stay. Those rows are never recomputed again: a sample that arrives late for a deleted day only fills a row the day lacks.
+- With rollup off, the samples go and nothing stands in for them.
 
 Deletion is irreversible.
 
-If the retention threshold is lower than or equal to the archival threshold, the page shows a warning: data would be deleted before it can be archived, so archival is effectively disabled. Fix the thresholds before saving.
-
 ## Manual Trigger
 
-The archival and retention job runs on a daily schedule. **Run Now** executes it immediately with the currently saved policies, which is useful right after changing thresholds or when validating the effect on storage.
+**Run Now** rolls up the days still queued and, with deletion on, deletes the samples past the window, with the currently saved policies. It runs in the background in batches, and the space it frees is reused by new rows rather than handed back, so the sizes above may not drop at once.

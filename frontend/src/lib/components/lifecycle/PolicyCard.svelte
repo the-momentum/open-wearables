@@ -34,6 +34,7 @@
 	} = $props();
 
 	const fieldId = $props.id();
+	const noteId = `${fieldId}-note`;
 </script>
 
 <Card {icon} {title} {description}>
@@ -54,12 +55,13 @@
 					{max}
 					step="1"
 					bind:value={days}
+					aria-describedby={enabled ? undefined : noteId}
 					class="{FIELD} w-24 px-3 tabular-nums"
 				/>
 				<span>days</span>
 			</div>
 			{#if !enabled}
-				<p class="text-sm text-muted-foreground">{off}</p>
+				<p id={noteId} class="text-sm text-muted-foreground">{off}</p>
 			{/if}
 		</div>
 	{:else}

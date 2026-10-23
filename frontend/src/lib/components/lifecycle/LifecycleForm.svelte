@@ -17,11 +17,15 @@
 
 	const saved = $derived(lifecycle.settings);
 
-	// Re-derived when a save comes back. The days outlive their switch, so
-	// turning deletion off and on again keeps the number.
+	// Re-derived when a save comes back.
 	let rollupOn = $derived(saved.rollup_enabled);
 	let retainOn = $derived(saved.delete_after_days !== null);
-	let retainDays = $derived<number | null>(saved.delete_after_days ?? 365);
+	// The days outlive their switch: a number typed while deletion is off is kept across saves,
+	// and only a saved window replaces it.
+	let retainDays = $state<number | null>(lifecycle.settings.delete_after_days ?? 365);
+	$effect(() => {
+		if (saved.delete_after_days !== null) retainDays = saved.delete_after_days;
+	});
 
 	const policy: Policy = $derived({
 		rollup: rollupOn,
@@ -47,7 +51,7 @@
 			description="Every night, the days whose samples changed are summed up into one row a day per series, and one per sleep or workout. Summaries read these rows; the samples stay until deletion removes them."
 			toggle="Roll up samples"
 			on="On - changed days are rolled up at 03:00 UTC."
-			off="Off - nothing is rolled up, so deletion removes samples for good."
+			off="Off - the days that change are dropped, not kept for later: summaries and day reads for sources without provider day values stop at the last rolled-up day, and deletion removes samples for good."
 			bind:enabled={rollupOn}
 		/>
 
