@@ -15420,6 +15420,12 @@
             "title": "Is Enabled",
             "description": "Whether provider is enabled by admin"
           },
+          "credentials_configured": {
+            "type": "boolean",
+            "title": "Credentials Configured",
+            "description": "Whether the OAuth client ID and secret are set. Always true for SDK-only providers.",
+            "default": true
+          },
           "icon_url": {
             "type": "string",
             "title": "Icon Url",
