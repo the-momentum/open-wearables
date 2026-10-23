@@ -24,7 +24,8 @@ async def get_sleep_summary(
     Get daily sleep summaries for a user within a date range.
 
     This tool retrieves daily sleep summaries including start time, end time,
-    duration, and sleep stages (if available from the wearable device).
+    duration, and the sleep-stage totals the wearable reports (awake, light, deep
+    and REM minutes), plus the other per-day metrics the backend returns.
 
     Args:
         user_id: UUID of the user. Use get_users to discover available users.
@@ -37,7 +38,10 @@ async def get_sleep_summary(
         A dictionary containing:
         - user: Information about the user (id, first_name, last_name)
         - period: The date range queried (start, end)
-        - records: List of sleep records with date, start_datetime, end_datetime, duration
+        - records: List of sleep records, one per day, carrying every field the
+          backend returns (stages, efficiency_percent, time_in_bed_minutes,
+          total_duration_minutes, sessions, naps, HRV/SpO2, ...). See the values
+          passed through below; fields the provider does not report are null.
         - summary: Aggregate statistics (avg_duration, total_nights, etc.)
 
     Example response:
@@ -49,7 +53,24 @@ async def get_sleep_summary(
                     "date": "2026-01-11",
                     "start_datetime": "2026-01-11T23:15:00+00:00",
                     "end_datetime": "2026-01-12T07:30:00+00:00",
+                    "zone_offset": "+00:00",
                     "duration_minutes": 495,
+                    "total_duration_minutes": 520,
+                    "time_in_bed_minutes": 540,
+                    "efficiency_percent": 91.7,
+                    "stages": {
+                        "awake_minutes": 15,
+                        "light_minutes": 250,
+                        "deep_minutes": 90,
+                        "rem_minutes": 155
+                    },
+                    "interruptions_count": 3,
+                    "nap_count": 1,
+                    "nap_duration_minutes": 25,
+                    "sessions": [{"start_time": "...", "end_time": "...", "duration_minutes": 495, "is_nap": false}],
+                    "avg_heart_rate_bpm": 58,
+                    "avg_hrv_sdnn_ms": 45.2,
+                    "avg_spo2_percent": 96.5,
                     "source": "whoop"
                 }
             ],
@@ -71,6 +92,11 @@ async def get_sleep_summary(
         - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
         - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically
           spans midnight, so end_datetime is often the day after start_datetime.
+        - 'stages' holds the night's totals in minutes when the wearable reports sleep
+          stages; it is null for providers that do not. Use it to answer deep/REM/light
+          questions.
+        - For the individual stage segments (the order the stages occurred in) use the
+          sleep-stage intervals from the events API; this tool returns per-day totals only.
         - The 'source' field indicates which wearable provided the data (whoop, garmin, etc.)
     """
     try:
@@ -103,16 +129,16 @@ async def get_sleep_summary(
             if duration is not None:
                 durations.append(duration)
 
-            source = record.get("source", {})
-            records.append(
-                {
-                    "date": str(record.get("date")),
-                    "start_datetime": normalize_datetime(record.get("start_time")),
-                    "end_datetime": normalize_datetime(record.get("end_time")),
-                    "duration_minutes": duration,
-                    "source": source.get("provider") if isinstance(source, dict) else source,
-                }
-            )
+            # Carry the whole summary through instead of listing fields: the endpoint
+            # already returns the stage totals and the other per-day metrics, and
+            # rebuilding the record here is what silently dropped them.
+            record_out = dict(record)
+            source = record_out.pop("source", None)
+            record_out["date"] = str(record_out.get("date"))
+            record_out["start_datetime"] = normalize_datetime(record_out.pop("start_time", None))
+            record_out["end_datetime"] = normalize_datetime(record_out.pop("end_time", None))
+            record_out["source"] = source.get("provider") if isinstance(source, dict) else source
+            records.append(record_out)
 
         # Calculate summary statistics
         summary = {

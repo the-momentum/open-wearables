@@ -298,3 +298,164 @@ async def test_get_menstrual_cycles_handles_empty_data(httpx_mock: HTTPXMock) ->
     assert result["summary"]["avg_cycle_length_days"] is None
     assert result["summary"]["phase_types"] is None
     assert result["summary"]["latest"] is None
+
+
+async def test_get_sleep_summary_carries_stage_totals_through(httpx_mock: HTTPXMock) -> None:
+    """Sleep stages and the other per-day summary fields reach the caller instead of being dropped."""
+    httpx_mock.add_response(
+        method="GET",
+        url=f"https://api.test.com/api/v1/users/{USER_ID}",
+        json=USER_PAYLOAD,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/summaries/sleep"
+            "?start_date=2026-01-01&end_date=2026-01-07&limit=100"
+        ),
+        json={
+            "data": [
+                {
+                    "date": "2026-01-05",
+                    "start_time": "2026-01-04T23:15:00Z",
+                    "end_time": "2026-01-05T07:30:00Z",
+                    "zone_offset": "+00:00",
+                    "duration_minutes": 495,
+                    "total_duration_minutes": 520,
+                    "time_in_bed_minutes": 540,
+                    "efficiency_percent": 91.7,
+                    "stages": {
+                        "awake_minutes": 15,
+                        "light_minutes": 250,
+                        "deep_minutes": 90,
+                        "rem_minutes": 155,
+                    },
+                    "interruptions_count": 3,
+                    "nap_count": 1,
+                    "nap_duration_minutes": 25,
+                    "sessions": [
+                        {
+                            "start_time": "2026-01-04T23:15:00Z",
+                            "end_time": "2026-01-05T07:30:00Z",
+                            "zone_offset": "+00:00",
+                            "duration_minutes": 495,
+                            "is_nap": False,
+                        }
+                    ],
+                    "avg_heart_rate_bpm": 58,
+                    "avg_hrv_sdnn_ms": 45.2,
+                    "avg_hrv_rmssd_ms": 42.0,
+                    "avg_respiratory_rate": 14.5,
+                    "avg_spo2_percent": 96.5,
+                    "source": {"provider": "apple", "source": "Connect", "device": "iPhone15,2"},
+                }
+            ],
+            "pagination": {"next_cursor": None, "previous_cursor": None, "total_count": 1},
+            "metadata": {},
+        },
+    )
+
+    result = await get_sleep_summary(user_id=USER_ID, start_date="2026-01-01", end_date="2026-01-07")
+
+    assert len(result["records"]) == 1
+    record = result["records"][0]
+
+    assert record["stages"] == {
+        "awake_minutes": 15,
+        "light_minutes": 250,
+        "deep_minutes": 90,
+        "rem_minutes": 155,
+    }
+    # The pre-existing keys keep their shape
+    assert record["date"] == "2026-01-05"
+    assert record["start_datetime"] == "2026-01-04T23:15:00+00:00"
+    assert record["end_datetime"] == "2026-01-05T07:30:00+00:00"
+    assert record["duration_minutes"] == 495
+    assert record["source"] == "apple"
+    # The raw start_time/end_time keys are replaced by the normalized pair
+    assert "start_time" not in record
+    assert "end_time" not in record
+    # The remaining per-day fields are carried through untouched
+    assert record["efficiency_percent"] == 91.7
+    assert record["time_in_bed_minutes"] == 540
+    assert record["total_duration_minutes"] == 520
+    assert record["zone_offset"] == "+00:00"
+    assert record["nap_count"] == 1
+    assert record["interruptions_count"] == 3
+    assert record["avg_hrv_sdnn_ms"] == 45.2
+    assert record["avg_spo2_percent"] == 96.5
+    assert record["sessions"][0]["is_nap"] is False
+
+
+async def test_get_sleep_summary_handles_missing_stages(httpx_mock: HTTPXMock) -> None:
+    """Providers without sleep stages return null for the stage totals, not an error."""
+    httpx_mock.add_response(
+        method="GET",
+        url=f"https://api.test.com/api/v1/users/{USER_ID}",
+        json=USER_PAYLOAD,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/summaries/sleep"
+            "?start_date=2026-01-01&end_date=2026-01-07&limit=100"
+        ),
+        json={
+            "data": [
+                {
+                    "date": "2026-01-05",
+                    "start_time": "2026-01-04T23:15:00Z",
+                    "end_time": "2026-01-05T07:30:00Z",
+                    "duration_minutes": 495,
+                    "stages": None,
+                    "source": {"provider": "whoop"},
+                }
+            ],
+            "pagination": {"next_cursor": None, "previous_cursor": None, "total_count": 1},
+            "metadata": {},
+        },
+    )
+
+    result = await get_sleep_summary(user_id=USER_ID, start_date="2026-01-01", end_date="2026-01-07")
+
+    record = result["records"][0]
+    assert record["stages"] is None
+    assert record["duration_minutes"] == 495
+    assert result["summary"]["total_nights"] == 1
+
+
+async def test_get_sleep_summary_sends_dates_unchanged(httpx_mock: HTTPXMock) -> None:
+    """Date-only bounds are passed to the backend as given; the API already spans the whole end day."""
+    httpx_mock.add_response(
+        method="GET",
+        url=f"https://api.test.com/api/v1/users/{USER_ID}",
+        json=USER_PAYLOAD,
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=(
+            f"https://api.test.com/api/v1/users/{USER_ID}/summaries/sleep"
+            "?start_date=2026-01-01&end_date=2026-01-07&limit=100"
+        ),
+        json={
+            "data": [
+                {
+                    # Sleep that ends on the last requested day must be included
+                    "date": "2026-01-07",
+                    "start_time": "2026-01-06T23:00:00Z",
+                    "end_time": "2026-01-07T07:00:00Z",
+                    "duration_minutes": 480,
+                    "stages": {"awake_minutes": 10, "light_minutes": 260, "deep_minutes": 80, "rem_minutes": 130},
+                    "source": {"provider": "apple"},
+                }
+            ],
+            "pagination": {"next_cursor": None, "previous_cursor": None, "total_count": 1},
+            "metadata": {},
+        },
+    )
+
+    result = await get_sleep_summary(user_id=USER_ID, start_date="2026-01-01", end_date="2026-01-07")
+
+    assert result["period"] == {"start": "2026-01-01", "end": "2026-01-07"}
+    assert result["records"][0]["date"] == "2026-01-07"
+    assert result["records"][0]["stages"]["deep_minutes"] == 80
