@@ -1,6 +1,6 @@
 """Withings 24/7 data: body measures (``getmeas``), daily activity (``getactivity``),
 intraday activity (``getintradayactivity``) and sleep (``getsummary`` for the night's
-totals, ``get`` for its hypnogram). Continuous metrics become ``DataPointSeries``
+totals, ``get`` for its hypnogram). Continuous metrics become ``SeriesSample``
 samples; sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 """
 

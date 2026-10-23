@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, ProviderPriority
+from app.models import DataSource, ProviderPriority, SeriesSample
 from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
@@ -115,7 +115,7 @@ def _page(
 class TimeSeriesService(
     AppService[
         DataPointSeriesRepository,
-        DataPointSeries,
+        SeriesSample,
         TimeSeriesSampleCreate,
         TimeSeriesSampleUpdate,
     ],
@@ -123,7 +123,7 @@ class TimeSeriesService(
     """Coordinated access to unified device time series samples."""
 
     def __init__(self, log: Logger):
-        super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
+        super().__init__(crud_model=DataPointSeriesRepository, model=SeriesSample, log=log)
         self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
 

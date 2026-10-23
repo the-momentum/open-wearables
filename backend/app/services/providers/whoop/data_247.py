@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord
+from app.models import DataSource, EventRecord, SeriesSample
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
@@ -564,14 +564,14 @@ class Whoop247Data(Base247DataTemplate):
         """Get the most recent value for a series type for this user/provider."""
         type_id = get_series_type_id(series_type)
         result = (
-            db.query(DataPointSeries.value)
-            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
+            db.query(SeriesSample.value)
+            .join(DataSource, SeriesSample.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
                 DataSource.source == self.provider_name,
-                DataPointSeries.series_type_definition_id == type_id,
+                SeriesSample.series_type_definition_id == type_id,
             )
-            .order_by(DataPointSeries.recorded_at.desc())
+            .order_by(SeriesSample.recorded_at.desc())
             .first()
         )
         return result[0] if result else None
@@ -581,7 +581,7 @@ class Whoop247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
     ) -> WriteCounts:
-        """Fetch body measurements and save height/weight to data_point_series.
+        """Fetch body measurements and save height/weight to series_sample.
 
         Only saves if the value has changed from the most recent entry.
         Returns the rows written, split into new vs updated.
@@ -754,7 +754,7 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_recovery: dict[str, Any],
     ) -> WriteCounts:
-        """Save normalized recovery data to database as DataPointSeries.
+        """Save normalized recovery data to database as SeriesSample.
 
         Saves up to 5 metrics per recovery record:
         - recovery_score

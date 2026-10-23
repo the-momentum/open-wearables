@@ -10,7 +10,7 @@ class MetricCount(BaseModel):
 class DataPointsInfo(BaseModel):
     """Data points information.
 
-    ``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive
+    ``count`` is the live (hot) ``series_sample`` table; ``archived`` is the separate archive
     table. Both are approximate on a cold cache / from planner statistics.
     """
 

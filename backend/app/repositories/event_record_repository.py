@@ -29,7 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
+from app.models import DataSource, EventRecord, SeriesSample, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.repositories import (
@@ -868,28 +868,26 @@ class EventRecordRepository(
         # [min_start_time, max_end_time) — exact window, no date-grouping mismatch.
         physio_lateral = lateral(
             select(
-                func.avg(case((DataPointSeries.series_type_definition_id == hr_id, DataPointSeries.value))).label(
-                    "avg_hr"
-                ),
-                func.avg(case((DataPointSeries.series_type_definition_id == sdnn_id, DataPointSeries.value))).label(
+                func.avg(case((SeriesSample.series_type_definition_id == hr_id, SeriesSample.value))).label("avg_hr"),
+                func.avg(case((SeriesSample.series_type_definition_id == sdnn_id, SeriesSample.value))).label(
                     "avg_hrv_sdnn"
                 ),
-                func.avg(case((DataPointSeries.series_type_definition_id == rmssd_id, DataPointSeries.value))).label(
+                func.avg(case((SeriesSample.series_type_definition_id == rmssd_id, SeriesSample.value))).label(
                     "avg_hrv_rmssd"
                 ),
-                func.avg(case((DataPointSeries.series_type_definition_id == resp_id, DataPointSeries.value))).label(
+                func.avg(case((SeriesSample.series_type_definition_id == resp_id, SeriesSample.value))).label(
                     "avg_resp"
                 ),
-                func.avg(case((DataPointSeries.series_type_definition_id == spo2_id, DataPointSeries.value))).label(
+                func.avg(case((SeriesSample.series_type_definition_id == spo2_id, SeriesSample.value))).label(
                     "avg_spo2"
                 ),
             )
-            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
+            .join(DataSource, SeriesSample.data_source_id == DataSource.id)
             .where(
                 DataSource.user_id == user_id,
-                DataPointSeries.series_type_definition_id.in_([hr_id, sdnn_id, rmssd_id, resp_id, spo2_id]),
-                DataPointSeries.recorded_at >= subquery.c.min_start_time,
-                DataPointSeries.recorded_at < subquery.c.max_end_time,
+                SeriesSample.series_type_definition_id.in_([hr_id, sdnn_id, rmssd_id, resp_id, spo2_id]),
+                SeriesSample.recorded_at >= subquery.c.min_start_time,
+                SeriesSample.recorded_at < subquery.c.max_end_time,
             )
         )
 
@@ -972,7 +970,7 @@ class EventRecordRepository(
                     # Nap tracking
                     "nap_count": int(row.nap_count) if row.nap_count is not None else None,
                     "nap_duration_minutes": int(row.nap_duration) // 60 if row.nap_duration is not None else None,
-                    # Physio averages from data_point_series
+                    # Physio averages from series_sample
                     "avg_hr": float(row.avg_hr) if row.avg_hr is not None else None,
                     "avg_hrv_sdnn": float(row.avg_hrv_sdnn) if row.avg_hrv_sdnn is not None else None,
                     "avg_hrv_rmssd": float(row.avg_hrv_rmssd) if row.avg_hrv_rmssd is not None else None,

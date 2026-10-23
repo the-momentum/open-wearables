@@ -8,7 +8,7 @@ from types import ModuleType
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource, EventRecord, HealthScore
+from app.models import DataSource, EventRecord, HealthScore, SeriesSample
 from app.schemas.enums import ProviderName
 from tests.factories import (
     DataPointSeriesFactory,
@@ -121,7 +121,7 @@ class TestMergeDuplicateDataSources:
 
         assert result["merged_sources"] == 1
         assert db.query(DataSource).filter(DataSource.id == platform_id).one_or_none() is None
-        assert db.query(DataPointSeries).filter(DataPointSeries.data_source_id == target.id).count() == 5
+        assert db.query(SeriesSample).filter(SeriesSample.data_source_id == target.id).count() == 5
 
     def test_duplicate_events_are_removed_in_batches(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(merge_module, "_BATCH_SIZE", 2)

@@ -38,8 +38,8 @@ class ArchivalSettingUpdate(BaseModel):
 class StorageEstimate(BaseModel):
     """Storage sizes across all database tables."""
 
-    live_data_bytes: int = Field(description="Data size of data_point_series table (bytes)")
-    live_index_bytes: int = Field(description="Index size of data_point_series table (bytes)")
+    live_data_bytes: int = Field(description="Data size of series_sample table (bytes)")
+    live_index_bytes: int = Field(description="Index size of series_sample table (bytes)")
     archive_data_bytes: int = Field(description="Data size of archive table (bytes)")
     archive_index_bytes: int = Field(description="Index size of archive table (bytes)")
     other_tables_bytes: int = Field(description="Total size of all other tables (bytes)")

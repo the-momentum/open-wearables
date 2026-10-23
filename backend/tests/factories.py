@@ -20,7 +20,6 @@ from factory import LazyAttribute, LazyFunction, Sequence
 from app.models import (
     ApiKey,
     Application,
-    DataPointSeries,
     DataSource,
     Developer,
     EventRecord,
@@ -28,6 +27,7 @@ from app.models import (
     MealDetails,
     PersonalRecord,
     ProviderSetting,
+    SeriesSample,
     SeriesTypeDefinition,
     SleepDetails,
     User,
@@ -467,17 +467,17 @@ class EventRecordFactory(BaseFactory):
 
 
 class DataPointSeriesFactory(BaseFactory):
-    """Factory for DataPointSeries model."""
+    """Factory for SeriesSample model."""
 
     class Meta:
-        model = DataPointSeries
+        model = SeriesSample
 
     id = LazyFunction(uuid4)
     value = LazyFunction(lambda: Decimal("72.0"))
     recorded_at = LazyFunction(lambda: datetime.now(timezone.utc))
 
     @classmethod
-    def _create(cls, model_class: type[DataPointSeries], *args: Any, **kwargs: Any) -> DataPointSeries:
+    def _create(cls, model_class: type[SeriesSample], *args: Any, **kwargs: Any) -> SeriesSample:
         """Override create to handle relationships."""
         # Support both "mapping" (legacy) and "data_source" parameter names
         data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)

@@ -76,7 +76,7 @@ class UnsupportedGranularityError(RuntimeError):
 
 
 class GoogleHealth247Data(Base247DataTemplate):
-    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as DataPointSeries."""
+    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as SeriesSample."""
 
     # rollUp enforces windowSize * pageSize <= the data type's max range; list default page.
     MAX_PAGE_SIZE = 10_000

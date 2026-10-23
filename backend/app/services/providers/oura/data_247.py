@@ -312,7 +312,7 @@ class Oura247Data(Base247DataTemplate):
         normalized: tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]],
         log_ctx: LogContext | None = None,
     ) -> WriteCounts:
-        """Save daily activity data as DataPointSeries and health scores."""
+        """Save daily activity data as SeriesSample and health scores."""
         provider_user_id, trace_id = log_ctx or LogContext()
         activity_samples, health_scores = normalized
         samples: list[TimeSeriesSampleCreate] = []
@@ -401,7 +401,7 @@ class Oura247Data(Base247DataTemplate):
         normalized: list[tuple[datetime, float]],
         log_ctx: LogContext | None = None,
     ) -> WriteCounts:
-        """Save daily cardiovascular age data as DataPointSeries."""
+        """Save daily cardiovascular age data as SeriesSample."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
 
@@ -539,7 +539,7 @@ class Oura247Data(Base247DataTemplate):
         normalized: tuple[list[dict[str, Any]], list[HealthScoreCreate]],
         log_ctx: LogContext | None = None,
     ) -> WriteCounts:
-        """Save normalized readiness data as DataPointSeries and health scores."""
+        """Save normalized readiness data as SeriesSample and health scores."""
         provider_user_id, trace_id = log_ctx or LogContext()
         recovery_metrics, health_scores = normalized
 
@@ -974,7 +974,7 @@ class Oura247Data(Base247DataTemplate):
         raw_data: list[dict[str, Any]],
         log_ctx: LogContext | None = None,
     ) -> WriteCounts:
-        """Save SpO2 data as DataPointSeries."""
+        """Save SpO2 data as SeriesSample."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
@@ -1079,7 +1079,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         raw_data: list[dict[str, Any]],
     ) -> WriteCounts:
-        """Save heart rate samples as DataPointSeries."""
+        """Save heart rate samples as SeriesSample."""
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
             bpm = item.get("bpm")
@@ -1156,7 +1156,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         raw_data: dict[str, Any],
     ) -> WriteCounts:
-        """Save personal info (weight, height) as DataPointSeries.
+        """Save personal info (weight, height) as SeriesSample.
 
         Only saves when the value has changed from the most recent stored entry.
         """
@@ -1232,7 +1232,7 @@ class Oura247Data(Base247DataTemplate):
         raw_data: list[dict[str, Any]],
         log_ctx: LogContext | None = None,
     ) -> WriteCounts:
-        """Save Vo2 data as DataPointSeries."""
+        """Save Vo2 data as SeriesSample."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:

@@ -12343,7 +12343,7 @@
           "archived"
         ],
         "title": "DataPointsInfo",
-        "description": "Data points information.\n\n``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive\ntable. Both are approximate on a cold cache / from planner statistics."
+        "description": "Data points information.\n\n``count`` is the live (hot) ``series_sample`` table; ``archived`` is the separate archive\ntable. Both are approximate on a cold cache / from planner statistics."
       },
       "DataSourceListResponse": {
         "properties": {
@@ -17003,12 +17003,12 @@
           "live_data_bytes": {
             "type": "integer",
             "title": "Live Data Bytes",
-            "description": "Data size of data_point_series table (bytes)"
+            "description": "Data size of series_sample table (bytes)"
           },
           "live_index_bytes": {
             "type": "integer",
             "title": "Live Index Bytes",
-            "description": "Index size of data_point_series table (bytes)"
+            "description": "Index size of series_sample table (bytes)"
           },
           "archive_data_bytes": {
             "type": "integer",

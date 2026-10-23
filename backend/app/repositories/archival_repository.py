@@ -10,7 +10,7 @@ from sqlalchemy import ColumnElement, Date, Subquery, case, cast, func, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataPointSeriesArchive, DataSource
+from app.models import DataPointSeriesArchive, DataSource, SeriesSample
 from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.repositories import timeline_key_column, utc_bucket_start
@@ -95,7 +95,7 @@ class DataPointSeriesArchiveRepository:
         other_bytes = 0
 
         for row in result:
-            if row.relname == "data_point_series":
+            if row.relname == "series_sample":
                 live_data_bytes = row.data_bytes
                 live_index_bytes = row.index_bytes
                 live_rows = row.row_count
@@ -112,7 +112,7 @@ class DataPointSeriesArchiveRepository:
             span = db.execute(
                 text("""
                     SELECT EXTRACT(DAY FROM MAX(recorded_at) - MIN(recorded_at))::int AS span
-                    FROM data_point_series
+                    FROM series_sample
                 """)
             ).scalar()
             live_span_days = max(span or 0, 1)
@@ -174,8 +174,8 @@ class DataPointSeriesArchiveRepository:
 
             # Step 1: Find data_source_ids with archivable data (batch by source)
             source_ids = (
-                db.query(DataPointSeries.data_source_id)
-                .filter(cast(DataPointSeries.recorded_at, Date) < cutoff_date)
+                db.query(SeriesSample.data_source_id)
+                .filter(cast(SeriesSample.recorded_at, Date) < cutoff_date)
                 .distinct()
                 .limit(10)
                 .all()
@@ -190,31 +190,31 @@ class DataPointSeriesArchiveRepository:
             # We'll post-process to select the correct one per type
             raw_aggregates = (
                 db.query(
-                    DataPointSeries.data_source_id,
-                    DataPointSeries.series_type_definition_id,
-                    cast(DataPointSeries.recorded_at, Date).label("date"),
-                    func.avg(DataPointSeries.value).label("avg_value"),
-                    func.min(DataPointSeries.value).label("min_value"),
-                    func.max(DataPointSeries.value).label("max_value"),
-                    func.sum(DataPointSeries.value).label("sum_value"),
+                    SeriesSample.data_source_id,
+                    SeriesSample.series_type_definition_id,
+                    cast(SeriesSample.recorded_at, Date).label("date"),
+                    func.avg(SeriesSample.value).label("avg_value"),
+                    func.min(SeriesSample.value).label("min_value"),
+                    func.max(SeriesSample.value).label("max_value"),
+                    func.sum(SeriesSample.value).label("sum_value"),
                     # Prefer-daily split for SUM series: a daily total must not be added to
                     # its own intraday samples. NULL is_daily_total counts as a sample.
-                    func.sum(case((DataPointSeries.is_daily_total.is_(True), DataPointSeries.value))).label(
+                    func.sum(case((SeriesSample.is_daily_total.is_(True), SeriesSample.value))).label(
                         "daily_sum_value"
                     ),
-                    func.sum(case((DataPointSeries.is_daily_total.isnot(True), DataPointSeries.value))).label(
+                    func.sum(case((SeriesSample.is_daily_total.isnot(True), SeriesSample.value))).label(
                         "sample_sum_value"
                     ),
-                    func.count(DataPointSeries.id).label("sample_count"),
+                    func.count(SeriesSample.id).label("sample_count"),
                 )
                 .filter(
-                    DataPointSeries.data_source_id.in_(source_id_list),
-                    cast(DataPointSeries.recorded_at, Date) < cutoff_date,
+                    SeriesSample.data_source_id.in_(source_id_list),
+                    cast(SeriesSample.recorded_at, Date) < cutoff_date,
                 )
                 .group_by(
-                    DataPointSeries.data_source_id,
-                    DataPointSeries.series_type_definition_id,
-                    cast(DataPointSeries.recorded_at, Date),
+                    SeriesSample.data_source_id,
+                    SeriesSample.series_type_definition_id,
+                    cast(SeriesSample.recorded_at, Date),
                 )
                 .all()
             )
@@ -274,10 +274,10 @@ class DataPointSeriesArchiveRepository:
 
             # Step 5: Delete the live rows we just archived
             deleted_count = (
-                db.query(DataPointSeries)
+                db.query(SeriesSample)
                 .filter(
-                    DataPointSeries.data_source_id.in_(source_id_list),
-                    cast(DataPointSeries.recorded_at, Date) < cutoff_date,
+                    SeriesSample.data_source_id.in_(source_id_list),
+                    cast(SeriesSample.recorded_at, Date) < cutoff_date,
                 )
                 .delete(synchronize_session=False)
             )
@@ -326,14 +326,14 @@ class DataPointSeriesArchiveRepository:
                 break
 
             ids_to_delete = (
-                db.query(DataPointSeries.id)
-                .filter(cast(DataPointSeries.recorded_at, Date) < cutoff_date)
+                db.query(SeriesSample.id)
+                .filter(cast(SeriesSample.recorded_at, Date) < cutoff_date)
                 .limit(ARCHIVE_BATCH_SIZE)
                 .subquery()
             )
             deleted = (
-                db.query(DataPointSeries)
-                .filter(DataPointSeries.id.in_(ids_to_delete))  # ty:ignore[invalid-argument-type]
+                db.query(SeriesSample)
+                .filter(SeriesSample.id.in_(ids_to_delete))  # ty:ignore[invalid-argument-type]
                 .delete(synchronize_session=False)
             )
 

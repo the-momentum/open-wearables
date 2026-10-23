@@ -122,10 +122,10 @@ def test_pydantic_input_value_is_filtered(captured: list[dict[str, Any]]) -> Non
 
 def test_database_error_keeps_its_statement_but_not_the_row(captured: list[dict[str, Any]]) -> None:
     error = IntegrityError(
-        "INSERT INTO data_point_series (value) VALUES (%(value)s)",
+        "INSERT INTO series_sample (value) VALUES (%(value)s)",
         {"value": FAKE_HEART_RATE},
         Exception(
-            'duplicate key value violates unique constraint "uq_data_point_series_source_type_time"\n'
+            'duplicate key value violates unique constraint "uq_series_sample_source_type_time"\n'
             f"DETAIL:  Key (data_source_id, value)=(abc, {FAKE_HEART_RATE}) already exists."
         ),
     )
@@ -133,8 +133,8 @@ def test_database_error_keeps_its_statement_but_not_the_row(captured: list[dict[
     sentry_sdk.flush()
 
     value = captured[0]["exception"]["values"][0]["value"]
-    assert "uq_data_point_series_source_type_time" in value
-    assert "INSERT INTO data_point_series" in value
+    assert "uq_series_sample_source_type_time" in value
+    assert "INSERT INTO series_sample" in value
     assert "[parameters: [Filtered]]" in value
     assert "DETAIL: [Filtered]" in value
     assert str(FAKE_HEART_RATE) not in _dump(captured[0])

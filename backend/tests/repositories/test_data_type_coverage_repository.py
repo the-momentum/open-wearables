@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.backfill_data_type_coverage_task import backfill_data_type_coverage
-from app.models import DataPointSeries, DataPointSeriesArchive, DataTypeCoverage, EventRecord
+from app.models import DataPointSeriesArchive, DataTypeCoverage, EventRecord, SeriesSample
 from app.repositories.archival_repository import BatchedRun
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.repositories.data_source_repository import DataSourceRepository
@@ -65,7 +65,7 @@ def _event(
 class TestSeriesCoverage:
     @pytest.fixture
     def series_repo(self) -> DataPointSeriesRepository:
-        return DataPointSeriesRepository(DataPointSeries)
+        return DataPointSeriesRepository(SeriesSample)
 
     def test_bulk_create_records_span_per_series_type(
         self, db: Session, series_repo: DataPointSeriesRepository
@@ -183,7 +183,7 @@ class TestEventCoverage:
         self, db: Session, event_repo: EventRecordRepository
     ) -> None:
         user = UserFactory()
-        DataPointSeriesRepository(DataPointSeries).bulk_create(db, [_sample(user.id, NOW, SeriesType.heart_rate)])
+        DataPointSeriesRepository(SeriesSample).bulk_create(db, [_sample(user.id, NOW, SeriesType.heart_rate)])
         event_repo.bulk_create(db, [_event(user.id, NOW, NOW + timedelta(hours=1), "workout")])
         db.commit()
 
@@ -336,7 +336,7 @@ class TestCoverageFollowsRemovals:
 
     def test_purging_a_provider_forgets_its_coverage(self, db: Session, event_repo: EventRecordRepository) -> None:
         user = UserFactory()
-        DataPointSeriesRepository(DataPointSeries).bulk_create(db, [_sample(user.id, NOW, SeriesType.heart_rate)])
+        DataPointSeriesRepository(SeriesSample).bulk_create(db, [_sample(user.id, NOW, SeriesType.heart_rate)])
         event_repo.bulk_create(db, [_event(user.id, NOW, NOW + timedelta(hours=1), "workout")])
         db.commit()
 

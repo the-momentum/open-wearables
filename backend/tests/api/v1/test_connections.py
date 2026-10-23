@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource, EventRecord, HealthScore, User, UserConnection, WorkoutDetails
+from app.models import DataSource, EventRecord, HealthScore, SeriesSample, User, UserConnection, WorkoutDetails
 from app.schemas.auth import ConnectionStatus
 from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import (
@@ -698,7 +698,7 @@ class TestDeleteProviderDataEndpoint:
         assert db.query(DataSource).filter_by(user_id=user.id, provider="apple").count() == 0
         assert db.query(EventRecord).filter_by(data_source_id=ds_id).count() == 0
         assert db.query(WorkoutDetails).count() == 0
-        assert db.query(DataPointSeries).filter_by(data_source_id=ds_id).count() == 0
+        assert db.query(SeriesSample).filter_by(data_source_id=ds_id).count() == 0
         assert db.query(HealthScore).filter_by(user_id=user.id, provider="apple").count() == 0
         conn = db.query(UserConnection).filter_by(user_id=user.id, provider="apple").one()
         assert conn.status == ConnectionStatus.REVOKED

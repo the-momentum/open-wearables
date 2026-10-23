@@ -88,7 +88,7 @@ _DETAIL_TABLES = ("sleep_details", "workout_details", "menstrual_cycle_details")
 
 # Per-source tables batched along their unique index (data_source_id, *key), so every batch is an index range
 _BATCHED_TABLES = {
-    "data_point_series": ("series_type_definition_id", "recorded_at"),
+    "series_sample": ("series_type_definition_id", "recorded_at"),
     "data_point_series_archive": ("series_type_definition_id", "bucket_start_at", "aggregation_type"),
 }
 

@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
-from app.models import DataPointSeries, DataSource, EventRecord, MealDetails, WorkoutDetails
+from app.models import DataSource, EventRecord, MealDetails, SeriesSample, WorkoutDetails
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
@@ -1004,8 +1004,8 @@ class TestSDKImportMealCorrelation:
             "data": {"records": records},
         }
 
-    def _user_samples(self, db: Session, user_id: UUID) -> list[DataPointSeries]:
-        return db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user_id).all()
+    def _user_samples(self, db: Session, user_id: UUID) -> list[SeriesSample]:
+        return db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user_id).all()
 
     def test_food_correlation_creates_meal_with_its_nutrients(self, db: Session, import_service: ImportService) -> None:
         """The correlation's nutrient records are stored on the meal, not as samples; a record
@@ -1268,7 +1268,7 @@ class TestSDKImportAndroidFoodCorrelation:
             "dietary_protein": 32.0,
             "dietary_caffeine": 40.0,
         }
-        assert db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
+        assert db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
 
         meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
         assert meals[0].calories_kcal == 550.0

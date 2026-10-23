@@ -7,7 +7,7 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
+from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
 from app.repositories.archival_repository import (
     ArchivalSettingRepository,
@@ -103,7 +103,7 @@ class SummariesService:
     def __init__(self, log: Logger):
         self.logger = log
         self.event_record_repo = EventRecordRepository(EventRecord)
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
         self.user_repo = UserRepository(User)
         self.archival_settings_repo = ArchivalSettingRepository()
         self.archive_repo = DataPointSeriesArchiveRepository()

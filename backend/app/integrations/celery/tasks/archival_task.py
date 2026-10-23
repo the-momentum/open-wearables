@@ -1,7 +1,7 @@
 """Daily data archival and retention Celery task.
 
 Runs once per day (via beat schedule) to:
-1. Aggregate live data_point_series rows older than archive_after_days into daily archive.
+1. Aggregate live series_sample rows older than archive_after_days into daily archive.
 2. Delete archive rows older than delete_after_days.
 
 Both thresholds are configured by the admin via archival_settings.
