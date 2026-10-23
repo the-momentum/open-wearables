@@ -122,7 +122,13 @@ class TimeSeriesQueryParams(SourceFilterParams):
 
     start_datetime: datetime | None = Field(None, description="Lower bound (inclusive) for recorded timestamp")
     end_datetime: datetime | None = Field(None, description="Upper bound (inclusive) for recorded timestamp")
-    limit: int = Field(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Maximum number of samples to return")
+    limit: int = Field(
+        DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description="Maximum number of samples to return; for 1day, 1week and 1month the number of periods, fewer "
+        "when every series of every source is asked for. Follow next_cursor for the rest.",
+    )
     cursor: str | None = Field(
         None,
         description="Pagination cursor (use next_cursor for forward, previous_cursor for backward)",

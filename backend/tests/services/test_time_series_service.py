@@ -9,10 +9,12 @@ Tests cover:
 - Reading time series at raw and downsampled resolutions
 """
 
+import importlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesAggregate
@@ -950,6 +952,47 @@ class TestTimeSeriesServicePeriods:
         result = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
 
         assert ([s.value for s in result.data], result.pagination.has_more) == ([100], False)
+
+    def test_two_provider_rows_on_one_local_day_read_as_the_later_one(self, db: Session) -> None:
+        """A Whoop cycle starting at 23:30 and the next at 01:00 both map to that date; the later wins, every time."""
+        source = DataSourceFactory()
+        day = date(2024, 3, 1)
+        self._day(db, source, SeriesType.steps, day, ComputedBy.PROVIDER, "+02:00", sum=Decimal("100"))
+        self._day(db, source, SeriesType.steps, day, ComputedBy.PROVIDER, "-05:00", sum=Decimal("200"))
+        params = self._params(Resolution.ONE_DAY, day, day + timedelta(days=1))
+
+        results = [timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params) for _ in range(3)]
+
+        assert [[s.value for s in r.data] for r in results] == [[200], [200], [200]]
+
+    def test_the_first_day_is_found_even_when_an_offset_puts_a_later_day_first_in_utc(self, db: Session) -> None:
+        """The day at +14:00 starts earlier in UTC than the previous day at -12:00; the range still opens on Mar 1."""
+        source = DataSourceFactory()
+        self._day(db, source, SeriesType.steps, date(2024, 3, 2), ComputedBy.PROVIDER, "+14:00", sum=Decimal("2"))
+        self._day(db, source, SeriesType.steps, date(2024, 3, 1), ComputedBy.PROVIDER, "-12:00", sum=Decimal("1"))
+        params = self._params(Resolution.ONE_DAY, date(2024, 3, 1), date(2024, 3, 3))
+
+        result = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
+
+        assert [s.value for s in result.data] == [1, 2]
+
+    def test_a_page_holds_only_as_many_periods_as_fit_its_row_budget(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # app.services exports the service instance under the module's name, so patch the module itself.
+        monkeypatch.setattr(importlib.import_module("app.services.timeseries_service"), "_PERIOD_ROWS_PER_PAGE", 2)
+        source = DataSourceFactory()
+        for n in range(3):
+            self._day(db, source, SeriesType.steps, date(2024, 3, 1 + n), ComputedBy.PROVIDER, sum=Decimal(n + 1))
+        params = self._params(Resolution.ONE_DAY, date(2024, 3, 1), date(2024, 3, 4), limit=10)
+
+        first = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
+        second = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.steps], params.model_copy(update={"cursor": first.pagination.next_cursor})
+        )
+
+        assert ([s.value for s in first.data], first.pagination.has_more) == ([1, 2], True)
+        assert ([s.value for s in second.data], second.pagination.has_more) == ([3], False)
 
     def test_samples_carry_their_window(self, db: Session) -> None:
         source = DataSourceFactory()

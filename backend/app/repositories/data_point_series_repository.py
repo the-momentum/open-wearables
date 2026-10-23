@@ -54,6 +54,7 @@ from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.repositories.local_day import OFFSET_REACH
 from app.repositories.repositories import (
     CrudRepository,
     source_filter_conditions,
@@ -772,11 +773,10 @@ class DataPointSeriesRepository(
                 SeriesAggregate.period_start,
             )
             available = [SeriesAggregate.period_kind == PeriodKind.DAY]
-            # A local day's period_start lies up to 14 hours either side of the UTC instant asked for.
             if start is not None:
-                available.append(at >= start - timedelta(hours=14))
+                available.append(at >= start - OFFSET_REACH)
             if end is not None:
-                available.append(at < end + timedelta(hours=14))
+                available.append(at < end + OFFSET_REACH)
         else:
             source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
             available = [at >= start] if start is not None else []
@@ -805,6 +805,15 @@ class DataPointSeriesRepository(
             if type_id not in winners or rank_of[source_id] < rank_of[winners[type_id]]:
                 winners[type_id] = source_id
         return winners
+
+    def count_sources(self, db_session: DbSession, user_id: UUID, params: TimeSeriesQueryParams) -> int:
+        """How many of the caller's data sources a read may touch, honouring its source filters."""
+        return (
+            db_session.query(func.count(DataSource.id))
+            .filter(DataSource.user_id == user_id, *source_filter_conditions(params, DataSource.id))
+            .scalar()
+            or 0
+        )
 
     def _ranked_sources(
         self,

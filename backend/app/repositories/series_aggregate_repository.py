@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, timedelta
 from uuid import UUID
 
 from sqlalchemy import Date, Interval, cast, func, tuple_
@@ -6,12 +6,10 @@ from sqlalchemy.orm import Query
 
 from app.database import DbSession
 from app.models import DataSource, SeriesAggregate
+from app.repositories.local_day import OFFSET_REACH, utc_midnight
 from app.repositories.repositories import source_filter_conditions
 from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
-
-# A local day starts up to 14 hours either side of its UTC midnight.
-_OFFSET_REACH = timedelta(hours=14)
 
 LOCAL_DAY = cast(
     func.timezone("UTC", SeriesAggregate.period_start) + cast(SeriesAggregate.zone_offset, Interval), Date
@@ -41,6 +39,9 @@ class SeriesAggregateRepository:
                 SeriesAggregate.series_type_definition_id,
                 LOCAL_DAY,
                 (SeriesAggregate.computed_by == ComputedBy.PROVIDER).desc(),
+                # Two provider rows can land on one local day (a Whoop cycle starting 23:30, the next at 01:00
+                # the same date); the later one is the one the provider wrote last.
+                SeriesAggregate.period_start.desc(),
             )
             .all()
         )
@@ -59,7 +60,14 @@ class SeriesAggregateRepository:
     ) -> date | None:
         """The earliest (or latest) local day in the range that holds a row, None if none does."""
         query = self._days(db_session, user_id, params, types, first_day, last_day, source_by_type)
-        return query.with_entities(func.max(LOCAL_DAY) if latest else func.min(LOCAL_DAY)).scalar()
+        # The index gives the edge instant at once; the edge day lies among the rows within a day of it,
+        # since an offset shifts a row's day by at most that. MIN over the day expression would read the range.
+        start = SeriesAggregate.period_start
+        edge_start = query.with_entities(func.max(start) if latest else func.min(start)).scalar()
+        if edge_start is None:
+            return None
+        near = query.filter(start >= edge_start - 2 * OFFSET_REACH, start <= edge_start + 2 * OFFSET_REACH)
+        return near.with_entities(func.max(LOCAL_DAY) if latest else func.min(LOCAL_DAY)).scalar()
 
     @staticmethod
     def _days(
@@ -78,8 +86,8 @@ class SeriesAggregateRepository:
                 DataSource.user_id == user_id,
                 SeriesAggregate.period_kind == PeriodKind.DAY,
                 # The bounds keep the index in play; the local day decides.
-                SeriesAggregate.period_start >= _utc_midnight(first_day) - _OFFSET_REACH,
-                SeriesAggregate.period_start < _utc_midnight(last_day) + timedelta(days=1) + _OFFSET_REACH,
+                SeriesAggregate.period_start >= utc_midnight(first_day) - OFFSET_REACH,
+                SeriesAggregate.period_start < utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
                 first_day <= LOCAL_DAY,
                 last_day >= LOCAL_DAY,
                 *source_filter_conditions(params, SeriesAggregate.data_source_id),
@@ -94,7 +102,3 @@ class SeriesAggregateRepository:
                 )
             )
         return query
-
-
-def _utc_midnight(day: date) -> datetime:
-    return datetime.combine(day, time(), timezone.utc)

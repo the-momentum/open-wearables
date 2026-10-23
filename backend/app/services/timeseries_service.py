@@ -11,7 +11,7 @@ from sqlalchemy import event as sa_event
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesSample
 from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
-from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
+from app.repositories.data_point_series_repository import SERIES_TYPE_IDS, AggregatedSample, WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.series_aggregate_repository import SeriesAggregateRepository
 from app.schemas.enums import (
@@ -105,6 +105,8 @@ def _to_sample(
 
 # Open ends of a period read; far enough from date.min/max that a day's UTC bounds still fit.
 _NO_START, _NO_END = date(1900, 1, 1), date(9000, 1, 1)
+# Day rows one page of periods may load, as the bucket path caps its rows.
+_PERIOD_ROWS_PER_PAGE = 5000
 
 
 def _period_of(day: date, kind: PeriodKind) -> date:
@@ -359,7 +361,11 @@ class TimeSeriesService(
         first day.
         """
         kind = PERIOD_RESOLUTIONS[params.resolution]
-        limit = params.limit or 50
+        # A period is one row per source and series; with every series of every source asked for, a page of
+        # `limit` periods could be hundreds of thousands of rows, so the page shrinks to what fits.
+        n_sources = max(1, self.crud.count_sources(db_session, user_id, params))
+        n_types = len(types) or len(SERIES_TYPE_IDS)
+        limit = max(1, min(params.limit or 50, _PERIOD_ROWS_PER_PAGE // (n_sources * n_types)))
         first_day = params.start_datetime.date() if params.start_datetime else _NO_START
         last_day = (params.end_datetime - timedelta(microseconds=1)).date() if params.end_datetime else _NO_END
         backward = False
