@@ -650,3 +650,14 @@ class TestDailyLifecycleJob:
 
         assert db.query(SeriesSample).count() == 0
         assert db.query(SeriesAggregate).count() == 0
+
+    @pytest.mark.parametrize(
+        ("rollup_enabled", "delete_after_days", "growth"),
+        [(True, None, "linear"), (False, 30, "bounded"), (True, 30, "linear_efficient")],
+    )
+    def test_growth_class_follows_what_deletion_leaves_behind(
+        self, db: Session, rollup_enabled: bool, delete_after_days: int | None, growth: str
+    ) -> None:
+        self._settings(db, rollup_enabled=rollup_enabled, delete_after_days=delete_after_days)
+
+        assert archival_service.get_settings(db).storage.growth_class == growth
