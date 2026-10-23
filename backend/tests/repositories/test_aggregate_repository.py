@@ -924,6 +924,24 @@ class TestDailyActivity:
 
         assert [day["steps_sum"] for day in days] == [5000]
 
+    def test_a_devices_sources_weigh_the_same_in_its_heart_rate(self, db: Session) -> None:
+        """A provider's day (count 1) next to ours from three samples: the mean of the two days, not of four."""
+        user = UserFactory()
+        first = DataSourceFactory(user=user, device_model="Watch", device_id="a")
+        second = DataSourceFactory(user=user, device_model="Watch", device_id="b")
+        provider_day(db, first, SeriesType.heart_rate, DAY, avg=Decimal("80"))
+        for hour in (8, 12, 16):
+            DataPointSeriesFactory(
+                mapping=second, recorded_at=datetime(2099, 1, 1, hour, tzinfo=timezone.utc), value=Decimal("60")
+            )
+        roll_up_everything(db)
+
+        (day,) = daily_activity(
+            db, user.id, datetime(2099, 1, 1, tzinfo=timezone.utc), datetime(2099, 1, 2, tzinfo=timezone.utc)
+        )
+
+        assert day["hr_avg"] == 70
+
 
 class TestRollupTask:
     def test_a_run_waits_out_one_already_in_progress(self, db: Session) -> None:

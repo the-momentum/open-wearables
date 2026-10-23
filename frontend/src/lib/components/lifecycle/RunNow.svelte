@@ -37,7 +37,7 @@
 <Card
 	icon={Play}
 	title="Run now"
-	description="Start the rollup and deletion job instead of waiting for the daily schedule."
+	description="Roll up the queued days and run deletion now, instead of waiting for the next run (rollup every 15 minutes, deletion at 03:00 UTC)."
 >
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 		<p class={MICRO}>

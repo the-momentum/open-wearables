@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventRecordAggregate, ProviderPriority
 from app.repositories import AggregateRepository, ProviderPriorityRepository
-from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName
+from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from app.services.summaries_service import SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -25,6 +25,7 @@ from tests.factories import (
     SleepDetailsFactory,
     UserFactory,
     WorkoutDetailsFactory,
+    provider_day,
     roll_up_everything,
 )
 
@@ -121,6 +122,20 @@ class TestGetSleepSummaries:
             duration_seconds=int((_dt(end) - _dt(start)).total_seconds()),
             zone_offset="+00:00",
         )
+
+    def test_activity_totals_cut_by_the_bounds_utc_dates_like_the_rest_of_the_summary(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """end=today at noon excludes today, as the workout and sleep queries of the same summary do."""
+        source = DataSourceFactory(provider=ProviderName.GARMIN, source="garmin")
+        provider_day(db, source, SeriesType.steps, date(2026, 3, 1), sum=Decimal("1000"))
+        provider_day(db, source, SeriesType.steps, date(2026, 3, 2), sum=Decimal("2000"))
+
+        totals = service.get_activity_totals(
+            db, source.user_id, _dt("2026-03-01T00:00:00+00:00"), _dt("2026-03-02T12:00:00+00:00")
+        )
+
+        assert (totals.days, totals.steps) == (1, 1000)
 
     def test_a_bad_cursor_is_the_clients_error(self, db: Session, service: SummariesService) -> None:
         with pytest.raises(HTTPException) as raised:

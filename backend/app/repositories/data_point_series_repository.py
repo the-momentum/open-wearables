@@ -913,6 +913,13 @@ class DataPointSeriesRepository(
         """Approximate row count of the archive table (archived data points)."""
         return self._approximate_row_count(db_session, DataPointSeriesArchive.__tablename__)
 
+    def get_approximate_aggregate_count(self, db_session: DbSession) -> int:
+        """Approximate number of day and session rows: what the samples are rolled up into."""
+        return sum(
+            self._approximate_row_count(db_session, table.__tablename__)
+            for table in (SeriesAggregate, EventRecordAggregate)
+        )
+
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return (
