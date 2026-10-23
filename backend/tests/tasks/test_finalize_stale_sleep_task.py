@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 from app.schemas.providers.mobile_sdk import SleepState
+from app.services.sdk.sleep_service import active_users_key
 
 
 class TestFinalizeStaleSleepsTask:
@@ -177,6 +178,8 @@ class TestFinalizeStaleSleepsTask:
         # Assert
         assert result is None
         mock_load_state.assert_called_once_with(user_id)
+        # An expired key must not leave the user in the active set for good.
+        mock_redis.srem.assert_called_once_with(active_users_key(), user_id)
 
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finish_sleep")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
