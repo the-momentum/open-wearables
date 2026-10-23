@@ -264,6 +264,12 @@ class ResilienceScoreService:
 
         # Group all filtered points by UTC date once; reused for every reference_date.
         by_day = self._group_by_day(filtered_hrv)
+        # Most wearables send a night's HRV as one value per sleep, not as readings inside it: a night
+        # without readings takes its sleep's session value, the provider's where it sent one, else ours.
+        for day, value in self._event_record_repo.sleep_values_by_day(
+            db_session, user_id, rmssd_type_id, start_dt, end_dt
+        ).items():
+            by_day.setdefault(day, [value])
 
         results: dict[date, HrvCvScoreResult] = {}
         for ref_date in reference_dates:

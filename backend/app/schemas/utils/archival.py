@@ -10,7 +10,9 @@ class ArchivalSettingRead(BaseModel):
 
     rollup_enabled: bool = Field(
         True,
-        description="Roll changed days of samples up into daily and per-session aggregates every night.",
+        description="Roll changed days of samples up into daily and per-session aggregates every 15 minutes. "
+        "Off, the days that change are dropped: summaries and day reads of sources without provider day values "
+        "stop getting new days.",
     )
     delete_after_days: int | None = Field(
         None,

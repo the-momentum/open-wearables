@@ -9,13 +9,14 @@ Usage:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
 import factory
 from factory import LazyAttribute, LazyFunction, Sequence
+from sqlalchemy.orm import Session
 
 from app.models import (
     ApiKey,
@@ -27,6 +28,7 @@ from app.models import (
     MealDetails,
     PersonalRecord,
     ProviderSetting,
+    SeriesAggregate,
     SeriesSample,
     SeriesTypeDefinition,
     SleepDetails,
@@ -34,8 +36,11 @@ from app.models import (
     UserConnection,
     WorkoutDetails,
 )
+from app.repositories.aggregate_repository import AggregateRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import ComputedBy, HealthScoreCategory, PeriodKind, ProviderName, SeriesType, get_series_type_id
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.utils.security import get_password_hash, hash_api_key
 
 
@@ -630,3 +635,32 @@ __all__ = [
     "SleepDetailsFactory",
     "MealDetailsFactory",
 ]
+
+
+def roll_up_everything(db: Session) -> None:
+    """What the rollup job does once it has run: day and session aggregates out of every source's samples."""
+    repo = SeriesRollupRepository()
+    for source in db.query(DataSource):
+        repo.roll_up(db, source.id, repo.days_before(db, source.id, date(9000, 1, 1)))
+    db.flush()
+
+
+def provider_day(db: Session, source: DataSource, series_type: SeriesType, day: date, **stats: Decimal | int) -> None:
+    """A day value as a provider sends it: one series_aggregate row computed by the provider."""
+    period = CalendarPeriod.of_date(day)
+    AggregateRepository(SeriesAggregate).upsert(
+        db,
+        [
+            {
+                "data_source_id": source.id,
+                "series_type_definition_id": get_series_type_id(series_type),
+                "period_kind": PeriodKind.DAY,
+                "period_start": period.start,
+                "period_end": period.end,
+                "zone_offset": period.zone_offset,
+                "computed_by": ComputedBy.PROVIDER,
+                "count": 1,
+                **stats,
+            }
+        ],
+    )

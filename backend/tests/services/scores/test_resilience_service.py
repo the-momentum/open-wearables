@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 
 from app.algorithms.config_algorithms import resilience_config
 from app.constants.sleep import SleepStageType
-from app.models import DataSource, SeriesTypeDefinition
+from app.models import DataSource, EventRecordAggregate, SeriesTypeDefinition
+from app.repositories import AggregateRepository
+from app.schemas.enums import ComputedBy
 from app.services.scores.resilience_service import ResilienceScoreService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -719,6 +721,101 @@ class TestGetHrvCvScore:
         result = service.get_hrv_cv_score(db, user.id, ref)
         assert result.days_counted == 1
         assert any(s.date == date(2026, 3, 9) and s.has_data for s in result.daily_scores)
+
+    def test_a_nights_value_on_the_sleep_counts_when_it_has_no_readings(self, db: Session) -> None:
+        """Oura, Whoop and Polar send the night's HRV as one value on the sleep, not as readings inside it."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        db.flush()
+        rmssd_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
+        ref = date(2026, 3, 10)
+        record = EventRecordFactory(
+            category="sleep",
+            type_="sleep",
+            start_datetime=_utc("2026-03-08T23:00:00"),
+            end_datetime=_utc("2026-03-09T07:00:00"),
+            data_source=ds,
+        )
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": record.id,
+                    "series_type_definition_id": rmssd_type.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+        db.flush()
+
+        result = service.get_hrv_cv_score(db, user.id, ref)
+
+        score_for_day = next(s for s in result.daily_scores if s.date == date(2026, 3, 9))
+        assert (score_for_day.has_data, score_for_day.hrv_value_ms) == (True, pytest.approx(52.0))
+
+    def test_a_nights_value_is_the_providers_whichever_sleep_ended_later(self, db: Session) -> None:
+        """A nap, or a second device's sleep rolled up by us, ending later the same date must not stand in."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        phone = DataSourceFactory(user=user)
+        db.flush()
+        rmssd_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
+        night = EventRecordFactory(
+            category="sleep",
+            type_="sleep",
+            start_datetime=_utc("2026-03-08T23:00:00"),
+            end_datetime=_utc("2026-03-09T07:00:00"),
+            data_source=ds,
+        )
+        nap = EventRecordFactory(
+            category="sleep",
+            type_="sleep",
+            start_datetime=_utc("2026-03-09T14:00:00"),
+            end_datetime=_utc("2026-03-09T15:00:00"),
+            data_source=ds,
+        )
+        SleepDetailsFactory(event_record=nap, is_nap=True)
+        phones_night = EventRecordFactory(
+            category="sleep",
+            type_="sleep",
+            start_datetime=_utc("2026-03-08T23:00:00"),
+            end_datetime=_utc("2026-03-09T08:00:00"),
+            data_source=phone,
+        )
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": night.id,
+                    "series_type_definition_id": rmssd_type.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("52"),
+                    "count": 1,
+                },
+                {
+                    "record_id": nap.id,
+                    "series_type_definition_id": rmssd_type.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("80"),
+                    "count": 1,
+                },
+                {
+                    "record_id": phones_night.id,
+                    "series_type_definition_id": rmssd_type.id,
+                    "computed_by": ComputedBy.OPEN_WEARABLES,
+                    "avg": Decimal("70"),
+                    "count": 9,
+                },
+            ],
+        )
+        db.flush()
+
+        result = service.get_hrv_cv_score(db, user.id, date(2026, 3, 10))
+
+        score_for_day = next(s for s in result.daily_scores if s.date == date(2026, 3, 9))
+        assert score_for_day.hrv_value_ms == pytest.approx(52.0)
 
     def test_daily_score_has_data_true_when_hrv_present(self, db: Session) -> None:
         user = UserFactory()

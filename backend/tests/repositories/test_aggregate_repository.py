@@ -1,10 +1,13 @@
+from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
+from app.integrations.celery.tasks.archival_task import roll_up_queued_days
 from app.integrations.redis_client import get_redis_client
 from app.integrations.rollup_queue import (
     DIRTY_DAYS_KEY,
@@ -25,6 +28,7 @@ from app.models import (
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, DataPointSeriesRepository, EventRecordDetailRepository
 from app.repositories.event_record_repository import EventRecordRepository
+from app.repositories.series_aggregate_repository import daily_activity
 from app.repositories.series_rollup_repository import SeriesRollupRepository, _runs
 from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
@@ -41,6 +45,8 @@ from tests.factories import (
     EventRecordFactory,
     SeriesTypeDefinitionFactory,
     UserFactory,
+    provider_day,
+    roll_up_everything,
 )
 
 DAY = date(2099, 1, 1)
@@ -661,3 +667,74 @@ class TestDailyLifecycleJob:
         self._settings(db, rollup_enabled=rollup_enabled, delete_after_days=delete_after_days)
 
         assert archival_service.get_settings(db).storage.growth_class == growth
+
+
+class TestDailyActivity:
+    def test_a_day_takes_the_providers_sums_and_our_heart_rate(self, db: Session) -> None:
+        source = DataSourceFactory()
+        provider_day(db, source, SeriesType.steps, DAY, sum=Decimal("8432"))
+        DataPointSeriesFactory(
+            mapping=source, recorded_at=datetime(2099, 1, 1, 12, tzinfo=timezone.utc), value=Decimal("60")
+        )
+        DataPointSeriesFactory(
+            mapping=source,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            recorded_at=datetime(2099, 1, 1, 12, tzinfo=timezone.utc),
+            value=Decimal("500"),
+        )
+        roll_up_everything(db)
+
+        (day,) = daily_activity(
+            db, source.user_id, datetime(2099, 1, 1, tzinfo=timezone.utc), datetime(2099, 1, 2, tzinfo=timezone.utc)
+        )
+
+        # The provider's 8432 for the day, not our 500 from its one sample.
+        assert (day["steps_sum"], day["hr_avg"], day["hr_min"]) == (8432, 60, 60)
+
+    def test_sources_of_one_device_add_up(self, db: Session) -> None:
+        user = UserFactory()
+        first = DataSourceFactory(user=user, device_model="Watch", device_id="a")
+        second = DataSourceFactory(user=user, device_model="Watch", device_id="b")
+        provider_day(db, first, SeriesType.steps, DAY, sum=Decimal("3000"))
+        provider_day(db, second, SeriesType.steps, DAY, sum=Decimal("2000"))
+
+        days = daily_activity(
+            db, first.user_id, datetime(2099, 1, 1, tzinfo=timezone.utc), datetime(2099, 1, 2, tzinfo=timezone.utc)
+        )
+
+        assert [day["steps_sum"] for day in days] == [5000]
+
+    def test_a_devices_sources_weigh_the_same_in_its_heart_rate(self, db: Session) -> None:
+        """A provider's day (count 1) next to ours from three samples: the mean of the two days, not of four."""
+        user = UserFactory()
+        first = DataSourceFactory(user=user, device_model="Watch", device_id="a")
+        second = DataSourceFactory(user=user, device_model="Watch", device_id="b")
+        provider_day(db, first, SeriesType.heart_rate, DAY, avg=Decimal("80"))
+        for hour in (8, 12, 16):
+            DataPointSeriesFactory(
+                mapping=second, recorded_at=datetime(2099, 1, 1, hour, tzinfo=timezone.utc), value=Decimal("60")
+            )
+        roll_up_everything(db)
+
+        (day,) = daily_activity(
+            db, user.id, datetime(2099, 1, 1, tzinfo=timezone.utc), datetime(2099, 1, 2, tzinfo=timezone.utc)
+        )
+
+        assert day["hr_avg"] == 70
+
+
+class TestRollupTask:
+    def test_a_run_waits_out_one_already_in_progress(self, db: Session) -> None:
+        get_redis_client().set("series_rollup:lock", "1")
+
+        assert roll_up_queued_days() == {"skipped": "previous_run_in_progress"}
+
+    def test_a_run_rolls_up_and_lets_the_next_one_in(self, db: Session) -> None:
+        setting = db.get(ArchivalSetting, 1) or ArchivalSetting(id=1)
+        setting.rollup_enabled = True
+        db.add(setting)
+        db.commit()
+
+        with patch("app.integrations.celery.tasks.archival_task.SessionLocal", return_value=nullcontext(db)):
+            assert roll_up_queued_days() == {"rolled_up_days": 0}
+        assert get_redis_client().get("series_rollup:lock") is None

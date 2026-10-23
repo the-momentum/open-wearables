@@ -8,7 +8,7 @@ from app.services.providers.garmin.backfill_state import (
     get_pending_types as get_garmin_pending_types,
 )
 
-from .archival_task import run_daily_archival
+from .archival_task import roll_up_queued_days, run_daily_archival
 from .backfill_data_type_coverage_task import backfill_data_type_coverage
 from .close_stale_sync_runs_task import close_stale_sync_runs
 from .delete_user_webhook_payloads_task import delete_user_webhook_payloads
@@ -53,6 +53,7 @@ __all__ = [
     "trigger_garmin_backfill_for_type",
     "trigger_garmin_next_pending_type",
     # Archival
+    "roll_up_queued_days",
     "run_daily_archival",
     # One-off data migrations
     "backfill_data_type_coverage",
