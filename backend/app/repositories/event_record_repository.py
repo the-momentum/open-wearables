@@ -1,4 +1,5 @@
 import contextlib
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -98,6 +99,22 @@ class EventRecordRepository(
             )
             .one_or_none()
         )
+
+    def get_by_external_ids(
+        self, db_session: DbSession, user_id: UUID, external_ids: Iterable[str], provider: str | None = None
+    ) -> dict[str, EventRecord]:
+        """The user's records carrying these provider ids, in one query, by external id."""
+        ids = list({external_id for external_id in external_ids if external_id})
+        if not ids:
+            return {}
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.external_id.in_(ids))
+        )
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        return {record.external_id: record for record in query if record.external_id}
 
     def get_by_external_id(
         self,

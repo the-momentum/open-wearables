@@ -1,6 +1,6 @@
 """Tests for Garmin 247 data implementation."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -9,11 +9,12 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import SleepDetails
+from app.models import SeriesAggregate, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums.series_types import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.schemas.sync_status import SyncScope, SyncSource
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.handlers.wellness import process_wellness_items
@@ -588,6 +589,58 @@ class TestGarmin247Data:
 
         # 1 heart_rate + 1 steps + 1 energy = 3
         assert len(samples) == 3
+
+    def test_build_epochs_samples_carry_the_window(
+        self, garmin_247: Garmin247Data, sample_epoch: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        normalized = garmin_247.normalize_epochs([sample_epoch], user_id)
+
+        samples = garmin_247._build_epochs_samples(user_id, normalized)
+
+        assert {s.window_seconds for s in samples} == {900}
+
+    def test_build_epochs_samples_keep_an_epoch_reporting_no_duration(
+        self, garmin_247: Garmin247Data, sample_epoch: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        normalized = garmin_247.normalize_epochs([{**sample_epoch, "durationInSeconds": 0}], user_id)
+
+        samples = garmin_247._build_epochs_samples(user_id, normalized)
+
+        assert len(samples) == 3
+        assert {s.window_seconds for s in samples} == {None}
+
+    def test_build_dailies_samples_carry_the_whole_garmin_local_day(
+        self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        mid_day_sync = {**sample_daily, "startTimeOffsetInSeconds": 3600, "durationInSeconds": 50400}
+        normalized, _ = garmin_247.normalize_dailies(mid_day_sync, user_id)
+
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        day = CalendarPeriod.local_day(datetime(2024, 1, 15, tzinfo=timezone.utc), 86400, "+01:00")
+        assert {s.period for s in samples if s.series_type != SeriesType.heart_rate} == {day}
+        assert {s.period for s in samples if s.series_type == SeriesType.heart_rate} == {None}
+
+    def test_build_dailies_samples_without_start_time_keep_the_date(self, garmin_247: Garmin247Data) -> None:
+        user_id = uuid4()
+        normalized, _ = garmin_247.normalize_dailies({"calendarDate": "2024-01-15", "steps": 100}, user_id)
+
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        assert [s.period for s in samples] == [CalendarPeriod.of_date(date(2024, 1, 15))]
+
+    def test_save_dailies_data_mirrors_the_day_values(
+        self, db: Session, garmin_247: Garmin247Data, sample_daily: dict[str, Any]
+    ) -> None:
+        user = UserFactory()
+
+        garmin_247.save_dailies_data(db, user.id, garmin_247.normalize_dailies(sample_daily, user.id))
+
+        # steps, active and basal energy, resting HR, floors, distance; intraday HR stays a sample only
+        assert db.query(SeriesAggregate).count() == 6
 
     def test_build_body_comp_samples(self, garmin_247: Garmin247Data, sample_body_comp: dict[str, Any]) -> None:
         """Test _build_body_comp_samples returns samples without DB call."""

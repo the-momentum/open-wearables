@@ -13,6 +13,7 @@ from app.models import (
     DataSource,
     DetailType,
     EventRecord,
+    EventRecordAggregate,
     EventRecordDetail,
     HealthScore,
     MealDetails,
@@ -23,6 +24,7 @@ from app.models import (
     WorkoutDetails,
 )
 from app.repositories import (
+    AggregateRepository,
     DataPointSeriesRepository,
     DataSourceRepository,
     EventRecordDetailRepository,
@@ -104,8 +106,8 @@ def _nutrient_values(nutrients: dict[SeriesType, float]) -> dict[str, NutrientVa
 def pace_sec_per_km(distance_meters: float | None, seconds: int | None) -> float | None:
     """Average pace in seconds per kilometre.
 
-    Derived from distance and time rather than ``average_speed``, whose unit is not
-    consistent across providers (Suunto stores km/h, Garmin/Strava/Google m/s).
+    Derived from distance and time rather than ``average_speed``: every provider stores m/s now,
+    but a pace from the workout's own distance and time needs no speed at all.
     """
     if distance_meters is None or seconds is None or distance_meters <= 0 or seconds <= 0:
         return None
@@ -120,6 +122,7 @@ class EventRecordService(
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
+        self.aggregate_repo = AggregateRepository(EventRecordAggregate)
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(SeriesSample)
         self.health_score_repo = HealthScoreRepository(HealthScore)
@@ -589,6 +592,9 @@ class EventRecordService(
                 detail_type=EventCategory.SLEEP,
             )
             adj_start, adj_zone = adjacent.start_datetime, adjacent.zone_offset
+            # The first segment's session values (the provider's lowest heart rate, our rollup) would go with
+            # its record; they move to the merged night, where the next segment's values combine with them.
+            self.aggregate_repo.move_record(db_session, adjacent.id, created_record.id)
             self.crud.delete_flush(db_session, adjacent)
             self._recompute_sleep_scores(
                 db_session,

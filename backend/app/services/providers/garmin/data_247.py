@@ -19,6 +19,7 @@ from app.repositories import (
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, WriteCounts
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
@@ -31,7 +32,12 @@ from app.services.event_record_service import event_record_service
 from app.services.fit_parser import parse_fit_file
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import download_binary_content, make_authenticated_request
-from app.services.providers.garmin.coverage import ACTIVITY_SAMPLE_SERIES, DAILIES_SERIES, EPOCHS_SERIES
+from app.services.providers.garmin.coverage import (
+    ACTIVITY_SAMPLE_SERIES,
+    DAILIES_SERIES,
+    EPOCHS_SERIES,
+    WORKOUT_ENERGY_SERIES,
+)
 from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -542,6 +548,12 @@ class Garmin247Data(Base247DataTemplate):
             return samples
 
         zone_offset = normalized_daily.get("zone_offset")
+        period = (
+            # durationInSeconds is less than a day after a mid-day sync, so the day is always a whole one
+            CalendarPeriod.local_day(recorded_at, zone_offset=zone_offset)
+            if start_ts
+            else CalendarPeriod.of_date(recorded_at.date(), zone_offset)
+        )
 
         for field, series_type in DAILIES_SERIES:
             value = normalized_daily.get(field)
@@ -557,6 +569,7 @@ class Garmin247Data(Base247DataTemplate):
                         series_type=series_type,
                         external_id=normalized_daily.get("garmin_summary_id"),
                         is_daily_total=daily_total_flag(series_type, is_daily=True),
+                        period=period,
                     )
                 )
 
@@ -679,6 +692,7 @@ class Garmin247Data(Base247DataTemplate):
             slot_external_id = (
                 summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
             )
+            window_seconds = epoch.get("durationInSeconds") or None
 
             # Heart rate
             mean_hr = epoch.get("meanHeartRateInBeatsPerMinute")
@@ -689,6 +703,7 @@ class Garmin247Data(Base247DataTemplate):
                         "value": mean_hr,
                         "zone_offset": zone_offset,
                         "external_id": slot_external_id,
+                        "window_seconds": window_seconds,
                     }
                 )
 
@@ -701,6 +716,7 @@ class Garmin247Data(Base247DataTemplate):
                         "value": steps,
                         "zone_offset": zone_offset,
                         "external_id": slot_external_id,
+                        "window_seconds": window_seconds,
                     }
                 )
 
@@ -713,6 +729,7 @@ class Garmin247Data(Base247DataTemplate):
                         "value": calories,
                         "zone_offset": zone_offset,
                         "external_id": slot_external_id,
+                        "window_seconds": window_seconds,
                     }
                 )
 
@@ -753,6 +770,7 @@ class Garmin247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         external_id=sample.get("external_id"),
+                        window_seconds=sample.get("window_seconds"),
                         is_daily_total=daily_total_flag(series_type, is_daily=False),
                     )
                     samples.append(sample_create)
@@ -920,6 +938,7 @@ class Garmin247Data(Base247DataTemplate):
         last_night_avg = raw_hrv.get("lastNightAvg")
         if last_night_avg is not None:
             recorded_at = self._from_epoch_seconds(start_ts)
+            night_of = self._from_calendar_date(calendar_date) if calendar_date else None
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -930,6 +949,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(last_night_avg)),
                     series_type=SeriesType.heart_rate_variability_rmssd,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(night_of.date(), zone_offset) if night_of else None,
                 )
             )
             self.logger.debug(f"Collecting HRV nightly avg={last_night_avg}ms for {calendar_date}")
@@ -1031,6 +1051,7 @@ class Garmin247Data(Base247DataTemplate):
             record_id=record_id,
             distance=Decimal(str(distance)) if distance is not None else None,
             energy_burned=Decimal(str(calories)) if calories is not None else None,
+            energy_series=WORKOUT_ENERGY_SERIES,
             heart_rate_avg=Decimal(str(avg_hr)) if avg_hr is not None else None,
             heart_rate_max=max_hr,
             total_elevation_gain=Decimal(str(elevation_gain)) if elevation_gain is not None else None,
@@ -1475,6 +1496,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(vo2_max)),
                     series_type=SeriesType.vo2_max,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(recorded_at.date()),
                 )
             )
 
@@ -1490,6 +1512,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(fitness_age)),
                     series_type=SeriesType.garmin_fitness_age,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(recorded_at.date()),
                 )
             )
 
@@ -1545,6 +1568,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(deviation)),
                     series_type=SeriesType.skin_temperature_deviation,
                     external_id=summary_id,
+                    period=CalendarPeriod.of_date(recorded_at.date()),
                 )
             )
 

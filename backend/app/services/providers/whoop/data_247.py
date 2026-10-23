@@ -14,10 +14,12 @@ from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
     ScoreComponent,
+    SessionValue,
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
@@ -753,6 +755,7 @@ class Whoop247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_recovery: dict[str, Any],
+        sleep: EventRecord | None = None,
     ) -> WriteCounts:
         """Save normalized recovery data to database as SeriesSample.
 
@@ -772,6 +775,10 @@ class Whoop247Data(Base247DataTemplate):
         if not timestamp:
             return WriteCounts(0, 0)
 
+        # Recovery belongs to the sleep it was scored on; a sleep not synced yet leaves it unlinked.
+        sleep_id = normalized_recovery.get("sleep_id")
+        if sleep is None and sleep_id:
+            sleep = self.event_record_repo.get_by_external_id(db, user_id, str(sleep_id), provider=self.provider_name)
         samples_to_create: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in RECOVERY_SERIES.items():
             value = normalized_recovery.get(field_name)
@@ -785,6 +792,7 @@ class Whoop247Data(Base247DataTemplate):
                             recorded_at=timestamp,
                             value=Decimal(str(value)),
                             series_type=series_type,
+                            session=SessionValue(record_id=sleep.id) if sleep else None,
                         )
                     )
                 except Exception as e:
@@ -864,13 +872,34 @@ class Whoop247Data(Base247DataTemplate):
         total_count = WriteCounts(0, 0)
         health_scores: list[HealthScoreCreate] = []
 
+        scored = []
         for item in raw_data:
             try:
                 normalized, health_score = self.normalize_recovery(item, user_id)
-                if normalized:  # Skip unscored records
-                    total_count += self.save_recovery_data(db, user_id, normalized)
-                    if health_score:
-                        health_scores.append(health_score)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to normalize recovery data: {e}",
+                    provider="whoop",
+                    task="load_and_save_recovery",
+                    user_id=str(user_id),
+                )
+                continue
+            if normalized:  # Skip unscored records
+                scored.append((normalized, health_score))
+        # The sleeps the page's recoveries were scored on, in one query rather than one per recovery.
+        sleeps = self.event_record_repo.get_by_external_ids(
+            db, user_id, (str(n["sleep_id"]) for n, _ in scored if n.get("sleep_id")), provider=self.provider_name
+        )
+
+        for normalized, health_score in scored:
+            try:
+                total_count += self.save_recovery_data(
+                    db, user_id, normalized, sleeps.get(str(normalized.get("sleep_id")))
+                )
+                if health_score:
+                    health_scores.append(health_score)
             except Exception as e:
                 db.rollback()
                 log_structured(
@@ -1015,6 +1044,7 @@ class Whoop247Data(Base247DataTemplate):
                 value=value,
                 series_type=series_type,
                 is_daily_total=True,
+                period=CalendarPeriod.local_day(recorded_at, zone_offset=zone_offset),
             )
             for series_type, value in daily_values
         ]

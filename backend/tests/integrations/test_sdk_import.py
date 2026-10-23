@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
-from app.models import DataSource, EventRecord, MealDetails, SeriesSample, WorkoutDetails
-from app.schemas.enums import SeriesType
+from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
+from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
@@ -173,6 +173,55 @@ class TestAppleSDKImport:
         assert details.distance == Decimal("2165.35")
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
+
+    def test_workout_statistics_are_mirrored_onto_their_workout(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+        assert {row.record_id for row in rows.values()} == {workout.id}
+        heart_rate = rows[get_series_type_id(SeriesType.heart_rate)]
+        assert (heart_rate.min, heart_rate.avg, heart_rate.max) == (Decimal("77"), Decimal("121.49"), Decimal("141"))
+        assert rows[get_series_type_id(SeriesType.weather_temperature)].avg == Decimal("11.19")
+        assert rows[get_series_type_id(SeriesType.average_met)].avg == Decimal("1.6")
+        # Active plus basal energy is the workout's total energy.
+        assert rows[get_series_type_id(SeriesType.total_energy)].sum == Decimal("180.00")
+
+    def test_a_resent_workout_keeps_its_statistics_on_the_stored_record(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+        before = db.query(EventRecordAggregate).count()
+
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+
+        assert db.query(EventRecord).filter(EventRecord.category == "workout").count() == 1
+        assert db.query(EventRecordAggregate).count() == before
+
+    def test_a_record_spanning_minutes_keeps_its_width(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+        payload = {**SDK_ENVELOPE, "data": {"records": sample_sdk_payload["data"]["records"][:1]}}
+
+        import_service.load_data(db, payload, str(user.id))
+
+        # 23:56:11 to 00:02:58
+        assert [sample.window_seconds for sample in db.query(SeriesSample)] == [407]
 
     def test_import_workout_without_heart_rate(
         self,
