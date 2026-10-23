@@ -443,6 +443,9 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
 SERIES_TYPE_ID_BY_ENUM: dict[SeriesType, int] = {enum: type_id for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_ENUM_BY_ID: dict[int, SeriesType] = {type_id: enum for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}
 SERIES_TYPE_UNIT_BY_ENUM: dict[SeriesType, str] = {enum: unit for _, enum, unit in SERIES_TYPE_DEFINITIONS}
+# A retired id reads as the series it merged into: the startup merge moves its rows once, but a pod on the
+# previous release keeps writing the old id until the rollout ends, and a read must not fail on those rows.
+RETIRED_SERIES_TYPE_IDS: dict[int, SeriesType] = {87: SeriesType.physical_effort}
 
 # Optional human-readable descriptions surfaced in the coverage matrix (tooltips).
 # Only series types that need a meaningful clarification have an entry here;
@@ -464,8 +467,8 @@ def get_series_type_id(series_type: SeriesType) -> int:
 
 
 def get_series_type_from_id(series_type_id: int) -> SeriesType:
-    """Get the series type enum from a database ID."""
-    return SERIES_TYPE_ENUM_BY_ID[series_type_id]
+    """Get the series type enum from a database ID; a retired id gives the series it merged into."""
+    return SERIES_TYPE_ENUM_BY_ID.get(series_type_id) or RETIRED_SERIES_TYPE_IDS[series_type_id]
 
 
 def get_series_type_unit(series_type: SeriesType) -> str:

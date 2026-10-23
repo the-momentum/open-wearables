@@ -3,7 +3,7 @@
 import pytest
 
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
-from app.schemas.enums import SeriesType, get_series_type_id
+from app.schemas.enums import SeriesType, get_series_type_from_id, get_series_type_id
 
 
 class TestRetiredSeriesTypeNames:
@@ -33,6 +33,12 @@ class TestRetiredSeriesTypeNames:
     def test_responses_carry_the_current_name(self) -> None:
         """The alias is lookup-only; nothing should serialize the retired spelling back."""
         assert SeriesType("energy").value == "active_energy"
+
+    def test_a_retired_id_reads_as_the_series_it_merged_into(self) -> None:
+        """A pod on the previous release still writes id 87 during the rollout; a read must not fail on it."""
+        assert get_series_type_from_id(87) is SeriesType.physical_effort
+        with pytest.raises(KeyError):
+            get_series_type_from_id(9999)
 
     def test_unknown_names_are_still_rejected(self) -> None:
         with pytest.raises(ValueError, match="not a valid SeriesType"):
