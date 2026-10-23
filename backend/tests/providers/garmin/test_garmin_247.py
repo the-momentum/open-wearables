@@ -104,6 +104,8 @@ class TestGarmin247Data:
             "bodyFatInPercent": 18.5,
             "bodyMassIndex": 23.5,
             "muscleMassInGrams": 35000,
+            "boneMassInGrams": 3100,
+            "bodyWaterInPercent": 56.4,
         }
 
     @pytest.fixture
@@ -404,10 +406,10 @@ class TestGarmin247Data:
 
         count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
 
-        # Should create 4 data points: weight, body_fat, BMI, skeletal muscle mass
+        # Should create 6 data points: weight, body_fat, BMI, skeletal muscle mass, bone mass, body water
         mock_bulk_create.assert_called_once()
-        assert len(mock_bulk_create.call_args[0][1]) == 4
-        assert count == 4
+        assert len(mock_bulk_create.call_args[0][1]) == 6
+        assert count == 6
 
     def test_save_body_composition_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving body composition with missing timestamp."""
@@ -593,10 +595,12 @@ class TestGarmin247Data:
         """Test _build_body_comp_samples returns samples without DB call."""
         user_id = uuid4()
         samples = garmin_247._build_body_comp_samples(user_id, sample_body_comp)
-        assert len(samples) == 4  # weight, body_fat, BMI, skeletal muscle mass
+        assert len(samples) == 6  # weight, body_fat, BMI, skeletal muscle mass, bone mass, body water
 
-        muscle = next(s for s in samples if s.series_type == SeriesType.skeletal_muscle_mass)
-        assert muscle.value == Decimal("35")  # 35000 g -> 35 kg
+        by_type = {s.series_type: s for s in samples}
+        assert by_type[SeriesType.skeletal_muscle_mass].value == Decimal("35")  # 35000 g -> 35 kg
+        assert by_type[SeriesType.bone_mass].value == Decimal("3.1")  # 3100 g -> 3.1 kg
+        assert by_type[SeriesType.body_water_percentage].value == Decimal("56.4")
 
     def test_build_body_comp_samples_missing_timestamp(self, garmin_247: Garmin247Data) -> None:
         """Test _build_body_comp_samples returns empty for missing timestamp."""

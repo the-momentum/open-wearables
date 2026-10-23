@@ -871,6 +871,38 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
+        # Bone mass (convert grams to kg)
+        bone_mass_grams = raw_body_comp.get("boneMassInGrams")
+        if bone_mass_grams:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(bone_mass_grams)) / 1000,  # Convert to kg
+                    series_type=SeriesType.bone_mass,
+                    external_id=summary_id,
+                )
+            )
+
+        # Body water percentage
+        body_water = raw_body_comp.get("bodyWaterInPercent")
+        if body_water:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(body_water)),
+                    series_type=SeriesType.body_water_percentage,
+                    external_id=summary_id,
+                )
+            )
+
         return samples
 
     def save_body_composition(

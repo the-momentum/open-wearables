@@ -50,6 +50,7 @@ AGGREGATION_METHOD_BY_TYPE: dict[SeriesType, AggregationMethod] = {
     SeriesType.waist_circumference: AggregationMethod.AVG,
     SeriesType.bone_mass: AggregationMethod.AVG,
     SeriesType.body_water_mass: AggregationMethod.AVG,
+    SeriesType.body_water_percentage: AggregationMethod.AVG,
     # ── Fitness Metrics ──
     SeriesType.vo2_max: AggregationMethod.AVG,
     SeriesType.six_minute_walk_test_distance: AggregationMethod.MAX,
