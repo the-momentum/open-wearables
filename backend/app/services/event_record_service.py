@@ -76,9 +76,10 @@ from app.services.outgoing_webhooks.events import (
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
-from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
+from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds, sum_optional
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+from app.utils.sleep_stages import measured_stages
 
 
 def _meal_summary(nutrients: dict[SeriesType, float]) -> tuple[float | None, Macros | None, float | None]:
@@ -332,12 +333,13 @@ class EventRecordService(
         if inserted:
             eff = final_detail.sleep_efficiency_score
             has_stages = any(
-                [
+                minutes is not None
+                for minutes in (
                     final_detail.sleep_awake_minutes,
                     final_detail.sleep_light_minutes,
                     final_detail.sleep_deep_minutes,
                     final_detail.sleep_rem_minutes,
-                ]
+                )
             )
             device_type = None
             if svix_service.is_enabled() and result.data_source_id is not None:
@@ -429,8 +431,11 @@ class EventRecordService(
 
             adj_detail: SleepDetails | None = adjacent.sleep_detail
 
+            def _adj_opt_int(attr: str) -> int | None:
+                return getattr(adj_detail, attr) if adj_detail else None
+
             def _adj_int(attr: str) -> int:
-                return (getattr(adj_detail, attr) or 0) if adj_detail else 0
+                return _adj_opt_int(attr) or 0
 
             adj_in_bed = _adj_int("sleep_time_in_bed_minutes")
             new_in_bed = detail.sleep_time_in_bed_minutes or 0
@@ -495,17 +500,23 @@ class EventRecordService(
                     elif stage_str == "sleeping":
                         sleeping_secs += dur
                     last_end = s_end
-                merged_deep = int(deep_secs / 60)
-                merged_light = int(light_secs / 60)
-                merged_rem = int(rem_secs / 60)
-                merged_awake = int(awake_secs / 60)
-                merged_total = merged_deep + merged_light + merged_rem + int(sleeping_secs / 60)
+                deep_min, light_min, rem_min = int(deep_secs / 60), int(light_secs / 60), int(rem_secs / 60)
+                merged_total = deep_min + light_min + rem_min + int(sleeping_secs / 60)
+                # A merged hypnogram of only sleeping segments still reports no phases
+                has_phases, has_awake = measured_stages(merged_stages)
+                merged_deep = deep_min if has_phases else None
+                merged_light = light_min if has_phases else None
+                merged_rem = rem_min if has_phases else None
+                merged_awake = int(awake_secs / 60) if has_awake else None
             else:
-                merged_deep = _adj_int("sleep_deep_minutes") + (detail.sleep_deep_minutes or 0)
-                merged_light = _adj_int("sleep_light_minutes") + (detail.sleep_light_minutes or 0)
-                merged_rem = _adj_int("sleep_rem_minutes") + (detail.sleep_rem_minutes or 0)
-                merged_awake = _adj_int("sleep_awake_minutes") + (detail.sleep_awake_minutes or 0)
-                merged_total = _adj_int("sleep_total_duration_minutes") + (detail.sleep_total_duration_minutes or 0)
+                # A side without stages adds nothing; the other side's minutes are kept
+                merged_deep = sum_optional(_adj_opt_int("sleep_deep_minutes"), detail.sleep_deep_minutes)
+                merged_light = sum_optional(_adj_opt_int("sleep_light_minutes"), detail.sleep_light_minutes)
+                merged_rem = sum_optional(_adj_opt_int("sleep_rem_minutes"), detail.sleep_rem_minutes)
+                merged_awake = sum_optional(_adj_opt_int("sleep_awake_minutes"), detail.sleep_awake_minutes)
+                merged_total = sum_optional(
+                    _adj_opt_int("sleep_total_duration_minutes"), detail.sleep_total_duration_minutes
+                )
 
             self.logger.info(
                 "Merging adjacent sleep records: %s (%s – %s) + %s (%s – %s)",
@@ -629,12 +640,13 @@ class EventRecordService(
             case EventCategory.SLEEP:
                 eff = detail.sleep_efficiency_score
                 has_stages = any(
-                    [
+                    minutes is not None
+                    for minutes in (
                         detail.sleep_awake_minutes,
                         detail.sleep_light_minutes,
                         detail.sleep_deep_minutes,
                         detail.sleep_rem_minutes,
-                    ]
+                    )
                 )
                 on_sleep_created(
                     record_id=record.id,

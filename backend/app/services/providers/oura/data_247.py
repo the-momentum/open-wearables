@@ -642,10 +642,10 @@ class Oura247Data(Base247DataTemplate):
 
             # Oura provides durations in seconds
             duration_seconds = sleep.time_in_bed or 0
-            deep_seconds = sleep.deep_sleep_duration or 0
-            light_seconds = sleep.light_sleep_duration or 0
-            rem_seconds = sleep.rem_sleep_duration or 0
-            awake_seconds = sleep.awake_time or 0
+            deep_seconds = sleep.deep_sleep_duration
+            light_seconds = sleep.light_sleep_duration
+            rem_seconds = sleep.rem_sleep_duration
+            awake_seconds = sleep.awake_time
 
             # If duration is 0 but we have start/end, calculate
             if duration_seconds == 0 and start_time and end_time:
@@ -759,23 +759,22 @@ class Oura247Data(Base247DataTemplate):
             )
 
             stages = normalized_sleep.get("stages", {})
-            total_sleep_seconds = (
-                stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-            )
-            total_sleep_minutes = total_sleep_seconds // 60
+            deep_seconds = stages.get("deep_seconds")
+            light_seconds = stages.get("light_seconds")
+            rem_seconds = stages.get("rem_seconds")
             time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
 
             detail = EventRecordDetailCreate(
                 record_id=sleep_id,
-                sleep_total_duration_minutes=total_sleep_minutes,
+                sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
                 sleep_time_in_bed_minutes=time_in_bed_minutes,
                 sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
                 if normalized_sleep.get("efficiency_percent") is not None
                 else None,
-                sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-                sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-                sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-                sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+                sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+                sleep_light_minutes=seconds_to_minutes(light_seconds),
+                sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+                sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
                 is_nap=normalized_sleep.get("is_nap", False),
                 sleep_stages=normalized_sleep.get("stage_timestamps", []),
             )

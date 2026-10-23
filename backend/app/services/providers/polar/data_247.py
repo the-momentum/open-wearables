@@ -61,6 +61,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import seconds_to_minutes
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -259,9 +260,9 @@ class Polar247Data(Base247DataTemplate):
             end_dt = datetime.fromisoformat(parsed.sleep_end_time)
             duration_seconds = int((end_dt - start_dt).total_seconds())
 
-            light_s = parsed.light_sleep or 0
-            deep_s = parsed.deep_sleep or 0
-            rem_s = parsed.rem_sleep or 0
+            light_s = parsed.light_sleep
+            deep_s = parsed.deep_sleep
+            rem_s = parsed.rem_sleep
             sleep_stages = self._parse_hypnogram(parsed.hypnogram, start_dt, end_dt) if parsed.hypnogram else None
 
             record = EventRecordCreate(
@@ -279,12 +280,12 @@ class Polar247Data(Base247DataTemplate):
             )
             detail = EventRecordDetailCreate(
                 record_id=sleep_id,
-                sleep_total_duration_minutes=(light_s + deep_s + rem_s) // 60,
+                sleep_total_duration_minutes=seconds_to_minutes(light_s, deep_s, rem_s),
                 sleep_time_in_bed_minutes=duration_seconds // 60 if duration_seconds else None,
-                sleep_deep_minutes=deep_s // 60,
-                sleep_light_minutes=light_s // 60,
-                sleep_rem_minutes=rem_s // 60,
-                sleep_awake_minutes=(parsed.total_interruption_duration or 0) // 60,
+                sleep_deep_minutes=seconds_to_minutes(deep_s),
+                sleep_light_minutes=seconds_to_minutes(light_s),
+                sleep_rem_minutes=seconds_to_minutes(rem_s),
+                sleep_awake_minutes=seconds_to_minutes(parsed.total_interruption_duration),
                 sleep_stages=sleep_stages,
             )
 

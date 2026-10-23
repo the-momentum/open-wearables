@@ -36,7 +36,7 @@ from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_fit_file
-from app.utils.conversion import seconds_to_minutes
+from app.utils.conversion import seconds_to_minutes, sum_optional
 from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
@@ -261,10 +261,11 @@ class Garmin247Data(Base247DataTemplate):
         zone_offset = offset_to_iso(raw_sleep.get("startTimeOffsetInSeconds"))
 
         # Sleep stages (in seconds)
-        deep_seconds = raw_sleep.get("deepSleepDurationInSeconds") or 0
-        light_seconds = raw_sleep.get("lightSleepDurationInSeconds") or 0
-        rem_seconds = raw_sleep.get("remSleepInSeconds") or 0
-        awake_seconds = raw_sleep.get("awakeDurationInSeconds") or 0
+        # Absent when not measured (e.g. validation=MANUAL)
+        deep_seconds = raw_sleep.get("deepSleepDurationInSeconds")
+        light_seconds = raw_sleep.get("lightSleepDurationInSeconds")
+        rem_seconds = raw_sleep.get("remSleepInSeconds")
+        awake_seconds = raw_sleep.get("awakeDurationInSeconds")
 
         sleep_stages: list[SleepStage] | None = None
         if sleep_map := raw_sleep.get("sleepLevelsMap"):
@@ -392,19 +393,26 @@ class Garmin247Data(Base247DataTemplate):
         )
 
         stages = normalized_sleep.get("stages", {})
-        asleep_seconds = stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
+        asleep_seconds = sum_optional(deep_seconds, light_seconds, rem_seconds)
         time_in_bed_seconds = normalized_sleep.get("duration_seconds") or 0
-        efficiency_score = Decimal(str(asleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
+        efficiency_score = (
+            Decimal(str(asleep_seconds / time_in_bed_seconds * 100))
+            if asleep_seconds is not None and time_in_bed_seconds > 0
+            else None
+        )
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=asleep_seconds // 60,
+            sleep_total_duration_minutes=seconds_to_minutes(asleep_seconds),
             sleep_time_in_bed_minutes=time_in_bed_seconds // 60,
             sleep_efficiency_score=efficiency_score,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
             sleep_stages=normalized_sleep.get("stage_timestamps"),
         )

@@ -106,6 +106,13 @@ echo 'Running SDK workout calories cleanup...'
 uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
     || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-04-01 once all deployments have migrated.
+# Sets sleep stages to NULL on SDK nights whose hypnogram has no light/deep/rem segment.
+# Runs once per instance (data_migration).
+echo 'Running SDK unreported sleep stages cleanup...'
+uv run python scripts/data_migrations/clear_sdk_unreported_sleep_stages.py \
+    || echo "Warning: SDK sleep stages cleanup failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

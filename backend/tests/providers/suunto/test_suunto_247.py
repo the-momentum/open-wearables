@@ -178,7 +178,7 @@ class TestSuuntoSleepAwakeTime:
 
         assert result["stages"]["awake_seconds"] == 1200
 
-    def test_awake_defaults_to_zero_when_wake_fields_absent(self, data_247: Suunto247Data) -> None:
+    def test_awake_is_unreported_when_wake_fields_absent(self, data_247: Suunto247Data) -> None:
         raw = {
             "timestamp": "2025-01-05T23:00:00.000+01:00",
             "entryData": {
@@ -194,7 +194,32 @@ class TestSuuntoSleepAwakeTime:
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        assert result["stages"]["awake_seconds"] == 0
+        assert result["stages"]["awake_seconds"] is None
+
+    def test_null_stage_durations_stay_unreported(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-05T23:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-05T23:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T07:00:00.000+01:00",
+                "Duration": 28800.0,
+                "DeepSleepDuration": None,
+                "LightSleepDuration": None,
+                "REMSleepDuration": None,
+                "WakeAfterSleepOnsetDuration": None,
+                "WakeBeforeOffBedDuration": 0.0,
+                "SleepId": 6,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": None,
+            "awake_seconds": 0,
+        }
 
 
 class TestSuuntoSleepWindowFallback:
@@ -437,6 +462,19 @@ class TestSuuntoSleepSyncStats:
     def test_save_sleep_data_reports_success(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
         assert data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep()) is True
         mock_event.create_or_merge_sleep.assert_called_once()
+
+    @patch("app.services.providers.suunto.data_247.event_record_service")
+    def test_save_sleep_data_keeps_unreported_stages_none(self, mock_event: MagicMock, data_247: Suunto247Data) -> None:
+        stages = {"deep_seconds": None, "light_seconds": None, "rem_seconds": None, "awake_seconds": 0}
+
+        data_247.save_sleep_data(MagicMock(), uuid4(), _normalized_sleep(stages=stages))
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_total_duration_minutes is None
+        assert detail.sleep_awake_minutes == 0
 
     @patch("app.services.providers.suunto.data_247.event_record_service")
     def test_save_sleep_data_reports_skip_for_missing_window(

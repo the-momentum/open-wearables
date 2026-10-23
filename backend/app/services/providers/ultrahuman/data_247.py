@@ -26,6 +26,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES, DAILY_SCALAR_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.conversion import as_int, seconds_to_minutes
 from app.utils.structured_logging import log_structured
 
 # Ultrahuman sleep_graph.data stage names → our canonical SleepStageType.
@@ -210,11 +211,11 @@ class Ultrahuman247Data(Base247DataTemplate):
 
         # Extract sleep stages from sleep_stages array
         # "sleep_stages": [{"type": "deep_sleep", "stage_time": 3240}, ...]
-        sleep_stages = {s.get("type"): s.get("stage_time", 0) for s in raw_sleep.get("sleep_stages", [])}
-        deep_seconds = sleep_stages.get("deep_sleep", 0) or 0
-        rem_seconds = sleep_stages.get("rem_sleep", 0) or 0
-        light_seconds = sleep_stages.get("light_sleep", 0) or 0
-        awake_seconds = sleep_stages.get("awake", 0) or 0
+        sleep_stages = {s.get("type"): s.get("stage_time") for s in raw_sleep.get("sleep_stages", [])}
+        deep_seconds = as_int(sleep_stages.get("deep_sleep"))
+        rem_seconds = as_int(sleep_stages.get("rem_sleep"))
+        light_seconds = as_int(sleep_stages.get("light_sleep"))
+        awake_seconds = as_int(sleep_stages.get("awake"))
 
         # Efficiency from quick_metrics (type: "sleep_efic")
         efficiency = quick_metrics.get("sleep_efic")
@@ -234,10 +235,10 @@ class Ultrahuman247Data(Base247DataTemplate):
             "efficiency_percent": float(efficiency) if efficiency is not None else None,
             "is_nap": False,  # Ultrahuman doesn't explicitly mark naps in this structure
             "stages": {
-                "deep_seconds": int(deep_seconds),
-                "light_seconds": int(light_seconds),
-                "rem_seconds": int(rem_seconds),
-                "awake_seconds": int(awake_seconds),
+                "deep_seconds": deep_seconds,
+                "light_seconds": light_seconds,
+                "rem_seconds": rem_seconds,
+                "awake_seconds": awake_seconds,
             },
             "stage_timestamps": self._normalize_sleep_stages(raw_sleep),
             "ultrahuman_date": date_str,
@@ -286,15 +287,16 @@ class Ultrahuman247Data(Base247DataTemplate):
 
         # Create detail with sleep-specific fields
         stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
-        total_sleep_minutes = total_sleep_seconds // 60
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
+        awake_minutes = seconds_to_minutes(stages.get("awake_seconds"))
+        total_sleep_minutes = seconds_to_minutes(deep_seconds, light_seconds, rem_seconds)
         time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
 
         # If total sleep is 0 but we have duration, try to infer
-        if total_sleep_minutes == 0 and time_in_bed_minutes > 0:
-            total_sleep_minutes = time_in_bed_minutes - (stages.get("awake_seconds", 0) // 60)
+        if not total_sleep_minutes and time_in_bed_minutes > 0:
+            total_sleep_minutes = time_in_bed_minutes - (awake_minutes or 0)
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
@@ -303,10 +305,10 @@ class Ultrahuman247Data(Base247DataTemplate):
             sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=awake_minutes,
             is_nap=normalized_sleep.get("is_nap", False),
             sleep_stages=normalized_sleep.get("stage_timestamps") or None,
         )
