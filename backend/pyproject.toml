@@ -4,12 +4,12 @@ version = "0.10.0"
 description = ""
 requires-python = ">=3.14"
 dependencies = [
-    "cryptography>=50.0.1",
-    "pydantic-settings>=2.15.0",
+    "cryptography>=50.0.2",
+    "pydantic-settings>=2.16.0",
     "email-validator>=2.2.0",
     "psycopg>=3.3.6",
-    "sqlalchemy>=2.0.54",
-    "fastapi>=0.142.2",
+    "sqlalchemy>=2.1.4",
+    "fastapi>=0.143.5",
     "fastapi-cli>=0.0.32",
     "celery>=5.6.3",
     "flower>=2.2.0",
@@ -19,17 +19,17 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "httpx[http2]>=0.28.1",
     "alembic>=1.20.0",
-    "boto3>=1.43.103",
+    "boto3>=1.43.115",
     "requests>=2.34.2",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "resend>=2.47.0",
+    "resend>=2.49.1",
     "pyyaml>=6.0.3",
-    "svix>=2.5.0",
-    "numpy>=2.5.3",
-    "faker>=40.39.0",
+    "svix>=2.8.0",
+    "numpy>=2.5.4",
+    "faker>=40.43.0",
     "fitdecode>=0.11.0",
-    "google-auth>=2.58.1",
+    "google-auth>=2.62.0",
     "packaging>=24",
 ]
 
@@ -38,15 +38,15 @@ dependencies = [
 otel = [
     "fastapi[opentelemetry]>=0.143.1",
     "opentelemetry-sdk>=1.45.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.45.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.1",
     "opentelemetry-instrumentation-logging>=0.66b0",
 ]
 
 [dependency-groups]
 code-quality = [
-    "pre-commit>=4.6.1",
-    "ruff>=0.16.9",
-    "ty>=0.0.84",
+    "pre-commit>=4.7.0",
+    "ruff>=0.17.1",
+    "ty>=0.0.89",
 ]
 dev = [
     "pytest>=9.1.1",
