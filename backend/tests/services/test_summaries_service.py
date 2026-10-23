@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.models import ProviderPriority
 from app.repositories import ProviderPriorityRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName
-from app.services.summaries_service import SummariesService
+from app.services.summaries_service import ACTIVITY_METRIC_GROUPS, SummariesService
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -69,6 +69,90 @@ class TestFilterByPriority:
         ]
         result = service._filter_by_priority(db, uuid4(), entries, date_key="sleep_date")
         assert len(result) == 1
+
+    def test_fills_complementary_metrics_from_other_sources(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        phone = {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000, "hr_avg": None}
+        watch = {
+            "activity_date": day,
+            "source": "apple_health_sdk",
+            "device_model": None,
+            "steps_sum": None,
+            "hr_avg": 72,
+            "hr_max": 140,
+            "hr_min": 55,
+        }
+        result = service._filter_by_priority(db, uuid4(), [phone, watch], fill_missing=ACTIVITY_METRIC_GROUPS)
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 8000
+        assert (result[0]["hr_avg"], result[0]["hr_max"], result[0]["hr_min"]) == (72, 140, 55)
+
+    def test_fill_skips_a_source_missing_the_group_and_takes_the_next(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        day = date(2026, 1, 1)
+        no_hr = {"hr_avg": None, "hr_max": None, "hr_min": None}
+        entries = [
+            {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000, **no_hr},
+            {"activity_date": day, "source": "polar", "device_model": None, "steps_sum": None, **no_hr},
+            {
+                "activity_date": day,
+                "source": "apple_health_sdk",
+                "device_model": None,
+                "steps_sum": None,
+                "hr_avg": 72,
+                "hr_max": 140,
+                "hr_min": 55,
+            },
+        ]
+        result = service._filter_by_priority(db, uuid4(), entries, fill_missing=ACTIVITY_METRIC_GROUPS)
+        assert len(result) == 1
+        assert result[0]["steps_sum"] == 8000
+        assert (result[0]["hr_avg"], result[0]["hr_max"], result[0]["hr_min"]) == (72, 140, 55)
+
+    def test_fills_total_energy_from_a_lower_priority_source(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        entries = [
+            {
+                "activity_date": day,
+                "source": "garmin",
+                "device_model": None,
+                "steps_sum": 8000,
+                "active_energy_sum": None,
+                "basal_energy_sum": None,
+                "total_energy_sum": None,
+            },
+            {
+                "activity_date": day,
+                "source": "apple_health_sdk",
+                "device_model": None,
+                "steps_sum": None,
+                "active_energy_sum": None,
+                "basal_energy_sum": None,
+                "total_energy_sum": 2100.0,
+            },
+        ]
+        result = service._filter_by_priority(db, uuid4(), entries, fill_missing=ACTIVITY_METRIC_GROUPS)
+        assert result[0]["steps_sum"] == 8000
+        assert result[0]["total_energy_sum"] == 2100.0
+
+    def test_fill_never_sums_a_metric_both_sources_report(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        entries = [
+            {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000},
+            {"activity_date": day, "source": "apple_health_sdk", "device_model": None, "steps_sum": 7500},
+        ]
+        result = service._filter_by_priority(db, uuid4(), entries, fill_missing=ACTIVITY_METRIC_GROUPS)
+        assert result[0]["steps_sum"] in {8000, 7500}
+
+    def test_without_fill_missing_only_the_chosen_entry_is_kept(self, db: Session, service: SummariesService) -> None:
+        day = date(2026, 1, 1)
+        entries = [
+            {"activity_date": day, "source": "garmin", "device_model": None, "steps_sum": 8000, "hr_avg": None},
+            {"activity_date": day, "source": "apple_health_sdk", "device_model": None, "steps_sum": None, "hr_avg": 72},
+        ]
+        result = service._filter_by_priority(db, uuid4(), entries)
+        assert result[0] in entries
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +600,38 @@ class TestGetActivitySummaries:
             limit=10,
         )
         assert [(d.date, d.source.provider, d.steps) for d in result.data] == [(date(2026, 1, 1), "strava", None)]
+
+    def test_fills_heart_rate_from_a_lower_priority_source(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        steps_source = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        hr_source = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        DataPointSeriesFactory(
+            data_source=steps_source,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_steps(),
+            value=1000,
+            recorded_at=_dt("2026-01-01T10:00:00+00:00"),
+        )
+        hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        for minute, bpm in enumerate((60, 80)):
+            DataPointSeriesFactory(
+                data_source=hr_source,
+                series_type=hr_type,
+                value=bpm,
+                recorded_at=_dt(f"2026-01-01T10:0{minute}:00+00:00"),
+            )
+
+        result = service.get_activity_summaries(
+            db,
+            user.id,
+            _dt("2026-01-01T00:00:00+00:00"),
+            _dt("2026-01-02T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+        assert len(result.data) == 1
+        assert result.data[0].steps == 1000
+        assert result.data[0].heart_rate is not None
+        assert (result.data[0].heart_rate.min_bpm, result.data[0].heart_rate.max_bpm) == (60, 80)
 
     def test_takes_elevation_from_the_winning_provider_only(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
