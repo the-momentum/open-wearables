@@ -249,7 +249,7 @@ class TestGetSleepSummaries:
     def test_a_night_takes_its_own_sleeps_values_the_providers_first(
         self, db: Session, service: SummariesService
     ) -> None:
-        """The ring's own night value wins over ours; the watch worn the same night is not its source."""
+        """The ring's own night value wins over ours; the watch worn the same night fills only what the ring lacks."""
         user = UserFactory()
         ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
         watch = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
@@ -290,7 +290,7 @@ class TestGetSleepSummaries:
             db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-03T00:00:00+00:00"), cursor=None, limit=10
         ).data[0]
 
-        assert (summary.avg_heart_rate_bpm, summary.avg_hrv_sdnn_ms) == (52, None)
+        assert (summary.avg_heart_rate_bpm, summary.avg_hrv_sdnn_ms) == (52, 45.0)
 
     def test_physio_averages_none_without_physio_data(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
