@@ -6,6 +6,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.integrations.rollup_queue import pop_dirty_days
@@ -161,6 +162,21 @@ class TestMergeDuplicateDataSources:
         # The day the target already held keeps the target's value; the other day moved.
         assert rows == {START.date(): 8100, (START + timedelta(days=1)).date(): 9000}
         assert all(row.data_source_id == target.id for row in db.query(SeriesAggregate))
+        assert (target.id, START.date()) in pop_dirty_days(100)
+
+    def test_days_moved_before_a_failure_are_queued_too(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        user = UserFactory()
+        unknown = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model="unknown", source="garmin")
+        target = DataSourceFactory(user=user, provider=ProviderName.GARMIN, device_model=None, source="garmin")
+        DataPointSeriesFactory(data_source=unknown, recorded_at=START)
+        monkeypatch.setattr(merge_module, "_MERGE_STEPS", [*merge_module._MERGE_STEPS, text("SELECT 1 / 0")])
+        pop_dirty_days(100)
+
+        result = merge_duplicate_data_sources(db, dry_run=False)
+
+        # The samples' batches were committed before the step failed; their days need the rollup regardless.
+        assert result["failed"] == 1
+        assert db.query(SeriesSample).one().data_source_id == target.id
         assert (target.id, START.date()) in pop_dirty_days(100)
 
     def test_a_dropped_events_session_values_move_to_the_kept_copy(self, db: Session) -> None:

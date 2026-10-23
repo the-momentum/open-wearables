@@ -26,6 +26,7 @@ from app.schemas.utils import (
     StorageEstimate,
 )
 from app.utils.exceptions import handle_exceptions
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 # Queued (data source, day) pairs taken per commit.
@@ -155,12 +156,11 @@ class ArchivalService:
             rollup_queue.requeue_dirty_days(batch)
             raise failed[0][2]
         for source_id, days, exc in failed:
-            log_structured(
+            log_and_capture_error(
+                exc,
                 self.logger,
-                "error",
-                f"Rollup: skipped {len(days)} days of data source {source_id}: {exc!r}",
-                data_source_id=str(source_id),
-                days=[day.isoformat() for day in days],
+                "Rollup: skipped the days of a data source",
+                extra={"data_source_id": str(source_id), "days": [day.isoformat() for day in days]},
             )
         return rolled_up
 

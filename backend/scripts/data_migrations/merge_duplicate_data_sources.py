@@ -356,8 +356,8 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
         if not dry_run:
             # One bad source (e.g. a row a concurrent sync just wrote) must not stop the others;
             # its committed batches stay and the next run finishes it
+            moved_days = []
             try:
-                moved_days = []
                 if target is not None:
                     moved_days = [row.day for row in db.execute(_SAMPLE_DAYS, {"src": src})]
                     for statements in _BATCHES:
@@ -373,6 +373,8 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
                 log_and_capture_error(
                     e, logger, f"Skipped merging data source {src}: {e}", extra={"data_source_id": str(src)}
                 )
+                if moved_days:
+                    _queue_rollup(target, moved_days)
                 continue
         if target is None:
             renamed += 1

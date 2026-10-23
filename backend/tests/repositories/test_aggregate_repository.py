@@ -451,23 +451,49 @@ class TestSeriesRollup:
         # The provider's daily total is not one of the samples.
         assert (step.sum, step.count) == (Decimal("800"), 2)
 
-    def test_a_day_rolled_up_again_reflects_only_the_samples_left(self, db: Session) -> None:
+    def test_a_day_rolled_up_again_recomputes_the_series_with_samples_and_keeps_the_rest(self, db: Session) -> None:
         source = DataSourceFactory()
         steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         self._sample(source, steps, datetime(2099, 1, 1, 10, tzinfo=timezone.utc), "300")
+        self._sample(source, heart_rate, datetime(2099, 1, 1, 9, tzinfo=timezone.utc), "60")
         repo = SeriesRollupRepository()
         repo.roll_up(db, source.id, [DAY])
-
+        # Retention deleted the day before its rows were frozen; one heart-rate sample arrives late.
         db.query(SeriesSample).delete()
-        self._sample(
-            source,
-            SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
-            datetime(2099, 1, 1, 9, tzinfo=timezone.utc),
-            "60",
-        )
+        self._sample(source, heart_rate, datetime(2099, 1, 1, 9, tzinfo=timezone.utc), "80")
+
         repo.roll_up(db, source.id, [DAY])
 
-        assert list(self._day_rows(db)) == [get_series_type_id(SeriesType.heart_rate)]
+        rows = self._day_rows(db)
+        assert (rows[steps.id].sum, rows[heart_rate.id].avg, rows[heart_rate.id].count) == (
+            Decimal("300"),
+            Decimal("80"),
+            1,
+        )
+
+    def test_a_session_rolled_up_again_recomputes_only_the_series_with_samples(self, db: Session) -> None:
+        source = DataSourceFactory()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        start = datetime(2099, 1, 1, 10, tzinfo=timezone.utc)
+        EventRecordFactory(data_source=source, start_datetime=start, duration_seconds=1800)
+        self._sample(source, heart_rate, start + timedelta(minutes=5), "120")
+        self._sample(source, heart_rate, start + timedelta(minutes=25), "160")
+        self._sample(source, steps, start + timedelta(minutes=10), "40")
+        repo = SeriesRollupRepository()
+        repo.roll_up(db, source.id, [DAY])
+        db.query(SeriesSample).filter(SeriesSample.value == Decimal("160")).delete()
+        db.query(SeriesSample).filter(SeriesSample.series_type_definition_id == steps.id).delete()
+
+        repo.roll_up(db, source.id, [DAY])
+
+        rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+        assert (rows[heart_rate.id].max, rows[heart_rate.id].count, rows[steps.id].sum) == (
+            Decimal("120"),
+            1,
+            Decimal("40"),
+        )
 
     def test_a_workout_gets_its_own_statistics_from_the_samples_inside_it(self, db: Session) -> None:
         source = DataSourceFactory()

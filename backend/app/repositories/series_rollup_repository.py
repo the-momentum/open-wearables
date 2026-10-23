@@ -36,11 +36,13 @@ _DAY_STATS = text(f"""
     GROUP BY 1, 2
 """)
 
+# Only the rows about to be recomputed: a series whose samples are gone keeps the row it has.
 _DELETE_DAYS = text("""
-    DELETE FROM series_aggregate
-    WHERE data_source_id = :source_id AND computed_by = :computed_by AND period_kind = :period_kind
-        AND period_start >= :lo AND period_start < :hi
-        AND ((period_start AT TIME ZONE 'UTC') + zone_offset::interval)::date = ANY(:days)
+    DELETE FROM series_aggregate a
+    USING unnest(CAST(:days AS date[]), CAST(:type_ids AS integer[])) AS recomputed(day, type_id)
+    WHERE a.data_source_id = :source_id AND a.computed_by = :computed_by AND a.period_kind = :period_kind
+        AND a.period_start >= :lo AND a.period_start < :hi AND a.series_type_definition_id = recomputed.type_id
+        AND ((a.period_start AT TIME ZONE 'UTC') + a.zone_offset::interval)::date = recomputed.day
 """)
 
 _SESSIONS = text("""
@@ -63,7 +65,10 @@ _SESSION_STATS = text(f"""
 """)
 
 _DELETE_SESSIONS = text("""
-    DELETE FROM event_record_aggregate WHERE computed_by = :computed_by AND record_id = ANY(:record_ids)
+    DELETE FROM event_record_aggregate a
+    USING unnest(CAST(:record_ids AS uuid[]), CAST(:type_ids AS integer[])) AS recomputed(record_id, type_id)
+    WHERE a.computed_by = :computed_by AND a.record_id = recomputed.record_id
+        AND a.series_type_definition_id = recomputed.type_id
 """)
 
 _DAYS_BEFORE = text(f"""
@@ -82,7 +87,8 @@ _SUMMED_TYPE_IDS = frozenset(
 
 class SeriesRollupRepository:
     """Rolls a source's samples up into open_wearables rows: one per series and local day, one per series and
-    sleep or workout. A day is recomputed whole, so its rows always reflect the samples stored now."""
+    sleep or workout. A series' day or session is recomputed from the samples stored now; one whose samples
+    are all gone keeps its row, since nothing could replace it."""
 
     def __init__(self) -> None:
         self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
@@ -121,14 +127,12 @@ class SeriesRollupRepository:
     ) -> int:
         fresh = [day for day in days if frozen_before is None or day >= frozen_before]
         params = {"source_id": source_id, "lo": lo, "hi": hi, "days": days}
-        if fresh:
-            db_session.execute(
-                _DELETE_DAYS,
-                {**params, "days": fresh, "computed_by": ComputedBy.OPEN_WEARABLES, "period_kind": PeriodKind.DAY},
-            )
         rows: dict[bool, list[dict]] = {True: [], False: []}
+        recomputed: list[tuple[date, int]] = []
         for row in db_session.execute(_DAY_STATS, params):
             period = CalendarPeriod.of_date(row.day, row.zone_offset)
+            if row.day in fresh:
+                recomputed.append((row.day, row.series_type_definition_id))
             rows[row.day in fresh].append(
                 {
                     "data_source_id": source_id,
@@ -140,6 +144,17 @@ class SeriesRollupRepository:
                     "computed_by": ComputedBy.OPEN_WEARABLES,
                     **_stats(row),
                 }
+            )
+        if recomputed:
+            db_session.execute(
+                _DELETE_DAYS,
+                {
+                    **params,
+                    "days": [day for day, _ in recomputed],
+                    "type_ids": [type_id for _, type_id in recomputed],
+                    "computed_by": ComputedBy.OPEN_WEARABLES,
+                    "period_kind": PeriodKind.DAY,
+                },
             )
         return self._write(self.series_aggregate_repo, db_session, rows)
 
@@ -156,10 +171,11 @@ class SeriesRollupRepository:
         frozen_by_id = {row.id: row.frozen for row in db_session.execute(_SESSIONS, params)}
         if not frozen_by_id:
             return
-        if fresh_ids := [record_id for record_id, frozen in frozen_by_id.items() if not frozen]:
-            db_session.execute(_DELETE_SESSIONS, {"computed_by": ComputedBy.OPEN_WEARABLES, "record_ids": fresh_ids})
         rows: dict[bool, list[dict]] = {True: [], False: []}
+        recomputed: list[tuple[UUID, int]] = []
         for row in db_session.execute(_SESSION_STATS, {"record_ids": list(frozen_by_id)}):
+            if not frozen_by_id[row.record_id]:
+                recomputed.append((row.record_id, row.series_type_definition_id))
             rows[not frozen_by_id[row.record_id]].append(
                 {
                     "record_id": row.record_id,
@@ -167,6 +183,15 @@ class SeriesRollupRepository:
                     "computed_by": ComputedBy.OPEN_WEARABLES,
                     **_stats(row),
                 }
+            )
+        if recomputed:
+            db_session.execute(
+                _DELETE_SESSIONS,
+                {
+                    "computed_by": ComputedBy.OPEN_WEARABLES,
+                    "record_ids": [record_id for record_id, _ in recomputed],
+                    "type_ids": [type_id for _, type_id in recomputed],
+                },
             )
         self._write(self.event_aggregate_repo, db_session, rows)
 
