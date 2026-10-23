@@ -26,6 +26,7 @@ from app.schemas.providers.mobile_sdk import (
     SyncRequestData,
 )
 from app.utils.structured_logging import log_structured
+from app.utils.units import EnergyUnit, UnitConverter
 
 
 class XMLService:
@@ -201,6 +202,15 @@ class XMLService:
             self.stats.records.skip(f"missing_startDate:{metric_type}")
             return None
 
+        # Apple exports values in the user's display unit (km, lb, mmol/L, degF...);
+        # convert to the series unit, keeping the raw value when the unit is unknown.
+        raw_unit = document.get("unit")
+        converted = UnitConverter.to_series_unit(series_type, value, raw_unit)
+        if converted is not None:
+            value = converted
+        else:
+            self.stats.unconverted_units[f"{series_type.value}:{raw_unit}"] += 1
+
         device_info = self._extract_device_info(document.get("device", ""))
 
         sample = TimeSeriesSampleCreate(
@@ -302,6 +312,12 @@ class XMLService:
         # Summed across the energy statistics, and left unset when the export reports none
         energy = self._decimal_from_stat(statistic.get("sum")) if "energyburned" in lowered else None
         if energy is not None:
+            raw_unit = statistic.get("unit")
+            kcal = UnitConverter.convert_raw(energy, raw_unit, EnergyUnit.kcal)
+            if kcal is not None:
+                energy = kcal
+            else:
+                self.stats.unconverted_units[f"workout_energy:{raw_unit}"] += 1
             current = metrics["energy_burned"]
             metrics["energy_burned"] = energy if current is None else current + energy
 
@@ -477,6 +493,16 @@ class XMLService:
             sleep_processed=self.stats.sleep.processed,
             total_sleep=total_sleep,
         )
+
+        if self.stats.unconverted_units:
+            log_structured(
+                self.log,
+                "warning",
+                "Values imported without unit conversion",
+                provider="apple_xml",
+                task="process_xml_upload",
+                unconverted_units=dict(self.stats.unconverted_units),
+            )
 
         if self.stats.any_skipped():
             log_structured(

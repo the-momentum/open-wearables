@@ -142,6 +142,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                     "sleep_processed": stats.sleep.processed,
                     "sleep_skipped": stats.sleep.skipped,
                     "skip_reasons": stats.get_skip_summary(),
+                    "unconverted_units": dict(stats.unconverted_units),
                 },
             }
 
