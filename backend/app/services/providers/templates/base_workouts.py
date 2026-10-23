@@ -1,4 +1,3 @@
-import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
@@ -31,7 +30,6 @@ class BaseWorkoutsTemplate(ABC):
         self.provider_name = provider_name
         self.api_base_url = api_base_url
         self.oauth = oauth
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     def get_workouts(

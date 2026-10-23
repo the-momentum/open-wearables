@@ -1,5 +1,3 @@
-from logging import Logger, getLogger
-
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
 
@@ -13,18 +11,15 @@ from app.services.providers.apple.apple_xml.aws_service import (
     get_s3_client,
     require_bucket_name,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class PresignedURLService:
-    def __init__(self, log: Logger) -> None:
-        self.log = log
-
     def generate_file_key(self, user_id: str, filename: str | None = None) -> str:
         file_key = build_object_key(user_id, filename)
-        log_structured(
-            self.log,
-            "debug",
+        logger.debug(
             "Generated Apple XML file key",
             provider="apple_xml",
             action="file_key_generated",
@@ -42,9 +37,7 @@ class PresignedURLService:
         bucket = require_bucket_name()
         try:
             s3_client.head_bucket(Bucket=bucket)
-            log_structured(
-                self.log,
-                "debug",
+            logger.debug(
                 "S3 bucket exists",
                 provider="apple_xml",
                 action="bucket_validated",
@@ -92,9 +85,7 @@ class PresignedURLService:
                 ExpiresIn=request.expiration_seconds,
             )
 
-            log_structured(
-                self.log,
-                "debug",
+            logger.debug(
                 "Generated Apple XML presigned POST",
                 provider="apple_xml",
                 action="presigned_post_generated",
@@ -124,4 +115,4 @@ class PresignedURLService:
             ) from e
 
 
-presigned_url_service = PresignedURLService(getLogger(__name__))
+presigned_url_service = PresignedURLService()

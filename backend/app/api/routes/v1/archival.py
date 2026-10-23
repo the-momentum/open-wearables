@@ -4,8 +4,6 @@ Admin-only endpoints to configure when live time-series data is archived
 (aggregated into daily rows) and when old data is permanently deleted.
 """
 
-from logging import getLogger
-
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.config import settings
@@ -14,8 +12,6 @@ from app.integrations.celery.tasks.archival_task import run_daily_archival
 from app.schemas.utils import ArchivalSettingUpdate, ArchivalSettingWithEstimate
 from app.services import DeveloperDep
 from app.services.archival_service import archival_service
-
-logger = getLogger(__name__)
 
 
 def _require_data_lifecycle_enabled(_developer: DeveloperDep) -> None:

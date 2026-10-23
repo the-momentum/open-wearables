@@ -1,7 +1,6 @@
 import secrets
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
@@ -19,13 +18,14 @@ from app.schemas.model_crud.user_management import (
 )
 from app.services.developer_service import developer_service
 from app.utils.security import get_password_hash
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class InvitationService:
-    def __init__(self, log: Logger) -> None:
+    def __init__(self) -> None:
         self.crud = InvitationRepository(Invitation)
-        self.logger = log
 
     def _generate_token(self) -> str:
         """Generate a secure random token."""
@@ -49,7 +49,7 @@ class InvitationService:
             invited_by_email=invited_by_email,
             user_id=str(invitation.invited_by_id) if invitation.invited_by_id else None,
         )
-        self.logger.info(f"Queued invitation email for {invitation.id}")
+        logger.info("Queued invitation email", invitation_id=str(invitation.id))
 
     def create_invitation(
         self,
@@ -89,7 +89,7 @@ class InvitationService:
         # Queue invitation email for async delivery (Celery task will update status to SENT on success)
         self._send_invitation_email_async(invitation, invited_by.email)
 
-        self.logger.info("Created invitation")
+        logger.info("Created invitation", invitation_id=str(invitation.id), developer_id=str(invited_by.id))
         return invitation
 
     def get_active_invitations(self, db_session: DbSession) -> Sequence[Invitation]:
@@ -144,9 +144,7 @@ class InvitationService:
         try:
             developer = self.crud.accept_with_developer(db_session, invitation, developer)
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
+            logger.error(
                 f"Failed to accept invitation: {e}",
                 provider="invitation",
                 task="accept_invitation",
@@ -156,7 +154,7 @@ class InvitationService:
                 detail="Failed to create developer account",
             )
 
-        self.logger.info("Invitation accepted")
+        logger.info("Invitation accepted", invitation_id=str(invitation.id), developer_id=str(developer.id))
         return developer
 
     def revoke_invitation(self, db_session: DbSession, invitation_id: UUID) -> Invitation:
@@ -177,9 +175,7 @@ class InvitationService:
 
         invitation = self.crud.update_status(db_session, invitation, InvitationStatus.REVOKED)
 
-        log_structured(
-            self.logger,
-            "info",
+        logger.info(
             "Invitation revoked",
             action="invitation_revoked",
             invitation_id=str(invitation.id),
@@ -214,8 +210,8 @@ class InvitationService:
         invited_by_email = invitation.invited_by.email if invitation.invited_by else None
         self._send_invitation_email_async(invitation, invited_by_email)
 
-        self.logger.info("Invitation resent")
+        logger.info("Invitation resent", invitation_id=str(invitation.id))
         return invitation
 
 
-invitation_service = InvitationService(log=getLogger(__name__))
+invitation_service = InvitationService()

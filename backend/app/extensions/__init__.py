@@ -19,7 +19,6 @@ from functools import cache
 from importlib import import_module
 from importlib.metadata import entry_points
 from importlib.util import find_spec
-from logging import getLogger
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, params
@@ -28,10 +27,9 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from app import __version__ as core_version
 from app.database import engine
 from app.extensions import events, migrations
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 ENTRY_POINT_GROUP = "open_wearables.extensions"
 _NAME = re.compile(r"[a-z][a-z0-9_]*")
@@ -104,7 +102,7 @@ def _migration_error(ext: OWExtension) -> str | None:
     try:
         migrations.upgrade(ext.name, ext.migrations, engine)
     except Exception as exc:
-        log_and_capture_error(exc, logger, "Extension migrations failed", extra={"extension": ext.name})
+        logger.error("Extension migrations failed", exc_info=exc, extension=ext.name)
         return f"migrations failed: {exc}"
     return None
 
@@ -118,9 +116,7 @@ def _task_import_error(ext: OWExtension) -> str | None:
             if find_spec(module) is not None:
                 import_module(module)
         except Exception as exc:
-            log_and_capture_error(
-                exc, logger, "Extension task module failed to import", extra={"extension": ext.name, "module": module}
-            )
+            logger.error("Extension task module failed to import", exc_info=exc, extension=ext.name, module=module)
             return f"cannot import {module}: {exc}"
     return None
 
@@ -133,7 +129,7 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
         try:
             ext = ep.load()()
         except Exception as exc:
-            log_and_capture_error(exc, logger, "Failed to load extension", extra={"extension": ep.name})
+            logger.error("Failed to load extension", exc_info=exc, extension=ep.name)
             loaded.append(LoadedExtension(name=ep.name, extension=None, error=str(exc)))
             continue
 
@@ -146,13 +142,9 @@ def get_extensions() -> tuple[LoadedExtension, ...]:
             error = _name_error(ext) or _compatibility_error(ext) or _migration_error(ext) or _task_import_error(ext)
         name = getattr(ext, "name", "") or ep.name
         if error:
-            log_structured(
-                logger, "warning", "Extension disabled", action="extension_disabled", extension=name, reason=error
-            )
+            logger.warning("Extension disabled", action="extension_disabled", extension=name, reason=error)
         else:
-            log_structured(
-                logger, "info", "Extension loaded", action="extension_loaded", extension=name, version=ext.version
-            )
+            logger.info("Extension loaded", action="extension_loaded", extension=name, version=ext.version)
         extension = ext if isinstance(ext, OWExtension) else None
         loaded.append(LoadedExtension(name=name, extension=extension, error=error))
     return tuple(loaded)
@@ -166,11 +158,8 @@ def _hook_routers(ext: OWExtension, hook: str) -> list[APIRouter]:
     try:
         contributed = list(getattr(ext, hook)())
     except Exception as exc:
-        log_and_capture_error(
-            exc,
-            logger,
-            f"Extension {hook}() failed, its endpoints are not mounted",
-            extra={"extension": ext.name},
+        logger.error(
+            "Extension hook failed, its endpoints are not mounted", exc_info=exc, extension=ext.name, hook=hook
         )
         return []
     routers: list[APIRouter] = []
@@ -178,9 +167,7 @@ def _hook_routers(ext: OWExtension, hook: str) -> list[APIRouter]:
         if isinstance(router, APIRouter):
             routers.append(router)
             continue
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Extension router skipped",
             action="extension_router_skipped",
             extension=ext.name,
@@ -206,9 +193,7 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
         try:
             declared = dict(ext.event_handlers())
         except Exception as exc:
-            log_and_capture_error(
-                exc, logger, "Extension event_handlers() failed, it receives no events", extra={"extension": ext.name}
-            )
+            logger.error("Extension event_handlers() failed, it receives no events", exc_info=exc, extension=ext.name)
             continue
         for event, task in declared.items():
             if event not in events.SUPPORTED_EVENTS:
@@ -218,9 +203,7 @@ def collect_event_handlers() -> dict[str, tuple[str, ...]]:
             else:
                 handlers.setdefault(event, []).append(task)
                 continue
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Extension event handler skipped",
                 action="extension_event_handler_skipped",
                 extension=ext.name,
@@ -254,19 +237,16 @@ def collect_beat_schedule(reserved: Collection[str] = ()) -> dict[str, dict[str,
         try:
             entries = dict(ext.beat_schedule())
         except Exception as exc:
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Extension beat_schedule() failed, its periodic tasks are not scheduled",
-                extra={"extension": ext.name},
+                exc_info=exc,
+                extension=ext.name,
             )
             continue
         for key, entry in entries.items():
             error = _beat_entry_error(key, entry, reserved, schedule)
             if error:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Extension beat entry skipped",
                     action="extension_beat_entry_skipped",
                     extension=ext.name,

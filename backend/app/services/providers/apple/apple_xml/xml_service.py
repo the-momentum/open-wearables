@@ -1,6 +1,5 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from logging import Logger
 from pathlib import Path
 from typing import Any, BinaryIO, Generator
 from uuid import UUID, uuid4
@@ -25,14 +24,15 @@ from app.schemas.providers.mobile_sdk import (
     SyncRequest,
     SyncRequestData,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class XMLService:
-    def __init__(self, source: str | Path | BinaryIO, log: Logger):
+    def __init__(self, source: str | Path | BinaryIO):
         self.xml_source = source
         self.chunk_size: int = settings.xml_chunk_size
-        self.log: Logger = log
         self.stats: XMLParseStats = XMLParseStats()
 
     DATE_FIELDS: tuple[str, ...] = ("startDate", "endDate", "creationDate")
@@ -91,29 +91,29 @@ class XMLService:
         Returns None if the value cannot be parsed, logging a warning with context.
         """
         if raw_value is None:
-            self.log.debug("Missing value for metric type %s", metric_type)
+            logger.debug("Missing value for metric type", provider="apple_xml", metric_type=metric_type)
             return None
 
         # Handle empty strings
         if not raw_value.strip():
-            self.log.debug("Empty value for metric type %s", metric_type)
+            logger.debug("Empty value for metric type", provider="apple_xml", metric_type=metric_type)
             return None
 
         try:
             return Decimal(raw_value)
         except InvalidOperation:
-            self.log.warning(
-                "Invalid decimal value '%s' for metric type %s (conversion syntax error)",
-                raw_value[:50] if len(raw_value) > 50 else raw_value,
-                metric_type,
+            logger.warning(
+                "Invalid decimal value for metric type (conversion syntax error)",
+                provider="apple_xml",
+                metric_type=metric_type,
             )
             return None
         except (ValueError, ArithmeticError) as e:
-            self.log.warning(
-                "Failed to parse decimal value '%s' for metric type %s: %s",
-                raw_value[:50] if len(raw_value) > 50 else raw_value,
-                metric_type,
-                str(e),
+            logger.warning(
+                "Failed to parse decimal value for metric type",
+                provider="apple_xml",
+                metric_type=metric_type,
+                error=str(e),
             )
             return None
 
@@ -191,13 +191,18 @@ class XMLService:
         try:
             document = self._parse_date_fields(document)
         except ValueError as e:
-            self.log.warning("Failed to parse date for metric type %s: %s", metric_type, str(e))
+            logger.warning(
+                "Failed to parse date for metric type",
+                provider="apple_xml",
+                metric_type=metric_type,
+                error=str(e),
+            )
             self.stats.records.skip(f"invalid_date:{metric_type}")
             return None
 
         # Check required date field
         if "startDate" not in document:
-            self.log.warning("Missing startDate for metric type %s", metric_type)
+            logger.warning("Missing startDate for metric type", provider="apple_xml", metric_type=metric_type)
             self.stats.records.skip(f"missing_startDate:{metric_type}")
             return None
 
@@ -353,15 +358,15 @@ class XMLService:
         for event, elem in ET.iterparse(self.xml_source, events=("end",)):
             if elem.tag == "Record" and event == "end":
                 if len(workouts) + len(time_series_records) + len(sleep_records) >= self.chunk_size:
-                    self.log.info(
-                        "Yielding chunk: %s time series records, %s workouts, %s sleep records \
-                            (skipped so far: %s records, %s workouts, %s sleep records)",
-                        len(time_series_records),
-                        len(workouts),
-                        len(sleep_records),
-                        self.stats.records.skipped,
-                        self.stats.workouts.skipped,
-                        self.stats.sleep.skipped,
+                    logger.info(
+                        "Yielding chunk",
+                        provider="apple_xml",
+                        record_count=len(time_series_records),
+                        workout_count=len(workouts),
+                        sleep_count=len(sleep_records),
+                        skipped_records=self.stats.records.skipped,
+                        skipped_workouts=self.stats.workouts.skipped,
+                        skipped_sleep=self.stats.sleep.skipped,
                     )
                     sync_request = self._wrap_sleep_data(sleep_records)
                     yield time_series_records, workouts, sync_request
@@ -379,9 +384,10 @@ class XMLService:
                             sleep_records.append(sleep_record)
                             self.stats.sleep.mark_processed()
                         else:
-                            self.log.warning(
-                                "Skipping sleep record with unsupported stage %s",
-                                record.get("value"),
+                            logger.warning(
+                                "Skipping sleep record with unsupported stage",
+                                provider="apple_xml",
+                                sleep_stage=record.get("value"),
                             )
                             self.stats.sleep.skip(f"unknown_sleep_stage:{record.get('value')}")
                         elem.clear()
@@ -394,10 +400,11 @@ class XMLService:
                 except Exception as e:
                     # Catch any unexpected errors to prevent entire import from failing
                     metric_type = elem.attrib.get("type", "unknown")
-                    self.log.warning(
-                        "Unexpected error parsing record of type %s: %s - skipping",
-                        metric_type,
-                        str(e),
+                    logger.warning(
+                        "Unexpected error parsing record - skipping",
+                        provider="apple_xml",
+                        metric_type=metric_type,
+                        error=str(e),
                     )
                     self.stats.records.skip(f"unexpected_error:{type(e).__name__}")
                 finally:
@@ -405,12 +412,13 @@ class XMLService:
 
             elif elem.tag == "Workout" and event == "end":
                 if len(workouts) + len(time_series_records) >= self.chunk_size:
-                    self.log.info(
-                        "Yielding chunk: %s time series records, %s workouts (skipped so far: %s records, %s workouts)",
-                        len(time_series_records),
-                        len(workouts),
-                        self.stats.records.skipped,
-                        self.stats.workouts.skipped,
+                    logger.info(
+                        "Yielding chunk",
+                        provider="apple_xml",
+                        record_count=len(time_series_records),
+                        workout_count=len(workouts),
+                        skipped_records=self.stats.records.skipped,
+                        skipped_workouts=self.stats.workouts.skipped,
                     )
                     sync_request = self._wrap_sleep_data(sleep_records)
                     yield time_series_records, workouts, sync_request
@@ -432,19 +440,18 @@ class XMLService:
                 except Exception as e:
                     # Catch any unexpected errors to prevent entire import from failing
                     workout_type = elem.attrib.get("workoutActivityType", "unknown")
-                    self.log.warning(
-                        "Unexpected error parsing workout of type %s: %s - skipping",
-                        workout_type,
-                        str(e),
+                    logger.warning(
+                        "Unexpected error parsing workout - skipping",
+                        provider="apple_xml",
+                        workout_type=workout_type,
+                        error=str(e),
                     )
                     self.stats.workouts.skip(f"unexpected_error:{type(e).__name__}")
                 finally:
                     elem.clear()
 
         # yield remaining records and workout pairs
-        log_structured(
-            self.log,
-            "info",
+        logger.info(
             "Final chunk",
             provider="apple_xml",
             task="process_xml_upload",
@@ -464,9 +471,7 @@ class XMLService:
         total_workouts = self.stats.workouts.processed + self.stats.workouts.skipped
         total_sleep = self.stats.sleep.processed + self.stats.sleep.skipped
 
-        log_structured(
-            self.log,
-            "info",
+        logger.info(
             "XML parsing complete",
             provider="apple_xml",
             task="process_xml_upload",
@@ -479,9 +484,7 @@ class XMLService:
         )
 
         if self.stats.any_skipped():
-            log_structured(
-                self.log,
-                "warning",
+            logger.warning(
                 "Records, workouts, or sleep skipped during import",
                 provider="apple_xml",
                 task="process_xml_upload",
@@ -492,9 +495,7 @@ class XMLService:
 
             # Log breakdown of skip reasons
             for type, reasons in self.stats.get_skip_summary().items():
-                log_structured(
-                    self.log,
-                    "warning",
+                logger.warning(
                     f"Skipped {type}: {reasons}",
                     provider="apple_xml",
                     task="process_xml_upload",

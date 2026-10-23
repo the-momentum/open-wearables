@@ -7,7 +7,6 @@ in Svix's message store.
 
 from __future__ import annotations
 
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -18,10 +17,9 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services import developer_service
 from app.services.outgoing_webhooks import svix as svix_service
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _load_developer_ids() -> list[str]:
@@ -68,11 +66,12 @@ def delete_user_webhook_payloads(self: Any, user_id: str) -> dict[str, Any]:
             if isinstance(exc, HttpError) and exc.status_code == 404:
                 # Application never created in Svix (it is created lazily on first emit).
                 continue
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Failed to delete webhook payloads of deleted user",
-                extra={"user_id": user_id, "app_id": app_id, "error": str(exc)},
+                exc_info=exc,
+                user_id=user_id,
+                app_id=app_id,
+                error=str(exc),
             )
             errors.append(app_id)
 
@@ -81,5 +80,5 @@ def delete_user_webhook_payloads(self: Any, user_id: str) -> dict[str, Any]:
             exc=RuntimeError(f"Webhook payload deletion failed for user {user_id} in app(s) {errors}"),
         )
 
-    log_structured(logger, "info", "Deleted webhook payloads of deleted user", user_id=user_id, deleted=deleted)
+    logger.info("Deleted webhook payloads of deleted user", user_id=user_id, deleted=deleted)
     return {"user_id": user_id, "deleted": deleted, "errors": errors}

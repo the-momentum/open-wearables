@@ -24,7 +24,6 @@ are migrated.  Once a provider's ``BaseWebhookHandler`` is implemented and wired
 into its strategy, traffic can be cut over to this router.
 """
 
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -43,7 +42,6 @@ from app.services.providers.templates.base_webhook_handler import BaseWebhookHan
 from app.utils.auth import DeveloperDep
 
 router = APIRouter()
-logger = getLogger(__name__)
 
 _factory = ProviderFactory()
 

@@ -1,6 +1,5 @@
 """Simple API client for making authenticated requests to provider APIs."""
 
-import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -14,9 +13,9 @@ from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Rate limiting configuration (Garmin: 100 req / 60s window)
 MAX_RETRIES = 3
@@ -184,9 +183,7 @@ def make_authenticated_request(
             if response.status_code == 429:
                 if attempt < MAX_RETRIES:
                     backoff_delay = RETRY_BASE_DELAY * (2**attempt)  # 1s, 2s, 4s
-                    log_structured(
-                        logger,
-                        "warning",
+                    logger.warning(
                         "Rate limited (429), retrying",
                         provider_name=provider_name,
                         attempt=attempt + 1,
@@ -196,9 +193,7 @@ def make_authenticated_request(
                     time.sleep(backoff_delay)
                     continue
                 # Max retries exceeded
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Rate limited (429), max retries exceeded",
                     provider_name=provider_name,
                     attempt=attempt + 1,
@@ -229,9 +224,7 @@ def make_authenticated_request(
 
                 if has_error or has_error_code:
                     error_msg = result.get("message") or result.get("error") or str(result)
-                    log_structured(
-                        logger,
-                        "error",
+                    logger.error(
                         "API returned error in body",
                         provider_name=provider_name,
                         error_msg=error_msg,
@@ -247,9 +240,7 @@ def make_authenticated_request(
             # Handle 429 from raise_for_status (shouldn't happen due to early check, but just in case)
             if e.response.status_code == 429 and attempt < MAX_RETRIES:
                 backoff_delay = RETRY_BASE_DELAY * (2**attempt)
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Rate limited (429), retrying",
                     provider_name=provider_name,
                     attempt=attempt + 1,
@@ -259,9 +250,7 @@ def make_authenticated_request(
                 time.sleep(backoff_delay)
                 continue
 
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "API error",
                 provider_name=provider_name,
                 user_id=str(user_id),
@@ -280,9 +269,7 @@ def make_authenticated_request(
             # Re-raise HTTPExceptions as-is
             raise
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "API request failed",
                 provider_name=provider_name,
                 user_id=str(user_id),
@@ -323,9 +310,7 @@ def download_binary_content(
         )
         if response.status_code == 429 and attempt < MAX_RETRIES:
             backoff_delay = RETRY_BASE_DELAY * (2**attempt)
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Rate limited (429) on binary download, retrying",
                 provider_name=provider_name,
                 attempt=attempt + 1,

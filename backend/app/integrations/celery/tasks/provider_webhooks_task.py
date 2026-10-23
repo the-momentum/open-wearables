@@ -7,7 +7,7 @@ out from its own webhook service into its own task, in both directions.
 """
 
 import asyncio
-from logging import getLogger
+import logging
 
 from celery import Task, shared_task
 
@@ -19,9 +19,9 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.responses.incoming_webhooks import WebhookSubscriptionStatus
 from app.services.providers.factory import ProviderFactory
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(
@@ -49,9 +49,8 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
             results = asyncio.run(strategy.webhook_service.deregister_subscriptions())
             deleted = sum(1 for result in results if result.status == WebhookSubscriptionStatus.DELETED)
             errors = sum(1 for result in results if result.status == WebhookSubscriptionStatus.ERROR)
-            log_structured(
-                logger,
-                "error" if errors else "info",
+            logger.log(
+                logging.ERROR if errors else logging.INFO,
                 "Webhook subscriptions deregistered",
                 provider=provider,
                 action="deregister_provider_webhooks_complete",
@@ -68,9 +67,7 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
         created = sum(1 for result in results if result.get("status") == "created")
         skipped = sum(1 for result in results if result.get("status") == "skipped")
         errors = sum(1 for result in results if result.get("status") == "error")
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Webhook subscriptions registered",
             provider=provider,
             action="register_provider_webhooks_complete",
@@ -82,9 +79,7 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
             with SessionLocal() as db:
                 secret = ProviderSettingsRepository().get_webhook_secret(db, ProviderName(provider))
             if not secret:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Webhook skipped but no inbound secret stored — delete and re-register to obtain a new secret",
                     provider=provider,
                     action="webhook_inbound_secret_missing",
@@ -95,9 +90,7 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
         return {"provider": provider, "created": created, "skipped": skipped, "errors": errors}
 
     except (ValueError, NotImplementedError) as exc:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Provider does not support webhook subscription management",
             provider=provider,
             action="reconcile_provider_webhooks_unsupported",
@@ -105,9 +98,7 @@ def reconcile_provider_webhooks(self: Task, provider: str, mode: str) -> dict:
         )
         return {"provider": provider, "created": 0, "skipped": 0, "errors": 1}
     except Exception as exc:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Webhook reconciliation task failed, scheduling retry",
             provider=provider,
             error=str(exc),

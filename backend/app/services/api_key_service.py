@@ -1,5 +1,4 @@
 import secrets
-from logging import Logger, getLogger
 from typing import Annotated
 from uuid import UUID
 
@@ -14,17 +13,19 @@ from app.services.services import AppService
 from app.utils.auth import get_current_developer_optional, oauth2_scheme, validate_api_key
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 from app.utils.security import hash_api_key
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Number of leading characters of the raw key kept in clear for display ("sk-" + 7 hex chars).
 KEY_PREFIX_LENGTH = 10
 
 
 class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpdate]):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=ApiKeyRepository,
             model=ApiKey,
-            log=log,
             **kwargs,
         )
 
@@ -48,13 +49,17 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
             created_by=created_by,
         )
         api_key = self.create(db, creator)
-        self.logger.debug(f"Created API key {api_key.id} ({api_key.key_prefix}...) by developer {created_by}")
+        logger.debug(
+            "Created API key",
+            api_key_id=str(api_key.id),
+            developer_id=str(created_by) if created_by else None,
+        )
         return api_key, raw_key
 
     def list_api_keys(self, db: DbSession) -> list[ApiKey]:
         """List all API keys ordered by creation date."""
         keys = self.crud.get_all_ordered(db)
-        self.logger.debug(f"Listed {len(keys)} API keys")
+        logger.debug("Listed API keys", count=len(keys))
         return keys
 
     @handle_exceptions
@@ -76,7 +81,7 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         except Exception:
             db.rollback()
             raise
-        self.logger.debug(f"Rotated API key {key_id} to {new_key.id}")
+        logger.debug("Rotated API key", api_key_id=str(key_id), new_api_key_id=str(new_key.id))
         return new_key, raw_key
 
     @handle_exceptions
@@ -85,7 +90,7 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         return validate_api_key(db, key)
 
 
-api_key_service = ApiKeyService(log=getLogger(__name__))
+api_key_service = ApiKeyService()
 
 
 async def _authenticate(db: Session, developer: Developer | None, api_key: str | None) -> str:

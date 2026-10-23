@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any
@@ -17,8 +16,6 @@ from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.utils.exceptions import UnsupportedProviderError
 from app.utils.sync_params import build_sync_params
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 factory = ProviderFactory()

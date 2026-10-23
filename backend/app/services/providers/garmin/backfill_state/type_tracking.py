@@ -1,6 +1,5 @@
 """Per-type backfill status tracking in Redis."""
 
-import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -10,9 +9,9 @@ from app.services.providers.garmin.backfill_config import (
     REDIS_TTL,
 )
 from app.services.providers.garmin.backfill_state.core import _get_key, get_trace_id
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_pending_types(user_id: str | UUID) -> list[str]:
@@ -30,9 +29,7 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
     get_redis_client().setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "triggered")
     get_redis_client().setex(_get_key(user_id_str, "types", data_type, "triggered_at"), REDIS_TTL, now)
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Marked type as triggered",
         provider="garmin",
         trace_id=get_trace_id(user_id_str),
@@ -58,9 +55,7 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
     get_redis_client().setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "success")
     get_redis_client().setex(_get_key(user_id_str, "types", data_type, "completed_at"), REDIS_TTL, now)
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Marked type as success",
         provider="garmin",
         trace_id=get_trace_id(user_id_str),
@@ -77,9 +72,7 @@ def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
     get_redis_client().setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "failed")
     get_redis_client().setex(_get_key(user_id_str, "types", data_type, "error"), REDIS_TTL, error)
 
-    log_structured(
-        logger,
-        "error",
+    logger.error(
         "Marked type as failed",
         provider="garmin",
         trace_id=get_trace_id(user_id_str),
@@ -96,9 +89,7 @@ def reset_type_status(user_id: str | UUID, data_type: str) -> None:
     for key_suffix in ["status", "triggered_at", "completed_at", "error", "trace_id"]:
         get_redis_client().delete(_get_key(user_id_str, "types", data_type, key_suffix))
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Reset type status",
         provider="garmin",
         data_type=data_type,
@@ -119,9 +110,7 @@ def mark_type_timed_out(user_id: str | UUID, data_type: str) -> int:
     new_count = get_redis_client().incr(skip_key)
     get_redis_client().expire(skip_key, REDIS_TTL)
 
-    log_structured(
-        logger,
-        "warning",
+    logger.warning(
         "Marked type as timed_out (timeout)",
         provider="garmin",
         trace_id=get_trace_id(user_id_str),

@@ -590,7 +590,7 @@ def test_a_gap_longer_than_a_page_does_not_cut_the_walk_short(
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.log_and_capture_error")
+@patch("app.services.providers.withings.data_247.logger")
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
@@ -625,11 +625,11 @@ def test_every_night_gets_stages_when_a_page_reaches_only_one_night(
     assert len(stored) == len(nights)
     assert all(stages for stages in stored), "a night was saved without stages"
     # The walk ends because it covered the nights, not because a request blew up.
-    mock_error.assert_not_called()
+    assert not [call for call in mock_error.method_calls if call.kwargs.get("exc_info")]
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")
-@patch("app.services.providers.withings.data_247.log_structured")
+@patch("app.services.providers.withings.data_247.logger")
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch("app.services.providers.withings.data_247.withings_request")
 @patch("app.services.providers.withings.data_247.paginate")
@@ -650,8 +650,7 @@ def test_a_walk_that_runs_out_of_requests_says_so(
 
     _data_247().save_sleep(MagicMock(), uuid4(), *_WINDOW)
 
-    levels = [call.args[1] for call in mock_log.call_args_list]
-    assert "warning" in levels
+    assert "warning" in [name for name, _, _ in mock_log.method_calls]
 
 
 @patch("app.services.providers.withings.data_247.timeseries_service")

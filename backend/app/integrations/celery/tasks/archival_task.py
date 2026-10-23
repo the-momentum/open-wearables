@@ -8,16 +8,15 @@ Both thresholds are configured by the admin via archival_settings.
 If both are NULL, the task is a no-op.
 """
 
-from logging import getLogger
-
 from celery import shared_task
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services.archival_service import archival_service
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(
@@ -41,8 +40,8 @@ def run_daily_archival() -> dict:
     with SessionLocal() as db:
         try:
             summary = archival_service.run_daily_archival(db)
-            logger.info("Daily archival completed: %s", summary)
+            logger.info("Daily archival completed", summary=summary)
             return summary
-        except Exception:
-            logger.exception("Daily archival task failed")
+        except Exception as e:
+            logger.error("Daily archival task failed", exc_info=e)
             raise

@@ -11,7 +11,6 @@ ignored and the endpoint still returns 200 so Garmin stops retrying.
 
 import contextlib
 import json
-import logging
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -38,9 +37,9 @@ from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 WELLNESS_TYPES: list[str] = [
     "dailies",
@@ -96,9 +95,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
     def verify_signature(self, request: Request, body: bytes) -> bool:
         expected = settings.garmin_client_id
         if not expected:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "GARMIN_CLIENT_ID not configured; rejecting webhook",
                 provider="garmin",
                 action="webhook_signature_missing_secret",
@@ -107,9 +104,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
 
         provided = request.headers.get("garmin-client-id", "")
         if not provided:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Missing garmin-client-id header",
                 provider="garmin",
                 action="webhook_signature_invalid",
@@ -117,9 +112,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
             return False
 
         if not self._verify_token(expected, provided):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "garmin-client-id header does not match configured value",
                 provider="garmin",
                 action="webhook_signature_invalid",
@@ -153,9 +146,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 if isinstance(item, dict) and item.get("userId")
             }
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Received Garmin webhook",
             provider="garmin",
             trace_id=request_trace_id,
@@ -170,9 +161,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
         task = celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH, args=["garmin", payload, request_trace_id], queue=CeleryQueue.GARMIN_SYNC
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Enqueued Garmin webhook processing task",
             provider="garmin",
             trace_id=request_trace_id,
@@ -275,9 +264,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 continue
 
             items = payload[data_type]
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Processing wellness notifications",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -309,9 +296,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                     db, self.connection_repo, payload["userPermissionsChange"], request_trace_id
                 )
             except Exception as e:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Failed to process permission changes",
                     provider="garmin",
                     trace_id=request_trace_id,
@@ -325,9 +310,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                     db, self.connection_repo, self.oauth, payload["deregistrations"], request_trace_id
                 )
             except Exception as e:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Failed to process deregistrations",
                     provider="garmin",
                     trace_id=request_trace_id,
@@ -341,9 +324,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
             backfill_status = get_backfill_status(user_id_str)
             if backfill_status["overall_status"] in ("in_progress", "retry_in_progress"):
                 trace_id = get_trace_id(user_id_str) or request_trace_id
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Triggering next backfill",
                     provider="garmin",
                     trace_id=trace_id,

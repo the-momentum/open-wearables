@@ -1,5 +1,4 @@
 import contextlib
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.constants.devices_map import resolve_device_name
@@ -23,8 +22,7 @@ from app.utils.exceptions import handle_exceptions
 
 
 class PriorityService:
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
         self.data_source_repo = DataSourceRepository(DataSource)
@@ -137,4 +135,4 @@ class PriorityService:
         return " - ".join(parts) if parts else "Unknown Source"
 
 
-priority_service = PriorityService(log=getLogger(__name__))
+priority_service = PriorityService()

@@ -6,13 +6,14 @@ the SDK would actually ship.
 
 import json
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 import pytest
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError
 from sentry_sdk.envelope import Envelope
@@ -22,9 +23,13 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.integrations import sentry as sentry_integration
 from app.services import raw_payload_storage
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.config_utils import LogLevel
+from app.utils.logging_setup import configure_app_logger
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger("app.test_sentry_scrubbing")
+# A library logger: its ERROR records keep becoming Sentry events, like before.
+logger = logging.getLogger("library.test_sentry_scrubbing")
+app_logger = get_logger("app.test_sentry_scrubbing")
 
 FAKE_HEART_RATE = 187.349  # a dot keeps it from matching numeric ids in the event
 FAKE_EMAIL = "jane.doe@example.com"
@@ -40,6 +45,8 @@ class _CapturingTransport(Transport):
         self.transactions: list[dict[str, Any]] = []
 
     def capture_envelope(self, envelope: Envelope) -> None:
+        # Encode it like the real transport: an event that cannot be encoded never ships.
+        envelope.serialize()
         if (event := envelope.get_event()) is not None:
             self.events.append(event)
         if (transaction := envelope.get_transaction_event()) is not None:
@@ -140,32 +147,132 @@ def test_database_error_keeps_its_statement_but_not_the_row(captured: list[dict[
     assert str(FAKE_HEART_RATE) not in _dump(captured[0])
 
 
-def test_log_and_capture_error_context_is_scrubbed(captured: list[dict[str, Any]]) -> None:
-    log_and_capture_error(
-        RuntimeError("sync failed"),
-        logger,
+def _raised(exc: Exception) -> Exception:
+    try:
+        raise exc
+    except Exception as caught:
+        return caught
+
+
+@pytest.fixture
+def app_log_level() -> Iterator[Any]:
+    """Apply a LOG_LEVEL to the app logger for the test."""
+
+    def apply(level: LogLevel | None) -> None:
+        with patch.object(settings, "log_level", level):
+            configure_app_logger()
+
+    yield apply
+    configure_app_logger()
+
+
+def test_log_context_is_scrubbed(captured: list[dict[str, Any]]) -> None:
+    app_logger.error(
         "sync failed",
-        extra={
-            "user_id": "u-1",
-            "email": FAKE_EMAIL,
-            "nested": {"provider_username": FAKE_USERNAME},
-            "error": f"[type=int_parsing, input_value='{FAKE_PAYLOAD}', input_type=str]",
-        },
+        exc_info=_raised(RuntimeError("sync failed")),
+        user_id="u-1",
+        run_id=UUID(int=1),
+        api_key=FAKE_TOKEN,
+        email=FAKE_EMAIL,
+        nested={"provider_username": FAKE_USERNAME},
+        error=f"[type=int_parsing, input_value='{FAKE_PAYLOAD}', input_type=str]",
     )
     sentry_sdk.flush()
 
-    # The ERROR log is its own event; the exception event carries the context.
-    event = next(e for e in captured if "exception" in e)
-    assert event["contexts"]["user_id"] == {"value": "u-1"}
-    for e in captured:
-        assert FAKE_EMAIL not in _dump(e)
-        assert FAKE_USERNAME not in _dump(e)
-        assert FAKE_PAYLOAD not in _dump(e)
+    # One exception event, carrying the call's attributes as a context; it must still encode.
+    [event] = captured
+    assert event["exception"]["values"][0]["value"] == "sync failed"
+    context = event["contexts"]["log"]
+    assert context["message"] == "sync failed"
+    assert context["logger"] == "app.test_sentry_scrubbing"
+    assert context["user_id"] == "u-1"
+    assert "00000000-0000-0000-0000-000000000001" in str(context["run_id"])
+    assert context["api_key"] == context["email"] == "[Filtered]"
+    assert FAKE_TOKEN not in _dump(event)
+    assert FAKE_EMAIL not in _dump(event)
+    assert FAKE_USERNAME not in _dump(event)
+    assert FAKE_PAYLOAD not in _dump(event)
+
+
+@pytest.mark.parametrize("captured", [False, True], indirect=True)
+def test_app_errors_without_an_exception_do_not_alert(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("Sync failed", user_id="u-1")
+    app_logger.warning("Fetch failed", exc_info=_raised(ValueError("boom")))
+    app_logger.error("Token refresh rejected", exc_info=_raised(HTTPException(status_code=401)))
+    sentry_sdk.flush()
+
+    assert captured == []
+
+
+def test_app_errors_do_not_go_through_the_logging_integration(captured: list[dict[str, Any]]) -> None:
+    """Otherwise every app ERROR record (each 4xx/5xx access log line) is built into an event first."""
+    with patch("sentry_sdk.integrations.logging.sentry_sdk.capture_event") as capture_event:
+        app_logger.error("http_request", status=401)
+        logger.error("library error")
+
+    assert capture_event.call_count == 1
+
+
+def test_log_level_filters_reports_of_exceptions_but_not_alerts(
+    captured: list[dict[str, Any]], app_log_level: Any
+) -> None:
+    app_log_level(LogLevel.CRITICAL)
+    app_logger.error("Sync failed", exc_info=_raised(ValueError("filtered")))
+    app_logger.error("Storage disabled", alert=True)
+    app_logger.warning("Fetch failed", alert=True)
+    sentry_sdk.flush()
+
+    assert [event["message"] for event in captured] == ["Storage disabled", "Fetch failed"]
+
+
+def test_alert_reports_lines_without_an_exception_or_below_error(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("Storage disabled", alert=True, user_id="u-1")
+    app_logger.warning("Fetch failed", exc_info=_raised(ValueError("boom")), alert=True, user_id="u-2")
+    sentry_sdk.flush()
+
+    message_event, exception_event = captured
+    assert message_event["level"] == "error"
+    assert message_event["message"] == "Storage disabled"
+    assert message_event["contexts"]["log"]["user_id"] == "u-1"
+    # A captured exception is an error in Sentry, whatever the level of the line.
+    assert exception_event["level"] == "error"
+    assert exception_event["exception"]["values"][0]["value"] == "boom"
+    assert exception_event["contexts"]["log"]["user_id"] == "u-2"
+
+
+def test_alert_below_error_without_an_exception_keeps_its_level(captured: list[dict[str, Any]]) -> None:
+    app_logger.warning("Fetch failed", alert=True)
+    sentry_sdk.flush()
+
+    [event] = captured
+    assert event["level"] == "warning"
+
+
+def test_attributes_do_not_replace_the_fields_of_the_log_context(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("Storage disabled", alert=True, logger="custom")
+    sentry_sdk.flush()
+
+    [event] = captured
+    context = event["contexts"]["log"]
+    assert context["logger"] == "app.test_sentry_scrubbing"
+    assert context["attr_logger"] == "custom"
+
+
+def test_misconfigured_raw_payload_storage_alerts(captured: list[dict[str, Any]]) -> None:
+    try:
+        raw_payload_storage.configure("s3", 1024 * 1024, s3_bucket=None)
+    finally:
+        raw_payload_storage.configure("disabled", 10 * 1024 * 1024)
+    sentry_sdk.flush()
+
+    [event] = captured
+    assert event["message"] == "S3 storage requested but no S3 bucket configured"
 
 
 def test_info_logs_do_not_become_breadcrumbs(captured: list[dict[str, Any]]) -> None:
     logger.info("Invitation sent to %s", FAKE_EMAIL)
     logger.warning("Skipping user %s", FAKE_EMAIL)
+    app_logger.info("Invitation sent", email=FAKE_EMAIL)
     sentry_sdk.capture_message("something happened")
     sentry_sdk.flush()
 
@@ -198,6 +305,16 @@ def test_emails_in_error_logs_and_exception_messages_are_filtered(captured: list
     assert len(captured) == 3
     for event in captured:
         assert FAKE_EMAIL not in _dump(event)
+
+
+@pytest.mark.parametrize("captured", [True], indirect=True)
+def test_sensitive_mode_masks_credentials_in_the_log_context(captured: list[dict[str, Any]]) -> None:
+    app_logger.error("sync failed", exc_info=_raised(RuntimeError("boom")), api_key=FAKE_TOKEN, email=FAKE_EMAIL)
+    sentry_sdk.flush()
+
+    [event] = captured
+    assert event["contexts"]["log"]["api_key"] == "[Filtered]"
+    assert event["contexts"]["log"]["email"] == FAKE_EMAIL
 
 
 @pytest.mark.parametrize("captured", [True], indirect=True)

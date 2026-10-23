@@ -1,6 +1,5 @@
 """Tests for the Apple XML presigned-POST service, focused on SSE enforcement."""
 
-from logging import getLogger
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,7 +25,7 @@ def _service(client: MagicMock) -> PresignedURLService:
     # Same object for the presigning client by default, so single-client assertions hold.
     _clients["internal"] = client
     _clients["public"] = client
-    return PresignedURLService(getLogger(__name__))
+    return PresignedURLService()
 
 
 def _client() -> MagicMock:
@@ -48,7 +47,7 @@ class TestPublicEndpoint:
 
         _clients["internal"] = internal
         _clients["public"] = public
-        service = PresignedURLService(getLogger(__name__))
+        service = PresignedURLService()
 
         service.create_presigned_url("user-1", PresignedURLRequest(filename="export.xml"))
 

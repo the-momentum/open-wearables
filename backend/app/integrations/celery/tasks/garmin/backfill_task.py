@@ -8,7 +8,6 @@ Timeout detection lives in ``backfill_timeout``.
 Redis state management lives in ``app.services.providers.garmin.backfill_state``.
 """
 
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -62,9 +61,9 @@ from app.services.sync_status_service import (
     emit_sync_progress,
     emit_sync_started,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _release_shared_backfill_primary(user_id: str, *, overall_status: SyncStatus = SyncStatus.SUCCESS) -> None:
@@ -96,9 +95,7 @@ def _release_shared_backfill_primary(user_id: str, *, overall_status: SyncStatus
                 primary_user_id=UUID(user_id),
             )
     except Exception as exc:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             f"Failed to notify backfill secondaries: {exc}; proceeding with lock release",
             provider="garmin",
             user_id=user_id,
@@ -121,9 +118,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     try:
         UUID(user_id)
     except ValueError as e:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Invalid user_id",
             user_id=user_id,
             error=str(e),
@@ -138,18 +133,14 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         connection_repo = UserConnectionRepository()
         connection = connection_repo.get_by_user_and_provider(db, UUID(user_id), "garmin")
         if not connection:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Skipping backfill -- no Garmin connection found",
                 provider="garmin",
                 user_id=user_id,
             )
             return {"status": "skipped", "reason": "No Garmin connection found"}
         if connection.scope is not None and "HISTORICAL_DATA_EXPORT" not in connection.scope.split():
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Skipping backfill -- HISTORICAL_DATA_EXPORT not granted",
                 provider="garmin",
                 user_id=user_id,
@@ -159,9 +150,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
 
     # Acquire exclusive lock
     if not acquire_backfill_lock(user_id):
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Backfill already in progress",
             provider="garmin",
             user_id=user_id,
@@ -180,9 +169,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         if not is_backfill_primary:
             release_backfill_lock(user_id)
             register_secondary("garmin", connection.provider_user_id, UUID(user_id), scope="backfill")
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Backfill secondary: another profile already running backfill for this Garmin account",
                 provider="garmin",
                 trace_id=trace_id,
@@ -240,9 +227,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
                         "primary_user_id": user_id,
                     },
                 )
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Notified linked profile of backfill start",
                     provider="garmin",
                     trace_id=trace_id,
@@ -250,9 +235,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
                     secondary_user_id=str(conn.user_id),
                 )
         except Exception as exc:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Failed to notify linked profiles of backfill start: {exc}; continuing",
                 provider="garmin",
                 user_id=user_id,
@@ -264,9 +247,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     if current_window > 0:
         pending = get_pending_types(user_id)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Resuming backfill from persisted state",
             provider="garmin",
             trace_id=trace_id,
@@ -305,9 +286,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     # Fresh start
     init_window_state(user_id, total_windows=BACKFILL_WINDOW_COUNT)
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Starting full backfill",
         provider="garmin",
         trace_id=trace_id,
@@ -383,9 +362,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                     args=[user_id, next_entry["type"]],
                     countdown=DELAY_BETWEEN_TYPES,
                 )
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Retry phase: triggering next type",
                     provider="garmin",
                     trace_id=trace_id,
@@ -399,9 +376,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             complete_backfill(user_id)
             _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
             _release_shared_backfill_primary(user_id, overall_status=SyncStatus.SUCCESS)
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Retry phase complete, backfill finalized",
                 provider="garmin",
                 trace_id=trace_id,
@@ -422,9 +397,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
         has_more = advance_window(user_id)
         if has_more:
             current_window = get_current_window(user_id)
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Window complete, advancing to next",
                 provider="garmin",
                 trace_id=trace_id,
@@ -465,9 +438,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                     args=[user_id, first_entry["type"]],
                     countdown=DELAY_BETWEEN_TYPES,
                 )
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Retry phase: triggering first type",
                     provider="garmin",
                     trace_id=trace_id,
@@ -482,9 +453,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
         _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
         _release_shared_backfill_primary(user_id, overall_status=SyncStatus.SUCCESS)
         completed_windows = get_current_window(user_id)
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Backfill complete",
             provider="garmin",
             trace_id=trace_id,
@@ -505,9 +474,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
         return {"status": "complete", "completed_windows": completed_windows}
 
     next_type = pending_types[0]
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Triggering next backfill type",
         provider="garmin",
         trace_id=trace_id,

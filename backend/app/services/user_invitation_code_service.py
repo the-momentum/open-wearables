@@ -1,6 +1,5 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
@@ -23,9 +22,8 @@ CODE_LENGTH = 8
 
 
 class UserInvitationCodeService:
-    def __init__(self, log: Logger) -> None:
+    def __init__(self) -> None:
         self.crud = UserInvitationCodeRepository(UserInvitationCode)
-        self.logger = log
 
     def _generate_code(self) -> str:
         """Generate an 8-character alphanumeric code from unambiguous charset."""
@@ -81,4 +79,4 @@ class UserInvitationCodeService:
         )
 
 
-user_invitation_code_service = UserInvitationCodeService(log=getLogger(__name__))
+user_invitation_code_service = UserInvitationCodeService()

@@ -26,7 +26,9 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.ultrahuman.coverage import ACTIVITY_SAMPLE_SERIES, DAILY_SCALAR_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Ultrahuman sleep_graph.data stage names → our canonical SleepStageType.
 SLEEP_GRAPH_STAGE_MAP: dict[str, SleepStageType] = {
@@ -113,9 +115,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         except HTTPException as e:
             # Fatal errors - should be raised to trigger token refresh or invalidate connection
             if e.status_code in (401, 403):
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     "Authorization failed while fetching daily metrics",
                     provider="ultrahuman",
                     task="fetch_daily_metrics",
@@ -125,9 +125,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                 )
                 raise
             # Recoverable errors - log and continue with next day
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "API error while fetching daily metrics",
                 provider="ultrahuman",
                 task="fetch_daily_metrics",
@@ -138,9 +136,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             return []
         except Exception as e:
             # Network errors and other unexpected errors - log and continue
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to fetch daily metrics",
                 provider="ultrahuman",
                 task="fetch_daily_metrics",
@@ -259,9 +255,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         end_dt = normalized_sleep.get("end_time")
 
         if not start_dt or not end_dt:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Skipping sleep record: missing start/end time",
                 provider="ultrahuman",
                 task="save_sleep_data",
@@ -480,9 +474,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                         )
                     )
                 except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Failed to build activity sample",
                         provider="ultrahuman",
                         task="build_activity_samples",

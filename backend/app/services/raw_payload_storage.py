@@ -13,7 +13,6 @@ Usage (one-liner at ingestion point):
 """
 
 import json
-import logging
 import sys
 from datetime import UTC, datetime
 from typing import Any
@@ -22,9 +21,9 @@ from uuid import uuid4
 import sentry_sdk
 
 from app.services.s3_client import create_s3_client
-from app.utils.structured_logging import json_serial, log_structured
+from app.utils.structured_logging import get_logger, json_serial
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _storage_backend: str = "disabled"
 _max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
@@ -53,12 +52,12 @@ def configure(
     if storage_backend == "s3" or fit_files_enabled or transport_enabled:
         _s3_bucket = s3_bucket
         if not _s3_bucket:
-            logger.error("S3 storage requested but no S3 bucket configured")
+            logger.error("S3 storage requested but no S3 bucket configured", alert=True)
             _storage_backend = "disabled"
             return
         _s3_client = _create_s3_client(endpoint_url=s3_endpoint_url)
         if _s3_client is None:
-            logger.error("Failed to create S3 client - raw payload storage disabled")
+            logger.error("Failed to create S3 client - raw payload storage disabled", alert=True)
             _storage_backend = "disabled"
             return
         if storage_backend != "s3":
@@ -98,9 +97,11 @@ def store_raw_payload(
     size = len(payload_str.encode("utf-8"))
     if size > _max_size_bytes:
         logger.warning(
-            "Raw payload skipped (size %d bytes exceeds limit %d)",
-            size,
-            _max_size_bytes,
+            "Raw payload skipped (size exceeds limit)",
+            provider=provider,
+            source=source,
+            size_bytes=size,
+            max_size_bytes=_max_size_bytes,
         )
         return
 
@@ -147,8 +148,8 @@ def delete_payload_from_s3(ref: str) -> None:
     try:
         bucket, key = _split_ref(ref)
         _s3_client.delete_object(Bucket=bucket, Key=key)
-    except Exception:
-        logger.exception("Failed to delete payload from S3: %s", ref)
+    except Exception as e:
+        logger.error("Failed to delete payload from S3", exc_info=e, ref=ref)
 
 
 def _split_ref(ref: str) -> tuple[str, str]:
@@ -236,10 +237,10 @@ def put_payload_to_s3(
             ContentType="application/json",
             Metadata=metadata,
         )
-        logger.debug("Stored payload to S3: s3://%s/%s (%d bytes)", _s3_bucket, key, len(body))
+        logger.debug("Stored payload to S3", bucket=_s3_bucket, key=key, size_bytes=len(body))
         return f"s3://{_s3_bucket}/{key}"
-    except Exception:
-        logger.exception("Failed to store payload to S3: s3://%s/%s", _s3_bucket, key)
+    except Exception as e:
+        logger.error("Failed to store payload to S3", exc_info=e, bucket=_s3_bucket, key=key)
         return None
 
 
@@ -258,7 +259,7 @@ def store_fit_file(
     if not _fit_files_enabled:
         return
     if _s3_client is None or _s3_bucket is None:
-        log_structured(logger, "warning", "Cannot store FIT file — S3 not configured")
+        logger.warning("Cannot store FIT file — S3 not configured")
         return
 
     now = datetime.now(UTC)
@@ -273,6 +274,6 @@ def store_fit_file(
             ContentType="application/octet-stream",
             Metadata=metadata,
         )
-        logger.debug("Stored FIT file to S3: s3://%s/%s (%d bytes)", _s3_bucket, key, len(fit_bytes))
+        logger.debug("Stored FIT file to S3", bucket=_s3_bucket, key=key, size_bytes=len(fit_bytes))
     except Exception:
-        log_structured(logger, "error", "Failed to store FIT file to S3", bucket=_s3_bucket, key=key)
+        logger.error("Failed to store FIT file to S3", bucket=_s3_bucket, key=key)

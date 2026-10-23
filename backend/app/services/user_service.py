@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from datetime import datetime
-from logging import Logger, getLogger
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -28,7 +27,9 @@ from app.services.services import AppService
 from app.services.sync_coordination import release_stale_primary
 from app.services.user_connection_service import user_connection_service
 from app.utils.exceptions import ResourceAlreadyExistsError, ResourceNotFoundError, handle_exceptions
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Delay before deleting the webhook payloads of a deleted user, covering emit tasks already
 # queued (emit_webhook_event retries twice, 5 s apart).
@@ -36,11 +37,10 @@ _WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS = 60
 
 
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=UserRepository,
             model=User,
-            log=log,
             **kwargs,
         )
 
@@ -88,9 +88,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 if oauth := strategy.oauth:
                     user_connection_service.deregister_from_provider(db_session, user.id, connection.provider, oauth)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Failed to deregister user",
                     user_id=user.id,
                     provider=connection.provider,
@@ -106,9 +104,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                         release_stale_primary(connection.provider, connection.provider_user_id, scope=scope)
             force_release_backfill_lock(user.id)
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to release Redis locks on user deletion",
                 user_id=user.id,
                 error=str(e),
@@ -133,9 +129,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 countdown=_WEBHOOK_PAYLOAD_DELETION_COUNTDOWN_SECONDS,
             )
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Failed to schedule webhook payload deletion on user deletion",
                 user_id=user_id,
                 error=str(e),
@@ -178,9 +172,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             except ValidationError as exc:
                 if not all("email" in e["loc"] for e in exc.errors()):
                     raise
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Skipping user with invalid email",
                     action="list_users_skip_invalid_email",
                     user_id=str(user.id),
@@ -203,4 +195,4 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         )
 
 
-user_service = UserService(log=getLogger(__name__))
+user_service = UserService()

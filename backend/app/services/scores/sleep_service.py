@@ -9,7 +9,6 @@ four-pillar algorithm (duration, stages, consistency, interruptions):
 """
 
 from datetime import date, datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
@@ -24,7 +23,9 @@ from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordQueryParams, HealthScoreCreate, ScoreComponent
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class WasoData(BaseModel):
@@ -35,8 +36,7 @@ class WasoData(BaseModel):
 class SleepScoreService:
     """Service for computing per-night sleep scores."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.event_record_repo = EventRecordRepository(EventRecord)
 
     @staticmethod
@@ -374,9 +374,7 @@ class SleepScoreService:
                 skipped.append((r_id, str(record.id), str(exc)))
 
         if skipped:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 f"Skipped sleep score for {len(skipped)} record(s): invalid session data",
                 skipped=[{"record_id": rid, "reason": reason} for _, rid, reason in skipped],
             )
@@ -479,9 +477,7 @@ class SleepScoreService:
                 skipped.append((sleep_date, str(record.id), str(exc)))
 
         if skipped:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 f"Skipped sleep score for {len(skipped)} date(s): invalid session data",
                 skipped=[{"date": str(d), "record_id": rid, "reason": reason} for d, rid, reason in skipped],
             )
@@ -489,4 +485,4 @@ class SleepScoreService:
         return results
 
 
-sleep_score_service = SleepScoreService(log=getLogger(__name__))
+sleep_score_service = SleepScoreService()

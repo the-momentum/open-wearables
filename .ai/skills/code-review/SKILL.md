@@ -152,7 +152,7 @@ def process_user(db, user_id, active=True):
 
 - Use `raise_404=True` in service methods instead of manual checks
 - Let exceptions propagate to global handlers
-- Use `log_and_capture_error` for caught exceptions in background tasks
+- Log caught exceptions in background tasks with `logger.error(..., exc_info=e)` so they reach Sentry; log through `get_logger(__name__)`, never `logging.getLogger`
 
 ---
 

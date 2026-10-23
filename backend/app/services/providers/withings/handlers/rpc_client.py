@@ -7,7 +7,6 @@ callers; the HTTP transport, token refresh and HTTP 429 retries stay in
 ``api_client``, while the envelope's own throttle status is retried here.
 """
 
-import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -22,9 +21,9 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.providers.withings import WithingsMeasure
 from app.services.providers.api_client import MAX_RETRIES, RETRY_BASE_DELAY, make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 WITHINGS_API_BASE_URL = "https://wbsapi.withings.net"
 
@@ -105,9 +104,7 @@ def withings_request(
         if status != _RATE_LIMIT_STATUS or attempt == MAX_RETRIES:
             break
         backoff_delay = RETRY_BASE_DELAY * (2**attempt)
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Withings throttled the request, retrying",
             provider="withings",
             action=action,
@@ -117,9 +114,7 @@ def withings_request(
             user_id=str(user_id),
         )
         time.sleep(backoff_delay)
-    log_structured(
-        logger,
-        "error",
+    logger.error(
         "Withings API error status",
         provider="withings",
         action=action,
@@ -170,9 +165,7 @@ def _walk_pages(
         next_offset = int(body.get("offset") or 0)
         if next_offset <= offset:
             # Non-advancing offset would refetch the same page indefinitely.
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Withings pagination made no progress; stopping",
                 provider="withings",
                 action=action,
@@ -182,9 +175,7 @@ def _walk_pages(
             raise WithingsPaginationError(action, "offset did not advance")
         offset = next_offset
 
-    log_structured(
-        logger,
-        "warning",
+    logger.warning(
         "Withings pagination hit page cap; results may be truncated",
         provider="withings",
         action=action,

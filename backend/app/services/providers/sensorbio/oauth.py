@@ -1,4 +1,3 @@
-import logging
 from typing import Any
 
 import httpx
@@ -7,9 +6,9 @@ from app.config import settings
 from app.schemas.auth import AuthenticationMethod
 from app.schemas.model_crud.credentials import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SensorBioOAuth(BaseOAuthTemplate):
@@ -48,9 +47,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
             payload = response.json()
             data = payload.get("data", payload) if isinstance(payload, dict) else {}
 
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Fetched Sensor Bio user profile",
                 provider="sensorbio",
                 task="get_provider_user_info",
@@ -61,9 +58,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
                 "username": data.get("name"),
             }
         except httpx.HTTPStatusError as e:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Sensor Bio API HTTP error fetching user profile",
                 provider="sensorbio",
                 task="get_provider_user_info",
@@ -72,9 +67,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
             )
             return {"user_id": None, "username": None}
         except (httpx.TimeoutException, httpx.NetworkError) as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Sensor Bio API connection error fetching user profile",
                 provider="sensorbio",
                 task="get_provider_user_info",
@@ -83,9 +76,7 @@ class SensorBioOAuth(BaseOAuthTemplate):
             )
             return {"user_id": None, "username": None}
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Unexpected error fetching Sensor Bio user profile: {e}",
                 provider="sensorbio",
                 task="get_provider_user_info",

@@ -126,7 +126,7 @@ class TestDeleteUserWebhookPayloadsTask:
 
         assert result == {"user_id": result["user_id"], "deleted": 2, "errors": []}
 
-    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.log_and_capture_error")
+    @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.logger")
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")
     def test_retries_when_an_app_fails(
@@ -142,8 +142,9 @@ class TestDeleteUserWebhookPayloadsTask:
         ):
             delete_user_webhook_payloads(str(uuid4()))
         mock_retry.assert_called_once()
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.kwargs["extra"]["app_id"] == str(app_id)
+        mock_capture.error.assert_called_once()
+        assert mock_capture.error.call_args.kwargs["exc_info"] is not None
+        assert mock_capture.error.call_args.kwargs["app_id"] == str(app_id)
 
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.svix_service")
     @patch("app.integrations.celery.tasks.delete_user_webhook_payloads_task.developer_service")

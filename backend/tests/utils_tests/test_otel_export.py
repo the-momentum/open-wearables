@@ -22,11 +22,13 @@ from app.integrations import otel
 from app.integrations.celery import core as celery_core
 from app.utils.config_utils import LogFormat, LogLevel
 from app.utils.context import trace_id_var
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 sdk_export = pytest.importorskip("opentelemetry.sdk._logs.export", reason="needs the otel extra")
 
+# A plain stdlib logger in app code, as third-party-style calls with `extra=` produce.
 logger = logging.getLogger("app.test_otel")
+app_logger = get_logger("app.test_otel")
 
 
 @pytest.fixture(autouse=True)
@@ -59,9 +61,7 @@ def _attributes(item: Any) -> dict[str, Any]:
 
 class TestStructuredExport:
     def test_attributes_are_namespaced_and_converted(self, exporter: Any) -> None:
-        log_structured(
-            logger,
-            "warning",
+        app_logger.warning(
             "Sync failed for %s",
             provider="garmin",
             user_id=UUID(int=1),
@@ -89,7 +89,7 @@ class TestStructuredExport:
     def test_app_trace_id_does_not_take_the_otlp_trace_id(self, exporter: Any) -> None:
         token = trace_id_var.set("abcd1234")
         try:
-            log_structured(logger, "info", "with trace")
+            app_logger.info("with trace")
         finally:
             trace_id_var.reset(token)
 
@@ -98,9 +98,7 @@ class TestStructuredExport:
 
     def test_sensitive_values_are_redacted(self, exporter: Any) -> None:
         with patch.object(settings, "otel_export_redact_keys", "Email, device-serial"):
-            log_structured(
-                logger,
-                "info",
+            app_logger.info(
                 "redaction",
                 access_token="t0ken",
                 client_secret="s3cret",
@@ -141,7 +139,7 @@ class TestStructuredExport:
             def __repr__(self) -> str:
                 return "Opaque(token='leak')"
 
-        # log_structured rejects such values (TypeError), so they arrive through `extra=`.
+        # The app logger rejects such values in tests, so they arrive through `extra=`.
         logger.info(
             "objects",
             extra={
@@ -156,8 +154,19 @@ class TestStructuredExport:
         assert attributes["login"] == {"user": "u", "password": "REDACTED"}
         assert attributes["opaque"] == "<Opaque>"
 
+    def test_exceptions_are_exported_as_exception_attributes(self, exporter: Any) -> None:
+        try:
+            raise ValueError("boom")
+        except ValueError as error:
+            app_logger.error("Sync failed", exc_info=error, user_id="u1")
+
+        attributes = _attributes(_exported(exporter)[0])
+        assert attributes["exception.type"] == "ValueError"
+        assert attributes["app.user_id"] == "u1"
+        assert not any(key.startswith("app.") and key.endswith("traceback") for key in attributes)
+
     def test_stdout_is_unchanged(self, exporter: Any, capsys: pytest.CaptureFixture[str]) -> None:
-        log_structured(logger, "info", "printed", user_id="u1")
+        app_logger.info("printed", user_id="u1")
 
         assert capsys.readouterr().out.endswith('"message": "printed", "provider": null, "user_id": "u1"}\n')
         assert len(_exported(exporter)) == 1
@@ -167,8 +176,8 @@ class TestStructuredExport:
         with patch.object(settings, "otel_enabled", True), patch.object(settings, "log_level", LogLevel.WARNING):
             otel.init_otel("open-wearables-test", processor=sdk_export.SimpleLogRecordProcessor(memory))
             try:
-                log_structured(logger, "info", "dropped")
-                log_structured(logger, "error", "kept")
+                app_logger.info("dropped")
+                app_logger.error("kept")
             finally:
                 otel.shutdown_otel()
 
@@ -184,11 +193,11 @@ class TestStdlibExport:
                 seen.append(record)
 
         keep = Keep()
-        logging.getLogger().addHandler(keep)
+        logging.getLogger("app").addHandler(keep)
         try:
             logger.error("token rotation failed", extra={"token": "secret", "user": "u1"})
         finally:
-            logging.getLogger().removeHandler(keep)
+            logging.getLogger("app").removeHandler(keep)
 
         attributes = _attributes(_exported(exporter)[0])
         assert attributes["token"] == "REDACTED"
@@ -244,15 +253,24 @@ class TestStdlibExport:
         assert ignored("opentelemetry.sdk._shared_internal")
         assert not ignored("opentelemetry.instrumentation.fastapi")
 
-    def test_json_and_text_mode_attach_to_the_root_only(self) -> None:
+    def test_json_and_text_mode_attach_to_the_root_and_the_app_logger(self) -> None:
         memory = sdk_export.InMemoryLogRecordExporter()
         with patch.object(settings, "otel_enabled", True), patch.object(settings, "log_format", LogFormat.JSON):
             otel.init_otel("open-wearables-test", processor=sdk_export.SimpleLogRecordProcessor(memory))
             try:
                 assert any(otel.is_export_handler(h) for h in logging.getLogger().handlers)
+                assert any(otel.is_export_handler(h) for h in logging.getLogger("app").handlers)
                 assert not any(otel.is_export_handler(h) for h in logging.getLogger("celery").handlers)
             finally:
                 otel.shutdown_otel()
+
+    def test_shutdown_detaches_from_the_app_logger(self) -> None:
+        memory = sdk_export.InMemoryLogRecordExporter()
+        with patch.object(settings, "otel_enabled", True):
+            otel.init_otel("open-wearables-test", processor=sdk_export.SimpleLogRecordProcessor(memory))
+            otel.shutdown_otel()
+
+        assert not any(otel.is_export_handler(h) for h in logging.getLogger("app").handlers)
 
 
 class TestResource:

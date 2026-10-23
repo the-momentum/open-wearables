@@ -2,7 +2,6 @@ import threading
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
-from logging import Logger, getLogger
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +38,9 @@ from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_bucket_cursor, encode_cursor
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _trim_to_whole_buckets(
@@ -122,8 +124,8 @@ class TimeSeriesService(
 ):
     """Coordinated access to unified device time series samples."""
 
-    def __init__(self, log: Logger):
-        super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
+    def __init__(self):
+        super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries)
         self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
         self.device_type_priority_repo = DeviceTypePriorityRepository()
 
@@ -189,7 +191,7 @@ class TimeSeriesService(
                     sync=sync,
                 )
         except Exception:
-            getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)
+            logger.warning("Failed to emit timeseries webhooks", exc_info=True)
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
@@ -337,4 +339,4 @@ class TimeSeriesService(
         return _page(data, params, has_more, next_cursor, previous_cursor, total_count)
 
 
-timeseries_service = TimeSeriesService(log=getLogger(__name__))
+timeseries_service = TimeSeriesService()

@@ -1,6 +1,5 @@
 from collections import defaultdict
 from datetime import date, datetime, timezone
-from logging import getLogger
 from uuid import UUID, uuid4
 
 from celery import shared_task
@@ -14,10 +13,9 @@ from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, get
 from app.schemas.model_crud.activities.health_score import HealthScoreCreate, ScoreComponent
 from app.services.health_score_service import health_score_service
 from app.services.scores.resilience_service import resilience_score_service
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 _RMSSD_TYPE_ID = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
 _SDNN_TYPE_ID = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
@@ -86,9 +84,7 @@ def fill_missing_resilience_scores() -> dict[str, int]:
         for user_id, reference_date in rows:
             dates_by_user[UUID(str(user_id))].append(reference_date)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             f"Found {len(rows)} resilience score(s) missing across {len(dates_by_user)} user(s)",
             task="fill_missing_resilience_scores",
         )
@@ -101,11 +97,11 @@ def fill_missing_resilience_scores() -> dict[str, int]:
                 scores_by_date = resilience_score_service.get_hrv_cv_scores_for_date_range(db, uid, reference_dates)
             except Exception as e:
                 total_skipped += len(reference_dates)
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Failed to fetch HRV data for user {uid}",
-                    extra={"user_id": str(uid), "task": "fill_missing_resilience_scores"},
+                logger.error(
+                    "Failed to fetch HRV data",
+                    exc_info=e,
+                    user_id=str(uid),
+                    task="fill_missing_resilience_scores",
                 )
                 continue
 
@@ -141,16 +137,14 @@ def fill_missing_resilience_scores() -> dict[str, int]:
             except Exception as e:
                 db.rollback()
                 total_skipped += len(scores_to_save)
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Failed to save resilience scores for user {uid}",
-                    extra={"user_id": str(uid), "task": "fill_missing_resilience_scores"},
+                logger.error(
+                    "Failed to save resilience scores",
+                    exc_info=e,
+                    user_id=str(uid),
+                    task="fill_missing_resilience_scores",
                 )
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             f"Resilience score fill complete: {total_saved} saved, {total_skipped} skipped",
             task="fill_missing_resilience_scores",
             saved=total_saved,

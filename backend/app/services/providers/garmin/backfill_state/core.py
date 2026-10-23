@@ -1,6 +1,5 @@
 """Core backfill state: Redis key helper, trace IDs, lock."""
 
-import logging
 from uuid import UUID, uuid4
 
 from app.integrations.redis_client import get_redis_client
@@ -9,8 +8,6 @@ from app.services.providers.garmin.backfill_config import (
     REDIS_PREFIX,
     REDIS_TTL,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _get_key(user_id: str | UUID, *parts: str) -> str:

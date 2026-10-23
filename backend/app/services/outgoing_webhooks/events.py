@@ -7,7 +7,6 @@ happens in the worker process.
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
 from uuid import UUID
@@ -19,8 +18,9 @@ from app.constants.devices_map import resolve_device_name
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Maximum number of samples included in a single Svix message.
 # At ~200 bytes per serialised sample, 2 500 samples ≈ 500 KB — well within
@@ -60,8 +60,8 @@ def _dispatch(
             args=[event_type, payload],
             kwargs={"channels": channels, "idempotency_key": idempotency_key},
         )
-    except Exception:
-        logger.warning("Could not enqueue webhook event %s", event_type, exc_info=True)
+    except Exception as e:
+        logger.warning("Could not enqueue webhook event", event_type=event_type, exc_info=e)
 
 
 def on_workout_created(

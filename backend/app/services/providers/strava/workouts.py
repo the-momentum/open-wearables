@@ -26,8 +26,9 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import offset_to_iso
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class StravaWorkouts(BaseWorkoutsTemplate):
@@ -86,9 +87,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 page += 1
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     "Error fetching Strava activities page",
                     provider="strava",
                     action="strava_fetch_page_error",
@@ -97,9 +96,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                     error=str(e),
                 )
                 if all_activities:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Returning partial activity data due to error",
                         provider="strava",
                         action="strava_partial_data",
@@ -328,11 +325,8 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 activity.device_name or None,
             )
         except Exception as exc:
-            log_and_capture_error(
-                exc,
-                self.logger,
-                "Failed to fetch Strava workout streams, skipping samples",
-                extra={"activity_id": activity.id},
+            logger.error(
+                "Failed to fetch Strava workout streams, skipping samples", exc_info=exc, activity_id=activity.id
             )
             return 0
         if not samples:
@@ -346,11 +340,11 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             return len(samples)
         except Exception as exc:
             nested.rollback()
-            log_and_capture_error(
-                exc,
-                self.logger,
+            logger.error(
                 "Strava workout sample ingestion failed; continuing",
-                extra={"activity_id": activity.id, "sample_count": len(samples)},
+                exc_info=exc,
+                activity_id=activity.id,
+                sample_count=len(samples),
             )
             return 0
 
@@ -397,9 +391,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 activity = StravaActivityJSON(**raw) if isinstance(raw, dict) else raw
                 parsed_activities.append(activity)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     "Failed to parse Strava activity",
                     provider="strava",
                     action="strava_parse_error",

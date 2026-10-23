@@ -1,6 +1,5 @@
 """API endpoints for managing global provider priorities."""
 
-from logging import getLogger
 from typing import Annotated
 
 from fastapi import APIRouter, Path
@@ -20,7 +19,7 @@ from app.schemas.model_crud.data_priority import (
 from app.services import DeveloperDep, PriorityService
 
 router = APIRouter()
-priority_service = PriorityService(log=getLogger(__name__))
+priority_service = PriorityService()
 
 
 @router.get(

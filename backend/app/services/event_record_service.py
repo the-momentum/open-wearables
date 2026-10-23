@@ -1,7 +1,6 @@
 from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
 from sqlalchemy import event as sa_event
@@ -79,6 +78,9 @@ from app.utils.context import current_sync_payload
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _meal_summary(nutrients: dict[SeriesType, float]) -> tuple[float | None, Macros | None, float | None]:
@@ -117,8 +119,8 @@ class EventRecordService(
 ):
     """Service coordinating CRUD access for unified health records."""
 
-    def __init__(self, log: Logger, **kwargs):
-        super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(crud_model=EventRecordRepository, model=EventRecord, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
@@ -507,14 +509,12 @@ class EventRecordService(
                 merged_awake = _adj_int("sleep_awake_minutes") + (detail.sleep_awake_minutes or 0)
                 merged_total = _adj_int("sleep_total_duration_minutes") + (detail.sleep_total_duration_minutes or 0)
 
-            self.logger.info(
-                "Merging adjacent sleep records: %s (%s – %s) + %s (%s – %s)",
-                adjacent.id,
-                adjacent.start_datetime,
-                adjacent.end_datetime,
-                record.id,
-                record.start_datetime,
-                record.end_datetime,
+            logger.info(
+                "Merging adjacent sleep records",
+                provider=record.provider,
+                user_id=str(user_id),
+                adjacent_record_id=str(adjacent.id),
+                record_id=str(record.id),
             )
 
             merged_detail_fields = {
@@ -799,13 +799,13 @@ class EventRecordService(
         user_id: str,
         restrict_to_record_ids: Query | None = None,
     ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
-        self.logger.debug(f"Fetching event records with filters: {query_params.model_dump()}")
+        logger.debug("Fetching event records", user_id=user_id, filters=query_params.model_dump(mode="json"))
 
         records, total_count = self.crud.get_records_with_filters(
             db_session, query_params, user_id, restrict_to_record_ids=restrict_to_record_ids
         )
 
-        self.logger.debug(f"Retrieved {len(records)} event records out of {total_count} total")
+        logger.debug("Retrieved event records", user_id=user_id, count=len(records), total_count=total_count)
 
         return records, total_count
 
@@ -1253,4 +1253,4 @@ class EventRecordService(
         return True
 
 
-event_record_service = EventRecordService(log=getLogger(__name__))
+event_record_service = EventRecordService()

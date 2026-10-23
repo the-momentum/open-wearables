@@ -13,7 +13,6 @@ to Application Default Credentials). Supports create / list / get / update / del
 Google has no renew operation.
 """
 
-from logging import getLogger
 from typing import Any
 
 import google.auth
@@ -31,9 +30,9 @@ from app.schemas.responses.incoming_webhooks import (
 )
 from app.services.providers.google_health.metrics import METRICS
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 GOOGLE_HEALTH_API_BASE = "https://health.googleapis.com"
 
@@ -90,9 +89,7 @@ def _subscribers_url() -> str:
 
 def _error_result(subscription_id: str, action: str, error: httpx.HTTPError) -> WebhookOperationResult:
     response_body = error.response.text if isinstance(error, httpx.HTTPStatusError) else None
-    log_structured(
-        logger,
-        "error",
+    logger.error(
         f"Failed to {action} Google Health API subscriber",
         provider="google_health",
         action=f"google_webhook_subscription_{action}_error",
@@ -151,9 +148,7 @@ class GoogleWebhookService(BaseWebhookService):
                 response.raise_for_status()
             except httpx.HTTPError as e:
                 response_body = e.response.text if isinstance(e, httpx.HTTPStatusError) else None
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Failed to register Google Health API subscriber",
                     provider="google_health",
                     action="google_webhook_subscription_register_error",
@@ -178,9 +173,7 @@ class GoogleWebhookService(BaseWebhookService):
                 response.raise_for_status()
                 raw = response.json() or {}
         except httpx.HTTPError as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to list Google Health API subscribers",
                 provider="google_health",
                 action="google_webhook_subscription_list_error",
@@ -194,9 +187,7 @@ class GoogleWebhookService(BaseWebhookService):
             try:
                 result.append(GoogleWebhookSubscription.model_validate(item))
             except ValidationError as e:
-                log_structured(
-                    logger,
-                    "error",
+                logger.error(
                     "Failed to parse Google Health API subscriber",
                     provider="google_health",
                     action="google_webhook_subscription_parse_error",
@@ -213,9 +204,7 @@ class GoogleWebhookService(BaseWebhookService):
                 response.raise_for_status()
                 return GoogleWebhookSubscription.model_validate(response.json())
         except (httpx.HTTPError, ValidationError) as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Failed to get Google Health API subscriber",
                 provider="google_health",
                 action="google_webhook_subscription_get_error",

@@ -1,6 +1,5 @@
 """Multi-window backfill state: init, advance, date ranges, matrix persistence."""
 
-import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -14,9 +13,9 @@ from app.services.providers.garmin.backfill_config import (
 )
 from app.services.providers.garmin.backfill_state.core import _get_key, get_trace_id
 from app.services.providers.garmin.backfill_state.type_tracking import reset_type_status
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def init_window_state(user_id: str | UUID, total_windows: int = BACKFILL_WINDOW_COUNT) -> None:
@@ -105,9 +104,7 @@ def persist_window_results(user_id: str | UUID, window_idx: int) -> None:
         get_redis_client().setex(window_key, REDIS_TTL, matrix_status)
         results[data_type] = matrix_status
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Persisted window results to matrix keys",
         provider="garmin",
         trace_id=get_trace_id(uid),
@@ -139,9 +136,7 @@ def advance_window(user_id: str | UUID) -> bool:
         reset_type_status(uid, data_type)
         get_redis_client().delete(_get_key(uid, "types", data_type, "skip_count"))
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Advanced to next backfill window",
         provider="garmin",
         trace_id=get_trace_id(uid),

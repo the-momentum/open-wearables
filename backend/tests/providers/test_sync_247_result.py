@@ -7,7 +7,6 @@ Covers the contract the sync orchestrator relies on:
 - the Mapping shim and the sync-log payload
 """
 
-import logging
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -25,7 +24,7 @@ from app.services.providers.sync_247_result import (
 
 @pytest.fixture
 def run() -> Sync247Run:
-    return Sync247Run("testprovider", MagicMock(), uuid4(), logging.getLogger(__name__))
+    return Sync247Run("testprovider", MagicMock(), uuid4())
 
 
 class TestWriteCountsArithmetic:

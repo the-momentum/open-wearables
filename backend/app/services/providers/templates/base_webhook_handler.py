@@ -34,14 +34,15 @@ Providers indicate which modes they support through
 
 import hashlib
 import hmac
-import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 from fastapi import HTTPException, Request
 
 from app.database import DbSession
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseWebhookHandler(ABC):
@@ -72,7 +73,6 @@ class BaseWebhookHandler(ABC):
 
     def __init__(self, provider_name: str) -> None:
         self.provider_name = provider_name
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def extract_user_id(self, payload: dict[str, Any]) -> str | None:
         """Best-effort provider-side user id from a raw webhook payload (for log correlation)."""
@@ -207,9 +207,7 @@ class BaseWebhookHandler(ABC):
             ``HTTPException(400)`` if ``parse_payload`` raises a validation error.
         """
         if not self.verify_signature(request, body):
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "Webhook signature verification failed",
                 provider=self.provider_name,
                 path=request.url.path,
