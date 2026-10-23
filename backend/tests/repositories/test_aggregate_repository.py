@@ -17,6 +17,7 @@ from app.integrations.rollup_queue import (
     requeue_dirty_days,
 )
 from app.models import (
+    DataSource,
     EventRecord,
     EventRecordAggregate,
     EventRecordDetail,
@@ -27,6 +28,7 @@ from app.models import (
 )
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, DataPointSeriesRepository, EventRecordDetailRepository
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.series_aggregate_repository import daily_activity
 from app.repositories.series_rollup_repository import SeriesRollupRepository, _runs
@@ -39,6 +41,7 @@ from app.schemas.model_crud.activities import (
     SessionValue,
     TimeSeriesSampleCreate,
 )
+from app.services.aggregate_backfill_service import BACKFILL_MIGRATION
 from app.services.archival_service import archival_service
 from tests.factories import (
     DataPointSeriesFactory,
@@ -169,9 +172,10 @@ class TestDayValuesMirroredFromSamples:
 
         DataPointSeriesRepository(SeriesSample).bulk_create(db, [self._sample(user.id, SeriesType.vo2_max, period)])
 
-        sample = db.query(SeriesSample).one()
+        # A day value is not a sample any more: it lives in series_aggregate only.
+        assert db.query(SeriesSample).count() == 0
         aggregate = db.query(SeriesAggregate).one()
-        assert aggregate.data_source_id == sample.data_source_id
+        assert aggregate.data_source_id == db.query(DataSource).filter(DataSource.user_id == user.id).one().id
         assert (aggregate.period_start, aggregate.zone_offset) == (period.start, "+02:00")
         assert (aggregate.avg, aggregate.sum, aggregate.computed_by, aggregate.count) == (
             Decimal("47.5"),
@@ -203,7 +207,8 @@ class TestDayValuesMirroredFromSamples:
         repo.create(db, sample)
         repo.create(db, sample.model_copy(update={"id": uuid4(), "value": Decimal("8500")}))
 
-        assert db.query(SeriesSample).count() == 1
+        # A day value is not a sample any more; the second write refreshes the one day row.
+        assert db.query(SeriesSample).count() == 0
         assert [row.sum for row in db.query(SeriesAggregate)] == [Decimal("8500")]
 
     def test_a_single_create_mirrors_its_period_too(self, db: Session) -> None:
@@ -279,8 +284,9 @@ class TestSessionValuesMirrored:
         stored = db.query(EventRecordAggregate).one()
         assert (stored.min, stored.max, stored.avg) == (Decimal("50"), Decimal("180"), Decimal("130"))
 
-    def test_a_session_value_whose_record_is_gone_is_kept_as_a_sample(self, db: Session) -> None:
-        """A sleep merged away between the lookup and the write must not fail the whole batch."""
+    def test_a_session_value_whose_record_is_gone_does_not_fail_the_batch(self, db: Session) -> None:
+        """A sleep merged away between the lookup and the write must not fail the whole batch; the value has
+        no record to sit on and no sample form any more, so it is dropped with a warning."""
         source = DataSourceFactory()
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
@@ -294,8 +300,7 @@ class TestSessionValuesMirrored:
 
         DataPointSeriesRepository(SeriesSample).bulk_create(db, [sample])
 
-        assert db.query(SeriesSample).count() == 1
-        assert db.query(EventRecordAggregate).count() == 0
+        assert (db.query(SeriesSample).count(), db.query(EventRecordAggregate).count()) == (0, 0)
 
     def test_a_detail_written_twice_keeps_both_writes_statistics(self, db: Session) -> None:
         """The second create() returns the stored detail and still merges its statistics into the session row."""
@@ -530,11 +535,22 @@ class TestRollupRuns:
 
 
 class TestDailyLifecycleJob:
-    def _settings(self, db: Session, rollup_enabled: bool, delete_after_days: int | None) -> None:
+    def _settings(
+        self, db: Session, rollup_enabled: bool, delete_after_days: int | None, backfilled: bool = True
+    ) -> None:
         setting = db.get(ArchivalSetting, 1) or ArchivalSetting(id=1)
         setting.rollup_enabled, setting.delete_after_days = rollup_enabled, delete_after_days
         db.add(setting)
+        if backfilled:
+            DataMigrationRepository().mark_completed(db, BACKFILL_MIGRATION)
         db.commit()
+
+    def test_retention_waits_until_the_backfill_is_done(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=False, delete_after_days=30, backfilled=False)
+        DataPointSeriesFactory(recorded_at=datetime.now(timezone.utc) - timedelta(days=60))
+
+        assert archival_service.run_daily_archival(db)["deleted_live_rows"] == 0
+        assert db.query(SeriesSample).count() == 1
 
     def test_the_job_rolls_up_queued_days(self, db: Session) -> None:
         self._settings(db, rollup_enabled=True, delete_after_days=None)

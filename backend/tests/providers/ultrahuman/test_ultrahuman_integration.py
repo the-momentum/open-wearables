@@ -9,6 +9,7 @@ and runnable without real credentials.
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, EventRecord, SeriesAggregate, SeriesSample, SeriesTypeDefinition, SleepDetails
@@ -350,7 +351,7 @@ class TestUltrahumanActivitySamplesIntegration:
         }
 
     def test_vo2_max_saved_with_mocked_api(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
-        """Verify VO2 max value is saved as a SeriesSample after sync."""
+        """Verify VO2 max value is saved as a SeriesAggregate after sync."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
         DataSourceFactory(user_id=user.id, provider="ultrahuman")
@@ -368,9 +369,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(SeriesSample)
+            db.query(SeriesAggregate)
             .join(DataSource)
-            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesAggregate.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.vo2_max.value,
@@ -380,7 +381,7 @@ class TestUltrahumanActivitySamplesIntegration:
 
         assert len(samples) > 0, "No VO2 max samples found"
         for sample in samples:
-            value = float(sample.value)
+            value = float(sample.sum if sample.sum is not None else sample.avg)
             assert 15 <= value <= 90, f"VO2 max {value} is outside realistic range (15-90 ml/kg/min)"
 
     def test_temperature_deviation_saved_as_skin_temperature_deviation(
@@ -404,9 +405,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(SeriesSample)
+            db.query(SeriesAggregate)
             .join(DataSource)
-            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesAggregate.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.skin_temperature_deviation.value,
@@ -414,7 +415,9 @@ class TestUltrahumanActivitySamplesIntegration:
             .all()
         )
 
-        assert [float(sample.value) for sample in samples] == [-0.2]
+        # The mock answers both requested days with the same day_start, and a day row sits on the day the
+        # ring reports, so the two answers are one day.
+        assert [float(sample.sum if sample.sum is not None else sample.avg) for sample in samples] == [-0.2]
 
     def test_sleep_rhr_saved_as_resting_heart_rate(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """The ring's overnight resting heart rate reaches the resting_heart_rate series."""
@@ -435,9 +438,9 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         samples = (
-            db.query(SeriesSample)
+            db.query(SeriesAggregate)
             .join(DataSource)
-            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
+            .join(SeriesTypeDefinition, SeriesAggregate.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code == SeriesType.resting_heart_rate.value,
@@ -445,8 +448,9 @@ class TestUltrahumanActivitySamplesIntegration:
             .all()
         )
 
-        assert [float(sample.value) for sample in samples] == [51]
-        assert samples[0].recorded_at == datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
+        # The mock answers both requested days with the same day_start: one day, on the day the ring reports.
+        assert [float(sample.sum if sample.sum is not None else sample.avg) for sample in samples] == [51]
+        assert samples[0].period_start == datetime(2024, 1, 15, 0, 0, tzinfo=timezone.utc)
 
     def test_active_minutes_saved_as_exercise_time(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """Ultrahuman's active minutes are moderate to vigorous activity, not all non-sedentary time."""
@@ -467,10 +471,10 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
         codes_and_values = (
-            db.query(SeriesTypeDefinition.code, SeriesSample.value)
-            .select_from(SeriesSample)
-            .join(DataSource, SeriesSample.data_source_id == DataSource.id)
-            .join(SeriesTypeDefinition, SeriesSample.series_type_definition_id == SeriesTypeDefinition.id)
+            db.query(SeriesTypeDefinition.code, func.coalesce(SeriesAggregate.sum, SeriesAggregate.avg))
+            .select_from(SeriesAggregate)
+            .join(DataSource, SeriesAggregate.data_source_id == DataSource.id)
+            .join(SeriesTypeDefinition, SeriesAggregate.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
                 SeriesTypeDefinition.code.in_([SeriesType.exercise_time.value, SeriesType.active_time.value]),

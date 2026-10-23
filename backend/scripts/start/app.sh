@@ -106,6 +106,12 @@ echo 'Running data source merge...'
 uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
     || echo "Warning: data source merge failed — will retry on next startup."
 
+# Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
+# After the data source merge, so the two never work on the same source at once.
+echo 'Queueing aggregate backfill...'
+uv run python scripts/data_migrations/enqueue_aggregate_backfill.py \
+    || echo "Warning: aggregate backfill not queued — beat queues it within 15 minutes."
+
 # TODO: Remove this after ~2027-03-01 once all deployments have migrated.
 # Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no
 # calories. Runs once per instance (data_migration).

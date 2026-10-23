@@ -25,6 +25,7 @@ from app.schemas.utils import (
     ArchivalSettingWithEstimate,
     StorageEstimate,
 )
+from app.services.aggregate_backfill_service import aggregate_backfill_service
 from app.utils.exceptions import handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -92,6 +93,11 @@ class ArchivalService:
         cutoff = self._cutoff(setting)
         frozen_before = setting.deleted_before
         summary = {"rolled_up_days": self.roll_up_queued_days(db, MAX_SECONDS_PER_RUN), "deleted_live_rows": 0}
+
+        # Old samples still hold day and session values the backfill has not copied yet.
+        if cutoff is not None and not aggregate_backfill_service.is_done(db):
+            log_structured(self.logger, "info", "Retention: waiting for the aggregate backfill")
+            cutoff = None
 
         if cutoff is not None:
             before_delete = self._roll_up_before(cutoff, frozen_before) if setting.rollup_enabled else None

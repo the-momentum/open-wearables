@@ -505,8 +505,9 @@ class TestGarmin247Data:
 
         count = garmin_247.save_hrv_data(db, user.id, hrv_data)
 
-        # Should save 1 lastNightAvg + 3 hrvValues = 4 records
-        assert count == 4
+        # 3 hrvValues samples; lastNightAvg is the night's day value, kept in series_aggregate.
+        assert count == 3
+        assert [row.avg for row in db.query(SeriesAggregate)] == [Decimal("84")]
 
     def test_save_hrv_data_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with missing start time."""
@@ -539,8 +540,9 @@ class TestGarmin247Data:
 
         count = garmin_247.save_hrv_data(db, user.id, hrv_data)
 
-        # Should save just the lastNightAvg
-        assert count == 1
+        # lastNightAvg alone: no sample, one day row.
+        assert count == 0
+        assert db.query(SeriesAggregate).count() == 1
 
     # -------------------------------------------------------------------------
     # Build Method Tests (no DB interaction)

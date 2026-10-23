@@ -278,15 +278,14 @@ class DataPointSeriesRepository(
         creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
 
         creation = self.model(**creation_data)
-        db_session.add(creation)
-        mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
-        created = self.try_commit(db_session, creation)
-        # After the commit: a duplicate rolls the sample back and returns the stored one, and its day or
-        # session value must still land.
         if creator.period is not None or creator.session is not None:
+            # A day or session value lives in the aggregate tables only.
             self._mirror_aggregates(db_session, [creator], {DataSourceIdentity.of(creator): data_source.id})
             db_session.commit()
-        return created
+            return creation
+        db_session.add(creation)
+        mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
+        return self.try_commit(db_session, creation)
 
     @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
@@ -310,10 +309,19 @@ class DataPointSeriesRepository(
         if not rows:
             return WriteCounts(0, 0)
         spans = _spans_by_source_and_type(rows)
-        counts = self._insert_data_points(db_session, rows, spans)
+        # A day or session value lives in the aggregate tables only; samples are instants and windows.
+        sample_rows, _ = self._staging_rows(
+            [c for c in creators if c.period is None and c.session is None], identity_to_source_id
+        )
+        counts = (
+            self._insert_data_points(db_session, sample_rows, _spans_by_source_and_type(sample_rows))
+            if sample_rows
+            else WriteCounts(0, 0)
+        )
         self._mirror_aggregates(db_session, self._with_live_sessions(db_session, creators), identity_to_source_id)
         mark_dirty_days(
-            db_session, {(row.data_source_id, local_date(row.recorded_at, row.zone_offset)) for row in rows}
+            db_session,
+            {(row.data_source_id, local_date(row.recorded_at, row.zone_offset)) for row in sample_rows},
         )
 
         # 3. Widen what we hold per type, under the same provider the sources resolved to
