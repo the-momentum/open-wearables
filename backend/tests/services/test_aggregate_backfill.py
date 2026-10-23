@@ -610,6 +610,19 @@ class TestDeleteCopiedSamples:
         ]
         assert (source.id, date(2025, 6, 2)) in pop_dirty_days(10)
 
+    def test_a_sample_matching_another_statistic_of_the_providers_row_stays(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        midnight = datetime(2025, 6, 2, tzinfo=timezone.utc)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, midnight, "70")
+        # The night's HRV is read from avg; the row's max came from elsewhere and proves nothing about the sample.
+        provider_day(
+            db, source, SeriesType.heart_rate_variability_rmssd, date(2025, 6, 2), avg=Decimal("64"), max=Decimal("70")
+        )
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert [s.value for s in db.query(SeriesSample)] == [Decimal("70")]
+
     def test_a_session_value_goes_only_when_its_sleep_also_carries_its_instant(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.OURA)
         start = datetime(2025, 6, 1, 22, tzinfo=timezone.utc)

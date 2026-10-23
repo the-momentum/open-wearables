@@ -226,6 +226,7 @@ class AggregateBackfillRepository:
                 "types": [get_series_type_id(series_type) for series_type, _ in rule.series],
                 "since": None,
                 "cutoff": cutoff,
+                **_stat_params(rule),
             }
             days.update((row.data_source_id, row.day) for row in db_session.execute(statement, params))
         return days
@@ -346,7 +347,12 @@ def _stat_params(rule: HistoryRule) -> dict[str, list[int]]:
     return params
 
 
-_SAME_VALUE = "s.value IN (a.sum, a.avg, a.min, a.max, a.last)"
+# The sample's value in the statistic the rule copied it to; any other statistic of the row is someone else's.
+_SAME_VALUE = (
+    "s.value = CASE "
+    + " ".join(f"WHEN s.series_type_definition_id = ANY(:{stat}_types) THEN a.{stat}" for stat in _STATS)
+    + " END"
+)
 
 
 def _delete_day_values(rule: HistoryRule) -> TextClause:
