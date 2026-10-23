@@ -188,7 +188,7 @@ def offset_of(dt: datetime) -> str | None:
 
 
 def window_seconds(start: datetime | None, end: datetime | None) -> int | None:
-    """Width of a value reported over [start, end); None for an instant or a missing end."""
+    """Width of a value reported over [start, end); None for an instant, a span under a second or a missing end."""
     if start is None or end is None or end <= start:
         return None
-    return int((end - start).total_seconds())
+    return int((end - start).total_seconds()) or None

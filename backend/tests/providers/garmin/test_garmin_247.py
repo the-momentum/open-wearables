@@ -600,6 +600,17 @@ class TestGarmin247Data:
 
         assert {s.window_seconds for s in samples} == {900}
 
+    def test_build_epochs_samples_keep_an_epoch_reporting_no_duration(
+        self, garmin_247: Garmin247Data, sample_epoch: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        normalized = garmin_247.normalize_epochs([{**sample_epoch, "durationInSeconds": 0}], user_id)
+
+        samples = garmin_247._build_epochs_samples(user_id, normalized)
+
+        assert len(samples) == 3
+        assert {s.window_seconds for s in samples} == {None}
+
     def test_build_dailies_samples_carry_the_whole_garmin_local_day(
         self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]
     ) -> None:

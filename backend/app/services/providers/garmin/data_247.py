@@ -692,7 +692,7 @@ class Garmin247Data(Base247DataTemplate):
             slot_external_id = (
                 summary_id.rpartition("-")[0] if summary_id and summary_id.count("-") >= 2 else summary_id
             )
-            window_seconds = epoch.get("durationInSeconds")
+            window_seconds = epoch.get("durationInSeconds") or None
 
             # Heart rate
             mean_hr = epoch.get("meanHeartRateInBeatsPerMinute")
