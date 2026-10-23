@@ -10,6 +10,8 @@ from typing import cast
 
 import pytest
 
+from app.schemas.webhooks.event_types import WebhookEventType
+
 _SPEC = importlib.util.spec_from_file_location(
     "rename_series_webhook_events",
     Path(__file__).resolve().parents[2] / "scripts/data_migrations/rename_series_webhook_events.py",
@@ -43,8 +45,6 @@ def test_filter_transitions(current: list[str], phase: str, expected: list[str] 
 
 
 def test_every_new_name_is_one_we_dispatch() -> None:
-    from app.schemas.webhooks.event_types import WebhookEventType
-
     dispatched = {event.value for event in WebhookEventType}
     assert {new for new in _MODULE.RENAMED.values() if new} <= dispatched
     assert not set(_MODULE.RENAMED) & dispatched
