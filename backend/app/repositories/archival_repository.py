@@ -42,6 +42,13 @@ class ArchivalSettingRepository:
         db.refresh(setting)
         return setting
 
+    def mark_deleted_before(self, db: DbSession, day: date) -> None:
+        """Record that samples of local days before ``day`` are gone; the mark never moves back, as a longer
+        retention window does not bring deleted samples back."""
+        setting = self.get(db)
+        setting.deleted_before = max(setting.deleted_before or day, day)
+        db.commit()
+
 
 # ---------------------------------------------------------------------------
 # Data-point archive repository

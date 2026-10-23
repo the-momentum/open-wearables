@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import Mapped
 
@@ -10,6 +12,8 @@ class ArchivalSetting(BaseDbModel):
 
     - rollup_enabled: every night, roll changed days of samples up into open_wearables day and session aggregates.
     - delete_after_days: days before samples are deleted, rolled up first when rollup is on. NULL keeps them.
+    - deleted_before: the local day before which retention has deleted samples; the rollup never recomputes
+      those days or the sessions started on them, it only adds rows they lack.
     """
 
     __tablename__ = "archival_settings"
@@ -18,3 +22,4 @@ class ArchivalSetting(BaseDbModel):
     id: Mapped[PrimaryKey[int]]
     rollup_enabled: Mapped[bool_true]
     delete_after_days: Mapped[int | None]
+    deleted_before: Mapped[date | None]

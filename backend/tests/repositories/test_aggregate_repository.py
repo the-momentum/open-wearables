@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.integrations.redis_client import get_redis_client
@@ -465,6 +466,45 @@ class TestSeriesRollup:
         assert (row.record_id, row.computed_by) == (workout.id, ComputedBy.OPEN_WEARABLES)
         assert (row.avg, row.min, row.max, row.count) == (Decimal("140"), Decimal("120"), Decimal("160"), 2)
 
+    def test_a_day_whose_samples_are_gone_only_gains_the_rows_it_lacks(self, db: Session) -> None:
+        source = DataSourceFactory()
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        self._sample(source, steps, datetime(2099, 1, 1, 10, tzinfo=timezone.utc), "300")
+        repo = SeriesRollupRepository()
+        repo.roll_up(db, source.id, [DAY])
+        # Retention deleted the day; one heart-rate sample arrives late.
+        db.query(SeriesSample).delete()
+        self._sample(
+            source,
+            SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            datetime(2099, 1, 1, 9, tzinfo=timezone.utc),
+            "60",
+        )
+
+        repo.roll_up(db, source.id, [DAY], frozen_before=DAY + timedelta(days=1))
+
+        rows = self._day_rows(db)
+        assert (rows[steps.id].sum, rows[get_series_type_id(SeriesType.heart_rate)].avg) == (
+            Decimal("300"),
+            Decimal("60"),
+        )
+
+    def test_a_session_started_on_a_deleted_day_keeps_its_rows(self, db: Session) -> None:
+        source = DataSourceFactory()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        start = datetime(2098, 12, 31, 22, tzinfo=timezone.utc)
+        EventRecordFactory(data_source=source, start_datetime=start, duration_seconds=4 * 3600)
+        self._sample(source, heart_rate, start + timedelta(hours=1), "120")
+        repo = SeriesRollupRepository()
+        repo.roll_up(db, source.id, [start.date()])
+        # Retention deleted Dec 31; the next day's rollup still reaches the workout through its 14-hour window.
+        db.query(SeriesSample).delete()
+        self._sample(source, heart_rate, datetime(2099, 1, 1, 12, tzinfo=timezone.utc), "70")
+
+        repo.roll_up(db, source.id, [DAY], frozen_before=DAY)
+
+        assert [row.avg for row in db.query(EventRecordAggregate)] == [Decimal("120")]
+
 
 class TestDailyLifecycleJob:
     def _settings(self, db: Session, rollup_enabled: bool, delete_after_days: int | None) -> None:
@@ -510,6 +550,52 @@ class TestDailyLifecycleJob:
         assert [sample.recorded_at for sample in db.query(SeriesSample)] == [kept]
         day_row = db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES).one()
         assert day_row.period_start == CalendarPeriod.of_date(cutoff - timedelta(days=2), "+02:00").start
+        assert db.get(ArchivalSetting, 1).deleted_before == cutoff
+
+    def test_a_late_sample_on_a_deleted_day_does_not_wipe_its_rows(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        cutoff = date.today() - timedelta(days=30)
+        source = DataSourceFactory()
+        old_day = cutoff - timedelta(days=10)
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        DataPointSeriesFactory(
+            mapping=source, series_type=steps, recorded_at=datetime.combine(old_day, datetime.min.time(), timezone.utc)
+        )
+        archival_service.run_daily_archival(db)
+        # The day is deleted and frozen; a heart-rate reading for it arrives late.
+        DataPointSeriesFactory(
+            mapping=source,
+            series_type=SeriesTypeDefinitionFactory.get_or_create_heart_rate(),
+            recorded_at=datetime.combine(old_day, datetime.min.time(), timezone.utc) + timedelta(hours=9),
+        )
+
+        archival_service.run_daily_archival(db)
+
+        ours = db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)
+        assert {row.series_type_definition_id for row in ours} == {steps.id, get_series_type_id(SeriesType.heart_rate)}
+        assert db.query(SeriesSample).count() == 0
+
+    def test_one_failing_source_does_not_hold_the_queue(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=None)
+        good, bad = DataSourceFactory(), DataSourceFactory()
+        DataPointSeriesFactory(mapping=good, recorded_at=datetime(2099, 1, 1, 12, tzinfo=timezone.utc))
+        requeue_dirty_days([(good.id, DAY), (bad.id, DAY)])
+        # The failed batch is rolled back; committed first, the fixtures survive it as real data would.
+        db.commit()
+        roll_up = archival_service.rollup_repo.roll_up
+
+        def failing(db_session: Session, source_id: object, *args: object, **kwargs: object) -> int:
+            if source_id == bad.id:
+                raise RuntimeError("bad offset")
+            return roll_up(db_session, source_id, *args, **kwargs)
+
+        monkeypatch.setattr(archival_service.rollup_repo, "roll_up", failing)
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert summary["rolled_up_days"] == 1
+        assert db.query(SeriesAggregate).filter(SeriesAggregate.data_source_id == good.id).count() == 1
+        assert pop_dirty_days(10) == []
 
     def test_retention_without_rollup_only_deletes(self, db: Session) -> None:
         self._settings(db, rollup_enabled=False, delete_after_days=30)

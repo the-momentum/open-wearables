@@ -43,7 +43,10 @@ _DELETE_DAYS = text("""
 """)
 
 _SESSIONS = text("""
-    SELECT id FROM event_record
+    SELECT id,
+        coalesce(((start_datetime AT TIME ZONE 'UTC') + coalesce(zone_offset, '+00:00')::interval)::date
+            < CAST(:frozen_before AS date), false) AS frozen
+    FROM event_record
     WHERE data_source_id = :source_id AND category = ANY(:categories)
         AND start_datetime < :hi AND end_datetime >= :lo
 """)
@@ -84,14 +87,20 @@ class SeriesRollupRepository:
         self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
         self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
 
-    def roll_up(self, db_session: DbSession, source_id: UUID, days: Iterable[date]) -> int:
-        """Recompute the source's day rows for ``days`` and its sessions on them; returns the day rows written."""
+    def roll_up(
+        self, db_session: DbSession, source_id: UUID, days: Iterable[date], frozen_before: date | None = None
+    ) -> int:
+        """Recompute the source's day rows for ``days`` and its sessions on them; returns the day rows written.
+
+        Days before ``frozen_before`` and sessions started before it have lost their samples to retention,
+        so they are never recomputed: they only gain rows they lack, from whatever samples came late.
+        """
         written = 0
         for run in _runs(sorted(set(days))):
             lo = _utc_midnight(run[0]) - _OFFSET_REACH
             hi = _utc_midnight(run[-1]) + timedelta(days=1) + _OFFSET_REACH
-            written += self._roll_up_days(db_session, source_id, run, lo, hi)
-            self._roll_up_sessions(db_session, source_id, lo, hi)
+            written += self._roll_up_days(db_session, source_id, run, lo, hi, frozen_before)
+            self._roll_up_sessions(db_session, source_id, lo, hi, frozen_before)
         return written
 
     def days_before(self, db_session: DbSession, source_id: UUID, cutoff: date) -> list[date]:
@@ -101,16 +110,25 @@ class SeriesRollupRepository:
         return [row.day for row in rows]
 
     def _roll_up_days(
-        self, db_session: DbSession, source_id: UUID, days: list[date], lo: datetime, hi: datetime
+        self,
+        db_session: DbSession,
+        source_id: UUID,
+        days: list[date],
+        lo: datetime,
+        hi: datetime,
+        frozen_before: date | None,
     ) -> int:
+        fresh = [day for day in days if frozen_before is None or day >= frozen_before]
         params = {"source_id": source_id, "lo": lo, "hi": hi, "days": days}
-        db_session.execute(
-            _DELETE_DAYS, {**params, "computed_by": ComputedBy.OPEN_WEARABLES, "period_kind": PeriodKind.DAY}
-        )
-        rows = []
+        if fresh:
+            db_session.execute(
+                _DELETE_DAYS,
+                {**params, "days": fresh, "computed_by": ComputedBy.OPEN_WEARABLES, "period_kind": PeriodKind.DAY},
+            )
+        rows: dict[bool, list[dict]] = {True: [], False: []}
         for row in db_session.execute(_DAY_STATS, params):
             period = CalendarPeriod.of_date(row.day, row.zone_offset)
-            rows.append(
+            rows[row.day in fresh].append(
                 {
                     "data_source_id": source_id,
                     "series_type_definition_id": row.series_type_definition_id,
@@ -122,25 +140,42 @@ class SeriesRollupRepository:
                     **_stats(row),
                 }
             )
-        return self.series_aggregate_repo.upsert(db_session, rows) if rows else 0
+        return self._write(self.series_aggregate_repo, db_session, rows)
 
-    def _roll_up_sessions(self, db_session: DbSession, source_id: UUID, lo: datetime, hi: datetime) -> None:
-        params = {"source_id": source_id, "lo": lo, "hi": hi, "categories": _SESSION_CATEGORIES}
-        record_ids = [row.id for row in db_session.execute(_SESSIONS, params)]
-        if not record_ids:
+    def _roll_up_sessions(
+        self, db_session: DbSession, source_id: UUID, lo: datetime, hi: datetime, frozen_before: date | None
+    ) -> None:
+        params = {
+            "source_id": source_id,
+            "lo": lo,
+            "hi": hi,
+            "categories": _SESSION_CATEGORIES,
+            "frozen_before": frozen_before,
+        }
+        frozen_by_id = {row.id: row.frozen for row in db_session.execute(_SESSIONS, params)}
+        if not frozen_by_id:
             return
-        db_session.execute(_DELETE_SESSIONS, {"computed_by": ComputedBy.OPEN_WEARABLES, "record_ids": record_ids})
-        rows = [
-            {
-                "record_id": row.record_id,
-                "series_type_definition_id": row.series_type_definition_id,
-                "computed_by": ComputedBy.OPEN_WEARABLES,
-                **_stats(row),
-            }
-            for row in db_session.execute(_SESSION_STATS, {"record_ids": record_ids})
-        ]
-        if rows:
-            self.event_aggregate_repo.upsert(db_session, rows)
+        if fresh_ids := [record_id for record_id, frozen in frozen_by_id.items() if not frozen]:
+            db_session.execute(_DELETE_SESSIONS, {"computed_by": ComputedBy.OPEN_WEARABLES, "record_ids": fresh_ids})
+        rows: dict[bool, list[dict]] = {True: [], False: []}
+        for row in db_session.execute(_SESSION_STATS, {"record_ids": list(frozen_by_id)}):
+            rows[not frozen_by_id[row.record_id]].append(
+                {
+                    "record_id": row.record_id,
+                    "series_type_definition_id": row.series_type_definition_id,
+                    "computed_by": ComputedBy.OPEN_WEARABLES,
+                    **_stats(row),
+                }
+            )
+        self._write(self.event_aggregate_repo, db_session, rows)
+
+    @staticmethod
+    def _write(repo: AggregateRepository, db_session: DbSession, rows: dict[bool, list[dict]]) -> int:
+        """Fresh rows (True) replace what the delete cleared; frozen rows (False) fill gaps only."""
+        written = repo.upsert(db_session, rows[True]) if rows[True] else 0
+        if rows[False]:
+            written += repo.insert_missing(db_session, rows[False])
+        return written
 
 
 def _stats(row: Row) -> dict:
