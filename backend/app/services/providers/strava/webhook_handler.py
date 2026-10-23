@@ -271,8 +271,21 @@ class StravaWebhookHandler(BaseWebhookHandler):
 
         user_id: UUID = connection.user_id
 
-        self.connection_repo.update_last_synced_at(db, connection)
+        result = self._handle_activity_event(db, aspect_type, user_id, object_id, owner_id, trace_id)
+        if aspect_type in ("create", "update") and result.get("status") != "error":
+            self.connection_repo.update_last_synced_at(db, connection)
+        return result
 
+    def _handle_activity_event(
+        self,
+        db: DbSession,
+        aspect_type: str,
+        user_id: UUID,
+        object_id: int,
+        owner_id: int,
+        trace_id: str,
+    ) -> dict[str, Any]:
+        """Apply an activity create/update/delete for a resolved user."""
         if aspect_type == "delete":
             return self._handle_activity_delete(db, user_id, object_id, trace_id)
 

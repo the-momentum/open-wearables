@@ -52,7 +52,7 @@ def test_refresh_classifies_provider_statuses(
     mock_post.return_value = _envelope(withings_status)
     oauth = _oauth()
 
-    with patch.object(oauth, "_revoke_connection") as mock_revoke, pytest.raises(WithingsTokenError) as exc_info:
+    with patch.object(oauth, "revoke_connection") as mock_revoke, pytest.raises(WithingsTokenError) as exc_info:
         oauth.refresh_access_token(MagicMock(), uuid4(), "old-rt")
 
     assert exc_info.value.status_code == http_status

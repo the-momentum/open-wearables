@@ -33,6 +33,15 @@ class ResourceAlreadyExistsError(Exception):
         super().__init__(detail)
 
 
+class ReauthRequiredError(HTTPException):
+    """The stored grant can no longer produce an access token; the user has to reconnect."""
+
+    def __init__(self, provider: str, user_id: UUID, detail: str):
+        self.provider = provider
+        self.user_id = user_id
+        super().__init__(status_code=401, detail=detail)
+
+
 class InvalidCursorError(Exception):
     def __init__(self, cursor: str):
         self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
