@@ -190,7 +190,7 @@ class TestAppleSDKImport:
         heart_rate = rows[get_series_type_id(SeriesType.heart_rate)]
         assert (heart_rate.min, heart_rate.avg, heart_rate.max) == (Decimal("77"), Decimal("121.49"), Decimal("141"))
         assert rows[get_series_type_id(SeriesType.weather_temperature)].avg == Decimal("11.19")
-        assert rows[get_series_type_id(SeriesType.average_met)].avg == Decimal("1.6")
+        assert rows[get_series_type_id(SeriesType.physical_effort)].avg == Decimal("1.6")
         # Active plus basal energy is the workout's total energy.
         assert rows[get_series_type_id(SeriesType.total_energy)].sum == Decimal("180.00")
 

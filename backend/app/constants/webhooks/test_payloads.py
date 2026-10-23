@@ -252,8 +252,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE: _ts_payload(
         WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE, "heart_rate_recovery_one_minute", "garmin", "bpm", 24.0
     ),
-    WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE: _ts_payload(
-        WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE, "walking_heart_rate_average", "apple", "bpm", 98.0
+    WebhookEventType.SERIES_WALKING_HEART_RATE: _ts_payload(
+        WebhookEventType.SERIES_WALKING_HEART_RATE, "walking_heart_rate", "apple", "bpm", 98.0
     ),
     WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN: _ts_payload(
         WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN, "atrial_fibrillation_burden", "apple", "%", 0.0
@@ -395,13 +395,10 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         WebhookEventType.SERIES_EXERCISE_TIME, "exercise_time", "apple", "min", 32.0
     ),
     WebhookEventType.SERIES_PHYSICAL_EFFORT: _ts_payload(
-        WebhookEventType.SERIES_PHYSICAL_EFFORT, "physical_effort", "apple", "MET·min", 4.2
+        WebhookEventType.SERIES_PHYSICAL_EFFORT, "physical_effort", "apple", "met", 4.2
     ),
     WebhookEventType.SERIES_FLIGHTS_CLIMBED: _ts_payload(
         WebhookEventType.SERIES_FLIGHTS_CLIMBED, "flights_climbed", "apple", "count", 8.0
-    ),
-    WebhookEventType.SERIES_AVERAGE_MET: _ts_payload(
-        WebhookEventType.SERIES_AVERAGE_MET, "average_met", "apple", "MET", 1.4
     ),
     WebhookEventType.SERIES_PUSH_COUNT: _ts_payload(
         WebhookEventType.SERIES_PUSH_COUNT, "push_count", "apple", "count", 0.0

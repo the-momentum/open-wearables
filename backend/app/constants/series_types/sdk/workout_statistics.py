@@ -101,7 +101,7 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "averageVerticalOscillation": SeriesType.running_vertical_oscillation,
     "averageGroundContactTime": SeriesType.running_ground_contact_time,
     # Other Metrics
-    "averageMETs": SeriesType.average_met,
+    "averageMETs": SeriesType.physical_effort,
     # "lapLength": -- unhandled
     # "swimmingLocationType": -- unhandled
     # "indoorWorkout": -- unhandled
