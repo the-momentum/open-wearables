@@ -91,11 +91,6 @@ echo 'Running average_met->physical_effort merge...'
 uv run python scripts/data_migrations/merge_average_met_into_physical_effort.py \
     || echo "Warning: average_met merge failed — will retry on next startup."
 
-# Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
-echo 'Queueing aggregate backfill...'
-uv run python scripts/data_migrations/enqueue_aggregate_backfill.py \
-    || echo "Warning: aggregate backfill not queued — beat queues it within 15 minutes."
-
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
 # recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
@@ -110,6 +105,12 @@ uv run python scripts/data_migrations/backfill_device_types.py \
 echo 'Running data source merge...'
 uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
     || echo "Warning: data source merge failed — will retry on next startup."
+
+# Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
+# After the data source merge, so the two never work on the same source at once.
+echo 'Queueing aggregate backfill...'
+uv run python scripts/data_migrations/enqueue_aggregate_backfill.py \
+    || echo "Warning: aggregate backfill not queued — beat queues it within 15 minutes."
 
 # TODO: Remove this after ~2027-03-01 once all deployments have migrated.
 # Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no

@@ -215,7 +215,7 @@ Fired per ingestion batch — one event per distinct `(user, provider, series_ty
 
 | Event | Series types included |
 |-------|-----------------------|
-| `heart_rate.created` | `heart_rate`, `resting_heart_rate`, `walking_heart_rate`, `atrial_fibrillation_burden` |
+| `heart_rate.created` | `heart_rate`, `resting_heart_rate`, `heart_rate_recovery_one_minute`, `walking_heart_rate`, `atrial_fibrillation_burden` |
 | `heart_rate_variability.created` | `heart_rate_variability_sdnn`, `heart_rate_variability_rmssd` |
 | `steps.created` | `steps` |
 | `calories.created` | `active_energy`, `basal_energy`, `total_energy` |
@@ -519,15 +519,7 @@ Each timeseries event carries the full sample array so your backend can act on t
 Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_id}/timeseries`, so consumers work with a single schema regardless of whether data comes from a webhook or the pull API.
 
 <Note>
-  **`is_daily_total`** distinguishes pre-aggregated daily totals from intraday samples for additive series (steps, energy, distance, flights):
-
-  | Value | Meaning |
-  |-------|---------|
-  | `true` | Pre-aggregated daily total reported by the device. Use this value directly — do **not** add intraday samples from the same day and source on top of it. |
-  | `false` | Intraday sample (e.g. a 15-minute epoch). Sum these when no daily total is present. |
-  | `null` | Legacy row ingested before this field was introduced, or a series type where daily vs. intraday does not apply (e.g. heart rate). Treat the same as `false`. |
-
-  For non-additive series (heart rate, SpO2, temperature, …) `is_daily_total` is always `null` and can be ignored.
+  Series events carry readings only. A provider's **day value** (Garmin's daily step total, Oura's nightly SpO2, a readiness temperature) is not a sample any more and is not sent as one: read it from `GET /api/v1/users/{user_id}/timeseries?resolution=1day`, where every source's days are, the provider's own value where it sent one. `is_daily_total` is therefore `false` or `null` on every sample a webhook carries; sum the samples of an additive series (steps, energy, distance, flights) as they come.
 </Note>
 
 <Note>

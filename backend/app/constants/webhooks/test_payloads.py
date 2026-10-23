@@ -247,7 +247,7 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         WebhookEventType.SERIES_HEART_RATE, "heart_rate", "garmin", "bpm", 72.0
     ),
     WebhookEventType.SERIES_RESTING_HEART_RATE: _ts_payload(
-        WebhookEventType.SERIES_RESTING_HEART_RATE, "resting_heart_rate", "garmin", "bpm", 52.0
+        WebhookEventType.SERIES_RESTING_HEART_RATE, "resting_heart_rate", "apple", "bpm", 52.0
     ),
     WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE: _ts_payload(
         WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE, "heart_rate_recovery_one_minute", "garmin", "bpm", 24.0
@@ -382,7 +382,7 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         WebhookEventType.SERIES_BASAL_ENERGY, "basal_energy", "apple", "kcal", 1850.0
     ),
     WebhookEventType.SERIES_TOTAL_ENERGY: _ts_payload(
-        WebhookEventType.SERIES_TOTAL_ENERGY, "total_energy", "whoop", "kcal", 2150.0
+        WebhookEventType.SERIES_TOTAL_ENERGY, "total_energy", "health_connect", "kcal", 2150.0
     ),
     WebhookEventType.SERIES_ACTIVE_TIME: _ts_payload(
         WebhookEventType.SERIES_ACTIVE_TIME, "active_time", "garmin", "minutes", 312.0

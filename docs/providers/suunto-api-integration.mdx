@@ -212,7 +212,7 @@ SUUNTO_SUBSCRIPTION_KEY=private-subscription-id
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 
-    # Fetch timeseries data (heart rate, steps, SpO2, energy, HRV)
+    # Fetch intraday samples (heart rate, steps, energy); day values (daily totals; the night's resting HR, HRV and SpO2 are on the sleep, in /summaries/sleep) are at resolution=1day
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
