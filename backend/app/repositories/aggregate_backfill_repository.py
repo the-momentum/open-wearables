@@ -207,10 +207,13 @@ _DAYS = {
     DayAnchor.LOCAL: "((s.recorded_at AT TIME ZONE 'UTC') + coalesce(s.zone_offset, '+00:00')::interval)::date",
     DayAnchor.UTC_DATE: "(s.recorded_at AT TIME ZONE 'UTC')::date",
     DayAnchor.LOCAL_MIDNIGHT_NO_OFFSET: "((s.recorded_at AT TIME ZONE 'UTC') + interval '13 hours')::date",
+    DayAnchor.NIGHT_STARTED_AT: """((s.recorded_at AT TIME ZONE 'UTC') + coalesce(s.zone_offset, '+00:00')::interval
+        + interval '12 hours')::date""",
 }
 _ZONES = {
     DayAnchor.LOCAL: "coalesce(s.zone_offset, '+00:00')",
     DayAnchor.UTC_DATE: "'+00:00'",
+    DayAnchor.NIGHT_STARTED_AT: "coalesce(s.zone_offset, '+00:00')",
     # The offset that puts recorded_at at midnight of its day.
     DayAnchor.LOCAL_MIDNIGHT_NO_OFFSET: f"""(SELECT CASE WHEN o < interval '0' THEN '-' || to_char(-o, 'HH24:MI')
         ELSE '+' || to_char(o, 'HH24:MI') END

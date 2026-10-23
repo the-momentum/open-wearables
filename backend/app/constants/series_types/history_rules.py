@@ -22,6 +22,9 @@ class DayAnchor(StrEnum):
     # recorded_at is the local midnight but the offset was not kept: the day is the date 13 hours on, right for
     # every offset from -11:00 (Samoa) to +13:00 (New Zealand in summer).
     LOCAL_MIDNIGHT_NO_OFFSET = "local_midnight_no_offset"
+    # recorded_at is when the night's sleep started, at the row's offset: the day is the one the user woke up on,
+    # the local date 12 hours on.
+    NIGHT_STARTED_AT = "night_started_at"
 
 
 class SessionMatch(StrEnum):
@@ -78,7 +81,7 @@ HISTORY_RULES: tuple[HistoryRule, ...] = (
         frozenset({ProviderName.GARMIN}),
         _own(SeriesType.heart_rate_variability_rmssd),
         where="s.external_id IS NOT NULL AND position(':' in s.external_id) = 0",
-        day=DayAnchor.LOCAL,
+        day=DayAnchor.NIGHT_STARTED_AT,
     ),
     HistoryRule(
         frozenset({ProviderName.GARMIN}),
@@ -212,7 +215,8 @@ HISTORY_RULES: tuple[HistoryRule, ...] = (
         where=f"{_DAILY_TOTAL} AND {_UTC_MIDNIGHT}",
         day=DayAnchor.UTC_DATE,
     ),
-    # SDK workout statistics, stored at the workout's end; mean and max cadence shared one row, read as the mean.
+    # SDK workout statistics, stored at the workout's end without an external_id (a genuine record ending there,
+    # an Apple VO2 max estimate say, carries its own); mean and max cadence shared one row, read as the mean.
     HistoryRule(
         _SDK,
         _own(
@@ -227,6 +231,7 @@ HISTORY_RULES: tuple[HistoryRule, ...] = (
             SeriesType.weather_humidity,
             SeriesType.weather_temperature,
         ),
+        where="s.external_id IS NULL",
         session=SessionMatch.WORKOUT_ENDING,
     ),
 )

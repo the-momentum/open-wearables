@@ -341,6 +341,24 @@ class TestHistoryValues:
             ("steps", date(2025, 6, 2), "+02:00", Decimal("8432"), None),
         ]
 
+    def test_garmin_nightly_hrv_lands_on_the_morning_it_was_woken_up_to(self, db: Session) -> None:
+        """Garmin stored lastNightAvg at the sleep's start; the night belongs to its calendar date, the next day."""
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        bedtime = datetime(2025, 6, 1, 21, tzinfo=timezone.utc)  # 23:00 on 2025-06-01 at +02:00
+        _sample(
+            db,
+            source,
+            SeriesType.heart_rate_variability_rmssd,
+            bedtime,
+            "84",
+            zone_offset="+02:00",
+            external_id="hrv-1",
+        )
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _days(db) == [("heart_rate_variability_rmssd", date(2025, 6, 2), "+02:00", None, Decimal("84"))]
+
     def test_suunto_days_recover_the_offset_they_lost(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.SUUNTO)
         _sample(
@@ -433,6 +451,8 @@ class TestHistoryValues:
         workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
         _sample(db, source, SeriesType.cadence, workout.end_datetime, "82")
         _sample(db, source, SeriesType.cadence, AT + timedelta(minutes=10), "90")
+        # A genuine record that happens to end with the workout carries its own id: not a statistic.
+        _sample(db, source, SeriesType.vo2_max, workout.end_datetime, "41", external_id="hk-uuid")
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
