@@ -65,6 +65,19 @@ def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
     return flagged_nap if is_nap else ~flagged_nap
 
 
+# What the user's other devices recorded inside a sleep, for the series the sleep's own device has no value of:
+# a sleep logged by an app while a watch measured the night.
+_OTHER_DEVICES_IN_SLEEP = text("""
+    SELECT er.id AS record_id, s.series_type_definition_id AS type_id, avg(s.value) AS avg
+    FROM event_record er
+    JOIN data_source own ON own.id = er.data_source_id
+    JOIN data_source other ON other.user_id = own.user_id AND other.id <> own.id
+    JOIN series_sample s ON s.data_source_id = other.id AND s.series_type_definition_id = ANY(:type_ids)
+        AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime AND s.is_daily_total IS NOT TRUE
+    WHERE er.id = ANY(:record_ids)
+    GROUP BY 1, 2
+""")
+
 # A night's physiology in a sleep summary, by the key its row carries.
 _SLEEP_PHYSIOLOGY = {
     "avg_hr": SeriesType.heart_rate,
@@ -1131,8 +1144,8 @@ class EventRecordRepository(
     def _sleep_physiology(
         db_session: DbSession, main_sleeps_by_key: dict[tuple, list[tuple[UUID, int]]]
     ) -> dict[tuple, dict[str, float | None]]:
-        """Each night's averages from its own main sleeps' aggregates, the provider's before ours,
-        weighted by how long each sleep lasted."""
+        """Each night's averages from its own main sleeps' aggregates, the provider's before ours, else what the
+        user's other devices recorded inside the sleep; weighted by how long each sleep lasted."""
         record_ids = [record_id for sleeps in main_sleeps_by_key.values() for record_id, _ in sleeps]
         type_ids = {get_series_type_id(series_type): key for key, series_type in _SLEEP_PHYSIOLOGY.items()}
         averages: dict[tuple[UUID, int], float] = {}
@@ -1149,6 +1162,12 @@ class EventRecordRepository(
             for row in rows:
                 if row.avg is not None:
                     averages[(row.record_id, row.series_type_definition_id)] = float(row.avg)
+        missing = {(record_id, type_id) for record_id in record_ids for type_id in type_ids} - set(averages)
+        if missing:
+            params = {"record_ids": sorted({r for r, _ in missing}), "type_ids": sorted({t for _, t in missing})}
+            for row in db_session.execute(_OTHER_DEVICES_IN_SLEEP, params):
+                if (row.record_id, row.type_id) in missing:
+                    averages[(row.record_id, row.type_id)] = float(row.avg)
 
         physiology: dict[tuple, dict[str, float | None]] = {}
         for key, sleeps in main_sleeps_by_key.items():

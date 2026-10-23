@@ -7,7 +7,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.models import EventRecordAggregate
+from app.repositories import AggregateRepository
+from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
@@ -205,6 +207,57 @@ class TestSleepSummaryEndpoint:
         assert sleep_data["avg_hrv_rmssd_ms"] is None
         assert sleep_data["avg_respiratory_rate"] is None
         assert sleep_data["avg_spo2_percent"] is None
+
+    def test_get_sleep_summary_takes_another_devices_readings_where_the_sleeps_own_has_none(
+        self, client: TestClient, db: Session
+    ) -> None:
+        """A sleep logged by an app while a watch measured the night: the watch's readings fill what the app's
+        sleep lacks, never what the sleep already carries."""
+        user = UserFactory()
+        app = DataSourceFactory(user=user, source="Sleep Cycle")
+        watch = DataSourceFactory(user=user, source="Apple Watch")
+        sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
+        sleep = EventRecordFactory(
+            mapping=app, category="sleep", start_datetime=sleep_start, end_datetime=sleep_start + timedelta(hours=8)
+        )
+        rmssd = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        for hour, value in enumerate(("55", "57", "80")):
+            DataPointSeriesFactory(
+                mapping=watch,
+                series_type=heart_rate,
+                recorded_at=sleep_start + timedelta(hours=hour),
+                value=Decimal(value),
+            )
+        DataPointSeriesFactory(
+            mapping=watch, series_type=rmssd, recorded_at=sleep_start + timedelta(hours=2), value=Decimal("80")
+        )
+        # Outside the sleep: not the night's.
+        DataPointSeriesFactory(
+            mapping=watch, series_type=heart_rate, recorded_at=sleep_start + timedelta(hours=9), value=Decimal("120")
+        )
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": sleep.id,
+                    "series_type_definition_id": rmssd.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/sleep",
+            headers=api_key_headers(api_key.plain_key),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+
+        (night,) = response.json()["data"]
+        assert (night["avg_heart_rate_bpm"], night["avg_hrv_rmssd_ms"], night["avg_spo2_percent"]) == (64, 52.0, None)
 
     def test_get_sleep_summary_with_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary tracks naps separately from main sleep."""
