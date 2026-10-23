@@ -436,14 +436,16 @@ class EventRecordRepository(
                     query = query.filter(EventRecord.id < cursor_id if is_asc else EventRecord.id > cursor_id)
 
                 # Reverse sort order for backward pagination
-                sort_order = desc if is_asc else asc
-                query = query.order_by(sort_order(sort_column), sort_order(EventRecord.id))
+                if is_asc:
+                    query = query.order_by(sort_column.desc(), EventRecord.id.desc())
+                else:
+                    query = query.order_by(sort_column.asc(), EventRecord.id.asc())
 
                 # Limit + 1 to check for previous page
                 limit = query_params.limit or 20
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), total_count  # ty:ignore[invalid-return-type]
+                return list(reversed(results)), total_count
 
             # Forward pagination: get items AFTER cursor
             if sort_by == "start_datetime":
@@ -457,8 +459,10 @@ class EventRecordRepository(
                 query = query.filter(EventRecord.id > cursor_id if is_asc else EventRecord.id < cursor_id)
 
         # Apply ordering (ID as secondary sort for deterministic pagination)
-        sort_order = asc if is_asc else desc
-        query = query.order_by(sort_order(sort_column), sort_order(EventRecord.id))
+        if is_asc:
+            query = query.order_by(sort_column.asc(), EventRecord.id.asc())
+        else:
+            query = query.order_by(sort_column.desc(), EventRecord.id.desc())
 
         # Limit + 1 to check for next page (cursor pagination)
         limit = query_params.limit or 20
@@ -487,7 +491,7 @@ class EventRecordRepository(
             .filter(and_(*filters))
             .one()
         )
-        return int(row[0]), int(row[1]), row[2], row[3]
+        return int(row[0]), int(row[1] or 0), row[2], row[3]
 
     def get_sleep_totals(
         self,
@@ -673,7 +677,7 @@ class EventRecordRepository(
             .order_by(self.model.type)
             .all()
         )
-        return [workout_type for (workout_type,) in results]
+        return [workout_type for (workout_type,) in results if workout_type is not None]
 
     def get_sleep_stage_stats_via_json(self, db_session: DbSession, record_id: UUID) -> list[dict]:
         """
@@ -726,7 +730,7 @@ class EventRecordRepository(
                 EventRecord.category == EventCategory.SLEEP,
                 SleepDetails.sleep_stages.contains([{"stage": stage_name}]),
             )
-            .order_by(desc(EventRecord.start_datetime))
+            .order_by(EventRecord.start_datetime.desc())
             .limit(10)
             .all()
         )
@@ -1044,7 +1048,7 @@ class EventRecordRepository(
                 local_sleep_date >= cast(start_date, Date),
                 local_sleep_date < cast(end_date, Date),
             )
-            .order_by(asc(local_sleep_date), asc(EventRecord.start_datetime))
+            .order_by(local_sleep_date.asc(), EventRecord.start_datetime.asc())
             .all()
         )
 

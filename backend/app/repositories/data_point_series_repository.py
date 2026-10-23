@@ -503,7 +503,7 @@ class DataPointSeriesRepository(
             )
 
         # Normal ascending order for forward pagination
-        query = query.order_by(asc(self.model.recorded_at), asc(self.model.id))
+        query = query.order_by(self.model.recorded_at.asc(), self.model.id.asc())
 
         # Limit + 1 to check for next page
         limit = params.limit or 50
@@ -1516,7 +1516,7 @@ class DataPointSeriesRepository(
         series_type: SeriesType,
         window_start: datetime,
         window_end: datetime,
-    ) -> tuple[float, datetime, str, str | None] | None:
+    ) -> tuple[float, datetime, str | None, str | None] | None:
         """Get the most recent reading for a series type within a time window.
 
         Used for point-in-time metrics like body temperature that are only

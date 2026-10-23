@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import NamedTuple, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, asc, delete, select, text
+from sqlalchemy import CursorResult, and_, delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.constants.devices_map import infer_device_type, is_host_model
@@ -453,7 +453,7 @@ class DataSourceRepository(
         return (
             db_session.query(self.model)
             .filter(self.model.user_id == user_id)
-            .order_by(asc(self.model.provider), asc(self.model.device_model))
+            .order_by(self.model.provider.asc(), self.model.device_model.asc())
             .all()
         )
 

@@ -52,19 +52,19 @@ class TimeSeriesSampleResponse(TimeSeriesSampleBase):
     """Generic response payload for data point series."""
 
     id: UUID
-    data_source_id: UUID
+    data_source_id: UUID  # ty:ignore[invalid-mutable-override]
 
 
 class HeartRateSampleCreate(TimeSeriesSampleCreate):
     """Create payload for heart rate samples."""
 
-    series_type: Literal[SeriesType.heart_rate] = SeriesType.heart_rate
+    series_type: Literal[SeriesType.heart_rate] = SeriesType.heart_rate  # ty:ignore[invalid-mutable-override]
 
 
 class StepSampleCreate(TimeSeriesSampleCreate):
     """Create payload for step count samples."""
 
-    series_type: Literal[SeriesType.steps] = SeriesType.steps
+    series_type: Literal[SeriesType.steps] = SeriesType.steps  # ty:ignore[invalid-mutable-override]
 
 
 class TimeSeriesQueryParams(SourceFilterParams):
