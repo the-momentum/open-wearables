@@ -42,6 +42,14 @@ class TestCalendarPeriod:
 
         assert (period.end - period.start, period.zone_offset) == (timedelta(hours=23), "+01:00")
 
+    def test_utc_spelled_z_is_the_zero_offset(self) -> None:
+        # Whoop sends "Z" for a UTC cycle; the sample's ZoneOffset accepts it, so must the period.
+        start = datetime(2099, 1, 1, tzinfo=timezone.utc)
+
+        assert CalendarPeriod.local_day(start, zone_offset="Z").zone_offset == "+00:00"
+        assert CalendarPeriod.of_date(DAY, "Z").start == start
+        assert CalendarPeriod(start=start, end=start + timedelta(days=1), zone_offset="Z").zone_offset == "+00:00"
+
 
 class TestAggregateRepository:
     def _row(self, source_id: object, computed_by: ComputedBy, **stats: Decimal) -> dict:

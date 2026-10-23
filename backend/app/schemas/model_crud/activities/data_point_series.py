@@ -13,6 +13,11 @@ from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from .source_filters import SourceFilterParams
 
 
+def _offset(zone_offset: object) -> object:
+    """Providers spell UTC as "Z", None or "+00:00"; one form, as the sample's ZoneOffset does."""
+    return "+00:00" if zone_offset in (None, "Z") else zone_offset
+
+
 class CalendarPeriod(BaseModel):
     """The calendar period a provider value stands for, with the offset that makes it local."""
 
@@ -24,15 +29,17 @@ class CalendarPeriod(BaseModel):
     # A provider day with no offset stays its date, as readers treat a missing offset as UTC.
     zone_offset: str = Field("+00:00", pattern=r"^[+-]\d{2}:\d{2}$")
 
+    _utc_forms = field_validator("zone_offset", mode="before")(_offset)
+
     @classmethod
     def local_day(cls, start: datetime, seconds: int | None = None, zone_offset: str | None = None) -> Self:
         """A day the provider starts at its own local midnight, given as an instant."""
-        return cls(start=start, end=start + timedelta(seconds=seconds or 86400), zone_offset=zone_offset or "+00:00")
+        return cls(start=start, end=start + timedelta(seconds=seconds or 86400), zone_offset=str(_offset(zone_offset)))
 
     @classmethod
     def of_date(cls, day: date | str, zone_offset: str | None = None) -> Self:
         """A provider's date (or YYYY-MM-DD): local midnight when the offset is known, UTC midnight otherwise."""
-        offset = zone_offset or "+00:00"
+        offset = str(_offset(zone_offset))
         start = datetime.combine(
             date.fromisoformat(day) if isinstance(day, str) else day, time(), iso_to_timezone(offset)
         )
