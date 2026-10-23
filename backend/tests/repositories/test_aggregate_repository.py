@@ -253,7 +253,8 @@ class TestDayValuesMirroredFromSamples:
         repo.create(db, sample)
         repo.create(db, sample.model_copy(update={"id": uuid4(), "value": Decimal("8500")}))
 
-        assert db.query(SeriesSample).count() == 1
+        # A day value is not a sample any more; the second write refreshes the one day row.
+        assert db.query(SeriesSample).count() == 0
         assert [row.sum for row in db.query(SeriesAggregate)] == [Decimal("8500")]
 
     def test_a_single_create_mirrors_its_period_too(self, db: Session) -> None:
@@ -349,8 +350,9 @@ class TestSessionValuesMirrored:
         stored = db.query(EventRecordAggregate).one()
         assert (stored.min, stored.max, stored.avg) == (Decimal("50"), Decimal("180"), Decimal("130"))
 
-    def test_a_session_value_whose_record_is_gone_is_kept_as_a_sample(self, db: Session) -> None:
-        """A sleep merged away between the lookup and the write must not fail the whole batch."""
+    def test_a_session_value_whose_record_is_gone_does_not_fail_the_batch(self, db: Session) -> None:
+        """A sleep merged away between the lookup and the write must not fail the whole batch; the value has
+        no record to sit on and no sample form any more, so it is dropped with a warning."""
         source = DataSourceFactory()
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
@@ -364,8 +366,7 @@ class TestSessionValuesMirrored:
 
         DataPointSeriesRepository(SeriesSample).bulk_create(db, [sample])
 
-        assert db.query(SeriesSample).count() == 1
-        assert db.query(EventRecordAggregate).count() == 0
+        assert (db.query(SeriesSample).count(), db.query(EventRecordAggregate).count()) == (0, 0)
 
     def test_a_detail_written_twice_keeps_both_writes_statistics(self, db: Session) -> None:
         """The second create() returns the stored detail and still merges its statistics into the session row."""
