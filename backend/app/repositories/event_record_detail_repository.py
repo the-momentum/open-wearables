@@ -85,20 +85,22 @@ class EventRecordDetailRepository(
         """
         detail = self._build_detail(creator, detail_type)
         try:
-            # The aggregate points at the event, not the detail, so it can go first and share the commit.
-            self._mirror_workout_stats(db_session, [creator], detail_type)
             db_session.add(detail)
             db_session.commit()
             db_session.refresh(detail)
-            return detail
         except IntegrityError as exc:
             db_session.rollback()
             # record_id is the only unique index here; FK and other violations are real errors
-            if isinstance(exc.orig, UniqueViolation) and (
-                existing := self.get_by_record_id(db_session, creator.record_id, detail_type)
+            if not (
+                isinstance(exc.orig, UniqueViolation)
+                and (detail := self.get_by_record_id(db_session, creator.record_id, detail_type))
             ):
-                return existing
-            raise
+                raise
+        # After the commit, so a duplicate's rollback does not take the statistics with it: the stored
+        # detail keeps its row and the aggregate merges what this write carries.
+        self._mirror_workout_stats(db_session, [creator], detail_type)
+        db_session.commit()
+        return detail
 
     def create_and_flush(
         self,

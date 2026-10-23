@@ -592,16 +592,19 @@ class Ultrahuman247Data(Base247DataTemplate):
             value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
             if value is None or not day_start:
                 continue
+            # day_start is the local midnight as Ultrahuman reports it, stored as the UTC instant; the day row
+            # takes the same instant, so it and the sample read as one day everywhere.
+            recorded_at = datetime.fromtimestamp(day_start, tz=timezone.utc)
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     provider=self.provider_name,
-                    recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
+                    recorded_at=recorded_at,
                     value=Decimal(str(value)),
                     series_type=series_type,
                     is_daily_total=daily_total_flag(series_type, True),
-                    period=CalendarPeriod.of_date(day) if day else None,
+                    period=CalendarPeriod.local_day(recorded_at),
                 )
             )
 

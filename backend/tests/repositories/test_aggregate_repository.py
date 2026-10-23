@@ -152,6 +152,25 @@ class TestDayValuesMirroredFromSamples:
 
         assert db.query(SeriesAggregate).count() == 0
 
+    def test_a_duplicate_single_create_still_mirrors_its_period(self, db: Session) -> None:
+        source = DataSourceFactory()
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=source.user_id,
+            source=source.source,
+            recorded_at=datetime(2099, 1, 1, tzinfo=timezone.utc),
+            value=Decimal("8432"),
+            series_type=SeriesType.steps,
+            period=CalendarPeriod.of_date(DAY),
+        )
+        repo = DataPointSeriesRepository(SeriesSample)
+
+        repo.create(db, sample)
+        repo.create(db, sample.model_copy(update={"id": uuid4(), "value": Decimal("8500")}))
+
+        assert db.query(SeriesSample).count() == 1
+        assert [row.sum for row in db.query(SeriesAggregate)] == [Decimal("8500")]
+
     def test_a_single_create_mirrors_its_period_too(self, db: Session) -> None:
         user = UserFactory()
 
@@ -224,6 +243,36 @@ class TestSessionValuesMirrored:
 
         stored = db.query(EventRecordAggregate).one()
         assert (stored.min, stored.max, stored.avg) == (Decimal("50"), Decimal("180"), Decimal("130"))
+
+    def test_a_session_value_whose_record_is_gone_is_kept_as_a_sample(self, db: Session) -> None:
+        """A sleep merged away between the lookup and the write must not fail the whole batch."""
+        source = DataSourceFactory()
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=source.user_id,
+            source="oura",
+            recorded_at=datetime(2099, 1, 1, 7, tzinfo=timezone.utc),
+            value=Decimal("48"),
+            series_type=SeriesType.resting_heart_rate,
+            session=SessionValue(record_id=uuid4()),
+        )
+
+        DataPointSeriesRepository(SeriesSample).bulk_create(db, [sample])
+
+        assert db.query(SeriesSample).count() == 1
+        assert db.query(EventRecordAggregate).count() == 0
+
+    def test_a_detail_written_twice_keeps_both_writes_statistics(self, db: Session) -> None:
+        """The second create() returns the stored detail and still merges its statistics into the session row."""
+        workout = EventRecordFactory(category="workout")
+        repo = EventRecordDetailRepository(EventRecordDetail)
+
+        repo.create(db, EventRecordDetailCreate(record_id=workout.id, average_cadence=Decimal("82")))
+        repo.create(db, EventRecordDetailCreate(record_id=workout.id, heart_rate_max=181))
+
+        rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+        assert rows[get_series_type_id(SeriesType.cadence)].avg == Decimal("82")
+        assert rows[get_series_type_id(SeriesType.heart_rate)].max == Decimal("181")
 
     def test_workout_energy_without_a_known_series_is_not_mirrored(self, db: Session) -> None:
         workout = EventRecordFactory(category="workout")

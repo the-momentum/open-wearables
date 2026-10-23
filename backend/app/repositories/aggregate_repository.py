@@ -36,7 +36,7 @@ class AggregateRepository:
             key = tuple(row[column] for column in self.key_columns)
             known = unique.get(key) or {column: None for column in self.refreshed} | {"id": uuid4()}
             unique[key] = known | {column: value for column, value in row.items() if value is not None}
-        for chunk in batched(unique.values(), self.rows_per_statement):
+        for chunk in batched(self._in_key_order(unique), self.rows_per_statement):
             stmt = insert(self.model).values(list(chunk))
             db_session.execute(
                 stmt.on_conflict_do_update(
@@ -47,6 +47,10 @@ class AggregateRepository:
                 )
             )
         return len(unique)
+
+    def _in_key_order(self, unique: dict[tuple, dict[str, Any]]) -> list[dict[str, Any]]:
+        """Two writers upserting overlapping keys in different orders can deadlock; one order for everyone."""
+        return [unique[key] for key in sorted(unique, key=lambda key: tuple(str(part) for part in key))]
 
     def _refreshed_value(self, stmt: Any, column: str) -> Any:
         excluded, stored = stmt.excluded[column], self.model.__table__.c[column]

@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from logging import getLogger
 from typing import LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
@@ -42,6 +43,7 @@ from app.models import (
     DataPointSeriesArchive,
     DataSource,
     DeviceTypePriority,
+    EventRecord,
     EventRecordAggregate,
     ProviderPriority,
     SeriesAggregate,
@@ -85,6 +87,8 @@ from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import as_utc
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
+
+logger = getLogger(__name__)
 
 
 class TypeCounts(NamedTuple):
@@ -274,8 +278,13 @@ class DataPointSeriesRepository(
 
         creation = self.model(**creation_data)
         db_session.add(creation)
-        self._mirror_aggregates(db_session, [creator], {DataSourceIdentity.of(creator): data_source.id})
-        return self.try_commit(db_session, creation)
+        created = self.try_commit(db_session, creation)
+        # After the commit: a duplicate rolls the sample back and returns the stored one, and its day or
+        # session value must still land.
+        if creator.period is not None or creator.session is not None:
+            self._mirror_aggregates(db_session, [creator], {DataSourceIdentity.of(creator): data_source.id})
+            db_session.commit()
+        return created
 
     @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
@@ -300,7 +309,7 @@ class DataPointSeriesRepository(
             return WriteCounts(0, 0)
         spans = _spans_by_source_and_type(rows)
         counts = self._insert_data_points(db_session, rows, spans)
-        self._mirror_aggregates(db_session, creators, identity_to_source_id)
+        self._mirror_aggregates(db_session, self._with_live_sessions(db_session, creators), identity_to_source_id)
 
         # 3. Widen what we hold per type, under the same provider the sources resolved to
         data_type_coverage_repository.record(
@@ -318,6 +327,24 @@ class DataPointSeriesRepository(
             ),
         )
         return counts
+
+    @staticmethod
+    def _with_live_sessions(
+        db_session: DbSession, creators: list[TimeSeriesSampleCreate]
+    ) -> list[TimeSeriesSampleCreate]:
+        """Session values pointing at a record that no longer exists (a sleep merged away meanwhile) are kept as
+        samples only: a foreign-key error on one of them would lose the whole batch."""
+        record_ids = {c.session.record_id for c in creators if c.session is not None}
+        if not record_ids:
+            return creators
+        live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id.in_(record_ids))}
+        if gone := record_ids - live:
+            logger.warning("Session values of %d samples point at deleted records; kept as samples only", len(gone))
+            return [
+                c.model_copy(update={"session": None}) if c.session is not None and c.session.record_id in gone else c
+                for c in creators
+            ]
+        return creators
 
     def _mirror_aggregates(
         self,
