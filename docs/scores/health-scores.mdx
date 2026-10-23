@@ -45,7 +45,7 @@ This means you can surface both in your application - the OW scores for a consis
 
 ## Disabling OW Native Scores
 
-Self-hosted deployments compute both OW scores by default. To turn them off, set `OW_SCORES_ENABLED=false` in the backend `.env`.
+Until November 6, 2026, self-hosted deployments compute both OW scores by default. To turn them off, set `OW_SCORES_ENABLED=false` in the backend `.env`.
 
 Provider scores are still stored and shown. Scores computed before the switch stay in the database. Re-enabling backfills the last `SCORE_BACKFILL_DAYS` (30 by default).
 
@@ -66,7 +66,8 @@ What changes: Open Wearables no longer computes new Sleep Score and Resilience S
 To check whether your integration uses OW native scores, look for records with `"provider": "internal"` in the response. You can also filter for them directly:
 
 ```bash
-GET /api/v1/users/{user_id}/health-scores?provider=internal
+curl -X GET "http://localhost:8000/api/v1/users/{user_id}/health-scores?provider=internal" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 
 These are the records that are no longer created after November 6:
