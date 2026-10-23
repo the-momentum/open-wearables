@@ -46,6 +46,7 @@ def _ts_payload(event_type: str, series_type: str, provider: str, unit: str, sam
                     "unit": unit,
                     "source": source,
                     "is_daily_total": None,
+                    "window_seconds": None,
                 }
             ],
         },

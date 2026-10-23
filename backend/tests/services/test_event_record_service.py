@@ -1460,7 +1460,17 @@ class TestResolveAvgHr:
 
     def _avg_hr(self, db: Session, workout: EventRecord) -> int | None:
         db.flush()
-        return event_record_service._resolve_avg_hr(db, [workout])[workout.id]
+        statistics = event_record_service.crud.get_workout_statistics(db, [workout.id])
+        return event_record_service._resolve_avg_hr(db, [workout], statistics)[workout.id]
+
+    def test_our_average_rounds_half_up_like_the_sql_fallback(self, db: Session) -> None:
+        workout = self._workout(DataSourceFactory())
+
+        resolved = event_record_service._resolve_avg_hr(
+            db, [workout], {workout.id: {"heart_rate_avg": Decimal("72.5")}}
+        )
+
+        assert resolved[workout.id] == 73
 
     def test_own_source_wins_over_writer_siblings(self, db: Session) -> None:
         user = UserFactory()
@@ -1531,6 +1541,7 @@ class TestResolveAvgHr:
             DataPointSeriesFactory(data_source=dailies, recorded_at=start + timedelta(minutes=10), value=130 + day)
         db.flush()
 
-        result = event_record_service._resolve_avg_hr(db, workouts)
+        statistics = event_record_service.crud.get_workout_statistics(db, [w.id for w in workouts])
+        result = event_record_service._resolve_avg_hr(db, workouts, statistics)
 
         assert [result[w.id] for w in workouts] == [130, 131, 132]

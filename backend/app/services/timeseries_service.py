@@ -241,6 +241,7 @@ class TimeSeriesService(
                         "unit": unit,
                         "source": {"provider": provider, "device": s.device_model},
                         "is_daily_total": s.is_daily_total,
+                        "window_seconds": s.window_seconds,
                     }
                     for s in sorted_samples
                 ]

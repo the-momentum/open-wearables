@@ -35,6 +35,7 @@ from app.schemas.model_crud.activities import (
     CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
+    EventRecordQueryParams,
     SessionValue,
     TimeSeriesSampleCreate,
 )
@@ -738,3 +739,83 @@ class TestRollupTask:
         with patch("app.integrations.celery.tasks.archival_task.SessionLocal", return_value=nullcontext(db)):
             assert roll_up_queued_days() == {"rolled_up_days": 0}
         assert get_redis_client().get("series_rollup:lock") is None
+
+
+class TestWorkoutStatistics:
+    def _workout(self, db: Session, source: object, start: datetime, **detail: object) -> EventRecord:
+        workout = EventRecordFactory(
+            category="workout", data_source=source, start_datetime=start, duration_seconds=1800
+        )
+        EventRecordDetailRepository(EventRecordDetail).bulk_create(
+            db, [EventRecordDetailCreate(record_id=workout.id, **detail)]
+        )
+        return workout
+
+    def test_calories_take_the_declared_series_then_the_providers_figure_then_ours(self, db: Session) -> None:
+        source = DataSourceFactory()
+        energy = SeriesTypeDefinitionFactory.get_or_create_energy()
+        declared = self._workout(
+            db,
+            source,
+            datetime(2099, 1, 1, 8, tzinfo=timezone.utc),
+            energy_burned=Decimal("500"),
+            energy_series=SeriesType.total_energy,
+        )
+        undeclared = self._workout(
+            db, source, datetime(2099, 1, 1, 12, tzinfo=timezone.utc), energy_burned=Decimal("300")
+        )
+        bare = self._workout(db, source, datetime(2099, 1, 1, 16, tzinfo=timezone.utc))
+        DataPointSeriesFactory(
+            mapping=source,
+            series_type=energy,
+            recorded_at=datetime(2099, 1, 1, 16, 10, tzinfo=timezone.utc),
+            value=Decimal("40"),
+        )
+        roll_up_everything(db)
+
+        statistics = EventRecordRepository(EventRecord).get_workout_statistics(
+            db, [declared.id, undeclared.id, bare.id]
+        )
+        _, _, total, _ = EventRecordRepository(EventRecord).get_workout_totals(
+            db, EventRecordQueryParams(), str(source.user_id)
+        )
+
+        assert statistics[declared.id]["provider_energy"] == Decimal("500")
+        assert statistics[undeclared.id]["provider_energy"] is None
+        assert statistics[bare.id]["own_energy"] == Decimal("40")
+        assert total == Decimal("840")
+
+    def test_totals_and_days_take_our_distance_where_the_provider_sent_none(self, db: Session) -> None:
+        source = DataSourceFactory()
+        distance = SeriesTypeDefinitionFactory.get_or_create_distance()
+        declared = self._workout(db, source, datetime(2099, 1, 1, 8, tzinfo=timezone.utc), distance=Decimal("5000"))
+        bare = self._workout(db, source, datetime(2099, 1, 1, 12, tzinfo=timezone.utc))
+        for minute, value in [(5, "300"), (20, "700")]:
+            DataPointSeriesFactory(
+                mapping=source,
+                series_type=distance,
+                recorded_at=bare.start_datetime + timedelta(minutes=minute),
+                value=Decimal(value),
+            )
+        roll_up_everything(db)
+        repo = EventRecordRepository(EventRecord)
+
+        _, _, _, total = repo.get_workout_totals(db, EventRecordQueryParams(), str(source.user_id))
+        (day,) = repo.get_daily_workout_aggregates(
+            db, source.user_id, datetime(2099, 1, 1, tzinfo=timezone.utc), datetime(2099, 1, 2, tzinfo=timezone.utc)
+        )
+
+        assert repo.get_workout_statistics(db, [declared.id, bare.id])[bare.id]["distance"] == Decimal("1000")
+        assert (total, day["distance_meters"]) == (Decimal("6000"), 6000)
+
+    def test_a_workout_without_provider_heart_rate_takes_ours(self, db: Session) -> None:
+        source = DataSourceFactory()
+        start = datetime(2099, 1, 1, 8, tzinfo=timezone.utc)
+        workout = self._workout(db, source, start)
+        for minute, value in [(5, "120"), (20, "150")]:
+            DataPointSeriesFactory(mapping=source, recorded_at=start + timedelta(minutes=minute), value=Decimal(value))
+        roll_up_everything(db)
+
+        stats = EventRecordRepository(EventRecord).get_workout_statistics(db, [workout.id])[workout.id]
+
+        assert (stats["heart_rate_avg"], stats["heart_rate_max"]) == (Decimal("135"), Decimal("150"))

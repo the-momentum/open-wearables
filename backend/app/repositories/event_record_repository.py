@@ -27,6 +27,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.integrations.rollup_queue import mark_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, SleepDetails, WorkoutDetails
@@ -52,6 +53,7 @@ from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
     EventRecordUpdate,
+    StatColumn,
 )
 from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import local_date
@@ -86,6 +88,42 @@ _SLEEP_PHYSIOLOGY = {
     "avg_resp": SeriesType.respiratory_rate,
     "avg_spo2": SeriesType.oxygen_saturation,
 }
+
+
+def _session_stat(series_type: SeriesType, stat: StatColumn, computed_by: ComputedBy) -> ColumnElement:
+    """One statistic of the outer query's event record, from event_record_aggregate."""
+    return (
+        select(getattr(EventRecordAggregate, stat))
+        .where(
+            EventRecordAggregate.record_id == EventRecord.id,
+            EventRecordAggregate.series_type_definition_id == get_series_type_id(series_type),
+            EventRecordAggregate.computed_by == computed_by,
+        )
+        .scalar_subquery()
+    )
+
+
+def _session_sum(series_type: SeriesType) -> ColumnElement:
+    """A workout's total of a series: the provider's, else ours from the workout's samples."""
+    return func.coalesce(
+        _session_stat(series_type, "sum", ComputedBy.PROVIDER),
+        _session_stat(series_type, "sum", ComputedBy.OPEN_WEARABLES),
+    )
+
+
+def _first(*values: Decimal | None) -> Decimal | None:
+    return next((value for value in values if value is not None), None)
+
+
+def workout_energy() -> ColumnElement:
+    """A workout's calories: the provider's in its declared series, else the provider's figure whose series is
+    not established yet (workout_details.energy_burned), else ours from the workout's own energy samples."""
+    return func.coalesce(
+        _session_stat(SeriesType.total_energy, "sum", ComputedBy.PROVIDER),
+        _session_stat(SeriesType.active_energy, "sum", ComputedBy.PROVIDER),
+        WorkoutDetails.energy_burned,
+        _session_stat(SeriesType.active_energy, "sum", ComputedBy.OPEN_WEARABLES),
+    )
 
 
 class EventRecordRepository(
@@ -544,8 +582,8 @@ class EventRecordRepository(
             db_session.query(
                 func.count(EventRecord.id),
                 func.coalesce(func.sum(EventRecord.duration_seconds), 0),
-                func.sum(WorkoutDetails.energy_burned),
-                func.sum(WorkoutDetails.distance),
+                func.sum(workout_energy()),
+                func.sum(_session_sum(SeriesType.distance)),
             )
             .select_from(EventRecord)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
@@ -554,6 +592,45 @@ class EventRecordRepository(
             .one()
         )
         return int(row[0]), int(row[1]), row[2], row[3]
+
+    def get_workout_statistics(
+        self, db_session: DbSession, record_ids: list[UUID]
+    ) -> dict[UUID, dict[str, Decimal | None]]:
+        """Per workout, every workout_details statistic from event_record_aggregate (the provider's, else ours),
+        plus ``provider_energy`` in the provider's declared series and ``own_energy`` from the workout's samples."""
+        if not record_ids:
+            return {}
+        # Only the series a statistic is read from: a workout's speed, power or elevation stream is not.
+        needed = {get_series_type_id(series_type) for series_type, _ in WORKOUT_DETAIL_STATS.values()} | {
+            get_series_type_id(SeriesType.total_energy),
+            get_series_type_id(SeriesType.active_energy),
+        }
+        rows = db_session.query(EventRecordAggregate).filter(
+            EventRecordAggregate.record_id.in_(record_ids), EventRecordAggregate.series_type_definition_id.in_(needed)
+        )
+        values: dict[ComputedBy, dict[tuple[UUID, int, str], Decimal]] = {origin: {} for origin in ComputedBy}
+        for row in rows:
+            for stat in ("sum", "avg", "min", "max", "last"):
+                if (value := getattr(row, stat)) is not None:
+                    values[row.computed_by][(row.record_id, row.series_type_definition_id, stat)] = value
+        provider, own = values[ComputedBy.PROVIDER], values[ComputedBy.OPEN_WEARABLES]
+
+        def pick(source: dict, record_id: UUID, series_type: SeriesType, stat: str) -> Decimal | None:
+            return source.get((record_id, get_series_type_id(series_type), stat))
+
+        statistics: dict[UUID, dict[str, Decimal | None]] = {}
+        for record_id in record_ids:
+            workout = {
+                column: _first(pick(provider, record_id, series_type, stat), pick(own, record_id, series_type, stat))
+                for column, (series_type, stat) in WORKOUT_DETAIL_STATS.items()
+            }
+            workout["provider_energy"] = _first(
+                pick(provider, record_id, SeriesType.total_energy, "sum"),
+                pick(provider, record_id, SeriesType.active_energy, "sum"),
+            )
+            workout["own_energy"] = pick(own, record_id, SeriesType.active_energy, "sum")
+            statistics[record_id] = workout
+        return statistics
 
     def get_sleep_totals(
         self,
@@ -1188,11 +1265,11 @@ class EventRecordRepository(
                 DataSource.device_model,
                 DataSource.device_type,
                 # Sum elevation gain for all workouts on that day
-                func.sum(WorkoutDetails.total_elevation_gain).label("elevation_sum"),
+                func.sum(_session_sum(SeriesType.elevation_gain)).label("elevation_sum"),
                 # Sum distance for all workouts
-                func.sum(WorkoutDetails.distance).label("distance_sum"),
+                func.sum(_session_sum(SeriesType.distance)).label("distance_sum"),
                 # Sum energy burned
-                func.sum(WorkoutDetails.energy_burned).label("energy_sum"),
+                func.sum(workout_energy()).label("energy_sum"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             # Use outerjoin since WorkoutDetails is optional - some workouts may not have details

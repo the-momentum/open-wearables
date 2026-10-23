@@ -475,7 +475,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "value": 62,
         "unit": "bpm",
         "source": { "provider": "garmin", "device": "Forerunner 255" },
-        "is_daily_total": null
+        "is_daily_total": null,
+        "window_seconds": null
       },
       {
         "timestamp": "2025-12-19T07:35:00+01:00",
@@ -484,7 +485,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "value": 65,
         "unit": "bpm",
         "source": { "provider": "garmin", "device": "Forerunner 255" },
-        "is_daily_total": null
+        "is_daily_total": null,
+        "window_seconds": null
       },
       {
         "timestamp": "2025-12-19T07:40:00+01:00",
@@ -493,7 +495,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "value": 70,
         "unit": "bpm",
         "source": { "provider": "garmin", "device": "Forerunner 255" },
-        "is_daily_total": null
+        "is_daily_total": null,
+        "window_seconds": null
       }
     ]
   }
@@ -512,6 +515,10 @@ Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_
   | `null` | Legacy row ingested before this field was introduced, or a series type where daily vs. intraday does not apply (e.g. heart rate). Treat the same as `false`. |
 
   For non-additive series (heart rate, SpO2, temperature, …) `is_daily_total` is always `null` and can be ignored.
+</Note>
+
+<Note>
+  **`window_seconds`** is the width of a sample reported over a window rather than at an instant: a Garmin 15-minute epoch is `900`, a HealthKit record from 08:00 to 08:05 is `300`. `null` means an instant reading.
 </Note>
 
 <Note>
