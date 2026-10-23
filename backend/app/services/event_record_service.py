@@ -401,8 +401,17 @@ class EventRecordService(
         if adjacent is not None:
             # Same external_id → re-ingestion of the same session (e.g. webhook
             # retry, score update).  Replace the detail with fresh values instead
-            # of accumulating them on top of the existing ones.
-            if record.external_id is not None and adjacent.external_id == record.external_id:
+            # of accumulating them on top of the existing ones.  Without an
+            # external_id (Polar nights), the same writer sending the exact same
+            # window is the same re-ingestion: merging it doubled the stages and
+            # minutes on every hourly re-fetch.
+            same_external_id = record.external_id is not None and adjacent.external_id == record.external_id
+            same_session = (
+                record.external_id is None
+                and adjacent.start_datetime == record.start_datetime
+                and adjacent.end_datetime == record.end_datetime
+            )
+            if same_external_id or same_session:
                 old_start, old_zone = adjacent.start_datetime, adjacent.zone_offset
                 for field in ("start_datetime", "end_datetime", "zone_offset"):
                     new_val = getattr(record, field, None)
