@@ -24,6 +24,10 @@ class AggregateRepository:
         )
         # Every column is a bind parameter; PostgreSQL allows 65535 per statement.
         self.rows_per_statement = 65535 // len(table.columns)
+        # A session's extremes add up across writes: a night's lowest heart rate reported per sleep segment,
+        # a workout's max cadence from an SDK statistic next to its mean from the details. A day row is
+        # written whole by one provider call, so a later call may correct it either way.
+        self.extremes_accumulate = model is EventRecordAggregate
 
     def upsert(self, db_session: DbSession, rows: list[dict[str, Any]]) -> int:
         """Insert or refresh one row per upsert key; rows sharing a key merge their statistics."""
@@ -39,10 +43,24 @@ class AggregateRepository:
                     constraint=self.upsert_key,
                     # A value absent from this write keeps the stored one, e.g. a workout's mean cadence from its
                     # details and its max cadence from an SDK statistic, written by separate calls.
-                    set_={
-                        column: func.coalesce(stmt.excluded[column], self.model.__table__.c[column])
-                        for column in self.refreshed
-                    },
+                    set_={column: self._refreshed_value(stmt, column) for column in self.refreshed},
                 )
             )
         return len(unique)
+
+    def _refreshed_value(self, stmt: Any, column: str) -> Any:
+        excluded, stored = stmt.excluded[column], self.model.__table__.c[column]
+        if self.extremes_accumulate and column == "min":
+            return func.least(excluded, stored)
+        if self.extremes_accumulate and column == "max":
+            return func.greatest(excluded, stored)
+        return func.coalesce(excluded, stored)
+
+    def move_record(self, db_session: DbSession, from_record_id: Any, to_record_id: Any) -> int:
+        """One event record's session rows go onto another, combining with the rows it already holds."""
+        rows = [
+            {column: getattr(row, column) for column in (*self.key_columns, *self.refreshed)}
+            | {"record_id": to_record_id}
+            for row in db_session.query(self.model).filter(self.model.record_id == from_record_id)  # ty: ignore[unresolved-attribute]
+        ]
+        return self.upsert(db_session, rows) if rows else 0

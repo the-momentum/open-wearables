@@ -144,6 +144,22 @@ def test_set_detail_fields_are_declared(provider: str) -> None:
     assert not undeclared, f"{provider}: sets EventRecordDetail fields not declared in coverage: {sorted(undeclared)}"
 
 
+_ENERGY_SERIES_RE = re.compile(r"energy_series\"?\]?\s*=\s*([A-Za-z_][\w.]*)")
+
+
+@pytest.mark.parametrize("provider", sorted(set(_providers_with_coverage()) - SDK_PROVIDERS))
+def test_workout_energy_comes_from_coverage(provider: str) -> None:
+    """A provider's workout energy goes to the series its coverage.py declares, never to a literal; a provider
+    whose energy semantics are not established declares none and sets none (the column keeps it)."""
+    cov = _load_coverage(provider)
+    assigned = set(_ENERGY_SERIES_RE.findall(_impl_source(provider)))
+
+    if getattr(cov, "WORKOUT_ENERGY_SERIES", None) is None:
+        assert not assigned, f"{provider}: sets energy_series but coverage declares no WORKOUT_ENERGY_SERIES"
+    else:
+        assert assigned <= {"WORKOUT_ENERGY_SERIES"}, f"{provider}: energy_series set from {sorted(assigned)}"
+
+
 _SDK_METRIC_MAP = {
     "apple": APPLE_METRIC_TYPE_TO_SERIES_TYPE,
     "samsung": SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,

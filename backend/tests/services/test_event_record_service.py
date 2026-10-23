@@ -16,9 +16,9 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, HealthScore
-from app.repositories import data_point_series_repository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
+from app.repositories import AggregateRepository, data_point_series_repository
+from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -722,6 +722,54 @@ class TestCreateOrMergeSleep:
         event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
 
         assert event_record_service.get(db, old_id) is None
+
+    def test_merge_keeps_the_first_segments_session_values(self, db: Session) -> None:
+        """Oura reports a lowest heart rate per sleep segment; the merged night keeps the lower one."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(20, 56),
+            end_datetime=self._dt(21, 26),
+        )
+        SleepDetailsFactory(event_record=existing)
+        heart_rate = get_series_type_id(SeriesType.heart_rate)
+        aggregates = AggregateRepository(EventRecordAggregate)
+        aggregates.upsert(
+            db,
+            [
+                {
+                    "record_id": existing.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "min": Decimal("48"),
+                    "count": 1,
+                }
+            ],
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+
+        merged = event_record_service.create_or_merge_sleep(
+            db, user.id, record, self._detail(record.id), self.THRESHOLD
+        )
+        # The second segment's own value arrives after the merge, on the record the save returned.
+        aggregates.upsert(
+            db,
+            [
+                {
+                    "record_id": merged.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "min": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        row = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == merged.id).one()
+        assert row.min == Decimal("48")
 
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""
