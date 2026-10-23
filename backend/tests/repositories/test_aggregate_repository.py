@@ -19,7 +19,7 @@ from app.models import (
 from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, DataPointSeriesRepository, EventRecordDetailRepository
 from app.repositories.event_record_repository import EventRecordRepository
-from app.repositories.series_rollup_repository import SeriesRollupRepository
+from app.repositories.series_rollup_repository import SeriesRollupRepository, _runs
 from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     CalendarPeriod,
@@ -506,6 +506,22 @@ class TestSeriesRollup:
         assert [row.avg for row in db.query(EventRecordAggregate)] == [Decimal("120")]
 
 
+class TestRollupRuns:
+    def test_contiguous_days_are_scanned_a_month_at_a_time(self) -> None:
+        days = [date(2099, 1, 1) + timedelta(days=n) for n in range(70)]
+
+        runs = list(_runs(days))
+
+        assert [len(run) for run in runs] == [31, 31, 8]
+        assert runs[0][-1] + timedelta(days=1) == runs[1][0]
+
+    def test_a_gap_over_a_week_starts_a_new_scan(self) -> None:
+        assert list(_runs([date(2099, 1, 1), date(2099, 1, 5), date(2099, 1, 20)])) == [
+            [date(2099, 1, 1), date(2099, 1, 5)],
+            [date(2099, 1, 20)],
+        ]
+
+
 class TestDailyLifecycleJob:
     def _settings(self, db: Session, rollup_enabled: bool, delete_after_days: int | None) -> None:
         setting = db.get(ArchivalSetting, 1) or ArchivalSetting(id=1)
@@ -596,6 +612,25 @@ class TestDailyLifecycleJob:
         assert summary["rolled_up_days"] == 1
         assert db.query(SeriesAggregate).filter(SeriesAggregate.data_source_id == good.id).count() == 1
         assert pop_dirty_days(10) == []
+
+    def test_retention_deletes_whole_days_a_few_at_a_time(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.repositories.archival_repository.DELETE_DAYS_PER_BATCH", 1)
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        source = DataSourceFactory()
+        cutoff = date.today() - timedelta(days=30)
+        for days_ago in (3, 2, 1):
+            for hour in (6, 18):
+                DataPointSeriesFactory(
+                    mapping=source,
+                    recorded_at=datetime.combine(cutoff - timedelta(days=days_ago), datetime.min.time(), timezone.utc)
+                    + timedelta(hours=hour),
+                )
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert summary["deleted_live_rows"] == 6
+        assert db.query(SeriesSample).count() == 0
+        assert db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES).count() == 3
 
     def test_retention_without_rollup_only_deletes(self, db: Session) -> None:
         self._settings(db, rollup_enabled=False, delete_after_days=30)

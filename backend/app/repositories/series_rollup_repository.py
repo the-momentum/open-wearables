@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Iterator
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import Row, text
@@ -7,6 +7,7 @@ from sqlalchemy import Row, text
 from app.database import DbSession
 from app.models import EventRecordAggregate, SeriesAggregate
 from app.repositories.aggregate_repository import AggregateRepository
+from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
 from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
@@ -17,18 +18,18 @@ from app.schemas.enums import (
 )
 from app.schemas.model_crud.activities import CalendarPeriod
 
-# A local day reaches up to 14 hours either side of its UTC date.
-_OFFSET_REACH = timedelta(hours=14)
-# Days further apart than this are rolled up by separate range scans.
+# Days further apart than this are rolled up by separate range scans, and no scan covers more than a month:
+# a month of 1 Hz data is a few million rows, and a run that overruns its time limit rolls back whole.
 _MAX_GAP = timedelta(days=7)
+_MAX_RUN = timedelta(days=31)
 
 _STATS = """sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s.value) AS max,
     (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last, count(*) AS count"""
-_SAMPLE_DAY = "((s.recorded_at AT TIME ZONE 'UTC') + coalesce(s.zone_offset, '+00:00')::interval)::date"
+_SAMPLE_DAY = sample_day_sql("s")
 
 _DAY_STATS = text(f"""
     SELECT s.series_type_definition_id, {_SAMPLE_DAY} AS day,
-        min(coalesce(s.zone_offset, '+00:00')) AS zone_offset, {_STATS}
+        (array_agg(coalesce(s.zone_offset, '+00:00') ORDER BY s.recorded_at))[1] AS zone_offset, {_STATS}
     FROM series_sample s
     WHERE s.data_source_id = :source_id AND s.recorded_at >= :lo AND s.recorded_at < :hi
         AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
@@ -97,15 +98,15 @@ class SeriesRollupRepository:
         """
         written = 0
         for run in _runs(sorted(set(days))):
-            lo = _utc_midnight(run[0]) - _OFFSET_REACH
-            hi = _utc_midnight(run[-1]) + timedelta(days=1) + _OFFSET_REACH
+            lo = utc_midnight(run[0]) - OFFSET_REACH
+            hi = utc_midnight(run[-1]) + timedelta(days=1) + OFFSET_REACH
             written += self._roll_up_days(db_session, source_id, run, lo, hi, frozen_before)
             self._roll_up_sessions(db_session, source_id, lo, hi, frozen_before)
         return written
 
     def days_before(self, db_session: DbSession, source_id: UUID, cutoff: date) -> list[date]:
         """Local days before ``cutoff`` on which the source still has samples."""
-        hi = _utc_midnight(cutoff) + _OFFSET_REACH
+        hi = utc_midnight(cutoff) + OFFSET_REACH
         rows = db_session.execute(_DAYS_BEFORE, {"source_id": source_id, "hi": hi, "cutoff": cutoff})
         return [row.day for row in rows]
 
@@ -185,15 +186,11 @@ def _stats(row: Row) -> dict:
     return stats
 
 
-def _utc_midnight(day: date) -> datetime:
-    return datetime.combine(day, time(), timezone.utc)
-
-
 def _runs(days: list[date]) -> Iterator[list[date]]:
-    """Split sorted days where they are more than a week apart, so each range scan stays short."""
+    """Split sorted days where they are more than a week apart, and every month, so each range scan stays short."""
     run: list[date] = []
     for day in days:
-        if run and day - run[-1] > _MAX_GAP:
+        if run and (day - run[-1] > _MAX_GAP or day - run[0] >= _MAX_RUN):
             yield run
             run = []
         run.append(day)

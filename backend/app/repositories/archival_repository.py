@@ -2,7 +2,8 @@
 
 import time
 from collections.abc import Callable
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
+from itertools import batched
 from typing import NamedTuple
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from app.database import DbSession
 from app.models import DataPointSeriesArchive, DataSource, SeriesSample
 from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
+from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
 from app.repositories.repositories import timeline_key_column, utc_bucket_start
 from app.schemas.enums import (
     ProviderName,
@@ -57,8 +59,8 @@ class ArchivalSettingRepository:
 # Safety limits to prevent overloading the DB on initial runs
 MAX_ROWS_PER_RUN = 500_000  # Stop after deleting this many rows per invocation
 MAX_SECONDS_PER_RUN = 120  # Stop after this many seconds per invocation
-# A local day reaches up to 14 hours past its UTC date.
-_OFFSET_REACH = timedelta(hours=14)
+# Local days deleted per statement and commit: three days of 1 Hz data is a quarter million rows.
+DELETE_DAYS_PER_BATCH = 3
 
 
 class BatchedRun(NamedTuple):
@@ -166,15 +168,15 @@ class DataPointSeriesArchiveRepository:
         """
         total_deleted = 0
         start_time = time.monotonic()
-        hi = datetime.combine(cutoff_date, datetime.min.time(), tzinfo=timezone.utc) + _OFFSET_REACH
-        local_day = literal_column(
-            "((series_sample.recorded_at AT TIME ZONE 'UTC') + coalesce(series_sample.zone_offset, '+00:00')::interval)"
-            "::date"
-        )
+        hi = utc_midnight(cutoff_date) + OFFSET_REACH
+        local_day = literal_column(sample_day_sql())
         older = and_(SeriesSample.recorded_at < hi, local_day < cutoff_date)
 
+        def out_of_budget() -> bool:
+            return total_deleted >= MAX_ROWS_PER_RUN or time.monotonic() - start_time >= MAX_SECONDS_PER_RUN
+
         while True:
-            if total_deleted >= MAX_ROWS_PER_RUN or time.monotonic() - start_time >= MAX_SECONDS_PER_RUN:
+            if out_of_budget():
                 return BatchedRun(total_deleted, complete=False)
 
             source_ids = [row[0] for row in db.query(SeriesSample.data_source_id).filter(older).distinct().limit(10)]
@@ -184,12 +186,24 @@ class DataPointSeriesArchiveRepository:
             for source_id in source_ids:
                 if before_delete is not None:
                     before_delete(db, source_id)
-                total_deleted += (
-                    db.query(SeriesSample)
+                    db.commit()
+                # Whole local days go in each batch: a day left half-deleted would roll up as half a day.
+                days = [
+                    row[0]
+                    for row in db.query(local_day)
                     .filter(SeriesSample.data_source_id == source_id, older)
-                    .delete(synchronize_session=False)
-                )
-            db.commit()
+                    .distinct()
+                    .order_by(local_day)
+                ]
+                for batch in batched(days, DELETE_DAYS_PER_BATCH):
+                    total_deleted += (
+                        db.query(SeriesSample)
+                        .filter(SeriesSample.data_source_id == source_id, older, local_day.in_(batch))
+                        .delete(synchronize_session=False)
+                    )
+                    db.commit()
+                    if out_of_budget():
+                        return BatchedRun(total_deleted, complete=False)
 
     def get_user_counts_by_provider_and_type_from_archive(
         self,

@@ -206,7 +206,7 @@ class EventRecordRepository(
             self._record_coverage(db_session, [(creator, provider)])
             mark_dirty_days(
                 db_session,
-                _local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset),
+                local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset),
             )
             db_session.commit()
             db_session.refresh(creation)
@@ -236,7 +236,7 @@ class EventRecordRepository(
             raise
         self._record_coverage(db_session, [(creator, provider)])
         mark_dirty_days(
-            db_session, _local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset)
+            db_session, local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset)
         )
         return creation
 
@@ -307,7 +307,7 @@ class EventRecordRepository(
                 day
                 for values in values_list
                 if values["id"] in inserted_ids
-                for day in _local_days(
+                for day in local_days(
                     values["data_source_id"], values["start_datetime"], values["end_datetime"], values["zone_offset"]
                 )
             ),
@@ -1262,7 +1262,7 @@ class EventRecordRepository(
         return [(event_record, sleep_details) for event_record, sleep_details in rows]
 
 
-def _local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
+def local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
     """Every local day an event touches, so its sessions are rolled up with them."""
     first, last = local_date(start, zone_offset), local_date(end, zone_offset)
     return [(source_id, first + timedelta(days=n)) for n in range((last - first).days + 1)]

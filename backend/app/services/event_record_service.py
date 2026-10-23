@@ -9,6 +9,7 @@ from sqlalchemy.orm import Query
 
 from app.config import settings
 from app.database import DbSession
+from app.integrations.rollup_queue import mark_dirty_days
 from app.models import (
     DataSource,
     DetailType,
@@ -35,6 +36,7 @@ from app.repositories import (
 from app.repositories.data_point_series_repository import WorkoutWindow
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.event_record_repository import local_days
 from app.schemas.enums import EventCategory, HealthScoreCategory, SeriesType, get_series_type_unit
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -406,13 +408,26 @@ class EventRecordService(
             # retry, score update).  Replace the detail with fresh values instead
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
-                old_start, old_zone = adjacent.start_datetime, adjacent.zone_offset
+                old_start, old_end, old_zone = adjacent.start_datetime, adjacent.end_datetime, adjacent.zone_offset
                 for field in ("start_datetime", "end_datetime", "zone_offset"):
                     new_val = getattr(record, field, None)
                     if new_val is not None:
                         setattr(adjacent, field, new_val)
                 adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
                 db_session.flush()
+                # Its session rows are rolled up over the window it has now, on the days it left and joined.
+                mark_dirty_days(
+                    db_session,
+                    [
+                        *local_days(adjacent.data_source_id, old_start, old_end, old_zone),
+                        *local_days(
+                            adjacent.data_source_id,
+                            adjacent.start_datetime,
+                            adjacent.end_datetime,
+                            adjacent.zone_offset,
+                        ),
+                    ],
+                )
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id, EventCategory.SLEEP)
                 self.event_record_detail_repo.create_and_flush(
                     db_session,
