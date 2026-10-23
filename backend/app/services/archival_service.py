@@ -107,6 +107,8 @@ class ArchivalService:
         """Roll up queued days in batches until the queue is empty or the run's time is up."""
         rolled_up = 0
         started = time.monotonic()
+        if recovered := rollup_queue.recover_dirty_days():
+            log_structured(self.logger, "warning", f"Rollup: {recovered} days left by a run that died, queued again")
         while time.monotonic() - started < MAX_SECONDS_PER_RUN:
             batch = rollup_queue.pop_dirty_days(ROLLUP_BATCH_SIZE)
             if not batch:
@@ -124,6 +126,7 @@ class ArchivalService:
             except Exception:
                 db.rollback()
                 rolled_up += self._roll_up_one_by_one(db, days_by_source, frozen_before, batch)
+            rollup_queue.finish_dirty_days(batch)
         log_structured(self.logger, "info", f"Rollup: {rolled_up} days", rolled_up_days=rolled_up)
         return rolled_up
 

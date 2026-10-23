@@ -6,7 +6,13 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.integrations.redis_client import get_redis_client
-from app.integrations.rollup_queue import DIRTY_DAYS_KEY, pop_dirty_days, requeue_dirty_days
+from app.integrations.rollup_queue import (
+    DIRTY_DAYS_KEY,
+    IN_PROGRESS_KEY,
+    pop_dirty_days,
+    recover_dirty_days,
+    requeue_dirty_days,
+)
 from app.models import (
     EventRecord,
     EventRecordAggregate,
@@ -391,6 +397,18 @@ class TestRollupQueue:
         assert {day for _, day in pop_dirty_days(10)} == {date(2099, 1, 1), date(2099, 1, 2)}
 
 
+class TestDirtyDaysSurviveAKill:
+    def test_days_a_dead_run_took_come_back_on_the_next_run(self, db: Session) -> None:
+        source_id = uuid4()
+        requeue_dirty_days([(source_id, DAY), (source_id, DAY + timedelta(days=1))])
+        taken = pop_dirty_days(10)
+        # The run dies here: nothing finishes the days, the queue itself is empty.
+        assert (len(taken), pop_dirty_days(10)) == (2, [])
+
+        assert recover_dirty_days() == 2
+        assert sorted(day for _, day in pop_dirty_days(10)) == [DAY, DAY + timedelta(days=1)]
+
+
 class TestSeriesRollup:
     def _sample(
         self, source: object, series_type: SeriesTypeDefinition, at: datetime, value: str, **fields: object
@@ -540,6 +558,16 @@ class TestDailyLifecycleJob:
         assert summary["rolled_up_days"] == 1
         assert db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES).count() == 1
         assert pop_dirty_days(10) == []
+
+    def test_a_finished_run_leaves_nothing_in_progress(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=None)
+        source = DataSourceFactory()
+        DataPointSeriesFactory(mapping=source, recorded_at=datetime(2099, 1, 1, 12, tzinfo=timezone.utc))
+        requeue_dirty_days([(source.id, DAY)])
+
+        archival_service.run_daily_archival(db)
+
+        assert (get_redis_client().scard(IN_PROGRESS_KEY), pop_dirty_days(10)) == (0, [])
 
     def test_with_rollup_off_the_queue_is_dropped(self, db: Session) -> None:
         self._settings(db, rollup_enabled=False, delete_after_days=None)
