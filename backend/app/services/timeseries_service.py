@@ -421,7 +421,8 @@ class TimeSeriesService(
                     Decimal(str(_value_of(stats, get_series_type_from_id(type_id)))),
                     None,
                     sources[source_id],
-                    period_end=CalendarPeriod.of_date(_shift(period, kind, 1), zone_offset).start,
+                    # The end takes the last day's offset: a clock change inside the period moves it by an hour.
+                    period_end=CalendarPeriod.of_date(_shift(period, kind, 1), period_rows[-1].zone_offset).start,
                     computed_by=period_rows[0].computed_by if kind is PeriodKind.DAY else ComputedBy.OPEN_WEARABLES,
                     stats=stats,
                 )

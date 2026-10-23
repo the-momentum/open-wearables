@@ -994,6 +994,20 @@ class TestTimeSeriesServicePeriods:
         assert ([s.value for s in first.data], first.pagination.has_more) == ([1, 2], True)
         assert ([s.value for s in second.data], second.pagination.has_more) == ([3], False)
 
+    def test_a_week_with_a_clock_change_ends_at_the_new_offset(self, db: Session) -> None:
+        """The week of 2024-03-25 starts at +01:00 and ends at +02:00: its end is the next Monday at +02:00."""
+        source = DataSourceFactory()
+        self._day(db, source, SeriesType.steps, date(2024, 3, 25), ComputedBy.PROVIDER, "+01:00", sum=Decimal("1"))
+        self._day(db, source, SeriesType.steps, date(2024, 3, 31), ComputedBy.PROVIDER, "+02:00", sum=Decimal("2"))
+        params = self._params(Resolution.ONE_WEEK, date(2024, 3, 25), date(2024, 4, 1))
+
+        (week,) = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params).data
+
+        assert (week.timestamp, week.period_end) == (
+            CalendarPeriod.of_date(date(2024, 3, 25), "+01:00").start,
+            CalendarPeriod.of_date(date(2024, 4, 1), "+02:00").start,
+        )
+
     def test_samples_carry_their_window(self, db: Session) -> None:
         source = DataSourceFactory()
         at = datetime(2024, 3, 1, 12, tzinfo=timezone.utc)
