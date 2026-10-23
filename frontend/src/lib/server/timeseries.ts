@@ -18,7 +18,9 @@ export async function fetchSamples(
 	userId: string,
 	accessToken: string,
 	window: { from: string; to: string; seconds: number; types: string[] },
-	provider: string
+	provider: string,
+	/** `1day` for series kept as day values (resting pulse, nightly HRV, VO2 max): raw holds none. */
+	resolution: 'raw' | '1day' = 'raw'
 ): Promise<FetchedSamples> {
 	const load = async (resolution: string) => {
 		const params = new URLSearchParams({
@@ -39,6 +41,8 @@ export async function fetchSamples(
 		const total = page.pagination.total_count ?? page.data.length;
 		return { samples: page.data, resolution, truncated: total > page.data.length };
 	};
+
+	if (resolution === '1day') return load('1day');
 
 	// Stored readings first: a minute average smooths exactly the spikes an admin
 	// opened the chart to look at. Only when they do not fit does the curve get

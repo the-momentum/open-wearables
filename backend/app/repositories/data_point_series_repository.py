@@ -65,6 +65,7 @@ from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
     ComputedBy,
+    PeriodKind,
     ProviderName,
     Resolution,
     SeriesType,
@@ -74,6 +75,7 @@ from app.schemas.enums import (
     get_series_type_id,
 )
 from app.schemas.enums.aggregation_method import get_aggregation_method
+from app.schemas.enums.data_granularity import PERIOD_RESOLUTIONS
 from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
@@ -760,23 +762,36 @@ class DataPointSeriesRepository(
             column("source_id", PGUUID(as_uuid=True)),
             name="candidates",
         ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
-        available = [self.model.recorded_at >= start] if start is not None else []
-        if end is not None:
-            available.append(self.model.recorded_at < end)
-        if params.resolution is not Resolution.RAW:
-            # Bucketed reads drop daily totals, so a source holding only those has nothing to
-            # offer here and must not outrank one with real intraday samples.
-            available.append(self.model.is_daily_total.isnot(True))
+        if params.resolution in PERIOD_RESOLUTIONS:
+            # Day, week and month reads come from the day rows, so that is where a source must hold
+            # something: retention may have deleted its samples while its day rows stay, and a source
+            # with only a provider day value (a Whoop cycle's steps) has exactly what these return.
+            source, series, at = (
+                SeriesAggregate.data_source_id,
+                SeriesAggregate.series_type_definition_id,
+                SeriesAggregate.period_start,
+            )
+            available = [SeriesAggregate.period_kind == PeriodKind.DAY]
+            # A local day's period_start lies up to 14 hours either side of the UTC instant asked for.
+            if start is not None:
+                available.append(at >= start - timedelta(hours=14))
+            if end is not None:
+                available.append(at < end + timedelta(hours=14))
+        else:
+            source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
+            available = [at >= start] if start is not None else []
+            if end is not None:
+                available.append(at < end)
+            if params.resolution is not Resolution.RAW:
+                # Bucketed reads drop daily totals, so a source holding only those has nothing to
+                # offer here and must not outrank one with real intraday samples.
+                available.append(self.model.is_daily_total.isnot(True))
         probe = (
             select(literal_column("1"))
-            .where(
-                self.model.data_source_id == candidates.c.source_id,
-                self.model.series_type_definition_id == candidates.c.type_id,
-                *available,
-            )
+            .where(source == candidates.c.source_id, series == candidates.c.type_id, *available)
             # Ordering on the index's trailing column lets the planner stop at the first match
             # instead of costing this as a full scan once a non-indexed filter is present.
-            .order_by(self.model.recorded_at)
+            .order_by(at)
             .limit(1)
             .lateral("probe")
         )

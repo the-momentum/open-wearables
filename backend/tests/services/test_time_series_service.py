@@ -756,6 +756,41 @@ class TestTimeSeriesServiceGetTimeseries:
         # Assert - without this the watch wins and the bucket it would fill is then discarded
         assert [(s.value, s.source.provider) for s in result.data] == [(30, "whoop")]
 
+    def test_priority_on_days_takes_the_source_holding_day_rows(self, db: Session) -> None:
+        """Day reads come from the day rows: a source with only a provider day value must win there, and
+        a higher-ranked one whose samples are not rolled up (or were deleted by retention) has nothing."""
+        # Arrange - the watch outranks the band but has samples only; the band sent its day's total
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        DataPointSeriesFactory(mapping=watch, series_type=steps, recorded_at=self._START, value=10)
+        period = CalendarPeriod.of_date(self._START.date())
+        AggregateRepository(SeriesAggregate).upsert(
+            db,
+            [
+                {
+                    "data_source_id": band.id,
+                    "series_type_definition_id": steps.id,
+                    "period_kind": PeriodKind.DAY,
+                    "period_start": period.start,
+                    "period_end": period.end,
+                    "zone_offset": period.zone_offset,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "sum": Decimal("9000"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        # Act
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], self._params(resolution=Resolution.ONE_DAY), filter_by_priority=True
+        )
+
+        # Assert - probing the samples instead would crown the watch and return an empty day
+        assert [(s.value, s.source.provider) for s in result.data] == [(9000, "whoop")]
+
     def test_date_only_bounds_are_accepted_by_bucketed_reads(self, db: Session) -> None:
         """A date-only query parameter parses without a timezone and must still compare."""
         # Arrange

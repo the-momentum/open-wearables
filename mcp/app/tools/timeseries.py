@@ -56,6 +56,12 @@ async def get_timeseries(
                     one, with all statistics under "stats". Prefer "1min" or
                     coarser for multi-day windows, and "1day" or coarser for
                     weeks and months, to keep response size bounded.
+                    Day values exist ONLY at "1day" and coarser: resting heart
+                    rate, nightly HRV, SpO2, respiratory rate, VO2 max, skin
+                    temperature, and a provider's daily steps or energy. At
+                    "raw" or minute resolutions these types come back empty
+                    for most wearables, so ask for "1day" when the question is
+                    "what was X on/over these days".
 
     Returns:
         A dictionary containing:
@@ -98,6 +104,10 @@ async def get_timeseries(
         - Multi-day queries at resolution="raw" can return tens of thousands
           of samples. Prefer "1min" or coarser for anything longer than a
           day unless the user explicitly asks for raw data.
+        - An empty `records` list for resting_heart_rate, HRV, SpO2, VO2 max
+          or respiratory_rate at "raw" does not mean the user has no data:
+          those are day values. Retry with resolution="1day" before answering
+          "no data".
         - For a single day's heart-rate average, prefer get_activity_summary
           when it's available — it's cheaper. Use this tool when:
           (a) activity summary is missing or has null heart_rate, or
