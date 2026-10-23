@@ -15,6 +15,7 @@ from app.models import (
     WorkoutDetails,
 )
 from app.repositories import AggregateRepository
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.series_aggregate_repository import LOCAL_DAY
 from app.schemas.enums import (
     AggregationMethod,
@@ -334,5 +335,43 @@ class TestHistoryValues:
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        (row,) = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == workout.id)
-        assert (row.avg, row.computed_by) == (Decimal("82"), ComputedBy.PROVIDER)
+        rows = {
+            r.computed_by: r
+            for r in db.query(EventRecordAggregate).filter(
+                EventRecordAggregate.record_id == workout.id,
+                EventRecordAggregate.series_type_definition_id == get_series_type_id(SeriesType.cadence),
+            )
+        }
+        assert rows[ComputedBy.PROVIDER].avg == Decimal("82")
+        # Ours, rolled up from the workout's samples, sits beside it: 82 at the end and 90 inside.
+        assert rows[ComputedBy.OPEN_WEARABLES].avg == Decimal("86")
+
+
+class TestHistoryRollup:
+    def _ours(self, db: Session) -> list[date]:
+        rows = db.query(LOCAL_DAY).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)
+        return sorted(day for (day,) in rows)
+
+    def test_every_day_with_samples_gets_our_row_newest_first(self, db: Session) -> None:
+        source = DataSourceFactory()
+        today = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        for days_ago in (1, 45, 400):
+            DataPointSeriesFactory(mapping=source, recorded_at=today - timedelta(days=days_ago), value=Decimal("60"))
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert self._ours(db) == sorted((today - timedelta(days=n)).date() for n in (1, 45, 400))
+
+    def test_a_source_left_halfway_goes_on_from_its_last_chunk(self, db: Session) -> None:
+        source = DataSourceFactory()
+        for day in (date(2025, 1, 10), date(2025, 3, 10)):
+            DataPointSeriesFactory(
+                mapping=source, recorded_at=datetime.combine(day, datetime.min.time(), timezone.utc).replace(hour=12)
+            )
+        # A previous run rolled up this source from 2025-03-01 on, then ran out of time.
+        get_redis_client().set("aggregate_backfill:cursor:rollup_all:day", f"{source.id}|2025-03-01")
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_recent")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert self._ours(db) == [date(2025, 1, 10)]
