@@ -53,17 +53,20 @@ from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.repositories.local_day import OFFSET_REACH
 from app.repositories.repositories import (
     CrudRepository,
     source_filter_conditions,
     timeline_key_column,
     utc_bucket_start,
 )
+from app.repositories.series_aggregate_repository import LOCAL_DAY
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
     ComputedBy,
+    PeriodKind,
     ProviderName,
     Resolution,
     SeriesType,
@@ -73,6 +76,7 @@ from app.schemas.enums import (
     get_series_type_id,
 )
 from app.schemas.enums.aggregation_method import get_aggregation_method
+from app.schemas.enums.data_granularity import PERIOD_RESOLUTIONS
 from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
@@ -750,23 +754,37 @@ class DataPointSeriesRepository(
             column("source_id", PGUUID(as_uuid=True)),
             name="candidates",
         ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
-        available = [self.model.recorded_at >= start] if start is not None else []
-        if end is not None:
-            available.append(self.model.recorded_at < end)
-        if params.resolution is not Resolution.RAW:
-            # Bucketed reads drop daily totals, so a source holding only those has nothing to
-            # offer here and must not outrank one with real intraday samples.
-            available.append(self.model.is_daily_total.isnot(True))
+        if params.resolution in PERIOD_RESOLUTIONS:
+            # Day, week and month reads come from the day rows, so that is where a source must hold
+            # something: retention may have deleted its samples while its day rows stay, and a source
+            # with only a provider day value (a Whoop cycle's steps) has exactly what these return.
+            source, series, at = (
+                SeriesAggregate.data_source_id,
+                SeriesAggregate.series_type_definition_id,
+                SeriesAggregate.period_start,
+            )
+            # The same local days the read then returns: the UTC reach alone would crown a source on a row
+            # just past the range, and the read would come back empty.
+            available = [SeriesAggregate.period_kind == PeriodKind.DAY]
+            if start is not None:
+                available.extend([at >= start - OFFSET_REACH, start.date() <= LOCAL_DAY])
+            if end is not None:
+                available.extend([at < end + OFFSET_REACH, (end - timedelta(microseconds=1)).date() >= LOCAL_DAY])
+        else:
+            source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
+            available = [at >= start] if start is not None else []
+            if end is not None:
+                available.append(at < end)
+            if params.resolution is not Resolution.RAW:
+                # Bucketed reads drop daily totals, so a source holding only those has nothing to
+                # offer here and must not outrank one with real intraday samples.
+                available.append(self.model.is_daily_total.isnot(True))
         probe = (
             select(literal_column("1"))
-            .where(
-                self.model.data_source_id == candidates.c.source_id,
-                self.model.series_type_definition_id == candidates.c.type_id,
-                *available,
-            )
+            .where(source == candidates.c.source_id, series == candidates.c.type_id, *available)
             # Ordering on the index's trailing column lets the planner stop at the first match
             # instead of costing this as a full scan once a non-indexed filter is present.
-            .order_by(self.model.recorded_at)
+            .order_by(at)
             .limit(1)
             .lateral("probe")
         )
@@ -780,6 +798,15 @@ class DataPointSeriesRepository(
             if type_id not in winners or rank_of[source_id] < rank_of[winners[type_id]]:
                 winners[type_id] = source_id
         return winners
+
+    def count_sources(self, db_session: DbSession, user_id: UUID, params: TimeSeriesQueryParams) -> int:
+        """How many of the caller's data sources a read may touch, honouring its source filters."""
+        return (
+            db_session.query(func.count(DataSource.id))
+            .filter(DataSource.user_id == user_id, *source_filter_conditions(params, DataSource.id))
+            .scalar()
+            or 0
+        )
 
     def _ranked_sources(
         self,
