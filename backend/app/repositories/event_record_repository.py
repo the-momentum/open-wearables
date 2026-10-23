@@ -1107,8 +1107,8 @@ class EventRecordRepository(
     def sleep_values_by_day(
         db_session: DbSession, user_id: UUID, type_id: int, start_dt: datetime, end_dt: datetime
     ) -> dict[date, float]:
-        """A series' value on each of the user's sleeps that overlap [start_dt, end_dt), by the UTC date the
-        sleep ended: the provider's row where it sent one, else ours rolled up from the sleep's samples."""
+        """A series' value on each of the user's main sleeps that overlap [start_dt, end_dt), by the UTC date
+        the sleep ended: the provider's row where it sent one, else ours rolled up from the sleep's samples."""
         rows = (
             db_session.query(EventRecord.end_datetime, EventRecordAggregate.avg)
             .join(EventRecordAggregate, EventRecordAggregate.record_id == EventRecord.id)
@@ -1116,13 +1116,14 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == EventCategory.SLEEP,
+                _nap_condition(False),
                 EventRecord.end_datetime >= start_dt,
                 EventRecord.start_datetime < end_dt,
                 EventRecordAggregate.series_type_definition_id == type_id,
                 EventRecordAggregate.avg.isnot(None),
             )
-            # Ours first, so the provider's row for the same night overwrites it.
-            .order_by(EventRecord.end_datetime, EventRecordAggregate.computed_by == ComputedBy.PROVIDER)
+            # Ours first, so a provider's row for the same date overwrites it whichever sleep ended later.
+            .order_by(EventRecordAggregate.computed_by == ComputedBy.PROVIDER, EventRecord.end_datetime)
         )
         return {end.astimezone(timezone.utc).date(): float(avg) for end, avg in rows}
 
