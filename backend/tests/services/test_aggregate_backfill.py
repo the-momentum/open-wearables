@@ -480,7 +480,10 @@ class TestHistoryValues:
 
         rows = {
             r.computed_by: r
-            for r in db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == workout.id)
+            for r in db.query(EventRecordAggregate).filter(
+                EventRecordAggregate.record_id == workout.id,
+                EventRecordAggregate.series_type_definition_id == get_series_type_id(SeriesType.cadence),
+            )
         }
         assert rows[ComputedBy.PROVIDER].avg == Decimal("82")
         # Ours, rolled up from the workout's samples, sits beside it: 82 at the end and 90 inside.
