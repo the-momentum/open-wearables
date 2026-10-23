@@ -1014,7 +1014,11 @@ class EventRecordRepository(
         # Attach per-session breakdown (individual sleep/nap records) for each summary,
         # keyed by the same (date, provider, source, device_model) grouping identity.
         sessions_by_key, main_sleeps_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
-        physiology = self._sleep_physiology(db_session, main_sleeps_by_key)
+        # Only this page's nights are read from the aggregate table, not every night in the range.
+        page_keys = {(s["sleep_date"], s["provider"], s["source"], s["device_model"]) for s in summaries}
+        physiology = self._sleep_physiology(
+            db_session, {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        )
         for summary in summaries:
             key = (
                 summary["sleep_date"],
