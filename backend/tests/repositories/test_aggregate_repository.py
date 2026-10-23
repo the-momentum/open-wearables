@@ -1018,6 +1018,29 @@ class TestWorkoutStatistics:
         assert statistics[bare.id]["own_energy"] == Decimal("40")
         assert total == Decimal("840")
 
+    def test_totals_and_days_take_our_distance_where_the_provider_sent_none(self, db: Session) -> None:
+        source = DataSourceFactory()
+        distance = SeriesTypeDefinitionFactory.get_or_create_distance()
+        declared = self._workout(db, source, datetime(2099, 1, 1, 8, tzinfo=timezone.utc), distance=Decimal("5000"))
+        bare = self._workout(db, source, datetime(2099, 1, 1, 12, tzinfo=timezone.utc))
+        for minute, value in [(5, "300"), (20, "700")]:
+            DataPointSeriesFactory(
+                mapping=source,
+                series_type=distance,
+                recorded_at=bare.start_datetime + timedelta(minutes=minute),
+                value=Decimal(value),
+            )
+        roll_up_everything(db)
+        repo = EventRecordRepository(EventRecord)
+
+        _, _, _, total = repo.get_workout_totals(db, EventRecordQueryParams(), str(source.user_id))
+        (day,) = repo.get_daily_workout_aggregates(
+            db, source.user_id, datetime(2099, 1, 1, tzinfo=timezone.utc), datetime(2099, 1, 2, tzinfo=timezone.utc)
+        )
+
+        assert repo.get_workout_statistics(db, [declared.id, bare.id])[bare.id]["distance"] == Decimal("1000")
+        assert (total, day["distance_meters"]) == (Decimal("6000"), 6000)
+
     def test_a_workout_without_provider_heart_rate_takes_ours(self, db: Session) -> None:
         source = DataSourceFactory()
         start = datetime(2099, 1, 1, 8, tzinfo=timezone.utc)

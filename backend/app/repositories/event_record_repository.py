@@ -119,6 +119,14 @@ def _session_stat(series_type: SeriesType, stat: StatColumn, computed_by: Comput
     )
 
 
+def _session_sum(series_type: SeriesType) -> ColumnElement:
+    """A workout's total of a series: the provider's, else ours from the workout's samples."""
+    return func.coalesce(
+        _session_stat(series_type, "sum", ComputedBy.PROVIDER),
+        _session_stat(series_type, "sum", ComputedBy.OPEN_WEARABLES),
+    )
+
+
 def _first(*values: Decimal | None) -> Decimal | None:
     return next((value for value in values if value is not None), None)
 
@@ -614,7 +622,7 @@ class EventRecordRepository(
                 func.count(EventRecord.id),
                 func.coalesce(func.sum(EventRecord.duration_seconds), 0),
                 func.sum(workout_energy()),
-                func.sum(_session_stat(SeriesType.distance, "sum", ComputedBy.PROVIDER)),
+                func.sum(_session_sum(SeriesType.distance)),
             )
             .select_from(EventRecord)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
@@ -1334,9 +1342,9 @@ class EventRecordRepository(
                 DataSource.device_model,
                 DataSource.device_type,
                 # Sum elevation gain for all workouts on that day
-                func.sum(_session_stat(SeriesType.elevation_gain, "sum", ComputedBy.PROVIDER)).label("elevation_sum"),
+                func.sum(_session_sum(SeriesType.elevation_gain)).label("elevation_sum"),
                 # Sum distance for all workouts
-                func.sum(_session_stat(SeriesType.distance, "sum", ComputedBy.PROVIDER)).label("distance_sum"),
+                func.sum(_session_sum(SeriesType.distance)).label("distance_sum"),
                 # Sum energy burned
                 func.sum(workout_energy()).label("energy_sum"),
             )
