@@ -1,7 +1,10 @@
 import { apiGet } from './api';
 import { resolutionFor, type Sample } from '$lib/timeseries/samples';
 
-type SamplePage = { data: Sample[]; pagination: { total_count: number | null } };
+type SamplePage = {
+	data: Sample[];
+	pagination: { total_count: number | null; has_more: boolean };
+};
 
 /** The endpoint's own ceiling, and what one curve is allowed to cost. */
 const PAGE = 1000;
@@ -39,7 +42,11 @@ export async function fetchSamples(
 			accessToken
 		);
 		const total = page.pagination.total_count ?? page.data.length;
-		return { samples: page.data, resolution, truncated: total > page.data.length };
+		return {
+			samples: page.data,
+			resolution,
+			truncated: total > page.data.length || page.pagination.has_more
+		};
 	};
 
 	if (resolution === '1day') return load('1day');

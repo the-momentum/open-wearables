@@ -361,11 +361,12 @@ class TimeSeriesService(
         first day.
         """
         kind = PERIOD_RESOLUTIONS[params.resolution]
-        # A period is one row per source and series; with every series of every source asked for, a page of
-        # `limit` periods could be hundreds of thousands of rows, so the page shrinks to what fits.
+        # A period is one day row per day, source and series; with every series of every source asked for, a
+        # page of `limit` periods could be hundreds of thousands of rows, so the page shrinks to what fits.
         n_sources = max(1, self.crud.count_sources(db_session, user_id, params))
         n_types = len(types) or len(SERIES_TYPE_IDS)
-        limit = max(1, min(params.limit or 50, _PERIOD_ROWS_PER_PAGE // (n_sources * n_types)))
+        days_per_period = {PeriodKind.DAY: 1, PeriodKind.WEEK: 7, PeriodKind.MONTH: 31}[kind]
+        limit = max(1, min(params.limit or 50, _PERIOD_ROWS_PER_PAGE // (n_sources * n_types * days_per_period)))
         first_day = params.start_datetime.date() if params.start_datetime else _NO_START
         last_day = (params.end_datetime - timedelta(microseconds=1)).date() if params.end_datetime else _NO_END
         backward = False

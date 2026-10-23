@@ -61,6 +61,7 @@ from app.repositories.repositories import (
     timeline_key_column,
     utc_bucket_start,
 )
+from app.repositories.series_aggregate_repository import LOCAL_DAY
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     BUCKET_SIZES,
@@ -772,11 +773,13 @@ class DataPointSeriesRepository(
                 SeriesAggregate.series_type_definition_id,
                 SeriesAggregate.period_start,
             )
+            # The same local days the read then returns: the UTC reach alone would crown a source on a row
+            # just past the range, and the read would come back empty.
             available = [SeriesAggregate.period_kind == PeriodKind.DAY]
             if start is not None:
-                available.append(at >= start - OFFSET_REACH)
+                available.extend([at >= start - OFFSET_REACH, start.date() <= LOCAL_DAY])
             if end is not None:
-                available.append(at < end + OFFSET_REACH)
+                available.extend([at < end + OFFSET_REACH, (end - timedelta(microseconds=1)).date() >= LOCAL_DAY])
         else:
             source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
             available = [at >= start] if start is not None else []

@@ -793,6 +793,46 @@ class TestTimeSeriesServiceGetTimeseries:
         # Assert - probing the samples instead would crown the watch and return an empty day
         assert [(s.value, s.source.provider) for s in result.data] == [(9000, "whoop")]
 
+    def test_priority_on_days_ignores_a_sources_rows_outside_the_asked_days(self, db: Session) -> None:
+        """The probe must see the local days the read returns: the watch's only row is the next local day,
+        inside the UTC reach of the range but outside it, so the band's row for the asked day must show."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        day = self._START.date()
+        repo = AggregateRepository(SeriesAggregate)
+        for source, period, total in (
+            (watch, CalendarPeriod.of_date(day + timedelta(days=1), "+02:00"), "100"),
+            (band, CalendarPeriod.of_date(day), "9000"),
+        ):
+            repo.upsert(
+                db,
+                [
+                    {
+                        "data_source_id": source.id,
+                        "series_type_definition_id": steps.id,
+                        "period_kind": PeriodKind.DAY,
+                        "period_start": period.start,
+                        "period_end": period.end,
+                        "zone_offset": period.zone_offset,
+                        "computed_by": ComputedBy.PROVIDER,
+                        "sum": Decimal(total),
+                        "count": 1,
+                    }
+                ],
+            )
+        params = self._params(resolution=Resolution.ONE_DAY).model_copy(
+            update={
+                "start_datetime": CalendarPeriod.of_date(day).start,
+                "end_datetime": CalendarPeriod.of_date(day).end,
+            }
+        )
+
+        result = timeseries_service.get_timeseries(db, user.id, [SeriesType.steps], params, filter_by_priority=True)
+
+        assert [(s.value, s.source.provider) for s in result.data] == [(9000, "whoop")]
+
     def test_date_only_bounds_are_accepted_by_bucketed_reads(self, db: Session) -> None:
         """A date-only query parameter parses without a timezone and must still compare."""
         # Arrange
@@ -993,6 +1033,17 @@ class TestTimeSeriesServicePeriods:
 
         assert ([s.value for s in first.data], first.pagination.has_more) == ([1, 2], True)
         assert ([s.value for s in second.data], second.pagination.has_more) == ([3], False)
+
+    def test_a_weeks_page_budget_counts_its_seven_day_rows(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(importlib.import_module("app.services.timeseries_service"), "_PERIOD_ROWS_PER_PAGE", 7)
+        source = DataSourceFactory()
+        for n in range(2):
+            self._day(db, source, SeriesType.steps, date(2024, 3, 4 + 7 * n), ComputedBy.PROVIDER, sum=Decimal(n + 1))
+        params = self._params(Resolution.ONE_WEEK, date(2024, 3, 4), date(2024, 3, 18), limit=10)
+
+        first = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
+
+        assert ([s.value for s in first.data], first.pagination.has_more) == ([1], True)
 
     def test_a_week_with_a_clock_change_ends_at_the_new_offset(self, db: Session) -> None:
         """The week of 2024-03-25 starts at +01:00 and ends at +02:00: its end is the next Monday at +02:00."""
