@@ -391,7 +391,7 @@ class TestCoverageFollowsRemovals:
 
     @pytest.mark.parametrize(("complete", "trimmed"), [(True, True), (False, False)])
     def test_retention_trims_only_once_nothing_older_is_left(self, complete: bool, trimmed: bool) -> None:
-        setting = MagicMock(rollup_enabled=False, delete_after_days=30)
+        setting = MagicMock(rollup_enabled=False, delete_after_days=30, deleted_before=None)
         with (
             patch.object(archival_service.settings_repo, "get", return_value=setting),
             patch.object(archival_service.archive_repo, "delete_live_before", return_value=BatchedRun(5, complete)),
