@@ -159,8 +159,12 @@ ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 
-    # Fetch intraday samples (HR, HRV, temperature, steps); day values (VO2 max, resting HR, exercise time) are at resolution=1day
+    # Fetch intraday samples (HR, HRV, temperature, steps)
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch day values (VO2 max, resting HR, exercise time)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z&resolution=1day" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 
