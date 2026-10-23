@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
@@ -154,7 +154,8 @@ class EventRecordService(
         for r in records:
             average = statistics.get(r.id, {}).get("heart_rate_avg")
             if average is not None:
-                result[r.id] = round(average)
+                # Half up, as the SQL fallback below rounds: 72.5 is 73 either way.
+                result[r.id] = int(Decimal(average).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
             else:
                 result[r.id] = None
                 missing.append(r)

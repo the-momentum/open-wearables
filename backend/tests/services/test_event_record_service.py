@@ -1463,6 +1463,15 @@ class TestResolveAvgHr:
         statistics = event_record_service.crud.get_workout_statistics(db, [workout.id])
         return event_record_service._resolve_avg_hr(db, [workout], statistics)[workout.id]
 
+    def test_our_average_rounds_half_up_like_the_sql_fallback(self, db: Session) -> None:
+        workout = self._workout(DataSourceFactory())
+
+        resolved = event_record_service._resolve_avg_hr(
+            db, [workout], {workout.id: {"heart_rate_avg": Decimal("72.5")}}
+        )
+
+        assert resolved[workout.id] == 73
+
     def test_own_source_wins_over_writer_siblings(self, db: Session) -> None:
         user = UserFactory()
         app = {"user": user, "provider": ProviderName.HEALTH_CONNECT, "source_app_id": "com.fitbit.FitbitMobile"}
