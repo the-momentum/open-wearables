@@ -10,8 +10,8 @@ from app.mappings import PrimaryKey, bool_false
 class ArchivalSetting(BaseDbModel):
     """Global data lifecycle settings, a singleton row (id=1 enforced by a CHECK constraint).
 
-    - rollup_enabled: every night, roll changed days of samples up into open_wearables day and session aggregates.
-      Off by default.
+    - rollup_enabled: every 15 minutes, roll changed days of samples up into open_wearables day and session
+      aggregates. Off by default.
     - delete_after_days: days before samples are deleted, rolled up first when rollup is on. NULL keeps them.
     - deleted_before: the local day before which retention has deleted samples; the rollup never recomputes
       those days or the sessions started on them, it only adds rows they lack.

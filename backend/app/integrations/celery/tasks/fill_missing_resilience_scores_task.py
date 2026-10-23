@@ -23,9 +23,9 @@ _RMSSD_TYPE_ID = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
 _SDNN_TYPE_ID = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
 
 # Find all (user, reference_date) pairs that are missing an OW resilience score.
-# active_users: users who have any RMSSD or SDNN data in the extended lookback window.
-# We cross-join with a date series covering the backfill window and filter out any
-# dates that already have a score, ensuring idempotency.
+# active_users: users who have any RMSSD or SDNN data in the extended lookback window, as
+# readings or as a night's value on a sleep. We cross-join with a date series covering the
+# backfill window and filter out any dates that already have a score, ensuring idempotency.
 _MISSING_RESILIENCE_SCORES_QUERY = text("""
     SELECT DISTINCT
         active_users.user_id,
@@ -37,10 +37,19 @@ _MISSING_RESILIENCE_SCORES_QUERY = text("""
     ) AS gs(target_date)
     CROSS JOIN (
         SELECT DISTINCT ds.user_id
-        FROM series_sample dp
-        JOIN data_source ds ON ds.id = dp.data_source_id
-        WHERE dp.series_type_definition_id IN (:rmssd_id, :sdnn_id)
-          AND dp.recorded_at >= CURRENT_DATE - :data_lookback_days * INTERVAL '1 day'
+        FROM data_source ds
+        WHERE EXISTS (
+            SELECT 1 FROM series_sample dp
+            WHERE dp.data_source_id = ds.id
+              AND dp.series_type_definition_id IN (:rmssd_id, :sdnn_id)
+              AND dp.recorded_at >= CURRENT_DATE - :data_lookback_days * INTERVAL '1 day'
+        ) OR EXISTS (
+            SELECT 1 FROM event_record er
+            JOIN event_record_aggregate a ON a.record_id = er.id
+            WHERE er.data_source_id = ds.id
+              AND a.series_type_definition_id IN (:rmssd_id, :sdnn_id)
+              AND er.end_datetime >= CURRENT_DATE - :data_lookback_days * INTERVAL '1 day'
+        )
     ) AS active_users
     LEFT JOIN health_score hs
            ON hs.user_id  = active_users.user_id

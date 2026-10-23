@@ -1,3 +1,4 @@
+from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from typing import cast
@@ -11,7 +12,8 @@ from app.database import DbSession
 from app.models import DataSource, SeriesAggregate
 from app.repositories.local_day import OFFSET_REACH, utc_midnight
 from app.repositories.repositories import source_filter_conditions
-from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
+from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_from_id, get_series_type_id
+from app.schemas.enums.aggregation_method import get_aggregation_method
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.schemas.responses.activity import ActivityAggregateResult
 
@@ -135,6 +137,29 @@ class SeriesAggregateRepository:
         )
         return near.with_entities(func.max(LOCAL_DAY) if latest else func.min(LOCAL_DAY)).scalar()
 
+    def period_averages(
+        self, db_session: DbSession, user_id: UUID, types: list[SeriesType], first_day: date, last_day: date
+    ) -> dict[SeriesType, float]:
+        """Each series' mean of its day values from ``first_day`` to ``last_day`` inclusive: one value per
+        data source and local day, the provider's before ours, read from the column the series is read by."""
+        found: dict[SeriesType, list[float]] = defaultdict(list)
+        for row, _ in self.get_day_rows(db_session, user_id, TimeSeriesQueryParams(), types, first_day, last_day):
+            series_type = get_series_type_from_id(row.series_type_definition_id)
+            if (value := day_value(row, series_type)) is not None:
+                found[series_type].append(value)
+        return {series_type: sum(values) / len(values) for series_type, values in found.items()}
+
+    def latest_day_value(
+        self, db_session: DbSession, user_id: UUID, series_type: SeriesType, since: date
+    ) -> tuple[float, datetime] | None:
+        """The newest day value of the series on or after ``since``, with the instant its day starts."""
+        last_day = date.today() + timedelta(days=1)
+        rows = self.get_day_rows(db_session, user_id, TimeSeriesQueryParams(), [series_type], since, last_day)
+        for row, _ in reversed(rows):
+            if (value := day_value(row, series_type)) is not None:
+                return value, row.period_start
+        return None
+
     @staticmethod
     def _days(
         db_session: DbSession,
@@ -168,6 +193,14 @@ class SeriesAggregateRepository:
                 )
             )
         return query
+
+
+def day_value(row: SeriesAggregate, series_type: SeriesType) -> float | None:
+    """The one number a day row stands for: the statistic its series is read by, else the day's last value."""
+    value = getattr(row, get_aggregation_method(series_type).value)
+    if value is None:
+        value = row.last
+    return float(value) if value is not None else None
 
 
 # The day sums and heart rate an activity summary shows, by the key its rows carry.

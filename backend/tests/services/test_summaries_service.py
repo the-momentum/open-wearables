@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import EventRecordAggregate, ProviderPriority
@@ -120,6 +121,13 @@ class TestGetSleepSummaries:
             duration_seconds=int((_dt(end) - _dt(start)).total_seconds()),
             zone_offset="+00:00",
         )
+
+    def test_a_bad_cursor_is_the_clients_error(self, db: Session, service: SummariesService) -> None:
+        with pytest.raises(HTTPException) as raised:
+            service.get_sleep_summaries(
+                db, uuid4(), _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-07T00:00:00+00:00"), cursor="?", limit=10
+            )
+        assert raised.value.status_code == 400
 
     def test_returns_empty_when_no_data(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()

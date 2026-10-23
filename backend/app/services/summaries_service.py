@@ -16,7 +16,7 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.repositories.series_aggregate_repository import daily_activity
+from app.repositories.series_aggregate_repository import SeriesAggregateRepository, daily_activity
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
     DeviceType,
@@ -100,6 +100,7 @@ class SummariesService:
         self.logger = log
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_point_repo = DataPointSeriesRepository(SeriesSample)
+        self.series_aggregate_repo = SeriesAggregateRepository()
         self.user_repo = UserRepository(User)
         self.health_score_repo = HealthScoreRepository(HealthScore)
 
@@ -198,6 +199,7 @@ class SummariesService:
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
 
+    @handle_exceptions
     def get_sleep_summaries(
         self,
         db_session: DbSession,
@@ -825,23 +827,21 @@ class SummariesService:
             age=age,
         )
 
-        # --- AVERAGED: Get aggregates for vitals over the period ---
+        # --- AVERAGED: the vitals' day values over the period ---
+        # A resting pulse or a night's HRV is a day value for most providers, so the day rows hold every
+        # device's: the provider's where it sent one, ours rolled up from the samples where it did not.
         period_end = now
         period_start = now - timedelta(days=average_period_days)
 
-        vitals_aggregates = self.data_point_repo.get_aggregates_for_period(
-            db_session, user_id, period_start, period_end, BODY_AVERAGED_SERIES
+        averages = self.series_aggregate_repo.period_averages(
+            db_session, user_id, BODY_AVERAGED_SERIES, period_start.date(), period_end.date()
         )
 
-        resting_hr_data = vitals_aggregates.get(SeriesType.resting_heart_rate)
-        hrv_sdnn_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
-        hrv_rmssd_data = vitals_aggregates.get(SeriesType.heart_rate_variability_rmssd)
-
-        resting_hr_avg = resting_hr_data.get("avg") if resting_hr_data else None
+        resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
         resting_hr = int(round(resting_hr_avg)) if resting_hr_avg else None
-        hrv_sdnn_raw = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
+        hrv_sdnn_raw = averages.get(SeriesType.heart_rate_variability_sdnn)
         hrv_sdnn_avg = round(hrv_sdnn_raw, 1) if hrv_sdnn_raw is not None else None
-        hrv_rmssd_raw = hrv_rmssd_data.get("avg") if hrv_rmssd_data else None
+        hrv_rmssd_raw = averages.get(SeriesType.heart_rate_variability_rmssd)
         hrv_rmssd_avg = round(hrv_rmssd_raw, 1) if hrv_rmssd_raw is not None else None
 
         body_averaged = BodyAveraged(
@@ -862,6 +862,13 @@ class SummariesService:
         skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
         )
+        # Whoop and Polar report skin temperature once a night, as a day value.
+        if skin_temp_reading is None and (
+            day_value := self.series_aggregate_repo.latest_day_value(
+                db_session, user_id, SeriesType.skin_temperature, latest_window_start.date()
+            )
+        ):
+            skin_temp_reading = (*day_value, "", None)
         # Get blood pressure readings within the window
         bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now

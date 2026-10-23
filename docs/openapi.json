@@ -11601,7 +11601,7 @@
           "rollup_enabled": {
             "type": "boolean",
             "title": "Rollup Enabled",
-            "description": "Roll changed days of samples up into daily and per-session aggregates every night.",
+            "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: summaries and day reads of sources without provider day values stop getting new days.",
             "default": false
           },
           "delete_after_days": {

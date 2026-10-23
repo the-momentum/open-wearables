@@ -1226,6 +1226,8 @@ class TestBodySummaryEndpoint:
                 recorded_at=now - timedelta(days=i),
             )
 
+        # The vitals are day values: ours come from the rollup of these readings.
+        roll_up_everything(db)
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
@@ -1278,6 +1280,7 @@ class TestBodySummaryEndpoint:
             recorded_at=now - timedelta(days=2),
         )
 
+        roll_up_everything(db)
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
