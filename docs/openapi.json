@@ -9996,7 +9996,7 @@
           "External: Mobile SDK"
         ],
         "summary": "Generate Invitation Code",
-        "description": "Generate a single-use invitation code for standalone SDK onboarding.\n\nIssues a single-use code that a mobile app can redeem (via\n`POST /api/v1/invitation-code/redeem`) to receive SDK access and refresh\ntokens - without your backend having to mint and forward a token itself.\nAny previously generated codes for this user are marked as expired.\n\nThis is a convenience mechanism for apps with no backend of their own (for\nexample the Open Wearables app or quick manual testing). It is not the\nstandard integration path: if your app authenticates users against your own\nbackend, mint a token directly with `POST /api/v1/users/{user_id}/token`\ninstead.\n\nRequires developer authentication.",
+        "description": "Generate a single-use invitation code for standalone SDK onboarding.\n\nIssues a single-use code that a mobile app can redeem (via\n`POST /api/v1/invitation-code/redeem`) to receive SDK access and refresh\ntokens - without your backend having to mint and forward a token itself.\nAny previously generated codes for this user are marked as expired.\n\nThe response also carries `invite_url`, a link that opens the Open Wearables\nConnect app with this server and code filled in, and `qr_svg`, the same link\nas a QR code to show on screen or print.\n\nThis is a convenience mechanism for apps with no backend of their own (for\nexample the Open Wearables app or quick manual testing). It is not the\nstandard integration path: if your app authenticates users against your own\nbackend, mint a token directly with `POST /api/v1/users/{user_id}/token`\ninstead.\n\nRequires developer authentication.",
         "operationId": "generate_invitation_code_api_v1_users__user_id__invitation_code_post",
         "security": [
           {
@@ -10021,7 +10021,69 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserInvitationCodeRead"
+                  "$ref": "#/components/schemas/UserInvitationCodeGenerated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invitation-code/validate": {
+      "post": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Validate Invitation Code",
+        "description": "Check that an invitation code can still be redeemed, without using it up.\n\nPublic endpoint (no authentication required). Lets an app show a confirmation\nscreen - who invited the user, until when the code is valid - before anything\nis exchanged. Returns 404 for an unknown, used, revoked or expired code, the\nsame as redeem.\n\nThe code is accepted as issued (`K7M4Q9XP`) or as displayed (`K7M4-Q9XP`), in\nany letter case. Validate and redeem share a limit of attempts per client IP\n(`INVITATION_CODE_RATE_LIMIT_PER_MINUTE`, default 10); over it they return 429.",
+        "operationId": "validate_invitation_code_api_v1_invitation_code_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInvitationCodeRedeem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationCodeValidateResponse"
                 }
               }
             }
@@ -10065,7 +10127,7 @@
           "External: Mobile SDK"
         ],
         "summary": "Redeem Invitation Code",
-        "description": "Redeem a single-use invitation code for SDK tokens.\n\nPublic endpoint (no authentication required). Exchanges a valid, non-expired,\nsingle-use invitation code for `access_token`, `refresh_token`, and `user_id`.\nThe returned token is write-only to the `/sdk/*` endpoints.\n\nThis backs the standalone onboarding flow used by the Open Wearables app and\nthe SDK example apps. It is not the standard integration path - if your app\nhas its own backend, mint and forward a token with\n`POST /api/v1/users/{user_id}/token` instead of redeeming codes on the client.",
+        "description": "Redeem a single-use invitation code for SDK tokens.\n\nPublic endpoint (no authentication required). Exchanges a valid, non-expired,\nsingle-use invitation code for `access_token`, `refresh_token`, and `user_id`.\nThe returned token is write-only to the `/sdk/*` endpoints. A code can be\nredeemed once, also when two requests race for it. Shares the per-IP attempt\nlimit with validate.\n\nThis backs the standalone onboarding flow used by the Open Wearables app and\nthe SDK example apps. It is not the standard integration path - if your app\nhas its own backend, mint and forward a token with\n`POST /api/v1/users/{user_id}/token` instead of redeeming codes on the client.",
         "operationId": "redeem_invitation_code_api_v1_invitation_code_redeem_post",
         "requestBody": {
           "content": {
@@ -17547,6 +17609,21 @@
         "title": "InvitationCodeRedeemResponse",
         "description": "Redeem response with user_id included."
       },
+      "InvitationCodeValidateResponse": {
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expires_at"
+        ],
+        "title": "InvitationCodeValidateResponse",
+        "description": "A code that can still be redeemed. Validating does not use it up."
+      },
       "InvitationCreate": {
         "properties": {
           "email": {
@@ -23106,7 +23183,7 @@
         "title": "UserInclude",
         "description": "Optional expansions for user read models, requested via the `include` query parameter."
       },
-      "UserInvitationCodeRead": {
+      "UserInvitationCodeGenerated": {
         "properties": {
           "id": {
             "type": "string",
@@ -23131,6 +23208,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "invite_url": {
+            "type": "string",
+            "title": "Invite Url",
+            "description": "Link that opens the Open Wearables Connect app with this server and code. Show it as a link or QR code; the parameters are in the fragment, so they never reach a web server."
+          },
+          "qr_svg": {
+            "type": "string",
+            "title": "Qr Svg",
+            "description": "The invite_url as a QR code, an SVG document"
           }
         },
         "type": "object",
@@ -23139,10 +23226,12 @@
           "code",
           "user_id",
           "expires_at",
-          "created_at"
+          "created_at",
+          "invite_url",
+          "qr_svg"
         ],
-        "title": "UserInvitationCodeRead",
-        "description": "Response schema after generating an invitation code."
+        "title": "UserInvitationCodeGenerated",
+        "description": "Generate response: the code plus ready-to-share forms of it."
       },
       "UserInvitationCodeRedeem": {
         "properties": {
@@ -23151,7 +23240,8 @@
             "maxLength": 8,
             "minLength": 8,
             "pattern": "^[A-Z2-9]{8}$",
-            "title": "Code"
+            "title": "Code",
+            "description": "The code as issued (K7M4Q9XP) or as displayed (K7M4-Q9XP), in any letter case"
           }
         },
         "type": "object",
@@ -23159,7 +23249,7 @@
           "code"
         ],
         "title": "UserInvitationCodeRedeem",
-        "description": "API input for redeeming an invitation code."
+        "description": "API input carrying an invitation code, for redeem and validate."
       },
       "UserRead": {
         "properties": {

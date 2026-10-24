@@ -306,6 +306,11 @@ class Settings(BaseSettings):
 
     # SDK INVITATION CODE SETTINGS
     user_invitation_code_expire_days: int = 7
+    # An 8-character code carries 40 bits, so validate and redeem are limited per client IP.
+    # Behind a reverse proxy, set FORWARDED_ALLOW_IPS so the client IP is not the proxy's.
+    invitation_code_rate_limit_per_minute: int = 10
+    # Page that opens the Open Wearables Connect app; the server and code ride in the URL fragment.
+    connect_app_link_base: str = "https://connect.openwearables.io/i"
 
     # Lifetime of the token a shareable pairing link carries.
     connect_token_expire_days: int = 7

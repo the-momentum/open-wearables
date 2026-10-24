@@ -1,10 +1,12 @@
 """Tests for user invitation code endpoints."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from dirty_equals import IsDatetime, IsStr, IsUUID
 from jose import jwt
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
@@ -176,9 +178,136 @@ class TestRedeemInvitationCode:
         # Assert
         assert response.status_code == 422
 
-    def test_redeem_validation_rejects_lowercase(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+    def test_redeem_accepts_display_form_in_any_case(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Arrange
+        user = UserFactory()
+        code = _generate(client, api_v1_prefix, user.id)["code"]
+
         # Act
-        response = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": "abcdefgh"})
+        typed = f" {code[:4].lower()}-{code[4:]} "
+        response = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": typed})
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["user_id"] == str(user.id)
+
+    def test_redeem_validation_rejects_confusable_characters(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        # Act - 0 and 1 are not in the alphabet
+        response = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": "ABCD-EF01"})
 
         # Assert
         assert response.status_code == 422
+
+
+def _generate(client: TestClient, api_v1_prefix: str, user_id: object) -> dict:
+    headers = developer_auth_headers(DeveloperFactory().id)
+    response = client.post(f"{api_v1_prefix}/users/{user_id}/invitation-code", headers=headers)
+    assert response.status_code == 201
+    return response.json()
+
+
+class TestGenerateShareableForms:
+    """invite_url and qr_svg in the generate response."""
+
+    def test_invite_url_carries_host_and_display_code_in_fragment(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        # Arrange
+        user = UserFactory()
+
+        # Act
+        with (
+            patch.object(settings, "api_base_url", "https://api.acmehealth.com"),
+            patch.object(settings, "connect_app_link_base", "https://connect.openwearables.io/i"),
+        ):
+            data = _generate(client, api_v1_prefix, user.id)
+
+        # Assert
+        code = data["code"]
+        assert data["invite_url"] == (
+            f"https://connect.openwearables.io/i#v=1&h=api.acmehealth.com&c={code[:4]}-{code[4:]}"
+        )
+        assert data["qr_svg"].startswith("<svg")
+
+    def test_invite_url_keeps_a_non_default_port(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Act
+        with patch.object(settings, "api_base_url", "http://localhost:8000"):
+            data = _generate(client, api_v1_prefix, UserFactory().id)
+
+        # Assert
+        assert "&h=localhost:8000&" in data["invite_url"]
+
+
+class TestValidateInvitationCode:
+    """Tests for POST /api/v1/invitation-code/validate"""
+
+    def test_validate_does_not_use_the_code_up(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Arrange
+        user = UserFactory()
+        generated = _generate(client, api_v1_prefix, user.id)
+
+        # Act
+        first = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": generated["code"]})
+        second = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": generated["code"]})
+        redeem = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": generated["code"]})
+
+        # Assert
+        assert first.status_code == 200
+        assert first.json() == {"expires_at": generated["expires_at"]}
+        assert second.status_code == 200
+        assert redeem.status_code == 200
+
+    def test_validate_rejects_a_redeemed_code(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Arrange
+        code = _generate(client, api_v1_prefix, UserFactory().id)["code"]
+        client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": code})
+
+        # Act
+        response = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": code})
+
+        # Assert
+        assert response.status_code == 404
+
+    def test_validate_rejects_an_unknown_code(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Act
+        response = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": "XPRD-2345"})
+
+        # Assert
+        assert response.status_code == 404
+
+
+class TestInvitationCodeRateLimit:
+    """Validate and redeem share a per-IP attempt budget."""
+
+    def test_over_the_limit_returns_429_with_retry_after(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        # Arrange
+        with patch.object(settings, "invitation_code_rate_limit_per_minute", 2):
+            # Act
+            first = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": "XPRD-2345"})
+            second = client.post(f"{api_v1_prefix}/invitation-code/redeem", json={"code": "XPRD-2345"})
+            third = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": "XPRD-2345"})
+
+        # Assert
+        assert first.status_code == 404
+        assert second.status_code == 404
+        assert third.status_code == 429
+        assert 0 < int(third.headers["Retry-After"]) <= 60
+
+    def test_redis_outage_lets_requests_through(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        # Arrange
+        broken = MagicMock()
+        broken.incr.side_effect = RedisConnectionError("down")
+
+        # Act
+        with (
+            patch.object(settings, "invitation_code_rate_limit_per_minute", 0),
+            patch("app.utils.rate_limit.get_redis_client", return_value=broken),
+        ):
+            response = client.post(f"{api_v1_prefix}/invitation-code/validate", json={"code": "XPRD-2345"})
+
+        # Assert
+        assert response.status_code == 404

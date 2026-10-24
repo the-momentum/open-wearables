@@ -31,6 +31,7 @@ dependencies = [
     "fitdecode>=0.11.0",
     "google-auth>=2.62.2",
     "packaging>=26.3",
+    "segno>=1.6.6",
 ]
 
 [project.optional-dependencies]

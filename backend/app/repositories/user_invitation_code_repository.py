@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.database import DbSession
 from app.models.user_invitation_code import UserInvitationCode
@@ -13,6 +13,17 @@ from app.schemas.model_crud.credentials import UserInvitationCodeCreate
 class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvitationCodeCreate, BaseModel]):
     def __init__(self, model: type[UserInvitationCode]) -> None:
         super().__init__(model)
+
+    def get_valid_by_code(self, db_session: DbSession, code: str) -> UserInvitationCode | None:
+        """Get an invitation code that is not yet redeemed, not revoked, and not expired."""
+        now = datetime.now(timezone.utc)
+        stmt = select(self.model).where(
+            self.model.code == code,
+            self.model.redeemed_at.is_(None),
+            self.model.revoked_at.is_(None),
+            self.model.expires_at > now,
+        )
+        return db_session.execute(stmt).scalar_one_or_none()
 
     def claim_valid_code(self, db_session: DbSession, code: str) -> UserInvitationCode | None:
         """Mark a valid code as redeemed and return it, or None when it is not valid.
