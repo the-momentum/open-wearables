@@ -7,6 +7,7 @@
 	import DeleteUserDialog from '$lib/components/users/DeleteUserDialog.svelte';
 	import UserAvatar from '$lib/components/users/UserAvatar.svelte';
 	import UserFormDialog from '$lib/components/users/UserFormDialog.svelte';
+	import type { AppEntitlement } from '$lib/server/app-registration';
 	import type { InvitationCode } from '$lib/server/invitations';
 	import { fullName } from '$lib/users/avatar';
 	import type { User } from '$lib/users/types';
@@ -24,14 +25,25 @@
 	const name = $derived(fullName(user) || 'Unnamed user');
 
 	// A layout is not given `form`, so the action results are read off the page.
-	const form = $derived(
-		page.form as { action?: string; message?: string; invitation?: InvitationCode } | null
-	);
-	const invitation = $derived(form?.action === 'invite' ? (form.invitation ?? null) : null);
+	type InviteResult = {
+		action?: string;
+		message?: string;
+		invitation?: InvitationCode;
+		appEnabled?: boolean;
+		seats?: AppEntitlement | null;
+		sentTo?: string;
+	};
+	const form = $derived(page.form as InviteResult | null);
 	const messageFor = (action: string) => messageFrom(form, action);
 
+	// Kept rather than derived: emailing the invitation replaces page.form, and the
+	// dialog must keep showing the code it is about.
+	let invite = $state<InviteResult | null>(null);
 	$effect(() => {
-		if (invitation) inviting = true;
+		if (form?.action === 'invite' && form.invitation) {
+			invite = form;
+			inviting = true;
+		}
 	});
 </script>
 
@@ -78,4 +90,12 @@
 
 <DeleteUserDialog bind:open={deleting} {user} message={messageFor('delete')} />
 
-<InvitationDialog bind:open={inviting} {invitation} />
+<InvitationDialog
+	bind:open={inviting}
+	{user}
+	invitation={invite?.invitation ?? null}
+	appEnabled={invite?.appEnabled ?? false}
+	seats={invite?.seats ?? null}
+	sentTo={form?.action === 'emailInvite' ? form.sentTo : undefined}
+	emailMessage={messageFor('emailInvite')}
+/>

@@ -54,7 +54,10 @@ def invite_url(code: str) -> str:
 
 
 def qr_svg(url: str) -> str:
-    return segno.make(url, error="m").svg_inline(scale=8, border=2)
+    """A standalone SVG document: with its namespace, so it also works as an image or a file."""
+    buffer = io.BytesIO()
+    segno.make(url, error="m").save(buffer, kind="svg", scale=8, border=2, xmldecl=False)
+    return buffer.getvalue().decode()
 
 
 def qr_png(url: str) -> bytes:

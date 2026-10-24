@@ -155,6 +155,7 @@
                   "developer-portal/settings/providers",
                   "developer-portal/settings/priorities",
                   "developer-portal/settings/data-lifecycle",
+                  "developer-portal/settings/mobile-app",
                   "developer-portal/settings/team",
                   "developer-portal/settings/change-password",
                   "developer-portal/settings/seed-data-generator"

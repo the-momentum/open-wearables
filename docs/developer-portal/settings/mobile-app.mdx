@@ -1,0 +1,40 @@
+---
+title: "Mobile app"
+sidebarTitle: "Mobile app"
+description: "Enable the Open Wearables Connect app for your instance from Settings → Mobile app: register with licenses.openwearables.io, follow app seats and invite people with a QR code, link or email."
+keywords: ["Open Wearables Connect", "mobile app", "app seats", "license", "invitation QR code", "register instance"]
+"og:title": "Mobile app | Open Wearables"
+"og:description": "Enable the Open Wearables Connect app for your instance from Settings → Mobile app: register with licenses.openwearables.io, follow app seats and invite people with a QR code, link or email."
+"og:url": "https://docs.openwearables.io/developer-portal/settings/mobile-app"
+"og:type": "article"
+"twitter:title": "Mobile app | Open Wearables"
+"twitter:description": "Enable the Open Wearables Connect app for your instance from Settings → Mobile app: register with licenses.openwearables.io, follow app seats and invite people with a QR code, link or email."
+"twitter:card": "summary_large_image"
+---
+
+The **Mobile app** tab in **Settings** enables the Open Wearables Connect app from the App Store and Google Play for your instance. Until you register, nothing changes: the API and SDK work as before and the instance never contacts the license server. Only the app needs the registration.
+
+## Register
+
+1. Open **Settings → Mobile app**.
+2. Check the admin email. It is filled in with your own and receives the confirmation link and service messages, such as reaching the seat limit.
+3. Accept the free plan terms. Product and offer emails are a separate, optional checkbox.
+4. Click **Register instance** and open the link in the email. The tab updates by itself once the address is confirmed.
+
+Registering sends `licenses.openwearables.io` a random instance id (separate from the telemetry id), a public key and the admin email. It never sends this server's address, user data or health data. The private key stays in your database.
+
+## Seats
+
+The free plan lets up to 5 people use the app at the same time. A seat belongs to a person, not a phone: one person with an iPhone and an Android phone takes one seat. A seat is released when the user is deleted, disconnects the app, or does not open it for 30 days.
+
+The tab shows how many seats are used. When all are taken, people you invite see a message that your organisation has reached its limit; their invitation stays valid for later.
+
+## Invite someone
+
+On a user's page, click **Mobile app**. The dialog shows the invitation as a QR code to scan with the phone camera, a link to send, a **Send by email** field, PNG and SVG downloads of the QR code, and the server and code for entering by hand. Each new invitation replaces the previous one for that user.
+
+Emails need `SMTP_HOST` or `RESEND_API_KEY` (see [Team](/developer-portal/settings/team)).
+
+## Unregister
+
+**Unregister** releases every seat: phones connected through the app stop syncing. The SDK and API keep working, and you can register again at any time.

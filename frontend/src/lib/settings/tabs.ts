@@ -5,6 +5,7 @@ import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
 import Archive from '@lucide/svelte/icons/archive';
 import Users from '@lucide/svelte/icons/users';
 import Sprout from '@lucide/svelte/icons/sprout';
+import Smartphone from '@lucide/svelte/icons/smartphone';
 import type { Features } from '$lib/config/features';
 import type { Component } from 'svelte';
 import { resolve } from '$app/paths';
@@ -35,6 +36,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 		feature: 'lifecycle'
 	},
 	{ href: resolve('/settings/organisation'), label: 'Organisation', icon: Building2 },
+	{ href: resolve('/settings/mobile-app'), label: 'Mobile app', icon: Smartphone },
 	{ href: resolve('/settings/team'), label: 'Team', icon: Users },
 	{ href: resolve('/settings/seed-data'), label: 'Seed Data', icon: Sprout }
 ];

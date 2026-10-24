@@ -231,6 +231,7 @@ class TestGenerateShareableForms:
             f"https://connect.openwearables.io/i#v=1&h=api.acmehealth.com&c={code[:4]}-{code[4:]}"
         )
         assert data["qr_svg"].startswith("<svg")
+        assert 'xmlns="http://www.w3.org/2000/svg"' in data["qr_svg"]
 
     def test_invite_url_keeps_a_non_default_port(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         # Act
