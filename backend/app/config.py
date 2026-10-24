@@ -305,6 +305,10 @@ class Settings(BaseSettings):
 
     # Lifetime of the token a shareable pairing link carries.
     connect_token_expire_days: int = 7
+    # Where OAuth may send the browser back after a provider sign-in, comma-separated.
+    # Custom schemes match exactly (query ignored), http(s) entries by origin. The dashboard
+    # (FRONTEND_URL) and CORS_ORIGINS are always allowed.
+    oauth_redirect_allowlist: str = "openwearables://oauth/callback"
 
     # AWS SETTINGS
     aws_bucket_name: str | None = None
