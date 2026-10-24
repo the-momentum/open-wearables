@@ -1,17 +1,17 @@
 import contextlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from logging import getLogger
 from typing import cast
 
 from celery import shared_task
 
-from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.services.sdk.sleep_service import (
     active_users_key,
     finish_sleep,
+    is_ready_to_finish,
     load_sleep_state,
 )
 from app.utils.sentry_helpers import log_and_capture_error
@@ -34,14 +34,7 @@ def finalize_stale_sleeps() -> None:
 
                 try:
                     state = load_sleep_state(user_id)
-                    if not state:
-                        continue
-
-                    end_time = state.end_time
-                    if end_time.tzinfo is None:
-                        end_time = end_time.replace(tzinfo=timezone.utc)
-
-                    if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
+                    if state and is_ready_to_finish(state, now):
                         finish_sleep(db, user_id, state)
                 finally:
                     with contextlib.suppress(Exception):
