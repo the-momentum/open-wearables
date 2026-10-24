@@ -1,3 +1,4 @@
+import io
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
@@ -13,14 +14,20 @@ from app.schemas.auth import SDKTokenOrigin
 from app.schemas.model_crud.credentials import (
     InvitationCodeRedeemResponse,
     InvitationCodeValidateResponse,
+    InvitationEmailSent,
     UserInvitationCodeCreate,
     UserInvitationCodeGenerated,
 )
 from app.schemas.model_crud.credentials.user_invitation_code import normalize_invitation_code
 from app.services.app_registration_service import app_registration_service
+from app.services.instance_service import instance_service
 from app.services.refresh_token_service import refresh_token_service
 from app.services.user_service import user_service
-from app.utils.exceptions import NotFoundError
+from app.utils.email_client import send_app_invitation_email
+from app.utils.exceptions import InvalidInputError, NotFoundError, ServiceUnavailableError
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 8
@@ -48,6 +55,12 @@ def invite_url(code: str) -> str:
 
 def qr_svg(url: str) -> str:
     return segno.make(url, error="m").svg_inline(scale=8, border=2)
+
+
+def qr_png(url: str) -> bytes:
+    buffer = io.BytesIO()
+    segno.make(url, error="m").save(buffer, kind="png", scale=8, border=2)
+    return buffer.getvalue()
 
 
 class UserInvitationCodeService:
@@ -84,6 +97,33 @@ class UserInvitationCodeService:
             invite_url=url,
             qr_svg=qr_svg(url),
         )
+
+    def email(self, db_session: DbSession, user_id: UUID, to: str | None) -> InvitationEmailSent:
+        """Email the user's current invitation: the same code the dashboard shows as a QR code."""
+        user = user_service.get(db_session, user_id, raise_404=True)
+        invitation = self.crud.get_active_for_user(db_session, user_id)
+        if invitation is None:
+            raise NotFoundError("No active invitation code; generate one")
+        recipient = to or (user.email if user else None)
+        if not recipient:
+            raise InvalidInputError("The user has no email address; pass one in the request")
+        url = invite_url(invitation.code)
+        organisation = instance_service.get_settings(db_session).organization_name or "Your organisation"
+        sent = send_app_invitation_email(
+            recipient,
+            organisation=organisation,
+            invite_url=url,
+            server=urlsplit(settings.api_base_url).netloc,
+            code=display_code(invitation.code),
+            expires_at=invitation.expires_at.strftime("%-d %b %Y"),
+            qr_png=qr_png(url),
+        )
+        if not sent:
+            raise ServiceUnavailableError(
+                "The email could not be sent; check the email settings (SMTP_HOST or RESEND_API_KEY)"
+            )
+        logger.info("App invitation emailed", user_id=user_id)
+        return InvitationEmailSent(sent_to=recipient, expires_at=invitation.expires_at)
 
     def validate(self, db_session: DbSession, code: str) -> InvitationCodeValidateResponse:
         """Check a code without using it up, so an app can show who invited the user first."""

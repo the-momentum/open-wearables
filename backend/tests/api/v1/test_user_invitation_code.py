@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from app.config import settings
 from app.models.user_invitation_code import UserInvitationCode
+from app.utils import email_client
 from tests.factories import DeveloperFactory, UserFactory
 from tests.utils import developer_auth_headers
 
@@ -311,3 +312,89 @@ class TestInvitationCodeRateLimit:
 
         # Assert
         assert response.status_code == 404
+
+
+class TestEmailInvitationCode:
+    """Tests for POST /api/v1/users/{user_id}/invitation-code/email"""
+
+    def _url(self, user_id: object) -> str:
+        return f"/api/v1/users/{user_id}/invitation-code/email"
+
+    def test_emails_the_code_the_dashboard_shows(self, client: TestClient, db: Session) -> None:
+        # Arrange
+        user = UserFactory(email="ada@acmehealth.com")
+        headers = developer_auth_headers(DeveloperFactory().id)
+        generated = client.post(f"/api/v1/users/{user.id}/invitation-code", headers=headers).json()
+
+        # Act
+        with patch("app.services.user_invitation_code_service.send_app_invitation_email", return_value=True) as send:
+            response = client.post(self._url(user.id), headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["sent_to"] == "ada@acmehealth.com"
+        kwargs = send.call_args.kwargs
+        assert kwargs["code"] == f"{generated['code'][:4]}-{generated['code'][4:]}"
+        assert kwargs["invite_url"] == generated["invite_url"]
+        assert kwargs["qr_png"].startswith(b"\x89PNG")
+
+    def test_sends_to_the_address_given(self, client: TestClient, db: Session) -> None:
+        user = UserFactory(email=None)
+        headers = developer_auth_headers(DeveloperFactory().id)
+        client.post(f"/api/v1/users/{user.id}/invitation-code", headers=headers)
+
+        with patch("app.services.user_invitation_code_service.send_app_invitation_email", return_value=True) as send:
+            response = client.post(self._url(user.id), headers=headers, json={"email": "other@acmehealth.com"})
+
+        assert response.status_code == 200
+        assert send.call_args.args[0] == "other@acmehealth.com"
+
+    def test_user_without_email_needs_an_address(self, client: TestClient, db: Session) -> None:
+        user = UserFactory(email=None)
+        headers = developer_auth_headers(DeveloperFactory().id)
+        client.post(f"/api/v1/users/{user.id}/invitation-code", headers=headers)
+
+        response = client.post(self._url(user.id), headers=headers)
+
+        assert response.status_code == 400
+
+    def test_without_an_active_code(self, client: TestClient, db: Session) -> None:
+        user = UserFactory(email="ada@acmehealth.com")
+
+        response = client.post(self._url(user.id), headers=developer_auth_headers(DeveloperFactory().id))
+
+        assert response.status_code == 404
+
+    def test_sending_failure_is_reported(self, client: TestClient, db: Session) -> None:
+        user = UserFactory(email="ada@acmehealth.com")
+        headers = developer_auth_headers(DeveloperFactory().id)
+        client.post(f"/api/v1/users/{user.id}/invitation-code", headers=headers)
+
+        with patch("app.services.user_invitation_code_service.send_app_invitation_email", return_value=False):
+            response = client.post(self._url(user.id), headers=headers)
+
+        assert response.status_code == 503
+
+    def test_requires_a_developer(self, client: TestClient, db: Session) -> None:
+        assert client.post(self._url(UserFactory().id)).status_code == 401
+
+    def test_email_carries_the_qr_code_as_an_attachment(self, client: TestClient, db: Session) -> None:
+        with (
+            patch.object(email_client, "get_email_config_error", return_value=None),
+            patch.object(email_client, "_send_email") as send,
+        ):
+            ok = email_client.send_app_invitation_email(
+                "ada@acmehealth.com",
+                organisation="Acme Health",
+                invite_url="https://connect.openwearables.io/i#v=1&h=api.acme.com&c=K7M4-Q9XP",
+                server="api.acme.com",
+                code="K7M4-Q9XP",
+                expires_at="31 Oct 2026",
+                qr_png=b"\x89PNGfake",
+            )
+
+        assert ok is True
+        kwargs = send.call_args.kwargs
+        assert kwargs["attachments"] == [("invitation-qr.png", b"\x89PNGfake", "image/png")]
+        assert "K7M4-Q9XP" in kwargs["text"]
+        assert "api.acme.com" in kwargs["html"]

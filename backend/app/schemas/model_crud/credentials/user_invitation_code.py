@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.auth import TokenResponse
 
@@ -62,6 +62,17 @@ class UserInvitationCodeRedeem(BaseModel):
     def _normalize(cls, value: object) -> object:
         # People copy codes by hand from an email or a screen.
         return normalize_invitation_code(value) if isinstance(value, str) else value
+
+
+class InvitationEmailRequest(BaseModel):
+    """Where to send the invitation; the user's own email when omitted."""
+
+    email: EmailStr | None = None
+
+
+class InvitationEmailSent(BaseModel):
+    sent_to: str
+    expires_at: datetime
 
 
 class InvitationCodeValidateResponse(BaseModel):

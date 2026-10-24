@@ -10522,6 +10522,92 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/invitation-code/email": {
+      "post": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Email Invitation Code",
+        "description": "Email the user's current invitation code for the Open Wearables Connect app.\n\nSends the code generated last (the one the dashboard shows) with a button that opens\nthe app, the invitation link as an attached QR code for reading on a computer, and the\nserver and code for typing in by hand. Goes to `email`, or to the user's own address.\n404 without an active code; 503 when email is not configured or sending fails.",
+        "operationId": "email_invitation_code_api_v1_users__user_id__invitation_code_email_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/InvitationEmailRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationEmailSent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/invitation-code/validate": {
       "post": {
         "tags": [
@@ -18516,6 +18602,44 @@
         ],
         "title": "InvitationCreate",
         "description": "Schema for creating a new invitation (API input)."
+      },
+      "InvitationEmailRequest": {
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "title": "InvitationEmailRequest",
+        "description": "Where to send the invitation; the user's own email when omitted."
+      },
+      "InvitationEmailSent": {
+        "properties": {
+          "sent_to": {
+            "type": "string",
+            "title": "Sent To"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent_to",
+          "expires_at"
+        ],
+        "title": "InvitationEmailSent"
       },
       "InvitationRead": {
         "properties": {

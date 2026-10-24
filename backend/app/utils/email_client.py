@@ -50,7 +50,13 @@ def is_email_configured() -> bool:
     return get_email_config_error() is None
 
 
-def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> None:
+# (filename, content, MIME type), e.g. ("invitation-qr.png", b"...", "image/png")
+Attachment = tuple[str, bytes, str]
+
+
+def _send_via_resend(
+    to_email: str, subject: str, html: str, text: str, attachments: list[Attachment] | None = None
+) -> None:
     """Send an email through the Resend API.
 
     Note: The Resend library uses module-level configuration.
@@ -59,11 +65,15 @@ def _send_via_resend(to_email: str, subject: str, html: str, text: str) -> None:
     """
     resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[missing-union-attribute]
     params = cast(Any, {"from": _get_from_address(), "to": [to_email], "subject": subject, "html": html, "text": text})
+    if attachments:
+        params["attachments"] = [{"filename": name, "content": list(data)} for name, data, _ in attachments]
     result = resend.Emails.send(params)
     logger.info("Email sent via Resend", provider="email", email_id=result.get("id"))
 
 
-def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> None:
+def _send_via_smtp(
+    to_email: str, subject: str, html: str, text: str, attachments: list[Attachment] | None = None
+) -> None:
     """Send an email through the configured SMTP server."""
     msg = EmailMessage()
     msg["From"] = _get_from_address()
@@ -71,6 +81,9 @@ def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> None:
     msg["Subject"] = subject
     msg.set_content(text)
     msg.add_alternative(html, subtype="html")
+    for name, data, mime in attachments or []:
+        maintype, _, subtype = mime.partition("/")
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
 
     host = cast(str, settings.smtp_host)
     # smtplib skips certificate verification unless given a context
@@ -88,12 +101,12 @@ def _send_via_smtp(to_email: str, subject: str, html: str, text: str) -> None:
     logger.info("Email sent via SMTP", provider="email", smtp_host=host, smtp_port=settings.smtp_port)
 
 
-def _send_email(to_email: str, subject: str, html: str, text: str) -> None:
+def _send_email(to_email: str, subject: str, html: str, text: str, attachments: list[Attachment] | None = None) -> None:
     """Send an email using SMTP when SMTP_HOST is set, otherwise Resend."""
     if settings.smtp_host:
-        _send_via_smtp(to_email, subject, html, text)
+        _send_via_smtp(to_email, subject, html, text, attachments)
     else:
-        _send_via_resend(to_email, subject, html, text)
+        _send_via_resend(to_email, subject, html, text, attachments)
 
 
 def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str | None = None) -> bool:
@@ -191,6 +204,86 @@ def send_data_deletion_request_email(to_email: str, user_label: str, user_url: s
             "Failed to send data deletion request email",
             provider="email",
             task="send_data_deletion_request",
+            error=str(e),
+        )
+        return False
+    return True
+
+
+def send_app_invitation_email(
+    to_email: str,
+    *,
+    organisation: str,
+    invite_url: str,
+    server: str,
+    code: str,
+    expires_at: str,
+    qr_png: bytes,
+) -> bool:
+    """Invite an end user to share their data through the Open Wearables Connect app.
+
+    The email works on a phone (button opens the app) and on a computer (scan the attached
+    QR code with the phone), and gives the server and code for typing in by hand.
+    """
+    if not is_valid_email(to_email):
+        return False
+    if config_error := get_email_config_error():
+        logger.warning(
+            "Email not configured, skipping email send",
+            provider="email",
+            task="send_app_invitation_email",
+            config_error=config_error,
+        )
+        return False
+    text = (
+        f"{organisation} invites you to share your health data with them through the Open Wearables Connect app.\n\n"
+        f"On your phone, open this link: {invite_url}\n"
+        "On a computer, scan the attached QR code with your phone's camera.\n\n"
+        "Or open the app and enter the details by hand:\n"
+        f"  Server: {server}\n"
+        f"  Invitation code: {code}\n\n"
+        f"The invitation can be used once and is valid until {expires_at}.\n"
+        "If you did not expect this invitation, ignore this email."
+    )
+    html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
+            <h2>{escape(organisation)} invites you to share your health data</h2>
+            <p>Connect your phone and wearables with the Open Wearables Connect app.
+               {escape(organisation)} receives only the data you choose to share.</p>
+            <p style="margin: 30px 0;">
+                <a href="{escape(invite_url)}"
+                   style="background-color: #2353c4; color: #fff; padding: 12px 24px;
+                          text-decoration: none; border-radius: 6px; display: inline-block;">
+                    Open in Open Wearables Connect
+                </a>
+            </p>
+            <p>Reading this on a computer? Scan the attached QR code with your phone's camera.</p>
+            <p style="margin-top: 24px;">Or open the app, choose <em>Enter details manually</em> and type:</p>
+            <table style="border-collapse: collapse;">
+                <tr><td style="padding: 4px 16px 4px 0; color: #747678;">Server</td>
+                    <td style="font-family: monospace;">{escape(server)}</td></tr>
+                <tr><td style="padding: 4px 16px 4px 0; color: #747678;">Invitation code</td>
+                    <td style="font-family: monospace; font-size: 18px;">{escape(code)}</td></tr>
+            </table>
+            <p style="color: #747678; font-size: 13px; margin-top: 24px;">
+                The invitation can be used once and is valid until {escape(expires_at)}.
+                If you did not expect it, ignore this email.
+            </p>
+        </div>
+    """
+    try:
+        _send_email(
+            to_email,
+            subject=f"{organisation} invites you to Open Wearables Connect",
+            html=html,
+            text=text,
+            attachments=[("invitation-qr.png", qr_png, "image/png")],
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to send app invitation email",
+            provider="email",
+            task="send_app_invitation_email",
             error=str(e),
         )
         return False

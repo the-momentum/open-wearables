@@ -7,6 +7,8 @@ from app.database import DbSession
 from app.schemas.model_crud.credentials import (
     InvitationCodeRedeemResponse,
     InvitationCodeValidateResponse,
+    InvitationEmailRequest,
+    InvitationEmailSent,
     UserInvitationCodeGenerated,
     UserInvitationCodeRedeem,
 )
@@ -49,6 +51,23 @@ def generate_invitation_code(
     Requires developer authentication.
     """
     return user_invitation_code_service.generate(db, user_id, developer.id)
+
+
+@router.post("/users/{user_id}/invitation-code/email")
+def email_invitation_code(
+    user_id: UUID,
+    db: DbSession,
+    _developer: DeveloperDep,
+    payload: InvitationEmailRequest | None = None,
+) -> InvitationEmailSent:
+    """Email the user's current invitation code for the Open Wearables Connect app.
+
+    Sends the code generated last (the one the dashboard shows) with a button that opens
+    the app, the invitation link as an attached QR code for reading on a computer, and the
+    server and code for typing in by hand. Goes to `email`, or to the user's own address.
+    404 without an active code; 503 when email is not configured or sending fails.
+    """
+    return user_invitation_code_service.email(db, user_id, payload.email if payload else None)
 
 
 @router.post(

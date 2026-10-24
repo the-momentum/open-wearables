@@ -47,6 +47,22 @@ class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvita
         )
         return db_session.execute(stmt).scalar_one_or_none()
 
+    def get_active_for_user(self, db_session: DbSession, user_id: UUID) -> UserInvitationCode | None:
+        """The user's newest code that can still be redeemed (generating revokes older ones)."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.redeemed_at.is_(None),
+                self.model.revoked_at.is_(None),
+                self.model.expires_at > now,
+            )
+            .order_by(self.model.created_at.desc())
+            .limit(1)
+        )
+        return db_session.execute(stmt).scalar_one_or_none()
+
     def revoke_active_for_user(self, db_session: DbSession, user_id: UUID) -> None:
         """Revoke all active invitation codes for a user."""
         now = datetime.now(timezone.utc)

@@ -22,6 +22,8 @@ from .oauth import (
 from .user_invitation_code import (
     InvitationCodeRedeemResponse,
     InvitationCodeValidateResponse,
+    InvitationEmailRequest,
+    InvitationEmailSent,
     UserInvitationCodeCreate,
     UserInvitationCodeGenerated,
     UserInvitationCodeRead,
@@ -53,5 +55,7 @@ __all__ = [
     "UserInvitationCodeRedeem",
     "InvitationCodeRedeemResponse",
     "InvitationCodeValidateResponse",
+    "InvitationEmailRequest",
+    "InvitationEmailSent",
     "UserInvitationCodeGenerated",
 ]
