@@ -10,6 +10,7 @@ from .device_type_priority import DeviceTypePriority
 from .event_record import EventRecord
 from .event_record_aggregate import EventRecordAggregate
 from .event_record_detail import DetailType, EventRecordDetail
+from .instance_settings import InstanceSettings
 from .health_score import HealthScore
 from .invitation import Invitation
 from .meal_details import MealDetails
@@ -73,4 +74,5 @@ __all__ = [
     "DetailType",
     "DETAIL_MODELS",
     "TelemetryState",
+    "InstanceSettings",
 ]

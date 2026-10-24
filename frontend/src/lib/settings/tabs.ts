@@ -1,3 +1,4 @@
+import Building2 from '@lucide/svelte/icons/building-2';
 import KeyRound from '@lucide/svelte/icons/key-round';
 import Plug from '@lucide/svelte/icons/plug';
 import ArrowDownUp from '@lucide/svelte/icons/arrow-down-up';
@@ -33,6 +34,7 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
 		beta: true,
 		feature: 'lifecycle'
 	},
+	{ href: resolve('/settings/organisation'), label: 'Organisation', icon: Building2 },
 	{ href: resolve('/settings/team'), label: 'Team', icon: Users },
 	{ href: resolve('/settings/seed-data'), label: 'Seed Data', icon: Sprout }
 ];

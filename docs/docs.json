@@ -311,6 +311,12 @@
             ]
           },
           {
+            "group": "Instance",
+            "pages": [
+              "GET /api/v1/instance/info"
+            ]
+          },
+          {
             "group": "Apple Health Import",
             "pages": [
               "POST /api/v1/users/{user_id}/import/apple/xml/s3",

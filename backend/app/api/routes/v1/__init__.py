@@ -13,6 +13,8 @@ from .developers import router as developers_router
 from .events import router as events_router
 from .health_scores import router as health_scores_router
 from .import_xml import router as import_xml_router
+from .instance import router as instance_router
+from .instance import settings_router as instance_settings_router
 from .invitations import router as invitations_router
 from .meta import router as meta_router
 from .oauth import router as oauth_router
@@ -38,6 +40,7 @@ v1_router = APIRouter()
 
 # --- External: 3rd party integration endpoints ---
 v1_router.include_router(meta_router, tags=["External: Meta"])
+v1_router.include_router(instance_router, prefix="/instance", tags=["External: Instance"])
 v1_router.include_router(users_router, tags=["External: Users"])
 v1_router.include_router(personal_record_router, tags=["External: Users"])
 v1_router.include_router(connections_router, tags=["External: Connections"])
@@ -60,6 +63,7 @@ v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["Ex
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])
+v1_router.include_router(instance_settings_router, prefix="/instance", tags=["Internal: Instance"])
 v1_router.include_router(developers_router, prefix="/developers", tags=["Internal: Developers"])
 v1_router.include_router(invitations_router, prefix="/invitations", tags=["Internal: Invitations"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: API Keys"])

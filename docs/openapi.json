@@ -165,6 +165,48 @@
         }
       }
     },
+    "/api/v1/instance/info": {
+      "get": {
+        "tags": [
+          "External: Instance"
+        ],
+        "summary": "Get Instance Info",
+        "description": "Who runs this instance, for an app to show before a user connects.\n\nPublic: an app calls it with nothing but the server address from an invitation,\nand a dashboard address typed by mistake fails here instead of at redeem.",
+        "operationId": "get_instance_info_api_v1_instance_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceInfo"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "tags": [
@@ -11402,6 +11444,116 @@
         ]
       }
     },
+    "/api/v1/instance/settings": {
+      "get": {
+        "tags": [
+          "Internal: Instance"
+        ],
+        "summary": "Get Instance Settings",
+        "operationId": "get_instance_settings_api_v1_instance_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceSettingsRead"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Internal: Instance"
+        ],
+        "summary": "Update Instance Settings",
+        "operationId": "update_instance_settings_api_v1_instance_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstanceSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceSettingsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/developers": {
       "get": {
         "tags": [
@@ -17108,6 +17260,160 @@
         ],
         "title": "HistoryRollupStatus",
         "description": "Where the history's rollup is. It goes through every data source twice, the last 30 days first."
+      },
+      "InstanceInfo": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Organisation name; null when the administrator has not set one"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url",
+            "description": "Absolute https URL of the organisation logo"
+          },
+          "support_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Email",
+            "description": "Contact address for users of this instance"
+          },
+          "api_version": {
+            "type": "string",
+            "title": "Api Version",
+            "description": "Open Wearables version running on this instance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "logo_url",
+          "support_email",
+          "api_version"
+        ],
+        "title": "InstanceInfo",
+        "description": "Public description of this instance, read by apps before a user connects to it.\n\nAdditive-only: apps in the stores read this from instances of many versions, so\nfields are appended, never removed or repurposed."
+      },
+      "InstanceSettingsRead": {
+        "properties": {
+          "organization_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Name"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url"
+          },
+          "support_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Email"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "title": "InstanceSettingsRead"
+      },
+      "InstanceSettingsUpdate": {
+        "properties": {
+          "organization_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Name",
+            "description": "Name shown to users of this instance"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Url",
+            "description": "Absolute https URL of the logo"
+          },
+          "support_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Email",
+            "description": "Where users are told to write about problems"
+          }
+        },
+        "type": "object",
+        "title": "InstanceSettingsUpdate",
+        "description": "Partial update: only the fields sent change, and an explicit null clears one."
       },
       "IntensityMinutes": {
         "properties": {
