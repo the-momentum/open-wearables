@@ -154,3 +154,44 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
     except Exception as e:
         logger.error("Failed to send invitation email", provider="email", task="send_invitation_email", error=str(e))
         return False
+
+
+def send_data_deletion_request_email(to_email: str, user_label: str, user_url: str) -> bool:
+    """Tell the organisation that a user of the Connect app asked for their data to be deleted.
+
+    The instance deletes nothing by itself: whoever runs it decides, and may have to keep records.
+    """
+    if not is_valid_email(to_email):
+        return False
+    if config_error := get_email_config_error():
+        logger.warning(
+            "Email not configured, skipping email send",
+            provider="email",
+            task="send_data_deletion_request",
+            config_error=config_error,
+        )
+        return False
+    text = (
+        f"{user_label} asked, in the Open Wearables Connect app, for their data to be deleted.\n\n"
+        f"Review the user and delete their data in the dashboard: {user_url}\n\n"
+        "Open Wearables does not delete anything until you do."
+    )
+    html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>Data deletion request</h2>
+            <p>{escape(user_label)} asked, in the Open Wearables Connect app, for their data to be deleted.</p>
+            <p><a href="{escape(user_url)}">Review the user in the dashboard</a></p>
+            <p>Open Wearables does not delete anything until you do.</p>
+        </div>
+    """
+    try:
+        _send_email(to_email, subject="Data deletion request from the Connect app", html=html, text=text)
+    except Exception as e:
+        logger.error(
+            "Failed to send data deletion request email",
+            provider="email",
+            task="send_data_deletion_request",
+            error=str(e),
+        )
+        return False
+    return True

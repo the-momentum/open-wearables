@@ -159,6 +159,20 @@ def get_sdk_auth(
 SDKAuthDep = Annotated[SDKAuthContext, Depends(get_sdk_auth)]
 
 
+async def get_sdk_user(user_id: UUID, auth: SDKAuthDep) -> UUID:
+    """The path's user_id, when the caller may act for that user.
+
+    An SDK token speaks only for its own user (``sub == user_id``); an API key for any
+    user, as on the other user endpoints.
+    """
+    if auth.auth_type == "sdk_token" and auth.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token does not match user_id")
+    return user_id
+
+
+SdkUserDep = Annotated[UUID, Depends(get_sdk_user)]
+
+
 async def get_combined_auth(
     db: DbSession,
     token: Annotated[str | None, Depends(oauth2_scheme)] = None,

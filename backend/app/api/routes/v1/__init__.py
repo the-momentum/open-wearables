@@ -27,6 +27,7 @@ from .priorities import router as priorities_router
 from .sdk_logs import router as sdk_logs_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
+from .sdk_user import router as sdk_user_router
 from .seed_data import router as seed_data_router
 from .summaries import router as summaries_router
 from .sync_data import router as sync_data_router
@@ -58,6 +59,7 @@ v1_router.include_router(import_xml_router, tags=["External: Apple Health Import
 v1_router.include_router(sdk_logs_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
+v1_router.include_router(sdk_user_router, tags=["External: Mobile SDK"])
 v1_router.include_router(app_seat_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
 v1_router.include_router(token_router, tags=["External: Token"])

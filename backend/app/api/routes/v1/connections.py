@@ -12,7 +12,7 @@ from app.services import ApiKeyDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
-from app.utils.auth import CombinedAuthDep
+from app.utils.auth import CombinedAuthDep, SdkUserDep
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -53,6 +53,32 @@ def get_connections_endpoint(
     _api_key: ApiKeyDep,
 ):
     """Get all connections for a user, enriched with provider capability metadata."""
+    return _connections(db, user_id)
+
+
+@router.get("/sdk/users/{user_id}/connections", response_model=list[UserConnectionWithCapabilities])
+def get_own_connections_endpoint(user_id: SdkUserDep, db: DbSession):
+    """The user's own connections, for an app's list of sources (statuses, Reconnect).
+
+    Takes the user's SDK token; the provider tokens themselves are never returned.
+    """
+    return _connections(db, user_id)
+
+
+@router.delete("/sdk/users/{user_id}/connections/{provider}", status_code=status.HTTP_204_NO_CONTENT)
+def disconnect_own_provider_endpoint(user_id: SdkUserDep, provider: ProviderName, db: DbSession) -> Response:
+    """The user disconnects one of their own accounts from an app, cloud providers included.
+
+    Unlike an SDK sign-out on ``DELETE /users/{user_id}/connections/{provider}``, this is the
+    user's explicit choice in the app, so the provider tokens are revoked as from the dashboard,
+    whoever added the connection.
+    """
+    strategy = ProviderFactory().get_provider(provider.value)
+    user_connection_service.disconnect(db, user_id, provider.value, oauth=strategy.oauth, reason="app_disconnect")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _connections(db: DbSession, user_id: UUID) -> list[UserConnectionWithCapabilities]:
     settings_map = provider_settings_service.get_settings_map(db)
     connections = user_connection_service.get_connections_by_user(db, user_id)
     provider_pairs = [

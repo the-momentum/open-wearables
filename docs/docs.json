@@ -336,6 +336,10 @@
               "POST /api/v1/users/{user_id}/invitation-code",
               "POST /api/v1/invitation-code/validate",
               "POST /api/v1/sdk/users/{user_id}/seat-request",
+              "GET /api/v1/sdk/users/{user_id}/overview",
+              "GET /api/v1/sdk/users/{user_id}/connections",
+              "DELETE /api/v1/sdk/users/{user_id}/connections/{provider}",
+              "POST /api/v1/sdk/users/{user_id}/data-deletion-request",
               "POST /api/v1/invitation-code/redeem"
             ]
           },

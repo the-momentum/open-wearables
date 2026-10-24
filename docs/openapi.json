@@ -1238,6 +1238,181 @@
         }
       }
     },
+    "/api/v1/sdk/users/{user_id}/connections": {
+      "get": {
+        "tags": [
+          "External: Connections"
+        ],
+        "summary": "Get Own Connections Endpoint",
+        "description": "The user's own connections, for an app's list of sources (statuses, Reconnect).\n\nTakes the user's SDK token; the provider tokens themselves are never returned.",
+        "operationId": "get_own_connections_endpoint_api_v1_sdk_users__user_id__connections_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserConnectionWithCapabilities"
+                  },
+                  "title": "Response Get Own Connections Endpoint Api V1 Sdk Users  User Id  Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sdk/users/{user_id}/connections/{provider}": {
+      "delete": {
+        "tags": [
+          "External: Connections"
+        ],
+        "summary": "Disconnect Own Provider Endpoint",
+        "description": "The user disconnects one of their own accounts from an app, cloud providers included.\n\nUnlike an SDK sign-out on ``DELETE /users/{user_id}/connections/{provider}``, this is the\nuser's explicit choice in the app, so the provider tokens are revoked as from the dashboard,\nwhoever added the connection.",
+        "operationId": "disconnect_own_provider_endpoint_api_v1_sdk_users__user_id__connections__provider__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProviderName"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/connections/{provider}": {
       "delete": {
         "tags": [
@@ -9990,6 +10165,209 @@
         }
       }
     },
+    "/api/v1/sdk/users/{user_id}/overview": {
+      "get": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Get Overview",
+        "description": "The user's own week: \"Today\" tiles against the average of the days before, and daily\nseries for steps, sleep and resting heart rate.\n\nRead from the instance, merged by source priority as on the dashboard, so a user with only\na cloud account sees their data too. Takes the user's SDK token (or an API key).",
+        "operationId": "get_overview_api_v1_sdk_users__user_id__overview_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 31,
+              "minimum": 2,
+              "description": "Days in the charts, ending today",
+              "default": 7,
+              "title": "Days"
+            },
+            "description": "Days in the charts, ending today"
+          },
+          {
+            "name": "today",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The user's local date; defaults to today in UTC",
+              "title": "Today"
+            },
+            "description": "The user's local date; defaults to today in UTC"
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SdkOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sdk/users/{user_id}/data-deletion-request": {
+      "post": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Request Data Deletion",
+        "description": "The user asks the organisation to delete their data.\n\nEmails the organisation's support address (else the Connect app admin, else every\ndeveloper) with a link to the user in the dashboard; nothing is deleted automatically.\nAt most one email per user a day. 503 when no email could be sent.",
+        "operationId": "request_data_deletion_api_v1_sdk_users__user_id__data_deletion_request_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataDeletionRequestResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sdk/users/{user_id}/seat-request": {
       "post": {
         "tags": [
@@ -16465,6 +16843,20 @@
         ],
         "title": "CoveredRange"
       },
+      "DataDeletionRequestResponse": {
+        "properties": {
+          "notified": {
+            "type": "boolean",
+            "title": "Notified",
+            "description": "The organisation was emailed; false when it was already asked today"
+          }
+        },
+        "type": "object",
+        "required": [
+          "notified"
+        ],
+        "title": "DataDeletionRequestResponse"
+      },
       "DataGranularity": {
         "type": "string",
         "enum": [
@@ -18972,6 +19364,99 @@
         ],
         "title": "OldPaginatedResponse[UserRead]"
       },
+      "OverviewMetric": {
+        "type": "string",
+        "enum": [
+          "steps",
+          "sleep_minutes",
+          "resting_heart_rate",
+          "active_calories"
+        ],
+        "title": "OverviewMetric"
+      },
+      "OverviewPoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date"
+        ],
+        "title": "OverviewPoint"
+      },
+      "OverviewTile": {
+        "properties": {
+          "metric": {
+            "$ref": "#/components/schemas/OverviewMetric"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "count, min, bpm or kcal"
+          },
+          "today": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Today",
+            "description": "null when nothing is recorded for today yet"
+          },
+          "average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average",
+            "description": "Mean over the previous days that have data"
+          },
+          "delta_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Percent",
+            "description": "today against average, in percent; null without both"
+          }
+        },
+        "type": "object",
+        "required": [
+          "metric",
+          "unit",
+          "today",
+          "average",
+          "delta_percent"
+        ],
+        "title": "OverviewTile",
+        "description": "One \"Today\" tile: today's value against the average of the days before."
+      },
       "PaginatedResponse_ActivitySummary_": {
         "properties": {
           "data": {
@@ -20300,6 +20785,49 @@
         "type": "object",
         "title": "ScoreComponent",
         "description": "A single constituent of a health score (e.g. deep sleep percentage)."
+      },
+      "SdkOverview": {
+        "properties": {
+          "today": {
+            "type": "string",
+            "format": "date",
+            "title": "Today"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "tiles": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewTile"
+            },
+            "type": "array",
+            "title": "Tiles"
+          },
+          "series": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/OverviewPoint"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/OverviewMetric"
+            },
+            "type": "object",
+            "title": "Series",
+            "description": "One point per day, oldest first, ending today; for the steps, sleep and heart rate charts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "days",
+          "tiles",
+          "series"
+        ],
+        "title": "SdkOverview",
+        "description": "A user's own week at a glance, as the instance merges their sources (same as the dashboard).\n\nTiles appear only for metrics with data in the period, so an app shows what the user actually records."
       },
       "SeatRequestResponse": {
         "properties": {

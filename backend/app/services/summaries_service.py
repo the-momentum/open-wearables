@@ -660,6 +660,18 @@ class SummariesService:
             avg_steps=round(sum(steps) / len(steps)) if steps else None,
         )
 
+    def get_daily_activity_sums(
+        self, db_session: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+    ) -> dict[date, tuple[float | None, float | None]]:
+        """Steps and active energy per day in [start, end), from the source the dashboard shows."""
+        return {
+            day["activity_date"]: (
+                float(day["steps_sum"]) if day.get("steps_sum") is not None else None,
+                float(day["active_energy_sum"]) if day.get("active_energy_sum") is not None else None,
+            )
+            for day in self._activity_days(db_session, user_id, start_date, end_date)
+        }
+
     def _activity_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
         """One row per day in [start, end) from the day aggregates, best source per date."""
         results = daily_activity(db_session, user_id, start, end, days_from_samples(db_session))
