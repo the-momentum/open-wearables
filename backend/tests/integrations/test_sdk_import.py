@@ -174,6 +174,21 @@ class TestAppleSDKImport:
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
 
+    def test_unavailable_sleep_lock_fails_only_sleep(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+        mock_sleep_redis: MagicMock,
+    ) -> None:
+        mock_sleep_redis.lock.return_value.acquire.return_value = False
+
+        result = import_service.load_data(db, sample_sdk_payload, str(UserFactory().id))
+
+        assert result["workouts_saved"] == 1
+        assert result["sleep_saved"] == 0
+        assert [(d["collection"], d["type"]) for d in result["dropped"]] == [("sleep", "lock_unavailable")]
+
     def test_import_workout_without_heart_rate(
         self,
         db: Session,

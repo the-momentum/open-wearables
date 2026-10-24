@@ -51,7 +51,18 @@ class SyncRunRepository:
         stmt = stmt.on_conflict_do_update(
             index_elements=["run_key"],
             set_={
-                "status": stmt.excluded.status,
+                # A historical SDK export reports per batch, so one batch's drops keep the run
+                # partial through later batches' start and success events.
+                "status": case(
+                    (
+                        and_(
+                            SyncRun.status == SyncStatus.PARTIAL,
+                            stmt.excluded.status.in_([SyncStatus.IN_PROGRESS, SyncStatus.SUCCESS]),
+                        ),
+                        SyncRun.status,
+                    ),
+                    else_=stmt.excluded.status,
+                ),
                 "window_start": func.coalesce(SyncRun.window_start, stmt.excluded.window_start),
                 "window_end": func.coalesce(SyncRun.window_end, stmt.excluded.window_end),
                 # A later start event carries no end, so it must not clear a recorded one.
