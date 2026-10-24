@@ -335,6 +335,7 @@
               "POST /api/v1/users/{user_id}/token",
               "POST /api/v1/users/{user_id}/invitation-code",
               "POST /api/v1/invitation-code/validate",
+              "POST /api/v1/sdk/users/{user_id}/seat-request",
               "POST /api/v1/invitation-code/redeem"
             ]
           },

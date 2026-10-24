@@ -37,6 +37,7 @@ from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
 from .provider_webhooks_task import reconcile_provider_webhooks
 from .refresh_dashboard_stats_task import refresh_dashboard_total_data_points
+from .release_app_seat_task import release_app_seat
 from .renew_oura_webhooks_task import renew_oura_webhooks
 from .repair_condensed_series_task import repair_condensed_series
 from .seed_data_task import generate_seed_data
@@ -91,4 +92,5 @@ __all__ = [
     # Outgoing webhooks
     "emit_webhook_event",
     "delete_user_webhook_payloads",
+    "release_app_seat",
 ]

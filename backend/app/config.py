@@ -311,6 +311,11 @@ class Settings(BaseSettings):
     invitation_code_rate_limit_per_minute: int = 10
     # Page that opens the Open Wearables Connect app; the server and code ride in the URL fragment.
     connect_app_link_base: str = "https://connect.openwearables.io/i"
+    # License server of the Open Wearables Connect app. Contacted only after an administrator
+    # registers the instance in Settings > Mobile app.
+    license_server_url: str = "https://licenses.openwearables.io"
+    # Version of the Connect app free plan terms the administrator accepts when registering.
+    connect_app_terms_version: str = "2026-10"
 
     # Lifetime of the token a shareable pairing link carries.
     connect_token_expire_days: int = 7

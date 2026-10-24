@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
+from .app_registration import router as app_registration_router
+from .app_registration import sdk_router as app_seat_router
 from .applications import router as applications_router
 from .archival import router as archival_router
 from .auth import router as auth_router
@@ -56,6 +58,7 @@ v1_router.include_router(import_xml_router, tags=["External: Apple Health Import
 v1_router.include_router(sdk_logs_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
+v1_router.include_router(app_seat_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
 v1_router.include_router(token_router, tags=["External: Token"])
 v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
@@ -64,6 +67,7 @@ v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["Ex
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])
 v1_router.include_router(instance_settings_router, prefix="/instance", tags=["Internal: Instance"])
+v1_router.include_router(app_registration_router, prefix="/app-registration", tags=["Internal: Mobile App"])
 v1_router.include_router(developers_router, prefix="/developers", tags=["Internal: Developers"])
 v1_router.include_router(invitations_router, prefix="/invitations", tags=["Internal: Invitations"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: API Keys"])

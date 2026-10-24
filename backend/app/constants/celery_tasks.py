@@ -15,6 +15,7 @@ class CeleryTask(StrEnum):
     BACKFILL_DATA_TYPE_COVERAGE = f"{_PREFIX}.backfill_data_type_coverage_task.backfill_data_type_coverage"
     CLOSE_STALE_SYNC_RUNS = f"{_PREFIX}.close_stale_sync_runs_task.close_stale_sync_runs"
     DELETE_USER_WEBHOOK_PAYLOADS = f"{_PREFIX}.delete_user_webhook_payloads_task.delete_user_webhook_payloads"
+    RELEASE_APP_SEAT = f"{_PREFIX}.release_app_seat_task.release_app_seat"
     EMIT_WEBHOOK_EVENT = f"{_PREFIX}.emit_webhook_event_task.emit_webhook_event"
     DISPATCH_EXTENSION_EVENTS = f"{_PREFIX}.extension_events_task.dispatch_extension_events"
     FILL_MISSING_RESILIENCE_SCORES = f"{_PREFIX}.fill_missing_resilience_scores_task.fill_missing_resilience_scores"

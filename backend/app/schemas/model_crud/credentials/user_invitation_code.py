@@ -68,6 +68,11 @@ class InvitationCodeValidateResponse(BaseModel):
     """A code that can still be redeemed. Validating does not use it up."""
 
     expires_at: datetime
+    seat_request: str | None = Field(
+        None,
+        description="Instance-signed token the Open Wearables Connect app sends to the license server to claim "
+        "a seat before redeeming; valid 5 minutes, single use. null while the app is not enabled on this instance",
+    )
 
 
 class InvitationCodeRedeemResponse(TokenResponse):

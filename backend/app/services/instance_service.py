@@ -2,6 +2,7 @@ from app import __version__ as core_version
 from app.database import DbSession
 from app.repositories.instance_settings_repository import InstanceSettingsRepository
 from app.schemas.model_crud.instance_settings import InstanceInfo, InstanceSettingsRead, InstanceSettingsUpdate
+from app.services.app_registration_service import app_registration_service
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,11 +26,14 @@ class InstanceService:
 
     def get_info(self, db: DbSession) -> InstanceInfo:
         settings = self.get_settings(db)
+        app_enabled, instance_id = app_registration_service.app_identity(db)
         return InstanceInfo(
             name=settings.organization_name,
             logo_url=settings.logo_url,
             support_email=settings.support_email,
             api_version=core_version,
+            app_enabled=app_enabled,
+            instance_id=instance_id,
         )
 
 

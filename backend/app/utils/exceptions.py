@@ -102,6 +102,10 @@ class ContentTooLargeError(AppError):
     status_code = status.HTTP_413_CONTENT_TOO_LARGE
 
 
+class TooManyRequestsError(AppError):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+
 class ResourceNotFoundError(NotFoundError):
     def __init__(self, entity_name: str, entity_id: int | UUID | None = None):
         self.entity_name = entity_name

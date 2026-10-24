@@ -19,6 +19,8 @@ class TestGetInstanceInfo:
             "logo_url": None,
             "support_email": None,
             "api_version": core_version,
+            "app_enabled": False,
+            "instance_id": None,
         }
 
     def test_reflects_saved_settings(
@@ -42,6 +44,8 @@ class TestGetInstanceInfo:
             "logo_url": "https://acmehealth.com/logo.png",
             "support_email": "help@acmehealth.com",
             "api_version": core_version,
+            "app_enabled": False,
+            "instance_id": None,
         }
 
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
 
@@ -52,3 +53,12 @@ class InstanceInfo(BaseModel):
     logo_url: str | None = Field(description="Absolute https URL of the organisation logo")
     support_email: str | None = Field(description="Contact address for users of this instance")
     api_version: str = Field(description="Open Wearables version running on this instance")
+    app_enabled: bool = Field(
+        False,
+        description="Whether the Open Wearables Connect app may connect users: the instance is registered "
+        "and its admin email verified",
+    )
+    instance_id: UUID | None = Field(
+        None,
+        description="Registration id at the license server (not the telemetry id); null when not registered",
+    )

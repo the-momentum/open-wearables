@@ -17,6 +17,7 @@ from app.schemas.model_crud.credentials import (
     UserInvitationCodeGenerated,
 )
 from app.schemas.model_crud.credentials.user_invitation_code import normalize_invitation_code
+from app.services.app_registration_service import app_registration_service
 from app.services.refresh_token_service import refresh_token_service
 from app.services.user_service import user_service
 from app.utils.exceptions import NotFoundError
@@ -89,7 +90,10 @@ class UserInvitationCodeService:
         invitation_code = self.crud.get_valid_by_code(db_session, normalize_invitation_code(code))
         if not invitation_code:
             raise _invalid_code()
-        return InvitationCodeValidateResponse(expires_at=invitation_code.expires_at)
+        return InvitationCodeValidateResponse(
+            expires_at=invitation_code.expires_at,
+            seat_request=app_registration_service.seat_request_for(db_session, invitation_code.user_id),
+        )
 
     def redeem(self, db_session: DbSession, code: str) -> InvitationCodeRedeemResponse:
         """Redeem an invitation code and return SDK tokens."""

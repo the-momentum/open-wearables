@@ -255,7 +255,7 @@ class TestValidateInvitationCode:
 
         # Assert
         assert first.status_code == 200
-        assert first.json() == {"expires_at": generated["expires_at"]}
+        assert first.json() == {"expires_at": generated["expires_at"], "seat_request": None}
         assert second.status_code == 200
         assert redeem.status_code == 200
 

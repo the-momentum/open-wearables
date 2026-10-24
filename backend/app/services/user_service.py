@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.database import DbSession
 from app.integrations.celery.tasks.delete_user_webhook_payloads_task import delete_user_webhook_payloads
+from app.integrations.celery.tasks.release_app_seat_task import release_app_seat
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.user_management import (
@@ -20,6 +21,7 @@ from app.schemas.model_crud.user_management import (
     UserUpdateInternal,
 )
 from app.schemas.utils import OldPaginatedResponse
+from app.services.app_registration_service import app_registration_service
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.backfill_state import force_release_backfill_lock
@@ -121,7 +123,17 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         user_id = user.id
         deleted = self.crud.delete(db_session, user)
         self._schedule_webhook_payload_deletion(user_id)
+        self._schedule_app_seat_release(db_session, user_id)
         return deleted
+
+    def _schedule_app_seat_release(self, db_session: DbSession, user_id: UUID) -> None:
+        """Free the user's Open Wearables Connect app seat, if the instance is registered for the app."""
+        if not app_registration_service.is_registered(db_session):
+            return
+        try:
+            release_app_seat.apply_async(args=[str(user_id)])
+        except Exception as e:
+            logger.warning("Failed to schedule app seat release on user deletion", user_id=user_id, error=str(e))
 
     def _schedule_webhook_payload_deletion(self, user_id: UUID) -> None:
         """Delete the user's outgoing webhook payloads from Svix in the background.

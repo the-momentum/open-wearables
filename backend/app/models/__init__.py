@@ -1,4 +1,5 @@
 from .api_key import ApiKey
+from .app_registration import AppRegistration
 from .application import Application
 from .archival_setting import ArchivalSetting
 from .data_migration import DataMigration
@@ -75,4 +76,5 @@ __all__ = [
     "DETAIL_MODELS",
     "TelemetryState",
     "InstanceSettings",
+    "AppRegistration",
 ]
