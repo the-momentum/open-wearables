@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource, EventRecord, HealthScore, User, UserConnection, WorkoutDetails
 from app.schemas.auth import ConnectionStatus
-from app.services.sdk_token_service import create_sdk_user_token
+from app.utils.security import create_access_token
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
@@ -490,7 +490,8 @@ class TestDisconnectEndpoint:
 
 def sdk_token_headers(user_id: UUID, app_id: str = "app_123") -> dict[str, str]:
     """Bearer headers for an SDK user token scoped to user_id."""
-    return {"Authorization": f"Bearer {create_sdk_user_token(app_id, str(user_id))}"}
+    token = create_access_token(subject=str(user_id), scope="sdk", app_id=app_id)
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.usefixtures("mock_deregistration")
