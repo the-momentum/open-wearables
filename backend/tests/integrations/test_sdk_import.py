@@ -741,6 +741,27 @@ class TestSDKImportUnitConversion:
             SeriesType.heart_rate_variability_rmssd: Decimal("36.700"),
         }
 
+    def test_apple_wrist_temperature_maps_to_skin_temperature(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Apple Watch's overnight wrist reading is skin temperature - keep it out of the thermometer series."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [
+                self._record("HKQuantityTypeIdentifierBodyTemperature", 36.6, unit="degC"),
+                self._record("HKQuantityTypeIdentifierAppleSleepingWristTemperature", 34.8, unit="degC"),
+            ],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        values = {sample.series_type: sample.value for sample in samples}
+        assert values == {
+            SeriesType.body_temperature: Decimal("36.600"),
+            SeriesType.skin_temperature: Decimal("34.800"),
+        }
+
     def test_health_connect_body_fat_percentage_not_scaled(
         self,
         import_service: ImportService,

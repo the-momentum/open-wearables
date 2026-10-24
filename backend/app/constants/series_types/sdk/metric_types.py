@@ -377,8 +377,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.UV_EXPOSURE: SeriesType.uv_exposure,
     # Wheelchair Metrics
     SDKMetricType.PUSH_COUNT: SeriesType.push_count,
-    # Apple-specific Temperature
-    SDKMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.body_temperature,
+    # Apple-specific Temperature: overnight wrist skin reading (~34-35 °C), not core body temperature
+    SDKMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.skin_temperature,
     # Atrial Fibrillation
     SDKMetricType.ATRIAL_FIBRILLATION_BURDEN: SeriesType.atrial_fibrillation_burden,
     # Workout Metrics
