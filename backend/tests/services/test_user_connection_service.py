@@ -10,12 +10,15 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.auth import ConnectionStatus
+from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
+from app.schemas.sync_status import DataTypeKind
 from app.services.user_connection_service import user_connection_service
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -533,3 +536,60 @@ class TestUserConnectionServiceDeregisterFromProvider:
         user_connection_service.deregister_from_provider(db, user.id, "garmin", oauth)
 
         oauth.deregister_user.assert_not_called()
+
+
+class TestHistoricalStartOnConnect:
+    """On reconnect only the gap since the last sync is backfilled."""
+
+    def _hold_data(self, user_id: UUID, provider: str, db: Session) -> None:
+        now = datetime.now(timezone.utc)
+        data_type_coverage_repository.record(
+            db, [CoverageSpan(user_id, provider, "heart_rate", DataTypeKind.SERIES, now - timedelta(days=60), now)]
+        )
+
+    def test_stamp_returns_replaced_value(self, db: Session) -> None:
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+        connection = UserConnectionFactory(provider="oura", last_synced_at=last)
+
+        previous = user_connection_service.stamp_last_synced_at(db, connection.user_id, "oura")
+
+        assert previous == last
+        assert connection.last_synced_at > last
+
+    def test_reconnect_with_held_data_starts_at_last_sync(self, db: Session) -> None:
+        user = UserFactory()
+        self._hold_data(user.id, "oura", db)
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+
+        with patch("app.services.user_connection_service.settings.pull_sync_lookback", timedelta(days=1)):
+            start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
+
+        assert start == last - timedelta(days=1)
+
+    def test_gap_longer_than_window_is_clamped(self, db: Session) -> None:
+        user = UserFactory()
+        self._hold_data(user.id, "oura", db)
+        last = datetime.now(timezone.utc) - timedelta(days=200)
+
+        before = datetime.now(timezone.utc)
+        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
+
+        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+
+    def test_no_held_data_uses_full_window(self, db: Session) -> None:
+        user = UserFactory()
+        self._hold_data(user.id, "whoop", db)
+        last = datetime.now(timezone.utc) - timedelta(days=5)
+
+        before = datetime.now(timezone.utc)
+        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", last, days=90)
+
+        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)
+
+    def test_first_connect_uses_full_window(self, db: Session) -> None:
+        user = UserFactory()
+
+        before = datetime.now(timezone.utc)
+        start = user_connection_service.historical_start_on_connect(db, user.id, "oura", None, days=90)
+
+        assert before - timedelta(days=90) <= start <= datetime.now(timezone.utc) - timedelta(days=90)

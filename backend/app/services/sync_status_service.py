@@ -344,6 +344,29 @@ def list_stored_runs(
     return [SyncRunRecord.model_validate(run) for run in runs]
 
 
+def record_requested_window(run_key: str, window_start: datetime, window_end: datetime) -> None:
+    """Store the window a provider accepted a backfill request for, best effort like try_persist_run."""
+    if not settings.sync_run_tracking_enabled:
+        return
+    try:
+        with SessionLocal() as db:
+            sync_run_repository.record_window(db, run_key, window_start, window_end)
+    except Exception as exc:
+        log_structured(
+            logger,
+            "warning",
+            "Failed to record requested window",
+            action="sync_run_window_failed",
+            run_id=run_key,
+            error=str(exc),
+        )
+
+
+def last_backfill_requested_until(db: DbSession, user_id: UUID, provider: str) -> datetime | None:
+    """End of the latest window the provider accepted a backfill request for."""
+    return sync_run_repository.last_window_end(db, user_id, provider, SyncSource.BACKFILL)
+
+
 def get_stored_run(db: DbSession, run_key: str) -> SyncRunDetail | None:
     """One stored run with its per-data-type breakdown, or None when unknown."""
     run = sync_run_repository.get_with_data_types(db, run_key)

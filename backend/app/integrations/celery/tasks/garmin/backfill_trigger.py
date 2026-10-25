@@ -4,7 +4,7 @@ Handles the actual API call to Garmin, error classification, rate-limiting,
 and scheduling the timeout checker.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 from uuid import UUID
@@ -45,10 +45,16 @@ from app.services.providers.garmin.backfill_state import (
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.services.sync_status_service import record_requested_window
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
+
+
+def _record_accepted_window(user_id: str, trace_id: str | None, start_time: datetime, end_time: datetime) -> None:
+    run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
+    record_requested_window(run_id, start_time, end_time)
 
 
 @shared_task(name=CeleryTask.GARMIN_TRIGGER_BACKFILL_FOR_TYPE)
@@ -164,6 +170,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         status_code = retry_result.get("failed_status_codes", {}).get(data_type)
                     else:
                         # Retry succeeded — skip the failure handling below
+                        _record_accepted_window(user_id, trace_id, start_time_fallback, end_time)
                         if data_type in retry_result.get("duplicate", []):
                             mark_type_success(user_id, data_type)
                             celery_app.send_task(
@@ -216,6 +223,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     )
                 celery_app.send_task(CeleryTask.GARMIN_TRIGGER_NEXT_PENDING_TYPE, args=[user_id], countdown=delay)
                 return {"status": "failed", "error": error}
+
+            # A 409 duplicate also means Garmin holds this range as requested.
+            _record_accepted_window(user_id, trace_id, start_time, end_time)
 
             if data_type in result.get("duplicate", []):
                 log_structured(
