@@ -240,14 +240,14 @@ def process_sdk_upload(
             # Same wording as webhook_push_task; records_saved counts samples submitted.
             message = f"{provider.capitalize()} batch saved: {records_inserted} new, {records_updated} updated"
             if dropped_count:
-                message += f" ({dropped_count} record(s) dropped by validation)"
+                message += f" ({dropped_count} record(s) dropped)"
             emit_sync_completed(
                 user_uuid,
                 provider,
                 run.source,
                 scope=run.scope,
                 run_id=run.run_id,
-                status=SyncStatus.SUCCESS,
+                status=SyncStatus.PARTIAL if dropped_count else SyncStatus.SUCCESS,
                 message=message,
                 items_processed=items_total,
                 metadata={

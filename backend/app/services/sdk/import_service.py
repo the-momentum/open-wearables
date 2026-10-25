@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import sentry_sdk
 from pydantic import ValidationError
+from redis.exceptions import LockError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
@@ -535,8 +536,25 @@ class ImportService:
 
         # Process sleep (count sleep segments from input)
         if request.data.sleep:
-            handle_sleep_data(db_session, request, user_id)
-            sleep_saved = len(request.data.sleep)
+            try:
+                handle_sleep_data(db_session, request, user_id)
+                sleep_saved = len(request.data.sleep)
+            except LockError as e:
+                # The rest of the batch is committed, so only its sleep is reported as dropped.
+                log_structured(
+                    self.log,
+                    "warning",
+                    "SDK sleep not saved: sleep processing lock unavailable",
+                    provider=f"{request.provider}",
+                    action="sdk_sleep_lock_unavailable",
+                    batch_id=batch_id,
+                    user_id=user_id,
+                    sleep_count=len(request.data.sleep),
+                )
+                dropped.extend(
+                    InvalidRecord(collection="sleep", index=i, loc="", msg=str(e), type="lock_unavailable")
+                    for i in range(len(request.data.sleep))
+                )
 
         return {
             "workouts_saved": workouts_saved,
@@ -620,7 +638,9 @@ class ImportService:
             )
 
             dropped = saved_counts.get("dropped") or []
-            if dropped:
+            # Lock drops are already logged by load_data and are not validation failures.
+            invalid = [d for d in dropped if d["type"] != "lock_unavailable"]
+            if invalid:
                 # Partial success: some records failed per-record validation. The good
                 # ones are already saved above; report the exact field errors to Sentry
                 # (PII-free: loc/msg/type) so we keep full visibility into what was lost.
@@ -632,15 +652,15 @@ class ImportService:
                             "batch_id": batch_id,
                             "user_id": user_id,
                             "provider": provider,
-                            "dropped_count": len(dropped),
-                            "errors": dropped[:20],
+                            "dropped_count": len(invalid),
+                            "errors": invalid[:20],
                         },
                     )
                     sentry_sdk.capture_message(f"{provider} SDK payload: dropped invalid records, kept the rest")
                 # Compose the full location (collection[index].field) so the log one-liner
                 # says which record failed, not just the field — the per-record `loc` is
                 # relative to a single record. The full breakdown is in the Sentry context.
-                first = dropped[0]
+                first = invalid[0]
                 first_loc = f"{first['collection']}[{first['index']}]"
                 if first.get("loc"):
                     first_loc += f".{first['loc']}"
@@ -652,7 +672,7 @@ class ImportService:
                     action=f"{provider}_sdk_records_dropped",
                     batch_id=batch_id,
                     user_id=user_id,
-                    dropped_count=len(dropped),
+                    dropped_count=len(invalid),
                     first_error_loc=first_loc,
                     first_error_msg=first["msg"],
                 )

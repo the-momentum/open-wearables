@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
+from redis.exceptions import LockError
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
@@ -280,8 +281,7 @@ def handle_sleep_data(
     try:
         acquired = lock.acquire()
         if not acquired:
-            logger.warning("Could not acquire sleep processing lock for user %s; skipping batch", user_id)
-            return
+            raise LockError(f"Could not acquire sleep processing lock for user {user_id}")
 
         current_state = load_sleep_state(user_id)
         provider = request.provider
