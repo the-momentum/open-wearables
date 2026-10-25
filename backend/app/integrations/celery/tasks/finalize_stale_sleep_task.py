@@ -35,6 +35,8 @@ def finalize_stale_sleeps() -> None:
                 try:
                     state = load_sleep_state(user_id)
                     if not state:
+                        # The Redis key expired before anything was finalized.
+                        redis_client.srem(active_users_key(), user_id)
                         continue
 
                     end_time = state.end_time
