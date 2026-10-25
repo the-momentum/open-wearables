@@ -664,6 +664,33 @@ class TestCreateOrMergeSleep:
         assert d.sleep_awake_minutes == 52  # 22 + 30
         assert d.sleep_total_duration_minutes == 378  # 8 + 370
 
+    def test_same_window_without_external_id_replaces_instead_of_accumulating(self, db: Session) -> None:
+        """Re-fetching the same night (Polar sends no external_id) must not grow it.
+
+        Prod had a Polar night re-fetched hourly for 19 days: 463 copies of every stage
+        interval and 271,781 minutes in bed, until its webhook payload broke 1 MB.
+        """
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        start, end = self._dt(22, 25), self._dt(7, 40, day=22)
+        stages = [
+            SleepStage(stage="light", start_time=start, end_time=self._dt(1, 0, day=22)),
+            SleepStage(stage="deep", start_time=self._dt(1, 0, day=22), end_time=end),
+        ]
+
+        first = None
+        for _ in range(3):
+            record = self._record(data_source, start, end)
+            detail = self._detail(record.id, in_bed=555).model_copy(update={"sleep_stages": stages})
+            result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+            first = first or result.id
+            assert result.id == first
+
+        db.refresh(result)
+        assert result.sleep_detail.sleep_time_in_bed_minutes == 555
+        assert result.sleep_detail.sleep_deep_minutes == 60
+        assert len(result.sleep_detail.sleep_stages) == 2
+
     def test_merge_calculates_weighted_efficiency(self, db: Session) -> None:
         """Efficiency is a time-in-bed weighted average of both sessions."""
         user = UserFactory()
