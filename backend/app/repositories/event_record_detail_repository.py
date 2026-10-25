@@ -121,15 +121,20 @@ class EventRecordDetailRepository(
         if not child_values:
             return
 
-        child_stmt = insert(child_table).values(child_values)
         # record_id is the conflict key; created_at is an immutable audit column and
         # must not be reset to now() when an existing row is re-synced.
         immutable_on_upsert = {"record_id", "created_at"}
-        update_dict = {
-            col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name not in immutable_on_upsert
-        }
-        child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
-        db_session.execute(child_stmt)
+        # Chunk to stay under PostgreSQL's 65535 bind-parameter limit.
+        chunk_size = 65_535 // len(child_values[0])
+        for i in range(0, len(child_values), chunk_size):
+            child_stmt = insert(child_table).values(child_values[i : i + chunk_size])
+            update_dict = {
+                col_name: child_stmt.excluded[col_name]
+                for col_name in valid_columns
+                if col_name not in immutable_on_upsert
+            }
+            child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
+            db_session.execute(child_stmt)
         # NOTE: Caller should commit - allows batching multiple operations
 
     def get_by_record_id(

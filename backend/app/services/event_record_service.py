@@ -740,6 +740,22 @@ class EventRecordService(
         # bulk_create_details() when the matching details are inserted.
         return self.crud.bulk_create(db_session, records)
 
+    def bulk_create_with_details(
+        self,
+        db_session: DbSession,
+        items: list[tuple[EventRecordCreate, EventRecordDetailCreate]],
+        detail_type: DetailType = EventCategory.WORKOUT,
+    ) -> int:
+        """Insert records and their details in batches. Returns how many records were new.
+
+        Records already stored (same data source and window) are skipped along with their
+        details, so a re-sync writes and announces nothing twice. Caller commits.
+        """
+        inserted = set(self.bulk_create(db_session, [record for record, _ in items]))
+        details = [detail for _, detail in items if detail.record_id in inserted]
+        self.bulk_create_details(db_session, details, detail_type=detail_type)
+        return len(inserted)
+
     def bulk_create_details(
         self,
         db_session: DbSession,
