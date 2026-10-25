@@ -26,6 +26,7 @@ from app.utils.exceptions import (
     InvalidInputError,
     NotFoundError,
     PermissionDeniedError,
+    ServiceUnavailableError,
     TooManyRequestsError,
     UpstreamError,
 )
@@ -42,6 +43,9 @@ logger = get_logger(__name__)
 
 # instance/info is public; while verification is pending it asks the license server at most this often.
 STATUS_REFRESH_INTERVAL = timedelta(seconds=60)
+
+# The license server registered the instance but its verification email failed.
+EMAIL_UNAVAILABLE = "EMAIL_UNAVAILABLE"
 
 
 # A license server refusal keeps its meaning: the domain error for its status, with its own code as `license_code`.
@@ -120,6 +124,14 @@ class AppRegistrationService:
         try:
             result = self.client.register(registration.private_key, registration.instance_id, body)
         except LicenseServerUnavailableError as exc:
+            if exc.code == EMAIL_UNAVAILABLE:
+                # The license server kept the pending instance; keep ours too, so a retry resends to the same id.
+                db.commit()
+                raise ServiceUnavailableError(
+                    "The license server could not send the confirmation email. Send the link again "
+                    "in a few minutes; if it keeps failing, contact Open Wearables support.",
+                    extensions={"license_code": exc.code},
+                ) from exc
             db.rollback()
             raise _unavailable() from exc
         except LicenseServerError as exc:

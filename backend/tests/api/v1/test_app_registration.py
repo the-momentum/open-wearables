@@ -166,6 +166,30 @@ class TestRegistration:
         assert response.status_code == 502
         assert db.get(AppRegistration, 1) is None
 
+    def test_failed_verification_email_keeps_the_pending_registration(
+        self,
+        client: TestClient,
+        db: Session,
+        api_v1_prefix: str,
+        headers: dict[str, str],
+        license_server: FakeLicenseServer,
+    ) -> None:
+        license_server.fail_with = LicenseServerUnavailableError("503", code="EMAIL_UNAVAILABLE")
+
+        response = _register(client, api_v1_prefix, headers)
+
+        assert response.status_code == 503
+        assert response.json()["license_code"] == "EMAIL_UNAVAILABLE"
+        assert "confirmation email" in response.json()["detail"]
+        pending = client.get(f"{api_v1_prefix}/app-registration", headers=headers).json()
+        assert pending["status"] == "pending_verification"
+
+        license_server.fail_with = None
+        retry = _register(client, api_v1_prefix, headers)
+
+        assert retry.status_code == 201
+        assert retry.json()["instance_id"] == pending["instance_id"]
+
     def test_license_server_refusal_is_passed_through(
         self,
         client: TestClient,

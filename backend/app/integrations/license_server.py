@@ -22,7 +22,11 @@ class LicenseServerError(Exception):
 
 
 class LicenseServerUnavailableError(Exception):
-    """The license server could not be reached."""
+    """The license server could not be reached, or failed; code is set when it said why."""
+
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 class LicenseServerClient:
@@ -66,7 +70,8 @@ class LicenseServerClient:
         except httpx.HTTPError as exc:
             raise LicenseServerUnavailableError(str(exc)) from exc
         if response.status_code >= 500:
-            raise LicenseServerUnavailableError(f"License server returned {response.status_code}")
+            code, _ = _error_detail(response)
+            raise LicenseServerUnavailableError(f"License server returned {response.status_code}", code=code)
         if response.status_code >= 400:
             code, message = _error_detail(response)
             raise LicenseServerError(response.status_code, code, message)
