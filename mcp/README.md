@@ -163,7 +163,19 @@ Get sleep summaries for a user within a date range.
       "date": "2026-02-03",
       "start_datetime": "2026-02-03T23:15:00+00:00",
       "end_datetime": "2026-02-04T07:30:00+00:00",
+      "zone_offset": "+00:00",
       "duration_minutes": 495,
+      "total_duration_minutes": 520,
+      "time_in_bed_minutes": 540,
+      "efficiency_percent": 91.7,
+      "stages": {
+        "awake_minutes": 15,
+        "light_minutes": 250,
+        "deep_minutes": 90,
+        "rem_minutes": 155
+      },
+      "nap_count": 1,
+      "nap_duration_minutes": 25,
       "source": "whoop"
     }
   ],
@@ -176,6 +188,11 @@ Get sleep summaries for a user within a date range.
   }
 }
 ```
+
+Each record carries every field the backend returns for that day, so `stages`
+(and the other per-day metrics) are passed through rather than dropped. Fields a
+provider does not report are `null` - `stages` is null for wearables without
+sleep-stage detection.
 
 ## Architecture
 
