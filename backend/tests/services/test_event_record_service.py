@@ -1005,6 +1005,42 @@ class TestCreateOrMergeSleep:
         assert mock_sleep.call_args.kwargs["device_type"] == "ring"
 
 
+class TestUpsertSleep:
+    def test_same_external_id_refreshes_in_place_without_announcing(self, db: Session) -> None:
+        data_source = DataSourceFactory()
+        start = datetime(2026, 3, 21, 1, tzinfo=timezone.utc)
+
+        def upsert(hours: int) -> EventRecord:
+            end = start + timedelta(hours=hours)
+            record = EventRecordCreate(
+                id=uuid4(),
+                category="sleep",
+                type="sleep_session",
+                source_name="test",
+                source=data_source.source,
+                provider=data_source.provider,
+                user_id=data_source.user_id,
+                data_source_id=data_source.id,
+                external_id="s1",
+                start_datetime=start,
+                end_datetime=end,
+                duration_seconds=hours * 3600,
+            )
+            detail = EventRecordDetailCreate(record_id=record.id, sleep_time_in_bed_minutes=hours * 60)
+            return event_record_service.upsert_sleep(db, data_source.user_id, record, detail)
+
+        with patch("app.services.event_record_service.on_sleep_created") as mock_sleep:
+            first = upsert(6)
+            second = upsert(7)
+
+        db.expire_all()
+        assert second.id == first.id
+        assert db.query(EventRecord).filter(EventRecord.category == "sleep").count() == 1
+        assert second.end_datetime == start + timedelta(hours=7)
+        assert second.sleep_detail.sleep_time_in_bed_minutes == 420
+        mock_sleep.assert_called_once()
+
+
 class TestRecomputeSleepScores:
     """Test the internal sleep score recompute triggered by create_or_merge_sleep."""
 

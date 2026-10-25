@@ -119,6 +119,34 @@ class EventRecordRepository(
             query = query.filter(DataSource.provider == provider)
         return query.one_or_none()
 
+    def get_sleep_records_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> list[EventRecord]:
+        """Sleep sessions stored under *external_id*, newest first, locked for update.
+
+        A list because older syncs could store one copy per data source.
+        """
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.sleep_detail))
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.category == EventCategory.SLEEP,
+                self.model.external_id == external_id,
+            )
+        )
+        if source is not None:
+            query = query.filter(DataSource.source == source)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        return query.order_by(self.model.created_at.desc()).with_for_update().all()
+
     def delete_by_external_id(
         self,
         db_session: DbSession,
