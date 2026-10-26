@@ -66,6 +66,13 @@ _SOURCES_WITH_SAMPLES_BEFORE = text(f"""
     ORDER BY ds.id LIMIT :limit
 """)
 
+# The legacy archive, read by no one since the backfill copied it; its days fall under retention like the samples.
+_DELETE_ARCHIVE_BEFORE = text("""
+    DELETE FROM data_point_series_archive WHERE id IN (
+        SELECT id FROM data_point_series_archive WHERE bucket_start_at < CAST(:cutoff AS date) LIMIT :limit
+    )
+""")
+
 # A source's earliest sample: one index probe per series type, not a scan of its history.
 _EARLIEST_SAMPLE = text("""
     SELECT min(first.recorded_at) FROM series_type_definition t
@@ -177,6 +184,11 @@ class DataPointSeriesArchiveRepository:
 
     def earliest_sample(self, db: DbSession, source_id: UUID) -> datetime | None:
         return db.execute(_EARLIEST_SAMPLE, {"source_id": source_id}).scalar()
+
+    def delete_archive_before(self, db: DbSession, cutoff_date: date, limit: int) -> int:
+        """Delete up to ``limit`` rows of the legacy archive for UTC days before ``cutoff_date``; the backfill has
+        copied them into the aggregate tables by the time retention runs."""
+        return db.execute(_DELETE_ARCHIVE_BEFORE, {"cutoff": cutoff_date, "limit": limit}).rowcount  # ty: ignore[unresolved-attribute]
 
     def delete_days(self, db: DbSession, source_id: UUID, days: list[date]) -> int:
         """Delete the source's samples of these consecutive local days, whole; returns the rows deleted."""

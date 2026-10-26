@@ -20,6 +20,7 @@ from app.integrations.rollup_queue import (
     requeue_dirty_days,
 )
 from app.models import (
+    DataPointSeriesArchive,
     DataSource,
     EventRecord,
     EventRecordAggregate,
@@ -35,7 +36,7 @@ from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.series_aggregate_repository import daily_activity
 from app.repositories.series_rollup_repository import SeriesRollupRepository, _runs
-from app.schemas.enums import ComputedBy, PeriodKind, SeriesType, get_series_type_id
+from app.schemas.enums import AggregationMethod, ComputedBy, PeriodKind, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     CalendarPeriod,
     EventRecordCreate,
@@ -44,7 +45,7 @@ from app.schemas.model_crud.activities import (
     SessionValue,
     TimeSeriesSampleCreate,
 )
-from app.services.aggregate_backfill_service import BACKFILL_MIGRATION
+from app.services.aggregate_backfill_service import BACKFILL_MIGRATION, aggregate_backfill_service
 from app.services.archival_service import archival_service
 from tests.factories import (
     DataPointSeriesFactory,
@@ -623,8 +624,48 @@ class TestDailyLifecycleJob:
         setting.rollup_enabled, setting.delete_after_days = rollup_enabled, delete_after_days
         db.add(setting)
         if backfilled:
-            DataMigrationRepository().mark_completed(db, BACKFILL_MIGRATION)
+            for step in aggregate_backfill_service.steps:
+                DataMigrationRepository().mark_completed(db, f"{BACKFILL_MIGRATION}:{step.name}")
         db.commit()
+
+    def test_retention_deletes_the_legacy_archives_old_days_too(self, db: Session) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        source = DataSourceFactory()
+        heart_rate = get_series_type_id(SeriesType.heart_rate)
+        for days_ago in (60, 10):
+            db.add(
+                DataPointSeriesArchive(
+                    id=uuid4(),
+                    data_source_id=source.id,
+                    series_type_definition_id=heart_rate,
+                    bucket_start_at=datetime.combine(
+                        date.today() - timedelta(days=days_ago), datetime.min.time(), timezone.utc
+                    ),
+                    aggregation_type=AggregationMethod.AVG,
+                    value=Decimal("62"),
+                    sample_count=1440,
+                )
+            )
+        db.commit()
+
+        summary = archival_service.run_daily_archival(db)
+
+        kept = [row.bucket_start_at.date() for row in db.query(DataPointSeriesArchive)]
+        assert (summary["deleted_archive_rows"], kept) == (1, [date.today() - timedelta(days=10)])
+
+    def test_a_backfill_step_added_later_keeps_retention_waiting(self, db: Session) -> None:
+        """The overall marker of an earlier release is not enough: a step it did not have must run first."""
+        self._settings(db, rollup_enabled=False, delete_after_days=30, backfilled=False)
+        DataMigrationRepository().mark_completed(db, BACKFILL_MIGRATION)
+        DataPointSeriesFactory(recorded_at=datetime.now(timezone.utc) - timedelta(days=60))
+
+        assert (
+            aggregate_backfill_service.is_done(db),
+            archival_service.run_daily_archival(db)["deleted_live_rows"],
+        ) == (
+            False,
+            0,
+        )
 
     def test_retention_waits_until_the_backfill_is_done(self, db: Session) -> None:
         self._settings(db, rollup_enabled=False, delete_after_days=30, backfilled=False)

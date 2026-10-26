@@ -106,7 +106,7 @@ class ArchivalService:
         setting = self.settings_repo.get(db)
         cutoff = self._cutoff(setting)
         frozen_before = setting.deleted_before
-        summary = {"rolled_up_days": 0, "deleted_live_rows": 0}
+        summary = {"rolled_up_days": 0, "deleted_live_rows": 0, "deleted_archive_rows": 0}
         try:
             summary["rolled_up_days"] = self.roll_up_queued_days(db, MAX_SECONDS_PER_RUN)
         except SoftTimeLimitExceeded:
@@ -131,6 +131,7 @@ class ArchivalService:
                 delete_after_days=setting.delete_after_days,
                 deleted_live_rows=deleted,
             )
+            summary["deleted_archive_rows"] = self._delete_archive_before(db, cutoff)
             # Coverage is trimmed, and the days frozen, only once nothing older than the cutoff is left.
             if complete:
                 data_type_coverage_repository.trim_series_before(db, cutoff)
@@ -139,6 +140,14 @@ class ArchivalService:
                     rollup_queue.clear_sources_deleted_before()
 
         return summary
+
+    def _delete_archive_before(self, db: DbSession, cutoff: date) -> int:
+        """The legacy archive's days before the cutoff, a batch per commit, within the run's row budget."""
+        deleted = 0
+        while deleted < MAX_ROWS_PER_RUN and (rows := self.archive_repo.delete_archive_before(db, cutoff, 10_000)):
+            db.commit()
+            deleted += rows
+        return deleted
 
     @staticmethod
     def _cutoff(setting: ArchivalSetting) -> date | None:

@@ -50,7 +50,8 @@ class AggregateBackfillService:
         ]
 
     def is_done(self, db: DbSession) -> bool:
-        return self.migrations.is_completed(db, BACKFILL_MIGRATION)
+        """Every step done: a step a later release adds still runs where the earlier ones finished long ago."""
+        return all(self.migrations.is_completed(db, f"{BACKFILL_MIGRATION}:{step.name}") for step in self.steps)
 
     def run(self, db: DbSession, budget_seconds: float) -> bool:
         """Run the pending steps until all are done (True) or the budget is spent (False)."""

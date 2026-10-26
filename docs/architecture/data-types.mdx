@@ -334,7 +334,8 @@ Buckets up to `1hour` are grouped per data source, so two devices reporting the 
 two points. Rate metrics (heart rate, power) are averaged and counters (steps, energy) are summed.
 A provider's day value is not a point in an intraday series: resting heart rate, nightly HRV, SpO2,
 VO2 max and a provider's daily totals exist only at `1day` and coarser, where `raw` and the minute
-and hour buckets return nothing for them.
+and hour buckets return nothing for them. Values stored before this release reach `1day` through a
+backfill that runs after the upgrade, and stay in `raw` until it has.
 
 ---
 

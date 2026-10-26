@@ -519,7 +519,7 @@ Each timeseries event carries the full sample array so your backend can act on t
 Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_id}/timeseries`, so consumers work with a single schema regardless of whether data comes from a webhook or the pull API.
 
 <Note>
-  Series events carry readings only. A provider's **day value** (Garmin's daily step total, Oura's nightly SpO2, a readiness temperature) is not a sample any more and is not sent as one: read it from `GET /api/v1/users/{user_id}/timeseries?resolution=1day`, where every source's days are, the provider's own value where it sent one. `is_daily_total` is therefore `false` or `null` on every sample a webhook carries; sum the samples of an additive series (steps, energy, distance, flights) as they come.
+  Series events carry readings only. A provider's **day value** (Garmin's daily step total, Oura's nightly SpO2, a readiness temperature) is not a sample any more and is not sent as one: read it from `GET /api/v1/users/{user_id}/timeseries?resolution=1day`, where every source's days are, the provider's own value where it sent one. Day values stored before this release are copied there by a backfill that runs after the upgrade; until it has reached them, they are still in `raw`. `is_daily_total` is therefore `false` or `null` on every sample a webhook carries; sum the samples of an additive series (steps, energy, distance, flights) as they come.
 </Note>
 
 <Note>
