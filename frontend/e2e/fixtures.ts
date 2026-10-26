@@ -1286,7 +1286,7 @@ export const makeSystemInfo = () => ({
 	active_conn: { count: 902 },
 	// Both approximate in the real thing - a cached count with a planner estimate
 	// behind it, and the archive count straight from planner statistics.
-	data_points: { count: 1_452_310, archived: 318_004 },
+	data_points: { count: 1_452_310, archived: 318_004, aggregated: 266_000 },
 	event_records: { count: 20_418, workouts: 8432, sleep: 11_766, menstrual_cycles: 220 },
 	connections_coverage: {
 		users_with_active: 902,
