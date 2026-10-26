@@ -67,15 +67,24 @@ def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
 
 # What the user's other devices recorded inside a sleep, for the series the sleep's own device has no value of:
 # a sleep logged by an app while a watch measured the night.
+# Only the (sleep, series) pairs the sleep lacks: a night's heart rate is nearly always the sleep's own, and a
+# watch at 1 Hz holds some 30,000 readings of it a night.
+# The lateral keeps it to one index range per pair and other device: joined plainly, the planner hashes the whole
+# sample table.
 _OTHER_DEVICES_IN_SLEEP = text("""
-    SELECT er.id AS record_id, s.series_type_definition_id AS type_id, avg(s.value) AS avg
-    FROM event_record er
+    SELECT m.record_id, m.type_id, inside.avg
+    FROM unnest(CAST(:record_ids AS uuid[]), CAST(:type_ids AS integer[])) AS m(record_id, type_id)
+    JOIN event_record er ON er.id = m.record_id
     JOIN data_source own ON own.id = er.data_source_id
-    JOIN data_source other ON other.user_id = own.user_id AND other.id <> own.id
-    JOIN series_sample s ON s.data_source_id = other.id AND s.series_type_definition_id = ANY(:type_ids)
-        AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime AND s.is_daily_total IS NOT TRUE
-    WHERE er.id = ANY(:record_ids)
-    GROUP BY 1, 2
+    CROSS JOIN LATERAL (
+        SELECT avg(s.value) AS avg
+        FROM data_source other
+        JOIN series_sample s ON s.data_source_id = other.id AND s.series_type_definition_id = m.type_id
+            AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
+            AND s.is_daily_total IS NOT TRUE
+        WHERE other.user_id = own.user_id AND other.id <> own.id
+    ) inside
+    WHERE inside.avg IS NOT NULL
 """)
 
 # A night's physiology in a sleep summary, by the key its row carries.
@@ -1164,10 +1173,10 @@ class EventRecordRepository(
                     averages[(row.record_id, row.series_type_definition_id)] = float(row.avg)
         missing = {(record_id, type_id) for record_id in record_ids for type_id in type_ids} - set(averages)
         if missing:
-            params = {"record_ids": sorted({r for r, _ in missing}), "type_ids": sorted({t for _, t in missing})}
+            pairs = sorted(missing)
+            params = {"record_ids": [r for r, _ in pairs], "type_ids": [t for _, t in pairs]}
             for row in db_session.execute(_OTHER_DEVICES_IN_SLEEP, params):
-                if (row.record_id, row.type_id) in missing:
-                    averages[(row.record_id, row.type_id)] = float(row.avg)
+                averages[(row.record_id, row.type_id)] = float(row.avg)
 
         physiology: dict[tuple, dict[str, float | None]] = {}
         for key, sleeps in main_sleeps_by_key.items():
