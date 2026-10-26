@@ -95,7 +95,14 @@ class ArchivalService:
         summary = {"rolled_up_days": 0, "deleted_live_rows": 0}
 
         if setting.rollup_enabled:
-            summary["rolled_up_days"] = self._roll_up_queued_days(db, cutoff, frozen_before)
+            try:
+                summary["rolled_up_days"] = self._roll_up_queued_days(db, cutoff, frozen_before)
+            except SoftTimeLimitExceeded:
+                raise
+            except Exception as exc:
+                # Retention rolls up the days it deletes itself: a queue that fails must not hold it back.
+                db.rollback()
+                log_and_capture_error(exc, self.logger, "Rollup: the queued days failed; retention goes on")
         else:
             rollup_queue.clear_dirty_days()
 

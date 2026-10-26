@@ -288,8 +288,10 @@ def _queue_rollup(target: UUID, days: list) -> None:
     """The target's open_wearables rows for the moved days are recomputed by the next rollup run."""
     try:
         requeue_dirty_days((target, day) for day in days)
-    except Exception:
-        logger.warning("Could not queue %d days of data source %s for the rollup", len(days), target, exc_info=True)
+    except Exception as exc:
+        log_and_capture_error(
+            exc, logger, "Could not queue the moved days for the rollup", extra={"data_source_id": str(target)}
+        )
 
 
 def _rowcount(db: Session, query: TextClause, params: dict) -> int:

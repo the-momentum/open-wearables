@@ -10,14 +10,19 @@ from sqlalchemy import event as sa_event
 
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
+from app.utils.sentry_helpers import log_and_capture_error
 
-DIRTY_DAYS_KEY = "series_rollup:dirty_days"
+# A sorted set scored by the day, so a run takes the newest days first: after a provider sends years of
+# history, the days clients look at are rolled up before the rest.
+DIRTY_DAYS_KEY = "series_rollup:queue"
 # Days a run has taken but not finished: a worker killed mid-run leaves them here, the next run puts them back.
 IN_PROGRESS_KEY = "series_rollup:in_progress"
 
-# SPOP and the hand-over to the in-progress set in one step, so a kill between the two cannot lose a day.
+# ZPOPMAX and the hand-over to the in-progress set in one step, so a kill between the two cannot lose a day.
 _TAKE = """
-local taken = redis.call('SPOP', KEYS[1], ARGV[1])
+local popped = redis.call('ZPOPMAX', KEYS[1], ARGV[1])
+local taken = {}
+for i = 1, #popped, 2 do taken[#taken + 1] = popped[i] end
 if #taken > 0 then redis.call('SADD', KEYS[2], unpack(taken)) end
 return taken
 """
@@ -34,10 +39,10 @@ def mark_dirty_days(db_session: DbSession, days: Iterable[tuple[UUID, date]]) ->
     @sa_event.listens_for(db_session, "after_commit", once=True)
     def _queue(_session: DbSession) -> None:
         try:
-            get_redis_client().sadd(DIRTY_DAYS_KEY, *members)
-        except Exception:
+            get_redis_client().zadd(DIRTY_DAYS_KEY, _scored(members))
+        except Exception as exc:
             # The day stays rolled up as it was; the next write to it, or the backfill, queues it again.
-            logger.warning("Failed to queue %d days for the rollup", len(members), exc_info=True)
+            log_and_capture_error(exc, logger, "Failed to queue days for the rollup", extra={"days": len(members)})
 
 
 def pop_dirty_days(count: int) -> list[tuple[UUID, date]]:
@@ -56,7 +61,7 @@ def requeue_dirty_days(days: Iterable[tuple[UUID, date]]) -> None:
     """Put days back that a run took but did not roll up."""
     if members := _members(days):
         pipe = get_redis_client().pipeline()
-        pipe.sadd(DIRTY_DAYS_KEY, *members)
+        pipe.zadd(DIRTY_DAYS_KEY, _scored(members))
         pipe.srem(IN_PROGRESS_KEY, *members)
         pipe.execute()
 
@@ -68,7 +73,7 @@ def recover_dirty_days() -> int:
     if not members:
         return 0
     pipe = client.pipeline()
-    pipe.sadd(DIRTY_DAYS_KEY, *members)
+    pipe.zadd(DIRTY_DAYS_KEY, _scored(members))
     pipe.delete(IN_PROGRESS_KEY)
     pipe.execute()
     return len(members)
@@ -81,3 +86,8 @@ def clear_dirty_days() -> None:
 
 def _members(days: Iterable[tuple[UUID, date]]) -> list[str]:
     return [f"{source_id}:{day.isoformat()}" for source_id, day in days]
+
+
+def _scored(members: Iterable[str]) -> dict[str, int]:
+    """Each "{source}:{day}" member scored by its day."""
+    return {member: date.fromisoformat(member.rsplit(":", 1)[1]).toordinal() for member in members}

@@ -375,7 +375,7 @@ class TestRollupQueue:
         )
 
         DataPointSeriesRepository(SeriesSample).bulk_create(db, [late_evening])
-        assert get_redis_client().smembers(DIRTY_DAYS_KEY) == set()
+        assert get_redis_client().zcard(DIRTY_DAYS_KEY) == 0
         db.commit()
 
         source_id = db.query(SeriesSample).one().data_source_id
@@ -406,6 +406,15 @@ class TestRollupQueue:
         EventRecordRepository(EventRecord).create(db, creator)
 
         assert {day for _, day in pop_dirty_days(100)} == days
+
+
+class TestDirtyDaysNewestFirst:
+    def test_a_run_takes_the_newest_days_first(self) -> None:
+        source = uuid4()
+        requeue_dirty_days([(source, DAY + timedelta(days=n)) for n in (3, 0, 9, 5)])
+
+        assert [day for _, day in pop_dirty_days(2)] == [DAY + timedelta(days=9), DAY + timedelta(days=5)]
+        assert sorted(day for _, day in pop_dirty_days(10)) == [DAY, DAY + timedelta(days=3)]
 
 
 class TestDirtyDaysSurviveAKill:
@@ -789,6 +798,20 @@ class TestDailyLifecycleJob:
 
         assert (summary["rolled_up_days"], get_redis_client().scard(IN_PROGRESS_KEY)) == (1, 0)
         assert sorted(day for _, day in pop_dirty_days(10)) == days[1:]
+
+    def test_a_failing_queue_does_not_hold_retention_back(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        DataPointSeriesFactory(recorded_at=datetime.now(timezone.utc) - timedelta(days=60))
+        db.commit()
+
+        def broken(*args: object, **kwargs: object) -> int:
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr(archival_service, "_roll_up_queued_days", broken)
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert (summary["deleted_live_rows"], db.query(SeriesSample).count()) == (1, 0)
 
     def test_retention_without_rollup_only_deletes(self, db: Session) -> None:
         self._settings(db, rollup_enabled=False, delete_after_days=30)
