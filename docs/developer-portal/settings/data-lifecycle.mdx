@@ -47,14 +47,14 @@ The projection updates as you edit the policies, before you save.
 
 Every 15 minutes, the days whose samples changed are rolled up into one row a day per series and one row per sleep or workout, for the sources that do not send such values themselves. Summaries, day, week and month reads of `/timeseries`, and the sleep and workout statistics a provider did not send are served from these rows, so rollup is on by default.
 
-Turning it off drops the days that change from then on. They are not queued for later: once rollup is on again, only new changes are rolled up, and the days in between stay as they were. Keep it on unless every connected provider sends its own day and session values.
+Turning it off drops what is queued at the next run, and every day that changes after it. Turned back on, rollup covers only the days that change from then on; the days in between keep the rows they had. Keep it on unless every connected provider sends its own day and session values.
 
 ## Deletion
 
 When enabled, samples of local days older than **Delete samples older than N days** are permanently deleted, whole days at a time, at 03:00 UTC. Set the window between 1 and 7300 days; the number can be typed before the switch is turned on.
 
 - With rollup on, a day is rolled up right before its samples go, so its day and session rows stay. Those rows are never recomputed again: a sample that arrives late for a deleted day only fills a row the day lacks.
-- With rollup off, the samples go and nothing stands in for them.
+- With rollup off, the samples go and none of our day or session rows stands in for them; the day and session values a provider sent itself stay.
 
 Deletion is irreversible.
 
