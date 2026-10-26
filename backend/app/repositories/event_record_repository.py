@@ -636,13 +636,15 @@ class EventRecordRepository(
         self, db_session: DbSession, record_ids: list[UUID]
     ) -> dict[UUID, dict[str, Decimal | None]]:
         """Per workout, every workout_details statistic from event_record_aggregate (the provider's, else ours),
-        plus ``provider_energy`` in the provider's declared series and ``own_energy`` from the workout's samples."""
+        plus ``provider_energy`` in the provider's declared series, ``own_energy`` from the workout's samples and
+        ``average_met``, the workout's physical_effort average."""
         if not record_ids:
             return {}
         # Only the series a statistic is read from: a workout's speed, power or elevation stream is not.
         needed = {get_series_type_id(series_type) for series_type, _ in WORKOUT_DETAIL_STATS.values()} | {
             get_series_type_id(SeriesType.total_energy),
             get_series_type_id(SeriesType.active_energy),
+            get_series_type_id(SeriesType.physical_effort),
         }
         rows = db_session.query(EventRecordAggregate).filter(
             EventRecordAggregate.record_id.in_(record_ids), EventRecordAggregate.series_type_definition_id.in_(needed)
@@ -668,6 +670,10 @@ class EventRecordRepository(
                 pick(provider, record_id, SeriesType.active_energy, "sum"),
             )
             workout["own_energy"] = pick(own, record_id, SeriesType.active_energy, "sum")
+            workout["average_met"] = _first(
+                pick(provider, record_id, SeriesType.physical_effort, "avg"),
+                pick(own, record_id, SeriesType.physical_effort, "avg"),
+            )
             statistics[record_id] = workout
         return statistics
 

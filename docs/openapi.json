@@ -19848,6 +19848,18 @@
             ],
             "title": "Max Watts"
           },
+          "average_met": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Met",
+            "description": "The workout's average metabolic equivalent (MET), from its physical_effort series."
+          },
           "moving_time_seconds": {
             "anyOf": [
               {

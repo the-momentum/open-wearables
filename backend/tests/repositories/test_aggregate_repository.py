@@ -1041,6 +1041,40 @@ class TestWorkoutStatistics:
         assert repo.get_workout_statistics(db, [declared.id, bare.id])[bare.id]["distance"] == Decimal("1000")
         assert (total, day["distance_meters"]) == (Decimal("6000"), 6000)
 
+    def test_the_average_met_is_the_providers_workout_value_else_ours(self, db: Session) -> None:
+        source = DataSourceFactory()
+        effort = db.get(SeriesTypeDefinition, get_series_type_id(SeriesType.physical_effort))
+        sent = self._workout(db, source, datetime(2099, 1, 1, 8, tzinfo=timezone.utc))
+        bare = self._workout(db, source, datetime(2099, 1, 1, 12, tzinfo=timezone.utc))
+        for workout in (sent, bare):
+            for minute, value in [(5, "3"), (20, "5")]:
+                DataPointSeriesFactory(
+                    mapping=source,
+                    series_type=effort,
+                    recorded_at=workout.start_datetime + timedelta(minutes=minute),
+                    value=Decimal(value),
+                )
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": sent.id,
+                    "series_type_definition_id": get_series_type_id(SeriesType.physical_effort),
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("5.8"),
+                    "count": 1,
+                }
+            ],
+        )
+        roll_up_everything(db)
+
+        statistics = EventRecordRepository(EventRecord).get_workout_statistics(db, [sent.id, bare.id])
+
+        assert (statistics[sent.id]["average_met"], statistics[bare.id]["average_met"]) == (
+            Decimal("5.8"),
+            Decimal("4"),
+        )
+
     def test_a_workout_without_provider_heart_rate_takes_ours(self, db: Session) -> None:
         source = DataSourceFactory()
         start = datetime(2099, 1, 1, 8, tzinfo=timezone.utc)

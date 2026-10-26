@@ -241,7 +241,7 @@ Two series changed in this release, and their events with them:
 | Before | Now |
 |--------|-----|
 | `series.walking_heart_rate_average.created` | `series.walking_heart_rate.created` |
-| `series.average_met.created` | retired: a workout's average MET is its `physical_effort` average, read from the workout |
+| `series.average_met.created` | retired: a workout's average MET is its `physical_effort` average, returned as the workout's `average_met` |
 
 Self-hosting with endpoints that filter on the old names: run `scripts/data_migrations/rename_series_webhook_events.py --phase=add` from the new image before it takes traffic, so those endpoints also subscribe to the new names, and `--phase=remove` once the deploy is done. An endpoint whose filter names only old events is left as it is, as removing them would leave it with no filter and every event: the script lists it, and its filter needs the new names set by hand.
 </Note>

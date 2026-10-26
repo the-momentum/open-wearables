@@ -964,6 +964,7 @@ class EventRecordService(
                 average_cadence=as_float(stats.get("average_cadence")),
                 average_watts=as_float(stats.get("average_watts")),
                 max_watts=as_float(stats.get("max_watts")),
+                average_met=as_float(stats.get("average_met")),
                 moving_time_seconds=details.moving_time_seconds if details else None,
                 elev_high=as_float(stats.get("elev_high")),
                 elev_low=as_float(stats.get("elev_low")),
