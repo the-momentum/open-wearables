@@ -337,7 +337,9 @@ class DataPointSeriesRepository(
         record_ids = {c.session.record_id for c in creators if c.session is not None}
         if not record_ids:
             return creators
-        live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id.in_(record_ids))}
+        # One array bind: a long history import can carry more record ids than a statement takes parameters.
+        ids = cast(list(record_ids), postgresql.ARRAY(PGUUID(as_uuid=True)))
+        live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id == func.any(ids))}
         if gone := record_ids - live:
             logger.warning("Session values of %d samples point at deleted records; kept as samples only", len(gone))
             return [
