@@ -27,13 +27,25 @@ _STATS = """sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s
     (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last, count(*) AS count"""
 _SAMPLE_DAY = sample_day_sql("s")
 
+# A month of days: the last value and the first offset are read back by their instants through the unique index,
+# as ordering every day's rows inside the aggregate (array_agg ... ORDER BY) sorts the whole range on disk.
 _DAY_STATS = text(f"""
-    SELECT s.series_type_definition_id, {_SAMPLE_DAY} AS day,
-        (array_agg(coalesce(s.zone_offset, '+00:00') ORDER BY s.recorded_at))[1] AS zone_offset, {_STATS}
-    FROM series_sample s
-    WHERE s.data_source_id = :source_id AND s.recorded_at >= :lo AND s.recorded_at < :hi
-        AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
-    GROUP BY 1, 2
+    WITH g AS (
+        SELECT s.series_type_definition_id, {_SAMPLE_DAY} AS day, min(s.recorded_at) AS first_at,
+            sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s.value) AS max,
+            max(s.recorded_at) AS last_at, count(*) AS count
+        FROM series_sample s
+        WHERE s.data_source_id = :source_id AND s.recorded_at >= :lo AND s.recorded_at < :hi
+            AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
+        GROUP BY 1, 2
+    )
+    SELECT g.*,
+        coalesce((SELECT f.zone_offset FROM series_sample f WHERE f.data_source_id = :source_id
+            AND f.series_type_definition_id = g.series_type_definition_id AND f.recorded_at = g.first_at), '+00:00')
+            AS zone_offset,
+        (SELECT l.value FROM series_sample l WHERE l.data_source_id = :source_id
+            AND l.series_type_definition_id = g.series_type_definition_id AND l.recorded_at = g.last_at) AS last
+    FROM g
 """)
 
 # Only the rows about to be recomputed: a series whose samples are gone keeps the row it has.
