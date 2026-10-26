@@ -1263,6 +1263,8 @@ class EventRecordRepository(
 
 
 def local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
-    """Every local day an event touches, so its sessions are rolled up with them."""
+    """The local days an event starts and ends on: rolling either up recomputes the event's own rows (a day's
+    rollup reaches every session overlapping it), and no day row depends on an event. Every day in between
+    would queue a 28-day cycle, or a span sent by mistake, a day at a time."""
     first, last = local_date(start, zone_offset), local_date(end, zone_offset)
-    return [(source_id, first + timedelta(days=n)) for n in range((last - first).days + 1)]
+    return [(source_id, day) for day in sorted({first, last})]

@@ -1,8 +1,10 @@
+import importlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
 from app.integrations.redis_client import get_redis_client
@@ -42,6 +44,9 @@ from tests.factories import (
     SeriesTypeDefinitionFactory,
     UserFactory,
 )
+
+# app.services exports the service instance under the module's name, so patch the module itself.
+_ARCHIVAL_SERVICE = importlib.import_module("app.services.archival_service")
 
 DAY = date(2099, 1, 1)
 
@@ -376,7 +381,13 @@ class TestRollupQueue:
         source_id = db.query(SeriesSample).one().data_source_id
         assert pop_dirty_days(10) == [(source_id, date(2099, 1, 2))]
 
-    def test_an_event_queues_every_local_day_it_touches(self, db: Session) -> None:
+    @pytest.mark.parametrize(
+        ("hours", "days"),
+        [(8, {date(2099, 1, 1), date(2099, 1, 2)}), (28 * 24, {date(2099, 1, 1), date(2099, 1, 29)})],
+    )
+    def test_an_event_queues_the_local_days_it_starts_and_ends_on(
+        self, db: Session, hours: int, days: set[date]
+    ) -> None:
         source = DataSourceFactory()
         creator = EventRecordCreate(
             id=uuid4(),
@@ -385,16 +396,16 @@ class TestRollupQueue:
             category="sleep",
             type="sleep",
             source_name="Apple Watch",
-            duration_seconds=8 * 3600,
+            duration_seconds=hours * 3600,
             start_datetime=datetime(2099, 1, 1, 22, tzinfo=timezone.utc),
-            end_datetime=datetime(2099, 1, 2, 6, tzinfo=timezone.utc),
+            end_datetime=datetime(2099, 1, 1, 22, tzinfo=timezone.utc) + timedelta(hours=hours),
             zone_offset="+00:00",
             device_model=source.device_model,
         )
 
         EventRecordRepository(EventRecord).create(db, creator)
 
-        assert {day for _, day in pop_dirty_days(10)} == {date(2099, 1, 1), date(2099, 1, 2)}
+        assert {day for _, day in pop_dirty_days(100)} == days
 
 
 class TestDirtyDaysSurviveAKill:
@@ -668,7 +679,7 @@ class TestDailyLifecycleJob:
         assert pop_dirty_days(10) == []
 
     def test_retention_deletes_whole_days_a_few_at_a_time(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("app.repositories.archival_repository.DELETE_DAYS_PER_BATCH", 1)
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "DELETE_DAYS_PER_BATCH", 1)
         self._settings(db, rollup_enabled=True, delete_after_days=30)
         source = DataSourceFactory()
         cutoff = date.today() - timedelta(days=30)
@@ -685,6 +696,99 @@ class TestDailyLifecycleJob:
         assert summary["deleted_live_rows"] == 6
         assert db.query(SeriesSample).count() == 0
         assert db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES).count() == 3
+
+    def test_a_session_across_two_retention_batches_keeps_all_its_samples(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The second batch rolls up what is left of a sleep that began in the first: it must not overwrite the
+        sleep's rows with its second half."""
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "DELETE_DAYS_PER_BATCH", 1)
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        source = DataSourceFactory()
+        night = date.today() - timedelta(days=40)
+        start = datetime.combine(night, datetime.min.time(), timezone.utc) + timedelta(hours=22)
+        sleep = EventRecordFactory(data_source=source, start_datetime=start, duration_seconds=8 * 3600)
+        for hours, value in ((1, "50"), (5, "70")):
+            DataPointSeriesFactory(mapping=source, recorded_at=start + timedelta(hours=hours), value=Decimal(value))
+
+        archival_service.run_daily_archival(db)
+
+        row = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == sleep.id).one()
+        assert (row.avg, row.count, db.query(SeriesSample).count()) == (Decimal("60"), 2, 0)
+
+    def test_one_failing_source_does_not_hold_retention(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        good, bad = DataSourceFactory(), DataSourceFactory()
+        old = datetime.now(timezone.utc) - timedelta(days=60)
+        for source in (good, bad):
+            DataPointSeriesFactory(mapping=source, recorded_at=old)
+        db.commit()
+        roll_up = archival_service.rollup_repo.roll_up
+
+        def failing(db_session: Session, source_id: object, *args: object, **kwargs: object) -> int:
+            if source_id == bad.id:
+                raise RuntimeError("bad offset")
+            return roll_up(db_session, source_id, *args, **kwargs)
+
+        monkeypatch.setattr(archival_service.rollup_repo, "roll_up", failing)
+
+        archival_service.run_daily_archival(db)
+
+        assert [sample.data_source_id for sample in db.query(SeriesSample)] == [bad.id]
+        # Not every old day is gone, so none is frozen yet.
+        assert db.get(ArchivalSetting, 1).deleted_before is None
+
+    def test_retention_goes_through_every_source_page(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "RETENTION_SOURCES_PER_QUERY", 1)
+        self._settings(db, rollup_enabled=False, delete_after_days=30)
+        for _ in range(3):
+            DataPointSeriesFactory(
+                mapping=DataSourceFactory(), recorded_at=datetime.now(timezone.utc) - timedelta(days=60)
+            )
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert (summary["deleted_live_rows"], db.query(SeriesSample).count()) == (3, 0)
+        assert db.get(ArchivalSetting, 1).deleted_before == date.today() - timedelta(days=30)
+
+    def test_a_run_past_its_soft_time_limit_puts_its_batch_back(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._settings(db, rollup_enabled=True, delete_after_days=None)
+        source = DataSourceFactory()
+        requeue_dirty_days([(source.id, DAY)])
+
+        def killed(*args: object, **kwargs: object) -> int:
+            raise SoftTimeLimitExceeded()
+
+        monkeypatch.setattr(archival_service.rollup_repo, "roll_up", killed)
+
+        with pytest.raises(SoftTimeLimitExceeded):
+            archival_service.run_daily_archival(db)
+
+        assert (get_redis_client().scard(IN_PROGRESS_KEY), pop_dirty_days(10)) == (0, [(source.id, DAY)])
+
+    def test_a_run_out_of_time_puts_back_the_days_it_did_not_reach(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "ROLLUP_DAYS_PER_COMMIT", 1)
+        self._settings(db, rollup_enabled=True, delete_after_days=None)
+        source = DataSourceFactory()
+        days = [DAY, DAY + timedelta(days=1), DAY + timedelta(days=2)]
+        requeue_dirty_days([(source.id, day) for day in days])
+        roll_up = archival_service.rollup_repo.roll_up
+        later = _ARCHIVAL_SERVICE.time.monotonic() + 10_000
+
+        def one_day_then_out_of_time(*args: object, **kwargs: object) -> int:
+            monkeypatch.setattr(_ARCHIVAL_SERVICE.time, "monotonic", lambda: later)
+            return roll_up(*args, **kwargs)
+
+        monkeypatch.setattr(archival_service.rollup_repo, "roll_up", one_day_then_out_of_time)
+
+        summary = archival_service.run_daily_archival(db)
+
+        assert (summary["rolled_up_days"], get_redis_client().scard(IN_PROGRESS_KEY)) == (1, 0)
+        assert sorted(day for _, day in pop_dirty_days(10)) == days[1:]
 
     def test_retention_without_rollup_only_deletes(self, db: Session) -> None:
         self._settings(db, rollup_enabled=False, delete_after_days=30)

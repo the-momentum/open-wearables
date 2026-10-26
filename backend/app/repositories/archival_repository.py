@@ -1,13 +1,10 @@
 """Repository for archival settings and archive table operations."""
 
-import time
-from collections.abc import Callable
-from datetime import date, datetime, timezone
-from itertools import batched
+from datetime import date, datetime, timedelta, timezone
 from typing import NamedTuple
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Date, Subquery, and_, case, cast, func, literal_column, text
+from sqlalchemy import ColumnElement, Date, Subquery, case, cast, func, literal_column, text
 
 from app.database import DbSession
 from app.models import DataPointSeriesArchive, DataSource, SeriesSample
@@ -59,8 +56,24 @@ class ArchivalSettingRepository:
 # Safety limits to prevent overloading the DB on initial runs
 MAX_ROWS_PER_RUN = 500_000  # Stop after deleting this many rows per invocation
 MAX_SECONDS_PER_RUN = 120  # Stop after this many seconds per invocation
-# Local days deleted per statement and commit: three days of 1 Hz data is a quarter million rows.
-DELETE_DAYS_PER_BATCH = 3
+
+# Sources holding a sample before the bound, in id order after a cursor: one index probe per source.
+_SOURCES_WITH_SAMPLES_BEFORE = text("""
+    SELECT ds.id FROM data_source ds
+    WHERE ds.id > :after
+        AND EXISTS (SELECT 1 FROM series_sample s WHERE s.data_source_id = ds.id AND s.recorded_at < :before)
+    ORDER BY ds.id LIMIT :limit
+""")
+
+# A source's earliest sample: one index probe per series type, not a scan of its history.
+_EARLIEST_SAMPLE = text("""
+    SELECT min(first.recorded_at) FROM series_type_definition t
+    CROSS JOIN LATERAL (
+        SELECT s.recorded_at FROM series_sample s
+        WHERE s.data_source_id = :source_id AND s.series_type_definition_id = t.id
+        ORDER BY s.recorded_at LIMIT 1
+    ) first
+""")
 
 
 class BatchedRun(NamedTuple):
@@ -152,58 +165,28 @@ class DataPointSeriesArchiveRepository:
             "total_pretty": _pretty_bytes(total),
         }
 
-    def delete_live_before(
-        self,
-        db: DbSession,
-        cutoff_date: date,
-        before_delete: Callable[[DbSession, UUID], None] | None = None,
-    ) -> BatchedRun:
-        """Permanently delete live rows of local days before *cutoff_date*, a few data sources at a time.
+    def sources_with_samples_before(self, db: DbSession, before: datetime, after: UUID, limit: int) -> list[UUID]:
+        """Up to ``limit`` data sources, in id order after ``after``, holding a sample recorded before ``before``."""
+        params = {"before": before, "after": after, "limit": limit}
+        return list(db.execute(_SOURCES_WITH_SAMPLES_BEFORE, params).scalars())
 
-        A local day goes whole, so a rollup run on what is left never sees a day cut short.
-        ``before_delete`` runs for each data source first, in the same transaction (the rollup).
-        Stops after MAX_ROWS_PER_RUN rows or MAX_SECONDS_PER_RUN seconds; the next run continues.
+    def earliest_sample(self, db: DbSession, source_id: UUID) -> datetime | None:
+        return db.execute(_EARLIEST_SAMPLE, {"source_id": source_id}).scalar()
 
-        Returns the number of live rows deleted, and whether none older are left.
-        """
-        total_deleted = 0
-        start_time = time.monotonic()
-        hi = utc_midnight(cutoff_date) + OFFSET_REACH
+    def delete_days(self, db: DbSession, source_id: UUID, days: list[date]) -> int:
+        """Delete the source's samples of these consecutive local days, whole; returns the rows deleted."""
         local_day = literal_column(sample_day_sql())
-        older = and_(SeriesSample.recorded_at < hi, local_day < cutoff_date)
-
-        def out_of_budget() -> bool:
-            return total_deleted >= MAX_ROWS_PER_RUN or time.monotonic() - start_time >= MAX_SECONDS_PER_RUN
-
-        while True:
-            if out_of_budget():
-                return BatchedRun(total_deleted, complete=False)
-
-            source_ids = [row[0] for row in db.query(SeriesSample.data_source_id).filter(older).distinct().limit(10)]
-            if not source_ids:
-                return BatchedRun(total_deleted, complete=True)
-
-            for source_id in source_ids:
-                if before_delete is not None:
-                    before_delete(db, source_id)
-                    db.commit()
-                # Whole local days go in each batch: a day left half-deleted would roll up as half a day.
-                days = [
-                    row[0]
-                    for row in db.query(local_day)
-                    .filter(SeriesSample.data_source_id == source_id, older)
-                    .distinct()
-                    .order_by(local_day)
-                ]
-                for batch in batched(days, DELETE_DAYS_PER_BATCH):
-                    total_deleted += (
-                        db.query(SeriesSample)
-                        .filter(SeriesSample.data_source_id == source_id, older, local_day.in_(batch))
-                        .delete(synchronize_session=False)
-                    )
-                    db.commit()
-                    if out_of_budget():
-                        return BatchedRun(total_deleted, complete=False)
+        return (
+            db.query(SeriesSample)
+            .filter(
+                SeriesSample.data_source_id == source_id,
+                # The UTC reach of the days, so the index bounds the scan; the local day picks within it.
+                SeriesSample.recorded_at >= utc_midnight(days[0]) - OFFSET_REACH,
+                SeriesSample.recorded_at < utc_midnight(days[-1]) + timedelta(days=1) + OFFSET_REACH,
+                local_day.in_(days),
+            )
+            .delete(synchronize_session=False)
+        )
 
     def get_user_counts_by_provider_and_type_from_archive(
         self,

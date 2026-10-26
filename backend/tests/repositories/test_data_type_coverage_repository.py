@@ -394,7 +394,7 @@ class TestCoverageFollowsRemovals:
         setting = MagicMock(rollup_enabled=False, delete_after_days=30, deleted_before=None)
         with (
             patch.object(archival_service.settings_repo, "get", return_value=setting),
-            patch.object(archival_service.archive_repo, "delete_live_before", return_value=BatchedRun(5, complete)),
+            patch.object(archival_service, "_delete_before", return_value=BatchedRun(5, complete)),
             patch.object(data_type_coverage_repository, "trim_series_before") as trim,
         ):
             archival_service.run_daily_archival(MagicMock())
