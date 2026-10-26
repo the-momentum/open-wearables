@@ -233,6 +233,19 @@ Fired per ingestion batch — one event per distinct `(user, provider, series_ty
 | `environmental.created` | `environmental_audio_exposure`, `uv_exposure`, `weather_temperature`, … |
 | `timeseries.created` | Catch-all for series types not yet explicitly mapped. |
 
+Each series type also has its own event, `series.<series_type>.created`, carrying only that series' samples.
+
+<Note>
+Two series changed in this release, and their events with them:
+
+| Before | Now |
+|--------|-----|
+| `series.walking_heart_rate_average.created` | `series.walking_heart_rate.created` |
+| `series.average_met.created` | retired: a workout's average MET is its `physical_effort` average, read from the workout |
+
+Self-hosting with endpoints that filter on the old names: run `scripts/data_migrations/rename_series_webhook_events.py --phase=add` from the new image before it takes traffic, so those endpoints also subscribe to the new names, and `--phase=remove` once the deploy is done. An endpoint left with no filter at all is not touched.
+</Note>
+
 ---
 
 ## Payload Reference
