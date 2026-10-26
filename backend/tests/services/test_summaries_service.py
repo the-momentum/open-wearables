@@ -621,6 +621,10 @@ class TestGetActivitySummaries:
         assert [(d.date, d.source.provider, d.steps) for d in result.data] == [(date(2026, 1, 1), "strava", None)]
 
     def test_takes_elevation_from_the_winning_provider_only(self, db: Session, service: SummariesService) -> None:
+        # Without a ranking both tie, and the winner would be whichever row the database returned first.
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.STRAVA, 2)
         user = UserFactory()
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
         elevations = {ProviderName.GARMIN: "100", ProviderName.STRAVA: "900"}
