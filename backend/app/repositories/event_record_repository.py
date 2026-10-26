@@ -116,6 +116,25 @@ class EventRecordRepository(
             query = query.filter(DataSource.provider == provider)
         return {record.external_id: record for record in query if record.external_id}
 
+    def main_sleep_ended_before(
+        self, db_session: DbSession, user_id: UUID, at: datetime, within: timedelta, provider: str
+    ) -> EventRecord | None:
+        """The user's latest main sleep from this provider that ended at most ``within`` before ``at``."""
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.provider == provider,
+                self.model.category == EventCategory.SLEEP,
+                _nap_condition(False),
+                self.model.end_datetime <= at,
+                self.model.end_datetime > at - within,
+            )
+            .order_by(self.model.end_datetime.desc())
+            .first()
+        )
+
     def get_by_external_id(
         self,
         db_session: DbSession,

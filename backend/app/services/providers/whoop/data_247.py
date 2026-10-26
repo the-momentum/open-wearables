@@ -39,6 +39,8 @@ _MAX_PAGE_LIMIT = 25  # Whoop API limit
 
 _SLEEP_ENDPOINT = "/v2/activity/sleep"
 _RECOVERY_ENDPOINT = "/v2/recovery"
+# How long after waking Whoop scores the night's recovery, at most.
+_RECOVERY_AFTER_SLEEP = timedelta(hours=3)
 _CYCLE_ENDPOINT = "/v2/cycle"
 # /v2/cycle matches on intersection, so the window only has to straddle the boundary.
 _CYCLE_BOUNDARY_MARGIN = timedelta(minutes=5)
@@ -779,6 +781,12 @@ class Whoop247Data(Base247DataTemplate):
         sleep_id = normalized_recovery.get("sleep_id")
         if sleep is None and sleep_id:
             sleep = self.event_record_repo.get_by_external_id(db, user_id, str(sleep_id), provider=self.provider_name)
+        if sleep is None and sleep_id:
+            # Its sleep merged into the segment before it keeps only that segment's id: the merged sleep is the
+            # one that ended shortly before the recovery was scored. A sleep not synced yet has no such neighbour.
+            sleep = self.event_record_repo.main_sleep_ended_before(
+                db, user_id, timestamp, _RECOVERY_AFTER_SLEEP, provider=self.provider_name
+            )
         samples_to_create: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in RECOVERY_SERIES.items():
             value = normalized_recovery.get(field_name)

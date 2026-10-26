@@ -50,3 +50,51 @@ def test_recovery_values_point_at_the_sleep_they_were_scored_on(db: Session) -> 
     assert {row.record_id for row in rows.values()} == {sleep.id}
     assert rows[get_series_type_id(SeriesType.resting_heart_rate)].avg == Decimal("52")
     assert rows[get_series_type_id(SeriesType.oxygen_saturation)].avg == Decimal("97.5")
+
+
+def _recovery(user_id: object, sleep_id: str) -> dict:
+    normalized, _ = WhoopStrategy().data_247.normalize_recovery(
+        {
+            "sleep_id": sleep_id,
+            "score_state": "SCORED",
+            "created_at": "2026-03-11T06:40:00.000Z",
+            "score": {"resting_heart_rate": 52},
+        },
+        user_id,
+    )
+    return normalized
+
+
+def test_a_recovery_whose_sleep_merged_away_lands_on_the_sleep_it_merged_into(db: Session) -> None:
+    from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+
+    user = UserFactory()
+    merged = EventRecordFactory(
+        category="sleep",
+        external_id="whoop-sleep-1",
+        data_source=DataSourceFactory(user=user, provider="whoop"),
+        start_datetime=datetime(2026, 3, 10, 22, tzinfo=timezone.utc),
+        end_datetime=datetime(2026, 3, 11, 6, 20, tzinfo=timezone.utc),
+    )
+
+    WhoopStrategy().data_247.save_recovery_data(db, user.id, _recovery(user.id, "whoop-sleep-2"))
+
+    assert [row.record_id for row in db.query(EventRecordAggregate)] == [merged.id]
+
+
+def test_a_recovery_whose_sleep_is_not_synced_yet_stays_unlinked(db: Session) -> None:
+    from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
+
+    user = UserFactory()
+    # The night before: no sleep of this night has arrived yet.
+    EventRecordFactory(
+        category="sleep",
+        external_id="whoop-sleep-0",
+        data_source=DataSourceFactory(user=user, provider="whoop"),
+        start_datetime=datetime(2026, 3, 9, 22, tzinfo=timezone.utc),
+        end_datetime=datetime(2026, 3, 10, 6, 30, tzinfo=timezone.utc),
+    )
+
+    WhoopStrategy().data_247.save_recovery_data(db, user.id, _recovery(user.id, "whoop-sleep-2"))
+
+    assert db.query(EventRecordAggregate).count() == 0

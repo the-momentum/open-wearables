@@ -1,3 +1,4 @@
+from decimal import Decimal
 from itertools import batched
 from typing import Any, cast
 from uuid import uuid4
@@ -35,7 +36,14 @@ class AggregateRepository:
         for row in rows:
             key = tuple(row[column] for column in self.key_columns)
             known = unique.get(key) or {column: None for column in self.refreshed} | {"id": uuid4()}
-            unique[key] = known | {column: value for column, value in row.items() if value is not None}
+            merged = known | {column: value for column, value in row.items() if value is not None}
+            if self.extremes_accumulate:
+                # As the database merges them: two of a session's extremes in one write keep the more extreme.
+                for column, pick in (("min", min), ("max", max)):
+                    stored, written = known.get(column), row.get(column)
+                    if isinstance(stored, Decimal) and isinstance(written, Decimal):
+                        merged[column] = pick(stored, written)
+            unique[key] = merged
         for chunk in batched(self._in_key_order(unique), self.rows_per_statement):
             stmt = insert(self.model).values(list(chunk))
             db_session.execute(

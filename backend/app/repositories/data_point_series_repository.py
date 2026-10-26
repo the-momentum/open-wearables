@@ -87,6 +87,7 @@ from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import as_utc
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
+from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
@@ -341,7 +342,12 @@ class DataPointSeriesRepository(
         ids = cast(list(record_ids), postgresql.ARRAY(PGUUID(as_uuid=True)))
         live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id == func.any(ids))}
         if gone := record_ids - live:
-            logger.warning("Session values of %d samples point at deleted records; kept as samples only", len(gone))
+            log_structured(
+                logger,
+                "warning",
+                "Session values point at deleted records; kept as samples only",
+                samples=sum(1 for c in creators if c.session is not None and c.session.record_id in gone),
+            )
             return [
                 c.model_copy(update={"session": None}) if c.session is not None and c.session.record_id in gone else c
                 for c in creators

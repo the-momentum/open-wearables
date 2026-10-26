@@ -227,6 +227,26 @@ class TestSessionValuesMirrored:
         assert rows[get_series_type_id(SeriesType.total_energy)].sum == Decimal("512")
         assert db.query(WorkoutDetails).one().energy_burned == Decimal("512")
 
+    def test_a_sessions_extremes_in_one_write_keep_the_more_extreme(self, db: Session) -> None:
+        workout = EventRecordFactory(category="workout")
+        hr = get_series_type_id(SeriesType.heart_rate)
+        rows = [
+            {
+                "record_id": workout.id,
+                "series_type_definition_id": hr,
+                "computed_by": ComputedBy.PROVIDER,
+                "min": Decimal(min_),
+                "max": Decimal(max_),
+                "count": 1,
+            }
+            for min_, max_ in (("40", "150"), ("50", "140"))
+        ]
+
+        AggregateRepository(EventRecordAggregate).upsert(db, rows)
+
+        row = db.query(EventRecordAggregate).one()
+        assert (row.min, row.max) == (Decimal("40"), Decimal("150"))
+
     def test_a_sessions_extremes_add_up_across_writes(self, db: Session) -> None:
         """A night's lowest heart rate reported per segment, a workout's max cadence next to its mean."""
         workout = EventRecordFactory(category="workout")
