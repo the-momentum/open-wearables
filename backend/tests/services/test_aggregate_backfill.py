@@ -505,6 +505,18 @@ class TestHistoryRollup:
 
         assert self._ours(db) == sorted((today - timedelta(days=n)).date() for n in (1, 45, 400))
 
+    def test_a_chunk_waits_for_a_scheduled_rollup_in_progress(self, db: Session) -> None:
+        """Both write our day rows, so whichever read its samples first must not land last."""
+        DataPointSeriesFactory(mapping=DataSourceFactory(), recorded_at=datetime(2025, 1, 10, 12, tzinfo=timezone.utc))
+        get_redis_client().set("series_rollup:lock", "1")
+
+        assert not aggregate_backfill_service.run(db, budget_seconds=60)
+        assert self._ours(db) == []
+
+        get_redis_client().delete("series_rollup:lock")
+        assert aggregate_backfill_service.run(db, budget_seconds=60)
+        assert self._ours(db) == [date(2025, 1, 10)]
+
     def test_a_source_left_halfway_goes_on_from_its_last_chunk(self, db: Session) -> None:
         source = DataSourceFactory()
         for day in (date(2025, 1, 10), date(2025, 3, 10)):
