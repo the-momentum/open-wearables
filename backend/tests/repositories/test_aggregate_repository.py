@@ -350,9 +350,9 @@ class TestSessionValuesMirrored:
         stored = db.query(EventRecordAggregate).one()
         assert (stored.min, stored.max, stored.avg) == (Decimal("50"), Decimal("180"), Decimal("130"))
 
-    def test_a_session_value_whose_record_is_gone_does_not_fail_the_batch(self, db: Session) -> None:
-        """A sleep merged away between the lookup and the write must not fail the whole batch; the value has
-        no record to sit on and no sample form any more, so it is dropped with a warning."""
+    def test_a_session_value_whose_record_is_gone_is_kept_as_a_sample(self, db: Session) -> None:
+        """A sleep merged away between the lookup and the write must not fail the whole batch, nor lose the
+        value: with no record to sit on, it is stored as the sample it was before the aggregate tables."""
         source = DataSourceFactory()
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
@@ -366,7 +366,7 @@ class TestSessionValuesMirrored:
 
         DataPointSeriesRepository(SeriesSample).bulk_create(db, [sample])
 
-        assert (db.query(SeriesSample).count(), db.query(EventRecordAggregate).count()) == (0, 0)
+        assert ([s.value for s in db.query(SeriesSample)], db.query(EventRecordAggregate).count()) == ([48], 0)
 
     def test_a_detail_written_twice_keeps_both_writes_statistics(self, db: Session) -> None:
         """The second create() returns the stored detail and still merges its statistics into the session row."""

@@ -312,6 +312,8 @@ class DataPointSeriesRepository(
         if not rows:
             return WriteCounts(0, 0)
         spans = _spans_by_source_and_type(rows)
+        # A session value whose record is gone comes back without its session, to be kept as a sample.
+        creators = self._with_live_sessions(db_session, creators)
         # A day or session value lives in the aggregate tables only; samples are instants and windows.
         sample_rows, _ = self._staging_rows(
             [c for c in creators if c.period is None and c.session is None], identity_to_source_id
@@ -321,7 +323,7 @@ class DataPointSeriesRepository(
             if sample_rows
             else WriteCounts(0, 0)
         )
-        self._mirror_aggregates(db_session, self._with_live_sessions(db_session, creators), identity_to_source_id)
+        self._mirror_aggregates(db_session, creators, identity_to_source_id)
         mark_dirty_days(
             db_session,
             {(row.data_source_id, local_date(row.recorded_at, row.zone_offset)) for row in sample_rows},
