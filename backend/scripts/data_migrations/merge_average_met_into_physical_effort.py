@@ -37,6 +37,9 @@ _SOURCES = text("""
         JOIN event_record er ON er.id = a.record_id WHERE a.series_type_definition_id = :average_met
     ORDER BY id
 """)
+# A sync writing the same source holds its rows; behind one, a statement fails and the next start retries
+# instead of holding the startup.
+_LOCK_TIMEOUT = text("SET lock_timeout = '10s'")
 
 # A sample's workout average that a physical_effort sample at the same instant would push out goes onto
 # the workout the instant falls in, as the provider's session value, before the sample is deleted.
@@ -160,6 +163,7 @@ def _migrate(db: Session, dry_run: bool) -> bool:
 
 def main(dry_run: bool) -> None:
     with engine.connect() as connection, Session(bind=connection) as db:
+        db.execute(_LOCK_TIMEOUT)
         data_migration_service.run(
             db, "merge_average_met_into_physical_effort", lambda: _migrate(db, dry_run), dry_run=dry_run
         )
