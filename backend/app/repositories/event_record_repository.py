@@ -1147,7 +1147,7 @@ class EventRecordRepository(
             # Ours first, so a provider's row for the same date overwrites it whichever sleep ended later.
             .order_by(EventRecordAggregate.computed_by == ComputedBy.PROVIDER, EventRecord.end_datetime)
         )
-        return {end.astimezone(timezone.utc).date(): float(avg) for end, avg in rows}
+        return {end.astimezone(timezone.utc).date(): float(avg) for end, avg in rows if avg is not None}
 
     @staticmethod
     def _sleep_physiology(
