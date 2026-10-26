@@ -66,14 +66,19 @@ _SESSIONS = text("""
         AND start_datetime < :hi AND end_datetime >= :lo
 """)
 
+# One index range per session: joined plainly, a month of sessions makes the planner hash the whole sample table.
 _SESSION_STATS = text(f"""
-    SELECT er.id AS record_id, s.series_type_definition_id, {_STATS}
+    SELECT er.id AS record_id, stats.*
     FROM event_record er
-    JOIN series_sample s ON s.data_source_id = er.data_source_id
-        AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
-        AND s.is_daily_total IS NOT TRUE
+    CROSS JOIN LATERAL (
+        SELECT s.series_type_definition_id, {_STATS}
+        FROM series_sample s
+        WHERE s.data_source_id = er.data_source_id
+            AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
+            AND s.is_daily_total IS NOT TRUE
+        GROUP BY 1
+    ) stats
     WHERE er.id = ANY(:record_ids)
-    GROUP BY 1, 2
 """)
 
 _DELETE_SESSIONS = text("""
