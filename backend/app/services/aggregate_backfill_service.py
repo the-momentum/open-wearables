@@ -295,10 +295,16 @@ class AggregateBackfillService:
             return False
 
         def delete(source: tuple[UUID, str]) -> bool:
-            source_id, provider = source
-            days = self.repo.delete_copied_samples(db, source_id, provider, cutoff)
-            db.commit()
-            rollup_queue.requeue_dirty_days(days)
+            # Queued before the delete commits, under the rollup's lock so no rollup takes the days too early:
+            # a failed commit only rolls them up once more, where a failed queue after it would lose them.
+            if (token := rollup_queue.take_lock()) is None:
+                return False
+            try:
+                source_id, provider = source
+                rollup_queue.requeue_dirty_days(self.repo.delete_copied_samples(db, source_id, provider, cutoff))
+                db.commit()
+            finally:
+                rollup_queue.release_lock(token)
             return True
 
         return self._each_source(db, deadline, "delete_copied_samples", self.repo.history_sources, delete)
