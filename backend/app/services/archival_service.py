@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterator
@@ -120,6 +121,8 @@ class ArchivalService:
             if complete:
                 data_type_coverage_repository.trim_series_before(db, cutoff)
                 self.settings_repo.mark_deleted_before(db, cutoff)
+                with contextlib.suppress(Exception):
+                    rollup_queue.clear_sources_deleted_before()
 
         return summary
 
@@ -237,6 +240,9 @@ class ArchivalService:
         """The source's local days before ``cutoff``, oldest first, ``DELETE_DAYS_PER_BATCH`` at a time: rolled up,
         then deleted whole and committed. Yields the rows each batch deleted."""
         next_day = date.min
+        # Days an earlier run deleted before it stopped: a sample arriving late for one of them must not
+        # recompute its rows from that sample alone.
+        source_frozen = self._source_deleted_before(source_id)
         while (earliest := self.archive_repo.earliest_sample(db, source_id)) is not None:
             # An offset puts a sample's local day at most one day before its UTC date.
             first = max(earliest.astimezone(timezone.utc).date() - timedelta(days=1), next_day)
@@ -245,12 +251,27 @@ class ArchivalService:
                 return
             if rollup:
                 # Every older day of the source is gone by now: a session begun before these days keeps its rows.
-                frozen = max(frozen_before, days[0]) if frozen_before else days[0]
+                frozen = max(day for day in (frozen_before, source_frozen, days[0]) if day is not None)
                 self.rollup_repo.roll_up(db, source_id, days, frozen)
             rows = self.archive_repo.delete_days(db, source_id, days)
             db.commit()
             next_day = days[-1] + timedelta(days=1)
+            self._mark_source_deleted_before(source_id, next_day)
+            source_frozen = max(source_frozen or next_day, next_day)
             yield rows
+
+    def _source_deleted_before(self, source_id: UUID) -> date | None:
+        try:
+            return rollup_queue.source_deleted_before(source_id)
+        except Exception as exc:
+            log_and_capture_error(exc, self.logger, "Retention: could not read a source's deleted days")
+            return None
+
+    def _mark_source_deleted_before(self, source_id: UUID, day: date) -> None:
+        try:
+            rollup_queue.mark_source_deleted_before(source_id, day)
+        except Exception as exc:
+            log_and_capture_error(exc, self.logger, "Retention: could not record a source's deleted days")
 
     # ── Private helpers ───────────────────────────────────────────
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations.redis_client import get_redis_client
 from app.integrations.rollup_queue import (
+    DELETED_BEFORE_KEY,
     DIRTY_DAYS_KEY,
     IN_PROGRESS_KEY,
     pop_dirty_days,
@@ -798,6 +799,38 @@ class TestDailyLifecycleJob:
 
         assert (summary["rolled_up_days"], get_redis_client().scard(IN_PROGRESS_KEY)) == (1, 0)
         assert sorted(day for _, day in pop_dirty_days(10)) == days[1:]
+
+    def test_a_late_sample_on_a_day_an_unfinished_run_deleted_keeps_its_rows(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The run stops after deleting day X, before deleted_before moves; a heart-rate sample for X arrives
+        late. The next run must not recompute X's heart-rate row from that one sample."""
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "DELETE_DAYS_PER_BATCH", 1)
+        self._settings(db, rollup_enabled=True, delete_after_days=30)
+        source = DataSourceFactory()
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        day = date.today() - timedelta(days=40)
+        noon = datetime.combine(day, datetime.min.time(), timezone.utc) + timedelta(hours=12)
+        DataPointSeriesFactory(mapping=source, series_type=heart_rate, recorded_at=noon, value=Decimal("60"))
+        DataPointSeriesFactory(mapping=source, series_type=heart_rate, recorded_at=noon + timedelta(days=5))
+        db.commit()
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "MAX_ROWS_PER_RUN", 1)
+        archival_service.run_daily_archival(db)
+        assert db.get(ArchivalSetting, 1).deleted_before is None
+        DataPointSeriesFactory(
+            mapping=source, series_type=heart_rate, recorded_at=noon + timedelta(hours=1), value=Decimal("90")
+        )
+        db.commit()
+        monkeypatch.setattr(_ARCHIVAL_SERVICE, "MAX_ROWS_PER_RUN", 500_000)
+
+        archival_service.run_daily_archival(db)
+
+        row = db.query(SeriesAggregate).filter(SeriesAggregate.period_start == CalendarPeriod.of_date(day).start).one()
+        assert (row.avg, db.get(ArchivalSetting, 1).deleted_before) == (
+            Decimal("60"),
+            date.today() - timedelta(days=30),
+        )
+        assert get_redis_client().exists(DELETED_BEFORE_KEY) == 0
 
     def test_a_failing_queue_does_not_hold_retention_back(self, db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
         self._settings(db, rollup_enabled=True, delete_after_days=30)

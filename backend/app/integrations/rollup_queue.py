@@ -18,6 +18,10 @@ DIRTY_DAYS_KEY = "series_rollup:queue"
 # Days a run has taken but not finished: a worker killed mid-run leaves them here, the next run puts them back.
 IN_PROGRESS_KEY = "series_rollup:in_progress"
 
+# Per source, the first local day an unfinished retention run has not deleted yet. Until the run finishes and
+# archival_settings.deleted_before moves, this is what freezes the days already gone.
+DELETED_BEFORE_KEY = "series_rollup:deleted_before"
+
 # ZPOPMAX and the hand-over to the in-progress set in one step, so a kill between the two cannot lose a day.
 _TAKE = """
 local popped = redis.call('ZPOPMAX', KEYS[1], ARGV[1])
@@ -82,6 +86,21 @@ def recover_dirty_days() -> int:
 def clear_dirty_days() -> None:
     """Drop the queue, while the rollup is off."""
     get_redis_client().delete(DIRTY_DAYS_KEY, IN_PROGRESS_KEY)
+
+
+def source_deleted_before(source_id: UUID) -> date | None:
+    """The first local day of the source retention has not deleted yet, in a run that did not finish."""
+    day = cast(str | None, get_redis_client().hget(DELETED_BEFORE_KEY, str(source_id)))
+    return date.fromisoformat(day) if day else None
+
+
+def mark_source_deleted_before(source_id: UUID, day: date) -> None:
+    get_redis_client().hset(DELETED_BEFORE_KEY, str(source_id), day.isoformat())
+
+
+def clear_sources_deleted_before() -> None:
+    """A finished run moved archival_settings.deleted_before past every source's mark."""
+    get_redis_client().delete(DELETED_BEFORE_KEY)
 
 
 def _members(days: Iterable[tuple[UUID, date]]) -> list[str]:
