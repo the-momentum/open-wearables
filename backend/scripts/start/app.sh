@@ -86,7 +86,7 @@ uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energ
 
 # TODO: Remove this after ~2027-03-01 once all deployments have migrated.
 # Moves average_met rows onto physical_effort, the series it merged into: both carry METs.
-# Runs once per instance (data_migration).
+# Runs at every start until one finds no average_met rows left (data_migration).
 echo 'Running average_met->physical_effort merge...'
 uv run python scripts/data_migrations/merge_average_met_into_physical_effort.py \
     || echo "Warning: average_met merge failed — will retry on next startup."

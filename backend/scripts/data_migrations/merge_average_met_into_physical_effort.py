@@ -11,7 +11,8 @@ data_point_series_archive, series_aggregate and event_record_aggregate:
 data_type_coverage rows keyed by a renamed series (average_met, walking_heart_rate_average) are re-keyed
 to the current name, widening a row the new name already has.
 
-Runs once per instance (``data_migration``), one committed batch per data source that holds such rows.
+Runs at every start until one finds nothing to move (``data_migration``), one committed batch per data source
+that holds such rows.
 
 Usage (inside Docker), with --dry-run to preview without changes:
     docker compose exec app uv run python scripts/data_migrations/merge_average_met_into_physical_effort.py
@@ -157,8 +158,9 @@ def merge_average_met(db: Session, *, dry_run: bool) -> dict[str, int]:
 
 
 def _migrate(db: Session, dry_run: bool) -> bool:
-    merge_average_met(db, dry_run=dry_run)
-    return not dry_run
+    # Recorded only by a start that finds nothing: a pod on the previous release writes id 87 until the rollout ends.
+    moved = merge_average_met(db, dry_run=dry_run)
+    return not dry_run and not any(moved.values())
 
 
 def main(dry_run: bool) -> None:

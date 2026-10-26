@@ -36,7 +36,9 @@ def _load_module() -> ModuleType:
     return module
 
 
-merge_average_met = _load_module().merge_average_met
+_module = _load_module()
+merge_average_met = _module.merge_average_met
+_migrate = _module._migrate
 
 T = datetime(2026, 1, 1, 9, tzinfo=timezone.utc)
 
@@ -141,3 +143,11 @@ def test_a_dry_run_changes_nothing(db: Session, average_met: SeriesTypeDefinitio
 
     assert result["series_sample_updated"] == 1
     assert _rows(db, "series_sample") == [(AVERAGE_MET_ID, Decimal("4"))]
+
+
+def test_only_a_start_that_moves_nothing_records_the_merge(db: Session, average_met: SeriesTypeDefinition) -> None:
+    """A pod on the previous release writes id 87 until the rollout ends, so the next start merges again."""
+    DataPointSeriesFactory(data_source=DataSourceFactory(), series_type=average_met, recorded_at=T, value=Decimal("4"))
+
+    assert _migrate(db, dry_run=False) is False
+    assert _migrate(db, dry_run=False) is True
