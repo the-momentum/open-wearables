@@ -809,15 +809,6 @@ class DataPointSeriesRepository(
                 winners[type_id] = source_id
         return winners
 
-    def count_sources(self, db_session: DbSession, user_id: UUID, params: TimeSeriesQueryParams) -> int:
-        """How many of the caller's data sources a read may touch, honouring its source filters."""
-        return (
-            db_session.query(func.count(DataSource.id))
-            .filter(DataSource.user_id == user_id, *source_filter_conditions(params, DataSource.id))
-            .scalar()
-            or 0
-        )
-
     def _ranked_sources(
         self,
         db_session: DbSession,

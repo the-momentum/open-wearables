@@ -28,7 +28,7 @@ from app.schemas.model_crud.activities import (
     TimeSeriesSampleCreate,
 )
 from app.services.timeseries_service import timeseries_service
-from app.utils.pagination import encode_bucket_cursor
+from app.utils.pagination import encode_bucket_cursor, encode_date_cursor
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -1020,7 +1020,8 @@ class TestTimeSeriesServicePeriods:
         self, db: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # app.services exports the service instance under the module's name, so patch the module itself.
-        monkeypatch.setattr(importlib.import_module("app.services.timeseries_service"), "_PERIOD_ROWS_PER_PAGE", 2)
+        # One series of one source: two rows a day at most (the provider's and ours), so two days a page.
+        monkeypatch.setattr(importlib.import_module("app.services.timeseries_service"), "_PERIOD_ROWS_PER_PAGE", 4)
         source = DataSourceFactory()
         for n in range(3):
             self._day(db, source, SeriesType.steps, date(2024, 3, 1 + n), ComputedBy.PROVIDER, sum=Decimal(n + 1))
@@ -1044,6 +1045,37 @@ class TestTimeSeriesServicePeriods:
         first = timeseries_service.get_timeseries(db, source.user_id, [SeriesType.steps], params)
 
         assert ([s.value for s in first.data], first.pagination.has_more) == ([1], True)
+
+    def test_the_page_counts_the_series_that_hold_data_not_every_series(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No types asked for: the page is sized by the one series this source holds, not by all of them."""
+        monkeypatch.setattr(importlib.import_module("app.services.timeseries_service"), "_PERIOD_ROWS_PER_PAGE", 20)
+        source = DataSourceFactory()
+        for n in range(12):
+            self._day(db, source, SeriesType.steps, date(2024, 3, 1 + n), ComputedBy.PROVIDER, sum=Decimal(n + 1))
+        params = self._params(Resolution.ONE_DAY, date(2024, 3, 1), date(2024, 3, 13), limit=50)
+
+        page = timeseries_service.get_timeseries(db, source.user_id, [], params)
+
+        assert (len(page.data), page.pagination.has_more) == (10, True)
+
+    @pytest.mark.parametrize("bound", ["start", "end", "cursor"])
+    def test_far_dates_read_as_open_ends(self, db: Session, bound: str) -> None:
+        source = DataSourceFactory()
+        self._day(db, source, SeriesType.steps, date(2024, 3, 1), ComputedBy.PROVIDER, sum=Decimal(1))
+        params = self._params(Resolution.ONE_DAY, date(2024, 3, 1), date(2024, 3, 2))
+        update = {
+            "start": {"start_datetime": datetime(1, 1, 1, tzinfo=timezone.utc)},
+            "end": {"end_datetime": datetime(9999, 12, 31, tzinfo=timezone.utc)},
+            "cursor": {"cursor": encode_date_cursor(date(1, 1, 1))},
+        }[bound]
+
+        page = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.steps], params.model_copy(update=update), filter_by_priority=True
+        )
+
+        assert [s.value for s in page.data] == [1]
 
     def test_a_week_with_a_clock_change_ends_at_the_new_offset(self, db: Session) -> None:
         """The week of 2024-03-25 starts at +01:00 and ends at +02:00: its end is the next Monday at +02:00."""
