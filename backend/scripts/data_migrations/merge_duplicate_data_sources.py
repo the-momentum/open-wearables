@@ -365,7 +365,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
                 for query, query_params in steps:
                     db.execute(query, query_params)
                 db.commit()
-                if moved_days:
+                if target is not None and moved_days:
                     _queue_rollup(target, moved_days)
             except SQLAlchemyError as e:
                 db.rollback()
@@ -373,7 +373,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
                 log_and_capture_error(
                     e, logger, f"Skipped merging data source {src}: {e}", extra={"data_source_id": str(src)}
                 )
-                if moved_days:
+                if target is not None and moved_days:
                     _queue_rollup(target, moved_days)
                 continue
         if target is None:
