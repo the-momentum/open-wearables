@@ -16,6 +16,7 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.services.archival_service import archival_service
+from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
@@ -72,10 +73,11 @@ def run_daily_archival(self: Task) -> dict:
     try:
         with SessionLocal() as db:
             summary = archival_service.run_daily_archival(db)
-            logger.info("Daily archival completed: %s", summary)
+            log_structured(logger, "info", "Daily archival completed", **summary)
             return summary
     except Exception:
-        logger.exception("Daily archival task failed")
+        # Raised on to Celery, whose integration reports it to Sentry.
+        log_structured(logger, "error", "Daily archival task failed")
         raise
     finally:
         _release_rollup_lock()

@@ -292,6 +292,35 @@ class TestGetSleepSummaries:
 
         assert (summary.avg_heart_rate_bpm, summary.avg_hrv_sdnn_ms) == (52, 45.0)
 
+    def test_a_night_not_rolled_up_yet_reads_its_own_devices_samples_first(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """Before the 15-minute rollup has reached the night, the sleep's own watch is read, not the phone."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="Apple Watch")
+        phone = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="iPhone")
+        record = EventRecordFactory(
+            data_source=watch,
+            category="sleep",
+            type="sleep",
+            start_datetime=_dt("2026-01-01T23:00:00+00:00"),
+            end_datetime=_dt("2026-01-02T07:00:00+00:00"),
+            duration_seconds=8 * 3600,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=record)
+        hrv_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
+        for source, value in ((watch, 50), (phone, 30)):
+            DataPointSeriesFactory(
+                data_source=source, series_type=hrv_type, value=value, recorded_at=_dt("2026-01-02T02:00:00+00:00")
+            )
+
+        summary = service.get_sleep_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-03T00:00:00+00:00"), cursor=None, limit=10
+        ).data[0]
+
+        assert summary.avg_hrv_sdnn_ms == 50
+
     def test_physio_averages_none_without_physio_data(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
         record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
@@ -736,3 +765,41 @@ class TestActivityTotals:
             db, UserFactory().id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-02-01T00:00:00+00:00")
         )
         assert (totals.days, totals.steps, totals.avg_steps) == (0, 0, None)
+
+
+class TestBodySummaryAverages:
+    def test_a_resting_pulse_sent_on_the_sleep_counts_beside_the_day_values(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """Oura, Whoop, Suunto and Withings send the night's resting pulse on the sleep, not on the day."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        yesterday = date.today() - timedelta(days=1)
+        provider_day(db, watch, SeriesType.resting_heart_rate, yesterday, avg=Decimal("60"))
+        night = EventRecordFactory(
+            data_source=ring,
+            category="sleep",
+            type="sleep",
+            start_datetime=datetime.combine(yesterday, datetime.min.time(), timezone.utc) - timedelta(hours=1),
+            end_datetime=datetime.combine(yesterday, datetime.min.time(), timezone.utc) + timedelta(hours=7),
+            zone_offset="+00:00",
+        )
+        rhr = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+        AggregateRepository(EventRecordAggregate).upsert(
+            db,
+            [
+                {
+                    "record_id": night.id,
+                    "series_type_definition_id": rhr.id,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "avg": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        body = service.get_body_summary(db, user.id, 7, 24)
+
+        assert body is not None
+        assert body.averaged.resting_heart_rate_bpm == 56

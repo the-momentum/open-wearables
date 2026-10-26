@@ -148,16 +148,27 @@ class SeriesAggregateRepository:
         return near.with_entities(func.max(LOCAL_DAY) if latest else func.min(LOCAL_DAY)).scalar()
 
     def period_averages(
-        self, db_session: DbSession, user_id: UUID, types: list[SeriesType], first_day: date, last_day: date
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        night_values: dict[tuple[UUID, int, date], float] | None = None,
     ) -> dict[SeriesType, float]:
         """Each series' mean of its day values from ``first_day`` to ``last_day`` inclusive: one value per
-        data source and local day, the provider's before ours, read from the column the series is read by."""
-        found: dict[SeriesType, list[float]] = defaultdict(list)
-        for row, _ in self.get_day_rows(db_session, user_id, TimeSeriesQueryParams(), types, first_day, last_day):
+        data source and local day, the provider's before ours, read from the column the series is read by.
+
+        ``night_values`` fill the days a source holds no day row for: the providers that send a resting pulse
+        or a night's HRV on the sleep, not on the day."""
+        found: dict[SeriesType, dict[tuple[UUID, date], float]] = defaultdict(dict)
+        for row, day in self.get_day_rows(db_session, user_id, TimeSeriesQueryParams(), types, first_day, last_day):
             series_type = get_series_type_from_id(row.series_type_definition_id)
             if (value := day_value(row, series_type)) is not None:
-                found[series_type].append(value)
-        return {series_type: sum(values) / len(values) for series_type, values in found.items()}
+                found[series_type][(row.data_source_id, day)] = value
+        for (source_id, type_id, day), value in (night_values or {}).items():
+            found[get_series_type_from_id(type_id)].setdefault((source_id, day), value)
+        return {series_type: sum(values.values()) / len(values) for series_type, values in found.items() if values}
 
     def latest_day_value(
         self, db_session: DbSession, user_id: UUID, series_type: SeriesType, since: date

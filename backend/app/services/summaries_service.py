@@ -22,6 +22,7 @@ from app.schemas.enums import (
     DeviceType,
     ProviderName,
     SeriesType,
+    get_series_type_id,
 )
 from app.schemas.responses.activity import (
     ActivitySummary,
@@ -833,8 +834,12 @@ class SummariesService:
         period_end = now
         period_start = now - timedelta(days=average_period_days)
 
+        first_day, last_day = period_start.date(), period_end.date()
+        nights = self.event_record_repo.night_values(
+            db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
+        )
         averages = self.series_aggregate_repo.period_averages(
-            db_session, user_id, BODY_AVERAGED_SERIES, period_start.date(), period_end.date()
+            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights
         )
 
         resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
