@@ -341,6 +341,19 @@ class TestHistoryValues:
             ("steps", date(2025, 6, 2), "+02:00", Decimal("8432"), None),
         ]
 
+    def test_a_source_left_halfway_goes_on_from_its_last_window(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        for days_ago in (100, 3 * 365):
+            _sample(db, source, SeriesType.resting_heart_rate, today - timedelta(days=days_ago), "50")
+        # A previous run copied this source's history from a year ago on, then ran out of time.
+        cutoff = (today - timedelta(days=365)).date()
+        get_redis_client().set("aggregate_backfill:cursor:history_all:window", f"{source.id}|{cutoff}")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert [day for _, day, *_ in _days(db)] == [(today - timedelta(days=3 * 365)).date()]
+
     def test_garmin_nightly_hrv_lands_on_the_morning_it_was_woken_up_to(self, db: Session) -> None:
         """Garmin stored lastNightAvg at the sleep's start; the night belongs to its calendar date, the next day."""
         source = DataSourceFactory(provider=ProviderName.GARMIN)

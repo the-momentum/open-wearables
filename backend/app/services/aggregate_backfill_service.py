@@ -13,6 +13,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories.aggregate_backfill_repository import SKIPPED_SOURCE, AggregateBackfillRepository
+from app.repositories.archival_repository import DataPointSeriesArchiveRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.local_day import utc_midnight
 from app.schemas.enums import ProviderName, SeriesType
@@ -59,6 +60,7 @@ class AggregateBackfillService:
 
     def __init__(self) -> None:
         self.repo = AggregateBackfillRepository()
+        self.samples = DataPointSeriesArchiveRepository()
         self.migrations = DataMigrationRepository()
 
     @property
@@ -133,15 +135,20 @@ class AggregateBackfillService:
     def _history(self, period: timedelta | None) -> Callable[[DbSession, Budget], bool]:
         """Day and session values stored as samples before the aggregate tables, from the last ``period`` or all."""
 
-        def run(db: DbSession, budget: Budget) -> bool:
-            since = datetime.now(timezone.utc) - period if period is not None else None
+        step = "history_recent" if period is not None else "history_all"
 
+        def run(db: DbSession, budget: Budget) -> bool:
             def copy(source: tuple[UUID, str]) -> bool:
                 source_id, provider = source
-                self.repo.copy_history_values(db, source_id, provider, since)
-                return True
+                first = self.samples.earliest_sample(db, source_id)
+                if first is not None and period is not None:
+                    first = max(first, datetime.now(timezone.utc) - period)
 
-            step = "history_recent" if period is not None else "history_all"
+                def window(lo: datetime, hi: datetime) -> None:
+                    self.repo.copy_history_values(db, source_id, provider, lo.date(), hi.date())
+
+                return self._each_window(db, budget, step, source_id, first, window)
+
             return self._each_source(db, budget, step, self.repo.history_sources, copy)
 
         return run

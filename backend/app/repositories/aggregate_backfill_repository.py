@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import TextClause, text
@@ -7,6 +7,7 @@ from sqlalchemy import TextClause, text
 from app.constants.series_types.history_rules import HISTORY_RULES, DayAnchor, HistoryRule, SessionMatch
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
+from app.repositories.local_day import utc_midnight
 from app.schemas.enums import ProviderName, SeriesType, get_series_type_id
 from app.schemas.enums.aggregation_method import get_aggregation_method
 
@@ -186,17 +187,25 @@ class AggregateBackfillRepository:
         params = {"providers": _HISTORY_PROVIDERS, "after": after, "limit": limit}
         return [(row.id, row.provider) for row in db_session.execute(_HISTORY_SOURCES, params)]
 
-    def copy_history_values(self, db_session: DbSession, source_id: UUID, provider: str, since: datetime | None) -> int:
-        """The source's day and session values stored as samples (from ``since`` on, or all) as provider rows in the
-        aggregate tables, where the provider holds none yet. Returns the rows written."""
+    def copy_history_values(
+        self, db_session: DbSession, source_id: UUID, provider: str, from_day: date, to_day: date
+    ) -> int:
+        """The source's day and session values of the days from ``from_day`` up to ``to_day``, stored as samples, as
+        provider rows in the aggregate tables where the provider holds none yet. Returns the rows written."""
         written = 0
         for rule, statement in _HISTORY:
             if ProviderName(provider) not in rule.providers:
                 continue
+            # A day value is read by its day, so the range reaches past the window's edges; a session value by its
+            # instant, so each one falls in exactly one window.
+            reach = _DAY_REACH if rule.day else timedelta(0)
             params = {
                 "source": source_id,
                 "types": [get_series_type_id(series_type) for series_type, _ in rule.series],
-                "since": since,
+                "lo": utc_midnight(from_day) - reach,
+                "hi": utc_midnight(to_day) + reach,
+                "from_day": from_day,
+                "to_day": to_day,
                 **_stat_params(rule),
             }
             written += db_session.execute(statement, params).rowcount  # ty: ignore[unresolved-attribute]
@@ -248,7 +257,9 @@ def _records_join(session: SessionMatch) -> str:
 
 _STATS = ("sum", "avg", "min", "max", "last")
 _RULE_SAMPLES = """s.data_source_id = :source AND s.series_type_definition_id = ANY(:types) AND ({where})
-    AND (CAST(:since AS timestamptz) IS NULL OR s.recorded_at >= :since)"""
+    AND s.recorded_at >= :lo AND s.recorded_at < :hi"""
+# Every anchor puts a day value within a day of its date's midnight.
+_DAY_REACH = timedelta(days=2)
 _STAT_VALUES = ", ".join(f"CASE WHEN type_id = ANY(:{stat}_types) THEN value END" for stat in _STATS)
 
 
@@ -258,7 +269,9 @@ def _day_values(rule: HistoryRule) -> TextClause:
         WITH src AS (
             SELECT s.data_source_id, s.series_type_definition_id AS type_id, s.value, s.recorded_at,
                 {_DAYS[rule.day]} AS day, {_ZONES[rule.day]} AS zone
-            FROM series_sample s WHERE {_RULE_SAMPLES.format(where=rule.where)}
+            FROM series_sample s
+            WHERE {_RULE_SAMPLES.format(where=rule.where)}
+                AND {_DAYS[rule.day]} >= :from_day AND {_DAYS[rule.day]} < :to_day
         ), days AS (
             -- A day sent more than once (a total re-sent as the day went on) is its latest value.
             SELECT DISTINCT ON (type_id, day) *, (day::timestamp - zone::interval) AT TIME ZONE 'UTC' AS period_start
