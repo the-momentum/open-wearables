@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, SessionTransaction
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations import redis_lock
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 
 logger = getLogger(__name__)
@@ -20,6 +21,8 @@ _LOCK_TTL_SECONDS = 420
 _BUDGET_SECONDS = 240
 # The default queue's thread pool ignores time limits; this is what stops a statement that would outlast the lock.
 STATEMENT_TIMEOUT_SECONDS = 300
+# Moves samples between data sources: a source it filled after the cursor went past would never be copied.
+_AFTER_MIGRATION = "merge_duplicate_data_sources"
 
 
 @shared_task(name=CeleryTask.RUN_AGGREGATE_BACKFILL, soft_time_limit=330, time_limit=360)
@@ -34,6 +37,8 @@ def run_aggregate_backfill() -> dict:
             bound_statements(db)
             if aggregate_backfill_service.is_done(db):
                 return {"skipped": "done"}
+            if not DataMigrationRepository().is_completed(db, _AFTER_MIGRATION):
+                return {"skipped": "waiting_for_data_source_merge"}
             done = aggregate_backfill_service.run(
                 db, _BUDGET_SECONDS, keep_alive=lambda: redis_lock.extend(_LOCK_KEY, token, _LOCK_TTL_SECONDS)
             )

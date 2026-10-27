@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -22,6 +22,7 @@ from app.models import (
 from app.repositories import AggregateRepository
 from app.repositories.aggregate_backfill_repository import AggregateBackfillRepository
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import AggregationMethod, ComputedBy, ProviderName, SeriesType, get_series_type_id
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 from tests.factories import DataPointSeriesFactory, DataSourceFactory, EventRecordFactory, SeriesTypeDefinitionFactory
@@ -188,6 +189,18 @@ class TestBackfillTask:
         get_redis_client().set("aggregate_backfill:lock", "1")
 
         assert run_aggregate_backfill() == {"skipped": "previous_run_in_progress"}
+
+    def test_a_run_waits_for_the_data_source_merge(self, db: Session) -> None:
+        """The merge moves samples between sources, behind a cursor that may have passed them."""
+        _legacy_workout(db, ProviderName.GARMIN, heart_rate_avg=Decimal("140"))
+        session = MagicMock()
+        session.__enter__.return_value = db
+
+        with patch("app.integrations.celery.tasks.aggregate_backfill_task.SessionLocal", return_value=session):
+            assert run_aggregate_backfill() == {"skipped": "waiting_for_data_source_merge"}
+
+            DataMigrationRepository().mark_completed(db, "merge_duplicate_data_sources")
+            assert run_aggregate_backfill() == {"done": True}
 
     def test_a_lock_is_released_and_extended_only_by_its_holder(self, db: Session) -> None:
         token = redis_lock.acquire("aggregate_backfill:lock", 60)
