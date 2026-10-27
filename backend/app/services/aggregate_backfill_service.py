@@ -22,7 +22,7 @@ from app.schemas.enums import ProviderName, SeriesType
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
-# Set once every step is done; retention and the later cleanup wait for it.
+# Set once every step is done; retention waits for it.
 BACKFILL_MIGRATION = "aggregate_backfill"
 
 # The span the backfill fills before the rest of the history.
@@ -83,7 +83,6 @@ class AggregateBackfillService:
             *([BackfillStep("rollup_all", self._rollup(None))] if ROLL_UP_HISTORY else []),
             BackfillStep("garmin_epoch_windows", self._garmin_epoch_windows),
             BackfillStep("archive_days", self._archive_days),
-            BackfillStep("delete_copied_samples", self._delete_copied_samples),
         ]
 
     def is_done(self, db: DbSession) -> bool:
@@ -285,36 +284,6 @@ class AggregateBackfillService:
             end = start
         redis.delete(key)
         return True
-
-    def _delete_copied_samples(self, db: DbSession, budget: Budget) -> bool:
-        """Day and session values the history steps copied, gone from series_sample, and their days rolled up
-        again without them. Only samples recorded before the history was copied, and only where the provider's
-        aggregate row holds the very same value: a genuine sample that happens to match a rule stays."""
-        cutoff = self.migrations.completed_at(db, f"{BACKFILL_MIGRATION}:history_all")
-        if cutoff is None:
-            return False
-        frozen_before = ArchivalSettingRepository().get(db).deleted_before
-        self._roll_up_live_days(db)
-
-        def delete(source: tuple[UUID, str]) -> bool:
-            # Rolled up again in the same transaction, under the rollup's lock: the days need no queue, which a
-            # disabled rollup empties, and no other rollup reads the samples while they go.
-            if (token := rollup_queue.take_lock()) is None:
-                return False
-            try:
-                source_id, provider = source
-                days = [day for _, day in self.repo.delete_copied_samples(db, source_id, provider, cutoff)]
-                for chunk in _newest_first(days, ROLLUP_CHUNK_DAYS):
-                    if not rollup_queue.extend_lock(token):
-                        db.rollback()
-                        return False
-                    self.rollup_repo.roll_up(db, source_id, chunk, frozen_before)
-                db.commit()
-            finally:
-                rollup_queue.release_lock(token)
-            return True
-
-        return self._each_source(db, budget, "delete_copied_samples", self.repo.history_sources, delete)
 
     def _each_source[S](
         self,

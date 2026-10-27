@@ -37,7 +37,7 @@ from app.schemas.enums import (
     get_series_type_from_id,
     get_series_type_id,
 )
-from app.services.aggregate_backfill_service import Budget, aggregate_backfill_service
+from app.services.aggregate_backfill_service import aggregate_backfill_service
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -594,116 +594,62 @@ class TestHistoryRollup:
         assert self._ours(db) == [date(2025, 1, 10)]
 
 
-class TestDeleteCopiedSamples:
-    def test_copied_values_go_and_a_genuine_sample_at_midnight_stays(self, db: Session) -> None:
+class TestHistoryValuesLeftOutOfOurRows:
+    """The samples stay; our rows count readings only, as on an instance that never stored day values as samples."""
+
+    def _ours(self, db: Session, series_type: SeriesType) -> list[tuple[date, Decimal | None, Decimal | None]]:
+        rows = db.query(SeriesAggregate, LOCAL_DAY).filter(
+            SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES,
+            SeriesAggregate.series_type_definition_id == get_series_type_id(series_type),
+        )
+        return sorted((day, row.sum, row.avg) for row, day in rows)
+
+    def test_a_day_value_stays_a_sample_but_not_in_our_day(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.POLAR)
-        midnight = datetime(2025, 6, 2, tzinfo=timezone.utc)
-        _sample(db, source, SeriesType.heart_rate_variability_rmssd, midnight, "61")
-        _sample(db, source, SeriesType.heart_rate_variability_rmssd, midnight + timedelta(days=1), "70")
-        # The provider's own day value for the second night differs: that 00:00 sample is a genuine reading.
-        provider_day(db, source, SeriesType.heart_rate_variability_rmssd, date(2025, 6, 3), avg=Decimal("64"))
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
+        _sample(
+            db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, 12, tzinfo=timezone.utc), "70"
+        )
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        assert [(s.recorded_at, s.value) for s in db.query(SeriesSample)] == [
-            (midnight + timedelta(days=1), Decimal("70"))
-        ]
+        assert db.query(SeriesSample).count() == 2
+        assert self._ours(db, SeriesType.heart_rate_variability_rmssd) == [(date(2025, 6, 2), None, Decimal("70"))]
 
-    def test_a_copied_workout_statistic_goes_and_the_workouts_samples_stay(self, db: Session) -> None:
-        source = DataSourceFactory(provider=ProviderName.APPLE)
-        workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
-        _sample(db, source, SeriesType.cadence, workout.end_datetime, "82")
-        _sample(db, source, SeriesType.cadence, AT + timedelta(minutes=10), "90")
-        _sample(db, source, SeriesType.vo2_max, workout.end_datetime, "41", external_id="hk-uuid")
+    def test_garmins_nightly_hrv_off_midnight_is_left_out_too(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        bedtime = datetime(2025, 6, 1, 21, tzinfo=timezone.utc)
+        hrv = SeriesType.heart_rate_variability_rmssd
+        _sample(db, source, hrv, bedtime, "84", zone_offset="+02:00", external_id="hrv-1")
+        _sample(db, source, hrv, bedtime + timedelta(hours=3), "50", zone_offset="+02:00", external_id="hrv-1:300")
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        assert sorted((s.recorded_at, s.value) for s in db.query(SeriesSample)) == [
-            (AT + timedelta(minutes=10), Decimal("90")),
-            (workout.end_datetime, Decimal("41")),
-        ]
+        assert self._ours(db, hrv) == [(date(2025, 6, 2), None, Decimal("50"))]
 
-    def test_a_day_is_rolled_up_again_without_its_copy_even_with_the_rollup_off(self, db: Session) -> None:
-        """A disabled rollup empties its queue, so the delete rolls the days up itself."""
-        db.get(ArchivalSetting, 1).rollup_enabled = False
+    def test_a_workout_statistic_counts_in_neither_our_day_nor_our_session(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.APPLE)
         workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
         _sample(db, source, SeriesType.steps, workout.end_datetime, "500")
+        _sample(db, source, SeriesType.physical_effort, workout.end_datetime, "7")
         _sample(db, source, SeriesType.steps, AT + timedelta(minutes=10), "1000", external_id="hk-uuid")
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        (day,) = db.query(SeriesAggregate).filter(
-            SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES,
-            SeriesAggregate.series_type_definition_id == get_series_type_id(SeriesType.steps),
+        assert self._ours(db, SeriesType.steps) == [(AT.date(), Decimal("1000"), Decimal("1000"))]
+        assert self._ours(db, SeriesType.physical_effort) == []
+        (session,) = db.query(EventRecordAggregate).filter(
+            EventRecordAggregate.record_id == workout.id,
+            EventRecordAggregate.computed_by == ComputedBy.OPEN_WEARABLES,
+            EventRecordAggregate.series_type_definition_id == get_series_type_id(SeriesType.steps),
         )
-        assert day.sum == Decimal("1000")
+        assert session.sum == Decimal("1000")
 
-    def test_a_delete_whose_lock_ran_out_keeps_the_samples(self, db: Session) -> None:
-        source = DataSourceFactory(provider=ProviderName.POLAR)
-        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
-
-        with patch("app.integrations.rollup_queue.extend_lock", return_value=False):
-            assert not aggregate_backfill_service.run(db, budget_seconds=60)
-
-        assert db.query(SeriesSample).count() == 1
-
-    def test_the_delete_waits_for_a_scheduled_rollup_in_progress(self, db: Session) -> None:
-        source = DataSourceFactory(provider=ProviderName.POLAR)
-        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
-        # Every step but the delete, which then runs on its own while the rollup holds the lock.
-        DataMigrationRepository().mark_completed(db, "aggregate_backfill:delete_copied_samples")
-        aggregate_backfill_service.run(db, budget_seconds=60)
-        get_redis_client().set("series_rollup:lock", "1")
-
-        assert not aggregate_backfill_service._delete_copied_samples(db, Budget(float("inf"), lambda: True))
-        assert db.query(SeriesSample).count() == 1
-
-    def test_a_sample_matching_another_statistic_of_the_providers_row_stays(self, db: Session) -> None:
-        source = DataSourceFactory(provider=ProviderName.POLAR)
-        midnight = datetime(2025, 6, 2, tzinfo=timezone.utc)
-        _sample(db, source, SeriesType.heart_rate_variability_rmssd, midnight, "70")
-        # The night's HRV is read from avg; the row's max came from elsewhere and proves nothing about the sample.
-        provider_day(
-            db, source, SeriesType.heart_rate_variability_rmssd, date(2025, 6, 2), avg=Decimal("64"), max=Decimal("70")
-        )
-
-        aggregate_backfill_service.run(db, budget_seconds=60)
-
-        assert [s.value for s in db.query(SeriesSample)] == [Decimal("70")]
-
-    def test_a_session_value_goes_only_when_its_sleep_also_carries_its_instant(self, db: Session) -> None:
+    def test_a_session_value_without_its_session_stays_a_reading(self, db: Session) -> None:
+        """The history could not copy it onto a sleep, so it is left where it was."""
         source = DataSourceFactory(provider=ProviderName.OURA)
-        start = datetime(2025, 6, 1, 22, tzinfo=timezone.utc)
-        EventRecordFactory(
-            data_source=source, category="sleep", type="sleep", start_datetime=start, duration_seconds=8 * 3600
-        )
-        _sample(db, source, SeriesType.resting_heart_rate, start + timedelta(hours=8), "48")
-        # Copied onto the same sleep, but its instant is not the sleep's end: the row cannot say when it was.
-        _sample(db, source, SeriesType.respiratory_rate, start + timedelta(hours=3), "14")
+        _sample(db, source, SeriesType.respiratory_rate, datetime(2025, 6, 2, 3, tzinfo=timezone.utc), "14")
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        assert [(s.recorded_at, s.value) for s in db.query(SeriesSample)] == [
-            (start + timedelta(hours=3), Decimal("14"))
-        ]
-        assert aggregate_backfill_service.is_done(db)
-
-    def test_a_day_value_off_its_midnight_stays(self, db: Session) -> None:
-        source = DataSourceFactory(provider=ProviderName.WHOOP)
-        # A cycle total stored at the cycle's start, not at the day's midnight.
-        _sample(db, source, SeriesType.steps, datetime(2025, 6, 1, 7, 30, tzinfo=timezone.utc), "9000")
-
-        aggregate_backfill_service.run(db, budget_seconds=60)
-
-        assert db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.PROVIDER).count() == 1
-        assert db.query(SeriesSample).count() == 1
-
-    def test_nothing_is_deleted_before_the_history_is_copied(self, db: Session) -> None:
-        source = DataSourceFactory(provider=ProviderName.SUUNTO)
-        _sample(
-            db, source, SeriesType.steps, datetime(2025, 6, 1, 22, tzinfo=timezone.utc), "9000", is_daily_total=True
-        )
-
-        assert not aggregate_backfill_service._delete_copied_samples(db, Budget(float("inf"), lambda: True))
-        assert db.query(SeriesSample).count() == 1
+        assert self._ours(db, SeriesType.respiratory_rate) == [(date(2025, 6, 2), None, Decimal("14"))]

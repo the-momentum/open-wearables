@@ -1,11 +1,13 @@
 from collections.abc import Iterable, Iterator
 from datetime import date, datetime, timedelta
+from functools import cache
 from uuid import UUID
 
-from sqlalchemy import Row, text
+from sqlalchemy import Row, TextClause, text
 
 from app.database import DbSession
 from app.models import EventRecordAggregate, SeriesAggregate
+from app.repositories.aggregate_backfill_repository import WORKOUT_ENDING_PROVIDERS, history_value_sql
 from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.local_day import OFFSET_REACH, every_series_type_sql, sample_day_sql, utc_midnight
 from app.schemas.enums import (
@@ -27,27 +29,31 @@ _STATS = """sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s
     (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last, count(*) AS count"""
 _SAMPLE_DAY = sample_day_sql("s")
 
+
 # A month of days: the last value and the first offset are read back by their instants through the unique index,
 # as ordering every day's rows inside the aggregate (array_agg ... ORDER BY) sorts the whole range on disk.
-_DAY_STATS = text(f"""
-    WITH g AS (
-        SELECT s.series_type_definition_id, {_SAMPLE_DAY} AS day, min(s.recorded_at) AS first_at,
-            sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s.value) AS max,
-            max(s.recorded_at) AS last_at, count(*) AS count
-        FROM series_sample s
-        WHERE s.data_source_id = :source_id AND {every_series_type_sql("s")}
-            AND s.recorded_at >= :lo AND s.recorded_at < :hi
-            AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
-        GROUP BY 1, 2
-    )
-    SELECT g.*,
-        coalesce((SELECT f.zone_offset FROM series_sample f WHERE f.data_source_id = :source_id
-            AND f.series_type_definition_id = g.series_type_definition_id AND f.recorded_at = g.first_at), '+00:00')
-            AS zone_offset,
-        (SELECT l.value FROM series_sample l WHERE l.data_source_id = :source_id
-            AND l.series_type_definition_id = g.series_type_definition_id AND l.recorded_at = g.last_at) AS last
-    FROM g
-""")
+@cache
+def _day_stats(provider: str) -> TextClause:
+    return text(f"""
+        WITH g AS (
+            SELECT s.series_type_definition_id, {_SAMPLE_DAY} AS day, min(s.recorded_at) AS first_at,
+                sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s.value) AS max,
+                max(s.recorded_at) AS last_at, count(*) AS count
+            FROM series_sample s
+            WHERE s.data_source_id = :source_id AND s.recorded_at >= :lo AND s.recorded_at < :hi
+                AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
+                AND NOT ({history_value_sql(provider)})
+            GROUP BY 1, 2
+        )
+        SELECT g.*,
+            coalesce((SELECT f.zone_offset FROM series_sample f WHERE f.data_source_id = :source_id
+                AND f.series_type_definition_id = g.series_type_definition_id AND f.recorded_at = g.first_at),
+                '+00:00') AS zone_offset,
+            (SELECT l.value FROM series_sample l WHERE l.data_source_id = :source_id
+                AND l.series_type_definition_id = g.series_type_definition_id AND l.recorded_at = g.last_at) AS last
+        FROM g
+    """)
+
 
 # Only the rows about to be recomputed: a series whose samples are gone keeps the row it has.
 _DELETE_DAYS = text("""
@@ -67,20 +73,24 @@ _SESSIONS = text("""
         AND start_datetime < :hi AND end_datetime >= :lo
 """)
 
+
 # One index range per session: joined plainly, a month of sessions makes the planner hash the whole sample table.
-_SESSION_STATS = text(f"""
-    SELECT er.id AS record_id, stats.*
-    FROM event_record er
-    CROSS JOIN LATERAL (
-        SELECT s.series_type_definition_id, {_STATS}
-        FROM series_sample s
-        WHERE s.data_source_id = er.data_source_id
-            AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
-            AND s.is_daily_total IS NOT TRUE AND {every_series_type_sql("s")}
-        GROUP BY 1
-    ) stats
-    WHERE er.id = ANY(:record_ids)
-""")
+@cache
+def _session_stats(provider: str) -> TextClause:
+    return text(f"""
+        SELECT er.id AS record_id, stats.*
+        FROM event_record er
+        CROSS JOIN LATERAL (
+            SELECT s.series_type_definition_id, {_STATS}
+            FROM series_sample s
+            WHERE s.data_source_id = er.data_source_id
+                AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
+                AND s.is_daily_total IS NOT TRUE AND NOT ({history_value_sql(provider)})
+            GROUP BY 1
+        ) stats
+        WHERE er.id = ANY(:record_ids)
+    """)
+
 
 _DELETE_SESSIONS = text("""
     DELETE FROM event_record_aggregate a
@@ -96,6 +106,13 @@ _DAYS_BEFORE = text(f"""
 """)
 
 _SOURCES = text("SELECT id FROM data_source WHERE id > :after ORDER BY id LIMIT :limit")
+_PROVIDER = text("SELECT provider FROM data_source WHERE id = :source_id")
+# Read once per range: a lookup per sample would read every workout of the source, as no index leads with the end.
+_WORKOUT_ENDS = text("""
+    SELECT end_datetime FROM event_record
+    WHERE data_source_id = :source_id AND category = 'workout'
+        AND start_datetime > CAST(:lo AS timestamptz) - interval '7 days' AND start_datetime < :hi
+""")
 
 _SESSION_CATEGORIES = [EventCategory.SLEEP.value, EventCategory.WORKOUT.value]
 # A sum is kept only where the series is summed: a day's heart rates added up mean nothing.
@@ -124,11 +141,17 @@ class SeriesRollupRepository:
         so they are never recomputed: they only gain rows they lack, from whatever samples came late.
         """
         written = 0
+        provider = db_session.execute(_PROVIDER, {"source_id": source_id}).scalar_one()
         for run in _runs(sorted(set(days))):
             lo = utc_midnight(run[0]) - OFFSET_REACH
             hi = utc_midnight(run[-1]) + timedelta(days=1) + OFFSET_REACH
-            written += self._roll_up_days(db_session, source_id, run, lo, hi, frozen_before)
-            self._roll_up_sessions(db_session, source_id, lo, hi, frozen_before)
+            ends = (
+                list(db_session.execute(_WORKOUT_ENDS, {"source_id": source_id, "lo": lo, "hi": hi}).scalars())
+                if provider in WORKOUT_ENDING_PROVIDERS
+                else []
+            )
+            written += self._roll_up_days(db_session, source_id, provider, ends, run, lo, hi, frozen_before)
+            self._roll_up_sessions(db_session, source_id, provider, ends, lo, hi, frozen_before)
         return written
 
     def sources(self, db_session: DbSession, after: UUID, limit: int) -> list[UUID]:
@@ -145,16 +168,18 @@ class SeriesRollupRepository:
         self,
         db_session: DbSession,
         source_id: UUID,
+        provider: str,
+        workout_ends: list[datetime],
         days: list[date],
         lo: datetime,
         hi: datetime,
         frozen_before: date | None,
     ) -> int:
         fresh = [day for day in days if frozen_before is None or day >= frozen_before]
-        params = {"source_id": source_id, "lo": lo, "hi": hi, "days": days}
+        params = {"source_id": source_id, "lo": lo, "hi": hi, "days": days, "workout_ends": workout_ends}
         rows: dict[bool, list[dict]] = {True: [], False: []}
         recomputed: list[tuple[date, int]] = []
-        for row in db_session.execute(_DAY_STATS, params):
+        for row in db_session.execute(_day_stats(provider), params):
             period = CalendarPeriod.of_date(row.day, row.zone_offset)
             if row.day in fresh:
                 recomputed.append((row.day, row.series_type_definition_id))
@@ -184,7 +209,14 @@ class SeriesRollupRepository:
         return self._write(self.series_aggregate_repo, db_session, rows)
 
     def _roll_up_sessions(
-        self, db_session: DbSession, source_id: UUID, lo: datetime, hi: datetime, frozen_before: date | None
+        self,
+        db_session: DbSession,
+        source_id: UUID,
+        provider: str,
+        workout_ends: list[datetime],
+        lo: datetime,
+        hi: datetime,
+        frozen_before: date | None,
     ) -> None:
         params = {
             "source_id": source_id,
@@ -198,7 +230,9 @@ class SeriesRollupRepository:
             return
         rows: dict[bool, list[dict]] = {True: [], False: []}
         recomputed: list[tuple[UUID, int]] = []
-        for row in db_session.execute(_SESSION_STATS, {"record_ids": list(frozen_by_id)}):
+        for row in db_session.execute(
+            _session_stats(provider), {"record_ids": list(frozen_by_id), "workout_ends": workout_ends}
+        ):
             if not frozen_by_id[row.record_id]:
                 recomputed.append((row.record_id, row.series_type_definition_id))
             rows[not frozen_by_id[row.record_id]].append(

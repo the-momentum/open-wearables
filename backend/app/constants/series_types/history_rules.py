@@ -2,8 +2,8 @@
 
 Frozen history, on purpose not derived from the providers' current mappings: it describes rows already
 written, so it must not move when a provider's mapping does. The aggregate backfill copies what these
-rules match into series_aggregate and event_record_aggregate; the later cleanup deletes a copy only where it sits at
-the very instant of its aggregate row, so the rest stay samples.
+rules match into series_aggregate and event_record_aggregate, and the rollup leaves the samples they match out, so
+our rows count readings only. The samples themselves stay until retention.
 """
 
 from dataclasses import dataclass

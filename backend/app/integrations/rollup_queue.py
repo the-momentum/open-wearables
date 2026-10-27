@@ -46,11 +46,6 @@ def take_lock() -> str | None:
     return redis_lock.acquire(LOCK_KEY, _LOCK_TTL_SECONDS)
 
 
-def extend_lock(token: str) -> bool:
-    """False once the lock ran out and someone else may hold it."""
-    return redis_lock.extend(LOCK_KEY, token, _LOCK_TTL_SECONDS)
-
-
 def release_lock(token: str) -> None:
     redis_lock.release(LOCK_KEY, token)
 

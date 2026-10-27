@@ -211,26 +211,6 @@ class AggregateBackfillRepository:
             written += db_session.execute(statement, params).rowcount  # ty: ignore[unresolved-attribute]
         return written
 
-    def delete_copied_samples(
-        self, db_session: DbSession, source_id: UUID, provider: str, cutoff: datetime
-    ) -> set[tuple[UUID, date]]:
-        """The source's history samples the backfill copied, recorded before ``cutoff``, deleted where the provider's
-        aggregate row holds the very same value at the very same instant (its period start, or the session's end), so
-        nothing the sample said is lost. Returns the (source, local day) pairs they were on."""
-        days: set[tuple[UUID, date]] = set()
-        for rule, statement in _DELETES:
-            if ProviderName(provider) not in rule.providers:
-                continue
-            params = {
-                "source": source_id,
-                "types": [get_series_type_id(series_type) for series_type, _ in rule.series],
-                "since": None,
-                "cutoff": cutoff,
-                **_stat_params(rule),
-            }
-            days.update((row.data_source_id, row.day) for row in db_session.execute(statement, params))
-        return days
-
 
 _DAYS = {
     DayAnchor.LOCAL: "((s.recorded_at AT TIME ZONE 'UTC') + coalesce(s.zone_offset, '+00:00')::interval)::date",
@@ -347,48 +327,25 @@ def _stat_params(rule: HistoryRule) -> dict[str, list[int]]:
     return params
 
 
-# The sample's value in the statistic the rule copied it to; any other statistic of the row is someone else's.
-_SAME_VALUE = (
-    "s.value = CASE "
-    + " ".join(f"WHEN s.series_type_definition_id = ANY(:{stat}_types) THEN a.{stat}" for stat in _STATS)
-    + " END"
+# The providers whose history holds workout statistics at a workout's end.
+WORKOUT_ENDING_PROVIDERS = frozenset(
+    provider for rule in HISTORY_RULES if rule.session is SessionMatch.WORKOUT_ENDING for provider in rule.providers
 )
 
 
-def _delete_day_values(rule: HistoryRule) -> TextClause:
-    assert rule.day is not None
-    return text(f"""
-        DELETE FROM series_sample s
-        WHERE {_RULE_SAMPLES.format(where=rule.where)} AND s.recorded_at < :cutoff
-            AND EXISTS (
-                SELECT 1 FROM series_aggregate a
-                WHERE a.data_source_id = s.data_source_id AND a.series_type_definition_id = s.series_type_definition_id
-                    AND a.period_kind = 'day' AND a.computed_by = 'provider'
-                    AND a.period_start = s.recorded_at
-                    AND {_SAME_VALUE}
-            )
-        RETURNING s.data_source_id, {_DAYS[DayAnchor.LOCAL]} AS day
-    """)
+def history_value_sql(provider: str) -> str:
+    """True for a sample of series_sample s that code before the aggregate tables stored as one of ``provider``'s day
+    or session values, as the history rules describe it: the rollup leaves those out, so our rows count readings.
+    A workout's statistic is told by its instant, one of the workout ends the caller binds as :workout_ends."""
+    return " OR ".join(_history_value(rule) for rule in HISTORY_RULES if provider in rule.providers) or "FALSE"
 
 
-def _delete_session_values(rule: HistoryRule) -> TextClause:
-    assert rule.session is not None
-    record = (
-        _WORKOUT_ENDING.format(e="e")
-        if rule.session is SessionMatch.WORKOUT_ENDING
-        else f"a.record_id = ({_RECORDS[rule.session]}) AND e.end_datetime = s.recorded_at"
-    )
-    return text(f"""
-        DELETE FROM series_sample s
-        WHERE {_RULE_SAMPLES.format(where=rule.where)} AND s.recorded_at < :cutoff
-            AND EXISTS (
-                SELECT 1 FROM event_record_aggregate a JOIN event_record e ON e.id = a.record_id
-                WHERE {record}
-                    AND a.series_type_definition_id = s.series_type_definition_id AND a.computed_by = 'provider'
-                    AND {_SAME_VALUE}
-            )
-        RETURNING s.data_source_id, {_DAYS[DayAnchor.LOCAL]} AS day
-    """)
-
-
-_DELETES = [(rule, _delete_day_values(rule) if rule.day else _delete_session_values(rule)) for rule in HISTORY_RULES]
+def _history_value(rule: HistoryRule) -> str:
+    types = ", ".join(str(get_series_type_id(series_type)) for series_type, _ in rule.series)
+    matched = f"s.series_type_definition_id IN ({types}) AND ({rule.where})"
+    if rule.session is SessionMatch.WORKOUT_ENDING:
+        return f"({matched} AND s.recorded_at = ANY(CAST(:workout_ends AS timestamptz[])))"
+    if rule.session is not None:
+        # Only one its session holds: without one the copy left it a reading, and so does the rollup.
+        return f"({matched} AND EXISTS ({_RECORDS[rule.session]}))"
+    return f"({matched})"

@@ -862,11 +862,13 @@ class TestActivitySummaryEndpoint:
 
         # Also add some step data for the same day
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        # A reading with its own id: one without, at a workout's end, is the workout's statistic and no reading.
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=steps_type,
             value=Decimal("12000"),
             recorded_at=workout_end,
+            external_id="hk-steps",
         )
 
         api_key = ApiKeyFactory()
