@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -38,7 +37,7 @@ from app.schemas.enums import (
     get_series_type_from_id,
     get_series_type_id,
 )
-from app.services.aggregate_backfill_service import aggregate_backfill_service
+from app.services.aggregate_backfill_service import Budget, aggregate_backfill_service
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -519,8 +518,8 @@ class TestHistoryValues:
             )
         }
         assert rows[ComputedBy.PROVIDER].avg == Decimal("82")
-        # Ours, rolled up from the workout's samples, sits beside it: 82 at the end and 90 inside.
-        assert rows[ComputedBy.OPEN_WEARABLES].avg == Decimal("86")
+        # Ours sits beside it, rolled up again once the copy at the end was deleted: the 90 inside.
+        assert rows[ComputedBy.OPEN_WEARABLES].avg == Decimal("90")
 
 
 @pytest.mark.usefixtures("roll_up_history")
@@ -609,7 +608,6 @@ class TestDeleteCopiedSamples:
         assert [(s.recorded_at, s.value) for s in db.query(SeriesSample)] == [
             (midnight + timedelta(days=1), Decimal("70"))
         ]
-        assert (source.id, date(2025, 6, 2)) in pop_dirty_days(10)
 
     def test_a_copied_workout_statistic_goes_and_the_workouts_samples_stay(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.APPLE)
@@ -625,17 +623,28 @@ class TestDeleteCopiedSamples:
             (workout.end_datetime, Decimal("41")),
         ]
 
-    def test_a_failed_queue_keeps_the_samples_for_the_next_run(self, db: Session) -> None:
-        """Once gone, the samples could not say which days to roll up again."""
+    def test_a_day_is_rolled_up_again_without_its_copy_even_with_the_rollup_off(self, db: Session) -> None:
+        """A disabled rollup empties its queue, so the delete rolls the days up itself."""
+        db.get(ArchivalSetting, 1).rollup_enabled = False
+        source = DataSourceFactory(provider=ProviderName.APPLE)
+        workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
+        _sample(db, source, SeriesType.steps, workout.end_datetime, "500")
+        _sample(db, source, SeriesType.steps, AT + timedelta(minutes=10), "1000", external_id="hk-uuid")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        (day,) = db.query(SeriesAggregate).filter(
+            SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES,
+            SeriesAggregate.series_type_definition_id == get_series_type_id(SeriesType.steps),
+        )
+        assert day.sum == Decimal("1000")
+
+    def test_a_delete_whose_lock_ran_out_keeps_the_samples(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.POLAR)
         _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
 
-        with (
-            patch("app.integrations.rollup_queue.requeue_dirty_days", side_effect=RedisError),
-            pytest.raises(RedisError),
-        ):
-            aggregate_backfill_service.run(db, budget_seconds=60)
-        db.rollback()
+        with patch("app.integrations.rollup_queue.extend_lock", return_value=False):
+            assert not aggregate_backfill_service.run(db, budget_seconds=60)
 
         assert db.query(SeriesSample).count() == 1
 
@@ -647,7 +656,7 @@ class TestDeleteCopiedSamples:
         aggregate_backfill_service.run(db, budget_seconds=60)
         get_redis_client().set("series_rollup:lock", "1")
 
-        assert not aggregate_backfill_service._delete_copied_samples(db, deadline=float("inf"))
+        assert not aggregate_backfill_service._delete_copied_samples(db, Budget(float("inf"), lambda: True))
         assert db.query(SeriesSample).count() == 1
 
     def test_a_sample_matching_another_statistic_of_the_providers_row_stays(self, db: Session) -> None:
@@ -696,5 +705,5 @@ class TestDeleteCopiedSamples:
             db, source, SeriesType.steps, datetime(2025, 6, 1, 22, tzinfo=timezone.utc), "9000", is_daily_total=True
         )
 
-        assert not aggregate_backfill_service._delete_copied_samples(db, deadline=float("inf"))
+        assert not aggregate_backfill_service._delete_copied_samples(db, Budget(float("inf"), lambda: True))
         assert db.query(SeriesSample).count() == 1
