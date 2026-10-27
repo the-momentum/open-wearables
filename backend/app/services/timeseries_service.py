@@ -11,8 +11,9 @@ from sqlalchemy import event as sa_event
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesSample
 from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
-from app.repositories.data_point_series_repository import AggregatedSample, SourceRanking, WriteCounts
+from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import SeriesAggregateRepository
 from app.schemas.enums import (
     BUCKET_SIZES,
@@ -53,7 +54,8 @@ def _best_per_bucket(samples: list[AggregatedSample], ranking: SourceRanking) ->
     """Per bucket and series type, only the best-ranked source's row; the order stays."""
 
     def key(sample: AggregatedSample) -> tuple:
-        return (*ranking.rank(sample.data_source), str(sample.data_source.id))
+        source = sample.data_source
+        return (*ranking.rank(source.provider, source.device_type), str(source.id))
 
     best: dict[tuple[datetime, int], AggregatedSample] = {}
     for sample in samples:
@@ -69,7 +71,8 @@ def _best_per_day(
     """Per series type and local day, only the best-ranked source's row; a tie goes to the row counting more."""
 
     def key(row: SeriesAggregate) -> tuple:
-        return (*ranking.rank(sources[row.data_source_id]), -row.count, str(row.data_source_id))
+        source = sources[row.data_source_id]
+        return (*ranking.rank(source.provider, source.device_type), -row.count, str(source.id))
 
     best: dict[tuple[int, date], tuple[SeriesAggregate, date]] = {}
     for row, day in rows:
@@ -523,7 +526,7 @@ class TimeSeriesService(
         source_by_type = None
         if source_selection is SourceSelection.PER_RANGE:
             source_by_type = self._winning_sources(db_session, user_id, types, params)
-        ranking = self._ranking(db_session) if source_selection is SourceSelection.PER_DAY else None
+        ranking = self._ranking(db_session) if source_selection is SourceSelection.PER_PERIOD else None
         if params.resolution in PERIOD_RESOLUTIONS:
             return self._period_timeseries(db_session, user_id, types, params, source_by_type, ranking)
         if params.resolution is not Resolution.RAW:

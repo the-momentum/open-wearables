@@ -2033,14 +2033,41 @@
             }
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_range",
+                    "per_period"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source. `per_range` keeps one source per series type for the whole range. `per_period` keeps one per series type and period: per day for `1day`, `1week` and `1month`, per bucket below a day; not available for raw reads. Sources rank by provider, then device type priority. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Same as source_selection=per_range.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
-            }
+            },
+            "description": "Same as source_selection=per_range.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2277,6 +2304,28 @@
               ],
               "title": "Data Source Id"
             }
+          },
+          {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`."
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2544,6 +2593,28 @@
             }
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`."
+          },
+          {
             "name": "X-Open-Wearables-API-Key",
             "in": "header",
             "required": false,
@@ -2764,16 +2835,40 @@
             "description": "When true, return only naps; when false, only main sleep. Omit to return both."
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "description": "Same as source_selection=per_session.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
             },
-            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+            "description": "Same as source_selection=per_session.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",
@@ -2956,16 +3051,40 @@
             "description": "When true, return only naps; when false, only main sleep. Omit to return both."
           },
           {
+            "name": "source_selection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "all",
+                    "per_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`.",
+              "title": "Source Selection"
+            },
+            "description": "`all` returns every source's sessions. `per_session` drops a session where a better-ranked source recorded one overlapping at least half of the shorter of the two; sessions only one source has stay. Sources rank by provider, then device type priority. Defaults to `all`."
+          },
+          {
             "name": "filter_by_priority",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "description": "Same as source_selection=per_session.",
+              "deprecated": true,
               "default": false,
               "title": "Filter By Priority"
             },
-            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+            "description": "Same as source_selection=per_session.",
+            "deprecated": true
           },
           {
             "name": "X-Open-Wearables-API-Key",

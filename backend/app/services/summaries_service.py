@@ -1,6 +1,5 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
-import contextlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
@@ -16,6 +15,7 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
+from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import (
     ACTIVITY_METRIC_GROUPS,
     ACTIVITY_METRIC_KEYS,
@@ -138,7 +138,11 @@ class SummariesService:
         if not results:
             return results
 
-        provider_order, device_type_order = self._priority_orders(db_session)
+        ranking = SourceRanking(*self._priority_orders(db_session))
+
+        def sort_key(entry: dict) -> tuple[int, int, str]:
+            provider = entry.get("provider") or entry.get("source")
+            return (*ranking.rank(provider, entry.get("device_type")), entry.get("device_model") or "")
 
         # Group results by date
         by_date: dict[date, list[dict]] = defaultdict(list)
@@ -152,23 +156,6 @@ class SummariesService:
             if len(entries) == 1:
                 filtered.append(entries[0])
                 continue
-
-            # Sort by priority
-            def sort_key(entry: dict) -> tuple[int, int, str]:
-                raw_provider = entry.get("provider") or entry.get("source")
-                try:
-                    provider = ProviderName(raw_provider)
-                except ValueError:
-                    provider = ProviderName.UNKNOWN
-
-                provider_priority = provider_order.get(provider, 99)
-
-                device_model = entry.get("device_model")
-                device_type_priority = 99
-                with contextlib.suppress(ValueError):
-                    device_type_priority = device_type_order.get(DeviceType(entry.get("device_type")), 99)
-
-                return (provider_priority, device_type_priority, device_model or "")
 
             entries_sorted = sorted(entries, key=sort_key)
             winner = dict(entries_sorted[0]) if fill else entries_sorted[0]

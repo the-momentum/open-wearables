@@ -876,7 +876,7 @@ class TestTimeSeriesServiceGetTimeseries:
 
         assert [s.value for s in result.data] == [80, 80, 80]
 
-    def test_per_day_takes_the_best_source_in_each_bucket(self, db: Session) -> None:
+    def test_per_period_takes_the_best_source_in_each_bucket(self, db: Session) -> None:
         """Below a day a bucket the better source left empty keeps the next source's value."""
         user = UserFactory()
         watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
@@ -892,7 +892,7 @@ class TestTimeSeriesServiceGetTimeseries:
             user.id,
             [SeriesType.heart_rate],
             self._params(resolution=Resolution.ONE_MIN),
-            source_selection=SourceSelection.PER_DAY,
+            source_selection=SourceSelection.PER_PERIOD,
         )
 
         assert [(s.value, s.source.provider) for s in result.data] == [(200, "whoop"), (100, "garmin")]
@@ -965,7 +965,7 @@ class TestTimeSeriesServicePeriods:
             **overrides,
         )
 
-    def test_per_day_takes_each_days_best_source_and_builds_weeks_from_them(self, db: Session) -> None:
+    def test_per_period_takes_each_days_best_source_and_builds_weeks_from_them(self, db: Session) -> None:
         """A watch worn one day of two wins that day only, and the week adds up the days whoever won them."""
         user = UserFactory()
         watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
@@ -981,7 +981,7 @@ class TestTimeSeriesServicePeriods:
                 user.id,
                 [SeriesType.steps],
                 self._params(resolution, monday, date(2024, 3, 11)),
-                source_selection=SourceSelection.PER_DAY,
+                source_selection=SourceSelection.PER_PERIOD,
             )
             for resolution in (Resolution.ONE_DAY, Resolution.ONE_WEEK)
         )

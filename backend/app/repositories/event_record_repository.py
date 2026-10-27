@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
+from sqlalchemy.sql.expression import CTE
 
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
@@ -36,6 +37,7 @@ from app.repositories.data_type_coverage_repository import data_type_coverage_re
 from app.repositories.local_day import utc_midnight
 from app.repositories.repositories import (
     CrudRepository,
+    SourceRanking,
     source_filter_conditions,
     source_priority_order,
     utc_bucket_start,
@@ -607,10 +609,16 @@ class EventRecordRepository(
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
     def get_workout_totals(
-        self, db_session: DbSession, query_params: EventRecordQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[int, int, Decimal | None, Decimal | None]:
         """Count, duration, energy and distance of the matching workouts, in one aggregate."""
-        filters = self._record_filters(query_params.model_copy(update={"category": EventCategory.WORKOUT}), user_id)
+        filters = self._record_filters(
+            query_params.model_copy(update={"category": EventCategory.WORKOUT}), user_id, restrict_to_record_ids
+        )
         row = (
             db_session.query(
                 func.count(EventRecord.id),
@@ -704,55 +712,59 @@ class EventRecordRepository(
         )
         return int(row[0]), int(row[1]), int(row[2]), int(row[3]), row[4]
 
-    def winning_sleep_record_ids(
+    def winning_session_record_ids(
         self,
         db_session: DbSession,
         user_id: str,
         query_params: EventRecordQueryParams,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
     ) -> Query:
-        """Subquery of sleep record ids belonging to the top-priority source per night.
+        """Ids of the sessions no better-ranked source also recorded.
 
-        For each local sleep date, sources are ranked by provider priority, then
-        device-type priority, then device_model (lower value = higher priority;
-        anything absent from the order dicts falls through to 99 — matching the
-        priority service). The winning source's sessions (dense_rank == 1, so all of
-        its rows for that night, naps included) are returned.
+        A session is dropped when another source's session overlaps at least half of the shorter of the two and
+        that source ranks higher (then the longer session, then device model, then id). Pairs are compared, not
+        chains of overlaps, so a long session cannot tie two separate ones together. A session only a lower-ranked
+        source has (a phone's nap on a night the watch recorded) stays.
 
-        Returned as an unexecuted Query so callers can inline it as `id IN (...)`
-        and keep dedup + pagination in a single SQL statement.
+        Built on the listing's own filters, so only what the request can return competes, and returned unexecuted
+        so callers inline it as ``id IN (...)`` and keep pagination in one statement.
         """
-        local_sleep_date = cast(
-            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
-            Date,
-        )
-        filters = [
-            DataSource.user_id == UUID(user_id),
-            EventRecord.category == EventCategory.SLEEP,
-        ]
-        if query_params.start_datetime:
-            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
-        if query_params.end_datetime:
-            filters.append(EventRecord.end_datetime < query_params.end_datetime)
-        if query_params.is_nap is not None:
-            filters.append(_nap_condition(query_params.is_nap))
-
-        ranked = (
+        provider_rank, device_rank, device_model = ranking.order_terms()
+        candidates = (
             db_session.query(
-                EventRecord.id.label("record_id"),
-                func.dense_rank()
-                .over(
-                    partition_by=local_sleep_date,
-                    order_by=source_priority_order(provider_order, device_type_order),
-                )
-                .label("source_rank"),
+                EventRecord.id.label("id"),
+                EventRecord.data_source_id.label("source_id"),
+                EventRecord.start_datetime.label("start"),
+                EventRecord.end_datetime.label("end"),
+                provider_rank.label("provider_rank"),
+                device_rank.label("device_rank"),
+                device_model.label("device_model"),
             )
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
-            .filter(and_(*filters))
-            .subquery()
+            .filter(and_(*self._record_filters(query_params, user_id)))
+            .cte("candidates")
         )
-        return db_session.query(ranked.c.record_id).filter(ranked.c.source_rank == 1)
+        this, other = candidates.alias("this"), candidates.alias("other")
+
+        def order(c: CTE) -> ColumnElement:
+            # The negated length puts the longer session first among equally ranked sources.
+            longer_first = func.extract("epoch", c.c.start - c.c.end)
+            return tuple_(c.c.provider_rank, c.c.device_rank, longer_first, c.c.device_model, c.c.id)
+
+        overlap = func.least(this.c.end, other.c.end) - func.greatest(this.c.start, other.c.start)
+        shorter = func.least(this.c.end - this.c.start, other.c.end - other.c.start)
+        beaten = (
+            select(literal_column("1"))
+            .where(
+                other.c.source_id != this.c.source_id,
+                other.c.start < this.c.end,
+                other.c.end > this.c.start,
+                overlap * 2 >= shorter,
+                order(other) < order(this),
+            )
+            .exists()
+        )
+        return db_session.query(this.c.id).filter(~beaten)
 
     def get_user_event_counts_by_provider(
         self,

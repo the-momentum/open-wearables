@@ -19,7 +19,14 @@ from sqlalchemy.orm import Session
 from app.integrations.rollup_queue import pop_dirty_days
 from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
 from app.repositories import AggregateRepository, data_point_series_repository
-from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
+from app.schemas.enums import (
+    ComputedBy,
+    HealthScoreCategory,
+    ProviderName,
+    SeriesType,
+    SourceSelection,
+    get_series_type_id,
+)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -1377,9 +1384,10 @@ class TestGetSleepSessions:
                 end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
                 is_nap=is_nap,
             )
-            return {
-                s.id for s in event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True).data
-            }
+            response = event_record_service.get_sleep_sessions(
+                db, user.id, params, source_selection=SourceSelection.PER_SESSION
+            )
+            return {s.id for s in response.data}
 
         assert fetch(is_nap=False) == {oura_night.id}
         assert fetch(is_nap=True) == {garmin_nap.id}
@@ -1413,30 +1421,113 @@ class TestGetSleepSessions:
         assert oura_record.id in ids
         assert garmin_record.id in ids
 
-    def test_filter_by_priority_keeps_only_best_source_per_date(self, db: Session) -> None:
-        """With the flag, only the highest-priority source's sessions survive per date."""
-        from app.schemas.enums import ProviderName
+    def _params(self) -> EventRecordQueryParams:
+        return EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+
+    def _garmin_over_oura(self, db: Session) -> tuple[object, DataSource, DataSource]:
         from app.services.priority_service import priority_service
 
         user = UserFactory()
         oura = DataSourceFactory(user=user, provider="oura", source="oura")
         garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
+        return user, oura, garmin
+
+    def test_per_session_keeps_only_the_best_source_of_one_night(self, db: Session) -> None:
+        user, oura, garmin = self._garmin_over_oura(db)
         oura_record = self._sleep_record(oura)
         garmin_record = self._sleep_record(garmin)
 
-        # Garmin ranks above Oura.
-        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
-        priority_service.update_provider_priority(db, ProviderName.OURA, 2)
-
-        params = EventRecordQueryParams(
-            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
-            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        response = event_record_service.get_sleep_sessions(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
         )
-        response = event_record_service.get_sleep_sessions(db, user.id, params, filter_by_priority=True)
 
-        ids = {s.id for s in response.data}
-        assert garmin_record.id in ids
-        assert oura_record.id not in ids
+        assert {s.id for s in response.data} == {garmin_record.id}
+        assert oura_record.id not in {s.id for s in response.data}
+
+    def test_per_session_keeps_a_lower_sources_nap_the_better_one_missed(self, db: Session) -> None:
+        """The per-date rule dropped every session of the losing source; a nap overlapping nothing is a sleep of its
+        own, and a night split by the better source still drops the other source's copy."""
+        user, oura, garmin = self._garmin_over_oura(db)
+        garmin_night = self._sleep_record(garmin)
+        self._sleep_record(oura)
+        oura_nap = EventRecordFactory(
+            mapping=oura,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 11, 13, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 11, 13, 40, tzinfo=timezone.utc),
+            duration_seconds=2400,
+        )
+
+        sessions = event_record_service.get_sleep_sessions(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+        totals = event_record_service.get_sleep_totals(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {s.id for s in sessions.data} == {garmin_night.id, oura_nap.id}
+        assert totals.count == 2
+
+    def test_per_session_keeps_sessions_overlapping_less_than_half(self, db: Session) -> None:
+        """An evening nap that runs into the night by a few minutes is not the night."""
+        user, oura, garmin = self._garmin_over_oura(db)
+        garmin_night = self._sleep_record(garmin)
+        oura_evening = EventRecordFactory(
+            mapping=oura,
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 4, 10, 22, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 10, 23, 10, tzinfo=timezone.utc),
+            duration_seconds=4200,
+        )
+
+        response = event_record_service.get_sleep_sessions(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {s.id for s in response.data} == {garmin_night.id, oura_evening.id}
+
+    def test_per_session_drops_a_relayed_workout_and_keeps_a_separate_one(self, db: Session) -> None:
+        """The same run from Garmin and relayed through Strava is one workout; a walk only Strava has stays."""
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        from app.services.priority_service import priority_service
+
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.STRAVA, 2)
+        run_start = datetime(2026, 4, 12, 7, 0, tzinfo=timezone.utc)
+        garmin_run = EventRecordFactory(
+            mapping=garmin, category="workout", start_datetime=run_start, end_datetime=run_start + timedelta(hours=1)
+        )
+        EventRecordFactory(
+            mapping=strava,
+            category="workout",
+            start_datetime=run_start + timedelta(minutes=1),
+            end_datetime=run_start + timedelta(minutes=59),
+        )
+        strava_walk = EventRecordFactory(
+            mapping=strava,
+            category="workout",
+            start_datetime=run_start + timedelta(hours=6),
+            end_datetime=run_start + timedelta(hours=7),
+        )
+
+        workouts = event_record_service.get_workouts(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+        totals = event_record_service.get_workout_totals(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {w.id for w in workouts.data} == {garmin_run.id, strava_walk.id}
+        assert totals.count == 2
 
 
 class TestResolveAvgHr:

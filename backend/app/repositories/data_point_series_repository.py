@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from logging import getLogger
@@ -57,6 +56,7 @@ from app.repositories.data_type_coverage_repository import data_type_coverage_re
 from app.repositories.local_day import OFFSET_REACH
 from app.repositories.repositories import (
     CrudRepository,
+    SourceRanking,
     source_filter_conditions,
     timeline_key_column,
     utc_bucket_start,
@@ -208,25 +208,6 @@ class WriteCounts(int):
 
     def __repr__(self) -> str:
         return f"WriteCounts(inserted={self.inserted}, updated={self.updated})"
-
-
-# Sources whose provider or device type is not ranked sort last.
-_UNRANKED = 1_000_000
-
-
-@dataclass(frozen=True)
-class SourceRanking:
-    """The configured provider and device type priorities, which order a user's data sources."""
-
-    provider_order: dict
-    device_type_order: dict
-
-    def rank(self, source: DataSource) -> tuple[int, int]:
-        """The source's place, lowest first; sources of one provider and device type tie."""
-        return (
-            self.provider_order.get(source.provider, _UNRANKED),
-            self.device_type_order.get(source.device_type, _UNRANKED),
-        )
 
 
 SERIES_TYPE_IDS: tuple[int, ...] = tuple(get_series_type_id(t) for t in SeriesType)
@@ -827,7 +808,7 @@ class DataPointSeriesRepository(
             select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
         ).all()
 
-        rank_of = {s.id: ranking.rank(s) for s in ranked}
+        rank_of = {s.id: ranking.rank(s.provider, s.device_type) for s in ranked}
         by_type: dict[int, list[UUID]] = {}
         for type_id, source_id in populated:
             by_type.setdefault(type_id, []).append(source_id)
@@ -859,7 +840,7 @@ class DataPointSeriesRepository(
             DataSource.user_id == user_id,
             *source_filter_conditions(params, DataSource.id),
         )
-        return sorted(query.all(), key=lambda s: (*ranking.rank(s), s.id))
+        return sorted(query.all(), key=lambda s: (*ranking.rank(s.provider, s.device_type), s.id))
 
     def _first_sample_at_or_after(
         self,
