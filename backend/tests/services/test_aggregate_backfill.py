@@ -611,6 +611,20 @@ class TestDeleteCopiedSamples:
         ]
         assert (source.id, date(2025, 6, 2)) in pop_dirty_days(10)
 
+    def test_a_copied_workout_statistic_goes_and_the_workouts_samples_stay(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.APPLE)
+        workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
+        _sample(db, source, SeriesType.cadence, workout.end_datetime, "82")
+        _sample(db, source, SeriesType.cadence, AT + timedelta(minutes=10), "90")
+        _sample(db, source, SeriesType.vo2_max, workout.end_datetime, "41", external_id="hk-uuid")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert sorted((s.recorded_at, s.value) for s in db.query(SeriesSample)) == [
+            (AT + timedelta(minutes=10), Decimal("90")),
+            (workout.end_datetime, Decimal("41")),
+        ]
+
     def test_a_failed_queue_keeps_the_samples_for_the_next_run(self, db: Session) -> None:
         """Once gone, the samples could not say which days to roll up again."""
         source = DataSourceFactory(provider=ProviderName.POLAR)
