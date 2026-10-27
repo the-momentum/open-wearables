@@ -10453,6 +10453,101 @@
         }
       }
     },
+    "/api/v1/sdk/users/{user_id}/legal-acceptance": {
+      "post": {
+        "tags": [
+          "External: Mobile SDK"
+        ],
+        "summary": "Accept Legal Documents",
+        "description": "The user accepted the instance's privacy policy and terms (`instance/info`) in the app.\n\nRequires the user's own SDK token: the acceptance is theirs, an API key cannot give it.\n201 for a new acceptance, 200 when this version was already accepted. 409 when\n`documents_version` is not the current version: read `instance/info` again and ask the\nuser about the current documents. 400 when `accepted_at` is in the future.",
+        "operationId": "accept_legal_documents_api_v1_sdk_users__user_id__legal_acceptance_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalAcceptanceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalAcceptanceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/invitation-code": {
       "post": {
         "tags": [
@@ -12360,6 +12455,79 @@
             "OAuth2PasswordBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/users/{user_id}/legal-acceptances": {
+      "get": {
+        "tags": [
+          "Internal: Mobile App"
+        ],
+        "summary": "List Legal Acceptances",
+        "description": "Versions of the instance's legal documents the user accepted, newest first.",
+        "operationId": "list_legal_acceptances_api_v1_users__user_id__legal_acceptances_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LegalAcceptanceRead"
+                  },
+                  "title": "Response List Legal Acceptances Api V1 Users  User Id  Legal Acceptances Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "5XX": {
+            "description": "Server error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/developers": {
@@ -18317,6 +18485,42 @@
             ],
             "title": "Instance Id",
             "description": "Registration id at the license server (not the telemetry id); null when not registered"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url",
+            "description": "The organisation's privacy policy, to show before connecting"
+          },
+          "terms_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Url",
+            "description": "The organisation's terms of use, to show before connecting"
+          },
+          "require_acceptance": {
+            "type": "boolean",
+            "title": "Require Acceptance",
+            "description": "The app must have the user accept the documents and report it (POST /sdk/users/{user_id}/legal-acceptance)",
+            "default": false
+          },
+          "legal_documents_version": {
+            "type": "integer",
+            "title": "Legal Documents Version",
+            "description": "Current version of the documents; an app asks again when the version it accepted differs",
+            "default": 1
           }
         },
         "type": "object",
@@ -18364,6 +18568,38 @@
               }
             ],
             "title": "Support Email"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url"
+          },
+          "terms_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Url"
+          },
+          "require_acceptance": {
+            "type": "boolean",
+            "title": "Require Acceptance",
+            "default": false
+          },
+          "legal_documents_version": {
+            "type": "integer",
+            "title": "Legal Documents Version",
+            "default": 1
           },
           "updated_at": {
             "anyOf": [
@@ -18423,6 +18659,54 @@
             ],
             "title": "Support Email",
             "description": "Where users are told to write about problems"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url",
+            "description": "Absolute https URL of the organisation's privacy policy"
+          },
+          "terms_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048,
+                "minLength": 1,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Url",
+            "description": "Absolute https URL of the terms of use"
+          },
+          "require_acceptance": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Require Acceptance",
+            "description": "Users must accept the documents in the app before connecting"
+          },
+          "bump_legal_documents_version": {
+            "type": "boolean",
+            "title": "Bump Legal Documents Version",
+            "description": "Publish a new version of the documents without changing their URLs, so users who must accept them are asked again. A URL change bumps the version by itself.",
+            "default": false
           }
         },
         "type": "object",
@@ -18705,6 +18989,91 @@
           "revoked"
         ],
         "title": "InvitationStatus"
+      },
+      "LegalAcceptanceCreate": {
+        "properties": {
+          "documents_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Documents Version",
+            "description": "legal_documents_version from instance/info that was shown"
+          },
+          "accepted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accepted At",
+            "description": "When the user accepted, on the phone's clock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documents_version",
+          "accepted_at"
+        ],
+        "title": "LegalAcceptanceCreate",
+        "description": "What the app reports when the user ticks \"I accept\" for the instance's documents."
+      },
+      "LegalAcceptanceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "documents_version": {
+            "type": "integer",
+            "title": "Documents Version"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Privacy Policy Url"
+          },
+          "terms_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Url"
+          },
+          "accepted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accepted At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the instance received the acceptance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "documents_version",
+          "privacy_policy_url",
+          "terms_url",
+          "accepted_at",
+          "created_at"
+        ],
+        "title": "LegalAcceptanceRead"
       },
       "LiveSyncMode": {
         "type": "string",

@@ -26,5 +26,32 @@ export const actions: Actions = {
 				saved: true
 			})
 		);
+	},
+
+	saveLegal: async ({ request, locals }) => {
+		const accessToken = await requireToken(locals);
+		const form = await request.formData();
+		const update = {
+			privacy_policy_url: field(form, 'privacy_policy_url') || null,
+			terms_url: field(form, 'terms_url') || null,
+			require_acceptance: field(form, 'require_acceptance') === 'true'
+		};
+
+		return attempt(
+			'saveLegal',
+			update,
+			() => saveInstanceSettings(update, accessToken),
+			() => ({ saved: true })
+		);
+	},
+
+	publishLegal: async ({ locals }) => {
+		const accessToken = await requireToken(locals);
+		return attempt(
+			'publishLegal',
+			{},
+			() => saveInstanceSettings({ bump_legal_documents_version: true }, accessToken),
+			() => ({ saved: true })
+		);
 	}
 };

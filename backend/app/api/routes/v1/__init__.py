@@ -18,6 +18,8 @@ from .import_xml import router as import_xml_router
 from .instance import router as instance_router
 from .instance import settings_router as instance_settings_router
 from .invitations import router as invitations_router
+from .legal_acceptance import router as legal_acceptance_router
+from .legal_acceptance import sdk_router as legal_acceptance_sdk_router
 from .meta import router as meta_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
@@ -61,6 +63,7 @@ v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_user_router, tags=["External: Mobile SDK"])
 v1_router.include_router(app_seat_router, tags=["External: Mobile SDK"])
+v1_router.include_router(legal_acceptance_sdk_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
 v1_router.include_router(token_router, tags=["External: Token"])
 v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
@@ -70,6 +73,7 @@ v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["Ex
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])
 v1_router.include_router(instance_settings_router, prefix="/instance", tags=["Internal: Instance"])
 v1_router.include_router(app_registration_router, prefix="/app-registration", tags=["Internal: Mobile App"])
+v1_router.include_router(legal_acceptance_router, tags=["Internal: Mobile App"])
 v1_router.include_router(developers_router, prefix="/developers", tags=["Internal: Developers"])
 v1_router.include_router(invitations_router, prefix="/invitations", tags=["Internal: Invitations"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: API Keys"])

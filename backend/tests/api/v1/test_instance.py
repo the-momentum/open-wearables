@@ -21,6 +21,10 @@ class TestGetInstanceInfo:
             "api_version": core_version,
             "app_enabled": False,
             "instance_id": None,
+            "privacy_policy_url": None,
+            "terms_url": None,
+            "require_acceptance": False,
+            "legal_documents_version": 1,
         }
 
     def test_reflects_saved_settings(
@@ -46,6 +50,10 @@ class TestGetInstanceInfo:
             "api_version": core_version,
             "app_enabled": False,
             "instance_id": None,
+            "privacy_policy_url": None,
+            "terms_url": None,
+            "require_acceptance": False,
+            "legal_documents_version": 1,
         }
 
 
