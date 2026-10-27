@@ -137,6 +137,7 @@ class OpenWearablesClient:
             "start_date": start_date,
             "end_date": end_date,
             "limit": limit,
+            "filter_by_priority": True,
         }
         if record_type:
             params["record_type"] = record_type
@@ -199,6 +200,7 @@ class OpenWearablesClient:
             "types": types,
             "resolution": resolution,
             "limit": limit,
+            "filter_by_priority": True,
         }
         if cursor:
             params["cursor"] = cursor

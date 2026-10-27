@@ -1368,6 +1368,73 @@ class TestGetSleepSessions:
         assert oura_record.id not in ids
 
 
+class TestGetWorkoutsFilterByPriority:
+    """filter_by_priority drops a workout only when a better-ranked source's workout covers half of it."""
+
+    START = datetime(2026, 4, 10, 7, tzinfo=timezone.utc)
+    PARAMS = {
+        "start_datetime": datetime(2026, 4, 1, tzinfo=timezone.utc),
+        "end_datetime": datetime(2026, 4, 30, tzinfo=timezone.utc),
+    }
+
+    @pytest.fixture
+    def sources(self, db: Session) -> tuple[UUID, DataSource, DataSource]:
+        from app.services.priority_service import priority_service
+
+        user = UserFactory()
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple")
+        withings = DataSourceFactory(user=user, provider=ProviderName.WITHINGS, source="withings")
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
+        priority_service.update_provider_priority(db, ProviderName.WITHINGS, 2)
+        return user.id, apple, withings
+
+    def _workout(self, mapping: DataSource, offset_minutes: int, minutes: int = 60) -> EventRecord:
+        start = self.START + timedelta(minutes=offset_minutes)
+        return EventRecordFactory(
+            mapping=mapping,
+            category="workout",
+            start_datetime=start,
+            end_datetime=start + timedelta(minutes=minutes),
+            duration_seconds=minutes * 60,
+        )
+
+    def _ids(self, db: Session, user_id: UUID, filter_by_priority: bool) -> set[UUID]:
+        params = EventRecordQueryParams(**self.PARAMS)
+        response = event_record_service.get_workouts(db, user_id, params, filter_by_priority=filter_by_priority)
+        assert response.pagination.total_count == len(response.data)
+        return {w.id for w in response.data}
+
+    def test_default_returns_every_source(self, db: Session, sources: tuple[UUID, DataSource, DataSource]) -> None:
+        user_id, apple, withings = sources
+        kept = {self._workout(apple, 0).id, self._workout(withings, 1, 58).id}
+
+        assert self._ids(db, user_id, filter_by_priority=False) == kept
+
+    def test_drops_lower_priority_copy(self, db: Session, sources: tuple[UUID, DataSource, DataSource]) -> None:
+        user_id, apple, withings = sources
+        original = self._workout(apple, 0)
+        self._workout(withings, 1, 58)
+
+        assert self._ids(db, user_id, filter_by_priority=True) == {original.id}
+        totals = event_record_service.get_workout_totals(
+            db, user_id, EventRecordQueryParams(**self.PARAMS), filter_by_priority=True
+        )
+        assert totals.count == 1
+
+    def test_keeps_unique_small_overlap_and_touching_workouts(
+        self, db: Session, sources: tuple[UUID, DataSource, DataSource]
+    ) -> None:
+        user_id, apple, withings = sources
+        expected = {
+            self._workout(apple, 0).id,
+            self._workout(withings, 300).id,  # overlaps nothing
+            self._workout(withings, 50).id,  # ~17% covered
+            self._workout(withings, -60).id,  # ends as the Apple one starts
+        }
+
+        assert self._ids(db, user_id, filter_by_priority=True) == expected
+
+
 class TestResolveAvgHr:
     """Workout avg HR falls back to HR samples of the same writer when the workout's own source has none."""
 

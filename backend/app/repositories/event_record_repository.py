@@ -16,6 +16,7 @@ from sqlalchemy import (
     cast,
     delete,
     desc,
+    exists,
     func,
     lateral,
     literal_column,
@@ -28,6 +29,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
+from app.config import settings
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
@@ -474,10 +476,16 @@ class EventRecordRepository(
         return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
     def get_workout_totals(
-        self, db_session: DbSession, query_params: EventRecordQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: EventRecordQueryParams,
+        user_id: str,
+        restrict_to_record_ids: Query | None = None,
     ) -> tuple[int, int, Decimal | None, Decimal | None]:
         """Count, duration, energy and distance of the matching workouts, in one aggregate."""
-        filters = self._record_filters(query_params.model_copy(update={"category": EventCategory.WORKOUT}), user_id)
+        filters = self._record_filters(
+            query_params.model_copy(update={"category": EventCategory.WORKOUT}), user_id, restrict_to_record_ids
+        )
         row = (
             db_session.query(
                 func.count(EventRecord.id),
@@ -575,6 +583,67 @@ class EventRecordRepository(
             .subquery()
         )
         return db_session.query(ranked.c.record_id).filter(ranked.c.source_rank == 1)
+
+    def winning_workout_record_ids(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        query_params: EventRecordQueryParams,
+        provider_order: dict,
+        device_type_order: dict,
+    ) -> Query:
+        """Subquery of workout ids that no better-ranked source duplicates.
+
+        Workouts are discrete, so unlike sleep there is no per-night winner: a workout
+        is dropped only when one from a strictly better-ranked source (same ranking as
+        sleep) overlaps at least ``settings.workout_duplicate_overlap`` of its duration.
+        Workouts nothing overlaps, and sessions that merely touch, are kept.
+        """
+        provider_rank, device_rank, model_rank = source_priority_order(provider_order, device_type_order)
+        filters = [
+            DataSource.user_id == UUID(user_id),
+            EventRecord.category == EventCategory.WORKOUT,
+        ]
+        # Anything overlapping the window, so a better copy starting just before it still counts.
+        if query_params.start_datetime:
+            filters.append(EventRecord.end_datetime > query_params.start_datetime)
+        if query_params.end_datetime:
+            filters.append(EventRecord.start_datetime < query_params.end_datetime)
+
+        ranked = (
+            select(
+                EventRecord.id.label("record_id"),
+                EventRecord.start_datetime.label("start"),
+                EventRecord.end_datetime.label("end"),
+                provider_rank.label("provider_rank"),
+                device_rank.label("device_rank"),
+                model_rank.label("model_rank"),
+                # One row per day touched: overlapping workouts always share a day, so the
+                # anti-join can hash on it instead of comparing every pair.
+                func.generate_series(
+                    func.date_trunc("day", EventRecord.start_datetime),
+                    func.date_trunc("day", EventRecord.end_datetime),
+                    literal_column("interval '1 day'"),
+                ).label("day"),
+            )
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .where(and_(*filters))
+            .cte("ranked_workouts")
+        )
+        workout = ranked.alias("workout")
+        better = ranked.alias("better")
+
+        overlap = func.least(workout.c.end, better.c.end) - func.greatest(workout.c.start, better.c.start)
+        duplicated = exists().where(
+            better.c.day == workout.c.day,
+            tuple_(better.c.provider_rank, better.c.device_rank, better.c.model_rank)
+            < tuple_(workout.c.provider_rank, workout.c.device_rank, workout.c.model_rank),
+            better.c.start < workout.c.end,
+            better.c.end > workout.c.start,
+            func.extract("epoch", overlap)
+            >= func.extract("epoch", workout.c.end - workout.c.start) * settings.workout_duplicate_overlap,
+        )
+        return db_session.query(workout.c.record_id).filter(~duplicated)
 
     def get_user_event_counts_by_provider(
         self,

@@ -31,4 +31,16 @@ The second list orders device types within a single provider: **Watch**, **Band*
 
 Reorder with the arrows and click **Save Changes**. The two lists are saved independently.
 
+## Applying Priorities in the API
+
+Sleep, workout and timeseries endpoints return every source by default. Pass `filter_by_priority=true` (default `false`) to apply the order above:
+
+- **Sleep** keeps only the highest-priority source's sessions per night.
+- **Timeseries** keeps the highest-priority source per series type.
+- **Workouts** drop a workout when a workout from a higher-priority source overlaps at least half of its duration, such as a Withings copy of an Apple Watch workout. Workouts that nothing overlaps are kept, as are back-to-back sessions and workouts from equally ranked sources. The same filter applies to `/events/workouts/totals`.
+
+The workout overlap threshold is set with the `WORKOUT_DUPLICATE_OVERLAP` environment variable, a share of the lower-priority workout's duration between 0 and 1 (default `0.5`).
+
+The MCP server always requests priority-filtered workouts and timeseries.
+
 See [Multi-account sync](/architecture/multi-account-sync) for how data from several connected accounts is merged.
