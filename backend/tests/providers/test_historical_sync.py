@@ -18,6 +18,7 @@ from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import HistoricalSyncResult
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.oura.strategy import OuraStrategy
+from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.whoop.strategy import WhoopStrategy
 from app.utils.exceptions import UnsupportedProviderError
 
@@ -102,6 +103,17 @@ class TestPullBasedHistoricalSync:
         end = datetime.fromisoformat(result.end_date)
         assert (end - start).days == 7
 
+    @patch("app.services.providers.base_strategy.celery_app")
+    def test_caps_days_at_max_historical_days(self, mock_celery: MagicMock) -> None:
+        mock_celery.send_task.return_value = MagicMock(id="task-123")
+
+        result = PolarStrategy().start_historical_sync(uuid4(), days=730)
+
+        assert result.days == 365
+        start = datetime.fromisoformat(result.start_date)
+        end = datetime.fromisoformat(result.end_date)
+        assert (end - start).days == 365
+
 
 class TestGarminHistoricalSync:
     """Tests for Garmin's overridden start_historical_sync."""
@@ -117,9 +129,10 @@ class TestGarminHistoricalSync:
         assert isinstance(result, HistoricalSyncResult)
         assert result.task_id == "task-garmin-789"
         assert result.method == "webhook_backfill"
-        assert result.days is None  # Garmin ignores days param
-        assert result.start_date is None
-        assert result.end_date is None
+        assert result.days == 30
+        start = datetime.fromisoformat(result.start_date)
+        end = datetime.fromisoformat(result.end_date)
+        assert (end - start).days == 30
         mock_backfill.delay.assert_called_once_with(str(user_id))
 
     @patch("app.services.providers.garmin.strategy.start_garmin_full_backfill")
@@ -130,7 +143,7 @@ class TestGarminHistoricalSync:
 
         result = GarminStrategy().start_historical_sync(user_id, days=365)
 
-        assert result.days is None
+        assert result.days == 30
         mock_backfill.delay.assert_called_once_with(str(user_id))
 
 

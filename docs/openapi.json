@@ -4615,7 +4615,7 @@
           "External: Data Sync"
         ],
         "summary": "Sync Historical Data",
-        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter may be ignored by\nproviders that enforce their own limits.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
+        "description": "Trigger a historical sync of the user's data from a connected provider.\n\nEach provider strategy decides how to dispatch the sync (REST polling,\nwebhook backfill, etc.). The ``days`` parameter is capped at the\nprovider's ``max_historical_days``.\n\n**Automatic historical sync on connect (grace period)**\n\nv0.4.2 introduced this endpoint as the canonical, opt-in way to\nbackfill historical data - the long-term goal is that connecting a\nprovider only sets up live sync, and history is pulled on demand.\n\nTo make migration painless, the pre-0.4.2 behaviour is kept for now\nbehind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:\n``true``): a historical sync is auto-dispatched after a successful\nOAuth callback (up to 90 days for pull-based providers; up to 30\ndays for Garmin, whose webhook-based backfill is capped at 30 days\nfrom the user's consent date).\n\nOnce your integration calls this endpoint explicitly, set\n``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to\n``false`` in a future release and is planned for removal afterwards.",
         "operationId": "sync_historical_data_api_v1_providers__provider__users__user_id__sync_historical_post",
         "security": [
           {
@@ -4649,13 +4649,13 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 365,
+              "maximum": 3650,
               "minimum": 1,
-              "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days).",
+              "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window actually fetched.",
               "default": 90,
               "title": "Days"
             },
-            "description": "Days of historical data to fetch (default: 90, max: 365). Ignored for providers with their own limits (e.g. Garmin: 30 days)."
+            "description": "Days of historical data to fetch (default: 90, max: 3650). Capped at the provider's own limit (e.g. Garmin: 30 days, Polar: 365 days); the response `days` reflects the window actually fetched."
           },
           {
             "name": "X-Open-Wearables-API-Key",
