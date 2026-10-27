@@ -34,9 +34,9 @@ from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from app.config import settings
-from app.constants.celery_tasks import CeleryTask
 from app.database import DbSession, SessionLocal
 from app.extensions import events as extension_events
+from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
 from app.models import SyncRun
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
@@ -826,7 +826,8 @@ def emit_sync_completed(
     or SKIPPED when the run was a no-op. FAILED belongs on emit_sync_failed instead.
     """
     if scope == SyncScope.HISTORICAL:
-        _roll_up_soon()
+        # History just landed: rolled up now, not at the next 15-minute run.
+        rollup_queue.roll_up_soon()
     return emit_event(
         user_id=user_id,
         provider=provider,
@@ -844,17 +845,6 @@ def emit_sync_completed(
         window_end=window_end,
         ended_at=datetime.now(timezone.utc),
     )
-
-
-def _roll_up_soon() -> None:
-    """History just landed: roll it up now, not at the next 15-minute run. A run already going skips this one."""
-    from celery import current_app as celery_app  # noqa: PLC0415 - the task module imports this service
-
-    try:
-        celery_app.send_task(CeleryTask.ROLL_UP_QUEUED_DAYS, retry=False)
-    except Exception:
-        # The next 15-minute run rolls it up anyway.
-        logger.warning("Could not start a rollup after a historical sync", exc_info=True)
 
 
 def emit_sync_failed(

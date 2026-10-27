@@ -14,6 +14,7 @@ from celery import Task, shared_task
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
+from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
 from app.services.archival_service import archival_service
 from app.utils.structured_logging import log_structured
@@ -35,7 +36,8 @@ def _release_rollup_lock() -> None:
 
 @shared_task(name=CeleryTask.ROLL_UP_QUEUED_DAYS, soft_time_limit=120, time_limit=150)
 def roll_up_queued_days() -> dict:
-    """Roll up the days whose samples or events changed, every 15 minutes, never two runs at once.
+    """Roll up the days whose samples or events changed, every 15 minutes and until none are left, never two runs
+    at once.
 
     Runs whether or not the lifecycle tab is on: summaries and day reads are served from the rows it writes.
     """
@@ -43,9 +45,13 @@ def roll_up_queued_days() -> dict:
         return {"skipped": "previous_run_in_progress"}
     try:
         with SessionLocal() as db:
-            return {"rolled_up_days": archival_service.roll_up_queued_days(db)}
+            rolled_up = archival_service.roll_up_queued_days(db)
     finally:
         _release_rollup_lock()
+    if rollup_queue.has_dirty_days():
+        # Days left over start the next run right away, so a busy instance does not wait 15 minutes per minute of work.
+        roll_up_queued_days.apply_async(countdown=1)
+    return {"rolled_up_days": rolled_up}
 
 
 @shared_task(

@@ -958,3 +958,16 @@ class TestRollupTask:
         with patch("app.integrations.celery.tasks.archival_task.SessionLocal", return_value=nullcontext(db)):
             assert roll_up_queued_days() == {"rolled_up_days": 0}
         assert get_redis_client().get("series_rollup:lock") is None
+
+    def test_days_left_over_start_the_next_run_right_away(self, db: Session) -> None:
+        """A run's budget is a minute; a busy instance must not wait 15 minutes for the next."""
+        requeue_dirty_days([(uuid4(), date(2025, 1, 10))])
+
+        with (
+            patch("app.integrations.celery.tasks.archival_task.SessionLocal", return_value=nullcontext(db)),
+            patch.object(archival_service, "roll_up_queued_days", return_value=0),
+            patch.object(roll_up_queued_days, "apply_async") as next_run,
+        ):
+            roll_up_queued_days()
+
+        next_run.assert_called_once_with(countdown=1)

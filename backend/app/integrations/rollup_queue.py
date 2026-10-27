@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import event as sa_event
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.utils.sentry_helpers import log_and_capture_error
@@ -81,6 +82,21 @@ def recover_dirty_days() -> int:
     pipe.delete(IN_PROGRESS_KEY)
     pipe.execute()
     return len(members)
+
+
+def has_dirty_days() -> bool:
+    return bool(get_redis_client().zcard(DIRTY_DAYS_KEY))
+
+
+def roll_up_soon() -> None:
+    """Start a rollup now rather than at the next 15-minute run; one already going skips it."""
+    from celery import current_app as celery_app  # noqa: PLC0415 - the task modules import this one
+
+    try:
+        celery_app.send_task(CeleryTask.ROLL_UP_QUEUED_DAYS, retry=False)
+    except Exception:
+        # The next 15-minute run rolls it up anyway.
+        logger.warning("Could not start a rollup", exc_info=True)
 
 
 def clear_dirty_days() -> None:
