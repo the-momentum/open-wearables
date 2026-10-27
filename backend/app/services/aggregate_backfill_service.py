@@ -3,6 +3,7 @@
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from logging import getLogger
 from typing import cast
 from uuid import UUID
@@ -13,6 +14,7 @@ from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories.aggregate_backfill_repository import SKIPPED_SOURCE, AggregateBackfillRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
+from app.repositories.local_day import utc_midnight
 from app.schemas.enums import ProviderName, SeriesType
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -22,6 +24,8 @@ BACKFILL_MIGRATION = "aggregate_backfill"
 
 _CURSOR_KEY = "aggregate_backfill:cursor:{step}"
 _SOURCES_PER_QUERY = 50
+# The span of one source's workouts or archive one statement covers, so none grows with the history's length.
+_WINDOW_DAYS = 365
 _FIRST = UUID(int=0)
 
 logger = getLogger(__name__)
@@ -47,8 +51,8 @@ class BackfillStep:
 
 class AggregateBackfillService:
     """Steps run in order, each recorded in data_migration when done. A step that runs out of time keeps its place
-    in Redis (the last data source it finished) and the next run goes on from there. Every step is safe to repeat,
-    except the Suunto speed fix, which commits together with its completion marker."""
+    in Redis (the last data source it finished, and within it the last window of time) and the next run goes on from
+    there. Every statement is bounded, a batch or one source's window of time, and safe to repeat."""
 
     def __init__(self) -> None:
         self.repo = AggregateBackfillRepository()
@@ -92,18 +96,31 @@ class AggregateBackfillService:
         db.commit()
         return True
 
-    def _suunto_speed(self, db: DbSession, _budget: Budget) -> bool:
-        # Not committed here: run() commits it with the step's marker, so it can never apply twice.
-        self.repo.divide_suunto_speed(db)
-        return True
+    def _suunto_speed(self, db: DbSession, budget: Budget) -> bool:
+        def divide(source_id: UUID) -> bool:
+            while self.repo.divide_suunto_speed(db, source_id):
+                db.commit()
+                if budget.spent():
+                    return False
+            return True
+
+        def sources(db: DbSession, after: UUID, limit: int) -> list[UUID]:
+            return self.repo.provider_sources(db, ProviderName.SUUNTO, after, limit)
+
+        return self._each_source(db, budget, "suunto_speed", sources, divide)
 
     def _workout_details(self, db: DbSession, budget: Budget) -> bool:
         energy_series = _workout_energy_series()
 
         def mirror(source: tuple[UUID, str]) -> bool:
             source_id, provider = source
-            self.repo.mirror_workout_details(db, source_id, energy_series.get(ProviderName(provider)))
-            return True
+            energy = energy_series.get(ProviderName(provider))
+            first = self.repo.first_workout(db, source_id)
+
+            def window(lo: datetime, hi: datetime) -> None:
+                self.repo.mirror_workout_details(db, source_id, energy, lo, hi)
+
+            return self._each_window(db, budget, "workout_details", source_id, first, window)
 
         return self._each_source(db, budget, "workout_details", self.repo.sources_with_workouts, mirror)
 
@@ -114,20 +131,58 @@ class AggregateBackfillService:
         epoch_types = list(EPOCHS_SERIES.values())
 
         def widen(source_id: UUID) -> bool:
-            while not budget.spent():
-                if not self.repo.set_garmin_epoch_windows(db, source_id, epoch_types):
-                    return True
-                db.commit()
-            return False
+            for series_type in epoch_types:
+                after: datetime | None = datetime.min.replace(tzinfo=timezone.utc)
+                while after is not None:
+                    after = self.repo.set_garmin_epoch_windows(db, source_id, series_type, after)
+                    db.commit()
+                    if budget.spent():
+                        return False
+            return True
 
-        return self._each_source(db, budget, "garmin_epoch_windows", self.repo.garmin_sources, widen)
+        def sources(db: DbSession, after: UUID, limit: int) -> list[UUID]:
+            return self.repo.provider_sources(db, ProviderName.GARMIN, after, limit)
+
+        return self._each_source(db, budget, "garmin_epoch_windows", sources, widen)
 
     def _archive_days(self, db: DbSession, budget: Budget) -> bool:
         def copy(source_id: UUID) -> bool:
-            self.repo.copy_archive_days(db, source_id)
-            return True
+            def window(lo: datetime, hi: datetime) -> None:
+                self.repo.copy_archive_days(db, source_id, lo, hi)
+
+            return self._each_window(
+                db, budget, "archive_days", source_id, self.repo.first_archived(db, source_id), window
+            )
 
         return self._each_source(db, budget, "archive_days", self.repo.archive_sources, copy)
+
+    def _each_window(
+        self,
+        db: DbSession,
+        budget: Budget,
+        step: str,
+        source_id: UUID,
+        first: datetime | None,
+        handle: Callable[[datetime, datetime], None],
+    ) -> bool:
+        """Hand ``handle`` the source's time from ``first`` to now in windows of _WINDOW_DAYS, newest first, committing
+        after each; a source left halfway goes on below its last finished window."""
+        if first is None:
+            return True
+        key = _CURSOR_KEY.format(step=f"{step}:window")
+        redis = get_redis_client()
+        saved = cast(str | None, redis.get(key))
+        end = date.fromisoformat(saved.split("|")[1]) if saved and saved.startswith(f"{source_id}|") else _past_today()
+        while end > first.date():
+            if budget.spent():
+                return False
+            start = max(first.date(), end - timedelta(days=_WINDOW_DAYS))
+            handle(utc_midnight(start), utc_midnight(end))
+            db.commit()
+            redis.set(key, f"{source_id}|{start.isoformat()}")
+            end = start
+        redis.delete(key)
+        return True
 
     def _each_source[S](
         self,
@@ -176,6 +231,11 @@ class AggregateBackfillService:
         self.migrations.mark_completed(db, f"{SKIPPED_SOURCE}{source_id}")
         db.commit()
         return True
+
+
+def _past_today() -> date:
+    """A cutoff after every local day that has begun anywhere."""
+    return datetime.now(timezone.utc).date() + timedelta(days=2)
 
 
 def _workout_energy_series() -> dict[ProviderName, SeriesType]:

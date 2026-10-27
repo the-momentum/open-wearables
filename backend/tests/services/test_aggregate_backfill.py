@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
@@ -106,6 +106,49 @@ class TestBackfillSteps:
         aggregate_backfill_service.run(db, budget_seconds=60)
 
         assert {s.id: s.window_seconds for s in db.query(SeriesSample)} == {epoch.id: 900, other.id: None}
+
+    def test_big_sources_go_a_batch_at_a_time(self, db: Session) -> None:
+        """No statement covers a whole source: Suunto speeds and Garmin epochs go a batch at a time."""
+        suunto = DataSourceFactory(provider=ProviderName.SUUNTO)
+        workouts = [
+            EventRecordFactory(category="workout", data_source=suunto, start_datetime=AT + timedelta(days=n))
+            for n in range(3)
+        ]
+        db.add_all([WorkoutDetails(record_id=w.id, average_speed=Decimal("36")) for w in workouts])
+        garmin = DataSourceFactory(provider=ProviderName.GARMIN)
+        steps = SeriesTypeDefinitionFactory.get_or_create_steps()
+        instants = [AT + timedelta(minutes=15 * n) for n in range(3)]
+        for at in instants:
+            DataPointSeriesFactory(
+                mapping=garmin, series_type=steps, recorded_at=at, external_id=f"3952-{int(at.timestamp()):x}"
+            )
+        db.flush()
+
+        with patch("app.repositories.aggregate_backfill_repository.UPDATE_BATCH_SIZE", 1):
+            assert aggregate_backfill_service.run(db, budget_seconds=60)
+            aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert {db.get(WorkoutDetails, w.id).average_speed for w in workouts} == {Decimal("10")}
+        assert {s.window_seconds for s in db.query(SeriesSample)} == {900}
+
+    def test_a_source_left_halfway_goes_on_from_its_last_window(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.GARMIN)
+        now = datetime.now(timezone.utc)
+        workouts = [
+            EventRecordFactory(category="workout", data_source=source, start_datetime=now - timedelta(days=days))
+            for days in (10, 2 * 365 + 10, 4 * 365 + 10)
+        ]
+        db.add_all([WorkoutDetails(record_id=w.id, heart_rate_avg=Decimal("140")) for w in workouts])
+        db.flush()
+        # A previous run mirrored this source's workouts from a year ago on, then ran out of time.
+        cutoff = (now - timedelta(days=365)).date()
+        get_redis_client().set("aggregate_backfill:cursor:workout_details:window", f"{source.id}|{cutoff}")
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:suunto_speed")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        mirrored = {r.record_id for r in db.query(EventRecordAggregate)}
+        assert mirrored == {workouts[1].id, workouts[2].id}
 
     def test_archived_days_become_our_day_rows(self, db: Session) -> None:
         source = DataSourceFactory()
