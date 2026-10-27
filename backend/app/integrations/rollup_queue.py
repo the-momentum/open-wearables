@@ -10,6 +10,7 @@ from sqlalchemy import event as sa_event
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import DbSession
+from app.integrations import redis_lock
 from app.integrations.redis_client import get_redis_client
 from app.utils.sentry_helpers import log_and_capture_error
 
@@ -40,12 +41,13 @@ return taken
 logger = getLogger(__name__)
 
 
-def take_lock() -> bool:
-    return bool(get_redis_client().set(LOCK_KEY, "1", nx=True, ex=_LOCK_TTL_SECONDS))
+def take_lock() -> str | None:
+    """The token that releases the lock, or None while another rollup holds it."""
+    return redis_lock.acquire(LOCK_KEY, _LOCK_TTL_SECONDS)
 
 
-def release_lock() -> None:
-    get_redis_client().delete(LOCK_KEY)
+def release_lock(token: str) -> None:
+    redis_lock.release(LOCK_KEY, token)
 
 
 def mark_dirty_days(db_session: DbSession, days: Iterable[tuple[UUID, date]]) -> None:

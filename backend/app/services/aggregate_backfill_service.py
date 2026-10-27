@@ -14,7 +14,7 @@ from app.database import DbSession
 from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
 from app.repositories.aggregate_backfill_repository import SKIPPED_SOURCE, AggregateBackfillRepository
-from app.repositories.archival_repository import DataPointSeriesArchiveRepository
+from app.repositories.archival_repository import ArchivalSettingRepository, DataPointSeriesArchiveRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.local_day import utc_midnight
 from app.repositories.series_rollup_repository import SeriesRollupRepository
@@ -168,7 +168,9 @@ class AggregateBackfillService:
 
         def run(db: DbSession, budget: Budget) -> bool:
             since = (datetime.now(timezone.utc) - period).date() if period is not None else None
+            frozen_before = ArchivalSettingRepository().get(db).deleted_before
             redis = get_redis_client()
+            self._roll_up_live_days(db)
 
             def roll_up(source_id: UUID) -> bool:
                 saved = cast(str | None, redis.get(day_key))
@@ -181,14 +183,14 @@ class AggregateBackfillService:
                     if (since is None or day >= since) and (done_before is None or day < done_before)
                 ]
                 for chunk in _newest_first(days, ROLLUP_CHUNK_DAYS):
-                    # Under the scheduled rollup's lock a chunk at a time, so that rollup still runs in between.
-                    if budget.spent() or not rollup_queue.take_lock():
+                    # Under the scheduled rollup's lock, a chunk at a time.
+                    if budget.spent() or (token := rollup_queue.take_lock()) is None:
                         return False
                     try:
-                        self.rollup_repo.roll_up(db, source_id, chunk)
+                        self.rollup_repo.roll_up(db, source_id, chunk, frozen_before)
                         db.commit()
                     finally:
-                        rollup_queue.release_lock()
+                        rollup_queue.release_lock(token)
                     redis.set(day_key, f"{source_id}|{min(chunk).isoformat()}")
                 redis.delete(day_key)
                 return True
@@ -196,6 +198,25 @@ class AggregateBackfillService:
             return self._each_source(db, budget, step, self.rollup_repo.sources, roll_up)
 
         return run
+
+    def _roll_up_live_days(self, db: DbSession) -> None:
+        """The days live writes queued, rolled up here: between two chunks the scheduled rollup, trying once every
+        15 minutes, hardly ever finds its lock free."""
+        # Imported here: the archival service imports this module.
+        from app.services.archival_service import archival_service
+
+        token = rollup_queue.take_lock()
+        if token is None:
+            return
+        try:
+            archival_service.roll_up_queued_days(db)
+        except SoftTimeLimitExceeded:
+            raise
+        except Exception as exc:
+            db.rollback()
+            log_and_capture_error(exc, logger, "Aggregate backfill: the queued days failed; the backfill goes on")
+        finally:
+            rollup_queue.release_lock(token)
 
     def _garmin_epoch_windows(self, db: DbSession, budget: Budget) -> bool:
         # Imported here: the providers package pulls in the Celery tasks, which import this module.

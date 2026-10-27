@@ -3,6 +3,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.integrations import redis_lock
 from app.integrations.celery.tasks.aggregate_backfill_task import bound_statements, run_aggregate_backfill
 from app.integrations.redis_client import get_redis_client
+from app.integrations.rollup_queue import pop_dirty_days, requeue_dirty_days
 from app.models import (
     DataPointSeriesArchive,
     DataSource,
@@ -20,11 +22,13 @@ from app.models import (
     SeriesTypeDefinition,
     WorkoutDetails,
 )
+from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository
 from app.repositories.aggregate_backfill_repository import AggregateBackfillRepository
 from app.repositories.archival_repository import DataPointSeriesArchiveRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.series_aggregate_repository import LOCAL_DAY
+from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.enums import (
     AggregationMethod,
     ComputedBy,
@@ -43,6 +47,13 @@ from tests.factories import (
 )
 
 AT = datetime(2025, 6, 1, 8, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _archival_settings(db: Session) -> None:
+    """The row the startup seeds; the rollup steps read where retention stopped from it."""
+    db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+    db.flush()
 
 
 def _legacy_workout(db: Session, provider: ProviderName, **columns: object) -> WorkoutDetails:
@@ -516,6 +527,35 @@ class TestHistoryRollup:
         get_redis_client().delete("series_rollup:lock")
         assert aggregate_backfill_service.run(db, budget_seconds=60)
         assert self._ours(db) == [date(2025, 1, 10)]
+
+    def test_a_run_rolls_up_the_days_live_writes_queued(self, db: Session) -> None:
+        """Between two chunks the scheduled rollup, trying once every 15 minutes, hardly ever gets the lock."""
+        source = DataSourceFactory()
+        DataPointSeriesFactory(mapping=source, recorded_at=datetime(2025, 1, 10, 12, tzinfo=timezone.utc))
+        requeue_dirty_days([(source.id, date(2025, 1, 10))])
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert pop_dirty_days(10) == []
+
+    def test_a_day_retention_already_emptied_keeps_its_row(self, db: Session) -> None:
+        source = DataSourceFactory()
+        noon = datetime(2025, 1, 10, 12, tzinfo=timezone.utc)
+        samples = [
+            DataPointSeriesFactory(mapping=source, recorded_at=noon + timedelta(minutes=n), value=Decimal(v))
+            for n, v in ((0, "60"), (1, "80"))
+        ]
+        SeriesRollupRepository().roll_up(db, source.id, [date(2025, 1, 10)])
+        for sample in samples:
+            db.delete(sample)
+        DataPointSeriesFactory(mapping=source, recorded_at=noon + timedelta(hours=1), value=Decimal("90"))
+        db.get(ArchivalSetting, 1).deleted_before = date(2025, 2, 1)
+        db.flush()
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        (row,) = db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)
+        assert row.avg == Decimal("70")
 
     def test_a_source_left_halfway_goes_on_from_its_last_chunk(self, db: Session) -> None:
         source = DataSourceFactory()

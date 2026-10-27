@@ -28,13 +28,14 @@ def roll_up_queued_days() -> dict:
 
     Runs whether or not the lifecycle tab is on: summaries and day reads are served from the rows it writes.
     """
-    if not rollup_queue.take_lock():
+    token = rollup_queue.take_lock()
+    if token is None:
         return {"skipped": "previous_run_in_progress"}
     try:
         with SessionLocal() as db:
             rolled_up = archival_service.roll_up_queued_days(db)
     finally:
-        rollup_queue.release_lock()
+        rollup_queue.release_lock(token)
     if rollup_queue.has_dirty_days():
         # Days left over start the next run right away, so a busy instance does not wait 15 minutes per minute of work.
         roll_up_queued_days.apply_async(countdown=1)
@@ -59,7 +60,8 @@ def run_daily_archival(self: Task) -> dict:
     """
     if not settings.data_lifecycle_enabled:
         return {"skipped": "data_lifecycle_disabled"}
-    if not rollup_queue.take_lock():
+    token = rollup_queue.take_lock()
+    if token is None:
         # The 15-minute run fires at 03:00 too; both roll up, so one waits for the other.
         raise self.retry(countdown=60)
 
@@ -73,4 +75,4 @@ def run_daily_archival(self: Task) -> dict:
         log_structured(logger, "error", "Daily archival task failed")
         raise
     finally:
-        rollup_queue.release_lock()
+        rollup_queue.release_lock(token)
