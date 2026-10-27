@@ -1493,6 +1493,78 @@ class TestGetSleepSessions:
 
         assert {s.id for s in response.data} == {garmin_night.id, oura_evening.id}
 
+    def _sleep(self, mapping: DataSource, start: datetime, end: datetime) -> EventRecord:
+        return EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=int((end - start).total_seconds()),
+        )
+
+    def test_per_session_drops_a_copy_a_better_source_split_in_two(self, db: Session) -> None:
+        """Neither half of the better night covers half of the copy; together they do."""
+        user, oura, garmin = self._garmin_over_oura(db)
+        day = datetime(2026, 4, 10, tzinfo=timezone.utc)
+        self._sleep(garmin, day + timedelta(hours=23), day + timedelta(hours=27))
+        self._sleep(garmin, day + timedelta(hours=28), day + timedelta(hours=31))
+        self._sleep(oura, day + timedelta(hours=21), day + timedelta(hours=31))
+
+        response = event_record_service.get_sleep_sessions(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {s.source.provider for s in response.data} == {"garmin"}
+
+    def test_per_session_drops_a_copy_whose_better_night_starts_after_midnight(self, db: Session) -> None:
+        """The two share only the second day; the copy's first day must not keep it."""
+        user, oura, garmin = self._garmin_over_oura(db)
+        day = datetime(2026, 4, 10, tzinfo=timezone.utc)
+        self._sleep(garmin, day + timedelta(hours=24, minutes=10), day + timedelta(hours=31))
+        self._sleep(oura, day + timedelta(hours=22, minutes=30), day + timedelta(hours=31, minutes=30))
+
+        response = event_record_service.get_sleep_sessions(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {s.source.provider for s in response.data} == {"garmin"}
+
+    def test_per_session_never_hides_an_equally_ranked_source(self, db: Session) -> None:
+        user = UserFactory()
+        phone = DataSourceFactory(user=user, provider="apple", device_type="phone", device_model="iPhone")
+        watch = DataSourceFactory(user=user, provider="apple", device_type="phone", device_model="Apple Watch")
+        records = {self._sleep_record(phone).id, self._sleep_record(watch).id}
+
+        response = event_record_service.get_sleep_sessions(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {s.id for s in response.data} == records
+
+    def test_per_session_keeps_a_long_workout_around_a_better_sources_short_one(self, db: Session) -> None:
+        """A watch's 10-minute warm-up inside a 60-minute ride covers a sixth of the ride: both are kept."""
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider="garmin", source="garmin")
+        strava = DataSourceFactory(user=user, provider="strava", source="strava")
+        from app.services.priority_service import priority_service
+
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 1)
+        priority_service.update_provider_priority(db, ProviderName.STRAVA, 2)
+        start = datetime(2026, 4, 12, 7, 0, tzinfo=timezone.utc)
+        warm_up = EventRecordFactory(
+            mapping=garmin, category="workout", start_datetime=start, end_datetime=start + timedelta(minutes=10)
+        )
+        ride = EventRecordFactory(
+            mapping=strava, category="workout", start_datetime=start, end_datetime=start + timedelta(hours=1)
+        )
+
+        workouts = event_record_service.get_workouts(
+            db, user.id, self._params(), source_selection=SourceSelection.PER_SESSION
+        )
+
+        assert {w.id for w in workouts.data} == {warm_up.id, ride.id}
+
     def test_per_session_drops_a_relayed_workout_and_keeps_a_separate_one(self, db: Session) -> None:
         """The same run from Garmin and relayed through Strava is one workout; a walk only Strava has stays."""
         user = UserFactory()

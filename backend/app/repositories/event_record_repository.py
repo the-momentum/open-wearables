@@ -26,8 +26,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
-from sqlalchemy.sql.expression import CTE
 
+from app.config import settings
 from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.integrations.rollup_queue import mark_dirty_days
@@ -719,52 +719,74 @@ class EventRecordRepository(
         query_params: EventRecordQueryParams,
         ranking: SourceRanking,
     ) -> Query:
-        """Ids of the sessions no better-ranked source also recorded.
+        """Ids of the sessions (of ``query_params.category``) no better-ranked source also recorded.
 
-        A session is dropped when another source's session overlaps at least half of the shorter of the two and
-        that source ranks higher (then the longer session, then device model, then id). Pairs are compared, not
-        chains of overlaps, so a long session cannot tie two separate ones together. A session only a lower-ranked
-        source has (a phone's nap on a night the watch recorded) stays.
+        A session is dropped when the sessions of one source ranked strictly higher by provider, then device type,
+        cover at least ``settings.session_duplicate_overlap`` of it, summed: a night that source split in two still
+        covers a copy recorded whole. Sessions nothing better covers stay, so a nap only the phone caught or a long
+        ride around a watch's short warm-up are kept, and equally ranked sources never hide each other.
 
-        Built on the listing's own filters, so only what the request can return competes, and returned unexecuted
+        Everything of the category overlapping the requested window competes, whatever the other filters, so a
+        better copy starting just before the window or labelled another type still counts. Returned unexecuted
         so callers inline it as ``id IN (...)`` and keep pagination in one statement.
         """
-        provider_rank, device_rank, device_model = ranking.order_terms()
-        candidates = (
-            db_session.query(
+        provider_rank, device_rank, _ = ranking.order_terms()
+        filters = [DataSource.user_id == UUID(user_id), EventRecord.category == query_params.category]
+        if query_params.start_datetime:
+            filters.append(EventRecord.end_datetime > query_params.start_datetime)
+        if query_params.end_datetime:
+            filters.append(EventRecord.start_datetime < query_params.end_datetime)
+        sessions = (
+            select(
                 EventRecord.id.label("id"),
                 EventRecord.data_source_id.label("source_id"),
                 EventRecord.start_datetime.label("start"),
                 EventRecord.end_datetime.label("end"),
                 provider_rank.label("provider_rank"),
                 device_rank.label("device_rank"),
-                device_model.label("device_model"),
             )
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
-            .filter(and_(*self._record_filters(query_params, user_id)))
-            .cte("candidates")
+            .where(*filters)
+            .cte("sessions")
         )
-        this, other = candidates.alias("this"), candidates.alias("other")
+        # One row per day a session touches: overlapping sessions share a day, so pairs come from a hash join on it
+        # rather than from comparing every two sessions. Only the pairing is per day; each pair counts once.
+        days = select(
+            sessions.c.id,
+            func.generate_series(
+                func.date_trunc("day", sessions.c.start),
+                func.date_trunc("day", sessions.c.end),
+                literal_column("interval '1 day'"),
+            ).label("day"),
+        ).cte("session_days")
+        this_day, other_day = days.alias("this_day"), days.alias("other_day")
+        pairs = (
+            select(this_day.c.id.label("this_id"), other_day.c.id.label("other_id"))
+            .select_from(
+                this_day.join(other_day, and_(other_day.c.day == this_day.c.day, other_day.c.id != this_day.c.id))
+            )
+            .distinct()
+            .cte("session_pairs")
+        )
 
-        def order(c: CTE) -> ColumnElement:
-            # The negated length puts the longer session first among equally ranked sources.
-            longer_first = func.extract("epoch", c.c.start - c.c.end)
-            return tuple_(c.c.provider_rank, c.c.device_rank, longer_first, c.c.device_model, c.c.id)
-
+        this, other = sessions.alias("this"), sessions.alias("other")
         overlap = func.least(this.c.end, other.c.end) - func.greatest(this.c.start, other.c.start)
-        shorter = func.least(this.c.end - this.c.start, other.c.end - other.c.start)
-        beaten = (
-            select(literal_column("1"))
+        covered = (
+            select(this.c.id)
+            .select_from(pairs.join(this, this.c.id == pairs.c.this_id).join(other, other.c.id == pairs.c.other_id))
             .where(
                 other.c.source_id != this.c.source_id,
+                tuple_(other.c.provider_rank, other.c.device_rank) < tuple_(this.c.provider_rank, this.c.device_rank),
                 other.c.start < this.c.end,
                 other.c.end > this.c.start,
-                overlap * 2 >= shorter,
-                order(other) < order(this),
             )
-            .exists()
+            .group_by(this.c.id, this.c.start, this.c.end, other.c.source_id)
+            .having(
+                func.sum(func.extract("epoch", overlap))
+                >= func.extract("epoch", this.c.end - this.c.start) * settings.session_duplicate_overlap
+            )
         )
-        return db_session.query(this.c.id).filter(~beaten)
+        return db_session.query(sessions.c.id).filter(sessions.c.id.notin_(covered))
 
     def get_user_event_counts_by_provider(
         self,

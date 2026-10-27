@@ -34,9 +34,10 @@ IsNapQuery = Annotated[
 SessionSourceSelectionQuery = Annotated[
     Literal[SourceSelection.ALL, SourceSelection.PER_SESSION] | None,
     Query(
-        description="`all` returns every source's sessions. `per_session` drops a session where a better-ranked "
-        "source recorded one overlapping at least half of the shorter of the two; sessions only one source has "
-        "stay. Sources rank by provider, then device type priority. Defaults to `all`."
+        description="`all` returns every source's sessions. `per_session` drops a session when the sessions of one "
+        "source ranked higher by provider, then device type priority, cover at least half of it "
+        "(`SESSION_DUPLICATE_OVERLAP`); sessions nothing better covers stay, and equally ranked sources never hide "
+        "each other. Defaults to `all`."
     ),
 ]
 FilterByPriorityQuery = Annotated[bool, Query(deprecated=True, description="Same as source_selection=per_session.")]

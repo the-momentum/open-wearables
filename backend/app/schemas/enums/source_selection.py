@@ -9,5 +9,5 @@ class SourceSelection(StrEnum):
     PER_RANGE = "per_range"
     # One source per series type and period: the day for day, week and month reads, the bucket below a day.
     PER_PERIOD = "per_period"
-    # Event records (sleep, workouts) only: a session is dropped where a better-ranked source recorded the same one.
+    # Event records (sleep, workouts) only: a session is dropped where a better-ranked source's sessions cover it.
     PER_SESSION = "per_session"
