@@ -373,12 +373,17 @@ def _delete_day_values(rule: HistoryRule) -> TextClause:
 
 def _delete_session_values(rule: HistoryRule) -> TextClause:
     assert rule.session is not None
+    record = (
+        _WORKOUT_ENDING.format(e="e")
+        if rule.session is SessionMatch.WORKOUT_ENDING
+        else f"a.record_id = ({_RECORDS[rule.session]}) AND e.end_datetime = s.recorded_at"
+    )
     return text(f"""
         DELETE FROM series_sample s
         WHERE {_RULE_SAMPLES.format(where=rule.where)} AND s.recorded_at < :cutoff
             AND EXISTS (
                 SELECT 1 FROM event_record_aggregate a JOIN event_record e ON e.id = a.record_id
-                WHERE a.record_id = ({_RECORDS[rule.session]}) AND e.end_datetime = s.recorded_at
+                WHERE {record}
                     AND a.series_type_definition_id = s.series_type_definition_id AND a.computed_by = 'provider'
                     AND {_SAME_VALUE}
             )
