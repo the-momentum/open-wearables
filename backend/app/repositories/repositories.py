@@ -1,4 +1,5 @@
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from uuid import UUID
 
@@ -52,26 +53,50 @@ def source_filter_conditions(
 UNRANKED_PRIORITY = 99
 
 
+@dataclass(frozen=True)
+class SourceRanking:
+    """The configured provider and device type priorities, ordering data sources best first, in Python (``rank``)
+    or in SQL (``order_terms``) alike. Sources sharing provider and device type tie; each read breaks the tie."""
+
+    provider_order: Mapping[ProviderName, int]
+    device_type_order: Mapping[DeviceType, int]
+
+    def rank(self, provider: str | None, device_type: str | None) -> tuple[int, int]:
+        """A source's place by its provider and device type, lowest first."""
+        return self.provider_order.get(provider, UNRANKED_PRIORITY), self.device_type_order.get(
+            device_type, UNRANKED_PRIORITY
+        )
+
+    def order_terms(
+        self, provider_column: InstrumentedAttribute[str] | ColumnElement[str] = DataSource.provider
+    ) -> tuple[ColumnElement, ColumnElement, ColumnElement]:
+        """ORDER BY terms ranking sources best first: provider, device type, device model. Assumes ``DataSource``.
+
+        ``provider_column`` is for rows that carry their own provider and may have no source (health scores).
+        """
+        provider_rank = (
+            case(*[(provider_column == p, r) for p, r in self.provider_order.items()], else_=UNRANKED_PRIORITY)
+            if self.provider_order
+            else literal(UNRANKED_PRIORITY)
+        )
+        device_rank = (
+            case(
+                *[(DataSource.device_type == t.value, r) for t, r in self.device_type_order.items()],
+                else_=UNRANKED_PRIORITY,
+            )
+            if self.device_type_order
+            else literal(UNRANKED_PRIORITY)
+        )
+        return provider_rank, device_rank, func.coalesce(DataSource.device_model, "")
+
+
 def source_priority_order(
     provider_order: Mapping[ProviderName, int],
     device_type_order: Mapping[DeviceType, int],
     provider_column: InstrumentedAttribute[str] | ColumnElement[str] = DataSource.provider,
 ) -> tuple[ColumnElement, ColumnElement, ColumnElement]:
-    """ORDER BY terms ranking sources best first: provider, device type, device model. Assumes ``DataSource``.
-
-    ``provider_column`` is for rows that carry their own provider and may have no source (health scores).
-    """
-    provider_rank = (
-        case(*[(provider_column == p, r) for p, r in provider_order.items()], else_=UNRANKED_PRIORITY)
-        if provider_order
-        else literal(UNRANKED_PRIORITY)
-    )
-    device_rank = (
-        case(*[(DataSource.device_type == t.value, r) for t, r in device_type_order.items()], else_=UNRANKED_PRIORITY)
-        if device_type_order
-        else literal(UNRANKED_PRIORITY)
-    )
-    return provider_rank, device_rank, func.coalesce(DataSource.device_model, "")
+    """:meth:`SourceRanking.order_terms` for callers holding the two priority orders."""
+    return SourceRanking(provider_order, device_type_order).order_terms(provider_column)
 
 
 def timeline_key_column(group_by: TimelineGroupBy) -> InstrumentedAttribute[str]:
