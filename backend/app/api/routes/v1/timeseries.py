@@ -1,10 +1,10 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
-from app.schemas.enums import ProviderName, Resolution, SeriesType
+from app.schemas.enums import ProviderName, Resolution, SeriesType, SourceSelection
 from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.schemas.responses.activity import TimeSeriesSample
 from app.schemas.utils import PaginatedResponse
@@ -30,9 +30,26 @@ def get_timeseries(
     source: str | None = None,
     device_model: str | None = None,
     data_source_id: UUID | None = None,
-    filter_by_priority: bool = False,
+    source_selection: Annotated[
+        SourceSelection | None,
+        Query(
+            description="`all` returns every source. `per_range` keeps one source per series type for the whole "
+            "range. `per_day` keeps one per series type and day, or per bucket below a day; not available for raw "
+            "reads. Sources rank by provider, then device type priority. Defaults to `all`."
+        ),
+    ] = None,
+    filter_by_priority: Annotated[bool, Query(deprecated=True, description="Same as source_selection=per_range.")] = (
+        False
+    ),
 ) -> PaginatedResponse[TimeSeriesSample]:
     """Returns granular time series data (biometrics or activity)."""
+    if source_selection is None:
+        source_selection = SourceSelection.PER_RANGE if filter_by_priority else SourceSelection.ALL
+    if source_selection is SourceSelection.PER_DAY and resolution is Resolution.RAW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="source_selection=per_day needs a resolution; use per_range or all for raw samples.",
+        )
     params = TimeSeriesQueryParams(
         start_datetime=parse_query_datetime(start_time),
         end_datetime=parse_query_end_datetime(end_time),
@@ -44,4 +61,4 @@ def get_timeseries(
         device_model=device_model,
         data_source_id=data_source_id,
     )
-    return timeseries_service.get_timeseries(db, user_id, types, params, filter_by_priority=filter_by_priority)
+    return timeseries_service.get_timeseries(db, user_id, types, params, source_selection=source_selection)

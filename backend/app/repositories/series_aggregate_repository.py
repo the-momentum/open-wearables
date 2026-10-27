@@ -288,6 +288,16 @@ _ACTIVITY_SUMS = {
     SeriesType.active_time: "active_time_minutes",
 }
 _INT_SUMS = {"steps_sum", "flights_climbed_sum", "active_time_minutes"}
+_HEART_RATE_KEYS = ("hr_avg", "hr_max", "hr_min")
+_ENERGY_KEYS = ("active_energy_sum", "basal_energy_sum", "total_energy_sum")
+# An activity day's metrics, in the groups that come whole from one source: a total is not made of one source's
+# active and another's basal energy.
+ACTIVITY_METRIC_GROUPS: tuple[tuple[str, ...], ...] = (
+    *((key,) for key in _ACTIVITY_SUMS.values() if key not in _ENERGY_KEYS),
+    _ENERGY_KEYS,
+    _HEART_RATE_KEYS,
+)
+ACTIVITY_METRIC_KEYS = tuple(key for group in ACTIVITY_METRIC_GROUPS for key in group)
 
 
 def daily_activity(
@@ -322,10 +332,7 @@ def daily_activity(
             "source": source,
             "device_model": device_model,
             "device_type": device_type,
-            **dict.fromkeys(_ACTIVITY_SUMS.values()),
-            "hr_avg": None,
-            "hr_max": None,
-            "hr_min": None,
+            **dict.fromkeys(ACTIVITY_METRIC_KEYS),
         }
         for type_id, key in sum_keys.items():
             sums = [float(r.sum) for r in day_rows if r.series_type_definition_id == type_id and r.sum is not None]

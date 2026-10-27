@@ -73,6 +73,25 @@ class TestFilterByPriority:
         result = service._filter_by_priority(db, uuid4(), entries, date_key="sleep_date")
         assert len(result) == 1
 
+    def test_fills_metrics_the_winner_lacks_from_the_next_source(self, db: Session, service: SummariesService) -> None:
+        """A phone's steps and a watch's heart rate show on one day; a group the winner has part of stays its own."""
+        day = date(2026, 1, 1)
+        watch = {"activity_date": day, "provider": "garmin", "device_type": "watch", "steps_sum": 4000}
+        watch |= {"active_energy_sum": 300.0, "basal_energy_sum": None, "hr_avg": None}
+        band = {"activity_date": day, "provider": "garmin", "device_type": "band", "steps_sum": 9000}
+        band |= {"active_energy_sum": 500.0, "basal_energy_sum": 1500.0, "hr_avg": 60, "hr_max": 120, "hr_min": 50}
+
+        [result] = service._filter_by_priority(
+            db,
+            uuid4(),
+            [band, watch],
+            fill=(("steps_sum",), ("active_energy_sum", "basal_energy_sum"), ("hr_avg", "hr_max", "hr_min")),
+        )
+
+        assert (result["device_type"], result["steps_sum"]) == ("watch", 4000)
+        assert (result["active_energy_sum"], result["basal_energy_sum"]) == (300.0, None)
+        assert (result["hr_avg"], result["hr_max"], result["hr_min"]) == (60, 120, 50)
+
 
 # ---------------------------------------------------------------------------
 # _get_user_max_hr

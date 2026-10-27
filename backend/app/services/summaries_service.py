@@ -16,7 +16,12 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.repositories.series_aggregate_repository import SeriesAggregateRepository, daily_activity
+from app.repositories.series_aggregate_repository import (
+    ACTIVITY_METRIC_GROUPS,
+    ACTIVITY_METRIC_KEYS,
+    SeriesAggregateRepository,
+    daily_activity,
+)
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
     DeviceType,
@@ -118,12 +123,14 @@ class SummariesService:
         user_id: UUID,
         results: list[dict] | list,
         date_key: str = "activity_date",
+        fill: tuple[tuple[str, ...], ...] = (),
     ) -> list[dict] | list:
         """Filter results to highest priority source per date.
 
         Args:
             results: List of dicts with date, source (provider), device_model
             date_key: Key name for date field (activity_date or sleep_date)
+            fill: Groups of keys the winner lacks entirely, taken whole from the best entry that has any of them
 
         Returns:
             Filtered list with only highest priority entry per date
@@ -164,7 +171,13 @@ class SummariesService:
                 return (provider_priority, device_type_priority, device_model or "")
 
             entries_sorted = sorted(entries, key=sort_key)
-            filtered.append(entries_sorted[0])
+            winner = dict(entries_sorted[0]) if fill else entries_sorted[0]
+            for keys in fill:
+                if all(winner.get(key) is None for key in keys):
+                    donor = next((e for e in entries_sorted if any(e.get(key) is not None for key in keys)), None)
+                    if donor is not None:
+                        winner.update({key: donor.get(key) for key in keys})
+            filtered.append(winner)
 
         return filtered
 
@@ -627,7 +640,9 @@ class SummariesService:
         """One row per day in [start, end) from the day aggregates, best source per date."""
         results = daily_activity(db_session, user_id, start, end)
         results = self._add_workout_only_days(db_session, user_id, start, end, results)
-        return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+        return self._filter_by_priority(
+            db_session, user_id, results, date_key="activity_date", fill=ACTIVITY_METRIC_GROUPS
+        )
 
     def _add_workout_only_days(
         self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, results: list
@@ -641,16 +656,7 @@ class SummariesService:
                 "source": wa["source"],
                 "device_model": wa["device_model"],
                 "device_type": wa["device_type"],
-                "steps_sum": None,
-                "active_energy_sum": None,
-                "basal_energy_sum": None,
-                "total_energy_sum": None,
-                "hr_avg": None,
-                "hr_max": None,
-                "hr_min": None,
-                "distance_sum": None,
-                "flights_climbed_sum": None,
-                "active_time_minutes": None,
+                **dict.fromkeys(ACTIVITY_METRIC_KEYS),
             }
             for wa in self.event_record_repo.get_daily_workout_aggregates(db_session, user_id, start, end)
             if wa["workout_date"] not in covered

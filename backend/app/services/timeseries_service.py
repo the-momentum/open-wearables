@@ -11,7 +11,7 @@ from sqlalchemy import event as sa_event
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesSample
 from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
-from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
+from app.repositories.data_point_series_repository import AggregatedSample, SourceRanking, WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.series_aggregate_repository import SeriesAggregateRepository
 from app.schemas.enums import (
@@ -21,6 +21,7 @@ from app.schemas.enums import (
     PeriodKind,
     Resolution,
     SeriesType,
+    SourceSelection,
     get_series_type_from_id,
     get_series_type_unit,
 )
@@ -46,6 +47,36 @@ from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_date_cursor, encode_bucket_cursor, encode_cursor, encode_date_cursor
+
+
+def _best_per_bucket(samples: list[AggregatedSample], ranking: SourceRanking) -> list[AggregatedSample]:
+    """Per bucket and series type, only the best-ranked source's row; the order stays."""
+
+    def key(sample: AggregatedSample) -> tuple:
+        return (*ranking.rank(sample.data_source), str(sample.data_source.id))
+
+    best: dict[tuple[datetime, int], AggregatedSample] = {}
+    for sample in samples:
+        held = best.get((sample.bucket, sample.series_type_definition_id))
+        if held is None or key(sample) < key(held):
+            best[(sample.bucket, sample.series_type_definition_id)] = sample
+    return [s for s in samples if best[(s.bucket, s.series_type_definition_id)] is s]
+
+
+def _best_per_day(
+    rows: list[tuple[SeriesAggregate, date]], sources: dict[UUID, DataSource], ranking: SourceRanking
+) -> list[tuple[SeriesAggregate, date]]:
+    """Per series type and local day, only the best-ranked source's row; a tie goes to the row counting more."""
+
+    def key(row: SeriesAggregate) -> tuple:
+        return (*ranking.rank(sources[row.data_source_id]), -row.count, str(row.data_source_id))
+
+    best: dict[tuple[int, date], tuple[SeriesAggregate, date]] = {}
+    for row, day in rows:
+        held = best.get((row.series_type_definition_id, day))
+        if held is None or key(row) < key(held[0]):
+            best[(row.series_type_definition_id, day)] = (row, day)
+    return sorted(best.values(), key=lambda pair: pair[1])
 
 
 def _trim_to_whole_buckets(
@@ -309,11 +340,10 @@ class TimeSeriesService(
         params: TimeSeriesQueryParams,
     ) -> dict[int, UUID]:
         """Resolve one data source per series type, using the ranking sleep and summaries use."""
-        return self.crud.winning_source_by_series_type(
-            db_session,
-            params,
-            types,
-            user_id,
+        return self.crud.winning_source_by_series_type(db_session, params, types, user_id, self._ranking(db_session))
+
+    def _ranking(self, db_session: DbSession) -> SourceRanking:
+        return SourceRanking(
             self.provider_priority_repo.get_priority_order(db_session),
             self.device_type_priority_repo.get_priority_order(db_session),
         )
@@ -325,6 +355,7 @@ class TimeSeriesService(
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
         source_by_type: dict[int, UUID] | None = None,
+        ranking: SourceRanking | None = None,
     ) -> PaginatedResponse[TimeSeriesSample]:
         """Downsampled variant of :meth:`get_timeseries`.
 
@@ -332,6 +363,8 @@ class TimeSeriesService(
         is the work the bucket cap exists to avoid.
         """
         rows, truncated = self.crud.get_aggregated_samples(db_session, params, types, user_id, source_by_type)
+        if ranking is not None:
+            rows = _best_per_bucket(rows, ranking)
         samples, has_more = _trim_to_whole_buckets(rows, params.limit or 50, truncated)
         is_backward = bool(params.cursor and params.cursor.startswith("prev_"))
         if is_backward:
@@ -368,12 +401,14 @@ class TimeSeriesService(
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
         source_by_type: dict[int, UUID] | None = None,
+        ranking: SourceRanking | None = None,
     ) -> PaginatedResponse[TimeSeriesSample]:
         """Day, week and month values from series_aggregate, the provider's day before ours.
 
         Weeks start on Monday and months on the 1st, by the local day; a week or month is built from
         its days within the requested range. Pages hold ``limit`` periods; the cursor is a period's
-        first day.
+        first day. With ``ranking``, each day keeps only its best-ranked source, and a week or month is
+        built from those days whichever source each came from.
         """
         kind = PERIOD_RESOLUTIONS[params.resolution]
         first_day = max(params.start_datetime.date(), _NO_START) if params.start_datetime else _NO_START
@@ -415,10 +450,14 @@ class TimeSeriesService(
                 min(last_day, _shift(_period_of(first_day, kind), kind, limit + 1) - timedelta(days=1)),
             )
         rows = repo.get_day_rows(db_session, user_id, params, types, *window, source_by_type)
+        sources = self.crud._sources_by_id(db_session, {row.data_source_id for row, _ in rows})
+        if ranking is not None:
+            rows = _best_per_day(rows, sources, ranking)
 
-        groups: dict[tuple[date, UUID, int], list[SeriesAggregate]] = defaultdict(list)
+        groups: dict[tuple[date, UUID | None, int], list[SeriesAggregate]] = defaultdict(list)
         for row, day in rows:
-            groups[(_period_of(day, kind), row.data_source_id, row.series_type_definition_id)].append(row)
+            source_id = None if ranking is not None else row.data_source_id
+            groups[(_period_of(day, kind), source_id, row.series_type_definition_id)].append(row)
         periods = sorted({period for period, _, _ in groups})
         overflow = len(periods) > limit
         periods = periods[-limit:] if backward else periods[:limit]
@@ -427,12 +466,16 @@ class TimeSeriesService(
             rest[0] <= rest[1] and repo.edge_day(db_session, user_id, params, types, *rest, source_by_type) is not None
         )
 
-        sources = self.crud._sources_by_id(db_session, {source_id for _, source_id, _ in groups})
         shown = set(periods)
         data = []
-        for (period, source_id, type_id), period_rows in sorted(groups.items(), key=lambda item: item[0]):
+        for (period, _, type_id), period_rows in sorted(
+            groups.items(), key=lambda item: (item[0][0], str(item[0][1]), item[0][2])
+        ):
             if period not in shown:
                 continue
+            # A period built from several sources' days names none of them.
+            period_sources = {row.data_source_id for row in period_rows}
+            source = sources[period_sources.pop()] if len(period_sources) == 1 else None
             zone_offset = period_rows[0].zone_offset
             stats = _combine(period_rows)
             data.append(
@@ -442,7 +485,7 @@ class TimeSeriesService(
                     type_id,
                     Decimal(str(_value_of(stats, get_series_type_from_id(type_id)))),
                     None,
-                    sources[source_id],
+                    source,
                     # The end takes the last day's offset: a clock change inside the period moves it by an hour.
                     period_end=CalendarPeriod.of_date(_shift(period, kind, 1), period_rows[-1].zone_offset).start,
                     computed_by=period_rows[0].computed_by if kind is PeriodKind.DAY else ComputedBy.OPEN_WEARABLES,
@@ -467,7 +510,7 @@ class TimeSeriesService(
         user_id: UUID,
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
-        filter_by_priority: bool = False,
+        source_selection: SourceSelection = SourceSelection.ALL,
     ) -> PaginatedResponse[TimeSeriesSample]:
         if params.resolution in PERIOD_RESOLUTIONS:
             # An open end stays an open end: the day bounds a read computes around a far date must still be dates.
@@ -477,11 +520,14 @@ class TimeSeriesService(
                     "end_datetime": _clamp(params.end_datetime, _NO_START, _NO_END),
                 }
             )
-        source_by_type = self._winning_sources(db_session, user_id, types, params) if filter_by_priority else None
+        source_by_type = None
+        if source_selection is SourceSelection.PER_RANGE:
+            source_by_type = self._winning_sources(db_session, user_id, types, params)
+        ranking = self._ranking(db_session) if source_selection is SourceSelection.PER_DAY else None
         if params.resolution in PERIOD_RESOLUTIONS:
-            return self._period_timeseries(db_session, user_id, types, params, source_by_type)
+            return self._period_timeseries(db_session, user_id, types, params, source_by_type, ranking)
         if params.resolution is not Resolution.RAW:
-            return self._aggregated_timeseries(db_session, user_id, types, params, source_by_type)
+            return self._aggregated_timeseries(db_session, user_id, types, params, source_by_type, ranking)
 
         samples, total_count = self.crud.get_samples(db_session, params, types, user_id, source_by_type)
 

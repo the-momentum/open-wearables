@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from logging import getLogger
@@ -209,8 +210,25 @@ class WriteCounts(int):
         return f"WriteCounts(inserted={self.inserted}, updated={self.updated})"
 
 
-# Sources whose provider or device type is not ranked sort last, in id order.
+# Sources whose provider or device type is not ranked sort last.
 _UNRANKED = 1_000_000
+
+
+@dataclass(frozen=True)
+class SourceRanking:
+    """The configured provider and device type priorities, which order a user's data sources."""
+
+    provider_order: dict
+    device_type_order: dict
+
+    def rank(self, source: DataSource) -> tuple[int, int]:
+        """The source's place, lowest first; sources of one provider and device type tie."""
+        return (
+            self.provider_order.get(source.provider, _UNRANKED),
+            self.device_type_order.get(source.device_type, _UNRANKED),
+        )
+
+
 SERIES_TYPE_IDS: tuple[int, ...] = tuple(get_series_type_id(t) for t in SeriesType)
 _AGGREGATE_FUNCS = {
     AggregationMethod.AVG: func.avg,
@@ -751,8 +769,7 @@ class DataPointSeriesRepository(
         params: TimeSeriesQueryParams,
         types: list[SeriesType],
         user_id: UUID,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
     ) -> dict[int, UUID]:
         """Best-ranked data source per series type, among those holding data in the window.
 
@@ -761,7 +778,7 @@ class DataPointSeriesRepository(
         winner is resolved per series type, so a watch with heart rate but no GPS keeps the
         heart rate and yields only the GPS series to the next source.
         """
-        ranked = self._ranked_sources(db_session, params, user_id, provider_order, device_type_order)
+        ranked = self._ranked_sources(db_session, params, user_id, ranking)
         type_ids = [get_series_type_id(t) for t in types] if types else SERIES_TYPE_IDS
         if not ranked or not type_ids:
             return {}
@@ -810,11 +827,23 @@ class DataPointSeriesRepository(
             select(candidates.c.type_id, candidates.c.source_id).select_from(candidates.join(probe, true()))
         ).all()
 
-        rank_of = {source.id: position for position, source in enumerate(ranked)}
-        winners: dict[int, UUID] = {}
+        rank_of = {s.id: ranking.rank(s) for s in ranked}
+        by_type: dict[int, list[UUID]] = {}
         for type_id, source_id in populated:
-            if type_id not in winners or rank_of[source_id] < rank_of[winners[type_id]]:
-                winners[type_id] = source_id
+            by_type.setdefault(type_id, []).append(source_id)
+        winners: dict[int, UUID] = {}
+        for type_id, source_ids in by_type.items():
+            best = min(rank_of[source_id] for source_id in source_ids)
+            tied = [source_id for source_id in source_ids if rank_of[source_id] == best]
+            if len(tied) == 1:
+                winners[type_id] = tied[0]
+                continue
+            # A tie goes to the source holding the most of the series here, not to the lowest random id: a phone
+            # with one stray weight entry must not hide the scale relayed through the same provider.
+            counts = db_session.execute(
+                select(source, func.count()).where(series == type_id, source.in_(tied), *available).group_by(source)
+            ).all()
+            winners[type_id] = min(counts, key=lambda row: (-row[1], str(row[0])))[0]
         return winners
 
     def _ranked_sources(
@@ -822,8 +851,7 @@ class DataPointSeriesRepository(
         db_session: DbSession,
         params: TimeSeriesQueryParams,
         user_id: UUID,
-        provider_order: dict,
-        device_type_order: dict,
+        ranking: SourceRanking,
     ) -> list[DataSource]:
         """The caller's sources, best first. Honours the source filters, so priority picks a
         winner from what the request actually asked for rather than from everything owned."""
@@ -831,14 +859,7 @@ class DataPointSeriesRepository(
             DataSource.user_id == user_id,
             *source_filter_conditions(params, DataSource.id),
         )
-        return sorted(
-            query.all(),
-            key=lambda s: (
-                provider_order.get(s.provider, _UNRANKED),
-                device_type_order.get(s.device_type, _UNRANKED),
-                s.id,
-            ),
-        )
+        return sorted(query.all(), key=lambda s: (*ranking.rank(s), s.id))
 
     def _first_sample_at_or_after(
         self,

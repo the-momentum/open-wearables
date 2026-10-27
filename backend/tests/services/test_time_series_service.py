@@ -12,14 +12,21 @@ Tests cover:
 import importlib
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesAggregate
 from app.repositories import AggregateRepository
-from app.schemas.enums import ComputedBy, PeriodKind, Resolution, SeriesType, get_series_type_id
+from app.schemas.enums import (
+    ComputedBy,
+    PeriodKind,
+    Resolution,
+    SeriesType,
+    SourceSelection,
+    get_series_type_id,
+)
 from app.schemas.model_crud.activities import (
     CalendarPeriod,
     HeartRateSampleCreate,
@@ -688,7 +695,7 @@ class TestTimeSeriesServiceGetTimeseries:
         # Act
         unfiltered = self._fetch(db, user)
         filtered = timeseries_service.get_timeseries(
-            db, user.id, [SeriesType.heart_rate], self._params(), filter_by_priority=True
+            db, user.id, [SeriesType.heart_rate], self._params(), source_selection=SourceSelection.PER_RANGE
         )
 
         # Assert
@@ -709,7 +716,11 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Act
         result = timeseries_service.get_timeseries(
-            db, user.id, [SeriesType.heart_rate, SeriesType.steps], self._params(), filter_by_priority=True
+            db,
+            user.id,
+            [SeriesType.heart_rate, SeriesType.steps],
+            self._params(),
+            source_selection=SourceSelection.PER_RANGE,
         )
 
         # Assert - heart rate from the watch, steps from the band that alone recorded them
@@ -725,7 +736,11 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Act
         result = timeseries_service.get_timeseries(
-            db, user.id, [SeriesType.heart_rate], self._params(provider="whoop"), filter_by_priority=True
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            self._params(provider="whoop"),
+            source_selection=SourceSelection.PER_RANGE,
         )
 
         # Assert - without this the two filters intersect to nothing
@@ -752,7 +767,11 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Act
         result = timeseries_service.get_timeseries(
-            db, user.id, [SeriesType.steps], self._params(resolution=Resolution.ONE_MIN), filter_by_priority=True
+            db,
+            user.id,
+            [SeriesType.steps],
+            self._params(resolution=Resolution.ONE_MIN),
+            source_selection=SourceSelection.PER_RANGE,
         )
 
         # Assert - without this the watch wins and the bucket it would fill is then discarded
@@ -787,7 +806,11 @@ class TestTimeSeriesServiceGetTimeseries:
 
         # Act
         result = timeseries_service.get_timeseries(
-            db, user.id, [SeriesType.steps], self._params(resolution=Resolution.ONE_DAY), filter_by_priority=True
+            db,
+            user.id,
+            [SeriesType.steps],
+            self._params(resolution=Resolution.ONE_DAY),
+            source_selection=SourceSelection.PER_RANGE,
         )
 
         # Assert - probing the samples instead would crown the watch and return an empty day
@@ -829,9 +852,50 @@ class TestTimeSeriesServiceGetTimeseries:
             }
         )
 
-        result = timeseries_service.get_timeseries(db, user.id, [SeriesType.steps], params, filter_by_priority=True)
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.steps], params, source_selection=SourceSelection.PER_RANGE
+        )
 
         assert [(s.value, s.source.provider) for s in result.data] == [(9000, "whoop")]
+
+    def test_priority_tie_goes_to_the_source_holding_more_of_the_series(self, db: Session) -> None:
+        """Two sources of one provider and device type tie on rank: the lower id must not win with one stray sample."""
+        user = UserFactory()
+        stray = DataSourceFactory(id=UUID(int=1), user=user, device_type="phone")
+        relay = DataSourceFactory(id=UUID(int=2), user=user, device_type="phone")
+        weight = SeriesTypeDefinitionFactory.get_or_create_weight()
+        DataPointSeriesFactory(mapping=stray, series_type=weight, recorded_at=self._START, value=1)
+        for minute in range(1, 4):
+            DataPointSeriesFactory(
+                mapping=relay, series_type=weight, recorded_at=self._START + timedelta(minutes=minute), value=80
+            )
+
+        result = timeseries_service.get_timeseries(
+            db, user.id, [SeriesType.weight], self._params(), source_selection=SourceSelection.PER_RANGE
+        )
+
+        assert [s.value for s in result.data] == [80, 80, 80]
+
+    def test_per_day_takes_the_best_source_in_each_bucket(self, db: Session) -> None:
+        """Below a day a bucket the better source left empty keeps the next source's value."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        heart_rate = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
+        DataPointSeriesFactory(mapping=band, series_type=heart_rate, recorded_at=self._START, value=200)
+        later = self._START + timedelta(minutes=1)
+        DataPointSeriesFactory(mapping=band, series_type=heart_rate, recorded_at=later, value=210)
+        DataPointSeriesFactory(mapping=watch, series_type=heart_rate, recorded_at=later, value=100)
+
+        result = timeseries_service.get_timeseries(
+            db,
+            user.id,
+            [SeriesType.heart_rate],
+            self._params(resolution=Resolution.ONE_MIN),
+            source_selection=SourceSelection.PER_DAY,
+        )
+
+        assert [(s.value, s.source.provider) for s in result.data] == [(200, "whoop"), (100, "garmin")]
 
     def test_date_only_bounds_are_accepted_by_bucketed_reads(self, db: Session) -> None:
         """A date-only query parameter parses without a timezone and must still compare."""
@@ -900,6 +964,30 @@ class TestTimeSeriesServicePeriods:
             resolution=resolution,
             **overrides,
         )
+
+    def test_per_day_takes_each_days_best_source_and_builds_weeks_from_them(self, db: Session) -> None:
+        """A watch worn one day of two wins that day only, and the week adds up the days whoever won them."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider="garmin", source="garmin", device_type="watch")
+        band = DataSourceFactory(user=user, provider="whoop", source="whoop", device_type="band")
+        monday, tuesday = date(2024, 3, 4), date(2024, 3, 5)
+        self._day(db, band, SeriesType.steps, monday, ComputedBy.PROVIDER, sum=Decimal("4000"))
+        self._day(db, band, SeriesType.steps, tuesday, ComputedBy.PROVIDER, sum=Decimal("3000"))
+        self._day(db, watch, SeriesType.steps, tuesday, ComputedBy.PROVIDER, sum=Decimal("5000"))
+
+        days, weeks = (
+            timeseries_service.get_timeseries(
+                db,
+                user.id,
+                [SeriesType.steps],
+                self._params(resolution, monday, date(2024, 3, 11)),
+                source_selection=SourceSelection.PER_DAY,
+            )
+            for resolution in (Resolution.ONE_DAY, Resolution.ONE_WEEK)
+        )
+
+        assert [(s.value, s.source.provider) for s in days.data] == [(4000, "whoop"), (5000, "garmin")]
+        assert [(s.value, s.source) for s in weeks.data] == [(9000, None)]
 
     def test_a_day_takes_the_providers_row_and_falls_back_to_ours(self, db: Session) -> None:
         source = DataSourceFactory()
@@ -1072,7 +1160,11 @@ class TestTimeSeriesServicePeriods:
         }[bound]
 
         page = timeseries_service.get_timeseries(
-            db, source.user_id, [SeriesType.steps], params.model_copy(update=update), filter_by_priority=True
+            db,
+            source.user_id,
+            [SeriesType.steps],
+            params.model_copy(update=update),
+            source_selection=SourceSelection.PER_RANGE,
         )
 
         assert [s.value for s in page.data] == [1]
