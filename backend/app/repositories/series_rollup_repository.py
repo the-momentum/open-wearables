@@ -7,7 +7,7 @@ from sqlalchemy import Row, text
 from app.database import DbSession
 from app.models import EventRecordAggregate, SeriesAggregate
 from app.repositories.aggregate_repository import AggregateRepository
-from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
+from app.repositories.local_day import OFFSET_REACH, every_series_type_sql, sample_day_sql, utc_midnight
 from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
@@ -35,7 +35,8 @@ _DAY_STATS = text(f"""
             sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s.value) AS max,
             max(s.recorded_at) AS last_at, count(*) AS count
         FROM series_sample s
-        WHERE s.data_source_id = :source_id AND s.recorded_at >= :lo AND s.recorded_at < :hi
+        WHERE s.data_source_id = :source_id AND {every_series_type_sql("s")}
+            AND s.recorded_at >= :lo AND s.recorded_at < :hi
             AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
         GROUP BY 1, 2
     )
@@ -75,7 +76,7 @@ _SESSION_STATS = text(f"""
         FROM series_sample s
         WHERE s.data_source_id = er.data_source_id
             AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
-            AND s.is_daily_total IS NOT TRUE
+            AND s.is_daily_total IS NOT TRUE AND {every_series_type_sql("s")}
         GROUP BY 1
     ) stats
     WHERE er.id = ANY(:record_ids)
@@ -90,7 +91,8 @@ _DELETE_SESSIONS = text("""
 
 _DAYS_BEFORE = text(f"""
     SELECT DISTINCT {_SAMPLE_DAY} AS day FROM series_sample s
-    WHERE s.data_source_id = :source_id AND s.recorded_at < :hi AND {_SAMPLE_DAY} < :cutoff
+    WHERE s.data_source_id = :source_id AND {every_series_type_sql("s")}
+        AND s.recorded_at < :hi AND {_SAMPLE_DAY} < :cutoff
 """)
 
 _SESSION_CATEGORIES = [EventCategory.SLEEP.value, EventCategory.WORKOUT.value]

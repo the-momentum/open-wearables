@@ -10,7 +10,7 @@ from app.database import DbSession
 from app.models import DataPointSeriesArchive, DataSource, SeriesSample
 from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
-from app.repositories.local_day import OFFSET_REACH, sample_day_sql, utc_midnight
+from app.repositories.local_day import OFFSET_REACH, every_series_type_sql, sample_day_sql, utc_midnight
 from app.repositories.repositories import timeline_key_column, utc_bucket_start
 from app.schemas.enums import (
     ProviderName,
@@ -58,10 +58,13 @@ MAX_ROWS_PER_RUN = 500_000  # Stop after deleting this many rows per invocation
 MAX_SECONDS_PER_RUN = 120  # Stop after this many seconds per invocation
 
 # Sources holding a sample before the bound, in id order after a cursor: one index probe per source.
-_SOURCES_WITH_SAMPLES_BEFORE = text("""
+_SOURCES_WITH_SAMPLES_BEFORE = text(f"""
     SELECT ds.id FROM data_source ds
     WHERE ds.id > :after
-        AND EXISTS (SELECT 1 FROM series_sample s WHERE s.data_source_id = ds.id AND s.recorded_at < :before)
+        AND EXISTS (
+            SELECT 1 FROM series_sample s
+            WHERE s.data_source_id = ds.id AND {every_series_type_sql("s")} AND s.recorded_at < :before
+        )
     ORDER BY ds.id LIMIT :limit
 """)
 
@@ -180,6 +183,7 @@ class DataPointSeriesArchiveRepository:
             db.query(SeriesSample)
             .filter(
                 SeriesSample.data_source_id == source_id,
+                text(every_series_type_sql()),
                 # The UTC reach of the days, so the index bounds the scan; the local day picks within it.
                 SeriesSample.recorded_at >= utc_midnight(days[0]) - OFFSET_REACH,
                 SeriesSample.recorded_at < utc_midnight(days[-1]) + timedelta(days=1) + OFFSET_REACH,
