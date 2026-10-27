@@ -233,10 +233,19 @@ _RECORDS = {
         WHERE e.data_source_id = s.data_source_id AND e.category = 'sleep' AND d.is_nap IS NOT TRUE
             AND e.end_datetime <= s.recorded_at AND e.end_datetime > s.recorded_at - interval '24 hours'
         ORDER BY e.end_datetime DESC LIMIT 1""",
-    SessionMatch.WORKOUT_ENDING: """SELECT e.id FROM event_record e
-        WHERE e.data_source_id = s.data_source_id AND e.category = 'workout' AND e.end_datetime = s.recorded_at
-        LIMIT 1""",
 }
+# Joined rather than looked up per sample: no index leads with end_datetime, so each lookup read every workout.
+_WORKOUT_ENDING = (
+    "{e}.data_source_id = s.data_source_id AND {e}.category = 'workout' AND {e}.end_datetime = s.recorded_at"
+)
+
+
+def _records_join(session: SessionMatch) -> str:
+    if session is SessionMatch.WORKOUT_ENDING:
+        return f"JOIN event_record er ON {_WORKOUT_ENDING.format(e='er')}"
+    return f"CROSS JOIN LATERAL ({_RECORDS[session]}) er"
+
+
 _STATS = ("sum", "avg", "min", "max", "last")
 _RULE_SAMPLES = """s.data_source_id = :source AND s.series_type_definition_id = ANY(:types) AND ({where})
     AND (CAST(:since AS timestamptz) IS NULL OR s.recorded_at >= :since)"""
@@ -281,7 +290,7 @@ def _session_values(rule: HistoryRule) -> TextClause:
             (id, record_id, series_type_definition_id, computed_by, {", ".join(_STATS)}, count)
         SELECT DISTINCT ON (er.id, s.series_type_definition_id) gen_random_uuid(), er.id, s.series_type_definition_id,
             'provider', {_STAT_VALUES.replace("type_id", "s.series_type_definition_id").replace("value", "s.value")}, 1
-        FROM series_sample s CROSS JOIN LATERAL ({_RECORDS[rule.session]}) er
+        FROM series_sample s {_records_join(rule.session)}
         WHERE {_RULE_SAMPLES.format(where=rule.where)}
         ORDER BY er.id, s.series_type_definition_id, s.recorded_at DESC
         ON CONFLICT ON CONSTRAINT uq_event_record_aggregate_record_type_computed_by DO NOTHING
