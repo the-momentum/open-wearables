@@ -28,6 +28,7 @@ class CeleryTask(StrEnum):
     REFRESH_DASHBOARD_TOTAL_DATA_POINTS = f"{_PREFIX}.refresh_dashboard_stats_task.refresh_dashboard_total_data_points"
     RENEW_OURA_WEBHOOKS = f"{_PREFIX}.renew_oura_webhooks_task.renew_oura_webhooks"
     GENERATE_SEED_DATA = f"{_PREFIX}.seed_data_task.generate_seed_data"
+    RETRY_STRAVA_STREAM_INGEST = f"{_PREFIX}.strava_stream_retry_task.retry_strava_stream_ingest"
     SEND_INVITATION_EMAIL = f"{_PREFIX}.send_email_task.send_invitation_email_task"
     SYNC_VENDOR_DATA = f"{_PREFIX}.sync_vendor_data_task.sync_vendor_data"
     SEND_TELEMETRY_PING = f"{_PREFIX}.telemetry_task.send_telemetry_ping"

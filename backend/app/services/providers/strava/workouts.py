@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
+from celery import current_app as celery_app
+
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.constants.entry_source import get_unified_strava_entry_source
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
@@ -28,6 +32,8 @@ from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import offset_to_iso
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
+
+logger = getLogger(__name__)
 
 
 class StravaWorkouts(BaseWorkoutsTemplate):
@@ -318,6 +324,16 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         """Fetch + persist per-sample streams on workout arrival, flag-gated and failure-isolated."""
         if not settings.ingest_workout_samples:
             return 0
+        # Streams are immutable, so skip re-fetching when this device already has samples in the workout window.
+        if record.end_datetime is not None and timeseries_service.has_samples_in_range(
+            db,
+            user_id,
+            "strava",
+            activity.device_name or None,
+            record.start_datetime,
+            record.end_datetime,
+        ):
+            return 0
         try:
             samples = self._build_workout_samples(
                 db,
@@ -423,6 +439,8 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         activity: StravaActivityJSON,
         user_id: UUID,
+        *,
+        stream_retry_attempt: int = 1,
     ) -> list[UUID]:
         """Process a single activity from webhook and save to database.
 
@@ -430,6 +448,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             db: Database session
             activity: Parsed Strava activity data
             user_id: Internal user ID (already mapped from Strava athlete ID)
+            stream_retry_attempt: Retry attempt to schedule if streams are still empty
 
         Returns:
             List of created event record IDs
@@ -438,9 +457,52 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         record, detail = self._normalize_workout(activity, user_id)
         created_record = event_record_service.create(db, record)
-        detail_for_record = detail.model_copy(update={"record_id": created_record.id})
-        event_record_service.create_detail(db, detail_for_record)
+        # Retries re-run this flow; skip the detail (and its workout webhook) when it already exists.
+        if event_record_service.event_record_detail_repo.get_by_record_id(db, created_record.id, "workout") is None:
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
         created_ids.append(created_record.id)
-        self._ingest_workout_streams(db, activity, user_id, record)
+        ingested = self._ingest_workout_streams(db, activity, user_id, record)
+
+        # The webhook often beats Strava's stream processing and the pull won't re-cover it, so retry later.
+        if (
+            ingested == 0
+            and settings.ingest_workout_samples
+            and record.end_datetime is not None
+            and not timeseries_service.has_samples_in_range(
+                db, user_id, "strava", activity.device_name or None, record.start_datetime, record.end_datetime
+            )
+        ):
+            if stream_retry_attempt <= settings.strava_stream_retry_max_attempts:
+                schedule_stream_retry(str(user_id), str(activity.id), attempt=stream_retry_attempt)
+            else:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Strava streams still empty after final retry, giving up",
+                    provider="strava",
+                    action="stream_retry_exhausted",
+                    activity_id=str(activity.id),
+                )
 
         return created_ids
+
+
+def schedule_stream_retry(user_id: str, activity_id: str, attempt: int) -> None:
+    """Schedule stream re-fetch attempt N, delayed by base * 3^(N-1) seconds."""
+    countdown = settings.strava_stream_retry_base_delay_seconds * 3 ** (attempt - 1)
+    celery_app.send_task(
+        CeleryTask.RETRY_STRAVA_STREAM_INGEST,
+        kwargs={"user_id": user_id, "activity_id": activity_id, "attempt": attempt},
+        countdown=countdown,
+    )
+    log_structured(
+        logger,
+        "info",
+        "Strava streams not ready; scheduled delayed ingest",
+        provider="strava",
+        action="stream_retry_scheduled",
+        activity_id=activity_id,
+        attempt=attempt,
+        countdown_seconds=countdown,
+    )

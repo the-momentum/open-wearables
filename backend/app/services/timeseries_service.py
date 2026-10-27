@@ -149,6 +149,18 @@ class TimeSeriesService(
 
         return counts
 
+    def has_samples_in_range(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        source: str,
+        device_model: str | None,
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> bool:
+        """Whether any sample from `source` and `device_model` already exists for the user in [start, end)."""
+        return self.crud.has_samples_in_range(db_session, user_id, source, device_model, start_datetime, end_datetime)
+
     @staticmethod
     def _emit_timeseries_webhooks(
         samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],

@@ -9,6 +9,9 @@ from app.services.providers.strava.workouts import StravaWorkouts
 class StravaStrategy(BaseProviderStrategy):
     """Strava provider implementation."""
 
+    # Narrowed from the base's optional: the stream retry task calls Strava-specific methods.
+    workouts: StravaWorkouts
+
     def __init__(self):
         super().__init__()
 
