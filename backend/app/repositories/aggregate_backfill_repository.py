@@ -14,6 +14,8 @@ for _column, (_series_type, _stat) in WORKOUT_DETAIL_STATS.items():
 
 # Rows changed per statement in the long-running updates, so no transaction holds a source for long.
 UPDATE_BATCH_SIZE = 20_000
+# A data_migration row per data source the backfill gave up on; retention leaves that source's history alone.
+SKIPPED_SOURCE = "aggregate_backfill:skipped:"
 
 _SUUNTO_SPEED = text("""
     UPDATE workout_details wd

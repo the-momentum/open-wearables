@@ -10,6 +10,7 @@ from app.database import DbSession
 from app.models import DataPointSeriesArchive, DataSource, SeriesSample
 from app.models.archival_setting import ArchivalSetting
 from app.models.series_type_definition import SeriesTypeDefinition
+from app.repositories.aggregate_backfill_repository import SKIPPED_SOURCE
 from app.repositories.local_day import OFFSET_REACH, every_series_type_sql, sample_day_sql, utc_midnight
 from app.repositories.repositories import timeline_key_column, utc_bucket_start
 from app.schemas.enums import (
@@ -63,13 +64,17 @@ _SOURCES_WITH_SAMPLES_BEFORE = text(f"""
             SELECT 1 FROM series_sample s
             WHERE s.data_source_id = ds.id AND {every_series_type_sql("s")} AND s.recorded_at < :before
         )
+        AND NOT EXISTS (SELECT 1 FROM data_migration m WHERE m.name = :skipped || ds.id::text)
     ORDER BY ds.id LIMIT :limit
 """)
 
 # The legacy archive, read by no one since the backfill copied it; its days fall under retention like the samples.
 _DELETE_ARCHIVE_BEFORE = text("""
     DELETE FROM data_point_series_archive WHERE id IN (
-        SELECT id FROM data_point_series_archive WHERE bucket_start_at < CAST(:cutoff AS date) LIMIT :limit
+        SELECT a.id FROM data_point_series_archive a
+        WHERE a.bucket_start_at < CAST(:cutoff AS date)
+            AND NOT EXISTS (SELECT 1 FROM data_migration m WHERE m.name = :skipped || a.data_source_id::text)
+        LIMIT :limit
     )
 """)
 
@@ -178,8 +183,9 @@ class DataPointSeriesArchiveRepository:
         }
 
     def sources_with_samples_before(self, db: DbSession, before: datetime, after: UUID, limit: int) -> list[UUID]:
-        """Up to ``limit`` data sources, in id order after ``after``, holding a sample recorded before ``before``."""
-        params = {"before": before, "after": after, "limit": limit}
+        """Up to ``limit`` data sources, in id order after ``after``, holding a sample recorded before ``before``;
+        never one the backfill skipped."""
+        params = {"before": before, "after": after, "limit": limit, "skipped": SKIPPED_SOURCE}
         return list(db.execute(_SOURCES_WITH_SAMPLES_BEFORE, params).scalars())
 
     def earliest_sample(self, db: DbSession, source_id: UUID) -> datetime | None:
@@ -187,8 +193,9 @@ class DataPointSeriesArchiveRepository:
 
     def delete_archive_before(self, db: DbSession, cutoff_date: date, limit: int) -> int:
         """Delete up to ``limit`` rows of the legacy archive for UTC days before ``cutoff_date``; the backfill has
-        copied them into the aggregate tables by the time retention runs."""
-        return db.execute(_DELETE_ARCHIVE_BEFORE, {"cutoff": cutoff_date, "limit": limit}).rowcount  # ty: ignore[unresolved-attribute]
+        copied them into the aggregate tables by the time retention runs, except a source it skipped."""
+        params = {"cutoff": cutoff_date, "limit": limit, "skipped": SKIPPED_SOURCE}
+        return db.execute(_DELETE_ARCHIVE_BEFORE, params).rowcount  # ty: ignore[unresolved-attribute]
 
     def delete_days(self, db: DbSession, source_id: UUID, days: list[date]) -> int:
         """Delete the source's samples of these consecutive local days, whole; returns the rows deleted."""

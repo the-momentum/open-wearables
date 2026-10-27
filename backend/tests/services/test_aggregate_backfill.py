@@ -1,13 +1,27 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from uuid import uuid4
+from unittest.mock import patch
+from uuid import UUID, uuid4
 
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.integrations.celery.tasks.aggregate_backfill_task import run_aggregate_backfill
+from app.integrations import redis_lock
+from app.integrations.celery.tasks.aggregate_backfill_task import bound_statements, run_aggregate_backfill
 from app.integrations.redis_client import get_redis_client
-from app.models import DataPointSeriesArchive, EventRecordAggregate, SeriesAggregate, SeriesSample, WorkoutDetails
+from app.models import (
+    DataPointSeriesArchive,
+    DataSource,
+    EventRecord,
+    EventRecordAggregate,
+    SeriesAggregate,
+    SeriesSample,
+    WorkoutDetails,
+)
 from app.repositories import AggregateRepository
+from app.repositories.aggregate_backfill_repository import AggregateBackfillRepository
+from app.repositories.archival_repository import DataPointSeriesArchiveRepository
 from app.schemas.enums import AggregationMethod, ComputedBy, ProviderName, SeriesType, get_series_type_id
 from app.services.aggregate_backfill_service import aggregate_backfill_service
 from tests.factories import DataPointSeriesFactory, DataSourceFactory, EventRecordFactory, SeriesTypeDefinitionFactory
@@ -128,9 +142,67 @@ class TestBackfillSteps:
         assert aggregate_backfill_service.run(db, budget_seconds=60)
         assert aggregate_backfill_service.is_done(db)
 
+    def test_a_run_that_lost_its_lock_stops(self, db: Session) -> None:
+        _legacy_workout(db, ProviderName.GARMIN, heart_rate_avg=Decimal("140"))
+
+        assert not aggregate_backfill_service.run(db, budget_seconds=60, keep_alive=lambda: False)
+        assert not aggregate_backfill_service.is_done(db)
+
+    def test_a_source_that_keeps_failing_is_skipped_and_kept_from_retention(self, db: Session) -> None:
+        broken = _legacy_workout(db, ProviderName.GARMIN, heart_rate_avg=Decimal("140"))
+        fine = _legacy_workout(db, ProviderName.GARMIN, heart_rate_avg=Decimal("150"))
+        broken_source = db.get(DataSource, db.get(EventRecord, broken.record_id).data_source_id)
+        DataPointSeriesFactory(data_source=broken_source, recorded_at=AT)
+        db.add(
+            DataPointSeriesArchive(
+                id=uuid4(),
+                data_source_id=broken_source.id,
+                series_type_definition_id=get_series_type_id(SeriesType.heart_rate),
+                bucket_start_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                aggregation_type=AggregationMethod.AVG,
+                value=Decimal("62"),
+                sample_count=1440,
+            )
+        )
+        db.flush()
+        mirror = AggregateBackfillRepository.mirror_workout_details
+
+        def fail_on_broken(self: AggregateBackfillRepository, db: Session, source_id: UUID, *args: object) -> None:
+            if source_id == broken_source.id:
+                raise OperationalError("statement", {}, Exception("canceling statement due to statement timeout"))
+            mirror(self, db, source_id, *args)
+
+        with patch.object(AggregateBackfillRepository, "mirror_workout_details", fail_on_broken):
+            assert aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert _session_rows(db, fine)
+        assert not _session_rows(db, broken)
+        later = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        retention = DataPointSeriesArchiveRepository()
+        assert retention.sources_with_samples_before(db, later, UUID(int=0), 50) == []
+        assert retention.delete_archive_before(db, later.date(), 50) == 0
+
 
 class TestBackfillTask:
     def test_a_run_waits_out_one_already_in_progress(self, db: Session) -> None:
         get_redis_client().set("aggregate_backfill:lock", "1")
 
         assert run_aggregate_backfill() == {"skipped": "previous_run_in_progress"}
+
+    def test_a_lock_is_released_and_extended_only_by_its_holder(self, db: Session) -> None:
+        token = redis_lock.acquire("aggregate_backfill:lock", 60)
+        assert token
+        assert redis_lock.acquire("aggregate_backfill:lock", 60) is None
+
+        redis_lock.release("aggregate_backfill:lock", "someone-else")
+        assert not redis_lock.extend("aggregate_backfill:lock", "someone-else", 600)
+        assert get_redis_client().get("aggregate_backfill:lock") == token
+
+        redis_lock.release("aggregate_backfill:lock", token)
+        assert get_redis_client().get("aggregate_backfill:lock") is None
+
+    def test_its_statements_are_cut_off_before_the_lock_runs_out(self, db: Session) -> None:
+        bound_statements(db)
+        db.commit()
+
+        assert db.execute(text("SHOW statement_timeout")).scalar() == "5min"
