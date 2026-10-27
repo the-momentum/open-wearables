@@ -604,6 +604,30 @@ class TestHistoryValuesLeftOutOfOurRows:
         )
         return sorted((day, row.sum, row.avg) for row, day in rows)
 
+    def test_the_copy_marks_what_it_matched_and_nothing_else(self, db: Session) -> None:
+        polar = DataSourceFactory(provider=ProviderName.POLAR)
+        hrv = SeriesType.heart_rate_variability_rmssd
+        _sample(db, polar, hrv, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
+        _sample(db, polar, hrv, datetime(2025, 6, 2, 12, tzinfo=timezone.utc), "70")
+        apple = DataSourceFactory(provider=ProviderName.APPLE)
+        workout = EventRecordFactory(data_source=apple, start_datetime=AT, duration_seconds=1800)
+        _sample(db, apple, SeriesType.steps, workout.end_datetime, "500")
+        _sample(db, apple, SeriesType.steps, AT + timedelta(minutes=10), "1000")
+        xml = DataSourceFactory(provider=ProviderName.APPLE, source="apple_health_xml")
+        xml_workout = EventRecordFactory(data_source=xml, start_datetime=AT, duration_seconds=1800)
+        _sample(db, xml, SeriesType.vo2_max, xml_workout.end_datetime, "41")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        marked = sorted((s.value, s.history_value) for s in db.query(SeriesSample))
+        assert marked == [
+            (Decimal("41"), None),
+            (Decimal("61"), True),
+            (Decimal("70"), None),
+            (Decimal("500"), True),
+            (Decimal("1000"), None),
+        ]
+
     def test_a_day_value_stays_a_sample_but_not_in_our_day(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.POLAR)
         _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")

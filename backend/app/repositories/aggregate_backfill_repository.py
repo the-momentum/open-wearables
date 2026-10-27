@@ -191,7 +191,8 @@ class AggregateBackfillRepository:
         self, db_session: DbSession, source_id: UUID, provider: str, from_day: date, to_day: date
     ) -> int:
         """The source's day and session values of the days from ``from_day`` up to ``to_day``, stored as samples, as
-        provider rows in the aggregate tables where the provider holds none yet. Returns the rows written."""
+        provider rows in the aggregate tables where the provider holds none yet, and those samples marked
+        history_value. Returns the rows written."""
         written = 0
         for rule, statement in _HISTORY:
             if ProviderName(provider) not in rule.providers:
@@ -209,6 +210,7 @@ class AggregateBackfillRepository:
                 **_stat_params(rule),
             }
             written += db_session.execute(statement, params).rowcount  # ty: ignore[unresolved-attribute]
+            db_session.execute(_MARKS[rule], params)
         return written
 
 
@@ -327,25 +329,21 @@ def _stat_params(rule: HistoryRule) -> dict[str, list[int]]:
     return params
 
 
-# The providers whose history holds workout statistics at a workout's end.
-WORKOUT_ENDING_PROVIDERS = frozenset(
-    provider for rule in HISTORY_RULES if rule.session is SessionMatch.WORKOUT_ENDING for provider in rule.providers
-)
-
-
-def history_value_sql(provider: str) -> str:
-    """True for a sample of series_sample s that code before the aggregate tables stored as one of ``provider``'s day
-    or session values, as the history rules describe it: the rollup leaves those out, so our rows count readings.
-    A workout's statistic is told by its instant, one of the workout ends the caller binds as :workout_ends."""
-    return " OR ".join(_history_value(rule) for rule in HISTORY_RULES if provider in rule.providers) or "FALSE"
-
-
-def _history_value(rule: HistoryRule) -> str:
-    types = ", ".join(str(get_series_type_id(series_type)) for series_type, _ in rule.series)
-    matched = f"s.series_type_definition_id IN ({types}) AND ({rule.where})"
+def _mark_values(rule: HistoryRule) -> TextClause:
+    """The rule's samples marked history_value: a day value always, a session value where its session is found, as
+    the copy found it; the rollup and the readers of samples leave them out."""
     if rule.session is SessionMatch.WORKOUT_ENDING:
-        return f"({matched} AND s.recorded_at = ANY(CAST(:workout_ends AS timestamptz[])))"
-    if rule.session is not None:
-        # Only one its session holds: without one the copy left it a reading, and so does the rollup.
-        return f"({matched} AND EXISTS ({_RECORDS[rule.session]}))"
-    return f"({matched})"
+        return text(f"""
+            UPDATE series_sample s SET history_value = TRUE
+            FROM event_record er
+            WHERE {_WORKOUT_ENDING.format(e="er")} AND {_RULE_SAMPLES.format(where=rule.where)}
+                AND s.history_value IS NOT TRUE
+        """)
+    found = f" AND EXISTS ({_RECORDS[rule.session]})" if rule.session is not None else ""
+    return text(f"""
+        UPDATE series_sample s SET history_value = TRUE
+        WHERE {_RULE_SAMPLES.format(where=rule.where)}{found} AND s.history_value IS NOT TRUE
+    """)
+
+
+_MARKS = {rule: _mark_values(rule) for rule in HISTORY_RULES}
