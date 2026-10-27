@@ -159,6 +159,21 @@ Report the disconnect to Open Wearables with [`DELETE /api/v1/users/{user_id}/co
   The native iOS SDK sends this request itself in `signOut()` from version 0.15.0. The other SDKs need the explicit call.
 </Note>
 
+## Sync Requests in Server Logs
+
+The native iOS SDK sends optional headers with its requests. The backend copies them into the `apple_sdk_batch_received` log line of each sync batch and into the `http_request` access log line, which in production is written for 4xx/5xx responses only (`ACCESS_LOG_LEVEL`). Requests without these headers, from older SDK versions or other platforms, are accepted the same way; the fields are just missing.
+
+| Header | Log field | Value | iOS SDK |
+|--------|-----------|-------|---------|
+| `X-Open-Wearables-SDK-Version` | `sdk_version` | SDK version, e.g. `0.16.0` | 0.15.0+ |
+| `X-Open-Wearables-SDK-Platform` | `sdk_platform` | `ios` | 0.15.0+ |
+| `User-Agent` | `user_agent` | SDK version, iOS version and device model | 0.15.0+ |
+| `X-Request-Id` | `request_id` | Request id, reused when a request is retried after a token refresh | 0.15.0+ |
+| `X-Open-Wearables-App-State` | `app_state` | `foreground` or `background`: the app state when the batch was built | Next release |
+| `X-Open-Wearables-Sync-Trigger` | `sync_trigger` | What started the sync: `healthkit_observer`, `bg_app_refresh`, `bg_processing`, `start`, `restore`, `resume`, `reset`, `foreground`, `unlock` or `network` | Next release |
+
+`app_state` and `sync_trigger` are sent only with sync uploads. Together they show whether background sync works on users' devices. The values come from the client, so treat them as diagnostics, not as trusted data.
+
 ## Production Checklist
 
 <AccordionGroup>
