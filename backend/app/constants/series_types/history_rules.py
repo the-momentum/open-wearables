@@ -2,7 +2,8 @@
 
 Frozen history, on purpose not derived from the providers' current mappings: it describes rows already
 written, so it must not move when a provider's mapping does. The aggregate backfill copies what these
-rules match into series_aggregate and event_record_aggregate; the later cleanup deletes the same rows.
+rules match into series_aggregate and event_record_aggregate; the later cleanup deletes a copy only where it sits at
+the very instant of its aggregate row, so the rest stay samples.
 """
 
 from dataclasses import dataclass
@@ -231,7 +232,9 @@ HISTORY_RULES: tuple[HistoryRule, ...] = (
             SeriesType.weather_humidity,
             SeriesType.weather_temperature,
         ),
-        where="s.external_id IS NULL",
+        # The Apple Health XML export has no ids at all: whatever it has at a workout's end is a genuine record.
+        where="""s.external_id IS NULL AND NOT EXISTS (
+            SELECT 1 FROM data_source d WHERE d.id = s.data_source_id AND d.source = 'apple_health_xml')""",
         session=SessionMatch.WORKOUT_ENDING,
     ),
 )

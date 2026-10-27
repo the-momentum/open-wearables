@@ -446,6 +446,15 @@ class TestHistoryValues:
         )
         assert rows[sleeps[ProviderName.WHOOP].id].avg == Decimal("61")
 
+    def test_an_xml_import_at_a_workouts_end_is_a_genuine_record(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.APPLE, source="apple_health_xml")
+        workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
+        _sample(db, source, SeriesType.vo2_max, workout.end_datetime, "41")
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        assert not db.query(EventRecordAggregate).filter(EventRecordAggregate.computed_by == ComputedBy.PROVIDER).all()
+
     def test_sdk_workout_statistics_land_on_the_workout_they_closed(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.APPLE)
         workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
