@@ -4,7 +4,7 @@ from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKEventRecordRef, FKSeriesTypeDefinition, PrimaryKey, numeric_10_3
+from app.mappings import FKEventRecordRef, FKSeriesTypeDefinition, PrimaryKey, numeric_unbounded
 from app.schemas.enums import ComputedBy
 
 
@@ -25,9 +25,9 @@ class EventRecordAggregate(BaseDbModel):
     record_id: Mapped[FKEventRecordRef]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
     computed_by: Mapped[ComputedBy]
-    sum: Mapped[numeric_10_3 | None]
-    avg: Mapped[numeric_10_3 | None]
-    min: Mapped[numeric_10_3 | None]
-    max: Mapped[numeric_10_3 | None]
-    last: Mapped[numeric_10_3 | None]
+    sum: Mapped[numeric_unbounded | None]
+    avg: Mapped[numeric_unbounded | None]
+    min: Mapped[numeric_unbounded | None]
+    max: Mapped[numeric_unbounded | None]
+    last: Mapped[numeric_unbounded | None]
     count: Mapped[int]

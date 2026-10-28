@@ -5,7 +5,7 @@ from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKDataSource, FKSeriesTypeDefinition, PrimaryKey, numeric_10_3, str_10
+from app.mappings import FKDataSource, FKSeriesTypeDefinition, PrimaryKey, numeric_unbounded, str_10
 from app.schemas.enums import ComputedBy, PeriodKind
 
 
@@ -32,9 +32,9 @@ class SeriesAggregate(BaseDbModel):
     period_end: Mapped[datetime]
     zone_offset: Mapped[str_10]
     computed_by: Mapped[ComputedBy]
-    sum: Mapped[numeric_10_3 | None]
-    avg: Mapped[numeric_10_3 | None]
-    min: Mapped[numeric_10_3 | None]
-    max: Mapped[numeric_10_3 | None]
-    last: Mapped[numeric_10_3 | None]
+    sum: Mapped[numeric_unbounded | None]
+    avg: Mapped[numeric_unbounded | None]
+    min: Mapped[numeric_unbounded | None]
+    max: Mapped[numeric_unbounded | None]
+    last: Mapped[numeric_unbounded | None]
     count: Mapped[int]
