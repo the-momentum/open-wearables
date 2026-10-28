@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Unplug from '@lucide/svelte/icons/unplug';
+	import { pageTitle } from '$lib/branding/branding';
 	import Alert from '$lib/components/ui/Alert.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import PairingShell from '$lib/components/pairing/PairingShell.svelte';
@@ -10,7 +11,7 @@
 </script>
 
 <svelte:head>
-	<title>Connect a device · Open Wearables</title>
+	<title>{pageTitle(data.brandName, 'Connect a device')}</title>
 </svelte:head>
 
 <PairingShell title="Connect a device" lead="Choose where your health data should come from.">
