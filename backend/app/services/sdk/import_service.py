@@ -9,6 +9,7 @@ from typing import Iterable, TypedDict
 from uuid import UUID, uuid4
 
 import sentry_sdk
+from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
@@ -65,7 +66,36 @@ MEAL_NUTRIENT_SERIES_TYPES = frozenset(
     {st for st in SeriesType if st.value.startswith("dietary_")} | {SeriesType.hydration}
 )
 
+# First iOS SDK release that sends `HKUnit.percent()` values on a 0-100 scale.
+# Older builds send a 0-1 fraction, which the backend scales x100.
+APPLE_SDK_PERCENT_SCALE_MIN_VERSION = Version("0.17.0")
+
+_FRACTION_PERCENT_SERIES = frozenset(
+    {
+        SeriesType.body_fat_percentage,
+        SeriesType.walking_double_support_percentage,
+        SeriesType.walking_asymmetry_percentage,
+        SeriesType.walking_steadiness,
+    }
+)
+
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
+
+
+def _sends_fraction_percentages(provider: str | None, sdk_version: str | None) -> bool:
+    """Whether percentage values from this SDK arrive as a 0-1 fraction.
+
+    Only iOS SDK builds older than `APPLE_SDK_PERCENT_SCALE_MIN_VERSION` do. A missing or
+    unparseable version is treated as an old build. Pre-releases of the min version count
+    as new, since they are cut after the change.
+    """
+    if provider != "apple":
+        return False
+    try:
+        version = Version(sdk_version or "")
+    except InvalidVersion:
+        return True
+    return version.release < APPLE_SDK_PERCENT_SCALE_MIN_VERSION.release
 
 
 class InvalidRecord(TypedDict):
@@ -268,21 +298,19 @@ class ImportService:
 
             yield record, detail
 
-    def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
+    def _normalize_unit(
+        self,
+        series_type: SeriesType,
+        value: Decimal,
+        provider: str | None = None,
+        sdk_version: str | None = None,
+    ) -> Decimal:
         match series_type:
             # meters → cm
             case SeriesType.height | SeriesType.walking_step_length:
                 return value * 100
-            # 0-1 fraction → percent (body_fat only for Apple; Health Connect already reports percent)
-            case SeriesType.body_fat_percentage if provider == "apple":
-                return value * 100
-            # HealthKit walking metrics returned as 0-1 fraction, DB stores percent
-            # apple-only metrics, so no need to check if provider is apple
-            case (
-                SeriesType.walking_double_support_percentage
-                | SeriesType.walking_asymmetry_percentage
-                | SeriesType.walking_steadiness
-            ):
+            # 0-1 fraction → percent (older iOS SDKs only; Health Connect and newer iOS SDKs send percent)
+            case _ if series_type in _FRACTION_PERCENT_SERIES and _sends_fraction_percentages(provider, sdk_version):
                 return value * 100
             case _:
                 return value
@@ -292,6 +320,7 @@ class ImportService:
         records: list[MetricRecord],
         provider: str,
         user_id: str,
+        sdk_version: str | None = None,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
@@ -305,7 +334,7 @@ class ImportService:
 
             if not series_type:
                 continue
-            value = self._normalize_unit(series_type, value, provider)
+            value = self._normalize_unit(series_type, value, provider, sdk_version)
 
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
             if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
@@ -522,7 +551,7 @@ class ImportService:
                 types.update(sample.series_type.value for sample in time_series_samples)
 
         # Process time series samples (records)
-        samples = self._build_statistic_bundles(records, request.provider, user_id)
+        samples = self._build_statistic_bundles(records, request.provider, user_id, request.sdkVersion)
         if samples:
             counts = self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)

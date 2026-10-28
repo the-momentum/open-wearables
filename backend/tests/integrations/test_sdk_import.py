@@ -896,6 +896,114 @@ class TestSDKImportUnitConversion:
         assert samples[0].value == Decimal("105")
 
 
+class TestSDKImportPercentageScale:
+    """Percentage metrics: iOS SDK builds before `APPLE_SDK_PERCENT_SCALE_MIN_VERSION` send a
+    0-1 fraction labelled "%", newer builds send 0-100 like Health Connect does. Unknown versions
+    keep the legacy x100, so old app builds stay correct.
+    """
+
+    BODY_FAT = "HKQuantityTypeIdentifierBodyFatPercentage"
+    WALKING_TYPES = (
+        ("HKQuantityTypeIdentifierWalkingDoubleSupportPercentage", SeriesType.walking_double_support_percentage),
+        ("HKQuantityTypeIdentifierWalkingAsymmetryPercentage", SeriesType.walking_asymmetry_percentage),
+        ("HKQuantityTypeIdentifierAppleWalkingSteadiness", SeriesType.walking_steadiness),
+    )
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _record(metric_type: str, value: float) -> dict[str, Any]:
+        return {
+            "id": f"test-{metric_type}",
+            "type": metric_type,
+            "unit": "%",
+            "value": value,
+            "startDate": "2025-04-10T12:00:00Z",
+            "endDate": "2025-04-10T12:00:00Z",
+            "source": {"name": "Test Device", "bundleIdentifier": "test"},
+        }
+
+    def _samples(
+        self, import_service: ImportService, provider: str, sdk_version: str | None, records: list[dict[str, Any]]
+    ) -> dict[SeriesType, Decimal]:
+        request = SDKSyncRequest(
+            provider=provider,
+            sdkVersion=sdk_version or "",
+            syncTimestamp="2025-04-10T12:00:00Z",
+            data={"records": records},
+        )
+        samples = import_service._build_statistic_bundles(
+            request.data.records, request.provider, str(uuid4()), sdk_version
+        )
+        return {sample.series_type: sample.value for sample in samples}
+
+    @pytest.mark.parametrize(
+        "sdk_version",
+        [
+            "0.14.0",
+            "0.16.0",
+            "0.1.0",  # reported by iOS SDK 0.3.0 / 0.4.0
+            "0.13.0",  # reported by iOS SDK 0.14.0
+            None,
+            "",
+            "n/a",
+            "not-a-version",
+        ],
+    )
+    def test_old_or_unknown_apple_sdk_scales_fraction(
+        self, import_service: ImportService, sdk_version: str | None
+    ) -> None:
+        values = self._samples(
+            import_service,
+            "apple",
+            sdk_version,
+            [self._record(self.BODY_FAT, 0.304)] + [self._record(t, 0.12) for t, _ in self.WALKING_TYPES],
+        )
+
+        assert values[SeriesType.body_fat_percentage] == Decimal("30.400")
+        for _, series_type in self.WALKING_TYPES:
+            assert values[series_type] == Decimal("12.00")
+
+    @pytest.mark.parametrize("sdk_version", ["0.17.0", "0.17.0-beta.1", "0.18.2", "1.0.0"])
+    def test_new_apple_sdk_value_kept_as_is(self, import_service: ImportService, sdk_version: str) -> None:
+        values = self._samples(
+            import_service,
+            "apple",
+            sdk_version,
+            [self._record(self.BODY_FAT, 30.4)] + [self._record(t, 12) for t, _ in self.WALKING_TYPES],
+        )
+
+        assert values[SeriesType.body_fat_percentage] == Decimal("30.4")
+        for _, series_type in self.WALKING_TYPES:
+            assert values[series_type] == Decimal("12")
+
+    @pytest.mark.parametrize("provider", ["health_connect", "samsung"])
+    @pytest.mark.parametrize("sdk_version", ["0.1.0", "1.0.0", None])
+    def test_android_body_fat_never_scaled(
+        self, import_service: ImportService, provider: str, sdk_version: str | None
+    ) -> None:
+        values = self._samples(import_service, provider, sdk_version, [self._record("BODY_FAT", 30.4)])
+
+        assert values[SeriesType.body_fat_percentage] == Decimal("30.4")
+
+    @pytest.mark.parametrize(
+        ("sdk_version", "sent", "expected"),
+        [("0.16.0", 0.304, Decimal("30.400")), ("0.17.0", 30.4, Decimal("30.400"))],
+    )
+    def test_sdk_version_from_envelope_reaches_stored_value(
+        self, db: Session, import_service: ImportService, sdk_version: str, sent: float, expected: Decimal
+    ) -> None:
+        user = UserFactory()
+        payload = {**SDK_ENVELOPE, "sdkVersion": sdk_version, "data": {"records": [self._record(self.BODY_FAT, sent)]}}
+
+        import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+
+        stored = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).one()
+        assert stored.value == expected
+
+
 class TestSDKImportNutrition:
     """Dietary/nutrition metric types map to per-nutrient SeriesType samples."""
 
