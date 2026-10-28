@@ -95,9 +95,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -367,9 +367,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -429,9 +429,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -508,9 +508,15 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
                 "example": {
-                  "detail": "Authentication required: provide JWT token or API key"
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Authentication required: provide JWT token or API key",
+                  "code": "UNAUTHORIZED"
                 }
               }
             }
@@ -518,19 +524,15 @@
           "404": {
             "description": "User not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
                 "example": {
-                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found."
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error",
-            "content": {
-              "application/json": {
-                "example": {
-                  "detail": "Input should be a valid UUID"
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+                  "code": "NOT_FOUND"
                 }
               }
             }
@@ -538,9 +540,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -600,9 +602,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -672,9 +674,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -737,9 +739,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -810,9 +812,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -879,9 +881,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -945,9 +947,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1011,9 +1013,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1147,9 +1149,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1244,9 +1246,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1369,9 +1371,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1494,9 +1496,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1595,9 +1597,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1704,9 +1706,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -1851,9 +1853,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -2073,9 +2075,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -2309,9 +2311,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -2378,9 +2380,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -2574,9 +2576,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -2806,9 +2808,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -2998,9 +3000,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3188,9 +3190,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3378,9 +3380,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3446,9 +3448,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3514,9 +3516,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3582,9 +3584,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3650,9 +3652,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3814,9 +3816,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3887,9 +3889,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -3928,9 +3930,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4035,9 +4037,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4089,9 +4091,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4135,9 +4137,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4197,9 +4199,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4246,9 +4248,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4304,9 +4306,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4531,9 +4533,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4599,9 +4601,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4690,9 +4692,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4765,9 +4767,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4846,9 +4848,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -4927,9 +4929,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5071,9 +5073,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5245,9 +5247,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5309,9 +5311,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5518,9 +5520,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5640,9 +5642,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5714,9 +5716,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5788,9 +5790,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5862,9 +5864,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -5936,9 +5938,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -6010,9 +6012,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -6088,9 +6090,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -6185,9 +6187,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -7942,9 +7944,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8008,9 +8010,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8057,9 +8059,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8099,9 +8101,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8141,9 +8143,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8176,9 +8178,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8242,9 +8244,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8311,9 +8313,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8363,9 +8365,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8418,9 +8420,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8456,9 +8458,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8503,9 +8505,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8636,9 +8638,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8792,9 +8794,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8856,9 +8858,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -8895,12 +8897,18 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "401": {
+            "description": "Incorrect email or password, or a field missing from the form",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Incorrect email or password",
+                  "code": "UNAUTHORIZED"
                 }
               }
             }
@@ -8963,9 +8971,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9035,9 +9043,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9120,9 +9128,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9177,9 +9185,15 @@
           "403": {
             "description": "The ID is not the authenticated developer's own",
             "content": {
-              "application/json": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
                 "example": {
-                  "detail": "You can only update your own developer account"
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "You can only update your own developer account",
+                  "code": "FORBIDDEN"
                 }
               }
             }
@@ -9187,9 +9201,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9234,9 +9248,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9305,9 +9319,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9359,9 +9373,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9408,9 +9422,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9450,9 +9464,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9520,9 +9534,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9574,9 +9588,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9631,9 +9645,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9680,9 +9694,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9751,9 +9765,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9797,9 +9811,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9845,9 +9859,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -9966,9 +9980,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10044,9 +10058,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10176,9 +10190,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10239,9 +10253,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10304,9 +10318,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10367,9 +10381,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10498,9 +10512,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10669,9 +10683,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10712,9 +10726,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10746,9 +10760,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10794,9 +10808,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10851,9 +10865,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10901,9 +10915,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -10958,9 +10972,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -11013,9 +11027,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -11077,9 +11091,9 @@
           "422": {
             "description": "Validation Error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ValidationProblem"
                 }
               }
             }
@@ -13229,19 +13243,6 @@
           "zones"
         ],
         "title": "HRZones"
-      },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "type": "array",
-            "title": "Detail"
-          }
-        },
-        "type": "object",
-        "title": "HTTPValidationError"
       },
       "HealthScore": {
         "properties": {
@@ -19229,46 +19230,6 @@
         "type": "object",
         "title": "UserUpdate"
       },
-      "ValidationError": {
-        "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Location"
-          },
-          "msg": {
-            "type": "string",
-            "title": "Message"
-          },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
-          }
-        },
-        "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError"
-      },
       "WebhookDeletedResponse": {
         "properties": {
           "deleted": {
@@ -20154,6 +20115,151 @@
         ],
         "title": "WorkoutType",
         "description": "Unified workout/activity types for Polar, Suunto, and Garmin.\n\nBased on FIT SDK sport types and common activities across platforms.\nExcludes branded/niche activities (e.g., LES MILLS classes, specific dance types)."
+      },
+      "Problem": {
+        "description": "An error response: RFC 9457 Problem Details, served as ``application/problem+json``.\n\n``type`` is omitted, which per the RFC means ``about:blank``: ``title`` is the status\nphrase, and ``code`` tells errors with the same status apart.",
+        "examples": [
+          {
+            "code": "NOT_FOUND",
+            "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+            "status": 404,
+            "title": "Not Found"
+          }
+        ],
+        "properties": {
+          "title": {
+            "description": "HTTP status phrase",
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code, the same as the response's",
+            "title": "Status",
+            "type": "integer"
+          },
+          "detail": {
+            "description": "Human-readable explanation of this occurrence",
+            "title": "Detail",
+            "type": "string"
+          },
+          "code": {
+            "description": "Machine-readable error code, stable across releases",
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "code"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "ValidationErrorItem": {
+        "properties": {
+          "loc": {
+            "description": "Where the invalid value is, e.g. ['body', 'email']",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "description": "What is wrong with it",
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "description": "Pydantic error type, e.g. 'missing'",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationErrorItem",
+        "type": "object"
+      },
+      "ValidationProblem": {
+        "description": "A 422 for a request that failed validation, listing every failure.",
+        "examples": [
+          {
+            "code": "VALIDATION_ERROR",
+            "detail": "body.email: value is not a valid email address: An email address must have an @-sign. (and 1 more)",
+            "errors": [
+              {
+                "loc": [
+                  "body",
+                  "email"
+                ],
+                "msg": "value is not a valid email address: An email address must have an @-sign.",
+                "type": "value_error"
+              },
+              {
+                "loc": [
+                  "body",
+                  "first_name"
+                ],
+                "msg": "String should have at most 100 characters",
+                "type": "string_too_long"
+              }
+            ],
+            "status": 422,
+            "title": "Unprocessable Content"
+          }
+        ],
+        "properties": {
+          "title": {
+            "description": "HTTP status phrase",
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code, the same as the response's",
+            "title": "Status",
+            "type": "integer"
+          },
+          "detail": {
+            "description": "Human-readable explanation of this occurrence",
+            "title": "Detail",
+            "type": "string"
+          },
+          "code": {
+            "description": "Machine-readable error code, stable across releases",
+            "title": "Code",
+            "type": "string"
+          },
+          "errors": {
+            "description": "Every validation failure in the request",
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorItem"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "code",
+          "errors"
+        ],
+        "title": "ValidationProblem",
+        "type": "object"
       }
     },
     "securitySchemes": {

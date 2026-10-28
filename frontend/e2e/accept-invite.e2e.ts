@@ -54,7 +54,8 @@ test('says why a link cannot be used, instead of showing the form again', async 
 	for (const [token, reason] of [
 		['nonsense', 'This invitation link is not valid'],
 		['invite-expired', 'This invitation has expired'],
-		['invite-used', 'This invitation has already been used']
+		['invite-used', 'This invitation has already been used'],
+		['invite-revoked', 'This invitation was withdrawn']
 	]) {
 		await join(page, token);
 		await expect(page.getByRole('heading', { name: reason })).toBeVisible();

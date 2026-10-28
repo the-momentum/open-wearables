@@ -151,8 +151,8 @@ describe('policy', () => {
 		expect(conflict({ archive: 30, retain: 90 })).toBeNull();
 	});
 
-	// The PUT rejects these with a 422 whose detail is a list, which the
-	// reader would see as nothing - so the form says it first.
+	// The PUT rejects these with a 422 in pydantic's words ("Input should be
+	// greater than or equal to 1") - so the form says it first, in its own.
 	it('refuses what the API would', () => {
 		expect(invalid({ archive: 0, retain: null })).toMatch(/1 to 3650/);
 		expect(invalid({ archive: 1.5, retain: null })).toMatch(/whole number/);

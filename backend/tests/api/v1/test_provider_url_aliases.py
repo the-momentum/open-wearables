@@ -90,7 +90,7 @@ class TestDataIdentityStaysStrict:
                 "provider": "google",
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "google_health" in response.text
 
 
@@ -104,7 +104,7 @@ class TestSyncRoutesTakeTheCurrentSlugOnly:
             f"{api_v1_prefix}/providers/google/users/{user_id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.plain_key},
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "google_health" in response.text
 
     def test_current_slug_is_the_only_one_the_enum_knows(self) -> None:

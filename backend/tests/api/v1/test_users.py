@@ -171,7 +171,7 @@ class TestGetUser:
         response = client.get(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_get_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user fails without API key."""
@@ -206,7 +206,7 @@ class TestCreateUser:
 
         # Assert
         assert response.status_code == 409
-        assert response.json() == {"detail": "User with this external_user_id already exists."}
+        assert response.json()["detail"] == "User with this external_user_id already exists."
 
     def test_create_user_racing_for_an_external_id_returns_409(
         self, client: TestClient, db: Session, api_v1_prefix: str
@@ -227,7 +227,7 @@ class TestCreateUser:
 
         # Assert
         assert response.status_code == 409
-        assert response.json() == {"detail": "User already exists."}
+        assert response.json()["detail"] == "User already exists."
 
     def test_create_user_full_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with all fields."""
@@ -309,7 +309,7 @@ class TestCreateUser:
         response = client.post(f"{api_v1_prefix}/users", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_create_user_name_too_long(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with name exceeding max length."""
@@ -326,7 +326,7 @@ class TestCreateUser:
         response = client.post(f"{api_v1_prefix}/users", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_create_user_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test creating user fails without API key."""
@@ -425,7 +425,7 @@ class TestUpdateUser:
 
         # Assert
         assert response.status_code == 409
-        assert response.json() == {"detail": "User with this external_user_id already exists."}
+        assert response.json()["detail"] == "User with this external_user_id already exists."
 
     def test_update_user_keeping_own_unique_values(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Re-sending the user's own email and external_user_id is not a conflict."""
@@ -488,7 +488,7 @@ class TestUpdateUser:
         response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_update_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user fails without authentication."""
@@ -569,7 +569,7 @@ class TestDeleteUser:
         response = client.delete(f"{api_v1_prefix}/users/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_delete_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user fails without authentication."""
@@ -671,7 +671,7 @@ class TestListUsersConnections:
         response = client.get(f"{api_v1_prefix}/users?include=connection", headers=headers)
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
 
 class TestListUsersFilters:

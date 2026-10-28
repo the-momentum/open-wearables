@@ -23,7 +23,24 @@ def _password_change_prompt(password: str) -> PasswordChangePrompt | None:
     return PasswordChangePrompt.RECOMMENDED
 
 
-@router.post("/login")
+@router.post(
+    "/login",
+    responses={
+        401: {
+            "description": "Incorrect email or password, or a field missing from the form",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "title": "Unauthorized",
+                        "status": 401,
+                        "detail": "Incorrect email or password",
+                        "code": "UNAUTHORIZED",
+                    }
+                }
+            },
+        },
+    },
+)
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: DbSession,

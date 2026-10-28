@@ -1821,4 +1821,4 @@ class TestDataTimelineEndpoint:
             params={"bucket": "month"},
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 422

@@ -2,16 +2,15 @@ import asyncio
 import contextlib
 import logging
 import sys
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response, status
-from fastapi.exception_handlers import http_exception_handler
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +23,7 @@ from app.integrations.celery import create_celery
 from app.integrations.otel import init_otel, shutdown_otel
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_access_log_middleware, add_cors_middleware, add_endpoint_usage_middleware
+from app.schemas.utils.problem import ValidationErrorItem
 from app.services import raw_payload_storage
 from app.services.api_key_service import API_KEY_REQUIRED
 from app.services.endpoint_usage import endpoint_usage
@@ -36,6 +36,13 @@ from app.utils.exceptions import (
     describe_integrity_error,
 )
 from app.utils.logging_setup import configure_logging
+from app.utils.problem import (
+    INTERNAL_ERROR,
+    VALIDATION_ERROR,
+    add_problem_responses,
+    problem_response,
+    status_code_name,
+)
 from app.utils.structured_logging import get_logger
 
 # Configure logging to use stdout instead of stderr
@@ -131,25 +138,51 @@ def _capture_error_body(request: Request, status_code: int, detail: object) -> N
         request.state.error_response_body = truncated.decode("utf-8", errors="ignore")
 
 
+def _record_cause(request: Request, cause: BaseException) -> None:
+    request.state.error_cause_type = type(cause).__name__
+    try:
+        request.state.error_cause_msg = str(cause)[:300]
+    except Exception:
+        request.state.error_cause_msg = "<unavailable>"
+
+
+def _problem(
+    request: Request,
+    status_code: int,
+    detail: str,
+    code: str,
+    headers: Mapping[str, str] | None = None,
+    errors: list[ValidationErrorItem] | None = None,
+) -> Response:
+    _capture_error_body(request, status_code, detail)
+    return problem_response(status_code, detail, code, headers, errors)
+
+
+def _location(loc: Sequence[str | int]) -> str:
+    return ".".join(str(part) for part in loc)
+
+
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> Response:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
     if request.url.path.endswith("/auth/login"):
-        detail = "Incorrect email or password"
-        _capture_error_body(request, status.HTTP_401_UNAUTHORIZED, detail)
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": detail},
-            headers={"WWW-Authenticate": "Bearer"},
+        return _problem(
+            request,
+            status.HTTP_401_UNAUTHORIZED,
+            "Incorrect email or password",
+            status_code_name(status.HTTP_401_UNAUTHORIZED),
+            {"WWW-Authenticate": "Bearer"},
         )
-    first_error = exc.errors()[0]
-    msg = first_error.get("msg", "Validation error")
-    error = (first_error.get("ctx") or {}).get("error", "")
-    detail = f"{msg} - {error}" if error else msg
-    response = await http_exception_handler_with_body_log(request, HTTPException(status.HTTP_400_BAD_REQUEST, detail))
+    # never `input` or `ctx`: they carry the submitted values, passwords included
+    errors = [ValidationErrorItem(loc=list(e["loc"]), msg=e["msg"], type=e["type"]) for e in exc.errors()]
+    first = errors[0]
+    detail = f"{_location(first.loc)}: {first.msg}"
+    if len(errors) > 1:
+        detail += f" (and {len(errors) - 1} more)"
+    response = _problem(request, status.HTTP_422_UNPROCESSABLE_CONTENT, detail, VALIDATION_ERROR, errors=errors)
     # which field failed, never str(exc): it carries the submitted values
     request.state.error_cause_type = type(exc).__name__
-    request.state.error_cause_msg = ".".join(str(part) for part in first_error.get("loc", ()))
+    request.state.error_cause_msg = _location(first.loc)
     return response
 
 
@@ -160,9 +193,8 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
     # is dropped in before_send)
     if not exc.is_client_error and not isinstance(exc, UpstreamError | ConfigurationError):
         raise exc  # unhandled → the catch-all 500, the traceback in the access log and Sentry
-    http_exc = HTTPException(exc.status_code, exc.detail, exc.headers)
-    http_exc.__cause__ = exc  # its type in the access log; the detail is the response body anyway
-    return await http_exception_handler_with_body_log(request, http_exc)
+    _record_cause(request, exc)  # its type in the access log; the detail is the response body anyway
+    return _problem(request, exc.status_code, exc.detail, exc.code, exc.headers)
 
 
 @api.exception_handler(IntegrityError)
@@ -180,29 +212,38 @@ async def integrity_error_handler(request: Request, exc: IntegrityError | Psycop
 
 
 @api.exception_handler(Exception)
-async def unhandled_exception_handler(_: Request, __: Exception) -> JSONResponse:
+async def unhandled_exception_handler(_: Request, __: Exception) -> Response:
     # Starlette runs this from ServerErrorMiddleware, which re-raises after sending the
     # response, so the access log still records the traceback and Sentry captures it.
-    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Internal server error"})
+    return problem_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "Internal server error", INTERNAL_ERROR)
 
 
 @api.exception_handler(StarletteHTTPException)
 async def http_exception_handler_with_body_log(request: Request, exc: StarletteHTTPException) -> Response:
     # request.state survives the middleware boundary, so the access log can read it.
-    _capture_error_body(request, exc.status_code, exc.detail)
     # real cause behind an opaque HTTPException (e.g. FastAPI's body-parse 400): explicit
     # `from e`, else the implicitly-chained exception unless suppressed via `from None`.
     cause = exc.__cause__
     if cause is None and not exc.__suppress_context__:
         cause = exc.__context__
     if cause is not None:
-        request.state.error_cause_type = type(cause).__name__
-        try:
-            request.state.error_cause_msg = str(cause)[:300]
-        except Exception:
-            request.state.error_cause_msg = "<unavailable>"
-    return await http_exception_handler(request, exc)
+        _record_cause(request, cause)
+    return _problem(request, exc.status_code, str(exc.detail), status_code_name(exc.status_code), exc.headers)
 
 
 api.include_router(head_router)
 mount_routers(api, settings.api_v1, API_KEY_REQUIRED)
+
+
+def _openapi() -> dict[str, Any]:
+    if not api.openapi_schema:
+        schema = FastAPI.openapi(api)
+        # the login form's validation errors are answered as a failed login, never a 422
+        for path, operations in schema["paths"].items():
+            if path.endswith("/auth/login"):
+                operations["post"]["responses"].pop("422", None)
+        api.openapi_schema = add_problem_responses(schema)
+    return api.openapi_schema
+
+
+api.openapi = _openapi  # ty: ignore[invalid-assignment]

@@ -160,7 +160,10 @@ const presignedData = await response.json();
 
 ```json 401 Unauthorized
 {
-  "detail": "Could not validate credentials"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Could not validate credentials",
+  "code": "UNAUTHORIZED"
 }
 ```
 </ResponseExample>
@@ -420,13 +423,19 @@ from `GET /api/v1/users/{user_id}/sync/runs` for 24 hours.
 <ResponseExample>
 ```json 400 Parts mismatch
 {
-  "detail": "Completed parts do not match the parts stored for this multipart upload"
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Completed parts do not match the parts stored for this multipart upload",
+  "code": "BAD_REQUEST"
 }
 ```
 
 ```json 503 Queue unavailable
 {
-  "detail": "Unable to queue upload processing; the multipart upload remains incomplete"
+  "title": "Service Unavailable",
+  "status": 503,
+  "detail": "Unable to queue upload processing; the multipart upload remains incomplete",
+  "code": "SERVICE_UNAVAILABLE"
 }
 ```
 </ResponseExample>

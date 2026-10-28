@@ -44,22 +44,42 @@ export type Developer = {
 export class ApiError extends Error {
 	constructor(
 		readonly status: number,
-		message: string
+		message: string,
+		/** The Problem Details `code` (`NOT_FOUND`, `INVITATION_EXPIRED`, ...), when there is a body. */
+		readonly code?: string
 	) {
 		super(message);
 		this.name = 'ApiError';
 	}
 }
 
+/**
+ * What a form can show from an error body. A 422's `detail` leads with the API's
+ * name for the field (`body.user_id: ...`), so it shows the first failure's own
+ * message instead.
+ */
+export function problemMessage(body: unknown): string | undefined {
+	if (typeof body !== 'object' || body === null) return undefined;
+	const { detail, errors } = body as { detail?: unknown; errors?: unknown };
+	const first: unknown = Array.isArray(errors) ? errors[0] : undefined;
+	if (typeof first === 'object' && first !== null) {
+		const { msg } = first as { msg?: unknown };
+		if (typeof msg === 'string') return msg;
+	}
+	return typeof detail === 'string' ? detail : undefined;
+}
+
 async function raiseFor(response: Response): Promise<never> {
-	let detail: string | undefined;
+	let message: string | undefined;
+	let code: string | undefined;
 	try {
 		const body = await response.json();
-		detail = typeof body?.detail === 'string' ? body.detail : undefined;
+		message = problemMessage(body);
+		code = typeof body?.code === 'string' ? body.code : undefined;
 	} catch {
-		detail = undefined;
+		message = undefined;
 	}
-	throw new ApiError(response.status, detail ?? response.statusText);
+	throw new ApiError(response.status, message ?? response.statusText, code);
 }
 
 /** OAuth2 password flow: form-encoded, and the field is `username`. */

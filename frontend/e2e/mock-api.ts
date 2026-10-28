@@ -117,6 +117,27 @@ function issueTokens() {
 const json = (body: unknown, status = 200) =>
 	new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+/** The `title` the API puts on each status it answers here. */
+const TITLES: Record<number, string> = {
+	400: 'Bad Request',
+	401: 'Unauthorized',
+	404: 'Not Found',
+	409: 'Conflict',
+	422: 'Unprocessable Content',
+	500: 'Internal Server Error'
+};
+
+/** The API's RFC 9457 error body. */
+const problem = (status: number, detail: string, code: string, extra: object = {}) =>
+	new Response(JSON.stringify({ title: TITLES[status], status, detail, code, ...extra }), {
+		status,
+		headers: { 'Content-Type': 'application/problem+json' }
+	});
+
+/** A request FastAPI rejected before the endpoint ran. */
+const invalid = (loc: (string | number)[], msg: string, type: string) =>
+	problem(422, `${loc.join('.')}: ${msg}`, 'VALIDATION_ERROR', { errors: [{ loc, msg, type }] });
+
 const server = Bun.serve({
 	port: PORT,
 	async fetch(request) {
@@ -187,19 +208,21 @@ const server = Bun.serve({
 			const form = await request.formData();
 			const password = form.get('password');
 			if (form.get('username') !== CREDENTIALS.email) {
-				return json({ detail: 'Incorrect email or password' }, 401);
+				return problem(401, 'Incorrect email or password', 'UNAUTHORIZED');
 			}
 			if (password === DEFAULT_PASSWORD) {
 				return json({ ...issueTokens(), password_change: PASSWORD_CHANGE });
 			}
 			return password === CREDENTIALS.password
 				? json(issueTokens())
-				: json({ detail: 'Incorrect email or password' }, 401);
+				: problem(401, 'Incorrect email or password', 'UNAUTHORIZED');
 		}
 
 		if (pathname === '/api/v1/auth/me') {
 			const token = request.headers.get('authorization')?.replace('Bearer ', '') ?? '';
-			return validAccessTokens.has(token) ? json(DEVELOPER) : json({ detail: 'Unauthorized' }, 401);
+			return validAccessTokens.has(token)
+				? json(DEVELOPER)
+				: problem(401, 'Unauthorized', 'UNAUTHORIZED');
 		}
 
 		const authorizeMatch = pathname.match(/^\/api\/v1\/oauth\/([^/]+)\/authorize$/);
@@ -207,7 +230,7 @@ const server = Bun.serve({
 			const provider = authorizeMatch[1];
 			// Enabled but missing its client credentials: on the pairing page, and still failing.
 			if (provider === 'suunto') {
-				return json({ detail: 'Provider credentials are not configured.' }, 400);
+				return problem(400, 'Provider credentials are not configured.', 'BAD_REQUEST');
 			}
 			// A real provider sends the browser to redirect_uri once the person
 			// consents, so handing it straight back walks the same path.
@@ -221,12 +244,10 @@ const server = Bun.serve({
 
 		// As the backend does: the event types are a static list, the rest needs Svix.
 		if (!WEBHOOKS_ENABLED && pathname.startsWith('/api/v1/webhooks/endpoints')) {
-			return json(
-				{
-					detail:
-						'Outgoing webhooks are not enabled (set OUTGOING_WEBHOOKS_ENABLED=true in the backend environment).'
-				},
-				503
+			return problem(
+				503,
+				'Outgoing webhooks are not enabled (set OUTGOING_WEBHOOKS_ENABLED=true in the backend environment).',
+				'SERVICE_UNAVAILABLE'
 			);
 		}
 
@@ -247,11 +268,11 @@ const server = Bun.serve({
 			if (request.method === 'DELETE') {
 				return deleteSubscription(endpointMatch[1])
 					? new Response(null, { status: 204 })
-					: json({ detail: 'Not found' }, 404);
+					: problem(404, 'Not found', 'NOT_FOUND');
 			}
 			if (request.method === 'PATCH') {
 				const updated = updateSubscription(endpointMatch[1], await request.json());
-				return updated ? json(updated) : json({ detail: 'Not found' }, 404);
+				return updated ? json(updated) : problem(404, 'Not found', 'NOT_FOUND');
 			}
 		}
 
@@ -259,7 +280,7 @@ const server = Bun.serve({
 			if (request.method === 'POST') {
 				const body = await request.json();
 				if (!String(body.url ?? '').startsWith('https://')) {
-					return json({ detail: 'Webhook URL must use HTTPS' }, 422);
+					return invalid(['body', 'url'], 'Webhook URL must use HTTPS', 'value_error');
 				}
 				return json(createSubscription(body), 201);
 			}
@@ -288,7 +309,7 @@ const server = Bun.serve({
 		if (liveSyncMatch && request.method === 'PUT') {
 			const { live_sync_mode } = await request.json();
 			const updated = setLiveSyncMode(liveSyncMatch[1], live_sync_mode);
-			return updated ? json(updated) : json({ detail: 'Not found' }, 404);
+			return updated ? json(updated) : problem(404, 'Not found', 'NOT_FOUND');
 		}
 
 		// ------------------------------------------------------------ settings --
@@ -304,7 +325,7 @@ const server = Bun.serve({
 		const storedMatch = pathname.match(/^\/api\/v1\/sync\/history\/([^/]+)$/);
 		if (storedMatch) {
 			const stored = storedRun(decodeURIComponent(storedMatch[1]));
-			return stored ? json(stored) : json({ detail: 'Sync run not found' }, 404);
+			return stored ? json(stored) : problem(404, 'Sync run not found', 'NOT_FOUND');
 		}
 
 		if (pathname === '/__live-sync-calls') {
@@ -320,8 +341,19 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/settings/seed' && request.method === 'POST') {
 			const body = await request.json();
-			if (body.num_users < 1 || body.num_users > 10) {
-				return json({ detail: [{ loc: ['body', 'num_users'], msg: 'out of range' }] }, 422);
+			if (body.num_users < 1) {
+				return invalid(
+					['body', 'num_users'],
+					'Input should be greater than or equal to 1',
+					'greater_than_equal'
+				);
+			}
+			if (body.num_users > 10) {
+				return invalid(
+					['body', 'num_users'],
+					'Input should be less than or equal to 10',
+					'less_than_equal'
+				);
 			}
 			return json(queueSeed(body), 202);
 		}
@@ -340,9 +372,32 @@ const server = Bun.serve({
 				const out = (days: unknown, max: number) =>
 					days !== null &&
 					(!Number.isInteger(days) || (days as number) < 1 || (days as number) > max);
-				if (out(body.archive_after_days, 3650) || out(body.delete_after_days, 7300)) {
-					// FastAPI's shape: a list, no string `detail` to show.
-					return json({ detail: [{ loc: ['body'], msg: 'out of range' }] }, 422);
+				const limits = [
+					['archive_after_days', 3650],
+					['delete_after_days', 7300]
+				] as const;
+				const [field, max] = limits.find(([name, max]) => out(body[name], max)) ?? [];
+				if (field) {
+					const days = body[field];
+					if (!Number.isInteger(days)) {
+						return invalid(
+							['body', field],
+							'Input should be a valid integer, got a number with a fractional part',
+							'int_from_float'
+						);
+					}
+					if (days < 1) {
+						return invalid(
+							['body', field],
+							'Input should be greater than or equal to 1',
+							'greater_than_equal'
+						);
+					}
+					return invalid(
+						['body', field],
+						`Input should be less than or equal to ${max}`,
+						'less_than_equal'
+					);
 				}
 				return json(saveLifecycle(body));
 			}
@@ -354,24 +409,25 @@ const server = Bun.serve({
 			const [, id, rotating] = keyMatch;
 			if (rotating && request.method === 'POST') {
 				const rotated = rotateApiKey(id);
-				return rotated ? json(rotated) : json({ detail: 'Not found' }, 404);
+				return rotated ? json(rotated) : problem(404, 'Not found', 'NOT_FOUND');
 			}
 			if (request.method === 'PATCH') {
 				const { name } = await request.json();
 				const renamed = renameApiKey(id, name);
-				return renamed ? json(renamed) : json({ detail: 'Not found' }, 404);
+				return renamed ? json(renamed) : problem(404, 'Not found', 'NOT_FOUND');
 			}
 			if (request.method === 'DELETE') {
 				return deleteApiKey(id)
 					? new Response(null, { status: 204 })
-					: json({ detail: 'Not found' }, 404);
+					: problem(404, 'Not found', 'NOT_FOUND');
 			}
 		}
 
 		if (pathname === '/api/v1/developer/api-keys') {
 			if (request.method === 'POST') {
 				const { name } = await request.json();
-				if (!String(name ?? '').trim()) return json({ detail: 'Name is required' }, 422);
+				if (!String(name ?? '').trim())
+					return invalid(['body', 'name'], 'Name is required', 'value_error');
 				return json(createApiKey(name), 201);
 			}
 			return json(listApiKeys());
@@ -382,12 +438,12 @@ const server = Bun.serve({
 			const [, appId, rotating] = appMatch;
 			if (rotating && request.method === 'POST') {
 				const rotated = rotateApplicationSecret(appId);
-				return rotated ? json(rotated) : json({ detail: 'Not found' }, 404);
+				return rotated ? json(rotated) : problem(404, 'Not found', 'NOT_FOUND');
 			}
 			if (request.method === 'DELETE') {
 				return deleteApplication(appId)
 					? new Response(null, { status: 204 })
-					: json({ detail: 'Not found' }, 404);
+					: problem(404, 'Not found', 'NOT_FOUND');
 			}
 		}
 
@@ -423,7 +479,7 @@ const server = Bun.serve({
 		if (developerMatch && request.method === 'DELETE') {
 			return deleteDeveloper(developerMatch[1])
 				? new Response(null, { status: 204 })
-				: json({ detail: 'Not found' }, 404);
+				: problem(404, 'Not found', 'NOT_FOUND');
 		}
 
 		const invitationMatch = pathname.match(/^\/api\/v1\/invitations\/([^/]+)(\/resend)?$/);
@@ -433,21 +489,24 @@ const server = Bun.serve({
 			if (request.method === 'DELETE') {
 				return revokeInvitation(id)
 					? new Response(null, { status: 204 })
-					: json({ detail: 'Not found' }, 404);
+					: problem(404, 'Not found', 'NOT_FOUND');
 			}
 		}
 
 		if (pathname === '/api/v1/invitations/accept' && request.method === 'POST') {
 			const { token } = await request.json();
-			// The real endpoint's own answers, detail strings included: the page reads them.
-			if (token === 'invite-expired') return json({ detail: 'Invitation has expired' }, 400);
-			if (token === 'invite-used') return json({ detail: 'Invitation is accepted' }, 400);
-			if (token === 'invite-down')
-				return json({ detail: 'Failed to create developer account' }, 500);
+			// The real endpoint's own answers: the page reads their codes.
+			if (token === 'invite-expired')
+				return problem(400, 'Invitation has expired', 'INVITATION_EXPIRED');
+			if (token === 'invite-used')
+				return problem(400, 'Invitation is accepted', 'INVITATION_ALREADY_ACCEPTED');
+			if (token === 'invite-revoked')
+				return problem(400, 'Invitation is revoked', 'INVITATION_WITHDRAWN');
+			if (token === 'invite-down') return problem(500, 'Internal server error', 'INTERNAL_ERROR');
 			if (token === 'invite-new') {
 				return json({ ...DEVELOPER, id: 'dev-new', email: 'ada@example.com' }, 201);
 			}
-			if (token !== 'invite-ok') return json({ detail: 'Invitation not found' }, 404);
+			if (token !== 'invite-ok') return problem(404, 'Invitation not found', 'NOT_FOUND');
 			// The mock only signs in its one developer, so this "new" account is them.
 			return json(DEVELOPER, 201);
 		}
@@ -456,7 +515,7 @@ const server = Bun.serve({
 			if (request.method === 'POST') {
 				const { email } = await request.json();
 				if (listDevelopers().some((developer) => developer.email === email)) {
-					return json({ detail: 'That person is already on the team.' }, 409);
+					return problem(409, 'That person is already on the team.', 'CONFLICT');
 				}
 				return json(createInvitation(email), 201);
 			}
@@ -467,13 +526,13 @@ const server = Bun.serve({
 			const { current_password } = await request.json();
 			return [CREDENTIALS.password, DEFAULT_PASSWORD].includes(current_password)
 				? json({ message: 'Password updated successfully.' })
-				: json({ detail: 'Incorrect current password' }, 400);
+				: problem(400, 'Incorrect current password', 'BAD_REQUEST');
 		}
 
 		if (pathname === '/api/v1/users' && request.method === 'POST') {
 			const body = await request.json();
 			if (USERS.some((user) => body.email && user.email === body.email)) {
-				return json({ detail: 'User with this email already exists.' }, 409);
+				return problem(409, 'User with this email already exists.', 'CONFLICT');
 			}
 			const created = {
 				id: `00000000-0000-4000-8000-${String(USERS.length + 1).padStart(12, '0')}`,
@@ -510,7 +569,7 @@ const server = Bun.serve({
 		);
 		if (connectionMatch && request.method === 'DELETE') {
 			const user = USERS.find((candidate) => candidate.id === connectionMatch[1]);
-			if (!user) return json({ detail: 'User not found' }, 404);
+			if (!user) return problem(404, 'User not found', 'NOT_FOUND');
 			// Both revoke and purge end the connection, which is what the UI reads.
 			user.connections = user.connections.filter((c) => c.provider !== connectionMatch[2]);
 			DISCONNECTED.add(`${connectionMatch[1]}:${connectionMatch[2]}`);
@@ -536,13 +595,13 @@ const server = Bun.serve({
 			}[eventMatch[2]]!;
 			return remove(eventMatch[3])
 				? new Response(null, { status: 204 })
-				: json({ detail: 'Not found' }, 404);
+				: problem(404, 'Not found', 'NOT_FOUND');
 		}
 
 		const detailMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)(\/.+)?$/);
 		if (detailMatch && request.method === 'GET') {
 			const user = USERS.find((candidate) => candidate.id === detailMatch[1]);
-			if (!user) return json({ detail: 'User not found' }, 404);
+			if (!user) return problem(404, 'User not found', 'NOT_FOUND');
 
 			const connected = user.connections.length > 0;
 			switch (detailMatch[2]) {
@@ -631,20 +690,20 @@ const server = Bun.serve({
 				case '/sync/runs':
 					return json(connected ? makeRecentRuns(user.id) : []);
 				default:
-					return json({ detail: 'Not found' }, 404);
+					return problem(404, 'Not found', 'NOT_FOUND');
 			}
 		}
 
 		const userMatch = pathname.match(/^\/api\/v1\/users\/([^/]+)$/);
 		if (userMatch && request.method !== 'GET') {
 			const index = USERS.findIndex((user) => user.id === userMatch[1]);
-			if (index === -1) return json({ detail: 'Not found' }, 404);
+			if (index === -1) return problem(404, 'Not found', 'NOT_FOUND');
 
 			if (request.method === 'DELETE') return json(USERS.splice(index, 1)[0]);
 
 			const body = await request.json();
 			if (body.email && USERS.some((user, i) => i !== index && user.email === body.email)) {
-				return json({ detail: 'User with this email already exists.' }, 409);
+				return problem(409, 'User with this email already exists.', 'CONFLICT');
 			}
 			Object.assign(USERS[index], {
 				first_name: body.first_name ?? null,
@@ -709,7 +768,7 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/token/refresh') {
 			const { refresh_token } = await request.json();
-			if (!validRefreshTokens.has(refresh_token)) return json({ detail: 'Invalid' }, 401);
+			if (!validRefreshTokens.has(refresh_token)) return problem(401, 'Invalid', 'UNAUTHORIZED');
 			// The real backend rotates: the old token stops working.
 			validRefreshTokens.delete(refresh_token);
 			return json(issueTokens());
@@ -721,7 +780,7 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
-		return json({ detail: 'Not found' }, 404);
+		return problem(404, 'Not found', 'NOT_FOUND');
 	}
 });
 

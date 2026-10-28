@@ -179,7 +179,8 @@ async def receive_sns_notification(
     try:
         notification = SNSNotification.model_validate(json.loads(body))
     except (ValidationError, JSONDecodeError) as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        # the parse error, which quotes the body, goes to the access log only
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid SNS notification") from e
 
     result = await sns_service.handle_sns_notification(notification)
 

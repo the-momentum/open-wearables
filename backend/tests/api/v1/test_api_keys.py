@@ -277,7 +277,7 @@ class TestDeleteApiKey:
         response = client.delete(f"{api_v1_prefix}/developer/api-keys/{api_key.plain_key}", headers=headers)
 
         # Assert
-        assert response.status_code == 400  # validation errors are mapped to 400 by the app
+        assert response.status_code == 422
         assert api_key_service.get(db, api_key.id) is not None
 
     def test_delete_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:

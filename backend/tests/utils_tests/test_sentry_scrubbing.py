@@ -421,7 +421,7 @@ def test_missing_setting_is_answered_and_reported(captured: list[dict[str, Any]]
     sentry_sdk.flush()
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "S3 bucket not configured"}
+    assert response.json()["detail"] == "S3 bucket not configured"
     assert [event["exception"]["values"][-1]["type"] for event in captured] == ["ConfigurationError"]
 
 

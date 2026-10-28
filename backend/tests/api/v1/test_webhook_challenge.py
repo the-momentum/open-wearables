@@ -15,9 +15,7 @@ def test_provider_without_a_challenge_gets_501(client: TestClient, db: Session) 
     response = client.get("/api/v1/providers/garmin/webhooks")
 
     assert response.status_code == 501
-    assert response.json() == {
-        "detail": "Provider 'garmin' does not support webhook subscription verification via GET."
-    }
+    assert response.json()["detail"] == "Provider 'garmin' does not support webhook subscription verification via GET."
 
 
 def test_provider_with_a_challenge_echoes_it(client: TestClient, db: Session) -> None:
@@ -39,4 +37,4 @@ def test_challenge_with_a_wrong_token_is_rejected(client: TestClient, db: Sessio
         )
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid verify token"}
+    assert response.json()["detail"] == "Invalid verify token"

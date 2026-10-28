@@ -127,7 +127,7 @@ def test_fastapi_telemetry_stays_off(install_providers: str) -> None:
     report = json.loads(report_line.removeprefix("PROBE_REPORT "))
     if install_providers == "1":
         assert report["control_uses"] > 0
-    assert report["statuses"] == [200, 400, 500]
+    assert report["statuses"] == [200, 422, 500]
     assert report["uses"] == []
     # The SDK is not a dependency here; this guards against one pulling it in and FastAPI
     # configuring exporters on its own.

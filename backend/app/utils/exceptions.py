@@ -15,10 +15,14 @@ class AppError(Exception):
     """Base of the domain errors raised by services and repositories.
 
     Raise a subclass instead of ``HTTPException``: the global handler in ``app.main`` turns
-    ``status_code`` and ``detail`` into the response, and Celery tasks can catch it by type.
+    ``status_code``, ``code`` and ``detail`` into the response, and Celery tasks can catch it by type.
+    ``code`` is part of the API contract: a status' base class has the status' name, the one
+    an ``HTTPException`` with that status gets, and a subclass a code of its own only where
+    a client can act on the difference.
     """
 
     status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
+    code: ClassVar[str] = "INTERNAL_ERROR"
     headers: ClassVar[dict[str, str] | None] = None
 
     def __init__(self, detail: str) -> None:
@@ -32,29 +36,35 @@ class AppError(Exception):
 
 class InvalidInputError(AppError):
     status_code = status.HTTP_400_BAD_REQUEST
+    code = "BAD_REQUEST"
 
 
 class AuthenticationError(AppError):
     status_code = status.HTTP_401_UNAUTHORIZED
+    code = "UNAUTHORIZED"
     headers = {"WWW-Authenticate": "Bearer"}
 
 
 class WebhookVerificationError(AuthenticationError):
     """A provider callback failed verification (signature, token): no bearer scheme to advertise."""
 
+    code = "WEBHOOK_VERIFICATION_FAILED"
     headers = None
 
 
 class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
+    code = "FORBIDDEN"
 
 
 class NotFoundError(AppError):
     status_code = status.HTTP_404_NOT_FOUND
+    code = "NOT_FOUND"
 
 
 class ConflictError(AppError):
     status_code = status.HTTP_409_CONFLICT
+    code = "CONFLICT"
 
 
 class ResourceNotFoundError(NotFoundError):
@@ -67,16 +77,22 @@ class ResourceNotFoundError(NotFoundError):
 
 
 class UnsupportedProviderError(InvalidInputError):
+    code = "UNSUPPORTED_PROVIDER"
+
     def __init__(self, provider: str, operation: str = "this operation"):
         super().__init__(f"Provider '{provider}' does not support {operation}.")
 
 
 class InvalidCursorError(InvalidInputError):
+    code = "INVALID_CURSOR"
+
     def __init__(self, cursor: str):
         super().__init__(f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'.")
 
 
 class DatetimeParseError(InvalidInputError, ValueError):
+    code = "INVALID_DATETIME"
+
     def __init__(self, value: str):
         super().__init__(f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp.")
 
@@ -89,10 +105,12 @@ class UpstreamError(AppError):
     """
 
     status_code = status.HTTP_502_BAD_GATEWAY
+    code = "BAD_GATEWAY"
 
 
 class ServiceUnavailableError(UpstreamError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "SERVICE_UNAVAILABLE"
 
 
 class ConfigurationError(AppError):
@@ -103,6 +121,7 @@ class ConfigurationError(AppError):
     """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "CONFIGURATION_ERROR"
 
 
 def provider_label(provider: str) -> str:
@@ -125,6 +144,8 @@ class ProviderError(UpstreamError):
     because we built it wrong, so unlike an outage it is reported to Sentry. Derived from
     ``upstream_status`` unless the caller knows better, e.g. from a status in the body.
     """
+
+    code = "PROVIDER_ERROR"
 
     def __init__(
         self,
@@ -157,6 +178,7 @@ class ProviderRateLimitError(ProviderError):
     """The provider kept throttling us after the client's own backoff."""
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "PROVIDER_RATE_LIMITED"
 
 
 def is_upstream_outage(exc: BaseException | None) -> bool:
@@ -178,12 +200,16 @@ class ProviderConnectionError(AppError):
 
 
 class ProviderNotConnectedError(ProviderConnectionError, NotFoundError):
+    code = "PROVIDER_NOT_CONNECTED"
+
     def __init__(self, provider: str) -> None:
         super().__init__(provider, f"User is not connected to {provider_label(provider)}.")
 
 
 class ProviderTokenUnavailableError(ProviderConnectionError, InvalidInputError):
     """The connection has no API token, e.g. an SDK-based provider."""
+
+    code = "PROVIDER_TOKEN_UNAVAILABLE"
 
     def __init__(self, provider: str) -> None:
         super().__init__(provider, f"No {provider_label(provider)} API access token for this user.")
@@ -192,10 +218,35 @@ class ProviderTokenUnavailableError(ProviderConnectionError, InvalidInputError):
 class ProviderReauthorizationRequiredError(ProviderConnectionError, ConflictError):
     """The provider grant is gone: expired with no refresh token, or the provider rejected it."""
 
+    code = "PROVIDER_REAUTHORIZATION_REQUIRED"
+
     def __init__(self, provider: str) -> None:
         super().__init__(
             provider, f"{provider_label(provider)} authorization expired or was revoked; the user must reconnect."
         )
+
+
+class InvitationExpiredError(InvalidInputError):
+    code = "INVITATION_EXPIRED"
+
+    def __init__(self) -> None:
+        super().__init__("Invitation has expired")
+
+
+class InvitationAlreadyAcceptedError(InvalidInputError):
+    code = "INVITATION_ALREADY_ACCEPTED"
+
+    def __init__(self) -> None:
+        super().__init__("Invitation is accepted")
+
+
+class InvitationWithdrawnError(InvalidInputError):
+    """Revoked, or its email never got through: the link is dead, but no one used it."""
+
+    code = "INVITATION_WITHDRAWN"
+
+    def __init__(self, invitation_status: str) -> None:
+        super().__init__(f"Invitation is {invitation_status}")
 
 
 def integrity_violation(exc: IntegrityError | PsycopgIntegrityError) -> BaseException | None:

@@ -159,7 +159,9 @@ Services and repositories raise domain errors from `app/utils/exceptions.py`, th
 | `IntegrityError`: unique violation / foreign key to a missing row | 409 / 400 |
 | `UpstreamError` (`ProviderError`) | 502, with its `detail` |
 | `ServiceUnavailableError`; `ProviderRateLimitError` (a `ProviderError`, not a `ServiceUnavailableError`); `ConfigurationError` | 503, with its `detail` |
-| anything else, incl. other `IntegrityError`s and a bare `AppError` | 500 `{"detail": "Internal server error"}` |
+| anything else, incl. other `IntegrityError`s and a bare `AppError` | 500 `INTERNAL_ERROR`, detail `Internal server error` |
+
+Every error response is RFC 9457 Problem Details (`app/utils/problem.py`, `application/problem+json`): `{"title", "status", "detail", "code"}`, plus `errors` on a 422 from request validation, which lists every failure without the submitted values. `code` is part of the API contract (listed in `docs/api-reference/guides/error-handling.mdx`): an `AppError` takes it from its class, a status' base class (`NotFoundError` → `NOT_FOUND`) has the status' name, and an `HTTPException` gets that name from its status. Give a subclass its own `code` only where a client can act on the difference (`ProviderNotConnectedError`, `InvitationExpiredError`), and add it to the docs table.
 
 Celery tasks don't retry a 4xx domain error or any `IntegrityError`: the same input fails the same way on every attempt. A violation the client didn't cause (NOT NULL, CHECK) still fails the task, so it reaches Sentry.
 

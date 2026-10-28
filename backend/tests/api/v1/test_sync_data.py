@@ -212,7 +212,7 @@ class TestSyncDataEndpoint:
         assert call_kwargs["offset"] == 10
 
     def test_sync_invalid_provider(self, client: TestClient, db: Session) -> None:
-        """Test that invalid provider enum value returns 400."""
+        """Test that invalid provider enum value returns 422."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -224,7 +224,7 @@ class TestSyncDataEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_sync_provider_not_supporting_workouts(
         self,

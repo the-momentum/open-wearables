@@ -1,14 +1,184 @@
 ---
 title: "API Error Handling"
-description: "Reference for Open Wearables API error codes, response formats, and resolution steps. Covers auth failures, validation errors, rate limits, and 404s."
-keywords: ["open wearables api errors", "health api error handling", "wearable api error codes", "open wearables http errors"]
+description: "Reference for the Open Wearables API error format (RFC 9457 Problem Details), error codes, validation errors, and resolution steps."
+keywords: ["open wearables api errors", "health api error handling", "wearable api error codes", "open wearables http errors", "problem details"]
 "og:title": "API Error Handling | Open Wearables Reference"
-"og:description": "Open Wearables API error codes, formats, and resolution steps. Auth failures, validation, rate limits, and 404s."
+"og:description": "Open Wearables API error format, error codes, and resolution steps. Auth failures, validation, provider errors, and 404s."
 "og:url": "https://docs.openwearables.io/api-reference/guides/error-handling"
 "og:type": "article"
 "twitter:title": "API Error Handling | Open Wearables Reference"
-"twitter:description": "Open Wearables API error codes, formats, and resolution steps. Auth failures, validation, rate limits, and 404s."
+"twitter:description": "Open Wearables API error format, error codes, and resolution steps. Auth failures, validation, provider errors, and 404s."
 "twitter:card": "summary_large_image"
+---
+
+## Error Response Format
+
+Every error response uses [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) and is served with `Content-Type: application/problem+json`:
+
+```json
+{
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+  "code": "NOT_FOUND"
+}
+```
+
+<ResponseField name="title" type="string" required>
+  The HTTP status phrase, such as `Not Found`.
+</ResponseField>
+
+<ResponseField name="status" type="integer" required>
+  The HTTP status code, the same as the response's.
+</ResponseField>
+
+<ResponseField name="detail" type="string" required>
+  A human-readable explanation of this occurrence. Its wording can change between releases: log or show it, but don't branch on it.
+</ResponseField>
+
+<ResponseField name="code" type="string" required>
+  A machine-readable error code, stable across releases. Branch on this. See [Error Codes](#error-codes).
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Only on a `422` validation error: every invalid value in the request. See [Validation Errors](#validation-errors).
+</ResponseField>
+
+The `type` member of RFC 9457 is omitted, which the RFC defines as `about:blank`: the error is fully described by its status and `code`.
+
+<Tip>
+  Responses that carry no body by definition (`204`, `304`, and any answer to a `HEAD` request) stay empty. Everything else, including unexpected `500`s, has the body above.
+</Tip>
+
+### Handling Errors in Code
+
+<CodeGroup>
+```python Python
+import httpx
+
+response = httpx.post(
+    "https://api.openwearables.io/api/v1/providers/garmin/users/123e4567-e89b-12d3-a456-426614174000/sync",
+    headers={"X-Open-Wearables-API-Key": "YOUR_API_KEY"},
+)
+
+if response.is_error:
+    problem = response.json()
+    match problem["code"]:
+        case "PROVIDER_NOT_CONNECTED" | "PROVIDER_REAUTHORIZATION_REQUIRED":
+            print("Send the user through the OAuth flow again")
+        case "PROVIDER_ERROR" | "PROVIDER_RATE_LIMITED":
+            print("Provider trouble, retry later:", problem["detail"])
+        case "VALIDATION_ERROR":
+            for error in problem["errors"]:
+                print(".".join(map(str, error["loc"])), error["msg"])
+        case _:
+            print(f"{problem['status']} {problem['code']}: {problem['detail']}")
+```
+
+```typescript TypeScript
+type Problem = {
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+  errors?: { loc: (string | number)[]; msg: string; type: string }[];
+};
+
+const response = await fetch(
+  "https://api.openwearables.io/api/v1/providers/garmin/users/123e4567-e89b-12d3-a456-426614174000/sync",
+  { method: "POST", headers: { "X-Open-Wearables-API-Key": "YOUR_API_KEY" } }
+);
+
+if (!response.ok) {
+  const problem: Problem = await response.json();
+  switch (problem.code) {
+    case "PROVIDER_NOT_CONNECTED":
+    case "PROVIDER_REAUTHORIZATION_REQUIRED":
+      console.log("Send the user through the OAuth flow again");
+      break;
+    case "VALIDATION_ERROR":
+      problem.errors?.forEach((error) => console.log(error.loc.join("."), error.msg));
+      break;
+    default:
+      console.log(`${problem.status} ${problem.code}: ${problem.detail}`);
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Error Codes
+
+An error that needs no code of its own has the name of its HTTP status: `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `NOT_IMPLEMENTED`, `BAD_GATEWAY`, `SERVICE_UNAVAILABLE` and so on. The codes below are more specific:
+
+| Code | Status | Meaning |
+|------|--------|---------|
+| `VALIDATION_ERROR` | 422 | The request has an invalid or missing parameter or body field |
+| `INVALID_CURSOR` | 400 | The pagination `cursor` is malformed |
+| `INVALID_DATETIME` | 400 | A date parameter is neither ISO 8601 nor a Unix timestamp |
+| `UNSUPPORTED_PROVIDER` | 400 | The provider does not support this operation |
+| `PROVIDER_TOKEN_UNAVAILABLE` | 400 | The user's connection has no API token (an SDK-based provider) |
+| `INVITATION_EXPIRED` | 400 | The developer invitation has expired |
+| `INVITATION_ALREADY_ACCEPTED` | 400 | The developer invitation has already been used |
+| `INVITATION_WITHDRAWN` | 400 | The developer invitation was revoked, or its email was never delivered |
+| `PROVIDER_NOT_CONNECTED` | 404 | The user has not connected this provider |
+| `PROVIDER_REAUTHORIZATION_REQUIRED` | 409 | The user's grant expired or was revoked; they must reconnect |
+| `PROVIDER_ERROR` | 502 | The provider's API failed or did not respond |
+| `PROVIDER_RATE_LIMITED` | 503 | The provider kept rate-limiting the request after retries |
+| `CONFIGURATION_ERROR` | 503 | The deployment is missing a setting the request needs (storage, credentials) |
+| `INTERNAL_ERROR` | 500 | An unexpected server error |
+
+`UNSUPPORTED_PROVIDER` covers what a provider cannot be configured for, such as OAuth or live sync mode. A data or webhook endpoint the provider has no implementation of answers `501` with `NOT_IMPLEMENTED` instead.
+
+`WEBHOOK_VERIFICATION_FAILED` (`401`) is sent to providers whose webhook callback failed signature or token verification; your integration never sees it.
+
+---
+
+## Validation Errors
+
+A request whose parameters or body fail validation gets a `422` with code `VALIDATION_ERROR`. The `errors` array lists every invalid value, and `detail` summarises the first one:
+
+```json
+{
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "query.start_time: Field required (and 1 more)",
+  "code": "VALIDATION_ERROR",
+  "errors": [
+    { "loc": ["query", "start_time"], "msg": "Field required", "type": "missing" },
+    { "loc": ["query", "end_time"], "msg": "Field required", "type": "missing" }
+  ]
+}
+```
+
+<ResponseField name="errors[].loc" type="(string | integer)[]">
+  Where the invalid value is: `path`, `query`, `header` or `body`, followed by the field name (and list indexes inside a body).
+</ResponseField>
+
+<ResponseField name="errors[].msg" type="string">
+  What is wrong with the value.
+</ResponseField>
+
+<ResponseField name="errors[].type" type="string">
+  The [Pydantic error type](https://docs.pydantic.dev/latest/errors/validation_errors/), such as `missing`, `uuid_parsing` or `enum`.
+</ResponseField>
+
+<Note>
+  The submitted values are never echoed back, so a rejected password or health record does not end up in your logs.
+</Note>
+
+**Common causes:**
+- A required parameter is missing: `start_time` and `end_time` for timeseries endpoints, `start_date` and `end_date` for event endpoints, `user_id` for OAuth authorization.
+- A UUID has the wrong format (`"type": "uuid_parsing"`). Use `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
+- A provider name is not one of the listed values (`"type": "enum"`). Provider names are lowercase: `garmin`, `polar`, `suunto`, `apple`.
+
+A failed login is the exception: `POST /api/v1/auth/login` with a missing field answers `401` (`UNAUTHORIZED`, `Incorrect email or password`), the same as wrong credentials.
+
+### SDK Sync Payloads (Async Validation)
+
+`POST /api/v1/sdk/users/{user_id}/sync` returns **202 Accepted** immediately and validates/imports the payload in a background worker. A malformed record does **not** produce a synchronous `400`/`422` — validation failures are surfaced via the batch's sync status (and internal error reporting), not the HTTP response. The endpoint returns `400` only for an unsupported `provider`.
+
 ---
 
 ## Authentication Errors
@@ -17,7 +187,10 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "Authentication required: provide JWT token or API key"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Authentication required: provide JWT token or API key",
+  "code": "UNAUTHORIZED"
 }
 ```
 
@@ -36,7 +209,10 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "Invalid or missing API key"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Invalid or missing API key",
+  "code": "UNAUTHORIZED"
 }
 ```
 
@@ -48,7 +224,10 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "Could not validate credentials"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Could not validate credentials",
+  "code": "UNAUTHORIZED"
 }
 ```
 
@@ -69,7 +248,10 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "User is not connected to Garmin."
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User is not connected to Garmin.",
+  "code": "PROVIDER_NOT_CONNECTED"
 }
 ```
 
@@ -84,7 +266,10 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Garmin authorization expired or was revoked; the user must reconnect."
+  "title": "Conflict",
+  "status": 409,
+  "detail": "Garmin authorization expired or was revoked; the user must reconnect.",
+  "code": "PROVIDER_REAUTHORIZATION_REQUIRED"
 }
 ```
 
@@ -99,7 +284,10 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "No Apple API access token for this user."
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "No Apple API access token for this user.",
+  "code": "PROVIDER_TOKEN_UNAVAILABLE"
 }
 ```
 
@@ -111,11 +299,14 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Garmin API error (status 500)"
+  "title": "Bad Gateway",
+  "status": 502,
+  "detail": "Garmin API error (status 500)",
+  "code": "PROVIDER_ERROR"
 }
 ```
 
-**Cause:** The provider's API failed or did not respond (`502`), or kept rate-limiting the request after retries (`503`). The `detail` names the provider's status; its own response is not included.
+**Cause:** The provider's API failed or did not respond (`502`, `PROVIDER_ERROR`), or kept rate-limiting the request after retries (`503`, `PROVIDER_RATE_LIMITED`). The `detail` names the provider's status; its own response is not included.
 
 **Solution:** For a provider `5xx`, no response, or a `503`, retry later; the user's connection is still valid. A `502` naming a provider `4xx` (such as `status 400`) means the provider refused the request, and retrying it unchanged fails the same way.
 
@@ -123,60 +314,16 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Provider 'apple' does not support OAuth"
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Provider 'apple' does not support OAuth.",
+  "code": "UNSUPPORTED_PROVIDER"
 }
 ```
 
 **Cause:** Attempting to use OAuth with a push-only provider like Apple Health.
 
 **Solution:** Apple Health data is pushed from the device, not pulled via OAuth. Use the SDK sync or import endpoints instead.
-
-### Invalid Provider Name
-
-```json
-{
-  "detail": "Input should be 'apple', 'garmin', 'polar' or 'suunto'"
-}
-```
-
-**Cause:** Provider name is invalid or has wrong case.
-
-**Solution:** Use lowercase provider names: `garmin`, `polar`, `suunto`, `apple`.
-
----
-
-## Validation Errors
-
-### Missing Required Field
-
-```json
-{
-  "detail": "Field required"
-}
-```
-
-**Cause:** A required query parameter or request body field is missing.
-
-**Solution:** Check the API documentation for required parameters. Common required fields:
-- `start_time` and `end_time` for timeseries endpoints
-- `start_date` and `end_date` for event endpoints
-- `user_id` for OAuth authorization
-
-### Invalid UUID Format
-
-```json
-{
-  "detail": "Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1"
-}
-```
-
-**Cause:** A UUID parameter (like `user_id`) has an invalid format.
-
-**Solution:** Ensure UUIDs are in the correct format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
-
-### SDK Sync Payloads (Async Validation)
-
-`POST /api/v1/sdk/users/{user_id}/sync` returns **202 Accepted** immediately and validates/imports the payload in a background worker. A malformed record does **not** produce a synchronous `400`/`422` — validation failures are surfaced via the batch's sync status (and internal error reporting), not the HTTP response. The endpoint returns `400` only for an unsupported `provider`.
 
 ---
 
@@ -186,7 +333,10 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "User with ID: {id} not found."
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID: 123e4567-e89b-12d3-a456-426614174000 not found.",
+  "code": "NOT_FOUND"
 }
 ```
 
@@ -196,14 +346,30 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ---
 
+## Migrating from the Previous Format
+
+Earlier releases answered errors with `{"detail": "..."}` only. The current format keeps `detail` as a string, so code that reads it keeps working. What changed:
+
+- **Validation errors are `422`, not `400`.** They used to be a `400` describing only the first invalid value; now they are a `422` listing all of them in `errors`. A client that treats every `400` as a validation error should check for `422` (or `code == "VALIDATION_ERROR"`) instead.
+- **`Content-Type` is `application/problem+json`.** JSON parsers accept it as is; only a client that checks for exactly `application/json` before parsing needs updating.
+- **New members:** `title`, `status` and `code` on every error, `errors` on a `422`.
+
+---
+
 ## HTTP Status Code Reference
 
 | Status | Meaning | Common Causes |
 |--------|---------|---------------|
 | 200 | Success | Request completed successfully |
 | 201 | Created | Resource created successfully |
-| 400 | Bad Request | Invalid parameters, validation errors |
-| 401 | Unauthorized | Missing or invalid authentication |
-| 404 | Not Found | Resource doesn't exist |
-| 422 | Unprocessable | Request body validation failed |
+| 202 | Accepted | Request queued for background processing |
+| 400 | Bad Request | The request is well-formed but can't be carried out (see `code`) |
+| 401 | Unauthorized | Missing or invalid API key or JWT |
+| 403 | Forbidden | Authenticated, but not allowed to act on this resource |
+| 404 | Not Found | Resource doesn't exist, or the user hasn't connected the provider |
+| 409 | Conflict | Duplicate resource, or the provider connection needs reauthorization |
+| 422 | Unprocessable Content | Request validation failed (see `errors`) |
 | 500 | Server Error | Internal error (please report) |
+| 501 | Not Implemented | The provider doesn't support this data type or operation |
+| 502 | Bad Gateway | The provider's API or object storage failed |
+| 503 | Service Unavailable | Provider rate limit, or a setting or service the deployment is missing |

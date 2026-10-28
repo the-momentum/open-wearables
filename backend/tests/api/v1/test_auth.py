@@ -242,7 +242,7 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "The confirmation password does not match" in str(response.json())
 
     def test_change_password_too_short(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
@@ -257,7 +257,7 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 400
+        assert response.status_code == 422
 
 
 class TestGetCurrentDeveloper:
@@ -390,7 +390,7 @@ class TestUpdateCurrentDeveloper:
         response = client.patch(f"{api_v1_prefix}/auth/me", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
     def test_update_current_developer_short_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with password that's too short."""
@@ -403,7 +403,7 @@ class TestUpdateCurrentDeveloper:
         response = client.patch(f"{api_v1_prefix}/auth/me", json=payload, headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
     def test_update_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test updating current developer fails without authentication."""
@@ -457,7 +457,7 @@ class TestGetDeveloperById:
         response = client.get(f"{api_v1_prefix}/developers/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
     def test_get_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer by ID fails without authentication."""
@@ -585,7 +585,7 @@ class TestUpdateDeveloperById:
         )
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
 
 class TestDeleteDeveloperById:
@@ -649,7 +649,7 @@ class TestDeleteDeveloperById:
         response = client.delete(f"{api_v1_prefix}/developers/not-a-uuid", headers=headers)
 
         # Assert
-        assert response.status_code in [400, 422]
+        assert response.status_code == 422
 
 
 class TestPasswordChangeRevokesRefreshTokens:

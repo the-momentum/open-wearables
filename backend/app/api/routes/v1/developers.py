@@ -27,7 +27,16 @@ def get_developer(developer_id: UUID, db: DbSession, _auth: DeveloperDep):
     responses={
         403: {
             "description": "The ID is not the authenticated developer's own",
-            "content": {"application/json": {"example": {"detail": "You can only update your own developer account"}}},
+            "content": {
+                "application/json": {
+                    "example": {
+                        "title": "Forbidden",
+                        "status": 403,
+                        "detail": "You can only update your own developer account",
+                        "code": "FORBIDDEN",
+                    }
+                }
+            },
         },
     },
 )

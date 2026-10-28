@@ -292,7 +292,7 @@ class TestSDKLogsValidation:
             headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             json={"sdkVersion": "1.0.0", "provider": "apple", "events": []},
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 422
 
     def test_unknown_event_type_rejected(self, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
@@ -301,7 +301,7 @@ class TestSDKLogsValidation:
             headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             json=_payload({"eventType": "something_unknown", "timestamp": "2026-04-09T10:00:00Z"}),
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 422
 
     def test_missing_sdk_version_rejected(self, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()
@@ -310,4 +310,4 @@ class TestSDKLogsValidation:
             headers={"X-Open-Wearables-API-Key": api_key.plain_key},
             json={"provider": "apple", "events": [DEVICE_STATE_EVENT]},
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 422

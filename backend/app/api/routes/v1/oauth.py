@@ -20,6 +20,7 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import UnsupportedProviderError
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -38,10 +39,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
     strategy = factory.get_provider(provider.value)
 
     if not strategy.oauth:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Provider '{provider.value}' does not support OAuth",
-        )
+        raise UnsupportedProviderError(provider.value, "OAuth")
     return strategy
 
 
@@ -192,10 +190,7 @@ def update_provider_setting(
     _developer: DeveloperDep,
 ):
     """Update is_enabled and/or live_sync_mode for a single provider."""
-    try:
-        return provider_settings_service.update_provider_setting(db, provider, update)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return provider_settings_service.update_provider_setting(db, provider, update)
 
 
 @router.put("/providers", response_model=list[ProviderSettingRead], tags=["Internal: Providers"])

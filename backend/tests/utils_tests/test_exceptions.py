@@ -24,9 +24,11 @@ from app.utils.exceptions import (
     ResourceNotFoundError,
     ServiceUnavailableError,
     UnsupportedProviderError,
+    UpstreamError,
     app_error_from_integrity_error,
     is_upstream_outage,
 )
+from app.utils.problem import status_code_name
 
 
 class TestResourceNotFoundError:
@@ -92,6 +94,23 @@ class TestStatusCodes:
     def test_datetime_parse_error_is_still_a_value_error(self) -> None:
         # pydantic validators turn a ValueError into a validation error
         assert isinstance(DatetimeParseError("yesterday"), ValueError)
+
+    @pytest.mark.parametrize(
+        "error_type",
+        [
+            AppError,
+            InvalidInputError,
+            AuthenticationError,
+            PermissionDeniedError,
+            NotFoundError,
+            ConflictError,
+            UpstreamError,
+            ServiceUnavailableError,
+        ],
+    )
+    def test_a_status_base_class_has_the_code_of_its_status(self, error_type: type[AppError]) -> None:
+        """So a client sees the same code for a route's HTTPException and a service's error."""
+        assert error_type.code == status_code_name(error_type.status_code)
 
     def test_details(self) -> None:
         assert InvalidCursorError("abc").detail == "Invalid cursor format: 'abc'. Expected 'timestamp|id'."

@@ -49,7 +49,7 @@ class TestCreateMultipart:
             headers=headers,
             json={"filename": "export.xml", "file_size": 1024},  # below 5 MiB minimum
         )
-        assert response.status_code in (400, 422)
+        assert response.status_code == 422
 
 
 class TestSignMultipart:

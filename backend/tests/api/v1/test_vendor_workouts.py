@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
 from app.utils.exceptions import (
+    AppError,
     ProviderError,
     ProviderNotConnectedError,
     ProviderRateLimitError,
@@ -107,7 +108,7 @@ class TestVendorWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 404
-        assert response.json() == {"detail": "User is not connected to Garmin."}
+        assert response.json()["detail"] == "User is not connected to Garmin."
 
     @pytest.mark.parametrize(
         ("error", "status", "detail"),
@@ -131,7 +132,7 @@ class TestVendorWorkoutsEndpoints:
         client: TestClient,
         db: Session,
         mock_provider_factory: MagicMock,
-        error: Exception,
+        error: AppError,
         status: int,
         detail: str,
     ) -> None:
@@ -146,7 +147,8 @@ class TestVendorWorkoutsEndpoints:
         )
 
         assert response.status_code == status
-        assert response.json() == {"detail": detail}
+        assert response.json()["detail"] == detail
+        assert response.json()["code"] == error.code
 
     def test_get_polar_workouts_success(
         self,
@@ -303,10 +305,10 @@ class TestVendorWorkoutsEndpoints:
 
         # Assert: the client's id, so a 404 and not a 502 that reads "retry later"
         assert response.status_code == 404
-        assert response.json() == {"detail": "Workout not found"}
+        assert response.json()["detail"] == "Workout not found"
 
     def test_invalid_provider_returns_422(self, client: TestClient, db: Session) -> None:
-        """Test that invalid provider enum value returns 400."""
+        """Test that invalid provider enum value returns 422."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -318,7 +320,7 @@ class TestVendorWorkoutsEndpoints:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_provider_not_supporting_workouts(self, client: TestClient, db: Session) -> None:
         """Test provider that doesn't support workouts returns 501."""
