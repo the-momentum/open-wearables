@@ -3,8 +3,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from fastapi import HTTPException
-
 from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
@@ -19,6 +17,7 @@ from app.services.providers.garmin.backfill_config import (
     SUMMARY_DAYS,
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
+from app.utils.exceptions import provider_error_from_response
 
 
 class TestGarminBackfillConfig:
@@ -157,7 +156,7 @@ class TestGarminBackfillServiceResults:
     @patch.object(GarminBackfillService, "_make_api_request")
     def test_409_duplicate_goes_to_duplicate_list(self, mock_api: MagicMock) -> None:
         """409 responses should land in 'duplicate', not 'triggered'."""
-        mock_api.side_effect = HTTPException(status_code=409, detail="duplicate backfill")
+        mock_api.side_effect = provider_error_from_response("garmin", 409, "duplicate backfill")
         service = self._make_service()
         db = MagicMock()
         user_id = MagicMock()
@@ -196,7 +195,7 @@ class TestGarminBackfillServiceResults:
     @patch.object(GarminBackfillService, "_make_api_request")
     def test_401_goes_to_failed(self, mock_api: MagicMock) -> None:
         """401 responses should land in 'failed'."""
-        mock_api.side_effect = HTTPException(status_code=401, detail="authorization expired")
+        mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
         service = self._make_service()
         db = MagicMock()
         user_id = MagicMock()
@@ -217,7 +216,7 @@ class TestGarminBackfillServiceResults:
     @patch.object(GarminBackfillService, "_make_api_request")
     def test_401_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
         """401 on first type should fail all remaining types with status code preserved."""
-        mock_api.side_effect = HTTPException(status_code=401, detail="authorization expired")
+        mock_api.side_effect = provider_error_from_response("garmin", 401, "authorization expired")
         service = self._make_service()
         db = MagicMock()
         user_id = MagicMock()
@@ -242,9 +241,8 @@ class TestGarminBackfillServiceResults:
     @patch.object(GarminBackfillService, "_make_api_request")
     def test_412_goes_to_failed(self, mock_api: MagicMock) -> None:
         """412 responses should land in 'failed' with status code preserved."""
-        mock_api.side_effect = HTTPException(
-            status_code=412,
-            detail="Access denied for consumer required HISTORICAL_DATA_EXPORT",
+        mock_api.side_effect = provider_error_from_response(
+            "garmin", 412, "Access denied for consumer required HISTORICAL_DATA_EXPORT"
         )
         service = self._make_service()
         db = MagicMock()
@@ -266,9 +264,8 @@ class TestGarminBackfillServiceResults:
     @patch.object(GarminBackfillService, "_make_api_request")
     def test_412_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
         """412 on first type should fail all remaining types with status code preserved."""
-        mock_api.side_effect = HTTPException(
-            status_code=412,
-            detail="Access denied for consumer required HISTORICAL_DATA_EXPORT",
+        mock_api.side_effect = provider_error_from_response(
+            "garmin", 412, "Access denied for consumer required HISTORICAL_DATA_EXPORT"
         )
         service = self._make_service()
         db = MagicMock()
@@ -370,9 +367,9 @@ class TestBackfillTaskStopChain:
             }
 
     def _run_task_with_status(self, status_code: int, detail: str) -> dict:
-        """Shorthand: run with an HTTPException side_effect."""
+        """Shorthand: run with the error a failed Garmin response raises."""
         return self._run_task(
-            side_effect=HTTPException(status_code=status_code, detail=detail),
+            side_effect=provider_error_from_response("garmin", status_code, detail),
         )
 
     def test_412_stops_chain_and_fails_pending_types(self) -> None:
@@ -419,7 +416,7 @@ class TestBackfillTaskStopChain:
         ctx["mock_send_task"].assert_not_called()
 
     def test_400_min_start_time_stops_chain_via_exception(self) -> None:
-        """400 'min start time' should stop the chain (HTTPException path)."""
+        """400 'min start time' should stop the chain (exception path)."""
         detail = (
             'Garmin API error: {"errorMessage":"start 2025-12-28T22:09:49Z'
             ' before min start time of 2026-01-26T22:10:12Z"}'

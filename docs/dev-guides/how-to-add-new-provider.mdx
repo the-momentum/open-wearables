@@ -533,7 +533,7 @@ Rules:
   to confine a failed write to a nested transaction, `capture=True` to also
   report the failure to Sentry, `accumulate=True` when the same data type is
   written once per chunk of the window (a per-day endpoint, for example).
-- Pass `fatal=(HTTPException,)` to `sync_run()` for errors that invalidate the
+- Pass `fatal=(ProviderConnectionError,)` to `sync_run()` for errors that invalidate the
   whole run (an expired token) instead of one data type.
 - Call `run.expect("sleep", ...)` up front if your steps are conditional, so a
   data type nothing arrived for stays in the result as `skipped` rather than
@@ -752,11 +752,12 @@ Create `backend/app/services/providers/suunto/webhook_handler.py`:
 ```python
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from app.config import settings
 from app.database import DbSession
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.utils.exceptions import InvalidInputError
 
 
 class SuuntoWebhookHandler(BaseWebhookHandler):
@@ -783,7 +784,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         try:
             return json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Route the payload to the appropriate service method.
@@ -806,7 +807,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         
         Override only if your provider uses a GET challenge/response handshake
         (like Strava hub.challenge or Oura verification_token).
-        Default raises 501.
+        Without an override the router answers 501.
         """
         token = request.query_params.get("hub.challenge", "")
         return {"hub.challenge": token}

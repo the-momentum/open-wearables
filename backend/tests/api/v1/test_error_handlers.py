@@ -16,7 +16,14 @@ from sqlalchemy.orm import Session
 
 from app.database import _get_db_dependency
 from app.main import api
-from app.utils.exceptions import AppError, ConflictError
+from app.utils.exceptions import (
+    AppError,
+    ConflictError,
+    ProviderError,
+    ProviderRateLimitError,
+    ServiceUnavailableError,
+    WebhookVerificationError,
+)
 from tests.factories import DeveloperFactory, UserFactory
 from tests.utils import developer_auth_headers
 
@@ -65,6 +72,50 @@ class TestDomainErrors:
 
         assert response.status_code == 500
         assert response.json() == {"detail": "Internal server error"}
+
+    @pytest.mark.parametrize(
+        ("error", "status", "detail"),
+        [
+            (
+                ProviderError("garmin", upstream_status=404, upstream_body='{"error": "user 42 not found"}'),
+                502,
+                "Garmin API error (status 404)",
+            ),
+            (ProviderError("garmin"), 502, "Garmin API request failed"),
+            (ProviderRateLimitError("garmin", upstream_status=429), 503, "Garmin API error (status 429)"),
+            (
+                ServiceUnavailableError("Failed to complete multipart upload: SlowDown"),
+                503,
+                "Failed to complete multipart upload: SlowDown",
+            ),
+        ],
+    )
+    def test_upstream_error_keeps_its_status_and_detail(
+        self, client: TestClient, api_v1_prefix: str, error: AppError, status: int, detail: str
+    ) -> None:
+        """Not our bug: answered like a 4xx instead of re-raised (the default client would
+        raise it), so it stays out of Sentry, and the provider's answer stays out of the body."""
+        developer = DeveloperFactory()
+        user = UserFactory()
+
+        with patch("app.api.routes.v1.users.user_service.delete", side_effect=error):
+            response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
+
+        assert response.status_code == status
+        assert response.json() == {"detail": detail}
+
+    def test_webhook_verification_error_sends_no_bearer_challenge(self, client: TestClient, api_v1_prefix: str) -> None:
+        developer = DeveloperFactory()
+        user = UserFactory()
+
+        with patch(
+            "app.api.routes.v1.users.user_service.delete",
+            side_effect=WebhookVerificationError("Invalid webhook signature"),
+        ):
+            response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=developer_auth_headers(developer.id))
+
+        assert response.status_code == 401
+        assert "WWW-Authenticate" not in response.headers
 
 
 class TestInvalidInput:

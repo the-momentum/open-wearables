@@ -6,13 +6,20 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-from fastapi import HTTPException, status
 
 from app.config import settings
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import (
+    ProviderError,
+    ProviderNotConnectedError,
+    ProviderReauthorizationRequiredError,
+    ProviderTokenUnavailableError,
+    provider_error_from_response,
+    provider_label,
+)
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -20,6 +27,16 @@ logger = get_logger(__name__)
 # Rate limiting configuration (Garmin: 100 req / 60s window)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
+
+
+def _body_status(result: dict[str, Any]) -> int:
+    """The status a 200 body reports its error with, also when the code is a string; without
+    an error status there, the provider still rejected the request, so a 400."""
+    try:
+        code = int(result["code"])
+    except (KeyError, TypeError, ValueError):
+        return 400
+    return code if 400 <= code < 600 else 400
 
 
 def get_valid_token(
@@ -38,25 +55,16 @@ def get_valid_token(
     """
     connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"User not connected to {provider_name}",
-        )
+        raise ProviderNotConnectedError(provider_name)
 
     # SDK-based providers don't have access tokens
     if not connection.access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"No access token available for {provider_name} (SDK-based provider?)",
-        )
+        raise ProviderTokenUnavailableError(provider_name)
 
     # Check if token is expired (with 5 minute buffer)
     if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
         if not connection.refresh_token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Token expired and no refresh token available for {provider_name}",
-            )
+            raise ProviderReauthorizationRequiredError(provider_name)
         # Scope distributed lock per user/provider to avoid concurrent refresh race conditions.
 
         redis_client = get_redis_client()
@@ -66,15 +74,9 @@ def get_valid_token(
             # Fetch and refresh connection instance inside the lock
             connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
             if not connection:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"User not connected to {provider_name}",
-                )
+                raise ProviderNotConnectedError(provider_name)
             if not connection.access_token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"No access token available for {provider_name} (SDK-based provider?)",
-                )
+                raise ProviderTokenUnavailableError(provider_name)
 
             db.refresh(connection)
 
@@ -86,10 +88,7 @@ def get_valid_token(
 
             # Guard against missing refresh token before attempting OAuth refresh
             if not connection.refresh_token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Token expired and no refresh token available for {provider_name}",
-                )
+                raise ProviderReauthorizationRequiredError(provider_name)
 
             token_response = oauth.refresh_access_token(
                 db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
@@ -147,7 +146,9 @@ def make_authenticated_request(
         Any: API response JSON, or dict with status_code if expect_json=False
 
     Raises:
-        HTTPException: If API request fails
+        ProviderConnectionError: If the user's connection can't be used (see ``get_valid_token``)
+            or the provider rejects the token
+        ProviderError: If the request fails or the provider answers with an error
     """
     if form_data is not None and json_data is not None:
         raise ValueError("form_data and json_data are mutually exclusive")
@@ -199,10 +200,7 @@ def make_authenticated_request(
                     attempt=attempt + 1,
                     max_retries=MAX_RETRIES,
                 )
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"{provider_name.capitalize()} API error: {response.text}",
-                )
+                raise provider_error_from_response(provider_name, response.status_code, response.text)
 
             response.raise_for_status()
 
@@ -213,7 +211,16 @@ def make_authenticated_request(
                     "accepted": response.status_code == 202,
                 }
 
-            result = response.json()
+            try:
+                result = response.json()
+            except ValueError as e:
+                # e.g. an empty 204 body where the endpoint normally returns JSON
+                raise ProviderError(
+                    provider_name,
+                    f"{provider_label(provider_name)} API returned an invalid response",
+                    upstream_status=response.status_code,
+                    upstream_body=response.text,
+                ) from e
 
             # Some APIs (like Suunto) return 200 OK but include error in response body
             if check_body_errors and isinstance(result, dict):
@@ -229,10 +236,7 @@ def make_authenticated_request(
                         provider_name=provider_name,
                         error_msg=error_msg,
                     )
-                    raise HTTPException(
-                        status_code=result.get("code", 400),
-                        detail=f"{provider_name.capitalize()} API error: {error_msg}",
-                    )
+                    raise provider_error_from_response(provider_name, _body_status(result), response.text)
 
             return result
 
@@ -256,35 +260,18 @@ def make_authenticated_request(
                 user_id=str(user_id),
                 error=e.response.text,
             )
-            if e.response.status_code == 401:
-                raise HTTPException(
-                    status_code=401,
-                    detail=f"{provider_name.capitalize()} authorization expired. Please re-authorize.",
-                )
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"{provider_name.capitalize()} API error: {e.response.text}",
-            )
-        except HTTPException:
-            # Re-raise HTTPExceptions as-is
-            raise
-        except Exception as e:
+            raise provider_error_from_response(provider_name, e.response.status_code, e.response.text) from e
+        except httpx.RequestError as e:
             logger.error(
                 "API request failed",
                 provider_name=provider_name,
                 user_id=str(user_id),
                 error=str(e),
             )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to fetch data from {provider_name.capitalize()}: {str(e)}",
-            )
+            raise ProviderError(provider_name) from e
 
     # Should not reach here, but just in case
-    raise HTTPException(
-        status_code=500,
-        detail=f"Failed to complete request to {provider_name.capitalize()} after retries",
-    )
+    raise ProviderError(provider_name, f"Failed to complete request to {provider_label(provider_name)} after retries")
 
 
 def download_binary_content(
@@ -305,9 +292,12 @@ def download_binary_content(
     headers = {"Authorization": f"Bearer {access_token}"}
 
     for attempt in range(MAX_RETRIES + 1):
-        response = httpx.get(
-            url, headers=headers, timeout=settings.provider_request_timeout_seconds, follow_redirects=True
-        )
+        try:
+            response = httpx.get(
+                url, headers=headers, timeout=settings.provider_request_timeout_seconds, follow_redirects=True
+            )
+        except httpx.RequestError as e:
+            raise ProviderError(provider_name) from e
         if response.status_code == 429 and attempt < MAX_RETRIES:
             backoff_delay = RETRY_BASE_DELAY * (2**attempt)
             logger.warning(
@@ -319,7 +309,8 @@ def download_binary_content(
             )
             time.sleep(backoff_delay)
             continue
-        response.raise_for_status()
+        if response.is_error:
+            raise provider_error_from_response(provider_name, response.status_code, response.text)
         return response.content
 
-    raise HTTPException(status_code=500, detail=f"Failed to download binary content from {provider_name}")
+    raise ProviderError(provider_name, f"Failed to download binary content from {provider_label(provider_name)}")

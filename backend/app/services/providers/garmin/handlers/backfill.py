@@ -9,8 +9,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException
-
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.api_client import make_authenticated_request
@@ -22,9 +20,20 @@ from app.services.providers.garmin.backfill_config import (
     REQUEST_DELAY_SECONDS,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.exceptions import ProviderConnectionError, ProviderError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def backfill_failure(exc: ProviderConnectionError | ProviderError) -> tuple[int | None, str]:
+    """Garmin's status and message behind a failed backfill request, which the chain's stop
+    and rate-limit decisions read. A connection that can't be used stops it like Garmin's 401;
+    the message keeps Garmin's answer (e.g. "before min start time"), unlike ``detail``."""
+    if isinstance(exc, ProviderConnectionError):
+        return 401, exc.detail
+    message = f"{exc.detail}: {exc.upstream_body}" if exc.upstream_body else exc.detail
+    return exc.upstream_status, message
 
 
 class GarminBackfillService:
@@ -181,10 +190,11 @@ class GarminBackfillService:
                     user_id=str(user_id),
                 )
 
-            except HTTPException as e:
+            except (ProviderConnectionError, ProviderError) as e:
+                status_code, error = backfill_failure(e)
                 # 409 = duplicate backfill already processed for this timeframe.
                 # Garmin won't send another webhook, so caller should skip (not wait).
-                if e.status_code == 409:
+                if status_code == 409:
                     logger.info(
                         "Backfill already requested (409 duplicate)",
                         provider="garmin",
@@ -199,12 +209,12 @@ class GarminBackfillService:
                         provider="garmin",
                         trace_id=trace_id,
                         data_type=data_type,
-                        status_code=e.status_code,
-                        error=str(e.detail),
+                        status_code=status_code,
+                        error=error,
                         user_id=str(user_id),
                     )
-                    results["failed"][data_type] = str(e.detail)
-                    results["failed_status_codes"][data_type] = e.status_code
+                    results["failed"][data_type] = error
+                    results["failed_status_codes"][data_type] = status_code
 
             except Exception as e:
                 logger.error(

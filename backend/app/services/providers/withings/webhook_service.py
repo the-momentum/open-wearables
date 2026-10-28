@@ -28,8 +28,8 @@ from app.schemas.responses.incoming_webhooks import WebhookOperationResult
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.withings.handlers.applis import SUBSCRIBED_APPLIS
-from app.services.providers.withings.handlers.errors import WithingsTokenError
 from app.services.providers.withings.handlers.rpc_client import withings_request
+from app.utils.exceptions import ProviderReauthorizationRequiredError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -198,17 +198,14 @@ class WithingsWebhookService(BaseWebhookService):
         desired_applis = set(SUBSCRIBED_APPLIS) if mode == LiveSyncMode.WEBHOOK else set()
         try:
             existing = self._list_subscriptions(db, user_id)
-        except WithingsTokenError as e:
-            if e.invalid_grant:
-                # An invalid grant is terminal until the user reconnects.
-                logger.info(
-                    "Withings notify sync skipped: refresh token invalid",
-                    provider="withings",
-                    user_id=str(user_id),
-                )
-                return [{"status": "skipped", "reason": "invalid_grant"}]
-            logger.error("Withings notify list failed", exc_info=e, provider="withings", user_id=str(user_id))
-            return [{"status": "error", "error": str(e)}]
+        except ProviderReauthorizationRequiredError:
+            # An invalid grant is terminal until the user reconnects.
+            logger.info(
+                "Withings notify sync skipped: refresh token invalid",
+                provider="withings",
+                user_id=str(user_id),
+            )
+            return [{"status": "skipped", "reason": "invalid_grant"}]
         except Exception as e:
             logger.error("Withings notify list failed", exc_info=e, provider="withings", user_id=str(user_id))
             return [{"status": "error", "error": str(e)}]

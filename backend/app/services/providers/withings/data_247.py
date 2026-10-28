@@ -569,8 +569,9 @@ class Withings247Data(Base247DataTemplate):
                 )
             except Exception as e:
                 # HRV is paid-pack and a free plan may refuse the fields; the stages must survive
-                # that. A throttle or lost grant would fail without them too, so only 502 retries.
-                if data_fields and isinstance(e, WithingsAPIError) and e.status_code == 502:
+                # that. A throttle or lost grant would fail without them too, so only a plain
+                # envelope error retries.
+                if data_fields and isinstance(e, WithingsAPIError):
                     logger.warning(
                         "Withings sleep series failed with the HRV fields; retrying without them",
                         provider="withings",

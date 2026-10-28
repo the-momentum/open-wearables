@@ -10,7 +10,6 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 from celery import shared_task
-from fastapi import HTTPException
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
@@ -42,8 +41,9 @@ from app.services.providers.garmin.backfill_state import (
     mark_type_triggered,
     set_type_trace_id,
 )
-from app.services.providers.garmin.handlers.backfill import GarminBackfillService
+from app.services.providers.garmin.handlers.backfill import GarminBackfillService, backfill_failure
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.utils.exceptions import ProviderConnectionError, ProviderError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -234,21 +234,21 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 "end_date": end_time.isoformat(),
             }
 
-        except HTTPException as e:
-            error = str(e.detail)
+        except (ProviderConnectionError, ProviderError) as e:
+            status_code, error = backfill_failure(e)
             logger.error(
                 "HTTP error triggering backfill",
                 provider="garmin",
                 trace_id=trace_id,
                 type_trace_id=type_trace_id,
                 data_type=data_type,
-                status_code=e.status_code,
+                status_code=status_code,
                 error=error,
                 user_id=user_id,
             )
             mark_type_failed(user_id, data_type, error)
 
-            chain_stop = _classify_chain_stop_error(e.status_code, error)
+            chain_stop = _classify_chain_stop_error(status_code, error)
             if chain_stop:
                 error_msg, log_msg = chain_stop
                 logger.warning(
@@ -262,7 +262,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 _finalize_chain_stop(user_id, current_window, error_msg)
                 return {"status": "failed", "error": error_msg}
 
-            is_rate_limit = e.status_code == 429 or "rate limit" in error.lower()
+            is_rate_limit = status_code == 429 or "rate limit" in error.lower()
             delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
             if is_rate_limit:
                 logger.warning(

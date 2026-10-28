@@ -36,7 +36,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import Request
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -50,6 +50,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import InvalidInputError, PermissionDeniedError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -100,9 +101,9 @@ class StravaWebhookHandler(BaseWebhookHandler):
             data = json.loads(body)
             return StravaWebhookEvent(**data)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
         except (ValidationError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid payload: {exc}") from exc
+            raise InvalidInputError(f"Invalid payload: {exc}") from exc
 
     def dispatch(self, db: DbSession, payload: StravaWebhookEvent) -> dict[str, Any]:
         """Store raw payload and enqueue async processing. Returns 200 immediately."""
@@ -140,7 +141,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
         hub_verify_token = request.query_params.get("hub.verify_token", "")
 
         if hub_mode != "subscribe":
-            raise HTTPException(status_code=400, detail="Invalid hub.mode")
+            raise InvalidInputError("Invalid hub.mode")
 
         expected_token = (
             settings.strava_webhook_verify_token.get_secret_value() if settings.strava_webhook_verify_token else None
@@ -151,7 +152,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
                 provider="strava",
                 action="webhook_challenge_failed",
             )
-            raise HTTPException(status_code=403, detail="Invalid verify token")
+            raise PermissionDeniedError("Invalid verify token")
 
         logger.info(
             "Strava webhook subscription verified",

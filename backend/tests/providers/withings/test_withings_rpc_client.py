@@ -9,6 +9,7 @@ import pytest
 
 from app.schemas.providers.withings import WithingsMeasure
 from app.services.providers.withings.handlers import rpc_client
+from app.utils.exceptions import ProviderRateLimitError, ProviderReauthorizationRequiredError
 
 
 def _request(**overrides: Any) -> Any:
@@ -42,21 +43,25 @@ def test_request_posts_form_data_and_unwraps_body(mock_req: MagicMock) -> None:
     assert kwargs["form_data"] == {"action": "getmeas", "meastypes": "1"}
 
 
-@pytest.mark.parametrize(
-    ("withings_status", "http_status"),
-    [(100, 401), (503, 502)],
-)
 @patch("app.services.providers.withings.handlers.rpc_client.make_authenticated_request")
-def test_nonzero_status_is_an_error_even_on_http_200(
-    mock_req: MagicMock, withings_status: int, http_status: int
-) -> None:
-    mock_req.return_value = {"status": withings_status, "body": {}}
+def test_nonzero_status_is_an_error_even_on_http_200(mock_req: MagicMock) -> None:
+    mock_req.return_value = {"status": 503, "body": {}}
 
     with pytest.raises(rpc_client.WithingsAPIError) as exc_info:
         rpc_client.withings_request(**_request())
 
-    assert exc_info.value.withings_status == withings_status
-    assert exc_info.value.status_code == http_status
+    assert exc_info.value.withings_status == 503
+    assert exc_info.value.status_code == 502
+
+
+@patch("app.services.providers.withings.handlers.rpc_client.make_authenticated_request")
+def test_authentication_status_means_the_user_must_reconnect(mock_req: MagicMock) -> None:
+    mock_req.return_value = {"status": 100, "body": {}}
+
+    with pytest.raises(ProviderReauthorizationRequiredError) as exc_info:
+        rpc_client.withings_request(**_request())
+
+    assert exc_info.value.status_code == 409
 
 
 THROTTLED = {"status": 601, "body": {}, "error": "Too Many Requests (#/min)"}
@@ -94,10 +99,10 @@ def test_throttle_that_persists_is_a_rate_limit_error(
     request = mock_client.return_value.__enter__.return_value.request
     request.return_value = _http_response(THROTTLED)
 
-    with pytest.raises(rpc_client.WithingsAPIError) as exc_info:
+    with pytest.raises(ProviderRateLimitError) as exc_info:
         rpc_client.withings_request(**_request())
 
-    assert exc_info.value.status_code == 429
+    assert exc_info.value.status_code == 503
     assert request.call_count == 4
     assert [call.args[0] for call in mock_sleep.call_args_list] == [15.0, 30.0, 60.0]
 

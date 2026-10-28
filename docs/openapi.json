@@ -17262,7 +17262,7 @@
               }
             ],
             "title": "Error Code",
-            "description": "HTTP status (http_401) or error type of the first failure"
+            "description": "The provider's HTTP status (http_404) or the error type (ProviderReauthorizationRequiredError) of the first failure"
           }
         },
         "type": "object",

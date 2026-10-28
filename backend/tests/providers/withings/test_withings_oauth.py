@@ -3,12 +3,20 @@
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from app.schemas.auth import LiveSyncMode
 from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.oauth import WithingsOAuth, WithingsTokenError
+from app.services.providers.withings.oauth import WithingsOAuth
+from app.utils.exceptions import (
+    AppError,
+    InvalidInputError,
+    ProviderError,
+    ProviderRateLimitError,
+    ProviderReauthorizationRequiredError,
+)
 
 
 def _oauth() -> WithingsOAuth:
@@ -42,23 +50,61 @@ def test_exchange_token_unwraps_the_envelope_body(mock_post: MagicMock) -> None:
 
 
 @pytest.mark.parametrize(
-    ("withings_status", "http_status", "invalid_grant"),
-    [(100, 401, True), (601, 429, False), (247, 400, False)],
+    ("withings_status", "error_class", "http_status", "invalid_grant"),
+    [
+        (100, ProviderReauthorizationRequiredError, 409, True),
+        (601, ProviderRateLimitError, 503, False),
+        (247, ProviderError, 502, False),
+    ],
 )
 @patch("app.services.providers.withings.oauth.httpx.post")
 def test_refresh_classifies_provider_statuses(
-    mock_post: MagicMock, withings_status: int, http_status: int, invalid_grant: bool
+    mock_post: MagicMock,
+    withings_status: int,
+    error_class: type[AppError],
+    http_status: int,
+    invalid_grant: bool,
 ) -> None:
     mock_post.return_value = _envelope(withings_status)
     oauth = _oauth()
 
-    with patch.object(oauth, "_revoke_connection") as mock_revoke, pytest.raises(WithingsTokenError) as exc_info:
+    with patch.object(oauth, "_revoke_connection") as mock_revoke, pytest.raises(AppError) as exc_info:
         oauth.refresh_access_token(MagicMock(), uuid4(), "old-rt")
 
+    assert type(exc_info.value) is error_class
     assert exc_info.value.status_code == http_status
-    assert exc_info.value.invalid_grant is invalid_grant
+    # a refresh refused as bad input (247) is a request we built wrong, so it reaches Sentry
+    assert getattr(exc_info.value, "request_rejected", False) is (withings_status == 247)
     # Only a spent grant is terminal; the others are worth retrying with the same token.
     assert mock_revoke.called is invalid_grant
+
+
+@pytest.mark.parametrize(("http_status", "request_rejected"), [(403, True), (404, True), (503, False)])
+@patch("app.services.providers.withings.oauth.httpx.post")
+def test_refresh_http_error_is_reported_unless_an_outage(
+    mock_post: MagicMock, http_status: int, request_rejected: bool
+) -> None:
+    request = httpx.Request("POST", "https://wbsapi.withings.net/v2/oauth2")
+    mock_post.return_value = httpx.Response(http_status, text="error", request=request)
+    oauth = _oauth()
+
+    with patch.object(oauth, "_revoke_connection") as mock_revoke, pytest.raises(ProviderError) as exc_info:
+        oauth.refresh_access_token(MagicMock(), uuid4(), "old-rt")
+
+    assert type(exc_info.value) is ProviderError
+    assert exc_info.value.upstream_status == http_status
+    # The token endpoint has no per-user resource: a 4xx there means our integration broke.
+    assert exc_info.value.request_rejected is request_rejected
+    mock_revoke.assert_not_called()
+
+
+@pytest.mark.parametrize("withings_status", [100, 247])
+@patch("app.services.providers.withings.oauth.httpx.post")
+def test_rejected_authorization_code_is_a_client_error(mock_post: MagicMock, withings_status: int) -> None:
+    mock_post.return_value = _envelope(withings_status)
+
+    with pytest.raises(InvalidInputError):
+        _oauth()._exchange_token("expired-code", None)
 
 
 @patch("app.services.providers.withings.oauth.httpx.post")

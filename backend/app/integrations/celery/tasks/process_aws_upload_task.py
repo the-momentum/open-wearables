@@ -6,7 +6,6 @@ from uuid import UUID
 
 from botocore.exceptions import ClientError
 from celery import Task, shared_task
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.constants.celery_tasks import CeleryTask
@@ -28,7 +27,7 @@ from app.services.sync_status_service import (
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.context import sync_run_context
-from app.utils.exceptions import INTEGRITY_ERRORS, AppError, ResourceNotFoundError
+from app.utils.exceptions import INTEGRITY_ERRORS, AppError, NotFoundError, ResourceNotFoundError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -151,7 +150,7 @@ def _is_retryable(exc: Exception) -> bool:
     """A client error or a constraint violation fails the same way on every attempt."""
     if isinstance(exc, INTEGRITY_ERRORS):
         return False
-    if isinstance(exc, HTTPException | AppError):
+    if isinstance(exc, AppError):
         return exc.status_code >= 500
     return True
 
@@ -325,8 +324,8 @@ def _ensure_upload_completed(
             parts=parts,
             bucket_name=bucket_name,
         )
-    except HTTPException as exc:
-        if exc.status_code == status.HTTP_404_NOT_FOUND and _object_exists(bucket_name, object_key):
+    except NotFoundError:
+        if _object_exists(bucket_name, object_key):
             return
         raise
 

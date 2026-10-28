@@ -151,15 +151,19 @@ Services and repositories raise domain errors from `app/utils/exceptions.py`, th
 
 | Error | Status |
 |---|---|
-| `InvalidInputError` (`InvalidCursorError`, `DatetimeParseError`, `UnsupportedProviderError`) | 400 |
-| `AuthenticationError` (adds `WWW-Authenticate: Bearer`) | 401 |
+| `InvalidInputError` (`InvalidCursorError`, `DatetimeParseError`, `UnsupportedProviderError`, `ProviderTokenUnavailableError`) | 400 |
+| `AuthenticationError` (adds `WWW-Authenticate: Bearer`; `WebhookVerificationError` doesn't) | 401 |
 | `PermissionDeniedError` | 403 |
-| `NotFoundError` (`ResourceNotFoundError`) | 404 |
-| `ConflictError` | 409 |
+| `NotFoundError` (`ResourceNotFoundError`, `ProviderNotConnectedError`) | 404 |
+| `ConflictError` (`ProviderReauthorizationRequiredError`) | 409 |
 | `IntegrityError`: unique violation / foreign key to a missing row | 409 / 400 |
+| `UpstreamError` (`ProviderError`) | 502, with its `detail` |
+| `ServiceUnavailableError`; `ProviderRateLimitError` (a `ProviderError`, not a `ServiceUnavailableError`); `ConfigurationError` | 503, with its `detail` |
 | anything else, incl. other `IntegrityError`s and a bare `AppError` | 500 `{"detail": "Internal server error"}` |
 
 Celery tasks don't retry a 4xx domain error or any `IntegrityError`: the same input fails the same way on every attempt. A violation the client didn't cause (NOT NULL, CHECK) still fails the task, so it reaches Sentry.
+
+**Provider integrations** raise these too, never `HTTPException`. `api_client` turns a failed call into `provider_error_from_response(...)`: the provider's 401 becomes `ProviderReauthorizationRequiredError`, a 429 that outlasts the backoff `ProviderRateLimitError`, anything else (also no response at all) a `ProviderError`. A `ProviderError` keeps the provider's status in `upstream_status` and its answer in `upstream_body` - branch on those (a task's retry/drop decision, "no data" 404s), and never put the provider's answer into `detail`, which the client sees. The user's own connection state (`ProviderNotConnectedError`, `ProviderTokenUnavailableError`, `ProviderReauthorizationRequiredError`) is a `ProviderConnectionError`: never a 401, which would read as a bad API key, and never worth a retry. An upstream outage (`is_upstream_outage`: a 5xx, a throttle or no response from the provider, or a storage failure) is not our bug: it is logged as a warning and `before_send` drops it from Sentry (the SDK reports every handled 5xx), unless a line logged with `alert=True` carries it. A request the provider rejected (`ProviderError.request_rejected`: a 4xx other than the state ones - 401, 403, 404, 409, 410, 412, 429) is most likely ours, e.g. after a provider changed its API, so it is reported, grouped per provider and status. A missing or rejected setting (bucket, credentials) is a `ConfigurationError` instead: the client sees the 503 and its detail, and it reaches Sentry.
 
 ```python
 from app.utils.exceptions import ConflictError
@@ -176,7 +180,7 @@ if not user:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 ```
 
-A 500 is re-raised after the response is sent, so it keeps its traceback in the access log and reaches Sentry. A 4xx domain error passed as `exc_info` is logged as a warning and stays out of Sentry, like a 4xx `HTTPException`. Don't map a generic `ValueError`/`AttributeError` to a 4xx - raise `InvalidInputError` where the input is the client's fault.
+A 500 is re-raised after the response is sent, so it keeps its traceback in the access log and reaches Sentry. A 4xx domain error or an `UpstreamError` passed as `exc_info` is logged as a warning and stays out of Sentry, like a 4xx `HTTPException`. Don't map a generic `ValueError`/`AttributeError` to a 4xx - raise `InvalidInputError` where the input is the client's fault.
 
 On a unique violation `CrudRepository.create` (`@handle_duplicates`) returns the existing row as if it had just been created, instead of raising. Where a duplicate must be a 409, check it in the service before creating (see `UserService.create`).
 

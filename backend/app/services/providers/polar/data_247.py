@@ -1,10 +1,10 @@
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from http import HTTPStatus
 from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException, status
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
@@ -61,6 +61,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.exceptions import ProviderError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -118,12 +119,10 @@ class Polar247Data(Base247DataTemplate):
                 trace_id=endpoint,
             )
             return result
-        except HTTPException as e:
+        except ProviderError as e:
             # 404 = no data for this date / feature not available on this device
-            if e.status_code == status.HTTP_404_NOT_FOUND:
-                return None
-            # 204 No Content: api_client raises 500 wrapping a JSONDecodeError on empty body
-            if e.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR and "Expecting value" in str(e.detail):
+            # 204 No Content: api_client fails to parse the empty body as JSON
+            if e.upstream_status in (HTTPStatus.NOT_FOUND, HTTPStatus.NO_CONTENT):
                 return None
             raise
 

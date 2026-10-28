@@ -28,7 +28,13 @@ from app.services import raw_payload_storage
 from app.services.api_key_service import API_KEY_REQUIRED
 from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
-from app.utils.exceptions import AppError, app_error_from_integrity_error, describe_integrity_error
+from app.utils.exceptions import (
+    AppError,
+    ConfigurationError,
+    UpstreamError,
+    app_error_from_integrity_error,
+    describe_integrity_error,
+)
 from app.utils.logging_setup import configure_logging
 from app.utils.structured_logging import get_logger
 
@@ -149,7 +155,10 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
 
 @api.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError) -> Response:
-    if not exc.is_client_error:
+    # a failed provider or storage call and a missing setting have a status and detail the
+    # client should see; Sentry's own handler hook still reports the 5xx (an upstream outage
+    # is dropped in before_send)
+    if not exc.is_client_error and not isinstance(exc, UpstreamError | ConfigurationError):
         raise exc  # unhandled → the catch-all 500, the traceback in the access log and Sentry
     http_exc = HTTPException(exc.status_code, exc.detail, exc.headers)
     http_exc.__cause__ = exc  # its type in the access log; the detail is the response body anyway

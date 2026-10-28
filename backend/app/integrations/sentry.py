@@ -8,6 +8,7 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScr
 
 from app import __version__
 from app.config import settings
+from app.utils.exceptions import ProviderError, is_upstream_outage
 from app.utils.logging_setup import APP_LOGGER
 from app.utils.structured_logging import get_logger
 
@@ -91,15 +92,37 @@ def _mask_keys(value: Any, denylist: list[str]) -> Any:
     return value
 
 
-def _before_send_sensitive(event: "Event", hint: "Hint") -> "Event":
+def _route_upstream_error(event: "Event", hint: "Hint") -> "Event | None":
+    """Drop a provider or storage outage, group what a provider rejected.
+
+    An outage is not our bug, but the SDK's request and task hooks capture it like any 5xx,
+    so it is dropped here, unless a line logged with ``alert=True`` carries it (its ``log``
+    context marks it): the caller asked for it explicitly. A request the provider rejected
+    ships, grouped per provider and status, so a broken integration is one issue with a
+    count instead of an event per user.
+    """
+    exc_info = hint.get("exc_info")
+    exc = exc_info[1] if exc_info else None
+    if is_upstream_outage(exc) and "log" not in event.get("contexts", {}):
+        return None
+    if isinstance(exc, ProviderError):
+        event["fingerprint"] = ["{{ default }}", exc.provider, str(exc.upstream_status)]
+    return event
+
+
+def _before_send_sensitive(event: "Event", hint: "Hint") -> "Event | None":
     """Credentials stay masked in the app log context too; EventScrubber skips contexts."""
+    if _route_upstream_error(event, hint) is None:
+        return None
     if "contexts" in event:
         event["contexts"] = _mask_keys(event["contexts"], _credentials_scrubber.denylist)
     return event
 
 
-def before_send(event: "Event", hint: "Hint") -> "Event":
+def before_send(event: "Event", hint: "Hint") -> "Event | None":
     """Filter free text that the key-based scrubber can't see."""
+    if _route_upstream_error(event, hint) is None:
+        return None
     # `contexts` is where app log events carry their message and attributes - EventScrubber skips it.
     for key in ("message", "logentry", "contexts", "extra"):
         if key in event:

@@ -15,7 +15,6 @@ key belongs to the requesting user so one user cannot touch another's upload.
 from typing import Any
 
 from botocore.exceptions import ClientError
-from fastapi import HTTPException, status
 
 from app.schemas.providers.apple.apple_xml import (
     MAX_PARTS,
@@ -31,6 +30,15 @@ from app.services.providers.apple.apple_xml.aws_service import (
     get_s3_client,
     require_bucket_name,
 )
+from app.utils.exceptions import (
+    AppError,
+    ConfigurationError,
+    InvalidInputError,
+    NotFoundError,
+    PermissionDeniedError,
+    ServiceUnavailableError,
+    UpstreamError,
+)
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -41,30 +49,21 @@ class MultipartUploadService:
 
         client = get_s3_client()
         if not client:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="S3 client not configured",
-            )
+            raise ConfigurationError("S3 client not configured")
         return client
 
     def _require_public_client(self) -> Any:
         """Client for presigning browser-facing part URLs; falls back to the internal one."""
         client = get_public_s3_client() or get_s3_client()
         if not client:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="S3 client not configured",
-            )
+            raise ConfigurationError("S3 client not configured")
         return client
 
     @staticmethod
     def _verify_owner(user_id: str, key: str) -> None:
         """Reject keys that don't belong to the requesting user."""
         if not key.startswith(f"{user_id}/"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Object key does not belong to this user",
-            )
+            raise PermissionDeniedError("Object key does not belong to this user")
 
     def validate_completion_request(
         self,
@@ -88,10 +87,7 @@ class MultipartUploadService:
             while True:
                 page_count += 1
                 if page_count > max_pages:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="Object storage returned too many multipart listing pages",
-                    )
+                    raise UpstreamError("Object storage returned too many multipart listing pages")
                 kwargs: dict[str, Any] = {
                     "Bucket": bucket,
                     "Key": key,
@@ -103,10 +99,7 @@ class MultipartUploadService:
                 response = client.list_parts(**kwargs)
                 page_parts = response.get("Parts", [])
                 if not isinstance(page_parts, list):
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="Object storage returned an invalid multipart part listing",
-                    )
+                    raise UpstreamError("Object storage returned an invalid multipart part listing")
                 previous_part_number = marker
                 for uploaded_part in page_parts:
                     try:
@@ -115,10 +108,7 @@ class MultipartUploadService:
                         if etag_value is None:
                             raise ValueError("missing ETag")
                     except (KeyError, TypeError, ValueError) as e:
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail="Object storage returned an invalid multipart part listing",
-                        ) from e
+                        raise UpstreamError("Object storage returned an invalid multipart part listing") from e
                     listed_part_count += 1
                     if (
                         listed_part_count > MAX_PARTS
@@ -126,10 +116,7 @@ class MultipartUploadService:
                         or part_number > MAX_PARTS
                         or part_number in uploaded_parts
                     ):
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail="Object storage returned an invalid multipart part listing",
-                        )
+                        raise UpstreamError("Object storage returned an invalid multipart part listing")
                     uploaded_parts[part_number] = self._normalize_etag(str(etag_value))
                     previous_part_number = part_number
 
@@ -137,34 +124,22 @@ class MultipartUploadService:
                     break
 
                 if listed_part_count >= MAX_PARTS or page_count >= max_pages:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="Object storage returned more multipart parts than allowed",
-                    )
+                    raise UpstreamError("Object storage returned more multipart parts than allowed")
                 next_marker = response.get("NextPartNumberMarker")
 
                 try:
                     parsed_next_marker = int(next_marker)
                 except (TypeError, ValueError) as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="Object storage returned an invalid multipart part listing",
-                    ) from e
+                    raise UpstreamError("Object storage returned an invalid multipart part listing") from e
                 if parsed_next_marker <= marker or parsed_next_marker < previous_part_number:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="Object storage returned an invalid multipart part listing",
-                    )
+                    raise UpstreamError("Object storage returned an invalid multipart part listing")
                 marker = parsed_next_marker
         except ClientError as e:
             raise self._client_error(e, "Failed to validate multipart upload") from e
 
         requested_parts = {part.part_number: self._normalize_etag(part.etag) for part in parts}
         if len(requested_parts) != len(parts) or requested_parts != uploaded_parts:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Completed parts do not match the parts stored for this multipart upload",
-            )
+            raise InvalidInputError("Completed parts do not match the parts stored for this multipart upload")
         return bucket
 
     def create_upload(
@@ -315,12 +290,24 @@ class MultipartUploadService:
         return etag.strip()
 
     @classmethod
-    def _client_error(cls, error: ClientError, message: str) -> HTTPException:
+    def _client_error(cls, error: ClientError, message: str) -> AppError:
         error_code = cls._error_code(error)
+        error_class: type[AppError]
         if error_code in {"NoSuchUpload", "NoSuchKey", "NotFound", "404"}:
-            status_code = status.HTTP_404_NOT_FOUND
-        elif error_code in {"AccessDenied", "AllAccessDisabled", "Forbidden", "403"}:
-            status_code = status.HTTP_403_FORBIDDEN
+            error_class = NotFoundError
+        elif error_code in {
+            "AccessDenied",
+            "AllAccessDisabled",
+            "Forbidden",
+            "403",
+            "InvalidAccessKeyId",
+            "SignatureDoesNotMatch",
+            "InvalidToken",
+            "ExpiredToken",
+        }:
+            # The bucket policy or the credentials refuse our own calls: our deployment's
+            # to fix, not the client's (whose key ownership _verify_owner checks) nor an outage.
+            error_class = ConfigurationError
         elif error_code in {
             "EntityTooSmall",
             "InvalidArgument",
@@ -328,17 +315,14 @@ class MultipartUploadService:
             "InvalidPartOrder",
             "MalformedXML",
         }:
-            status_code = status.HTTP_400_BAD_REQUEST
+            error_class = InvalidInputError
         elif error_code in {"InternalError", "RequestTimeout", "ServiceUnavailable", "SlowDown"}:
-            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            error_class = ServiceUnavailableError
         else:
-            # Authentication, connectivity, and unknown object-store failures are
-            # upstream/backend problems rather than application-internal errors.
-            status_code = status.HTTP_502_BAD_GATEWAY
-        return HTTPException(
-            status_code=status_code,
-            detail=f"{message}: {error_code}",
-        )
+            # Connectivity and unknown object-store failures are upstream problems
+            # rather than application-internal errors.
+            error_class = UpstreamError
+        return error_class(f"{message}: {error_code}")
 
 
 multipart_upload_service = MultipartUploadService()

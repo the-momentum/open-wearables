@@ -36,7 +36,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request, status
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
@@ -47,6 +47,7 @@ from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import InvalidInputError
 from app.utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
@@ -92,9 +93,9 @@ class PolarWebhookHandler(BaseWebhookHandler):
             data = json.loads(body)
             return PolarWebhookEvent(**data)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
         except (ValidationError, TypeError) as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid payload: {exc}") from exc
+            raise InvalidInputError(f"Invalid payload: {exc}") from exc
 
     def handle(self, request: Request, body: bytes, db: DbSession) -> dict[str, Any]:
         """Override to handle PING before signature verification."""

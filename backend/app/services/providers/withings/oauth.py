@@ -4,8 +4,6 @@ from uuid import UUID
 
 import httpx
 from celery import current_app as celery_app
-from fastapi import HTTPException
-from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.config import settings
 from app.constants.celery_tasks import CeleryQueue, CeleryTask
@@ -20,8 +18,9 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.withings.handlers.errors import WithingsTokenError
+from app.services.providers.withings.handlers.errors import withings_token_error
 from app.services.providers.withings.webhook_service import WithingsWebhookService
+from app.utils.exceptions import ProviderError, ProviderReauthorizationRequiredError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -74,8 +73,8 @@ class WithingsOAuth(BaseOAuthTemplate):
         }
         try:
             token_response = self._request_token(payload, task="refresh_access_token")
-        except WithingsTokenError as exc:
-            if exc.invalid_grant and revoke_on_failure:
+        except ProviderReauthorizationRequiredError:
+            if revoke_on_failure:
                 self._revoke_connection(db, user_id, reason="refresh_failed")
             raise
 
@@ -115,21 +114,18 @@ class WithingsOAuth(BaseOAuthTemplate):
                 task=task,
                 status_code=e.response.status_code,
             )
-            raise WithingsTokenError(
+            raise withings_token_error(
                 task=task,
                 http_status=e.response.status_code,
-                detail=f"Withings token request failed: {e.response.text}",
+                upstream_body=e.response.text,
             ) from e
-        except Exception as e:
+        except (httpx.RequestError, ValueError) as e:
             logger.error(
                 f"Withings token request failed: {e}",
                 provider=self.provider_name,
                 task=task,
             )
-            raise HTTPException(
-                status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Withings token request failed: {e}",
-            ) from e
+            raise ProviderError(self.provider_name, "Withings token request failed") from e
 
         status = envelope.get("status")
         if status != 0:
@@ -139,7 +135,7 @@ class WithingsOAuth(BaseOAuthTemplate):
                 task=task,
                 withings_status=status,
             )
-            raise WithingsTokenError(task=task, withings_status=status)
+            raise withings_token_error(task=task, withings_status=status)
 
         return OAuthTokenResponse.model_validate(envelope.get("body", {}))
 

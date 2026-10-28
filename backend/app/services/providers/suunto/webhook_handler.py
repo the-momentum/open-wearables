@@ -19,7 +19,7 @@ from typing import Any
 from uuid import uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import Request
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
@@ -31,6 +31,7 @@ from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import InvalidInputError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -90,7 +91,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         try:
             return json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Accept the webhook and enqueue async processing.

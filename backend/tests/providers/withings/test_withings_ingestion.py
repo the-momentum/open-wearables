@@ -12,7 +12,7 @@ from app.schemas.enums import SeriesType
 from app.schemas.enums.workout_types import WorkoutType
 from app.schemas.providers.withings import WithingsWorkout
 from app.services.providers.withings.data_247 import Withings247Data
-from app.services.providers.withings.handlers.rpc_client import WithingsAPIError
+from app.services.providers.withings.handlers.rpc_client import WithingsAPIError, withings_api_error
 from app.services.providers.withings.workouts import WithingsWorkouts
 
 
@@ -483,7 +483,7 @@ def test_hypnogram_survives_the_hrv_fields_being_refused(
 @patch("app.services.providers.withings.data_247.event_record_service")
 @patch(
     "app.services.providers.withings.data_247.withings_request",
-    side_effect=WithingsAPIError(withings_status=601, action="get"),
+    side_effect=withings_api_error(601, "get"),
 )
 @patch("app.services.providers.withings.data_247.paginate")
 def test_throttled_hypnogram_is_not_asked_again_without_the_hrv_fields(

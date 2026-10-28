@@ -4,6 +4,12 @@ Tests for Ultrahuman 24/7 data implementation.
 Tests the Ultrahuman247Data class for sleep, recovery, and activity data handling.
 """
 
+from collections.abc import Iterator
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -11,6 +17,7 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
+from app.utils.exceptions import ProviderError, ProviderNotConnectedError, ProviderReauthorizationRequiredError
 from tests.factories import UserFactory
 
 
@@ -320,3 +327,46 @@ class TestUltrahumanActivitySamples:
         assert normalized["hrv"][0]["value"] == 45
         assert normalized["temperature"][0]["value"] == 36.5
         assert normalized["steps"][0]["value"] == 8500
+
+
+class TestUltrahumanFetchFailures:
+    """Which failed fetches end the whole run and which only skip a day."""
+
+    WINDOW = {
+        "start_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "end_time": datetime(2026, 1, 2, tzinfo=timezone.utc),
+    }
+
+    @pytest.fixture
+    def data_247(self) -> Iterator[Ultrahuman247Data]:
+        data_247 = Ultrahuman247Data(
+            provider_name="ultrahuman", api_base_url="https://partner.ultrahuman.com", oauth=MagicMock()
+        )
+        with patch.object(data_247, "_save_daily_activity", return_value=0):
+            yield data_247
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ProviderReauthorizationRequiredError("ultrahuman"),
+            ProviderNotConnectedError("ultrahuman"),
+            ProviderError("ultrahuman", upstream_status=403),
+        ],
+    )
+    def test_unusable_access_ends_the_run(self, data_247: Ultrahuman247Data, error: Exception) -> None:
+        with (
+            patch.object(data_247, "_make_api_request", side_effect=error) as mock_request,
+            pytest.raises(type(error)),
+        ):
+            data_247.load_and_save_all(MagicMock(), uuid4(), **self.WINDOW)
+
+        # every remaining day would fail the same way, so the first one stops it
+        mock_request.assert_called_once()
+
+    def test_other_provider_failure_skips_the_day(self, data_247: Ultrahuman247Data) -> None:
+        with patch.object(
+            data_247, "_make_api_request", side_effect=ProviderError("ultrahuman", upstream_status=500)
+        ) as mock_request:
+            data_247.load_and_save_all(MagicMock(), uuid4(), **self.WINDOW)
+
+        assert mock_request.call_count == 2

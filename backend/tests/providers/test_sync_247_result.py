@@ -20,6 +20,12 @@ from app.services.providers.sync_247_result import (
     Sync247Run,
     error_code_of,
 )
+from app.utils.exceptions import (
+    ProviderConnectionError,
+    ProviderError,
+    ProviderNotConnectedError,
+    ProviderReauthorizationRequiredError,
+)
 
 
 @pytest.fixture
@@ -116,7 +122,7 @@ class TestSync247Result:
         result = Sync247Result(provider="p")
         result.record("heart_rate", WriteCounts(4, 1), truncated=True)
         result.record("sleep", 3)
-        result.fail("steps", HTTPException(status_code=401))
+        result.fail("steps", ProviderError("p", upstream_status=500))
         result.skip("vo2_max")
 
         payload = result.summary().model_dump(mode="json")
@@ -150,7 +156,7 @@ class TestSync247Result:
                 "items_reported": 0,
                 "items_skipped": 0,
                 "truncated": False,
-                "error_code": "http_401",
+                "error_code": "http_500",
             },
             "vo2_max": {
                 "status": "skipped",
@@ -171,6 +177,13 @@ class TestSync247Result:
 
 def test_error_code_carries_the_http_status_or_the_error_type_never_its_text() -> None:
     assert error_code_of(HTTPException(status_code=403, detail="user 42 revoked")) == "http_403"
+    # the provider's own status, not the 502 the client gets
+    assert error_code_of(ProviderError("p", upstream_status=404, upstream_body="user 42 not found")) == "http_404"
+    # our own status would read like the provider's: a lost grant is not the provider's 409,
+    # a call that got no response not its 502
+    assert error_code_of(ProviderReauthorizationRequiredError("p")) == "ProviderReauthorizationRequiredError"
+    assert error_code_of(ProviderNotConnectedError("p")) == "ProviderNotConnectedError"
+    assert error_code_of(ProviderError("p")) == "ProviderError"
     assert error_code_of(RuntimeError("heart_rate=72 violates constraint")) == "RuntimeError"
 
 
@@ -264,10 +277,10 @@ class TestSync247RunStep:
         assert run.result.outcomes["heart_rate"].status is SyncStatus.FAILED
 
     def test_fatal_errors_propagate_instead_of_being_recorded(self, run: Sync247Run) -> None:
-        run.fatal = (HTTPException,)
+        run.fatal = (ProviderConnectionError,)
 
-        with pytest.raises(HTTPException), run.step("sleep"):
-            raise HTTPException(status_code=401, detail="token expired")
+        with pytest.raises(ProviderReauthorizationRequiredError), run.step("sleep"):
+            raise ProviderReauthorizationRequiredError("p")
 
         assert "sleep" not in run.result.outcomes
 

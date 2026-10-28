@@ -7,7 +7,7 @@ from urllib.parse import parse_qs
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request, status
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.config import settings
@@ -25,6 +25,7 @@ from app.services.providers.withings.data_247 import Withings247Data
 from app.services.providers.withings.handlers.applis import APPLI_DOMAIN, SUBSCRIBED_APPLIS, Domain
 from app.services.providers.withings.workouts import WithingsWorkouts
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import WebhookVerificationError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -71,7 +72,7 @@ class WithingsWebhookHandler(BaseWebhookHandler):
     def handle_probe(self, request: Request) -> None:
         """Accept an authenticated subscribe-time HEAD probe."""
         if not self._has_valid_callback_token(request):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Withings callback token")
+            raise WebhookVerificationError("Invalid Withings callback token")
 
     def supported_event_types(self) -> list[str]:
         return [str(appli) for appli in SUBSCRIBED_APPLIS]

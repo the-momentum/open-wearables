@@ -31,7 +31,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import Request
 from pydantic import ValidationError
 
 from app.config import settings
@@ -46,6 +46,7 @@ from app.services.providers.google_health.data_247 import (
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.exceptions import InvalidInputError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -106,7 +107,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
                 body_len=len(body),
                 body_preview=body[:500].decode("utf-8", "replace"),
             )
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise InvalidInputError("Invalid JSON body") from exc
         if not isinstance(payload, (dict, list)):
             logger.warning(
                 "Google webhook: unexpected JSON root",
@@ -115,7 +116,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
                 json_type=type(payload).__name__,
                 body_preview=body[:500].decode("utf-8", "replace"),
             )
-            raise HTTPException(status_code=400, detail="Invalid JSON body")
+            raise InvalidInputError("Invalid JSON body")
         return payload
 
     def dispatch(self, db: DbSession, payload: dict[str, Any] | list[Any]) -> dict[str, Any]:

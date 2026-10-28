@@ -29,7 +29,14 @@ from app.integrations.celery.core import setup_celery_logging
 from app.main import api
 from app.utils.config_utils import LogFormat, LogLevel
 from app.utils.context import trace_id_var
-from app.utils.exceptions import AppError, NotFoundError
+from app.utils.exceptions import (
+    AppError,
+    ConfigurationError,
+    NotFoundError,
+    ProviderError,
+    ProviderRateLimitError,
+    ServiceUnavailableError,
+)
 from app.utils.logging_setup import AppHandler, JsonFormatter, TextFormatter, configure_app_logger, configure_logging
 from app.utils.structured_logging import get_logger, strict_attributes
 
@@ -308,6 +315,16 @@ class TestExceptions:
 
         levels = [json.loads(line)["level"] for line in capsys.readouterr().out.splitlines()]
         assert levels == ["warning", "error", "warning", "error"]
+
+    def test_failed_provider_and_storage_calls_are_warnings(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Not our bug, unlike a missing setting."""
+        logger.error("Garmin down", exc_info=_raised(ProviderError("garmin", upstream_status=503)))
+        logger.error("Garmin throttled", exc_info=_raised(ProviderRateLimitError("garmin", upstream_status=429)))
+        logger.error("S3 down", exc_info=_raised(ServiceUnavailableError("Failed to complete upload: SlowDown")))
+        logger.error("S3 unset", exc_info=_raised(ConfigurationError("S3 bucket not configured")))
+
+        levels = [json.loads(line)["level"] for line in capsys.readouterr().out.splitlines()]
+        assert levels == ["warning", "warning", "warning", "error"]
 
     def test_text_format_prints_the_traceback_below_the_line(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch.object(settings, "log_format", LogFormat.TEXT):
