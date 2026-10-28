@@ -20,6 +20,7 @@ from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_aggregate import SeriesAggregate
 from .series_sample import SeriesSample
+from .series_sample_backup import SeriesSampleBackup
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .sync_run import SyncRun
@@ -62,6 +63,7 @@ __all__ = [
     "WorkoutDetails",
     "PersonalRecord",
     "SeriesSample",
+    "SeriesSampleBackup",
     "DataTypeCoverage",
     "SeriesAggregate",
     "SeriesTypeDefinition",

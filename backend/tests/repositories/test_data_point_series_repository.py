@@ -20,7 +20,7 @@ from app.models import DataSource, SeriesSample
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, TypeCounts, WriteCounts
 from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
-from tests.factories import DataPointSeriesFactory, DataSourceFactory, UserFactory
+from tests.factories import DataSourceFactory, UserFactory
 
 
 class TestDataPointSeriesRepository:
@@ -261,21 +261,6 @@ class TestDataPointSeriesRepository:
         assert total_count == 3
         for sample, _ in results:
             assert sample.data_source_id == mapping.id
-
-    def test_get_samples_leaves_out_history_values(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """A day value stored as a sample before the aggregate tables is read from there, not from the samples."""
-        user = UserFactory()
-        mapping = DataSourceFactory(user=user, source="apple", device_model="device1")
-        now = datetime.now(timezone.utc)
-        DataPointSeriesFactory(mapping=mapping, recorded_at=now - timedelta(hours=1), value=Decimal("70"))
-        DataPointSeriesFactory(mapping=mapping, recorded_at=now - timedelta(hours=2), history_value=True)
-
-        results, total_count = series_repo.get_samples(
-            db, TimeSeriesQueryParams(data_source_id=mapping.id), [SeriesType.heart_rate], user.id
-        )
-
-        assert [sample.value for sample, _ in results] == [Decimal("70")]
-        assert total_count == 1
 
     def test_get_samples_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples only returns samples of the specified series type."""

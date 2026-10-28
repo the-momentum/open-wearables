@@ -732,8 +732,6 @@ class DataPointSeriesRepository(
         source_by_type: dict[int, UUID] | None = None,
     ) -> Query:
         """Filters shared by every sample read. Assumes DataSource is already joined."""
-        # A day or session value stored as a sample before the aggregate tables is read from there.
-        query = query.filter(self.model.history_value.isnot(True))
         if types:
             query = query.filter(self.model.series_type_definition_id.in_([get_series_type_id(t) for t in types]))
         query = query.filter(*source_filter_conditions(params, self.model.data_source_id))
@@ -794,9 +792,7 @@ class DataPointSeriesRepository(
                 available.extend([at < end + OFFSET_REACH, (end - timedelta(microseconds=1)).date() >= LOCAL_DAY])
         else:
             source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
-            available = [self.model.history_value.isnot(True)]
-            if start is not None:
-                available.append(at >= start)
+            available = [at >= start] if start is not None else []
             if end is not None:
                 available.append(at < end)
             if params.resolution is not Resolution.RAW:
@@ -993,7 +989,7 @@ class DataPointSeriesRepository(
             .select_from(self.model)
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
-            .filter(DataSource.user_id == user_id, self.model.history_value.isnot(True))
+            .filter(DataSource.user_id == user_id)
         )
         if start_datetime is not None:
             query = query.filter(self.model.recorded_at >= start_datetime)
@@ -1031,7 +1027,7 @@ class DataPointSeriesRepository(
         )
         if group_by is TimelineGroupBy.SERIES_TYPE:
             query = query.join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
-        query = query.filter(DataSource.user_id == user_id, self.model.history_value.isnot(True))
+        query = query.filter(DataSource.user_id == user_id)
         if provider is not None:
             query = query.filter(DataSource.provider == provider)
         if start_datetime is not None:
@@ -1189,7 +1185,6 @@ class DataPointSeriesRepository(
                 *self._local_day_window(local_date, start_date, end_date),
                 self.model.series_type_definition_id == steps_id,
                 self.model.is_daily_total.isnot(True),
-                self.model.history_value.isnot(True),
             )
             .group_by(
                 local_date,

@@ -37,5 +37,3 @@ class SeriesSample(BaseDbModel):
     value: Mapped[numeric_unbounded]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
     is_daily_total: Mapped[bool | None] # True = pre-aggregated daily total; False = granular intraday samples
-    # True for a day or session value stored as a sample before the aggregate tables; readings stay NULL.
-    history_value: Mapped[bool | None]

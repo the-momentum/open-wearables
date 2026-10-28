@@ -37,7 +37,7 @@ _DAY_STATS = text(f"""
         FROM series_sample s
         WHERE s.data_source_id = :source_id AND {every_series_type_sql("s")}
             AND s.recorded_at >= :lo AND s.recorded_at < :hi
-            AND s.is_daily_total IS NOT TRUE AND s.history_value IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
+            AND s.is_daily_total IS NOT TRUE AND {_SAMPLE_DAY} = ANY(:days)
         GROUP BY 1, 2
     )
     SELECT g.*,
@@ -76,7 +76,7 @@ _SESSION_STATS = text(f"""
         FROM series_sample s
         WHERE s.data_source_id = er.data_source_id
             AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
-            AND s.is_daily_total IS NOT TRUE AND s.history_value IS NOT TRUE AND {every_series_type_sql("s")}
+            AND s.is_daily_total IS NOT TRUE AND {every_series_type_sql("s")}
         GROUP BY 1
     ) stats
     WHERE er.id = ANY(:record_ids)

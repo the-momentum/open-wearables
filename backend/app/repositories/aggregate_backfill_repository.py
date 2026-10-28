@@ -191,9 +191,9 @@ class AggregateBackfillRepository:
         self, db_session: DbSession, source_id: UUID, provider: str, from_day: date, to_day: date
     ) -> int:
         """The source's day and session values of the days from ``from_day`` up to ``to_day``, stored as samples, as
-        provider rows in the aggregate tables where the provider holds none yet, and those samples marked
-        history_value. Returns the rows written."""
-        written = 0
+        provider rows in the aggregate tables where the provider holds none yet; then those samples moved to
+        series_sample_backup. Returns the rows written."""
+        written, moves = 0, []
         for rule, statement in _HISTORY:
             if ProviderName(provider) not in rule.providers:
                 continue
@@ -210,7 +210,10 @@ class AggregateBackfillRepository:
                 **_stat_params(rule),
             }
             written += db_session.execute(statement, params).rowcount  # ty: ignore[unresolved-attribute]
-            db_session.execute(_MARKS[rule], params)
+            moves.append((_MOVES[rule], params))
+        # After every copy: a sample two rules match is still there for the second.
+        for move, params in moves:
+            db_session.execute(move, params)
         return written
 
 
@@ -329,21 +332,32 @@ def _stat_params(rule: HistoryRule) -> dict[str, list[int]]:
     return params
 
 
-def _mark_values(rule: HistoryRule) -> TextClause:
-    """The rule's samples marked history_value: a day value always, a session value where its session is found, as
-    the copy found it; the rollup and the readers of samples leave them out."""
+_BACKUP_COLUMNS = (
+    "id, external_id, data_source_id, recorded_at, zone_offset, window_seconds, value, series_type_definition_id,"
+    " is_daily_total, created_at"
+)
+
+
+def _move_values(rule: HistoryRule) -> TextClause:
+    """The rule's samples moved to series_sample_backup: a day value of the window's days, a session value where its
+    session is found, as the copy found them."""
     if rule.session is SessionMatch.WORKOUT_ENDING:
-        return text(f"""
-            UPDATE series_sample s SET history_value = TRUE
-            FROM event_record er
-            WHERE {_WORKOUT_ENDING.format(e="er")} AND {_RULE_SAMPLES.format(where=rule.where)}
-                AND s.history_value IS NOT TRUE
-        """)
-    found = f" AND EXISTS ({_RECORDS[rule.session]})" if rule.session is not None else ""
+        using, matched = "USING event_record er", f"{_WORKOUT_ENDING.format(e='er')} AND "
+    elif rule.session is not None:
+        using, matched = "", f"EXISTS ({_RECORDS[rule.session]}) AND "
+    else:
+        assert rule.day is not None
+        # Only the window's days: the reach past its edges belongs to the next window's copy.
+        using, matched = "", f"{_DAYS[rule.day]} >= :from_day AND {_DAYS[rule.day]} < :to_day AND "
     return text(f"""
-        UPDATE series_sample s SET history_value = TRUE
-        WHERE {_RULE_SAMPLES.format(where=rule.where)}{found} AND s.history_value IS NOT TRUE
+        WITH moved AS (
+            DELETE FROM series_sample s {using}
+            WHERE {matched}{_RULE_SAMPLES.format(where=rule.where)}
+            RETURNING {", ".join(f"s.{column.strip()}" for column in _BACKUP_COLUMNS.split(","))}
+        )
+        INSERT INTO series_sample_backup ({_BACKUP_COLUMNS}) SELECT {_BACKUP_COLUMNS} FROM moved
+        ON CONFLICT DO NOTHING
     """)
 
 
-_MARKS = {rule: _mark_values(rule) for rule in HISTORY_RULES}
+_MOVES = {rule: _move_values(rule) for rule in HISTORY_RULES}

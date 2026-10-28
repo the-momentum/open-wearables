@@ -19,6 +19,7 @@ from app.models import (
     EventRecordAggregate,
     SeriesAggregate,
     SeriesSample,
+    SeriesSampleBackup,
     SeriesTypeDefinition,
     WorkoutDetails,
 )
@@ -594,8 +595,9 @@ class TestHistoryRollup:
         assert self._ours(db) == [date(2025, 1, 10)]
 
 
-class TestHistoryValuesLeftOutOfOurRows:
-    """The samples stay; our rows count readings only, as on an instance that never stored day values as samples."""
+class TestHistoryValuesMovedToTheBackup:
+    """The copied samples move to series_sample_backup; our rows count readings only, as on an instance that never
+    stored day values as samples."""
 
     def _ours(self, db: Session, series_type: SeriesType) -> list[tuple[date, Decimal | None, Decimal | None]]:
         rows = db.query(SeriesAggregate, LOCAL_DAY).filter(
@@ -604,7 +606,10 @@ class TestHistoryValuesLeftOutOfOurRows:
         )
         return sorted((day, row.sum, row.avg) for row, day in rows)
 
-    def test_the_copy_marks_what_it_matched_and_nothing_else(self, db: Session) -> None:
+    def _values(self, db: Session, model: type[SeriesSample] | type[SeriesSampleBackup]) -> list[Decimal]:
+        return sorted(row.value for row in db.query(model))
+
+    def test_the_copy_moves_what_it_matched_and_nothing_else(self, db: Session) -> None:
         polar = DataSourceFactory(provider=ProviderName.POLAR)
         hrv = SeriesType.heart_rate_variability_rmssd
         _sample(db, polar, hrv, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
@@ -619,16 +624,23 @@ class TestHistoryValuesLeftOutOfOurRows:
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        marked = sorted((s.value, s.history_value) for s in db.query(SeriesSample))
-        assert marked == [
-            (Decimal("41"), None),
-            (Decimal("61"), True),
-            (Decimal("70"), None),
-            (Decimal("500"), True),
-            (Decimal("1000"), None),
-        ]
+        assert self._values(db, SeriesSample) == [Decimal("41"), Decimal("70"), Decimal("1000")]
+        assert self._values(db, SeriesSampleBackup) == [Decimal("61"), Decimal("500")]
 
-    def test_a_day_value_stays_a_sample_but_not_in_our_day(self, db: Session) -> None:
+    def test_a_moved_sample_keeps_its_row(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        at = datetime(2025, 6, 2, tzinfo=timezone.utc)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, at, "61", external_id="night-1")
+        (sample,) = db.query(SeriesSample)
+        before = (sample.id, sample.external_id, sample.recorded_at, sample.zone_offset, sample.created_at)
+
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        (moved,) = db.query(SeriesSampleBackup)
+        assert (moved.id, moved.external_id, moved.recorded_at, moved.zone_offset, moved.created_at) == before
+        assert (moved.data_source_id, moved.value) == (source.id, Decimal("61"))
+
+    def test_a_day_value_leaves_the_samples_and_our_day(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.POLAR)
         _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
         _sample(
@@ -637,8 +649,43 @@ class TestHistoryValuesLeftOutOfOurRows:
 
         aggregate_backfill_service.run(db, budget_seconds=60)
 
-        assert db.query(SeriesSample).count() == 2
+        assert db.query(SeriesSample).count() == 1
         assert self._ours(db, SeriesType.heart_rate_variability_rmssd) == [(date(2025, 6, 2), None, Decimal("70"))]
+
+    def test_a_day_value_past_the_windows_edge_is_left_for_the_next_window(self, db: Session) -> None:
+        """A window reads two days past its edges to find its days; it moves its own days only, or the next window
+        would find nothing to copy."""
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
+        repo = AggregateBackfillRepository()
+
+        repo.copy_history_values(db, source.id, ProviderName.POLAR, date(2025, 5, 1), date(2025, 6, 2))
+        kept = self._values(db, SeriesSample)
+        repo.copy_history_values(db, source.id, ProviderName.POLAR, date(2025, 6, 2), date(2025, 7, 1))
+
+        assert kept == [Decimal("61")]
+        assert self._values(db, SeriesSampleBackup) == [Decimal("61")]
+        assert _days(db) == [("heart_rate_variability_rmssd", date(2025, 6, 2), "+00:00", None, Decimal("61"))]
+
+    def test_a_window_copied_again_moves_nothing_twice(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
+        repo = AggregateBackfillRepository()
+
+        first = repo.copy_history_values(db, source.id, ProviderName.POLAR, date(2025, 6, 1), date(2025, 7, 1))
+        again = repo.copy_history_values(db, source.id, ProviderName.POLAR, date(2025, 6, 1), date(2025, 7, 1))
+
+        assert (first, again) == (1, 0)
+        assert (db.query(SeriesSample).count(), db.query(SeriesSampleBackup).count()) == (0, 1)
+
+    def test_a_deleted_data_source_takes_its_backup_with_it(self, db: Session) -> None:
+        source = DataSourceFactory(provider=ProviderName.POLAR)
+        _sample(db, source, SeriesType.heart_rate_variability_rmssd, datetime(2025, 6, 2, tzinfo=timezone.utc), "61")
+        aggregate_backfill_service.run(db, budget_seconds=60)
+
+        db.execute(text("DELETE FROM data_source WHERE id = :id"), {"id": source.id})
+
+        assert db.query(SeriesSampleBackup).count() == 0
 
     def test_garmins_nightly_hrv_off_midnight_is_left_out_too(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.GARMIN)
