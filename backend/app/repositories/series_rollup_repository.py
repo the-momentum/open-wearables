@@ -96,7 +96,7 @@ _DAYS_BEFORE = text(f"""
 """)
 
 _SESSION_CATEGORIES = [EventCategory.SLEEP.value, EventCategory.WORKOUT.value]
-# A sum is kept only where the series is summed: a day's heart rates add up past numeric(10, 3).
+# A sum is kept only where the series is summed: a day's heart rates added up mean nothing.
 _SUMMED_TYPE_IDS = frozenset(
     get_series_type_id(series_type)
     for series_type, method in AGGREGATION_METHOD_BY_TYPE.items()
