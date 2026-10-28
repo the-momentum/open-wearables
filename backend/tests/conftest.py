@@ -30,7 +30,11 @@ from app.integrations.redis_client import get_redis_client
 from app.main import api
 from app.models import SeriesTypeDefinition
 from app.schemas.enums import SERIES_TYPE_DEFINITIONS
+from app.utils.structured_logging import strict_attributes
 from tests import factories
+
+# An unserializable or clashing log attribute fails the test instead of being printed with str().
+strict_attributes(True)
 
 
 @pytest.fixture(scope="session")

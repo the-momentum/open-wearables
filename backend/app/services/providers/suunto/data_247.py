@@ -35,7 +35,9 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.dates import align_tz_awareness, parse_iso_datetime
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # StressState integer → text qualifier (0=Invalid is treated as missing)
 _STRESS_STATE_QUALIFIER: dict[int, str] = {
@@ -139,9 +141,7 @@ class Suunto247Data(Base247DataTemplate):
                 if isinstance(response, list):
                     all_data.extend(response)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     f"Error fetching chunk {current_start} to {current_end}: {e}",
                     provider="suunto",
                     task="fetch_in_chunks",
@@ -245,9 +245,7 @@ class Suunto247Data(Base247DataTemplate):
         )
 
         if not start_dt or not end_dt or end_dt <= start_dt:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 f"Skipping sleep record {sleep_id}: missing or degenerate start/end window",
                 provider="suunto",
                 task="save_sleep_data",
@@ -294,9 +292,7 @@ class Suunto247Data(Base247DataTemplate):
         try:
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
+            logger.error(
                 f"Error saving sleep record {sleep_id}: {e}",
                 provider="suunto",
                 task="save_sleep_data",
@@ -347,9 +343,7 @@ class Suunto247Data(Base247DataTemplate):
             db.commit()
         except Exception as e:
             db.rollback()
-            log_structured(
-                self.logger,
-                "error",
+            logger.error(
                 f"Failed to persist sleep-derived series: {e}",
                 provider="suunto",
                 task="persist_sleep_series",
@@ -466,9 +460,7 @@ class Suunto247Data(Base247DataTemplate):
                 if normalized:
                     total_count += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     f"Failed to save recovery data: {e}",
                     provider="suunto",
                     task="load_and_save_recovery",
@@ -620,9 +612,7 @@ class Suunto247Data(Base247DataTemplate):
                 if isinstance(response, list):
                     all_data.extend(response)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     f"Error fetching daily activity chunk {current_start} to {current_end}: {e}",
                     provider="suunto",
                     task="get_daily_activity_statistics",
@@ -730,9 +720,7 @@ class Suunto247Data(Base247DataTemplate):
                     skipped += 1
             except Exception as e:
                 skipped += 1
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     f"Failed to save sleep data: {e}",
                     provider="suunto",
                     task="load_and_save_sleep",

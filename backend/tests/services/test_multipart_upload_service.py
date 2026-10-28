@@ -1,6 +1,5 @@
 """Tests for the Apple XML multipart upload service."""
 
-from logging import getLogger
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,7 +32,7 @@ def _service(client: MagicMock | None) -> MultipartUploadService:
     # `client` see the presigned calls too. TestPublicEndpoint overrides it with a distinct mock.
     _clients["internal"] = client
     _clients["public"] = client
-    return MultipartUploadService(getLogger(__name__))
+    return MultipartUploadService()
 
 
 def _client_error(code: str) -> ClientError:
@@ -453,7 +452,7 @@ class TestPublicEndpoint:
         public.generate_presigned_url.return_value = "https://localhost:8333/signed"
         _clients["internal"] = internal
         _clients["public"] = public
-        service = MultipartUploadService(getLogger(__name__))
+        service = MultipartUploadService()
 
         key = f"{USER_ID}/raw/export.xml"
         result = service.sign_upload_parts(USER_ID, key, "upload-1", [1, 2], expiration_seconds=3600)
@@ -468,7 +467,7 @@ class TestPublicEndpoint:
         public = MagicMock()
         _clients["internal"] = internal
         _clients["public"] = public
-        service = MultipartUploadService(getLogger(__name__))
+        service = MultipartUploadService()
 
         service.create_upload(USER_ID, "export.xml", "application/xml", file_size=50 * 1024 * 1024)
 

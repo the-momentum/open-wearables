@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from logging import Logger, getLogger
 
 from app.database import DbSession
 from app.models.archival_setting import ArchivalSetting
@@ -19,14 +18,15 @@ from app.schemas.utils import (
     StorageEstimate,
 )
 from app.utils.exceptions import handle_exceptions
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ArchivalService:
     """Orchestrates archival settings CRUD, storage estimates, and the daily archival job."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.settings_repo = ArchivalSettingRepository()
         self.archive_repo = DataPointSeriesArchiveRepository()
 
@@ -85,18 +85,14 @@ class ArchivalService:
         # ── Archival step ──
         if archival_effective and archive_days is not None:
             cutoff = today - timedelta(days=archive_days)
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 f"Archival: aggregating live rows before {cutoff}",
                 archive_after_days=archive_days,
                 cutoff_date=str(cutoff),
             )
             archived, everything_moved = self.archive_repo.archive_data_before(db, cutoff)
             summary["archived_rows"] = archived
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 f"Archival: processed {archived} live rows",
                 archived_rows=archived,
             )
@@ -107,35 +103,27 @@ class ArchivalService:
 
             if archival_effective:
                 # Archive is active → delete only from archive table
-                log_structured(
-                    self.logger,
-                    "info",
+                logger.info(
                     f"Retention: deleting archive rows before {cutoff}",
                     delete_after_days=delete_days,
                     cutoff_date=str(cutoff),
                 )
                 deleted = self.archive_repo.delete_archive_before(db, cutoff)
                 summary["deleted_rows"] = deleted
-                log_structured(
-                    self.logger,
-                    "info",
+                logger.info(
                     f"Retention: deleted {deleted} archive rows",
                     deleted_rows=deleted,
                 )
             else:
                 # No (effective) archival → delete directly from live table
-                log_structured(
-                    self.logger,
-                    "info",
+                logger.info(
                     f"Retention: deleting live rows before {cutoff}",
                     delete_after_days=delete_days,
                     cutoff_date=str(cutoff),
                 )
                 deleted, everything_moved = self.archive_repo.delete_live_before(db, cutoff)
                 summary["deleted_live_rows"] = deleted
-                log_structured(
-                    self.logger,
-                    "info",
+                logger.info(
                     f"Retention: deleted {deleted} live rows",
                     deleted_live_rows=deleted,
                 )
@@ -165,4 +153,4 @@ class ArchivalService:
         return StorageEstimate(**raw)
 
 
-archival_service = ArchivalService(log=getLogger(__name__))
+archival_service = ArchivalService()

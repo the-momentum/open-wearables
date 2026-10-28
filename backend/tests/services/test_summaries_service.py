@@ -3,7 +3,6 @@
 import math
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -29,7 +28,7 @@ from tests.factories import (
 
 @pytest.fixture
 def service() -> SummariesService:
-    return SummariesService(log=getLogger(__name__))
+    return SummariesService()
 
 
 def _dt(iso: str) -> datetime:

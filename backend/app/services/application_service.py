@@ -1,6 +1,5 @@
 import secrets
 from datetime import datetime, timezone
-from logging import Logger, getLogger
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -14,15 +13,16 @@ from app.schemas.model_crud.credentials import (
 )
 from app.services.services import AppService
 from app.utils.security import get_password_hash, verify_password
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ApplicationService(AppService[ApplicationRepository, Application, ApplicationCreateInternal, ApplicationUpdate]):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=ApplicationRepository,
             model=Application,
-            log=log,
             **kwargs,
         )
 
@@ -55,7 +55,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
             updated_at=now,
         )
         application = self.create(db, creator)
-        self.logger.debug(f"Created application {application.app_id} for developer {developer_id}")
+        logger.debug("Created application", app_id=application.app_id, developer_id=str(developer_id))
         return application, plain_secret
 
     def validate_credentials(self, db: DbSession, app_id: str, app_secret: str) -> Application:
@@ -66,19 +66,12 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application:
-            log_structured(
-                self.logger,
-                "warning",
-                f"Application not found: {app_id}",
-                extra={"app_id": app_id},
-            )
+            logger.warning("Application not found", action="validate_credentials", app_id=app_id)
             raise HTTPException(status_code=401, detail="Invalid app credentials")
 
         if not verify_password(app_secret, application.app_secret_hash):
-            log_structured(
-                self.logger,
-                "warning",
-                f"Invalid secret for application: {app_id}",
+            logger.warning(
+                "Invalid secret for application",
                 action="validate_credentials",
                 app_id=app_id,
             )
@@ -89,7 +82,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
     def list_applications(self, db: DbSession, developer_id: UUID) -> list[Application]:
         """List all applications for a developer."""
         applications = self.crud.list_by_developer(db, developer_id)
-        self.logger.debug(f"Listed {len(applications)} applications for developer {developer_id}")
+        logger.debug("Listed applications", count=len(applications), developer_id=str(developer_id))
         return applications
 
     def delete_application(self, db: DbSession, app_id: str, developer_id: UUID) -> None:
@@ -103,7 +96,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
             raise HTTPException(status_code=404, detail="Application not found")
 
         self.delete(db, application.id, raise_404=True)
-        self.logger.debug(f"Deleted application {app_id}")
+        logger.debug("Deleted application", app_id=app_id, developer_id=str(developer_id))
 
     def rotate_secret(self, db: DbSession, app_id: str, developer_id: UUID) -> tuple[Application, str]:
         """Rotate application secret, verifying ownership.
@@ -126,8 +119,8 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         application.updated_at = datetime.now(timezone.utc)
         db.flush()
 
-        self.logger.debug(f"Rotated secret for application {app_id}")
+        logger.debug("Rotated application secret", app_id=app_id, developer_id=str(developer_id))
         return application, new_secret
 
 
-application_service = ApplicationService(log=getLogger(__name__))
+application_service = ApplicationService()

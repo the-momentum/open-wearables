@@ -16,7 +16,6 @@ Scoring:
 import math
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.algorithms.config_algorithms import resilience_config
@@ -43,8 +42,7 @@ _ASLEEP_STAGES: frozenset[SleepStageType] = frozenset(
 class ResilienceScoreService:
     """Service for computing HRV-based resilience scores."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self._data_point_repo = DataPointSeriesRepository(DataPointSeries)
         self._event_record_repo = EventRecordRepository(EventRecord)
 
@@ -298,4 +296,4 @@ class ResilienceScoreService:
         return results
 
 
-resilience_score_service = ResilienceScoreService(log=getLogger(__name__))
+resilience_score_service = ResilienceScoreService()

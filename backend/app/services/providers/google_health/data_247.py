@@ -61,7 +61,9 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class UnsupportedGranularityError(RuntimeError):
@@ -181,11 +183,12 @@ class GoogleHealth247Data(Base247DataTemplate):
         return counts
 
     def _log_metric_failure(self, data_type: str, user_id: UUID, error: Exception) -> None:
-        log_and_capture_error(
-            error,
-            self.logger,
-            f"Google 24/7 sync failed for data type {data_type}: {error}",
-            extra={"user_id": str(user_id), "provider": self.provider_name, "data_type": data_type},
+        logger.error(
+            "Google 24/7 sync failed for data type",
+            exc_info=error,
+            user_id=str(user_id),
+            provider=self.provider_name,
+            data_type=data_type,
         )
 
     # -- rollUp operation ------------------------------------------------------

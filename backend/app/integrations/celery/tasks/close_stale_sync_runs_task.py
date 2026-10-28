@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from logging import getLogger
 
 from celery import shared_task
 
@@ -8,9 +7,9 @@ from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.sync_run_repository import sync_run_repository
 from app.services.sync_status_service import last_event_at
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(name=CeleryTask.CLOSE_STALE_SYNC_RUNS)
@@ -41,9 +40,7 @@ def close_stale_sync_runs() -> dict:
         closed = sync_run_repository.close_as_stale(db, stale, now)
 
     if closed:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             f"Closed {len(closed)} stale sync run(s)",
             action="sync_run_sweep_complete",
             stale_after_hours=settings.sync_run_stale_after_hours,

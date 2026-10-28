@@ -1,4 +1,3 @@
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -13,11 +12,10 @@ from app.utils.exceptions import handle_exceptions
 class PersonalRecordService(
     AppService[PersonalRecordRepository, PersonalRecord, PersonalRecordCreate, PersonalRecordUpdate]
 ):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=PersonalRecordRepository,
             model=PersonalRecord,
-            log=log,
             **kwargs,
         )
 
@@ -40,4 +38,4 @@ class PersonalRecordService(
         )
 
 
-personal_record_service = PersonalRecordService(log=getLogger(__name__))
+personal_record_service = PersonalRecordService()

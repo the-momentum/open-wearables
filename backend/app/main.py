@@ -28,6 +28,7 @@ from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
 from app.utils.logging_setup import configure_logging
+from app.utils.structured_logging import get_logger
 
 # Configure logging to use stdout instead of stderr
 # Some platforms convert stderr logs to level.error automatically, so we must use stdout
@@ -51,6 +52,7 @@ for _name in ("httpx", "httpcore"):
     logging.getLogger(_name).setLevel(logging.WARNING)
 
 configure_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -65,7 +67,7 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     init_otel("open-wearables-api")
     # After init_otel, so the notice is exported too.
     if settings.telemetry_enabled:
-        logging.getLogger(__name__).info(
+        logger.info(
             "Anonymous usage telemetry is enabled (aggregate counts only, no user data). "
             "See docs/dev-guides/telemetry.mdx - disable with TELEMETRY_ENABLED=false."
         )

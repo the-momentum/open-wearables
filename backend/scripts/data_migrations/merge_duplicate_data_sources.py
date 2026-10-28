@@ -27,7 +27,6 @@ Usage (inside Docker):
 """
 
 import argparse
-from logging import getLogger
 from typing import NamedTuple
 from uuid import UUID
 
@@ -39,9 +38,9 @@ from sqlalchemy.sql.elements import TextClause
 from app.constants.devices_map.device_types import DEVICE_MODEL_PLACEHOLDERS
 from app.database import engine
 from app.services.data_migration_service import data_migration_service
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger("app.scripts.merge_duplicate_data_sources")
 
 # Rows per committed batch when moving samples/archive and deleting duplicate events
 _BATCH_SIZE = 50_000
@@ -323,9 +322,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
             except SQLAlchemyError as e:
                 db.rollback()
                 failed += 1
-                log_and_capture_error(
-                    e, logger, f"Skipped merging data source {src}: {e}", extra={"data_source_id": str(src)}
-                )
+                logger.error("Skipped merging data source", exc_info=e, data_source_id=str(src))
                 continue
         if target is None:
             renamed += 1
@@ -341,7 +338,7 @@ def merge_duplicate_data_sources(db: Session, *, dry_run: bool) -> dict[str, int
         except SQLAlchemyError as e:
             db.rollback()
             failed += 1
-            log_and_capture_error(e, logger, f"Skipped removing duplicate events: {e}")
+            logger.error("Skipped removing duplicate events", exc_info=e)
 
     result = {
         "renamed_sources": renamed,

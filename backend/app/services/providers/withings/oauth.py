@@ -1,6 +1,5 @@
 """Handle Withings OAuth token RPC envelopes and provider user identity."""
 
-import logging
 from uuid import UUID
 
 import httpx
@@ -23,9 +22,9 @@ from app.schemas.model_crud.credentials import (
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.handlers.errors import WithingsTokenError
 from app.services.providers.withings.webhook_service import WithingsWebhookService
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WithingsOAuth(BaseOAuthTemplate):
@@ -90,9 +89,7 @@ class WithingsOAuth(BaseOAuthTemplate):
                 token_response.refresh_token or refresh_token,
                 token_response.expires_in,
             )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Withings token refreshed",
             provider=self.provider_name,
             task="refresh_access_token",
@@ -112,9 +109,7 @@ class WithingsOAuth(BaseOAuthTemplate):
             response.raise_for_status()
             envelope = response.json()
         except httpx.HTTPStatusError as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Withings token HTTP error: {e.response.text}",
                 provider=self.provider_name,
                 task=task,
@@ -126,9 +121,7 @@ class WithingsOAuth(BaseOAuthTemplate):
                 detail=f"Withings token request failed: {e.response.text}",
             ) from e
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Withings token request failed: {e}",
                 provider=self.provider_name,
                 task=task,
@@ -140,9 +133,7 @@ class WithingsOAuth(BaseOAuthTemplate):
 
         status = envelope.get("status")
         if status != 0:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Withings token envelope status non-zero",
                 provider=self.provider_name,
                 task=task,
@@ -184,9 +175,7 @@ class WithingsOAuth(BaseOAuthTemplate):
             )
         except Exception as e:
             # The account is linked either way; a broker failure must not fail the callback.
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Withings notify subscription scheduling failed",
                 provider=self.provider_name,
                 user_id=str(user_id),

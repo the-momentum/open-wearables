@@ -1,7 +1,6 @@
 import base64
 import json
 import re
-from logging import getLogger
 
 import httpx
 from cryptography.exceptions import InvalidSignature
@@ -15,9 +14,9 @@ from app.integrations.celery.tasks.process_aws_upload_task import process_aws_up
 from app.schemas.providers.apple.apple_xml import SNSNotification
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.providers.apple.apple_xml.aws_service import get_sns_client
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 _SNS_CERT_URL_RE = re.compile(r"^https://sns\.[a-z0-9-]+\.amazonaws\.com/SimpleNotificationService-[a-f0-9]+\.pem$")
 
@@ -56,9 +55,7 @@ class SNSService:
     async def _verify_signature(self, notification: SNSNotification) -> bool:
         cert_url = notification.signing_cert_url
         if not _SNS_CERT_URL_RE.match(cert_url):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 f"Untrusted signing cert URL: {cert_url}",
                 provider="apple_xml",
                 task="sns_notification",
@@ -73,18 +70,14 @@ class SNSService:
             public_key = cert.public_key()
             decoded_signature = base64.b64decode(notification.signature)
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Failed to fetch SNS signing certificate: {e}",
                 provider="apple_xml",
                 task="sns_notification",
             )
             return False
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Failed to parse SNS signing certificate or decode signature: {e}",
                 provider="apple_xml",
                 task="sns_notification",
@@ -98,9 +91,7 @@ class SNSService:
             # sns uses PKCS1v15 padding for the signature
             public_key.verify(decoded_signature, string_to_sign.encode("utf-8"), padding.PKCS1v15(), hash_algo)  # ty:ignore[invalid-argument-type, too-many-positional-arguments, unresolved-attribute]
         except InvalidSignature:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "SNS message signature verification failed",
                 provider="apple_xml",
                 task="sns_notification",
@@ -111,9 +102,7 @@ class SNSService:
 
     def _verify_topic_arn(self, notification: SNSNotification) -> bool:
         if not settings.aws_sns_topic_arn:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "SNS topic ARN not configured",
                 provider="apple_xml",
                 task="sns_notification",
@@ -136,9 +125,7 @@ class SNSService:
             )
             return UploadDataResponse(status_code=status.HTTP_200_OK, response="subscription_confirmed", user_id=None)
         except Exception as e:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 f"Error confirming SNS subscription: {e}",
                 provider="apple_xml",
                 task="sns_notification",
@@ -149,17 +136,13 @@ class SNSService:
         message_body = json.loads(notification.message)
 
         if message_body.get("Event") == "s3:TestEvent":
-            log_structured(
-                logger, "info", "Received S3 test event, ignoring", provider="apple_xml", task="sns_notification"
-            )
+            logger.info("Received S3 test event, ignoring", provider="apple_xml", task="sns_notification")
             return UploadDataResponse(status_code=status.HTTP_200_OK, response="ignored: s3:TestEvent", user_id=None)
 
         # Only dispatch when SNS is the configured completion trigger; otherwise the
         # frontend's /complete call already handles it and we must not process twice.
         if settings.apple_xml_upload_completion_mode != "sns":
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Ignoring S3 notification: completion mode is client-driven",
                 provider="apple_xml",
                 task="sns_notification",
@@ -181,9 +164,7 @@ class SNSService:
             object_key_parts = object_key.split("/")
             user_id = object_key_parts[0] if len(object_key_parts) >= 3 else None
             if not user_id:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     f"No user_id found in object key: {object_key}",
                     provider="apple_xml",
                     task="sns_notification",
@@ -197,9 +178,7 @@ class SNSService:
             )
             dispatched += 1
 
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 f"Dispatched processing for {object_key} (user {user_id})",
                 provider="apple_xml",
                 task="sns_notification",
@@ -211,9 +190,7 @@ class SNSService:
 
     async def handle_sns_notification(self, notification: SNSNotification) -> UploadDataResponse:
         if not self.sns_client:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "SNS client not configured",
                 provider="apple_xml",
                 task="sns_notification",

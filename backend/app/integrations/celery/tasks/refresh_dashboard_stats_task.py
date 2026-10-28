@@ -1,14 +1,12 @@
-from logging import getLogger
-
 from celery import shared_task
 
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services import dashboard_stats_cache
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(name=CeleryTask.REFRESH_DASHBOARD_TOTAL_DATA_POINTS)
@@ -27,6 +25,6 @@ def refresh_dashboard_total_data_points(token: str | None = None) -> None:
         # expire so the lock's TTL acts as a backoff instead of re-running on every dashboard load.
         if token is not None:
             dashboard_stats_cache.release_refresh_lock(token)
-        logger.info("Refreshed dashboard total data points: %s", count)
+        logger.info("Refreshed dashboard total data points", count=count)
     except Exception as e:
-        log_and_capture_error(e, logger, "Failed to refresh dashboard total data points")
+        logger.error("Failed to refresh dashboard total data points", exc_info=e)

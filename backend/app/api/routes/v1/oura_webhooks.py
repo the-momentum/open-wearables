@@ -1,6 +1,5 @@
 """Oura Ring webhook endpoints for receiving data notifications."""
 
-from logging import getLogger
 from typing import Annotated
 
 import httpx
@@ -14,7 +13,6 @@ from app.services.providers.oura.webhook_service import oura_webhook_service
 from app.utils.auth import get_current_developer
 
 router = APIRouter()
-logger = getLogger(__name__)
 
 _strategy = ProviderFactory().get_provider("oura")
 if _strategy.webhooks is None:

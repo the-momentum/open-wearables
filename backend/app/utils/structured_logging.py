@@ -1,18 +1,45 @@
-"""Structured logging utilities for JSON-compatible logs."""
+"""Structured logging: the single way app code writes logs.
+
+    from app.utils.structured_logging import get_logger
+
+    logger = get_logger(__name__)
+
+    logger.info("Apple sync batch received", action="batch_received", batch_id="abc-123", user_id="u-456")
+
+    try:
+        process_item(item)
+    except Exception as e:
+        logger.error("Failed to process item", exc_info=e, item_id=item.id, user_id=user_id)
+
+Records go through the standard ``logging`` module under the ``app`` logger, which prints
+them as JSON lines (or readable lines with ``LOG_FORMAT=text``, see
+``app.utils.logging_setup``) and exports them with OpenTelemetry. Sentry gets a line from
+here, not from its logging integration (which ignores the ``app`` logger): an ``error`` with
+an exception, unless LOG_LEVEL filters it out, and any line logged with ``alert=True``.
+"""
 
 import json
+import logging
 import sys
-import time
-from datetime import datetime, timezone
-from logging import Logger
 from typing import Any, NamedTuple
-from uuid import UUID
 
-from app.config import settings
-from app.integrations.otel import export_structured
-from app.utils.config_utils import LogFormat
+import sentry_sdk
+from fastapi import HTTPException
+
 from app.utils.context import trace_id_var
-from app.utils.logging_setup import format_text_line, level_number, min_log_level
+from app.utils.logging_setup import (
+    APP_LOGGER,
+    BASE_FIELDS,
+    EXCEPTION_FIELDS,
+    STRUCTURED,
+    configure_app_logger,
+    json_serial,
+)
+
+__all__ = ["LogContext", "StructuredLogger", "get_logger", "json_serial", "strict_attributes"]
+
+# Frames between the code that logs and Logger.log: the public method and _log.
+_STACKLEVEL = 3
 
 
 class LogContext(NamedTuple):
@@ -27,97 +54,147 @@ class LogContext(NamedTuple):
     trace_id: str | None = None
 
 
-def json_serial(obj: Any) -> str:
-    """JSON serializer for objects not serializable by default json code"""
-    if isinstance(obj, UUID):
-        return str(obj)
-    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+_strict = False
 
 
-def log_structured(
-    logger: Logger,
-    level: str,
-    message: str,
-    provider: str | None = None,
-    **attributes: Any,
-) -> None:
+def strict_attributes(enabled: bool) -> None:
+    """Check attributes at the call site: raise for a value JSON cannot serialize or a name
+    that clashes with a line field. The test suite turns this on; otherwise the line is
+    printed anyway, with ``str()`` of such values."""
+    global _strict
+    _strict = enabled
+
+
+def _check_attributes(attributes: dict[str, Any], exc: BaseException | None) -> None:
+    reserved = BASE_FIELDS | EXCEPTION_FIELDS if exc is not None else BASE_FIELDS
+    if clashing := reserved.intersection(attributes):
+        raise ValueError(f"Log attributes cannot be named {sorted(clashing)}; pick another name")
+    json.dumps(attributes, default=json_serial)
+
+
+def _exception(exc_info: Any) -> BaseException | None:
+    if isinstance(exc_info, BaseException):
+        return exc_info
+    if isinstance(exc_info, tuple):
+        return exc_info[1]
+    return sys.exc_info()[1] if exc_info else None
+
+
+def _is_client_error(exc: BaseException | None) -> bool:
+    """4xx HTTPExceptions are explicit, handled client errors (e.g. a provider
+    rejecting a token refresh): logged as warnings, kept out of Sentry."""
+    return isinstance(exc, HTTPException) and 400 <= exc.status_code < 500
+
+
+def _report(level: int, msg: str, exc: BaseException | None, context: dict[str, Any]) -> None:
+    """Send one line to Sentry, its message and attributes as the ``log`` context.
+
+    Set on the scope, so the SDK serializes the context (UUIDs, dates) like any other data.
+    An exception is reported at ``error`` at least, also from a warning logged with
+    ``alert=True``: the line's level is for the logs, a captured exception is an error.
     """
-    Emit structured JSON log compatible with various logging platforms.
-
-    With ``LOG_FORMAT=legacy`` (default) or ``json`` this prints one JSON line to stdout;
-    with ``LOG_FORMAT=text`` it prints a human-readable line instead. ``LOG_LEVEL``, when
-    set, drops calls below that level.
-
-    This function emits logs in JSON format on a single line, making them compatible
-    with platforms that support structured logging, including (but not limited to):
-    - Railway
-    - Vercel
-    - Google Cloud Platform (Cloud Functions, Cloud Run)
-    - Heroku
-    - AWS Lambda (with CloudWatch)
-    - Other platforms that collect logs from stdout/stderr
+    if exc is not None:
+        level = max(level, logging.ERROR)
+    with sentry_sdk.new_scope() as scope:
+        scope.set_level(logging.getLevelName(level).lower())  # ty: ignore[invalid-argument-type]
+        scope.set_context("log", context)
+        if exc is not None:
+            sentry_sdk.capture_exception(exc)
+        else:
+            sentry_sdk.capture_message(msg)
 
 
-    Args:
-        logger: Logger whose name appears in text output; output goes directly to stdout
-        level: Log level (debug, info, warning, error)
-        message: Log message (required)
-        provider: Provider name (optional)
-        **attributes: Custom attributes to include (queryable via @name:value in log explorers)
+class StructuredLogger:
+    """A ``logging.Logger`` that takes the variable parts of a line as keyword arguments.
 
-    Example:
-        log_structured(
-            logger,
-            "info",
-            "Apple sync batch received",
-            action="batch_received",
-            batch_id="abc-123",
-            user_id="user-456",
-            records_count=2000,
-            workouts_count=5,
-            sleep_count=10
-        )
+    Every method accepts:
 
-    Platform-specific query examples:
-        Railway: @batch_id:abc-123, @user_id:user-456 AND @level:info, @action:batch_received
-        Vercel: Filter by JSON attributes in dashboard
-        GCP: Use Cloud Logging filters with jsonPayload.batch_id="abc-123"
+    - ``exc_info``: an exception (or True inside ``except``) - adds ``error_type`` and
+      ``traceback`` to the line. At ``error`` and above it is also reported to Sentry, unless
+      LOG_LEVEL filters the line out; at ``warning`` it is not. 4xx ``HTTPException``\\s are
+      logged as warnings.
+    - ``provider``: provider name, printed right after the message.
+    - ``alert``: always report the line to Sentry - without an exception, below ``error``,
+      and also when LOG_LEVEL filters it out of the logs.
+    - any other keyword: an attribute of the line (queryable via @name:value in log
+      explorers). Keep values JSON-serializable and free of health data and PII.
     """
-    if attributes.get("trace_id") is None:
-        tid = trace_id_var.get()
-        if tid:
+
+    def __init__(self, logger: logging.Logger) -> None:
+        self.logger = logger
+
+    @property
+    def name(self) -> str:
+        return self.logger.name
+
+    def isEnabledFor(self, level: int, /) -> bool:  # noqa: N802 - mirrors logging.Logger
+        return self.logger.isEnabledFor(level)
+
+    def debug(self, msg: str, /, **kwargs: Any) -> None:
+        self._log(logging.DEBUG, msg, **kwargs)
+
+    def info(self, msg: str, /, **kwargs: Any) -> None:
+        self._log(logging.INFO, msg, **kwargs)
+
+    def warning(self, msg: str, /, **kwargs: Any) -> None:
+        self._log(logging.WARNING, msg, **kwargs)
+
+    def error(self, msg: str, /, **kwargs: Any) -> None:
+        self._log(logging.ERROR, msg, **kwargs)
+
+    def exception(self, msg: str, /, *, exc_info: Any = True, **kwargs: Any) -> None:
+        self._log(logging.ERROR, msg, exc_info=exc_info, **kwargs)
+
+    def critical(self, msg: str, /, **kwargs: Any) -> None:
+        self._log(logging.CRITICAL, msg, **kwargs)
+
+    def log(self, level: int, msg: str, /, **kwargs: Any) -> None:
+        self._log(level, msg, **kwargs)
+
+    def _log(
+        self,
+        level: int,
+        msg: str,
+        /,
+        *,
+        exc_info: Any = None,
+        provider: str | None = None,
+        alert: bool = False,
+        **attributes: Any,
+    ) -> None:
+        exc = _exception(exc_info)
+        if _strict:
+            _check_attributes(attributes, exc)
+        if level > logging.WARNING and _is_client_error(exc):
+            level = logging.WARNING
+        enabled = self.logger.isEnabledFor(level)
+        if not (enabled or alert):
+            return
+        if attributes.get("trace_id") is None and (tid := trace_id_var.get()):
             attributes["trace_id"] = tid
+        if enabled:
+            self.logger.log(
+                level,
+                msg,
+                exc_info=exc_info,
+                stacklevel=_STACKLEVEL,
+                extra={STRUCTURED: {"provider": provider, "attributes": attributes}},
+            )
+        if alert or (enabled and exc is not None and level >= logging.ERROR):
+            context: dict[str, Any] = {"message": msg, "logger": self.logger.name, "provider": provider}
+            for key, value in attributes.items():
+                # Like on the line: an attribute must not replace a base field.
+                context[f"attr_{key}" if key in context else key] = value
+            _report(level, msg, exc, context)
 
-    log_entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "level": level.lower(),
-        "message": message,
-        "provider": provider,
-        **attributes,
-    }
 
-    # Emit as single-line JSON directly to stdout
-    # This bypasses logger formatters (like Celery's) that add prefixes
-    # Platforms will parse this JSON string correctly
-    # Serialized in every mode and before filtering, so an unserializable value raises the
-    # same TypeError whatever LOG_FORMAT and LOG_LEVEL are set to.
-    json_str = json.dumps(log_entry, default=json_serial)
+def get_logger(name: str) -> StructuredLogger:
+    """The logger for a module: ``logger = get_logger(__name__)``.
 
-    levelno = level_number(level)
-    threshold = min_log_level()
-    if threshold is not None and levelno < threshold:
-        return
-
-    if settings.log_format is LogFormat.TEXT:
-        line = format_text_line(time.time(), level, logger.name, message, {"provider": provider, **attributes})
-        print(line, file=sys.stdout, flush=True)
-        export_structured(logger, levelno, message, provider, attributes)
-        return
-
-    # Always use stdout to avoid Railway's automatic level conversion
-    # Platforms can convert stderr logs to level.error automatically, which creates
-    # "attributes":{"level":"error"} that overrides our JSON level field.
-    # By using stdout, platforms sets level.info by default, but our JSON level
-    # field in the structured log should take precedence.
-    print(json_str, file=sys.stdout, flush=True)
-    export_structured(logger, levelno, message, provider, attributes)
+    Names outside the ``app`` package (scripts) are put under it, so every app line gets
+    the same format and handling.
+    """
+    if name != APP_LOGGER and not name.startswith(f"{APP_LOGGER}."):
+        name = f"{APP_LOGGER}.{name}"
+    configure_app_logger()
+    return StructuredLogger(logging.getLogger(name))

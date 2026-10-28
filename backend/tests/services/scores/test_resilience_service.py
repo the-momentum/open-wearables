@@ -30,7 +30,7 @@ from tests.factories import (
 )
 
 _log = logging.getLogger(__name__)
-service = ResilienceScoreService(log=_log)
+service = ResilienceScoreService()
 
 
 # ---------------------------------------------------------------------------

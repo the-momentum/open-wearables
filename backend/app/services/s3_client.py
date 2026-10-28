@@ -5,7 +5,6 @@ S3-compatible server such as MinIO). Centralising client creation keeps
 their endpoint, addressing, and signature configuration consistent.
 """
 
-from logging import getLogger
 from typing import Any
 
 import boto3
@@ -13,9 +12,9 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError
 
 from app.config import settings
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_s3_client(endpoint_url: str | None = None) -> Any:
@@ -44,9 +43,7 @@ def create_s3_client(endpoint_url: str | None = None) -> Any:
 
         return boto3.client("s3", **kwargs)
     except (BotoCoreError, ValueError, AttributeError) as e:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "Cannot create S3 client",
             error_type=type(e).__name__,
             error=str(e),

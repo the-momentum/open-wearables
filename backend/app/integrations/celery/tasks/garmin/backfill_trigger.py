@@ -5,7 +5,6 @@ and scheduling the timeout checker.
 """
 
 from datetime import timedelta
-from logging import getLogger
 from typing import Any
 from uuid import UUID
 
@@ -45,10 +44,9 @@ from app.services.providers.garmin.backfill_state import (
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 from app.services.providers.garmin.oauth import GarminOAuth
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @shared_task(name=CeleryTask.GARMIN_TRIGGER_BACKFILL_FOR_TYPE)
@@ -60,9 +58,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
     try:
         user_uuid = UUID(user_id)
     except ValueError as e:
-        log_structured(
-            logger,
-            "error",
+        logger.error(
             "Invalid user_id",
             user_id=user_id,
             error=str(e),
@@ -84,9 +80,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
         start_time, end_time = get_window_date_range(user_id)
         current_window = get_current_window(user_id)
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Triggering backfill for type",
         provider="garmin",
         trace_id=trace_id,
@@ -139,9 +133,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 if status_code == 400 and "min start time" in error.lower():
                     fallback_days = 14 if data_type in ACTIVITY_API_TYPES else 31
                     start_time_fallback = end_time - timedelta(days=fallback_days)
-                    log_structured(
-                        logger,
-                        "info",
+                    logger.info(
                         "Retrying with shorter range after min-start-time error",
                         provider="garmin",
                         trace_id=trace_id,
@@ -187,9 +179,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 chain_stop = _classify_chain_stop_error(status_code, error)
                 if chain_stop:
                     error_msg, log_msg = chain_stop
-                    log_structured(
-                        logger,
-                        "warning",
+                    logger.warning(
                         log_msg,
                         provider="garmin",
                         trace_id=trace_id,
@@ -203,9 +193,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 is_rate_limit = status_code == 429 or "rate limit" in error.lower()
                 delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
                 if is_rate_limit:
-                    log_structured(
-                        logger,
-                        "warning",
+                    logger.warning(
                         "Rate limit hit, delaying next type",
                         provider="garmin",
                         trace_id=trace_id,
@@ -218,9 +206,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 return {"status": "failed", "error": error}
 
             if data_type in result.get("duplicate", []):
-                log_structured(
-                    logger,
-                    "info",
+                logger.info(
                     "Skipping duplicate backfill, proceeding to next type",
                     provider="garmin",
                     trace_id=trace_id,
@@ -250,9 +236,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
         except HTTPException as e:
             error = str(e.detail)
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "HTTP error triggering backfill",
                 provider="garmin",
                 trace_id=trace_id,
@@ -267,9 +251,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             chain_stop = _classify_chain_stop_error(e.status_code, error)
             if chain_stop:
                 error_msg, log_msg = chain_stop
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     log_msg,
                     provider="garmin",
                     trace_id=trace_id,
@@ -283,9 +265,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             is_rate_limit = e.status_code == 429 or "rate limit" in error.lower()
             delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
             if is_rate_limit:
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     "Rate limit hit, delaying next type",
                     provider="garmin",
                     trace_id=trace_id,
@@ -299,16 +279,13 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
         except Exception as e:
             error = str(e)
-            log_and_capture_error(
-                e,
-                logger,
-                f"Error triggering backfill for type {data_type}: {e}",
-                extra={
-                    "user_id": user_id,
-                    "trace_id": trace_id,
-                    "type_trace_id": type_trace_id,
-                    "data_type": data_type,
-                },
+            logger.error(
+                "Error triggering backfill",
+                exc_info=e,
+                user_id=user_id,
+                trace_id=trace_id,
+                type_trace_id=type_trace_id,
+                data_type=data_type,
             )
             mark_type_failed(user_id, data_type, error)
             celery_app.send_task(

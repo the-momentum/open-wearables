@@ -1,20 +1,20 @@
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 
 import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration, ignore_logger
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScrubber
 
 from app import __version__
 from app.config import settings
-from app.utils.structured_logging import log_structured
+from app.utils.logging_setup import APP_LOGGER
+from app.utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from sentry_sdk._types import Event, Hint
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 FILTERED = "[Filtered]"
 
@@ -75,13 +75,37 @@ def _scrub_text(value: Any) -> Any:
     return value
 
 
+def _mask_keys(value: Any, denylist: list[str]) -> Any:
+    """Replace values under denylisted keys with FILTERED.
+
+    before_send runs after the SDK serialized the event, so this writes plain strings;
+    EventScrubber would write AnnotatedValues, which the envelope cannot encode.
+    """
+    if isinstance(value, dict):
+        return {
+            key: FILTERED if isinstance(key, str) and key.lower() in denylist else _mask_keys(item, denylist)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_keys(item, denylist) for item in value]
+    return value
+
+
+def _before_send_sensitive(event: "Event", hint: "Hint") -> "Event":
+    """Credentials stay masked in the app log context too; EventScrubber skips contexts."""
+    if "contexts" in event:
+        event["contexts"] = _mask_keys(event["contexts"], _credentials_scrubber.denylist)
+    return event
+
+
 def before_send(event: "Event", hint: "Hint") -> "Event":
     """Filter free text that the key-based scrubber can't see."""
-    # `contexts` is where log_and_capture_error puts `extra` - EventScrubber skips it.
+    # `contexts` is where app log events carry their message and attributes - EventScrubber skips it.
     for key in ("message", "logentry", "contexts", "extra"):
         if key in event:
             event[key] = _scrub_text(event[key])
-    _scrubber.scrub_dict(event.get("contexts"))
+    if "contexts" in event:
+        event["contexts"] = _mask_keys(event["contexts"], _scrubber.denylist)
 
     for exc in (event.get("exception") or {}).get("values") or []:
         exc["value"] = _scrub_text(exc.get("value"))
@@ -101,17 +125,20 @@ def init_sentry() -> None:
     release = f"{__version__}+{settings.GIT_SHA[:12]}" if settings.GIT_SHA else __version__
     sensitive = settings.SENTRY_SEND_SENSITIVE_DATA
     integrations: list[Any] = [CeleryIntegration(monitor_beat_tasks=True, propagate_traces=True)]
+    # App code reports to Sentry itself (app.utils.structured_logging): an error with an
+    # exception or a line logged with alert=True. Without this, every app ERROR record would
+    # be built into an event first.
+    ignore_logger(APP_LOGGER)
+    ignore_logger(f"{APP_LOGGER}.*")
     if sensitive:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "SENTRY_SEND_SENSITIVE_DATA is on - Sentry receives request bodies, locals and log breadcrumbs, "
             "which carry health data and PII",
             action="sentry_sensitive_data_enabled",
         )
     else:
         # Log records are free-form text the scrubber cannot inspect, so don't turn
-        # INFO/WARNING logs into breadcrumbs; ERROR logs still become events.
+        # INFO/WARNING logs into breadcrumbs; ERROR logs of libraries still become events.
         integrations.append(LoggingIntegration(level=None))
 
     sentry_sdk.init(
@@ -126,7 +153,7 @@ def init_sentry() -> None:
         include_local_variables=sensitive,
         max_request_body_size="medium" if sensitive else "never",
         event_scrubber=_credentials_scrubber if sensitive else _scrubber,
-        before_send=None if sensitive else before_send,
+        before_send=_before_send_sensitive if sensitive else before_send,
         # Sampled transactions carry the request (query string) too but skip before_send.
         before_send_transaction=None if sensitive else before_send,
         integrations=integrations,

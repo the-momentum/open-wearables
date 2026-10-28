@@ -21,7 +21,9 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import to_rfc3339
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class WhoopWorkouts(BaseWorkoutsTemplate):
@@ -79,9 +81,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     f"Error fetching Whoop workout data: {e}",
                     provider="whoop",
                     task="get_workouts",
@@ -89,9 +89,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_workouts:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         f"Returning partial workout data due to error: {e}",
                         provider="whoop",
                         task="get_workouts",
@@ -156,9 +154,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 health_score_service.create(db, health_score.model_copy(update={"event_record_id": created.id}))
             return 1
         except Exception as e:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 f"Failed to save workout record {workout_id}: {e}",
                 provider="whoop",
                 task="load_single_workout",
@@ -414,9 +410,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
+                logger.error(
                     f"Error fetching Whoop workout data: {e}",
                     provider="whoop",
                     task="load_data",
@@ -424,9 +418,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 )
                 # If we got some data, continue processing; otherwise re-raise
                 if all_workouts:
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         f"Processing partial workout data due to error: {e}",
                         provider="whoop",
                         task="load_data",

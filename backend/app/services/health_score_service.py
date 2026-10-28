@@ -1,4 +1,3 @@
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -16,8 +15,8 @@ class HealthScoreService(
 ):
     """Coordinated access to health scores."""
 
-    def __init__(self, log: Logger):
-        super().__init__(crud_model=HealthScoreRepository, model=HealthScore, log=log)
+    def __init__(self):
+        super().__init__(crud_model=HealthScoreRepository, model=HealthScore)
 
     @handle_exceptions
     def get_by_all_components(self, db_session: DbSession, components: list[str]) -> list[HealthScore]:
@@ -58,4 +57,4 @@ class HealthScoreService(
         return self.crud.get_with_filters(db_session, user_id, params)
 
 
-health_score_service = HealthScoreService(log=getLogger(__name__))
+health_score_service = HealthScoreService()

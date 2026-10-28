@@ -1,5 +1,4 @@
 from datetime import datetime
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -14,18 +13,18 @@ from app.services.providers.api_client import get_valid_token
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class UserConnectionService(
     AppService[UserConnectionRepository, UserConnection, UserConnectionCreate, UserConnectionUpdate],
 ):
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(
             crud_model=UserConnectionRepository,
             model=UserConnection,
-            log=log,
             **kwargs,
         )
         self.data_source_crud = DataSourceRepository()
@@ -79,9 +78,7 @@ class UserConnectionService(
 
         connected_at = connection.created_at if outcome == SdkConnectionOutcome.CREATED else connection.updated_at
 
-        log_structured(
-            self.logger,
-            "info",
+        logger.info(
             f"SDK connection {outcome}",
             action="sdk_connection_state_change",
             outcome=str(outcome),
@@ -121,9 +118,7 @@ class UserConnectionService(
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
             connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 "Connection revoked",
                 action="connection_revoked",
                 reason=reason,
@@ -159,7 +154,7 @@ class UserConnectionService(
         """
         self.disconnect(db_session, user_id, provider, oauth=oauth)
         deleted = self.data_source_crud.delete_user_provider_data(db_session, user_id, ProviderName(provider))
-        self.logger.info("Purged %s data sources for user %s from provider %s", deleted, user_id, provider)
+        logger.info("Purged provider data sources", provider=provider, user_id=str(user_id), deleted_count=deleted)
         return deleted
 
     @handle_exceptions
@@ -193,29 +188,20 @@ class UserConnectionService(
                 access_token,
                 provider_user_id=connection.provider_user_id,
             )
-            log_structured(
-                self.logger,
-                "info",
+            logger.info(
                 "Deregistered user from provider API",
                 provider=provider,
                 task="deregister_user",
                 user_id=str(user_id),
             )
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Failed to deregister user from provider API: {e}",
+            logger.error(
+                "Failed to deregister user from provider API",
+                exc_info=e,
                 provider=provider,
                 task="deregister_user",
                 user_id=str(user_id),
             )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to deregister user {user_id} from {provider} API: {e}",
-                extra={"user_id": str(user_id), "provider": provider},
-            )
 
 
-user_connection_service = UserConnectionService(log=getLogger(__name__))
+user_connection_service = UserConnectionService()

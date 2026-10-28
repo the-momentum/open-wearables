@@ -5,7 +5,6 @@ Tests the full import flow for Apple HealthKit data via SDK.
 """
 
 import json
-import logging
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -54,7 +53,7 @@ class TestAppleSDKImport:
     @pytest.fixture
     def import_service(self) -> ImportService:
         """Create HealthKit import service instance."""
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @pytest.fixture
     def sample_sdk_payload(self) -> dict[str, Any]:
@@ -513,7 +512,7 @@ class TestAppleSDKImportEdgeCases:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     def test_import_workout_with_zero_duration(
         self,
@@ -677,7 +676,7 @@ class TestSDKImportUnitConversion:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _record(metric_type: str, value: float, unit: str | None = "") -> dict[str, Any]:
@@ -901,7 +900,7 @@ class TestSDKImportNutrition:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _build_record(metric_type: str, value: float, unit: str) -> dict[str, Any]:
@@ -986,7 +985,7 @@ class TestSDKImportMealCorrelation:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     @staticmethod
     def _correlation_record(correlation_id: str, end_date: str = "2026-09-18T12:00:00Z") -> dict[str, Any]:
@@ -1199,7 +1198,7 @@ class TestSDKImportAndroidFoodCorrelation:
 
     @pytest.fixture
     def import_service(self) -> ImportService:
-        return ImportService(log=logging.getLogger("test"))
+        return ImportService()
 
     def test_real_health_connect_payload_saves_meal_and_nutrients(
         self, db: Session, import_service: ImportService

@@ -1,6 +1,5 @@
 """Garmin 247 Data implementation for sleep, dailies, epochs, and body composition."""
 
-import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -38,7 +37,9 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_fit_file
 from app.utils.conversion import seconds_to_minutes
 from app.utils.dates import offset_to_iso
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Series types to skip when parsing FIT files — already present from activityDetails.
 # Derived from ACTIVITY_SAMPLE_SERIES so additions to the map are automatically
@@ -75,7 +76,6 @@ class Garmin247Data(Base247DataTemplate):
         self.data_source_repo = DataSourceRepository()
         self.connection_repo = UserConnectionRepository()
         self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     # -------------------------------------------------------------------------
     # Helper Methods
@@ -157,9 +157,7 @@ class Garmin247Data(Base247DataTemplate):
                 elif response:
                     all_data.append(response)
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
                     provider="garmin",
                     task="fetch_in_chunks",
@@ -202,9 +200,7 @@ class Garmin247Data(Base247DataTemplate):
                         )
                     )
                 except (KeyError, TypeError, ValueError):
-                    log_structured(
-                        self.logger,
-                        "warning",
+                    logger.warning(
                         "Invalid sleep stage interval data",
                         interval_data=iv,
                         provider="garmin",
@@ -366,9 +362,7 @@ class Garmin247Data(Base247DataTemplate):
             end_dt = datetime.fromisoformat(normalized_sleep["end_time"].replace("Z", "+00:00"))
 
         if not start_dt or not end_dt:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 f"Missing start/end time for sleep {sleep_id}",
                 provider="garmin",
                 task="build_sleep_record",
@@ -426,9 +420,7 @@ class Garmin247Data(Base247DataTemplate):
         try:
             event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
+            logger.error(
                 f"Error saving sleep record {normalized_sleep['id']}: {e}",
                 provider="garmin",
                 task="save_sleep_data",
@@ -906,9 +898,7 @@ class Garmin247Data(Base247DataTemplate):
         zone_offset = offset_to_iso(raw_hrv.get("startTimeOffsetInSeconds"))
 
         if not start_ts:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "HRV data missing startTimeInSeconds",
                 provider="garmin",
                 task="build_hrv_samples",
@@ -932,7 +922,12 @@ class Garmin247Data(Base247DataTemplate):
                     external_id=summary_id,
                 )
             )
-            self.logger.debug(f"Collecting HRV nightly avg={last_night_avg}ms for {calendar_date}")
+            logger.debug(
+                "Collecting HRV nightly avg",
+                provider="garmin",
+                user_id=str(user_id),
+                calendar_date=calendar_date,
+            )
 
         # Collect individual HRV readings from hrvValues
         hrv_values = raw_hrv.get("hrvValues", {})
@@ -953,7 +948,13 @@ class Garmin247Data(Base247DataTemplate):
                     )
                     samples.append(sample)
                 except Exception as e:
-                    self.logger.debug(f"Failed to collect HRV value at offset {offset_str}: {e}")
+                    logger.debug(
+                        "Failed to collect HRV value at offset",
+                        provider="garmin",
+                        user_id=str(user_id),
+                        offset=offset_str,
+                        error=str(e),
+                    )
 
         return samples
 
@@ -1098,7 +1099,7 @@ class Garmin247Data(Base247DataTemplate):
             event_record_service.create_detail(db, detail, detail_type=EventCategory.WORKOUT)
             return 1
         except Exception as e:
-            self.logger.debug(f"Activity may already exist: {e}")
+            logger.debug("Activity may already exist", provider="garmin", user_id=str(user_id), error=str(e))
             return 0
 
     # -------------------------------------------------------------------------
@@ -1751,7 +1752,7 @@ class Garmin247Data(Base247DataTemplate):
             event_record_service.create(db, record)
             return 1
         except Exception as e:
-            self.logger.debug(f"Move IQ record may already exist: {e}")
+            logger.debug("Move IQ record may already exist", provider="garmin", user_id=str(user_id), error=str(e))
             return 0
 
     # -------------------------------------------------------------------------
@@ -1831,9 +1832,7 @@ class Garmin247Data(Base247DataTemplate):
         """
         record = self.event_record_repo.get_by_external_id(db, user_id, activity_id, source=self.provider_name)
         if record is None:
-            log_structured(
-                self.logger,
-                "warning",
+            logger.warning(
                 "No event_record found for activityFiles — FIT workout fields not saved",
                 provider="garmin",
                 task="_save_fit_workout_fields",
@@ -1947,9 +1946,7 @@ class Garmin247Data(Base247DataTemplate):
                                 all_samples.extend(self._build_activity_samples(user_id, item))
                             except Exception as e:
                                 activity_id = item.get("activityId") or item.get("summary", {}).get("activityId")
-                                log_structured(
-                                    self.logger,
-                                    "warning",
+                                logger.warning(
                                     "Failed to build activity samples, skipping",
                                     provider="garmin",
                                     task="process_items_batch",
@@ -1977,9 +1974,7 @@ class Garmin247Data(Base247DataTemplate):
                                 url=callback_url,
                             )
                         except Exception as e:
-                            log_structured(
-                                self.logger,
-                                "warning",
+                            logger.warning(
                                 "Failed to download FIT file",
                                 provider="garmin",
                                 task="process_items_batch",
@@ -1997,9 +1992,7 @@ class Garmin247Data(Base247DataTemplate):
                         try:
                             fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
                         except Exception as e:
-                            log_structured(
-                                self.logger,
-                                "warning",
+                            logger.warning(
                                 "Failed to parse FIT file",
                                 provider="garmin",
                                 task="process_items_batch",
@@ -2019,9 +2012,7 @@ class Garmin247Data(Base247DataTemplate):
                                     power_zones=fit_result.power_zones.model_dump() if fit_result.power_zones else None,
                                 )
                             except Exception as e:
-                                log_structured(
-                                    self.logger,
-                                    "warning",
+                                logger.warning(
                                     "Failed to save FIT workout fields",
                                     provider="garmin",
                                     task="process_items_batch",
@@ -2035,9 +2026,7 @@ class Garmin247Data(Base247DataTemplate):
                                 s for s in fit_result.samples if s.series_type not in _ACTIVITY_DETAILS_SERIES_TYPES
                             ]
                             all_samples.extend(fit_samples)
-                        log_structured(
-                            self.logger,
-                            "info",
+                        logger.info(
                             "Parsed FIT file",
                             provider="garmin",
                             task="process_items_batch",
@@ -2059,9 +2048,7 @@ class Garmin247Data(Base247DataTemplate):
                             all_mct_details.append(detail)
 
             except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
+                logger.warning(
                     f"Error building batch item for {summary_type}: {e}",
                     provider="garmin",
                     task="process_items_batch",
@@ -2192,5 +2179,5 @@ class Garmin247Data(Base247DataTemplate):
         Returns:
             An empty result: data arrives by push
         """
-        self.logger.info(f"Garmin 247 data for user {user_id} arrives via webhooks (no REST fetch)")
+        logger.info("Garmin 247 data arrives via webhooks (no REST fetch)", provider="garmin", user_id=str(user_id))
         return Sync247Result(provider=self.provider_name)

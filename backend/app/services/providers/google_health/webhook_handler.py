@@ -26,7 +26,6 @@ See: https://developers.google.com/health/notifications
 """
 
 import json
-import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -47,10 +46,9 @@ from app.services.providers.google_health.data_247 import (
 from app.services.providers.google_health.workouts import GoogleHealthApiWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Notification dataTypes that map to a session handler rather than a 24/7 metric.
 _SLEEP_DATA_TYPE = "sleep"
@@ -86,9 +84,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         """Verify the bearer secret Google echoes in the Authorization header."""
         secret_setting = settings.google_webhook_secret
         if not secret_setting:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "GOOGLE_WEBHOOK_SECRET not configured; rejecting webhook",
                 provider="google_health",
                 action="webhook_signature_missing_secret",
@@ -103,9 +99,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         try:
             payload = json.loads(body)
         except (json.JSONDecodeError, ValueError) as exc:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Google webhook: unparseable body",
                 provider="google_health",
                 action="webhook_bad_payload",
@@ -114,9 +108,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             )
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
         if not isinstance(payload, (dict, list)):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Google webhook: unexpected JSON root",
                 provider="google_health",
                 action="webhook_bad_payload",
@@ -134,13 +126,11 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         authenticated verification handshake simply returns 200.
         """
         if isinstance(payload, dict) and payload.get("type") == "verification":
-            log_structured(logger, "info", "Google webhook endpoint verified", provider="google_health")
+            logger.info("Google webhook endpoint verified", provider="google_health")
             return {"status": "verified"}
 
         trace_id = str(uuid4())[:8]
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Received Google webhook",
             provider="google_health",
             trace_id=trace_id,
@@ -152,9 +142,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         task = celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH, args=["google_health", payload, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Enqueued Google webhook processing task",
             provider="google_health",
             trace_id=trace_id,
@@ -177,11 +165,11 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             try:
                 results.append(self._process_one(db, item, trace_id))
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Google webhook notification failed: {e}",
-                    extra={"provider": "google_health", "trace_id": trace_id},
+                logger.error(
+                    "Google webhook notification failed",
+                    exc_info=e,
+                    provider="google_health",
+                    trace_id=trace_id,
                 )
                 results.append({"status": "error", "error": str(e)})
         records = sum(int(r.get("records_saved") or 0) for r in results)
@@ -192,9 +180,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         try:
             notification = GoogleWebhookNotification.model_validate(item)
         except (ValidationError, TypeError) as exc:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Invalid Google webhook notification",
                 provider="google_health",
                 trace_id=trace_id,
@@ -206,9 +192,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         data = notification.data
 
         if data.operation == "DELETE":
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Ignoring Google delete notification",
                 provider="google_health",
                 trace_id=trace_id,
@@ -219,9 +203,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
 
         connection = self.connection_repo.get_by_provider_user_id(db, "google_health", data.health_user_id)
         if not connection:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No connection found for Google healthUserId",
                 provider="google_health",
                 trace_id=trace_id,
@@ -234,9 +216,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
 
         window = self._window(data.intervals)
         if window is None:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Google notification carried no usable interval; skipping",
                 provider="google_health",
                 trace_id=trace_id,
@@ -249,9 +229,7 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         self.connection_repo.update_last_synced_at(db, connection)
         count = self._fetch_and_save(db, user_id, data.data_type, start, end)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Google webhook notification processed",
             provider="google_health",
             action="google_webhook_complete",
@@ -294,11 +272,12 @@ class GoogleWebhookHandler(BaseWebhookHandler):
         try:
             return int(self.data_247.sync_data_type(db, user_id, data_type, start, end) or 0)
         except UnsupportedGranularityError as e:
-            log_and_capture_error(
-                e,
-                logger,
-                str(e),
-                extra={"user_id": str(user_id), "provider": "google", "data_type": data_type},
+            logger.error(
+                "Unsupported data granularity",
+                exc_info=e,
+                user_id=str(user_id),
+                provider="google",
+                data_type=data_type,
             )
             return 0
 

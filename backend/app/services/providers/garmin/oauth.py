@@ -1,5 +1,3 @@
-import logging
-
 import httpx
 
 from app.config import settings
@@ -13,8 +11,9 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GarminOAuth(BaseOAuthTemplate):
@@ -85,11 +84,12 @@ class GarminOAuth(BaseOAuthTemplate):
             permissions = data.get("permissions", [])
             if permissions:
                 scope = " ".join(sorted(permissions))
-        except Exception:
+        except Exception as e:
             logger.warning(
-                "Failed to fetch Garmin permissions for user %s, will retry via webhook",
-                provider_user_id,
-                exc_info=True,
+                "Failed to fetch Garmin permissions, will retry via webhook",
+                provider="garmin",
+                provider_user_id=provider_user_id,
+                exc_info=e,
             )
 
         return {"user_id": provider_user_id, "username": None, "scope": scope}

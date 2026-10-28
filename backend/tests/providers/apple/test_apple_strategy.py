@@ -10,7 +10,6 @@ Tests cover:
 """
 
 from decimal import Decimal
-from logging import getLogger
 from pathlib import Path
 
 from app.models import EventRecord, User
@@ -107,7 +106,7 @@ class TestAppleXmlWorkoutCalories:
     """An exported workout keeps its calories unset when the export reports none."""
 
     def _metrics(self, statistics: list[dict]) -> dict:
-        service = XMLService(Path("export.xml"), getLogger(__name__))
+        service = XMLService(Path("export.xml"))
         metrics = service._init_metrics()
         for statistic in statistics:
             service._update_metrics_from_stat(metrics, statistic)

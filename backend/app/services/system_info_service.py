@@ -1,6 +1,5 @@
 from collections import defaultdict
 from datetime import date, datetime
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -31,13 +30,11 @@ class SystemInfoService:
 
     def __init__(
         self,
-        log: Logger,
         user_service: UserService,
         user_connection_service: UserConnectionService,
         timeseries_service: TimeSeriesService,
         event_record_service: EventRecordService,
     ):
-        self.logger = log
         self.user_service = user_service
         self.user_connection_service = user_connection_service
         self.timeseries_service = timeseries_service
@@ -195,7 +192,6 @@ class SystemInfoService:
 
 
 system_info_service = SystemInfoService(
-    log=getLogger(__name__),
     user_service=user_service,
     user_connection_service=user_connection_service,
     timeseries_service=timeseries_service,

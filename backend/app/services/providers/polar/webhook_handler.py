@@ -31,7 +31,6 @@ See: https://www.polar.com/accesslink-api/#webhooks
 """
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -48,14 +47,13 @@ from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from app.services.providers.polar.data_247 import Polar247Data
     from app.services.providers.polar.workouts import PolarWorkouts
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PolarWebhookHandler(BaseWebhookHandler):
@@ -80,7 +78,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
             secret = self.provider_settings_repo.get_webhook_secret(db, ProviderName.POLAR)
 
         if not secret:
-            log_structured(logger, "warning", "Polar webhook signature secret not configured", provider="polar")
+            logger.warning("Polar webhook signature secret not configured", provider="polar")
             return False
 
         provided_signature = request.headers.get("Polar-Webhook-Signature", "")
@@ -107,7 +105,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
             event = ""
 
         if event == "PING":
-            log_structured(logger, "info", "Polar webhook ping received", provider="polar")
+            logger.info("Polar webhook ping received", provider="polar")
             return {"status": "ok"}
 
         return super().handle(request, body, db)
@@ -117,9 +115,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
         trace_id = str(uuid4())[:8]
         raw = payload.model_dump()
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Received Polar webhook event",
             provider="polar",
             trace_id=trace_id,
@@ -133,9 +129,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
         task = celery_app.send_task(
             CeleryTask.PROCESS_WEBHOOK_PUSH, args=["polar", raw, trace_id], queue=CeleryQueue.WEBHOOK_SYNC
         )
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Enqueued Polar webhook processing task",
             provider="polar",
             trace_id=trace_id,
@@ -161,9 +155,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
         try:
             event = PolarWebhookEvent(**payload)
         except (ValidationError, TypeError) as exc:
-            log_structured(
-                logger,
-                "error",
+            logger.error(
                 "Invalid Polar webhook payload",
                 provider="polar",
                 trace_id=trace_id,
@@ -175,9 +167,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "ping"}
 
         if not event.user_id:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Polar webhook event missing user_id",
                 provider="polar",
                 trace_id=trace_id,
@@ -187,9 +177,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
 
         connection = self.connection_repo.get_by_provider_user_id(db, "polar", str(event.user_id))
         if not connection:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "No connection found for Polar user",
                 provider="polar",
                 trace_id=trace_id,
@@ -198,9 +186,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
             return {"status": "user_not_found", "polar_user_id": event.user_id}
 
         if not event.url:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Polar webhook event missing url",
                 provider="polar",
                 trace_id=trace_id,
@@ -213,9 +199,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
 
         self.connection_repo.update_last_synced_at(db, connection)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Fetching Polar entity from webhook URL",
             provider="polar",
             trace_id=trace_id,
@@ -239,17 +223,14 @@ class PolarWebhookHandler(BaseWebhookHandler):
             return {"status": "accepted", "user_id": str(user_id), "saved": saved}
         except Exception as exc:
             db.rollback()
-            log_and_capture_error(
-                exc,
-                logger,
+            logger.error(
                 "Error fetching/saving Polar webhook data",
-                extra={
-                    "provider": "polar",
-                    "trace_id": trace_id,
-                    "event": event.event,
-                    "polar_user_id": event.user_id,
-                    "path": path,
-                    "user_id": str(user_id),
-                },
+                exc_info=exc,
+                provider="polar",
+                trace_id=trace_id,
+                event=event.event,
+                polar_user_id=event.user_id,
+                path=path,
+                user_id=str(user_id),
             )
             return {"status": "error", "error": str(exc), "user_id": str(user_id)}

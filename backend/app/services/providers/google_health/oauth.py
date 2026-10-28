@@ -1,4 +1,3 @@
-import logging
 from typing import Any
 from urllib.parse import urlencode
 
@@ -14,9 +13,9 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GoogleOAuth(BaseOAuthTemplate):
@@ -92,9 +91,7 @@ class GoogleOAuth(BaseOAuthTemplate):
             response.raise_for_status()
             return response.json().get(field)
         except Exception as e:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 f"Failed to fetch Google {field}: {e}",
                 provider=self.provider_name,
                 task="get_provider_user_info",

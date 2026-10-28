@@ -17,15 +17,14 @@ Redis keys (scoped to provider + provider_user_id + scope):
 *scope* separates concurrent sync types, e.g. "pull" vs "backfill".
 """
 
-import logging
 import threading
 from uuid import UUID, uuid4
 
 from app.config import settings
 from app.integrations.redis_client import get_redis_client
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _PREFIX = "linked_sync"
 # Garmin backfill holds its lock across tasks with no renewer; gc_stuck_backfills recovers it.
@@ -174,9 +173,7 @@ def bind_primary_lease(
                 held = renew_primary(provider, provider_user_id, user_id, token, scope=scope)
             except Exception as exc:
                 # An unreachable Redis means nobody else can take the lock either, so keep holding.
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     f"Could not renew {provider} {scope} lease: {exc}",
                     provider=provider,
                     action="lease_renew_error",
@@ -186,9 +183,7 @@ def bind_primary_lease(
                 continue
             if not held:
                 # release_primary is token-guarded, so the run's own release stays a safe no-op.
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     f"Lost {provider} {scope} lease mid-sync — another profile now holds it",
                     provider=provider,
                     action="lease_lost",
@@ -286,9 +281,7 @@ def get_secondary_user_ids(
         try:
             uids.append(UUID(raw))
         except ValueError:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 f"Ignoring invalid UUID in secondaries set: {raw}",
                 provider=provider,
                 action="invalid_secondary",

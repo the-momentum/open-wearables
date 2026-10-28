@@ -2,14 +2,13 @@
 
 import re
 import unicodedata
-from logging import getLogger
 
 from app.schemas.enums import DeviceType, ProviderName
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 from .samsung import SAMSUNG_DEVICE_NAMES
 
-logger = getLogger(__name__)
+logger = get_logger(__name__)
 
 # Providers that only ship a single form factor; model matching is skipped
 SINGLE_DEVICE_PROVIDER_TYPE: dict[ProviderName, DeviceType] = {
@@ -225,9 +224,7 @@ def infer_device_type(
         device_model, reported_type = None, None
     device_type = _resolve_device_type(provider, device_model, original_source_name, reported_type)
     if device_type == DeviceType.OTHER:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             f"Device mapped to other: {device_model}",
             provider=provider.value,
             action="device_type_other",

@@ -4,7 +4,6 @@ from collections import Counter
 from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
-from logging import Logger, getLogger
 from typing import Iterable, TypedDict
 from uuid import UUID, uuid4
 
@@ -46,11 +45,12 @@ from app.schemas.providers.mobile_sdk.sync_request import (
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from .sleep_service import handle_sleep_data
+
+logger = get_logger(__name__)
 
 # Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
 # in mg/dL round-trip with a ~0.1% offset under this factor.
@@ -140,9 +140,7 @@ def _parse_sync_request(raw: dict) -> tuple[SDKSyncRequest, list[InvalidRecord]]
 class ImportService:
     def __init__(
         self,
-        log: Logger,
     ):
-        self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
@@ -568,9 +566,7 @@ class ImportService:
                 data = self._parse_json_content(request_content)
 
             if not data:
-                log_structured(
-                    self.log,
-                    "warning",
+                logger.warning(
                     "No valid data found in request",
                     action="sdk_validate_data",
                     batch_id=batch_id,
@@ -599,9 +595,7 @@ class ImportService:
                 self.user_connection_repo.update_last_synced_at(db_session, connection)
 
             # Log detailed processing results
-            log_structured(
-                self.log,
-                "info",
+            logger.info(
                 f"{provider.capitalize()} data import completed",
                 provider=f"{provider}",
                 action=f"{provider}_sdk_import_complete",
@@ -644,9 +638,7 @@ class ImportService:
                 first_loc = f"{first['collection']}[{first['index']}]"
                 if first.get("loc"):
                     first_loc += f".{first['loc']}"
-                log_structured(
-                    self.log,
-                    "warning",
+                logger.warning(
                     f"{provider.capitalize()} SDK dropped invalid records",
                     provider=f"{provider}",
                     action=f"{provider}_sdk_records_dropped",
@@ -681,27 +673,15 @@ class ImportService:
             # Drop `input` (raw record value — may contain health data/PII) and `url`
             # before sending to Sentry; keep loc/msg/type. Preserve the 20-error cap.
             safe_errors = [{k: v for k, v in err.items() if k not in ("input", "url")} for err in errors[:20]]
-            log_and_capture_error(
-                e,
-                self.log,
-                f"{provider} SDK payload failed validation for user {user_id}",
-                extra={
-                    "user_id": user_id,
-                    "batch_id": batch_id,
-                    "provider": provider,
-                    "error_count": len(errors),
-                    "errors": safe_errors,
-                },
-            )
-            log_structured(
-                self.log,
-                "warning",
+            logger.error(
                 f"{provider.capitalize()} SDK payload validation failed",
-                provider=f"{provider}",
+                exc_info=e,
+                provider=provider,
                 action=f"{provider}_sdk_validation_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_count=len(errors),
+                errors=safe_errors,
                 first_error_loc=".".join(str(x) for x in first.get("loc", [])),
                 first_error_msg=first.get("msg"),
             )
@@ -712,21 +692,13 @@ class ImportService:
             )
 
         except Exception as e:
-            log_and_capture_error(
-                e,
-                self.log,
-                f"Import failed for user {user_id}",
-                extra={"user_id": user_id, "batch_id": batch_id, "provider": provider},
-            )
-            log_structured(
-                self.log,
-                "error",
-                f"Import failed for user {user_id}: {e}",
-                provider=f"{provider}",
+            logger.error(
+                f"{provider.capitalize()} SDK import failed",
+                exc_info=e,
+                provider=provider,
                 action=f"{provider}_sdk_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
-                error_type=type(e).__name__,
             )
             return UploadDataResponse(
                 status_code=400,
@@ -768,4 +740,4 @@ class ImportService:
             return None
 
 
-import_service = ImportService(log=getLogger(__name__))
+import_service = ImportService()

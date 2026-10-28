@@ -12,7 +12,6 @@ Object keys are always namespaced under ``<user_id>/raw/``; every call verifies 
 key belongs to the requesting user so one user cannot touch another's upload.
 """
 
-from logging import Logger, getLogger
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -32,13 +31,12 @@ from app.services.providers.apple.apple_xml.aws_service import (
     get_s3_client,
     require_bucket_name,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class MultipartUploadService:
-    def __init__(self, log: Logger) -> None:
-        self.log = log
-
     def _require_client(self) -> Any:
 
         client = get_s3_client()
@@ -189,9 +187,7 @@ class MultipartUploadService:
         except ClientError as e:
             raise self._client_error(e, "Failed to create multipart upload") from e
 
-        log_structured(
-            self.log,
-            "debug",
+        logger.debug(
             "Created Apple XML multipart upload",
             provider="apple_xml",
             action="multipart_upload_created",
@@ -235,9 +231,7 @@ class MultipartUploadService:
                 raise self._client_error(e, "Failed to sign upload part") from e
             urls.append(SignedPart(part_number=part_number, url=url))
 
-        log_structured(
-            self.log,
-            "debug",
+        logger.debug(
             "Signed Apple XML multipart upload parts",
             provider="apple_xml",
             action="multipart_upload_parts_signed",
@@ -278,9 +272,7 @@ class MultipartUploadService:
         except ClientError as e:
             raise self._client_error(e, "Failed to complete multipart upload") from e
 
-        log_structured(
-            self.log,
-            "debug",
+        logger.debug(
             "Completed Apple XML multipart upload",
             provider="apple_xml",
             action="multipart_upload_completed",
@@ -304,9 +296,7 @@ class MultipartUploadService:
                 return
             raise self._client_error(e, "Failed to abort multipart upload") from e
 
-        log_structured(
-            self.log,
-            "debug",
+        logger.debug(
             "Aborted Apple XML multipart upload",
             provider="apple_xml",
             action="multipart_upload_aborted",
@@ -351,4 +341,4 @@ class MultipartUploadService:
         )
 
 
-multipart_upload_service = MultipartUploadService(getLogger(__name__))
+multipart_upload_service = MultipartUploadService()

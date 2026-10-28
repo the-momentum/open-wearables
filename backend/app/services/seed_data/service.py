@@ -1,6 +1,5 @@
 """SeedDataService - orchestrates seed data generation across all entity types."""
 
-import logging
 import os
 import random
 from datetime import date, datetime, timedelta, timezone
@@ -18,6 +17,7 @@ from app.services.health_score_service import health_score_service
 from app.services.providers.factory import ProviderFactory
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
+from app.utils.structured_logging import get_logger
 
 from .constants import DAILY_ACTIVITY_SERIES, PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
 from .event_generators import (
@@ -32,7 +32,7 @@ from .health_score_generators import _generate_health_scores
 from .support_generators import _generate_time_series_samples, _generate_user_connections
 from .time_series_generators import ProviderDescriptor, _generate_continuous_time_series
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _random_descriptor(prov: ProviderName, fake: Faker) -> ProviderDescriptor:
@@ -279,14 +279,14 @@ class SeedDataService:
 
             db.commit()
             logger.info(
-                "Seed user %d/%d created (workouts=%d, sleeps=%d, meals=%d, ts=%d, health_scores=%d)",
-                user_num,
-                request.num_users,
-                summary["workouts"],
-                summary["sleeps"],
-                summary["meals"],
-                summary["time_series_samples"],
-                summary["health_scores"],
+                "Seed user created",
+                user_num=user_num,
+                num_users=request.num_users,
+                workouts=summary["workouts"],
+                sleeps=summary["sleeps"],
+                meals=summary["meals"],
+                time_series_samples=summary["time_series_samples"],
+                health_scores=summary["health_scores"],
             )
 
         summary["seed_used"] = seed

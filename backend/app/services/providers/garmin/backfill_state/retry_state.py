@@ -1,16 +1,15 @@
 """Retry phase management: timed-out entries, retry queue, retry window state."""
 
 import json
-import logging
 from typing import Any
 from uuid import UUID
 
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import REDIS_TTL
 from app.services.providers.garmin.backfill_state.core import _get_key
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def record_timed_out_entry(user_id: str | UUID, data_type: str, window_idx: int) -> None:
@@ -51,9 +50,7 @@ def enter_retry_phase(user_id: str | UUID, retry_entries: list[dict[str, Any]]) 
     get_redis_client().setex(_get_key(uid, "retry_phase"), REDIS_TTL, "1")
     get_redis_client().setex(_get_key(uid, "retry_targets"), REDIS_TTL, json.dumps(retry_entries))
 
-    log_structured(
-        logger,
-        "info",
+    logger.info(
         "Entering retry phase",
         provider="garmin",
         user_id=uid,

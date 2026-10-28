@@ -1,7 +1,8 @@
-"""Tests for LOG_FORMAT / LOG_LEVEL and their effect on log_structured and stdlib logging.
+"""Tests for the app logger and for LOG_FORMAT / LOG_LEVEL and their effect on app and stdlib logging.
 
 The default (LOG_FORMAT=legacy, LOG_LEVEL unset) must keep the output exactly as it was
-before these settings existed; the expected lines below were recorded from that code.
+before these settings existed; the expected lines below were recorded from that code. The one
+exception: debug lines are dropped unless LOG_LEVEL=DEBUG.
 """
 
 import json
@@ -18,6 +19,7 @@ from uuid import UUID
 
 import pytest
 import uvicorn
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from freezegun import freeze_time
 from pydantic import ValidationError
@@ -27,14 +29,14 @@ from app.integrations.celery.core import setup_celery_logging
 from app.main import api
 from app.utils.config_utils import LogFormat, LogLevel
 from app.utils.context import trace_id_var
-from app.utils.logging_setup import JsonFormatter, TextFormatter, configure_logging
-from app.utils.structured_logging import log_structured
+from app.utils.logging_setup import AppHandler, JsonFormatter, TextFormatter, configure_app_logger, configure_logging
+from app.utils.structured_logging import get_logger, strict_attributes
 
 FROZEN_AT = "2026-01-02T03:04:05.123456+00:00"
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 LEGACY_FORMAT = "[%(asctime)s - %(name)s] (%(levelname)s) %(message)s"
 
-logger = logging.getLogger("app.test_logging")
+logger = get_logger("app.test_logging")
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +50,7 @@ def _no_trace_id() -> Iterator[None]:
 @pytest.fixture
 def restore_logging() -> Iterator[None]:
     """Snapshot and restore the logger and handler state that configure_logging and Celery change."""
-    names = ["", "uvicorn", "uvicorn.error", "uvicorn.access", "celery", "httpx"]
+    names = ["", "app", "uvicorn", "uvicorn.error", "uvicorn.access", "celery", "httpx"]
     saved = {}
     for name in names:
         target = logging.getLogger(name)
@@ -68,13 +70,33 @@ def restore_logging() -> Iterator[None]:
     trace_logger.filters[:] = saved_filters
 
 
-def _record(message: str, *args: object, exc: BaseException | None = None) -> logging.LogRecord:
+@pytest.fixture
+def lenient() -> Iterator[None]:
+    """Production behaviour: attribute problems do not raise at the call site."""
+    strict_attributes(False)
+    yield
+    strict_attributes(True)
+
+
+def _record(name: str, message: str, *args: object, exc: BaseException | None = None) -> logging.LogRecord:
     exc_info = (type(exc), exc, exc.__traceback__) if exc else None
-    return logging.LogRecord("app.test_logging", logging.ERROR, __file__, 1, message, args, exc_info)
+    return logging.LogRecord(name, logging.ERROR, __file__, 1, message, args, exc_info)
+
+
+def _raised(exc: Exception) -> Exception:
+    try:
+        raise exc
+    except Exception as caught:
+        return caught
+
+
+def _with_log_level(level: LogLevel | None) -> None:
+    with patch.object(settings, "log_level", level):
+        configure_app_logger()
 
 
 class TestLegacyOutputUnchanged:
-    """With the defaults, log_structured prints exactly what it printed before."""
+    """With the defaults, the app logger prints exactly what log_structured printed before."""
 
     @freeze_time(FROZEN_AT)
     @pytest.mark.parametrize(
@@ -88,25 +110,11 @@ class TestLegacyOutputUnchanged:
                 '"provider": "garmin", "user_id": "u1"}',
             ),
             (
-                "debug",
-                "Debug lines are not filtered",
+                "warning",
+                "Level names are lowercased",
                 {},
-                '{"timestamp": "2026-01-02T03:04:05.123456+00:00", "level": "debug", '
-                '"message": "Debug lines are not filtered", "provider": null}',
-            ),
-            (
-                "WARN",
-                "Level strings are lowercased, aliases kept",
-                {},
-                '{"timestamp": "2026-01-02T03:04:05.123456+00:00", "level": "warn", '
-                '"message": "Level strings are lowercased, aliases kept", "provider": null}',
-            ),
-            (
-                "bogus",
-                "Unknown levels pass through",
-                {},
-                '{"timestamp": "2026-01-02T03:04:05.123456+00:00", "level": "bogus", '
-                '"message": "Unknown levels pass through", "provider": null}',
+                '{"timestamp": "2026-01-02T03:04:05.123456+00:00", "level": "warning", '
+                '"message": "Level names are lowercased", "provider": null}',
             ),
             (
                 "info",
@@ -140,7 +148,7 @@ class TestLegacyOutputUnchanged:
         attributes: dict,
         expected: str,
     ) -> None:
-        log_structured(logger, level, message, **attributes)
+        getattr(logger, level)(message, **attributes)
 
         assert capsys.readouterr().out == expected + "\n"
 
@@ -148,8 +156,8 @@ class TestLegacyOutputUnchanged:
     def test_trace_id_from_context_keeps_the_caller_key_order(self, capsys: pytest.CaptureFixture[str]) -> None:
         token = trace_id_var.set("abcd1234")
         try:
-            log_structured(logger, "info", "ctx trace", trace_id=None, after="x")
-            log_structured(logger, "info", "explicit trace", trace_id="zz")
+            logger.info("ctx trace", trace_id=None, after="x")
+            logger.info("explicit trace", trace_id="zz")
         finally:
             trace_id_var.reset(token)
 
@@ -160,22 +168,41 @@ class TestLegacyOutputUnchanged:
             '"provider": null, "trace_id": "zz"}',
         ]
 
-    def test_output_does_not_go_through_logging_handlers(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.DEBUG):
-            log_structured(logger, "error", "not a log record")
+    def test_app_records_do_not_reach_the_root_handlers(self) -> None:
+        records: list[logging.LogRecord] = []
 
-        assert caplog.records == []
+        class Keep(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        keep = Keep()
+        logging.getLogger().addHandler(keep)
+        try:
+            logger.error("not printed twice")
+        finally:
+            logging.getLogger().removeHandler(keep)
+
+        assert records == []
+
+    def test_the_alert_flag_is_not_printed(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch("app.utils.structured_logging.sentry_sdk"):
+            logger.warning("flagged", alert=True)
+
+        assert "alert" not in json.loads(capsys.readouterr().out)
 
     def test_app_import_keeps_the_previous_stdlib_setup(self) -> None:
-        """Importing app.main in a fresh process prints stdlib and structured lines as before."""
+        """Importing app.main in a fresh process prints library lines as before, app lines as JSON."""
         code = (
             "import logging\n"
             "import app.main\n"
-            "from app.utils.structured_logging import log_structured\n"
-            "log = logging.getLogger('app.check')\n"
-            "log.info('stdlib %s', 'line')\n"
-            "log.debug('hidden')\n"
-            "log_structured(log, 'debug', 'structured line')\n"
+            "from app.utils.structured_logging import get_logger\n"
+            "check = logging.getLogger('library.check')\n"
+            "check.info('stdlib %s', 'line')\n"
+            "check.debug('hidden')\n"
+            "app_logger = get_logger('app.check')\n"
+            "app_logger.debug('hidden structured line')\n"
+            "app_logger.info('structured line')\n"
+            "logging.getLogger('app.plain').info('plain app %s', 'line')\n"
         )
         # Explicit values so a developer's config/.env cannot change the outcome.
         env = os.environ | {"LOG_FORMAT": "legacy", "LOG_LEVEL": "", "TELEMETRY_ENABLED": "false"}
@@ -184,11 +211,18 @@ class TestLegacyOutputUnchanged:
         )
 
         assert result.returncode == 0, result.stderr
-        lines = [line for line in result.stdout.splitlines() if "app.check" in line or "structured line" in line]
-        assert len(lines) == 2, result.stdout
-        assert re.fullmatch(r"\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} - app\.check\] \(INFO\) stdlib line", lines[0])
+        lines = [
+            line
+            for line in result.stdout.splitlines()
+            if "library.check" in line or "structured line" in line or "plain app" in line
+        ]
+        assert len(lines) == 3, result.stdout
+        assert re.fullmatch(r"\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} - library\.check\] \(INFO\) stdlib line", lines[0])
         assert re.fullmatch(
-            r'\{"timestamp": "[^"]+", "level": "debug", "message": "structured line", "provider": null\}', lines[1]
+            r'\{"timestamp": "[^"]+", "level": "info", "message": "structured line", "provider": null\}', lines[1]
+        )
+        assert re.fullmatch(
+            r'\{"timestamp": "[^"]+", "level": "info", "message": "plain app line", "provider": null\}', lines[2]
         )
         assert "hidden" not in result.stdout
 
@@ -202,38 +236,167 @@ class TestLegacyOutputUnchanged:
         assert root.level == level
 
 
-class TestUnserializableValues:
-    """An unserializable attribute raises in the caller in every mode, so text mode in
-    development does not hide a crash that legacy or json mode would hit in production."""
+class TestAppLogger:
+    def test_names_outside_the_app_package_are_put_under_it(self) -> None:
+        assert get_logger("scripts.init.create_svix_db").name == "app.scripts.init.create_svix_db"
+        assert get_logger("app.services.x").name == "app.services.x"
+
+    def test_records_point_at_the_calling_code(self) -> None:
+        records: list[logging.LogRecord] = []
+
+        class Keep(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        keep = Keep()
+        logging.getLogger("app").addHandler(keep)
+        try:
+            logger.info("where")
+            logger.log(logging.WARNING, "where")
+        finally:
+            logging.getLogger("app").removeHandler(keep)
+
+        assert [record.funcName for record in records] == ["test_records_point_at_the_calling_code"] * 2
+        assert {record.pathname for record in records} == {__file__}
+
+    def test_configured_once(self, restore_logging: None) -> None:
+        configure_logging()
+        configure_logging()
+        get_logger("app.another")
+
+        app_logger = logging.getLogger("app")
+        assert len([handler for handler in app_logger.handlers if isinstance(handler, AppHandler)]) == 1
+        assert app_logger.propagate is False
+
+
+class TestExceptions:
+    def test_exception_is_logged_with_its_traceback(self, capsys: pytest.CaptureFixture[str]) -> None:
+        logger.error("Sync failed", exc_info=_raised(ValueError("boom")), provider="garmin", user_id="u1")
+
+        entry = json.loads(capsys.readouterr().out)
+        assert entry["level"] == "error"
+        assert entry["provider"] == "garmin"
+        assert entry["user_id"] == "u1"
+        assert entry["error_type"] == "ValueError"
+        assert entry["traceback"].startswith("Traceback (most recent call last):")
+        assert entry["traceback"].endswith("ValueError: boom")
+        assert "error" not in entry
+
+    def test_warnings_keep_the_traceback(self, capsys: pytest.CaptureFixture[str]) -> None:
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            logger.warning("Marker unavailable", exc_info=True)
+
+        entry = json.loads(capsys.readouterr().out)
+        assert entry["level"] == "warning"
+        assert entry["traceback"].endswith("ValueError: boom")
+
+    def test_error_attribute_without_exception(self, capsys: pytest.CaptureFixture[str]) -> None:
+        logger.error("Sync failed", error="boom")
+
+        entry = json.loads(capsys.readouterr().out)
+        assert entry["error"] == "boom"
+        assert "traceback" not in entry
+
+    def test_client_errors_are_warnings(self, capsys: pytest.CaptureFixture[str]) -> None:
+        logger.error("Token refresh rejected", exc_info=_raised(HTTPException(status_code=401)))
+        logger.error("Provider failed", exc_info=_raised(HTTPException(status_code=502)))
+
+        levels = [json.loads(line)["level"] for line in capsys.readouterr().out.splitlines()]
+        assert levels == ["warning", "error"]
+
+    def test_text_format_prints_the_traceback_below_the_line(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch.object(settings, "log_format", LogFormat.TEXT):
+            logger.error("Sync failed", exc_info=_raised(ValueError("boom")), user_id="u1")
+
+        first, *rest = capsys.readouterr().out.rstrip("\n").splitlines()
+        assert first.endswith("Sync failed  user_id=u1 error_type=ValueError")
+        assert rest[0] == "Traceback (most recent call last):"
+        assert rest[-1] == "ValueError: boom"
+
+
+class TestAttributeChecks:
+    """In tests a bad attribute raises at the call site in every mode, so text mode in
+    development does not hide what legacy or json mode would print in production."""
 
     @pytest.mark.parametrize("log_format", [LogFormat.LEGACY, LogFormat.JSON, LogFormat.TEXT])
-    def test_raises_in_every_format(self, log_format: LogFormat) -> None:
+    def test_unserializable_value_raises_in_every_format(self, log_format: LogFormat) -> None:
         with patch.object(settings, "log_format", log_format), pytest.raises(TypeError, match="not JSON serializable"):
-            log_structured(logger, "info", "bad", value=datetime(2026, 1, 1))
+            logger.info("bad", value=datetime(2026, 1, 1))
 
     def test_raises_even_when_the_level_is_filtered_out(self) -> None:
-        with patch.object(settings, "log_level", LogLevel.ERROR), pytest.raises(TypeError):
-            log_structured(logger, "debug", "bad", value=object())
+        with pytest.raises(TypeError):
+            logger.debug("bad", value=object())
+
+    @pytest.mark.parametrize("name", ["timestamp", "level", "message"])
+    def test_base_field_names_are_rejected(self, name: str) -> None:
+        with pytest.raises(ValueError, match="cannot be named"):
+            logger.info("clash", **{name: "x"})
+
+    @pytest.mark.parametrize("name", ["error_type", "traceback"])
+    def test_exception_field_names_are_rejected_with_an_exception(self, name: str) -> None:
+        with pytest.raises(ValueError, match="cannot be named"):
+            logger.warning("clash", exc_info=ValueError("boom"), **{name: "x"})
+
+    def test_exception_field_names_are_allowed_without_an_exception(self, capsys: pytest.CaptureFixture[str]) -> None:
+        logger.warning("no clash", error_type="ValueError")
+
+        assert json.loads(capsys.readouterr().out)["error_type"] == "ValueError"
+
+    def test_in_production_an_exception_field_keeps_its_value_apart(
+        self, lenient: None, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        logger.warning("clash", exc_info=_raised(ValueError("boom")), error_type="custom")
+
+        line = json.loads(capsys.readouterr().out)
+        assert (line["error_type"], line["attr_error_type"]) == ("ValueError", "custom")
+
+    @freeze_time(FROZEN_AT)
+    def test_in_production_the_line_is_printed_anyway(self, lenient: None, capsys: pytest.CaptureFixture[str]) -> None:
+        logger.info("odd values", value=datetime(2026, 1, 1), timestamp="from a header", message="other")
+
+        assert capsys.readouterr().out == (
+            '{"timestamp": "2026-01-02T03:04:05.123456+00:00", "level": "info", "message": "odd values", '
+            '"provider": null, "value": "2026-01-01 00:00:00", "attr_timestamp": "from a header", '
+            '"attr_message": "other"}\n'
+        )
 
 
 class TestLogLevel:
     @pytest.mark.parametrize(
-        ("level", "printed"),
-        [("debug", False), ("info", False), ("bogus", False), ("warning", True), ("warn", True), ("error", True)],
+        ("level", "printed"), [("debug", False), ("info", False), ("warning", True), ("error", True)]
     )
-    def test_log_structured_respects_log_level(
-        self, capsys: pytest.CaptureFixture[str], level: str, printed: bool
+    def test_app_logger_respects_log_level(
+        self, restore_logging: None, capsys: pytest.CaptureFixture[str], level: str, printed: bool
     ) -> None:
-        with patch.object(settings, "log_level", LogLevel.WARNING):
-            log_structured(logger, level, "gated")
+        _with_log_level(LogLevel.WARNING)
+        getattr(logger, level)("gated")
 
         assert bool(capsys.readouterr().out) is printed
 
-    def test_applied_to_root_and_framework_loggers(self, restore_logging: None) -> None:
+    def test_debug_is_dropped_unless_log_level_asks_for_it(
+        self, restore_logging: None, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _with_log_level(None)
+        logger.debug("hidden")
+        _with_log_level(LogLevel.DEBUG)
+        logger.debug("shown")
+
+        assert [json.loads(line)["message"] for line in capsys.readouterr().out.splitlines()] == ["shown"]
+
+    def test_critical_level_drops_errors(self, restore_logging: None, capsys: pytest.CaptureFixture[str]) -> None:
+        """The record is never created, so it does not reach Sentry either (documented)."""
+        _with_log_level(LogLevel.CRITICAL)
+        logger.error("Sync failed", exc_info=_raised(ValueError("boom")))
+
+        assert capsys.readouterr().out == ""
+
+    def test_applied_to_app_root_and_framework_loggers(self, restore_logging: None) -> None:
         with patch.object(settings, "log_level", LogLevel.WARNING):
             configure_logging()
 
-        for name in ("", "uvicorn", "uvicorn.error", "celery"):
+        for name in ("", "app", "uvicorn", "uvicorn.error", "celery"):
             assert logging.getLogger(name).level == logging.WARNING
 
     @pytest.mark.parametrize("log_format", [LogFormat.LEGACY, LogFormat.JSON])
@@ -246,11 +409,11 @@ class TestLogLevel:
         with patch.object(settings, "log_format", log_format), patch.object(settings, "log_level", LogLevel.ERROR):
             configure_logging()
             logging.getLogger("httpx").warning("httpx warning")
-            logging.getLogger("app.test_logging").error("app error")
+            logging.getLogger("library.test_logging").error("library error")
 
         out = capsys.readouterr().out
         assert "httpx warning" not in out
-        assert "app error" in out
+        assert "library error" in out
 
 
 class TestSettings:
@@ -290,11 +453,9 @@ class TestSettings:
 
 
 class TestTextFormat:
-    def test_log_structured_prints_a_readable_line(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_app_logger_prints_a_readable_line(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch.object(settings, "log_format", LogFormat.TEXT):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 "Sync failed",
                 provider="garmin",
                 user_id="u1",
@@ -311,21 +472,20 @@ class TestTextFormat:
         ), line
 
     def test_stdlib_formatter(self) -> None:
-        try:
-            raise ValueError("boom")
-        except ValueError as error:
-            line = TextFormatter().format(_record("failed %s", "x", exc=error))
+        line = TextFormatter().format(
+            _record("library.test_logging", "failed %s", "x", exc=_raised(ValueError("boom")))
+        )
 
         first, *rest = line.splitlines()
-        assert re.fullmatch(r"\d\d:\d\d:\d\d\.\d{3} ERROR    app\.test_logging  failed x", first)
+        assert re.fullmatch(r"\d\d:\d\d:\d\d\.\d{3} ERROR    library\.test_logging  failed x", first)
         assert rest[-1] == "ValueError: boom"
 
 
 class TestJsonFormat:
     @freeze_time(FROZEN_AT)
-    def test_log_structured_output_matches_legacy(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_app_logger_output_matches_legacy(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch.object(settings, "log_format", LogFormat.JSON):
-            log_structured(logger, "info", "Sync done", provider="garmin", user_id="u1")
+            logger.info("Sync done", provider="garmin", user_id="u1")
 
         assert capsys.readouterr().out == (
             '{"timestamp": "2026-01-02T03:04:05.123456+00:00", "level": "info", "message": "Sync done", '
@@ -333,16 +493,20 @@ class TestJsonFormat:
         )
 
     def test_stdlib_formatter(self) -> None:
-        try:
-            raise ValueError("boom")
-        except ValueError as error:
-            entry = json.loads(JsonFormatter().format(_record("failed %s", "x", exc=error)))
+        record = _record("library.test_logging", "failed %s", "x", exc=_raised(ValueError("boom")))
+        entry = json.loads(JsonFormatter().format(record))
 
         assert entry["level"] == "error"
         assert entry["message"] == "failed x"
-        assert entry["logger"] == "app.test_logging"
+        assert entry["logger"] == "library.test_logging"
         assert entry["exception"].endswith("ValueError: boom")
         assert entry["timestamp"].endswith("+00:00")
+
+    def test_app_records_without_attributes_get_the_app_fields(self) -> None:
+        entry = json.loads(JsonFormatter().format(_record("app.test_logging", "failed %s", "x")))
+
+        assert list(entry) == ["timestamp", "level", "message", "provider"]
+        assert entry["message"] == "failed x"
 
 
 class TestConfigureLogging:
@@ -380,6 +544,7 @@ class TestConfigureLogging:
             assert logging.getLogger(name).handlers == []
             assert logging.getLogger(name).propagate is True
         assert isinstance(logging.getLogger().handlers[0].formatter, JsonFormatter)
+        assert logging.getLogger("app").propagate is False
 
 
 class TestCeleryLogging:

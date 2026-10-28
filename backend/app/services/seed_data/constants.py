@@ -1,6 +1,5 @@
 """Constants and configuration for seed data generation."""
 
-import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -8,9 +7,9 @@ from pathlib import Path
 import yaml
 
 from app.schemas.enums import ProviderName, SeriesType, WorkoutType
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Provider & demographic constants
@@ -183,9 +182,7 @@ def _load_series_type_config() -> tuple[dict[SeriesType, SeriesTypeGenSpec], lis
         with open(config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
     except FileNotFoundError:
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             "series_type_config.yaml not found - time series generation will be skipped",
             provider="seed_data_service",
             task="load_config",
@@ -196,9 +193,7 @@ def _load_series_type_config() -> tuple[dict[SeriesType, SeriesTypeGenSpec], lis
         try:
             cadence = Cadence(vals["cadence"])
         except (KeyError, ValueError):
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 f"Skipping '{name}' - missing or invalid cadence",
                 provider="seed_data_service",
                 task="load_config",
@@ -243,9 +238,7 @@ def _parse_paired(name: str, vals: dict) -> PairedGenSpec | None:
         frequency = Cadence(vals.get("frequency", "daily"))
         return PairedGenSpec(cadence=frequency, members=members)
     except (KeyError, ValueError):
-        log_structured(
-            logger,
-            "warning",
+        logger.warning(
             f"Skipping paired entry '{name}' - malformed members or frequency",
             provider="seed_data_service",
             task="load_config",
@@ -259,9 +252,7 @@ def _parse_workout_types(raw: list[str]) -> frozenset[WorkoutType]:
         try:
             result.add(WorkoutType(wt))
         except ValueError:
-            log_structured(
-                logger,
-                "warning",
+            logger.warning(
                 f"Unknown workout type '{wt}' in series_type_config.yaml",
                 provider="seed_data_service",
                 task="load_config",

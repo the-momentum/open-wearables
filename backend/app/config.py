@@ -57,10 +57,10 @@ class Settings(BaseSettings):
     log_error_response_body_max_per_minute: int = 60  # cap logged bodies/min
 
     # LOGGING SETTINGS
-    # legacy: JSON from log_structured, plain text from stdlib loggers (the output before
+    # legacy: JSON from the app logger, plain text from other loggers (the output before
     # LOG_FORMAT existed). json: every line JSON. text: every line human-readable.
     log_format: LogFormat = LogFormat.LEGACY
-    # None keeps the per-logger defaults (stdlib INFO, log_structured unfiltered).
+    # None keeps the per-logger defaults (INFO for the app and the root logger).
     log_level: LogLevel | None = None
     # Export logs over OTLP/HTTP as well (needs the `otel` extra). Endpoint, headers and
     # resource come from the standard OTEL_* variables; OTEL_SDK_DISABLED=true also turns it off.

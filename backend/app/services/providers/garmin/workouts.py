@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Iterable
@@ -17,9 +16,9 @@ from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.dates import offset_to_iso
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GarminWorkouts(BaseWorkoutsTemplate):
@@ -88,9 +87,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                     all_activities.extend(activities)
             except Exception as e:
                 # Log error but continue with other chunks
-                log_structured(
-                    logger,
-                    "warning",
+                logger.warning(
                     f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
                     provider="garmin",
                     task="get_workouts_historical",
@@ -270,7 +267,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         REST/summary endpoints are not used. Historical data is fetched
         via the backfill API which delivers data through webhooks.
         """
-        self.logger.info(f"Garmin activities for user {user_id} arrive via webhooks (no REST fetch)")
+        logger.info("Garmin activities arrive via webhooks (no REST fetch)", provider="garmin", user_id=str(user_id))
         return 0
 
     def get_activity_detail(

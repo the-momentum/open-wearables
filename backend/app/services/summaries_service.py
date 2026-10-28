@@ -3,7 +3,6 @@
 import contextlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
@@ -54,6 +53,9 @@ from app.utils.pagination import (
     encode_activity_cursor,
     encode_cursor,
 )
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 # Activity summary constants
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
@@ -100,8 +102,7 @@ def _activity_key(row: dict) -> tuple:
 class SummariesService:
     """Service for aggregating daily health summaries."""
 
-    def __init__(self, log: Logger):
-        self.logger = log
+    def __init__(self):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
         self.user_repo = UserRepository(User)
@@ -271,7 +272,12 @@ class SummariesService:
         limit: int,
     ) -> PaginatedResponse[SleepSummary]:
         """Get daily sleep summaries aggregated by date, provider, and device."""
-        self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
+        logger.debug(
+            "Fetching sleep summaries",
+            user_id=str(user_id),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
         results = self.event_record_repo.get_sleep_summaries(
             db_session, user_id, start_date, end_date, cursor, limit, *self._priority_orders(db_session)
@@ -485,7 +491,12 @@ class SummariesService:
         - Intensity minutes (HR zones using max HR = 220 - age):
           light 50-63%, moderate 64-76%, vigorous 77-93%
         """
-        self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
+        logger.debug(
+            "Fetching activity summaries",
+            user_id=str(user_id),
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
         # Only this page's days are aggregated, so its cost follows the page, not the period.
         results = self._activity_page_days(db_session, user_id, start_date, end_date, cursor, limit, sort_order)
@@ -828,9 +839,11 @@ class SummariesService:
         if not 1 <= latest_window_hours <= 24:
             raise ValueError("latest_window_hours must be between 1 and 24")
 
-        self.logger.debug(
-            f"Fetching body summary for user {user_id} "
-            f"(avg_period={average_period_days}d, latest_window={latest_window_hours}h)"
+        logger.debug(
+            "Fetching body summary",
+            user_id=str(user_id),
+            average_period_days=average_period_days,
+            latest_window_hours=latest_window_hours,
         )
 
         now = datetime.now(timezone.utc)
@@ -990,4 +1003,4 @@ class SummariesService:
         )
 
 
-summaries_service = SummariesService(log=getLogger(__name__))
+summaries_service = SummariesService()

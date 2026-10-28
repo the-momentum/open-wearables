@@ -5,7 +5,6 @@ Handles webhook events that change the state of a user's Garmin connection:
 - deregistrations: mark the connection as revoked, unless Garmin confirms the current grant is active
 """
 
-import logging
 from typing import Any
 
 from app.database import DbSession
@@ -15,9 +14,9 @@ from app.schemas.auth import ConnectionStatus
 from app.services.outgoing_webhooks.events import on_connection_revoked
 from app.services.providers.api_client import get_valid_token
 from app.services.providers.garmin.oauth import GarminOAuth
-from app.utils.structured_logging import log_structured
+from app.utils.structured_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _current_grant_is_active(
@@ -42,9 +41,7 @@ def _current_grant_is_active(
         )
         return oauth.get_user_id(access_token) == garmin_user_id
     except Exception as e:
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Garmin did not confirm an active grant for deregistration ping",
             provider="garmin",
             trace_id=trace_id,
@@ -79,9 +76,7 @@ def process_user_permissions(
 
         connection = connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
         if not connection:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "No connection found for Garmin user (userPermissions) — skipping",
                 provider="garmin",
                 trace_id=trace_id,
@@ -94,9 +89,7 @@ def process_user_permissions(
         old_scope = connection.scope
         connection_repo.update_scope(db, connection, new_scope)
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Updated user permissions scope",
             provider="garmin",
             trace_id=trace_id,
@@ -135,9 +128,7 @@ def process_deregistrations(
 
         connection = connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
         if not connection:
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "No connection found for Garmin user (deregistration) — skipping",
                 provider="garmin",
                 trace_id=trace_id,
@@ -150,9 +141,7 @@ def process_deregistrations(
             continue
 
         if _current_grant_is_active(db, connection_repo, oauth, connection, garmin_user_id, trace_id):
-            log_structured(
-                logger,
-                "info",
+            logger.info(
                 "Ignored stale Garmin deregistration ping, current grant is active",
                 provider="garmin",
                 trace_id=trace_id,
@@ -171,9 +160,7 @@ def process_deregistrations(
             revoked_at=connection.updated_at.isoformat(),
         )
 
-        log_structured(
-            logger,
-            "info",
+        logger.info(
             "Revoked connection via deregistration webhook",
             action="connection_revoked",
             reason="deregistration",

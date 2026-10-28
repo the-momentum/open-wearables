@@ -23,7 +23,7 @@ from app.services.scores.sleep_service import SleepScoreService
 from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
 
 _log = logging.getLogger(__name__)
-service = SleepScoreService(log=_log)
+service = SleepScoreService()
 
 
 # ---------------------------------------------------------------------------

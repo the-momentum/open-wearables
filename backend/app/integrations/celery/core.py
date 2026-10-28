@@ -17,6 +17,9 @@ from app.integrations.otel import init_otel, shutdown_otel
 from app.services import raw_payload_storage
 from app.utils.config_utils import LogFormat
 from app.utils.logging_setup import configure_logging
+from app.utils.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class _WebhookTraceFilter(logging.Filter):
@@ -141,7 +144,7 @@ def enqueue_startup_telemetry_ping(sender: Any, **kwargs) -> None:
             queue=CeleryQueue.DEFAULT,
         )
     except Exception:
-        getLogger(__name__).debug("Could not enqueue startup telemetry ping", exc_info=True)
+        logger.debug("Could not enqueue startup telemetry ping", exc_info=True)
 
 
 @signals.worker_init.connect
