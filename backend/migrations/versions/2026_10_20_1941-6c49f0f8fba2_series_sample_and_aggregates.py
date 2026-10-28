@@ -49,11 +49,11 @@ def upgrade() -> None:
         sa.Column("period_end", sa.DateTime(timezone=True), nullable=False),
         sa.Column("zone_offset", sa.String(length=10), nullable=False),
         sa.Column("computed_by", sa.String(length=32), nullable=False),
-        sa.Column("sum", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("avg", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("min", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("max", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("last", sa.Numeric(precision=10, scale=3), nullable=True),
+        sa.Column("sum", sa.Numeric(), nullable=True),
+        sa.Column("avg", sa.Numeric(), nullable=True),
+        sa.Column("min", sa.Numeric(), nullable=True),
+        sa.Column("max", sa.Numeric(), nullable=True),
+        sa.Column("last", sa.Numeric(), nullable=True),
         sa.Column("count", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
@@ -74,11 +74,11 @@ def upgrade() -> None:
         sa.Column("record_id", sa.UUID(), nullable=False),
         sa.Column("series_type_definition_id", sa.Integer(), nullable=False),
         sa.Column("computed_by", sa.String(length=32), nullable=False),
-        sa.Column("sum", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("avg", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("min", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("max", sa.Numeric(precision=10, scale=3), nullable=True),
-        sa.Column("last", sa.Numeric(precision=10, scale=3), nullable=True),
+        sa.Column("sum", sa.Numeric(), nullable=True),
+        sa.Column("avg", sa.Numeric(), nullable=True),
+        sa.Column("min", sa.Numeric(), nullable=True),
+        sa.Column("max", sa.Numeric(), nullable=True),
+        sa.Column("last", sa.Numeric(), nullable=True),
         sa.Column("count", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["record_id"], ["event_record.id"], ondelete="CASCADE"),
@@ -101,6 +101,14 @@ def upgrade() -> None:
     for suffix in _FOREIGN_KEYS:
         _rename_constraint("series_sample", f"data_point_series_{suffix}", f"series_sample_{suffix}")
     op.add_column("series_sample", sa.Column("window_seconds", sa.Integer(), nullable=True))
+    # NUMERIC(10, 3) to NUMERIC only changes the catalog: the table and its indexes are not rewritten.
+    op.alter_column(
+        "series_sample",
+        "value",
+        existing_type=sa.Numeric(precision=10, scale=3),
+        type_=sa.Numeric(),
+        existing_nullable=False,
+    )
     op.add_column(
         "archival_settings",
         sa.Column("rollup_enabled", sa.Boolean(), server_default=sa.text("true"), nullable=False),
@@ -140,6 +148,7 @@ def downgrade() -> None:
     op.drop_column("archival_settings", "rollup_enabled")
     op.drop_table("event_record_aggregate")
     op.drop_column("series_sample", "window_seconds")
+    # value stays unbounded: narrowing it back would rewrite the whole table under an exclusive lock.
     for suffix in _FOREIGN_KEYS:
         _rename_constraint("series_sample", f"series_sample_{suffix}", f"data_point_series_{suffix}")
     op.execute(

@@ -37,6 +37,7 @@ from sqlalchemy.orm import Query
 from sqlalchemy.schema import CreateTable
 
 from app.database import DbSession
+from app.mappings import SERIES_VALUE_SCALE
 from app.models import DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority, SeriesSample
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
@@ -255,6 +256,7 @@ class DataPointSeriesRepository(
         # Set the proper values
         creation_data["data_source_id"] = data_source.id
         creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
+        creation_data["value"] = round(creator.value, SERIES_VALUE_SCALE)
 
         creation = self.model(**creation_data)
         db_session.add(creation)
@@ -337,7 +339,7 @@ class DataPointSeriesRepository(
                     data_source_id=source_id,
                     recorded_at=creator.recorded_at,
                     zone_offset=creator.zone_offset,
-                    value=creator.value,
+                    value=round(creator.value, SERIES_VALUE_SCALE),
                     series_type_definition_id=get_series_type_id(creator.series_type),
                     is_daily_total=creator.is_daily_total,
                 )

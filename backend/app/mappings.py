@@ -39,6 +39,8 @@ numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]
 numeric_15_5 = Annotated[Decimal, mapped_column(Numeric(15, 5))]
 numeric_unbounded = Annotated[Decimal, mapped_column(Numeric)]
+# Values written to the unbounded columns are rounded here: GPS keeps ~1 cm, float noise stays out of the rows.
+SERIES_VALUE_SCALE = 7
 
 # Custom foreign keys
 FKDeveloper = Annotated[UUID, mapped_column(ForeignKey("developer.id", ondelete="SET NULL"))]

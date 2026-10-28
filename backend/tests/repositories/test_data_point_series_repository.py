@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesSample
 from app.repositories.data_point_series_repository import DataPointSeriesRepository, TypeCounts, WriteCounts
-from app.schemas.enums import SeriesType
+from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
 from tests.factories import DataSourceFactory, UserFactory
 
@@ -805,6 +805,40 @@ class TestDataPointSeriesRepository:
         assert stored.zone_offset is None
         assert stored.is_daily_total is None
         assert stored.value == Decimal("1.5")
+
+    def test_bulk_create_keeps_seven_places_past_the_old_column(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Coordinates keep ~1 cm, a value past NUMERIC(10, 3) is stored, float noise is cut at seven places."""
+        # Arrange
+        user = UserFactory()
+        ts = datetime(2099, 1, 4, tzinfo=timezone.utc)
+        values = {
+            SeriesType.latitude: (52.229676, Decimal("52.229676")),
+            SeriesType.longitude: (-21.0122287, Decimal("-21.0122287")),
+            SeriesType.distance_walking_running: (20_412_345.5, Decimal("20412345.5")),
+            SeriesType.elevation: (0.1 + 0.2, Decimal("0.3")),
+        }
+        samples = [
+            TimeSeriesSampleCreate(
+                id=uuid4(), user_id=user.id, source="garmin", recorded_at=ts, value=value, series_type=series_type
+            )
+            for series_type, (value, _) in values.items()
+        ]
+
+        # Act
+        series_repo.bulk_create(db, samples)
+        db.commit()
+
+        # Assert
+        stored = dict(
+            db.query(SeriesSample.series_type_definition_id, SeriesSample.value).filter(
+                SeriesSample.id.in_([s.id for s in samples])
+            )
+        )
+        assert {series_type: stored[get_series_type_id(series_type)] for series_type in values} == {
+            series_type: expected for series_type, (_, expected) in values.items()
+        }
 
     # ------------------------------------------------------------------
     # get_daily_activity_aggregates — prefer-daily-total-else-sum logic
