@@ -16,7 +16,6 @@ from app.config import settings
 from app.main import api
 from app.middlewares import _EndpointUsageMiddleware, add_endpoint_usage_middleware
 from app.services.endpoint_usage import UNRESOLVED, _path_template, caller_type, endpoint_usage, usage_bucket
-from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 
 USER_ID = "3f2b8c1e-0000-4000-8000-000000000001"
@@ -95,7 +94,8 @@ class TestCallerType:
         assert caller_type(f"Bearer {token}", None) == "developer_jwt"
 
     def test_sdk_token(self) -> None:
-        assert caller_type(f"Bearer {create_sdk_user_token('app', USER_ID)}", None) == "sdk_token"
+        sdk_token = create_access_token(subject=USER_ID, scope="sdk", app_id="app")
+        assert caller_type(f"Bearer {sdk_token}", None) == "sdk_token"
 
     def test_jwt_wins_over_api_key(self) -> None:
         assert caller_type(f"Bearer {create_access_token('dev-id')}", "sk-123") == "developer_jwt"

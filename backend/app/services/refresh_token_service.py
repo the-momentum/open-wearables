@@ -10,7 +10,6 @@ from app.database import DbSession
 from app.models import Application, RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.auth import SDKTokenOrigin, TokenResponse, TokenType
-from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 from app.utils.structured_logging import log_structured
 
@@ -59,9 +58,10 @@ class RefreshTokenService:
         Returns:
             Tuple of (access_token, refresh_token)
         """
-        access_token = create_sdk_user_token(
+        access_token = create_access_token(
+            subject=str(user_id),
+            scope="sdk",
             app_id=self._sdk_app_id_claim(origin, application, issued_by_developer_id),
-            user_id=str(user_id),
         )
         refresh_token = self.create_sdk_refresh_token(
             db_session,
