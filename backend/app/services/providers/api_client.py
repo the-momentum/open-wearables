@@ -23,6 +23,28 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
 
+# Tokens are refreshed this long before they expire.
+TOKEN_REFRESH_BUFFER = timedelta(minutes=5)
+
+# Session.info key of the per-session token cache: (user_id, provider) -> (access_token, token_expires_at).
+# A sync makes many provider requests on one session; without the cache each of them re-reads user_connection.
+# A cached token doesn't see a revoke or disconnect made elsewhere: the sync keeps using it until its session
+# ends or the provider rejects it.
+_TOKEN_CACHE_KEY = "provider_access_tokens"
+
+
+def _token_cache(db: DbSession) -> dict[tuple[UUID, str], tuple[str, datetime | None]]:
+    return db.info.setdefault(_TOKEN_CACHE_KEY, {})
+
+
+def _is_token_fresh(token_expires_at: datetime | None) -> bool:
+    return not token_expires_at or token_expires_at >= datetime.now(timezone.utc) + TOKEN_REFRESH_BUFFER
+
+
+def invalidate_cached_token(db: DbSession, user_id: UUID, provider_name: str) -> None:
+    """Drop the session's cached token, so the next get_valid_token reads the connection again."""
+    _token_cache(db).pop((user_id, provider_name), None)
+
 
 def get_valid_token(
     db: DbSession,
@@ -36,14 +58,27 @@ def get_valid_token(
     """Get a valid access token, refreshing if necessary.
 
     Used by make_authenticated_request and by calls that send the token outside
-    of it, e.g. provider deregistration.
+    of it, e.g. provider deregistration. A fresh token is cached on the session,
+    so repeated calls within one sync don't query user_connection again.
     """
+    cache = _token_cache(db)
+    cache_key = (user_id, provider_name)
+    if cached := cache.get(cache_key):
+        cached_token, cached_expires_at = cached
+        if _is_token_fresh(cached_expires_at):
+            return cached_token
+        del cache[cache_key]
+
     connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
     if not connection:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"User not connected to {provider_name}",
         )
+    # The query returns the instance already in the session without reloading it, so a token
+    # written by another worker would stay unseen. Only the token columns are reloaded, to keep
+    # any unflushed changes to the connection.
+    db.refresh(connection, attribute_names=["access_token", "refresh_token", "token_expires_at"])
 
     # SDK-based providers don't have access tokens
     if not connection.access_token:
@@ -53,7 +88,7 @@ def get_valid_token(
         )
 
     # Check if token is expired (with 5 minute buffer)
-    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
+    if not _is_token_fresh(connection.token_expires_at):
         # Scope distributed lock per user/provider to avoid concurrent refresh race conditions.
 
         redis_client = get_redis_client()
@@ -77,15 +112,17 @@ def get_valid_token(
 
             # 1. If the token never expires, return it directly
             # 2. If it expires in the future (> 5 min buffer), return existing token
-            now = datetime.now(timezone.utc)
-            if not connection.token_expires_at or connection.token_expires_at >= now + timedelta(minutes=5):
+            if _is_token_fresh(connection.token_expires_at):
+                cache[cache_key] = (connection.access_token, connection.token_expires_at)
                 return connection.access_token
+
+            now = datetime.now(timezone.utc)
 
             # Expired with nothing to refresh it with: the grant is dead, so revoke it like a
             # rejected refresh token (stops retries, emits connection.revoked).
             if not connection.refresh_token:
                 # Inside the refresh buffer but not yet expired: keep using the token until it dies.
-                if connection.token_expires_at > now:
+                if connection.token_expires_at and connection.token_expires_at > now:
                     return connection.access_token
                 if revoke_on_failure:
                     oauth.revoke_connection(db, user_id, reason="no_refresh_token")
@@ -95,12 +132,32 @@ def get_valid_token(
                     f"Token expired and no refresh token available for {provider_name}; reconnection required",
                 )
 
+            # Not cached: the next call reads the refreshed connection once and caches it.
             token_response = oauth.refresh_access_token(
                 db, user_id, connection.refresh_token, revoke_on_failure=revoke_on_failure
             )
             return token_response.access_token
 
+    cache[cache_key] = (connection.access_token, connection.token_expires_at)
     return connection.access_token
+
+
+def _reload_token_after_401(
+    db: DbSession,
+    user_id: UUID,
+    provider_name: str,
+    connection_repo: UserConnectionRepository,
+    oauth: BaseOAuthTemplate,
+    rejected_token: str,
+) -> str | None:
+    """Re-read the token after the provider rejected it; return it only if it changed.
+
+    The rejected token may come from the session cache while another worker has
+    already refreshed the connection, which revokes the old access token at some providers.
+    """
+    invalidate_cached_token(db, user_id, provider_name)
+    token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
+    return token if token != rejected_token else None
 
 
 def make_authenticated_request(
@@ -169,6 +226,7 @@ def make_authenticated_request(
 
     # Make request with retry logic for rate limiting
     url = f"{api_base_url}{endpoint}"
+    token_reloaded = False
 
     for attempt in range(MAX_RETRIES + 1):
         try:
@@ -262,6 +320,15 @@ def make_authenticated_request(
                 time.sleep(backoff_delay)
                 continue
 
+            if e.response.status_code == 401 and not token_reloaded and attempt < MAX_RETRIES:
+                token_reloaded = True
+                if new_token := _reload_token_after_401(
+                    db, user_id, provider_name, connection_repo, oauth, access_token
+                ):
+                    access_token = new_token
+                    request_headers["Authorization"] = f"Bearer {access_token}"
+                    continue
+
             log_structured(
                 logger,
                 "error",
@@ -319,11 +386,18 @@ def download_binary_content(
     """
     access_token = get_valid_token(db, user_id, provider_name, connection_repo, oauth)
     headers = {"Authorization": f"Bearer {access_token}"}
+    token_reloaded = False
 
     for attempt in range(MAX_RETRIES + 1):
         response = httpx.get(
             url, headers=headers, timeout=settings.provider_request_timeout_seconds, follow_redirects=True
         )
+        if response.status_code == 401 and not token_reloaded and attempt < MAX_RETRIES:
+            token_reloaded = True
+            if new_token := _reload_token_after_401(db, user_id, provider_name, connection_repo, oauth, access_token):
+                access_token = new_token
+                headers["Authorization"] = f"Bearer {access_token}"
+                continue
         if response.status_code == 429 and attempt < MAX_RETRIES:
             backoff_delay = RETRY_BASE_DELAY * (2**attempt)
             log_structured(
