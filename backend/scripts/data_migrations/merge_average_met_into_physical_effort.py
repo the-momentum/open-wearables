@@ -24,20 +24,31 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import engine
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums.series_types import SeriesType, get_series_type_id
 from app.services.data_migration_service import data_migration_service
 
 _PARAMS = {"average_met": 87, "physical_effort": get_series_type_id(SeriesType.physical_effort)}
+_MIGRATIONS = DataMigrationRepository()
 
-# Only the sources that hold rows with the retired id: on most instances a handful, not every source.
+# Probed per data source: a DISTINCT over the type alone cannot use the (source, type, time) index on PostgreSQL 17
+# and read every sample, about two minutes of startup on 60M rows.
 _SOURCES = text("""
-    SELECT DISTINCT data_source_id AS id FROM series_sample WHERE series_type_definition_id = :average_met
-    UNION SELECT DISTINCT data_source_id FROM data_point_series_archive WHERE series_type_definition_id = :average_met
-    UNION SELECT DISTINCT data_source_id FROM series_aggregate WHERE series_type_definition_id = :average_met
-    UNION SELECT DISTINCT er.data_source_id FROM event_record_aggregate a
-        JOIN event_record er ON er.id = a.record_id WHERE a.series_type_definition_id = :average_met
-    ORDER BY id
+    SELECT ds.id FROM data_source ds
+    WHERE EXISTS (SELECT 1 FROM series_sample s
+                  WHERE s.data_source_id = ds.id AND s.series_type_definition_id = :average_met)
+       OR EXISTS (SELECT 1 FROM data_point_series_archive s
+                  WHERE s.data_source_id = ds.id AND s.series_type_definition_id = :average_met)
+    ORDER BY ds.id
 """)
+# Only a build of this change before the merge wrote id 87 into the aggregate tables, so they are read until one run
+# finds none there; the previous release, still writing during a rollout, has no aggregate tables.
+_AGGREGATE_SOURCES = text("""
+    SELECT data_source_id FROM series_aggregate WHERE series_type_definition_id = :average_met
+    UNION SELECT er.data_source_id FROM event_record_aggregate a
+        JOIN event_record er ON er.id = a.record_id WHERE a.series_type_definition_id = :average_met
+""")
+_AGGREGATES_MERGED = "merge_average_met_into_physical_effort:aggregates"
 # A sync writing the same source holds its rows; behind one, a statement fails and the next start retries
 # instead of holding the startup.
 _LOCK_TIMEOUT = text("SET lock_timeout = '10s'")
@@ -126,7 +137,11 @@ def merge_average_met(db: Session, *, dry_run: bool) -> dict[str, int]:
     statements = {table: _statements(table) for table in _TABLES}
     result = {f"{table}_{verb}": 0 for table in _TABLES for verb in ("updated", "deleted")}
     result["coverage_renamed"] = 0
-    for source in db.execute(_SOURCES, _PARAMS).scalars().all():
+    sources = set(db.execute(_SOURCES, _PARAMS).scalars())
+    aggregates_merged = _MIGRATIONS.is_completed(db, _AGGREGATES_MERGED)
+    if not aggregates_merged:
+        sources |= set(db.execute(_AGGREGATE_SOURCES, _PARAMS).scalars())
+    for source in sorted(sources):
         params = {**_PARAMS, "source": source}
         for table, (count, delete, update) in statements.items():
             if dry_run:
@@ -140,6 +155,8 @@ def merge_average_met(db: Session, *, dry_run: bool) -> dict[str, int]:
             result[f"{table}_updated"] += db.execute(update, params).rowcount  # ty: ignore[unresolved-attribute]
         if not dry_run:
             db.commit()
+    if not dry_run and not aggregates_merged:
+        _MIGRATIONS.mark_completed(db, _AGGREGATES_MERGED)
     if not dry_run:
         for old, new in _RENAMED_DATA_TYPES.items():
             for statement in _RENAME_COVERAGE:

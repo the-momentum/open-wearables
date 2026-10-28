@@ -151,3 +151,19 @@ def test_only_a_start_that_moves_nothing_records_the_merge(db: Session, average_
 
     assert _migrate(db, dry_run=False) is False
     assert _migrate(db, dry_run=False) is True
+
+
+def test_the_aggregate_tables_are_read_until_one_run_merged_them(
+    db: Session, average_met: SeriesTypeDefinition
+) -> None:
+    """Only an earlier build of this change wrote id 87 there; the previous release has no aggregate tables."""
+    workout = EventRecordFactory(data_source=DataSourceFactory())
+    row = {"record_id": workout.id, "computed_by": ComputedBy.PROVIDER, "avg": Decimal("5.8"), "count": 1}
+    repo = AggregateRepository(EventRecordAggregate)
+    repo.upsert(db, [row | {"series_type_definition_id": AVERAGE_MET_ID}])
+
+    first = merge_average_met(db, dry_run=False)
+    repo.upsert(db, [row | {"series_type_definition_id": AVERAGE_MET_ID, "computed_by": ComputedBy.OPEN_WEARABLES}])
+    second = merge_average_met(db, dry_run=False)
+
+    assert (first["event_record_aggregate_updated"], second["event_record_aggregate_updated"]) == (1, 0)
