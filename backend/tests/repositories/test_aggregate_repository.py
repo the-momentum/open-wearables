@@ -75,6 +75,19 @@ class TestAggregateRepository:
 
         assert [(row.sum, row.avg) for row in db.query(SeriesAggregate)] == [(Decimal("8432"), None)]
 
+    def test_a_statistic_past_the_old_column_is_kept_at_seven_places(self, db: Session) -> None:
+        source = DataSourceFactory()
+        repo = AggregateRepository(SeriesAggregate)
+
+        repo.upsert(
+            db,
+            [self._row(source.id, ComputedBy.OPEN_WEARABLES, sum=Decimal("20412345.5"), avg=Decimal(2) / Decimal(3))],
+        )
+
+        assert [(row.sum, row.avg) for row in db.query(SeriesAggregate)] == [
+            (Decimal("20412345.5"), Decimal("0.6666667"))
+        ]
+
     def test_provider_and_own_values_for_one_day_stay_apart(self, db: Session) -> None:
         source = DataSourceFactory()
 

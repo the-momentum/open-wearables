@@ -7,7 +7,10 @@ from sqlalchemy import Table, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
+from app.mappings import SERIES_VALUE_SCALE
 from app.models import EventRecordAggregate, SeriesAggregate
+
+_STATISTICS = ("sum", "avg", "min", "max", "last")
 
 
 class AggregateRepository:
@@ -34,6 +37,9 @@ class AggregateRepository:
         """Insert or refresh one row per upsert key; rows sharing a key merge their statistics."""
         unique: dict[tuple, dict[str, Any]] = {}
         for row in rows:
+            row = row | {
+                column: round(row[column], SERIES_VALUE_SCALE) for column in _STATISTICS if row.get(column) is not None
+            }
             key = tuple(row[column] for column in self.key_columns)
             known = unique.get(key) or {column: None for column in self.refreshed} | {"id": uuid4()}
             merged = known | {column: value for column, value in row.items() if value is not None}
