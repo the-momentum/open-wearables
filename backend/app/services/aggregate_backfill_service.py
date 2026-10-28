@@ -162,7 +162,8 @@ class AggregateBackfillService:
 
     def _rollup(self, period: timedelta | None) -> Callable[[DbSession, Budget], bool]:
         """Our day and session rows from every source's samples, from the last ``period`` or all, newest days
-        first, ROLLUP_CHUNK_DAYS at a time; a source left halfway goes on from its last finished chunk."""
+        first, ROLLUP_CHUNK_DAYS calendar days at a time; a source left halfway goes on from its last finished
+        chunk."""
         step = "rollup_recent" if period is not None else "rollup_all"
         day_key = _CURSOR_KEY.format(step=f"{step}:day")
 
@@ -177,11 +178,14 @@ class AggregateBackfillService:
                 done_before = (
                     date.fromisoformat(saved.split("|")[1]) if saved and saved.startswith(f"{source_id}|") else None
                 )
-                days = [
-                    day
-                    for day in self.rollup_repo.days_before(db, source_id, _past_today())
-                    if (since is None or day >= since) and (done_before is None or day < done_before)
-                ]
+                first = self.samples.earliest_sample(db, source_id)
+                if first is None:
+                    return True
+                # Every calendar day from the first sample's on: a day without samples costs one index probe, where
+                # listing the days that have some read the source's whole history.
+                start = max(first.date() - timedelta(days=1), since or date.min)
+                end = done_before or _past_today()
+                days = [start + timedelta(days=n) for n in range((end - start).days)]
                 for chunk in _newest_first(days, ROLLUP_CHUNK_DAYS):
                     # Under the scheduled rollup's lock, a chunk at a time.
                     if budget.spent() or (token := rollup_queue.take_lock()) is None:
