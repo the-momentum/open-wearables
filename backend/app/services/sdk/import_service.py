@@ -66,8 +66,9 @@ MEAL_NUTRIENT_SERIES_TYPES = frozenset(
     {st for st in SeriesType if st.value.startswith("dietary_")} | {SeriesType.hydration}
 )
 
-# First iOS SDK release that sends `HKUnit.percent()` values on a 0-100 scale.
-# Older builds send a 0-1 fraction, which the backend scales x100.
+# First iOS SDK release that sends every `HKUnit.percent()` value on a 0-100 scale.
+# Older builds scale only SpO2 and send the series below as a 0-1 fraction,
+# which the backend scales x100.
 APPLE_SDK_PERCENT_SCALE_MIN_VERSION = Version("0.17.0")
 
 _FRACTION_PERCENT_SERIES = frozenset(
