@@ -211,8 +211,6 @@ class PolarWebhookHandler(BaseWebhookHandler):
         path = urlparse(event.url).path
         user_id = connection.user_id
 
-        self.connection_repo.update_last_synced_at(db, connection)
-
         log_structured(
             logger,
             "info",
@@ -230,12 +228,14 @@ class PolarWebhookHandler(BaseWebhookHandler):
                     return {"status": "error", "error": "workouts service not initialised"}
                 saved = self.workouts.fetch_and_save_exercise(db, user_id, path)
                 db.commit()
+                self.connection_repo.update_last_synced_at(db, connection)
                 return {"status": "accepted", "user_id": str(user_id), "saved": {"exercises": saved}}
 
             if not self.data_247:
                 return {"status": "error", "error": "data_247 service not initialised"}
             saved = self.data_247.fetch_and_save_from_webhook(db, user_id, event.event, path)
             db.commit()
+            self.connection_repo.update_last_synced_at(db, connection)
             return {"status": "accepted", "user_id": str(user_id), "saved": saved}
         except Exception as exc:
             db.rollback()

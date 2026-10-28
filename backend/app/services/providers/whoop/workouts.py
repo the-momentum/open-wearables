@@ -134,17 +134,17 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
     def load_single_workout(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
         """Fetch a single workout by ID, normalize, and save to database. Returns 1 on success."""
+        raw = self.get_workout_detail_from_api(db, user_id, workout_id)
+        store_raw_payload(
+            source="api_response",
+            provider="whoop",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=f"/v2/activity/workout/{workout_id}",
+        )
+        if not isinstance(raw, dict) or not raw:
+            return 0
         try:
-            raw = self.get_workout_detail_from_api(db, user_id, workout_id)
-            store_raw_payload(
-                source="api_response",
-                provider="whoop",
-                payload=raw,
-                user_id=str(user_id),
-                trace_id=f"/v2/activity/workout/{workout_id}",
-            )
-            if not isinstance(raw, dict) or not raw:
-                return 0
             workout = WhoopWorkoutJSON(**raw)
             if workout.score_state != "SCORED" and workout.score is None:
                 return 0

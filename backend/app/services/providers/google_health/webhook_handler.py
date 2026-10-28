@@ -246,8 +246,8 @@ class GoogleWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "no_interval", "user_id": str(user_id)}
 
         start, end = window
-        self.connection_repo.update_last_synced_at(db, connection)
         count = self._fetch_and_save(db, user_id, data.data_type, start, end)
+        self.connection_repo.update_last_synced_at(db, connection)
 
         log_structured(
             logger,

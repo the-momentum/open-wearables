@@ -1,9 +1,18 @@
 """Tests for Oura webhook schemas and service."""
 
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from unittest.mock import patch
+
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.schemas.providers.oura import OuraWebhookNotification
+from app.services.providers.factory import ProviderFactory
+from tests.factories import UserConnectionFactory
+
+OURA_USER_ID = "oura-user-1825"
 
 
 class TestOuraWebhookNotification:
@@ -73,3 +82,64 @@ class TestOuraWebhookNotification:
                 user_id="test-user",
             )
             assert notification.data_type == dt
+
+
+class TestOuraWebhookLastSyncedAt:
+    """last_synced_at moves only after a completed fetch."""
+
+    @pytest.fixture
+    def handler(self) -> Any:
+        return ProviderFactory().get_provider("oura").webhooks
+
+    @staticmethod
+    def _connection() -> Any:
+        return UserConnectionFactory(
+            provider="oura",
+            provider_user_id=OURA_USER_ID,
+            last_synced_at=datetime.now(timezone.utc) - timedelta(days=3),
+        )
+
+    @staticmethod
+    def _payload(**overrides: Any) -> dict[str, Any]:
+        return {"event_type": "create", "data_type": "daily_spo2", "user_id": OURA_USER_ID, **overrides}
+
+    def test_missing_object_id_is_ignored_without_fetch(self, db: Session, handler: Any) -> None:
+        connection = self._connection()
+        before = connection.last_synced_at
+
+        with patch.object(handler.data_247, "_make_api_request") as api:
+            result = handler.process_payload(db, self._payload(), "trace-1")
+        db.refresh(connection)
+
+        api.assert_not_called()
+        assert result["status"] == "ignored"
+        assert result["reason"] == "missing_object_id"
+        assert connection.last_synced_at == before
+
+    def test_unhandled_data_type_keeps_last_synced_at(self, db: Session, handler: Any) -> None:
+        connection = self._connection()
+        before = connection.last_synced_at
+
+        with (
+            patch.object(handler.data_247, "_make_api_request", return_value={"id": "tag-1"}),
+            patch("app.services.providers.oura.webhook_handler.store_raw_payload"),
+        ):
+            result = handler.process_payload(db, self._payload(data_type="tag", object_id="tag-1"), "trace-2")
+        db.refresh(connection)
+
+        assert result["status"] == "ignored"
+        assert result["reason"] == "unhandled_data_type: tag"
+        assert connection.last_synced_at == before
+
+    def test_completed_fetch_updates_last_synced_at(self, db: Session, handler: Any) -> None:
+        connection = self._connection()
+        before = connection.last_synced_at
+
+        with patch.object(handler.data_247, "_make_api_request", return_value={}) as api:
+            result = handler.process_payload(db, self._payload(object_id="spo2-1"), "trace-3")
+        db.refresh(connection)
+
+        api.assert_called_once()
+        assert result["status"] == "processed"
+        assert result["records_saved"] == 0
+        assert connection.last_synced_at > before
