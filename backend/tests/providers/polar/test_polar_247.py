@@ -657,3 +657,73 @@ class TestPolar247HypnogramParsing:
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         assert data_247._parse_hypnogram({}, start, end) == []
+
+
+# ---------------------------------------------------------------------------
+# Physical info
+# ---------------------------------------------------------------------------
+
+
+class TestPolar247PhysicalInfo:
+    @pytest.fixture
+    def physical_info(self) -> dict:
+        return {
+            "weight": 70.5,
+            "height": 175,
+            "created": "2024-06-01T12:00:00Z",
+            "modified": "2024-06-10T12:00:00Z",
+            "birthday": "1990-01-01",
+            "gender": "MALE",
+            "maximum_heart_rate": 190,
+            "resting_heart_rate": 60,
+            "aerobic_threshold": 140,
+            "anaerobic_threshold": 170,
+            "vo2_max": 50,
+            "weight_source": "SOURCE_USER",
+            "training_background": "REGULAR",
+            "typical_day": "MOSTLY_MOVING",
+            "sleep_goal": "PT8H",
+        }
+
+    def test_requests_physical_info(self, data_247: Polar247Data, physical_info: dict) -> None:
+        with patch.object(data_247, "_make_api_request", return_value=physical_info) as request:
+            raw = data_247.get_physical_info(MagicMock(), uuid4())
+
+        assert request.call_args.args[2] == "/v3/users/physical-info"
+        assert raw == physical_info
+
+    def test_weight_and_vo2max_are_stamped_at_the_last_change(
+        self, data_247: Polar247Data, physical_info: dict
+    ) -> None:
+        user_id = uuid4()
+        samples = data_247.normalize_physical_info(physical_info, user_id)
+
+        by_type = {s.series_type: s for s in samples}
+        assert set(by_type) == {SeriesType.weight, SeriesType.vo2_max}
+        assert float(by_type[SeriesType.weight].value) == 70.5
+        assert float(by_type[SeriesType.vo2_max].value) == 50
+        changed = datetime(2024, 6, 10, 12, 0, tzinfo=timezone.utc)
+        assert all(s.recorded_at == changed for s in samples)
+        assert all(s.user_id == user_id for s in samples)
+
+    def test_falls_back_to_creation_time(self, data_247: Polar247Data, physical_info: dict) -> None:
+        physical_info.pop("modified")
+
+        samples = data_247.normalize_physical_info(physical_info, uuid4())
+
+        assert {s.recorded_at for s in samples} == {datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)}
+
+    def test_skips_missing_and_zero_values(self, data_247: Polar247Data, physical_info: dict) -> None:
+        physical_info["vo2_max"] = 0
+        physical_info.pop("weight")
+
+        assert data_247.normalize_physical_info(physical_info, uuid4()) == []
+
+    def test_without_a_timestamp_nothing_is_stored(self, data_247: Polar247Data, physical_info: dict) -> None:
+        physical_info.pop("modified")
+        physical_info.pop("created")
+
+        assert data_247.normalize_physical_info(physical_info, uuid4()) == []
+
+    def test_no_data(self, data_247: Polar247Data) -> None:
+        assert data_247.normalize_physical_info(None, uuid4()) == []

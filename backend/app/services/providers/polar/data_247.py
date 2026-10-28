@@ -35,6 +35,7 @@ from app.schemas.providers.polar import (
     ContinuousHeartRateJSON,
     DailyActivityJSON,
     NightlyRechargeJSON,
+    PhysicalInfoJSON,
     PolarWebhookEventType,
     SleepJSON,
 )
@@ -927,6 +928,52 @@ class Polar247Data(Base247DataTemplate):
         return samples
 
     # -------------------------------------------------------------------------
+    # Physical info: GET /v3/users/physical-info
+    # -------------------------------------------------------------------------
+
+    def get_physical_info(self, db: DbSession, user_id: UUID) -> dict[str, Any] | None:
+        response = self._make_api_request(db, user_id, "/v3/users/physical-info")
+        return response if isinstance(response, dict) else None
+
+    def normalize_physical_info(
+        self,
+        raw: dict[str, Any] | None,
+        user_id: UUID,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Weight and VO2max, stamped when the user's physical settings last changed.
+
+        The endpoint returns current values only, so the change time keeps a value that
+        did not change at the same timestamp on every sync.
+        """
+        if raw is None:
+            return []
+        if (parsed := self._parse(raw, PhysicalInfoJSON, user_id, "physical_info")) is None:
+            return []
+        stamp = parsed.modified or parsed.created
+        if not stamp:
+            return []
+        recorded_at = datetime.fromisoformat(stamp)
+        if recorded_at.tzinfo is None:
+            recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+        values = (
+            (SeriesType.weight, parsed.weight),
+            (SeriesType.vo2_max, parsed.vo2_max),
+        )
+        return [
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=ProviderName.POLAR,
+                source=ProviderName.POLAR,
+                recorded_at=recorded_at,
+                value=value,
+                series_type=series_type,
+            )
+            for series_type, value in values
+            if value is not None and value > 0
+        ]
+
+    # -------------------------------------------------------------------------
     # Persistence helpers
     # -------------------------------------------------------------------------
 
@@ -1096,6 +1143,9 @@ class Polar247Data(Base247DataTemplate):
             ),
             "wrist_ecg": lambda: self._save_timeseries(
                 db, self.normalize_wrist_ecg(self.get_wrist_ecg_data(db, user_id, start_time, end_time), user_id)
+            ),
+            "physical_info": lambda: self._save_timeseries(
+                db, self.normalize_physical_info(self.get_physical_info(db, user_id), user_id)
             ),
         }
 
