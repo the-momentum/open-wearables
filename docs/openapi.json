@@ -10683,7 +10683,7 @@
           "System: Provider Webhooks"
         ],
         "summary": "Verify Provider Webhook",
-        "description": "Handle GET-based subscription verification challenges.\n\nSome providers (Strava ``hub.challenge``, Oura ``verification_token``)\nverify webhook subscriptions by sending a GET request that must be\nechoed back.  This endpoint delegates to the provider's\n``handle_challenge()`` method.\n\nProviders that do not support GET challenges will receive a ``501``\nresponse from the default ``BaseWebhookHandler.handle_challenge()``\nimplementation.",
+        "description": "Handle GET-based subscription verification challenges.\n\nSome providers (Strava ``hub.challenge``, Oura ``verification_token``)\nverify webhook subscriptions by sending a GET request that must be\nechoed back.  This endpoint delegates to the provider's\n``handle_challenge()`` method.\n\nProviders whose handler does not override ``handle_challenge()`` receive\na ``501`` response.",
         "operationId": "verify_provider_webhook_api_v1_providers__provider__webhooks_get",
         "parameters": [
           {

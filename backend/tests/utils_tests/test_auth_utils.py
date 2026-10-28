@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.services.api_key_service import _require_api_key_detached
 from app.utils.auth import get_current_developer, get_current_developer_optional
+from app.utils.exceptions import AuthenticationError
 from app.utils.security import create_access_token
 from tests.factories import ApiKeyFactory, DeveloperFactory
 
@@ -283,7 +284,7 @@ class TestRequireApiKeyDetached:
     async def test_rejects_a_request_with_neither(self, db: Session) -> None:
         with patch("app.services.api_key_service.SessionLocal") as mock_session_local:
             mock_session_local.return_value.__enter__.return_value = db
-            with pytest.raises(HTTPException) as exc_info:
+            with pytest.raises(AuthenticationError) as exc_info:
                 await _require_api_key_detached(token=None, x_open_wearables_api_key=None)
 
         assert exc_info.value.status_code == 401

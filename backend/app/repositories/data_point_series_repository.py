@@ -72,7 +72,6 @@ from app.schemas.responses.activity import (
 )
 from app.schemas.sync_status import DataTypeKind
 from app.utils.dates import as_utc
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
 
 
@@ -241,7 +240,6 @@ class DataPointSeriesRepository(
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
 
-    @handle_exceptions
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataPointSeries:
         """Create a data point sample, or return existing if duplicate.
 
@@ -260,7 +258,6 @@ class DataPointSeriesRepository(
         db_session.add(creation)
         return self.try_commit(db_session, creation)
 
-    @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> WriteCounts:
         """Bulk create data point samples.
 

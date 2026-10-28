@@ -12,6 +12,7 @@ Tests cover:
 """
 
 from datetime import datetime, timezone
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -186,6 +187,47 @@ class TestGetUser:
 
 class TestCreateUser:
     """Tests for POST /api/v1/users."""
+
+    def test_create_user_duplicate_external_id_returns_409(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """A taken external_user_id is a conflict, not the existing user returned as created."""
+        # Arrange
+        developer = DeveloperFactory()
+        UserFactory(external_user_id="ext123", first_name="Alice")
+        db.commit()  # factories only flush; a request sees committed rows in production
+
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/users",
+            json={"external_user_id": "ext123", "first_name": "Bob"},
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 409
+        assert response.json() == {"detail": "User with this external_user_id already exists."}
+
+    def test_create_user_racing_for_an_external_id_returns_409(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """A request that passed the up-front check before the other one committed still gets a 409."""
+        # Arrange
+        developer = DeveloperFactory()
+        UserFactory(external_user_id="ext123")
+        db.commit()
+
+        # Act - the other request commits between this one's check and its insert
+        with patch("app.services.user_service.user_service.crud.get_by_external_user_id", return_value=None):
+            response = client.post(
+                f"{api_v1_prefix}/users",
+                json={"external_user_id": "ext123"},
+                headers=developer_auth_headers(developer.id),
+            )
+
+        # Assert
+        assert response.status_code == 409
+        assert response.json() == {"detail": "User already exists."}
 
     def test_create_user_full_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with all fields."""
@@ -363,6 +405,44 @@ class TestUpdateUser:
         # Verify in database
         db.refresh(user)
         assert user.external_user_id == "new_id"
+
+    def test_update_user_to_a_taken_external_id_returns_409(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """Taking another user's external_user_id is a conflict."""
+        # Arrange
+        developer = DeveloperFactory()
+        UserFactory(external_user_id="taken")
+        user = UserFactory()
+        db.commit()  # factories only flush; a request sees committed rows in production
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/users/{user.id}",
+            json={"external_user_id": "taken"},
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 409
+        assert response.json() == {"detail": "User with this external_user_id already exists."}
+
+    def test_update_user_keeping_own_unique_values(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Re-sending the user's own email and external_user_id is not a conflict."""
+        # Arrange
+        developer = DeveloperFactory()
+        user = UserFactory(email="me@example.com", external_user_id="me")
+
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/users/{user.id}",
+            json={"email": "me@example.com", "external_user_id": "me", "first_name": "New"},
+            headers=developer_auth_headers(developer.id),
+        )
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["first_name"] == "New"
 
     def test_update_user_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user with empty payload."""

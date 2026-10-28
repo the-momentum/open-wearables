@@ -8,11 +8,13 @@ from importlib.metadata import version
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from psycopg.errors import IntegrityError as PsycopgIntegrityError
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import head_router
@@ -26,7 +28,7 @@ from app.services import raw_payload_storage
 from app.services.api_key_service import API_KEY_REQUIRED
 from app.services.endpoint_usage import endpoint_usage
 from app.services.outgoing_webhooks import svix as svix_service
-from app.utils.exceptions import DatetimeParseError, handle_exception
+from app.utils.exceptions import AppError, app_error_from_integrity_error, describe_integrity_error
 from app.utils.logging_setup import configure_logging
 from app.utils.structured_logging import get_logger
 
@@ -124,7 +126,7 @@ def _capture_error_body(request: Request, status_code: int, detail: object) -> N
 
 
 @api.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> Response:
     # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
     if request.url.path.endswith("/auth/login"):
         detail = "Incorrect email or password"
@@ -134,12 +136,45 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
             content={"detail": detail},
             headers={"WWW-Authenticate": "Bearer"},
         )
-    raise handle_exception(exc, "")
+    first_error = exc.errors()[0]
+    msg = first_error.get("msg", "Validation error")
+    error = (first_error.get("ctx") or {}).get("error", "")
+    detail = f"{msg} - {error}" if error else msg
+    response = await http_exception_handler_with_body_log(request, HTTPException(status.HTTP_400_BAD_REQUEST, detail))
+    # which field failed, never str(exc): it carries the submitted values
+    request.state.error_cause_type = type(exc).__name__
+    request.state.error_cause_msg = ".".join(str(part) for part in first_error.get("loc", ()))
+    return response
 
 
-@api.exception_handler(DatetimeParseError)
-async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
-    raise handle_exception(exc, "")
+@api.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError) -> Response:
+    if not exc.is_client_error:
+        raise exc  # unhandled → the catch-all 500, the traceback in the access log and Sentry
+    http_exc = HTTPException(exc.status_code, exc.detail, exc.headers)
+    http_exc.__cause__ = exc  # its type in the access log; the detail is the response body anyway
+    return await http_exception_handler_with_body_log(request, http_exc)
+
+
+@api.exception_handler(IntegrityError)
+@api.exception_handler(PsycopgIntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError | PsycopgIntegrityError) -> Response:
+    # the request's DB session was already rolled back by its dependency
+    if (app_error := app_error_from_integrity_error(exc)) is None:
+        raise exc  # a violation the client didn't cause (NOT NULL, CHECK) is our bug: 500
+    response = await app_error_handler(request, app_error)
+    # which constraint fired, never str(exc): it carries the statement's parameters and the offending values
+    violation_type, constraint = describe_integrity_error(exc)
+    request.state.error_cause_type = violation_type
+    request.state.error_cause_msg = f"constraint {constraint}"
+    return response
+
+
+@api.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, __: Exception) -> JSONResponse:
+    # Starlette runs this from ServerErrorMiddleware, which re-raises after sending the
+    # response, so the access log still records the traceback and Sentry captures it.
+    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Internal server error"})
 
 
 @api.exception_handler(StarletteHTTPException)

@@ -2,14 +2,13 @@ import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import HTTPException, status
-
 from app.config import settings
 from app.database import DbSession
 from app.models import Application, RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.auth import SDKTokenOrigin, TokenResponse, TokenType
 from app.services.sdk_token_service import create_sdk_user_token
+from app.utils.exceptions import AppError, AuthenticationError, NotFoundError
 from app.utils.security import create_access_token
 from app.utils.structured_logging import get_logger
 
@@ -152,15 +151,11 @@ class RefreshTokenService:
             TokenResponse with new access token and new refresh token
 
         Raises:
-            HTTPException: If the refresh token is invalid or revoked
+            AuthenticationError: If the refresh token is invalid or revoked
         """
         token = self.repo.get_valid_token(db_session, refresh_token_str)
         if not token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or revoked refresh token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            raise AuthenticationError("Invalid or revoked refresh token")
 
         # Revoke the old refresh token (rotation)
         self.repo.revoke_token(db_session, token)
@@ -183,10 +178,7 @@ class RefreshTokenService:
             )
             logger.debug("Refreshed developer token (rotated)", developer_id=str(token.developer_id))
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown token type: {token.token_type}",
-            )
+            raise AppError(f"Unknown token type: {token.token_type}")  # a stored state we never write: 500
 
         return TokenResponse(
             access_token=access_token,
@@ -206,14 +198,11 @@ class RefreshTokenService:
             True if the token was revoked, False if not found
 
         Raises:
-            HTTPException: If the refresh token is not found
+            NotFoundError: If the refresh token is not found
         """
         token = self.repo.get_valid_token(db_session, refresh_token_str)
         if not token:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Refresh token not found",
-            )
+            raise NotFoundError("Refresh token not found")
 
         self.repo.revoke_token(db_session, token)
         logger.debug(

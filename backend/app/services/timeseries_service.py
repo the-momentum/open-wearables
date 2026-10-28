@@ -36,7 +36,6 @@ from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_bucket_cursor, encode_cursor
 from app.utils.structured_logging import get_logger
 
@@ -275,7 +274,6 @@ class TimeSeriesService(
             previous_cursor=encode_bucket_cursor(samples[0].bucket, "prev") if has_previous else None,
         )
 
-    @handle_exceptions
     def get_timeseries(
         self,
         db_session: DbSession,

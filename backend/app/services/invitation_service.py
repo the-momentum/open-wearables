@@ -3,8 +3,6 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException, status
-
 from app.config import settings
 from app.database import DbSession
 from app.integrations.celery.tasks import send_invitation_email_task
@@ -17,6 +15,7 @@ from app.schemas.model_crud.user_management import (
     InvitationStatus,
 )
 from app.services.developer_service import developer_service
+from app.utils.exceptions import ConflictError, InvalidInputError, NotFoundError
 from app.utils.security import get_password_hash
 from app.utils.structured_logging import get_logger
 
@@ -60,18 +59,12 @@ class InvitationService:
         """Create and send a new invitation."""
         # Check if email already registered as developer
         if developer_service.get_by_email(db_session, payload.email):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A developer with this email already exists",
-            )
+            raise ConflictError("A developer with this email already exists")
 
         # Check for existing pending invitation
         existing_invitation = self.crud.get_by_email(db_session, payload.email)
         if existing_invitation:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A pending invitation already exists for this email",
-            )
+            raise ConflictError("A pending invitation already exists for this email")
 
         # Create invitation via repository
         invitation_data = InvitationCreateInternal(
@@ -112,23 +105,14 @@ class InvitationService:
         invitation = self.crud.get_by_token(db_session, token)
 
         if not invitation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invitation not found",
-            )
+            raise NotFoundError("Invitation not found")
 
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invitation is {invitation.status}",
-            )
+            raise InvalidInputError(f"Invitation is {invitation.status}")
 
         if invitation.expires_at < datetime.now(timezone.utc):
             self.crud.update_status(db_session, invitation, InvitationStatus.EXPIRED)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invitation has expired",
-            )
+            raise InvalidInputError("Invitation has expired")
 
         # Build developer model for atomic creation
         developer = Developer(
@@ -141,18 +125,7 @@ class InvitationService:
             updated_at=datetime.now(timezone.utc),
         )
 
-        try:
-            developer = self.crud.accept_with_developer(db_session, invitation, developer)
-        except Exception as e:
-            logger.error(
-                f"Failed to accept invitation: {e}",
-                provider="invitation",
-                task="accept_invitation",
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create developer account",
-            )
+        developer = self.crud.accept_with_developer(db_session, invitation, developer)
 
         logger.info("Invitation accepted", invitation_id=str(invitation.id), developer_id=str(developer.id))
         return developer
@@ -162,16 +135,10 @@ class InvitationService:
         invitation = self.crud.get(db_session, invitation_id)
 
         if not invitation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invitation not found",
-            )
+            raise NotFoundError("Invitation not found")
 
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT, InvitationStatus.FAILED):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot revoke invitation with status: {invitation.status}",
-            )
+            raise InvalidInputError(f"Cannot revoke invitation with status: {invitation.status}")
 
         invitation = self.crud.update_status(db_session, invitation, InvitationStatus.REVOKED)
 
@@ -187,16 +154,10 @@ class InvitationService:
         invitation = self.crud.get(db_session, invitation_id)
 
         if not invitation:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Invitation not found",
-            )
+            raise NotFoundError("Invitation not found")
 
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT, InvitationStatus.FAILED):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot resend invitation with status: {invitation.status}",
-            )
+            raise InvalidInputError(f"Cannot resend invitation with status: {invitation.status}")
 
         # Generate new token, extend expiry, and reset status to PENDING
         resend_data = InvitationResend(

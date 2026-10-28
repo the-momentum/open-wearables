@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas.utils import FilterParams
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.exceptions import ResourceNotFoundError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +37,6 @@ class AppService[
         logger.debug("Created object", model=self.name, object_id=str(creation.id))  # ty:ignore[unresolved-attribute]
         return creation  # ty:ignore[invalid-return-type]
 
-    @handle_exceptions
     def get(
         self,
         db_session: DbSession,
@@ -64,7 +63,6 @@ class AppService[
 
         return fetched
 
-    @handle_exceptions
     def get_all(
         self,
         db_session: DbSession,

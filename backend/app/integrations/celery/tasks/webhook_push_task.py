@@ -18,6 +18,7 @@ from app.database import SessionLocal
 from app.schemas.sync_status import SyncStatus
 from app.services import sync_status_service
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import INTEGRITY_ERRORS, AppError, app_error_from_integrity_error, describe_integrity_error
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -129,6 +130,23 @@ def _emit_webhook_sync_status(provider_name: str, result: Any) -> None:
         logger.debug("Failed to emit webhook sync status", provider=provider_name, exc_info=exc)
 
 
+def _is_client_error(exc: Exception) -> bool:
+    """A 4xx domain error or a duplicate/FK violation from our own writes (e.g. the user was
+    deleted meanwhile): the same payload fails the same way on retry, so drop it like an
+    upstream 4xx. A NOT NULL or CHECK violation is our bug: it fails the task instead."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        return app_error_from_integrity_error(exc) is not None
+    return isinstance(exc, AppError) and exc.is_client_error
+
+
+def _error_attributes(exc: Exception) -> dict[str, str]:
+    """What failed, never str(exc) or a traceback: an IntegrityError's message carries the payload's values."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        violation_type, constraint = describe_integrity_error(exc)
+        return {"error_type": violation_type, "constraint": str(constraint)}
+    return {"error_type": type(exc).__name__, "error": str(exc)}
+
+
 @shared_task(
     name=CeleryTask.PROCESS_WEBHOOK_PUSH,
     bind=True,
@@ -200,6 +218,26 @@ def process_webhook_push(
         )
         raise self.retry(exc=exc)
     except Exception as exc:
+        if _is_client_error(exc):
+            logger.warning(
+                "Webhook push task skipped — non-retriable error",
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                **_error_attributes(exc),
+            )
+            return {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
+        if isinstance(exc, INTEGRITY_ERRORS):
+            # Our bug, and the same payload violates the constraint again on every retry:
+            # fail now, CeleryIntegration reports the raised exception to Sentry.
+            logger.error(
+                "Webhook push task failed — constraint violation",
+                provider=provider_name,
+                trace_id=request_trace_id,
+                provider_user_id=provider_user_id,
+                **_error_attributes(exc),
+            )
+            raise
         logger.error(
             "Webhook push task failed, scheduling retry",
             provider=provider_name,

@@ -27,6 +27,7 @@ import sentry_sdk
 from fastapi import HTTPException
 
 from app.utils.context import trace_id_var
+from app.utils.exceptions import AppError
 from app.utils.logging_setup import (
     APP_LOGGER,
     BASE_FIELDS,
@@ -81,8 +82,10 @@ def _exception(exc_info: Any) -> BaseException | None:
 
 
 def _is_client_error(exc: BaseException | None) -> bool:
-    """4xx HTTPExceptions are explicit, handled client errors (e.g. a provider
+    """4xx HTTPExceptions and AppErrors are explicit, handled client errors (e.g. a provider
     rejecting a token refresh): logged as warnings, kept out of Sentry."""
+    if isinstance(exc, AppError):
+        return exc.is_client_error
     return isinstance(exc, HTTPException) and 400 <= exc.status_code < 500
 
 
@@ -111,8 +114,8 @@ class StructuredLogger:
 
     - ``exc_info``: an exception (or True inside ``except``) - adds ``error_type`` and
       ``traceback`` to the line. At ``error`` and above it is also reported to Sentry, unless
-      LOG_LEVEL filters the line out; at ``warning`` it is not. 4xx ``HTTPException``\\s are
-      logged as warnings.
+      LOG_LEVEL filters the line out; at ``warning`` it is not. 4xx ``HTTPException``\\s and
+      ``AppError``\\s are logged as warnings.
     - ``provider``: provider name, printed right after the message.
     - ``alert``: always report the line to Sentry - without an exception, below ``error``,
       and also when LOG_LEVEL filters it out of the logs.

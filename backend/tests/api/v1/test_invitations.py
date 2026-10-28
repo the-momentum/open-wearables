@@ -20,5 +20,5 @@ class TestCreateInvitation:
             headers=developer_auth_headers(inviter.id),
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 409
         assert response.json()["detail"] == "A developer with this email already exists"

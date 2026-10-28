@@ -51,10 +51,24 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
     def __init__(self, model: type[User]):
         super().__init__(model)
 
+    def create(self, db_session: DbSession, creator: UserCreateInternal) -> User:
+        # Without the base class's @handle_duplicates: a taken external_user_id must surface as
+        # an IntegrityError (a 409), not return the other user's row as if it were created.
+        user = self.model(**creator.model_dump())
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+        return user
+
     def get_by_email(self, db_session: DbSession, email: str | None) -> User | None:
         if email is None:
             return None
         return db_session.query(self.model).filter(self.model.email == email).one_or_none()
+
+    def get_by_external_user_id(self, db_session: DbSession, external_user_id: str | None) -> User | None:
+        if external_user_id is None:
+            return None
+        return db_session.query(self.model).filter(self.model.external_user_id == external_user_id).one_or_none()
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of users."""

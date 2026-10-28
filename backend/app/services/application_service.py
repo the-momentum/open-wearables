@@ -2,8 +2,6 @@ import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import HTTPException
-
 from app.database import DbSession
 from app.models import Application
 from app.repositories.application_repository import ApplicationRepository
@@ -12,6 +10,7 @@ from app.schemas.model_crud.credentials import (
     ApplicationUpdate,
 )
 from app.services.services import AppService
+from app.utils.exceptions import AuthenticationError, NotFoundError
 from app.utils.security import get_password_hash, verify_password
 from app.utils.structured_logging import get_logger
 
@@ -62,12 +61,12 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         """Validate app credentials and return application if valid.
 
         Raises:
-            HTTPException: 401 if credentials are invalid.
+            AuthenticationError: if credentials are invalid.
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application:
             logger.warning("Application not found", action="validate_credentials", app_id=app_id)
-            raise HTTPException(status_code=401, detail="Invalid app credentials")
+            raise AuthenticationError("Invalid app credentials")
 
         if not verify_password(app_secret, application.app_secret_hash):
             logger.warning(
@@ -75,7 +74,7 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
                 action="validate_credentials",
                 app_id=app_id,
             )
-            raise HTTPException(status_code=401, detail="Invalid app credentials")
+            raise AuthenticationError("Invalid app credentials")
 
         return application
 
@@ -89,11 +88,11 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         """Delete an application by app_id, verifying ownership.
 
         Raises:
-            HTTPException: 404 if not found or not owned by developer.
+            NotFoundError: if not found or not owned by developer.
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application or application.developer_id != developer_id:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise NotFoundError("Application not found")
 
         self.delete(db, application.id, raise_404=True)
         logger.debug("Deleted application", app_id=app_id, developer_id=str(developer_id))
@@ -105,11 +104,11 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
             Tuple of (Application, new_plain_secret).
 
         Raises:
-            HTTPException: 404 if not found or not owned by developer.
+            NotFoundError: if not found or not owned by developer.
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application or application.developer_id != developer_id:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise NotFoundError("Application not found")
 
         new_secret = self._generate_app_secret()
         new_hash = get_password_hash(new_secret)

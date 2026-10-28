@@ -28,7 +28,7 @@ from app.services.sync_status_service import (
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.context import sync_run_context
-from app.utils.exceptions import ResourceNotFoundError
+from app.utils.exceptions import INTEGRITY_ERRORS, AppError, ResourceNotFoundError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -147,6 +147,15 @@ def _as_uuid(user_id: str) -> UUID | None:
         return None
 
 
+def _is_retryable(exc: Exception) -> bool:
+    """A client error or a constraint violation fails the same way on every attempt."""
+    if isinstance(exc, INTEGRITY_ERRORS):
+        return False
+    if isinstance(exc, HTTPException | AppError):
+        return exc.status_code >= 500
+    return True
+
+
 def _run_import_task(
     task: Task,
     *,
@@ -207,8 +216,9 @@ def _run_import_task(
             )
         return result
     except Exception as exc:
-        retryable = not isinstance(exc, HTTPException) or exc.status_code >= 500
-        can_retry = retryable and not task.request.called_directly and task.request.retries < (task.max_retries or 0)
+        can_retry = (
+            _is_retryable(exc) and not task.request.called_directly and task.request.retries < (task.max_retries or 0)
+        )
         if can_retry:
             raise task.retry(exc=exc, countdown=min(10 * (2**task.request.retries), 300)) from exc
 

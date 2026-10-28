@@ -12,7 +12,6 @@ from app.models.series_type_definition import SeriesTypeDefinition
 from app.schemas.enums import DeviceType, ProviderName, TimelineBucket, TimelineGroupBy
 from app.schemas.model_crud.activities.source_filters import SourceFilterParams
 from app.utils.duplicates import handle_duplicates
-from app.utils.exceptions import handle_exceptions
 
 
 def utc_bucket_start(
@@ -98,7 +97,6 @@ class CrudRepository[
     def __init__(self, model: type[ModelType]):
         self.model = model
 
-    @handle_exceptions
     @handle_duplicates
     def create(self, db_session: DbSession, creator: CreateSchemaType) -> ModelType:
         creation_data = creator.model_dump()

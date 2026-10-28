@@ -76,7 +76,6 @@ from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.context import current_sync_payload
 from app.utils.conversion import as_dict_list, as_float, as_model, minutes_to_seconds
-from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 from app.utils.structured_logging import get_logger
 
@@ -791,7 +790,6 @@ class EventRecordService(
             for record, data_source, detail in dispatches:
                 self._emit_event_record_webhook(record, data_source, detail, sync)
 
-    @handle_exceptions
     def _get_records_with_filters(
         self,
         db_session: DbSession,
@@ -809,7 +807,6 @@ class EventRecordService(
 
         return records, total_count
 
-    @handle_exceptions
     def get_records_response(
         self,
         db_session: DbSession,
@@ -820,7 +817,6 @@ class EventRecordService(
 
         return [self._build_response(record, data_source) for record, data_source in records]
 
-    @handle_exceptions
     def get_workout_types(self, db_session: DbSession, user_id: UUID) -> list[str]:
         """Workout types this user actually has, so a client can filter on real options only."""
         return self.crud.get_distinct_workout_types(db_session, user_id)
@@ -838,7 +834,6 @@ class EventRecordService(
             device_id=data_source.device_id,
         )
 
-    @handle_exceptions
     def get_workout_totals(self, db_session: DbSession, user_id: UUID, params: EventRecordQueryParams) -> WorkoutTotals:
         count, seconds, energy, distance = self.crud.get_workout_totals(db_session, params, str(user_id))
         return WorkoutTotals(
@@ -848,7 +843,6 @@ class EventRecordService(
             distance_meters=float(distance) if distance is not None else None,
         )
 
-    @handle_exceptions
     def get_workouts(
         self,
         db_session: DbSession,
@@ -963,7 +957,6 @@ class EventRecordService(
         device_type_order = self.device_type_priority_repo.get_priority_order(db_session)
         return self.crud.winning_sleep_record_ids(db_session, str(user_id), params, provider_order, device_type_order)
 
-    @handle_exceptions
     def get_sleep_totals(
         self,
         db_session: DbSession,
@@ -983,7 +976,6 @@ class EventRecordService(
             avg_efficiency_percent=float(efficiency) if efficiency is not None else None,
         )
 
-    @handle_exceptions
     def get_sleep_sessions(
         self,
         db_session: DbSession,
@@ -1080,7 +1072,6 @@ class EventRecordService(
             ),
         )
 
-    @handle_exceptions
     def get_menstrual_cycles(
         self,
         db_session: DbSession,
@@ -1160,7 +1151,6 @@ class EventRecordService(
             ),
         )
 
-    @handle_exceptions
     def get_meals(
         self,
         db_session: DbSession,

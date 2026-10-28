@@ -9,14 +9,18 @@ deliveries with no resolvable user (or from self-reporting Garmin) are dropped.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from celery.exceptions import Retry
+from psycopg.errors import CheckViolation, ForeignKeyViolation, NotNullViolation
+from sqlalchemy.exc import IntegrityError
 
 import app.integrations.celery.tasks.webhook_push_task as task
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.sync_status import SyncStatus
+from app.utils.exceptions import AppError, NotFoundError
 
 
 @pytest.fixture
@@ -102,3 +106,72 @@ def test_emission_never_raises() -> None:
         task._emit_webhook_sync_status("oura", None)
         task._emit_webhook_sync_status("oura", {"status": "processed", "records_saved": 1, "user_id": "not-a-uuid"})
     assert calls == []
+
+
+def _run_with_failing_handler(exc: Exception) -> dict[str, Any]:
+    handler = MagicMock()
+    handler.extract_user_id.return_value = "provider-user"
+    handler.process_payload.side_effect = exc
+    with (
+        patch.object(task, "ProviderFactory") as factory,
+        patch.object(task, "SessionLocal", MagicMock()),
+        patch.object(task.process_webhook_push, "retry", side_effect=Retry()),
+    ):
+        factory.return_value.get_provider.return_value.webhooks = handler
+        return task.process_webhook_push.run("oura", {}, "trace-1")
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        IntegrityError("stmt", {}, ForeignKeyViolation("user deleted meanwhile")),
+        ForeignKeyViolation("raw psycopg, from a COPY"),
+        NotFoundError("User not found."),
+    ],
+)
+def test_own_client_errors_are_dropped_not_retried(exc: Exception) -> None:
+    result = _run_with_failing_handler(exc)
+
+    assert result == {"status": "skipped", "reason": "non_retriable", "error_type": type(exc).__name__}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        AppError("broken invariant"),
+        RuntimeError("database down"),
+    ],
+)
+def test_server_errors_are_retried(exc: Exception) -> None:
+    with pytest.raises(Retry):
+        _run_with_failing_handler(exc)
+
+
+@pytest.mark.parametrize(
+    ("exc", "violation"),
+    [
+        (IntegrityError("INSERT ...", {"heart_rate": 187}, NotNullViolation("not null")), "NotNullViolation"),
+        (CheckViolation("raw psycopg, from a COPY"), "CheckViolation"),
+    ],
+)
+def test_own_constraint_bug_fails_without_retry(exc: Exception, violation: str) -> None:
+    """Retrying the same payload violates the constraint again; raising gets it to Sentry."""
+    with patch.object(task, "logger") as logger, pytest.raises(type(exc)):
+        _run_with_failing_handler(exc)
+
+    kwargs = logger.error.call_args.kwargs
+    assert kwargs["error_type"] == violation
+    assert "187" not in str(kwargs)
+
+
+def test_skipped_integrity_error_is_logged_without_the_payloads_values() -> None:
+    """The message of an IntegrityError carries the statement's parameters, i.e. health data."""
+    exc = IntegrityError("INSERT ...", {"heart_rate": 187}, ForeignKeyViolation("fk"))
+
+    with patch.object(task, "logger") as logger:
+        _run_with_failing_handler(exc)
+
+    kwargs = logger.warning.call_args.kwargs
+    assert kwargs["error_type"] == "ForeignKeyViolation"
+    assert "exc_info" not in kwargs
+    assert "187" not in str(kwargs)

@@ -15,7 +15,6 @@ from typing import get_args
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from psycopg.errors import ForeignKeyViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -183,8 +182,8 @@ class TestEventRecordDetailRepository:
 
         monkeypatch.setattr(db, "commit", fail_with_fk_violation)
 
-        # Act & Assert - handle_exceptions maps the re-raised error, no silent recovery
-        with pytest.raises(HTTPException):
+        # Act & Assert - the error is re-raised, no silent recovery
+        with pytest.raises(IntegrityError):
             repo.create(
                 db,
                 EventRecordDetailCreate(record_id=event_record.id, steps_count=9999),

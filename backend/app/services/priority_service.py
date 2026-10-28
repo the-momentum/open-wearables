@@ -18,7 +18,6 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityResponse,
 )
 from app.services.providers.factory import ProviderFactory
-from app.utils.exceptions import handle_exceptions
 
 
 class PriorityService:
@@ -36,7 +35,6 @@ class PriorityService:
             response.icon_url = strategy.icon_url
         return response
 
-    @handle_exceptions
     def get_provider_priorities(
         self,
         db_session: DbSession,
@@ -44,7 +42,6 @@ class PriorityService:
         priorities = self.priority_repo.get_all_ordered(db_session)
         return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in priorities])
 
-    @handle_exceptions
     def update_provider_priority(
         self,
         db_session: DbSession,
@@ -55,7 +52,6 @@ class PriorityService:
         db_session.commit()
         return self._to_provider_response(result)
 
-    @handle_exceptions
     def bulk_update_priorities(
         self,
         db_session: DbSession,
@@ -66,7 +62,6 @@ class PriorityService:
         db_session.commit()
         return ProviderPriorityListResponse(items=[self._to_provider_response(p) for p in results])
 
-    @handle_exceptions
     def get_user_data_sources(
         self,
         db_session: DbSession,
@@ -92,7 +87,6 @@ class PriorityService:
             display_name=self._build_display_name(ds, device_name),
         )
 
-    @handle_exceptions
     def get_device_type_priorities(
         self,
         db_session: DbSession,
@@ -100,7 +94,6 @@ class PriorityService:
         priorities = self.device_type_priority_repo.get_all_ordered(db_session)
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in priorities])
 
-    @handle_exceptions
     def update_device_type_priority(
         self,
         db_session: DbSession,
@@ -111,7 +104,6 @@ class PriorityService:
         db_session.commit()
         return DeviceTypePriorityResponse.model_validate(result)
 
-    @handle_exceptions
     def bulk_update_device_type_priorities(
         self,
         db_session: DbSession,

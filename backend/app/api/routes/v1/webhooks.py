@@ -118,11 +118,15 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     echoed back.  This endpoint delegates to the provider's
     ``handle_challenge()`` method.
 
-    Providers that do not support GET challenges will receive a ``501``
-    response from the default ``BaseWebhookHandler.handle_challenge()``
-    implementation.
+    Providers whose handler does not override ``handle_challenge()`` receive
+    a ``501`` response.
     """
     handler = _get_webhook_handler(provider)
+    if type(handler).handle_challenge is BaseWebhookHandler.handle_challenge:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Provider '{provider}' does not support webhook subscription verification via GET.",
+        )
     return handler.handle_challenge(request)
 
 

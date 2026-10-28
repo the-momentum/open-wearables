@@ -24,6 +24,7 @@ from app.config import settings
 from app.integrations import sentry as sentry_integration
 from app.services import raw_payload_storage
 from app.utils.config_utils import LogLevel
+from app.utils.exceptions import NotFoundError
 from app.utils.logging_setup import configure_app_logger
 from app.utils.structured_logging import get_logger
 
@@ -199,6 +200,7 @@ def test_app_errors_without_an_exception_do_not_alert(captured: list[dict[str, A
     app_logger.error("Sync failed", user_id="u-1")
     app_logger.warning("Fetch failed", exc_info=_raised(ValueError("boom")))
     app_logger.error("Token refresh rejected", exc_info=_raised(HTTPException(status_code=401)))
+    app_logger.error("User missing", exc_info=_raised(NotFoundError("User not found.")))
     sentry_sdk.flush()
 
     assert captured == []

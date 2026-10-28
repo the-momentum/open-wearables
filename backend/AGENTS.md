@@ -145,11 +145,29 @@ class UserCreateInternal(UserCreate):
 
 ### Error Handling
 
-**General rule:** Let exceptions propagate up to global handlers when possible.
+**General rule:** Let exceptions propagate up to the global handlers in `app/main.py`.
+
+Services and repositories raise domain errors from `app/utils/exceptions.py`, they also run in Celery tasks, which catch them by type:
+
+| Error | Status |
+|---|---|
+| `InvalidInputError` (`InvalidCursorError`, `DatetimeParseError`, `UnsupportedProviderError`) | 400 |
+| `AuthenticationError` (adds `WWW-Authenticate: Bearer`) | 401 |
+| `PermissionDeniedError` | 403 |
+| `NotFoundError` (`ResourceNotFoundError`) | 404 |
+| `ConflictError` | 409 |
+| `IntegrityError`: unique violation / foreign key to a missing row | 409 / 400 |
+| anything else, incl. other `IntegrityError`s and a bare `AppError` | 500 `{"detail": "Internal server error"}` |
+
+Celery tasks don't retry a 4xx domain error or any `IntegrityError`: the same input fails the same way on every attempt. A violation the client didn't cause (NOT NULL, CHECK) still fails the task, so it reaches Sentry.
 
 ```python
-# In services - use raise_404=True
+from app.utils.exceptions import ConflictError
+
+# In services - use raise_404=True, or raise a domain error
 user = user_service.get(db, user_id, raise_404=True)
+if user_repository.get_by_email(db, email):
+    raise ConflictError("User with this email already exists.")
 
 # In routes - raise HTTPException directly
 from fastapi import HTTPException, status
@@ -157,6 +175,10 @@ from fastapi import HTTPException, status
 if not user:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 ```
+
+A 500 is re-raised after the response is sent, so it keeps its traceback in the access log and reaches Sentry. A 4xx domain error passed as `exc_info` is logged as a warning and stays out of Sentry, like a 4xx `HTTPException`. Don't map a generic `ValueError`/`AttributeError` to a 4xx - raise `InvalidInputError` where the input is the client's fault.
+
+On a unique violation `CrudRepository.create` (`@handle_duplicates`) returns the existing row as if it had just been created, instead of raising. Where a duplicate must be a 409, check it in the service before creating (see `UserService.create`).
 
 **Handled exceptions in background tasks:**
 
@@ -189,7 +211,7 @@ except Exception as e:
 - ❌ `logger.error(...)` without `exc_info` or `alert` - logged only
 - Passing `exc_info` for an exception that is re-raised is fine: the duplicate Sentry event is dropped by the SDK's deduplication.
 
-4xx `HTTPException`s passed as `exc_info` are logged as warnings and not captured. An error that `LOG_LEVEL` filters out (`LOG_LEVEL=CRITICAL`) is not reported either, unless it has `alert=True`. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
+4xx `HTTPException`s and `AppError`s passed as `exc_info` are logged as warnings and not captured. An error that `LOG_LEVEL` filters out (`LOG_LEVEL=CRITICAL`) is not reported either, unless it has `alert=True`. App code reports to Sentry through the logger itself: Sentry's logging integration ignores the `app` loggers, so app lines never become breadcrumbs.
 
 **Keep health data and PII out of Sentry:** for reported lines, the message and all attributes are sent to Sentry as event context. Put only identifiers and categories in them (`user_id`, `provider`, `data_type`, counts, error locations) - never measurements, raw payloads or records, names or emails. The same applies to messages of exceptions you raise, since they become Sentry events. `app/integrations/sentry.py` masks known PII keys, emails and pydantic `input_value`s, but it cannot recognise a heart rate under an arbitrary key or in prose.
 
@@ -380,7 +402,6 @@ Services contain business logic. They **NEVER** perform database operations dire
 
 ```python
 from app.services.services import AppService
-from app.utils.exceptions import handle_exceptions
 
 
 class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
@@ -394,12 +415,11 @@ class ActivityMixin:
         self.activity_repository = activity_repository
         super().__init__(**kwargs)
 
-    @handle_exceptions
     def is_user_active(self: "UserService", object_id: UUID) -> bool:
         return self.activity_repository.is_user_active(object_id)
 ```
 
-**Error handling:** Use `@handle_exceptions` decorator from `app.utils.exceptions`
+**Error handling:** Raise domain errors from `app.utils.exceptions` and let them propagate (see Error Handling above)
 
 **Flow:** repository → SQLAlchemy model → service → SQLAlchemy model → route
 

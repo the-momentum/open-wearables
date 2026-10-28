@@ -1,133 +1,100 @@
-import inspect
-from collections.abc import Awaitable, Callable
-from functools import singledispatch, wraps
-from typing import TYPE_CHECKING, overload
+from typing import ClassVar
 from uuid import UUID
 
-from fastapi.exceptions import HTTPException, RequestValidationError
+from fastapi import status
+from psycopg import Error as PsycopgError
+from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
-from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+from sqlalchemy.exc import IntegrityError
 
-if TYPE_CHECKING:
-    from app.services import AppService
-
-
-class UnsupportedProviderError(Exception):
-    def __init__(self, provider: str, operation: str = "this operation"):
-        self.detail = f"Provider '{provider}' does not support {operation}."
-        super().__init__(self.detail)
+# ORM writes raise SQLAlchemy's wrapper; writes on the raw psycopg connection (COPY) raise psycopg's own
+INTEGRITY_ERRORS = (IntegrityError, PsycopgIntegrityError)
 
 
-class ResourceNotFoundError(Exception):
-    def __init__(self, entity_name: str, entity_id: int | UUID | None = None):
-        self.entity_name = entity_name
-        if entity_id:
-            self.detail = f"{entity_name.capitalize()} with ID: {entity_id} not found."
-        else:
-            self.detail = f"{entity_name.capitalize()} not found."
+class AppError(Exception):
+    """Base of the domain errors raised by services and repositories.
 
+    Raise a subclass instead of ``HTTPException``: the global handler in ``app.main`` turns
+    ``status_code`` and ``detail`` into the response, and Celery tasks can catch it by type.
+    """
 
-class ResourceAlreadyExistsError(Exception):
-    def __init__(self, detail: str):
+    status_code: ClassVar[int] = status.HTTP_500_INTERNAL_SERVER_ERROR
+    headers: ClassVar[dict[str, str] | None] = None
+
+    def __init__(self, detail: str) -> None:
         self.detail = detail
         super().__init__(detail)
 
+    @property
+    def is_client_error(self) -> bool:
+        return 400 <= self.status_code < 500
 
-class InvalidCursorError(Exception):
+
+class InvalidInputError(AppError):
+    status_code = status.HTTP_400_BAD_REQUEST
+
+
+class AuthenticationError(AppError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    headers = {"WWW-Authenticate": "Bearer"}
+
+
+class PermissionDeniedError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+
+
+class NotFoundError(AppError):
+    status_code = status.HTTP_404_NOT_FOUND
+
+
+class ConflictError(AppError):
+    status_code = status.HTTP_409_CONFLICT
+
+
+class ResourceNotFoundError(NotFoundError):
+    def __init__(self, entity_name: str, entity_id: int | UUID | None = None):
+        self.entity_name = entity_name
+        if entity_id:
+            super().__init__(f"{entity_name.capitalize()} with ID: {entity_id} not found.")
+        else:
+            super().__init__(f"{entity_name.capitalize()} not found.")
+
+
+class UnsupportedProviderError(InvalidInputError):
+    def __init__(self, provider: str, operation: str = "this operation"):
+        super().__init__(f"Provider '{provider}' does not support {operation}.")
+
+
+class InvalidCursorError(InvalidInputError):
     def __init__(self, cursor: str):
-        self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
+        super().__init__(f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'.")
 
 
-class DatetimeParseError(ValueError):
+class DatetimeParseError(InvalidInputError, ValueError):
     def __init__(self, value: str):
-        self.detail = f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp."
-        super().__init__(self.detail)
+        super().__init__(f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp.")
 
 
-@singledispatch
-def handle_exception(exc: Exception, _: str) -> HTTPException:
-    raise exc
+def integrity_violation(exc: IntegrityError | PsycopgIntegrityError) -> BaseException | None:
+    """The driver error behind ``exc``, whether SQLAlchemy wrapped it or not."""
+    return exc.orig if isinstance(exc, IntegrityError) else exc
 
 
-@handle_exception.register
-def _(exc: SQLAIntegrityError | PsycopgIntegrityError, entity: str) -> HTTPException:
-    return HTTPException(
-        status_code=400,
-        detail=f"{entity.capitalize()} entity already exists. Details: {exc.args[0]}",
-    )
+def describe_integrity_error(exc: IntegrityError | PsycopgIntegrityError) -> tuple[str, str | None]:
+    """The violation type and constraint name - never the message, which carries the offending values."""
+    violation = integrity_violation(exc)
+    constraint = violation.diag.constraint_name if isinstance(violation, PsycopgError) else None
+    return type(violation).__name__, constraint
 
 
-@handle_exception.register
-def _(exc: ResourceNotFoundError, _: str) -> HTTPException:
-    return HTTPException(status_code=404, detail=exc.detail)
-
-
-@handle_exception.register
-def _(exc: ResourceAlreadyExistsError, _: str) -> HTTPException:
-    return HTTPException(status_code=409, detail=exc.detail)
-
-
-@handle_exception.register
-def _(exc: InvalidCursorError, _: str) -> HTTPException:
-    return HTTPException(status_code=400, detail=exc.detail)
-
-
-@handle_exception.register
-def _(exc: DatetimeParseError, _: str) -> HTTPException:
-    return HTTPException(status_code=400, detail=exc.detail)
-
-
-@handle_exception.register
-def _(exc: AttributeError, entity: str) -> HTTPException:
-    return HTTPException(
-        status_code=400,
-        detail=f"{entity.capitalize()} doesn't support attribute or method. Details: {exc.args[0]} ",
-    )
-
-
-@handle_exception.register
-def _(exc: RequestValidationError, _: str) -> HTTPException:
-    err_args = exc.args[0][0]
-    msg = err_args.get("msg", "Validation error")
-    ctx = err_args.get("ctx", {})
-    error = ctx.get("error", "") if ctx else ""
-    detail = f"{msg} - {error}" if error else msg
-    return HTTPException(status_code=400, detail=detail)
-
-
-@overload
-def handle_exceptions[**P, T, Service: AppService](
-    func: Callable[P, Awaitable[T]],
-) -> Callable[P, Awaitable[T]]: ...
-
-
-@overload
-def handle_exceptions[**P, T, Service: AppService](
-    func: Callable[P, T],
-) -> Callable[P, T]: ...
-
-
-def handle_exceptions[**P, T, Service: AppService](
-    func: Callable[P, T] | Callable[P, Awaitable[T]],
-) -> Callable[P, T] | Callable[P, Awaitable[T]]:
-    if inspect.iscoroutinefunction(func):
-
-        @wraps(func)
-        async def async_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
-            try:
-                return await func(instance, *args, **kwargs)  # ty:ignore[invalid-argument-type]
-            except Exception as exc:
-                entity_name = getattr(instance, "name", "unknown")
-                raise handle_exception(exc, entity_name) from exc
-
-        return async_wrapper  # ty:ignore[invalid-return-type]
-
-    @wraps(func)
-    def sync_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
-        try:
-            return func(instance, *args, **kwargs)  # ty:ignore[invalid-argument-type, invalid-return-type]
-        except Exception as exc:
-            entity_name = getattr(instance, "name", "unknown")
-            raise handle_exception(exc, entity_name) from exc
-
-    return sync_wrapper  # ty:ignore[invalid-return-type]
+def app_error_from_integrity_error(exc: IntegrityError | PsycopgIntegrityError) -> AppError | None:
+    """The client-caused constraint violation behind ``exc``, or None for one that is our bug."""
+    orig = integrity_violation(exc)
+    if isinstance(orig, UniqueViolation):
+        entity = (orig.diag.table_name or "resource").replace("_", " ").capitalize()
+        return ConflictError(f"{entity} already exists.")
+    if isinstance(orig, ForeignKeyViolation):
+        # FKs cascade or null on delete, except to series_type_definition (RESTRICT), whose
+        # seeded rows no endpoint deletes - so this is a reference to a missing row
+        return InvalidInputError("Referenced resource does not exist.")
+    return None

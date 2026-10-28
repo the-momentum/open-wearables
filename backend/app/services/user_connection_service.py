@@ -12,7 +12,7 @@ from app.services.outgoing_webhooks.events import on_connection_created, on_conn
 from app.services.providers.api_client import get_valid_token
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.exceptions import ResourceNotFoundError
 from app.utils.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,12 +44,10 @@ class UserConnectionService(
             ],
         )
 
-    @handle_exceptions
     def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all connections for a user."""
         return self.crud.get_by_user_id(db_session, user_id)
 
-    @handle_exceptions
     def get_connection(self, db_session: DbSession, user_id: UUID, provider: str) -> UserConnection | None:
         """Get a user's connection for one provider, or None if there is none."""
         return self.crud.get_by_user_and_provider(db_session, user_id, provider)
@@ -96,7 +94,6 @@ class UserConnectionService(
         )
         return connection
 
-    @handle_exceptions
     def disconnect(
         self,
         db_session: DbSession,
@@ -141,7 +138,6 @@ class UserConnectionService(
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
 
-    @handle_exceptions
     def purge_provider_data(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate | None = None
     ) -> int:
@@ -157,7 +153,6 @@ class UserConnectionService(
         logger.info("Purged provider data sources", provider=provider, user_id=str(user_id), deleted_count=deleted)
         return deleted
 
-    @handle_exceptions
     def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
         """Stamp last_synced_at=now on the user's connection for the given provider.
 

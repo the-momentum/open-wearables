@@ -2,7 +2,7 @@ import secrets
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
 from app.database import DbSession, SessionLocal
@@ -11,7 +11,7 @@ from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 from app.services.services import AppService
 from app.utils.auth import get_current_developer_optional, oauth2_scheme, validate_api_key
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.exceptions import AuthenticationError, ResourceNotFoundError
 from app.utils.security import hash_api_key
 from app.utils.structured_logging import get_logger
 
@@ -33,7 +33,6 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         """Generate random API key with sk- prefix and 32 hex characters."""
         return f"sk-{secrets.token_hex(16)}"
 
-    @handle_exceptions
     def create_api_key(self, db: DbSession, created_by: UUID | None, name: str = "Default") -> tuple[ApiKey, str]:
         """Create an API key.
 
@@ -62,7 +61,6 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         logger.debug("Listed API keys", count=len(keys))
         return keys
 
-    @handle_exceptions
     def rotate_api_key(self, db: DbSession, key_id: UUID, created_by: UUID | None) -> tuple[ApiKey, str]:
         """Rotate API key - delete the old one and create a new one with the same name.
 
@@ -84,7 +82,6 @@ class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpd
         logger.debug("Rotated API key", api_key_id=str(key_id), new_api_key_id=str(new_key.id))
         return new_key, raw_key
 
-    @handle_exceptions
     def validate_api_key(self, db: DbSession, key: str) -> ApiKey:
         """Validate the raw API key against stored hashes. Raises 401 if invalid."""
         return validate_api_key(db, key)
@@ -98,7 +95,7 @@ async def _authenticate(db: Session, developer: Developer | None, api_key: str |
         return str(developer.id)
     if api_key:
         return str(api_key_service.validate_api_key(db, api_key).id)
-    raise HTTPException(status_code=401, detail="Authentication required: provide JWT token or API key")
+    raise AuthenticationError("Authentication required: provide JWT token or API key")
 
 
 async def _require_api_key(

@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.services.api_key_service import KEY_PREFIX_LENGTH, api_key_service
+from app.utils.exceptions import NotFoundError
 from app.utils.security import hash_api_key
 from tests.factories import ApiKeyFactory, DeveloperFactory
 
@@ -255,12 +256,12 @@ class TestApiKeyServiceRotateApiKey:
         assert len(api_key_service.list_api_keys(db)) == 1
 
     def test_rotate_nonexistent_key_raises_404(self, db: Session) -> None:
-        """Should raise HTTPException(404) when rotating non-existent key."""
+        """Should raise NotFoundError when rotating non-existent key."""
         # Arrange
         developer = DeveloperFactory()
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(NotFoundError) as exc_info:
             api_key_service.rotate_api_key(db, uuid4(), developer.id)
 
         assert exc_info.value.status_code == 404
