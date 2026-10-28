@@ -16077,6 +16077,7 @@
           "skeletal_muscle_mass",
           "bone_mass",
           "body_water_mass",
+          "body_water_percentage",
           "vo2_max",
           "six_minute_walk_test_distance",
           "cardiovascular_age",

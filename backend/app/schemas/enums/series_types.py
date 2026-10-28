@@ -66,6 +66,7 @@ class SeriesType(str, Enum):
     skeletal_muscle_mass = "skeletal_muscle_mass"
     bone_mass = "bone_mass"
     body_water_mass = "body_water_mass"
+    body_water_percentage = "body_water_percentage"
 
     # =========================================================================
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
@@ -281,6 +282,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (51, SeriesType.skin_temperature_trend_deviation, "celsius"),
     (52, SeriesType.bone_mass, "kg"),
     (53, SeriesType.body_water_mass, "kg"),
+    (54, SeriesType.body_water_percentage, "percent"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
     # -------------------------------------------------------------------------

@@ -333,6 +333,13 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_SKELETAL_MUSCLE_MASS: _ts_payload(
         WebhookEventType.SERIES_SKELETAL_MUSCLE_MASS, "skeletal_muscle_mass", "garmin", "kg", 35.2
     ),
+    WebhookEventType.SERIES_BONE_MASS: _ts_payload(WebhookEventType.SERIES_BONE_MASS, "bone_mass", "garmin", "kg", 3.1),
+    WebhookEventType.SERIES_BODY_WATER_MASS: _ts_payload(
+        WebhookEventType.SERIES_BODY_WATER_MASS, "body_water_mass", "withings", "kg", 42.6
+    ),
+    WebhookEventType.SERIES_BODY_WATER_PERCENTAGE: _ts_payload(
+        WebhookEventType.SERIES_BODY_WATER_PERCENTAGE, "body_water_percentage", "garmin", "%", 56.4
+    ),
     WebhookEventType.SERIES_WAIST_CIRCUMFERENCE: _ts_payload(
         WebhookEventType.SERIES_WAIST_CIRCUMFERENCE, "waist_circumference", "apple", "cm", 84.0
     ),
