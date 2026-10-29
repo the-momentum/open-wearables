@@ -131,7 +131,9 @@ Apple Health, Samsung Health and Health Connect keep data on the phone, with no 
 | [Flutter SDK](https://github.com/the-momentum/open_wearables_health_sdk) | Dart wrapper around the native SDKs |
 | [React Native SDK](https://github.com/the-momentum/open-wearables-react-native-sdk) | TypeScript wrapper around the native SDKs |
 
-No app of your own yet? The [Open Wearables mobile app](https://openwearables.io/docs/app/introduction) syncs on-device health data to your instance with an invitation code. TestFlight (iOS) and APK (Android) builds are available on request in [Discord](https://discord.gg/qrcfFnNE6H).
+No app of your own yet? A simple demo app syncs on-device health data to your instance with an invitation code ([setup guide](https://openwearables.io/docs/app/introduction)). TestFlight (iOS) and APK (Android) builds are available on request in [Discord](https://discord.gg/qrcfFnNE6H).
+
+For production use, [Open Wearables Connect](https://openwearables.io/platform/connect-app?utm_source=github&utm_medium=readme&utm_campaign=open-wearables), a full-featured app, is coming soon to the App Store and Google Play. A white-label version, published in the stores under your own brand, will be available as well.
 
 ### MCP server for AI agents
 
