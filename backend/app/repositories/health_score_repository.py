@@ -3,7 +3,7 @@ from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
 
-from sqlalchemy import Date, and_, cast, func, select, tuple_
+from sqlalchemy import Date, and_, cast, func, literal_column, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -65,6 +65,40 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         inserted = len(db_session.execute(stmt).scalars().all())
         # Caller is responsible for commit — allows batching with other operations
         return WriteCounts(inserted, 0)
+
+    def bulk_create_keeping_highest(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> WriteCounts:
+        """Bulk insert health scores, keeping the higher value on conflict with the unique constraint.
+
+        For a day's peak that the provider sends again, with more data, as the day goes on
+        (Garmin body battery): a later push never lowers it, whatever order the pushes arrive in.
+        Only for scores without an event record: the conflict target is the user, provider,
+        category and time key, so a conflict on another unique index raises.
+        """
+        if not creators:
+            return WriteCounts(0, 0)
+
+        # One row per key, the highest: ON CONFLICT DO UPDATE can't touch a row twice in one statement
+        highest: dict[tuple[UUID, ProviderName, HealthScoreCategory, datetime], HealthScoreCreate] = {}
+        for creator in creators:
+            key = (creator.user_id, creator.provider, creator.category, creator.recorded_at)
+            kept = highest.get(key)
+            if kept is None or (creator.value is not None and (kept.value is None or creator.value > kept.value)):
+                highest[key] = creator
+
+        stmt = insert(HealthScore).values([c.model_dump() for c in highest.values()])
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_health_score_user_provider_category_time",
+            set_={"value": stmt.excluded.value},
+            # An empty stored value gives way to any value; an empty new one never replaces anything
+            where=and_(
+                stmt.excluded.value.is_not(None),
+                or_(HealthScore.value.is_(None), stmt.excluded.value > HealthScore.value),
+            ),
+        ).returning(literal_column("xmax = 0"))
+        was_insert = db_session.execute(stmt).scalars().all()
+        inserted = sum(was_insert)
+        # Caller is responsible for commit — allows batching with other operations
+        return WriteCounts(inserted, len(was_insert) - inserted)
 
     def get_latest_by_category(
         self,

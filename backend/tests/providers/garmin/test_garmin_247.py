@@ -4,15 +4,16 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import SleepDetails
+from app.models import HealthScore, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas.enums import HealthScoreCategory
 from app.schemas.enums.series_types import SeriesType
 from app.schemas.sync_status import SyncScope, SyncSource
 from app.services.providers.garmin.data_247 import Garmin247Data
@@ -20,6 +21,10 @@ from app.services.providers.garmin.handlers.wellness import process_wellness_ite
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.utils.context import sync_run_var
 from tests.factories import UserConnectionFactory, UserFactory
+
+# One day's stressDetails as Garmin sends it after midnight, and again in the morning with more data
+_AFTER_MIDNIGHT = {"startTimeInSeconds": 1705276800, "timeOffsetBodyBatteryValues": {"0": 20, "3600": 46}}
+_MORNING = {"startTimeInSeconds": 1705276800, "timeOffsetBodyBatteryValues": {"0": 20, "3600": 46, "25200": 78}}
 
 
 class TestGarmin247Data:
@@ -649,6 +654,32 @@ class TestGarmin247Data:
         }
         samples = garmin_247._build_stress_samples(user_id, stress_data)
         assert len(samples) == 4  # 2 stress + 2 battery
+
+    # Webhook pushes and backfills both go through process_items_batch
+    def test_a_later_push_of_the_day_raises_the_body_battery_peak(self, garmin_247: Garmin247Data, db: Session) -> None:
+        user = UserFactory()
+
+        garmin_247.process_items_batch(db, user.id, "stressDetails", [_AFTER_MIDNIGHT])
+        garmin_247.process_items_batch(db, user.id, "stressDetails", [_MORNING])
+
+        assert self._body_battery_peaks(db, user.id) == [Decimal("78")]
+
+    def test_an_earlier_push_arriving_last_keeps_the_body_battery_peak(
+        self, garmin_247: Garmin247Data, db: Session
+    ) -> None:
+        user = UserFactory()
+
+        garmin_247.process_items_batch(db, user.id, "stressDetails", [_MORNING])
+        garmin_247.process_items_batch(db, user.id, "stressDetails", [_AFTER_MIDNIGHT])
+
+        assert self._body_battery_peaks(db, user.id) == [Decimal("78")]
+
+    @staticmethod
+    def _body_battery_peaks(db: Session, user_id: UUID) -> list[Decimal]:
+        scores = db.query(HealthScore).filter(
+            HealthScore.user_id == user_id, HealthScore.category == HealthScoreCategory.BODY_BATTERY
+        )
+        return [score.value for score in scores]
 
     def test_build_respiration_samples_webhook_field(self, garmin_247: Garmin247Data) -> None:
         """allDayRespiration webhook payload uses timeOffsetEpochToBreaths."""
