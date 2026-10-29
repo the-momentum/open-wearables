@@ -11602,7 +11602,7 @@
             "type": "boolean",
             "title": "Rollup Enabled",
             "description": "Roll changed days of samples up into daily and per-session aggregates every night.",
-            "default": true
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -11627,7 +11627,7 @@
             "type": "boolean",
             "title": "Rollup Enabled",
             "description": "Roll samples up into daily and per-session aggregates.",
-            "default": true
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [

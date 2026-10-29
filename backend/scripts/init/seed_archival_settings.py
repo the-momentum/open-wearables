@@ -19,7 +19,7 @@ def seed_archival_settings() -> None:
             print("Archival settings already initialized.")
             return
 
-        setting = ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None)
+        setting = ArchivalSetting(id=1, rollup_enabled=False, delete_after_days=None)
         db.add(setting)
         try:
             db.commit()

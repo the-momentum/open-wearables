@@ -9,7 +9,7 @@ class ArchivalSettingRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     rollup_enabled: bool = Field(
-        True,
+        False,
         description="Roll changed days of samples up into daily and per-session aggregates every night.",
     )
     delete_after_days: int | None = Field(
@@ -21,7 +21,7 @@ class ArchivalSettingRead(BaseModel):
 class ArchivalSettingUpdate(BaseModel):
     """Request schema for updating data lifecycle settings."""
 
-    rollup_enabled: bool = Field(True, description="Roll samples up into daily and per-session aggregates.")
+    rollup_enabled: bool = Field(False, description="Roll samples up into daily and per-session aggregates.")
     delete_after_days: int | None = Field(
         None,
         ge=1,
