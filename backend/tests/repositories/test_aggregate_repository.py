@@ -171,6 +171,22 @@ class TestAggregateRepository:
 
         assert written == db.query(SeriesAggregate).count() == 5000
 
+    def test_insert_missing_counts_only_the_rows_it_added(self, db: Session) -> None:
+        source = DataSourceFactory()
+        repo = AggregateRepository(SeriesAggregate)
+        repo.upsert(db, [self._row(source.id, ComputedBy.OPEN_WEARABLES, sum=Decimal("8000"))])
+
+        inserted = repo.insert_missing(
+            db,
+            [
+                self._row(source.id, ComputedBy.OPEN_WEARABLES, DAY - timedelta(days=n), sum=Decimal("1"))
+                for n in range(3)
+            ],
+        )
+
+        assert inserted == 2
+        assert sorted(row.sum for row in db.query(SeriesAggregate)) == [Decimal("1"), Decimal("1"), Decimal("8000")]
+
 
 class TestDayValuesMirroredFromSamples:
     def _sample(
