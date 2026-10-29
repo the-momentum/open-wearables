@@ -1,4 +1,4 @@
-# [Open Wearables](https://openwearables.io/?utm_source=github&utm_medium=readme&utm_campaign=open-wearables)
+# Open Wearables
 
 **Open-source, self-hosted wearable data layer: one API and one schema for the devices your users already wear.**
 
