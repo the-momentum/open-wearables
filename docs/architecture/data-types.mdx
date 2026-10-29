@@ -309,7 +309,8 @@ Besides timeseries and workouts, the API returns these record types:
 | `/events/sleep` | Sleep sessions with stage totals and, with `?include=stages`, stage intervals |
 | `/events/meals` | Meals with calories, macros and per-nutrient values (the `dietary_*` types above) |
 | `/events/menstrual-cycles` | Menstrual cycle records (cycle day, phase, period and cycle length) |
-| `/summaries/activity`, `/summaries/sleep`, `/summaries/recovery`, `/summaries/body` | Per-day rollups |
+| `/summaries/activity`, `/summaries/sleep`, `/summaries/recovery` | Per-day rollups |
+| `/summaries/body` | Current snapshot: latest slow-changing values (weight, body fat, ...), vitals averaged over `average_period` days, and readings from the last `latest_window_hours` |
 | `/health-scores` | Provider and Open Wearables scores |
 
 Health scores use these categories: `sleep`, `recovery`, `readiness`, `activity`, `stress`, `resilience`, `body_battery`, `strain`. See [Health Scores](/scores/health-scores) for how each one is sourced.
@@ -350,7 +351,7 @@ curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=
 
 ## Provider Support
 
-Data availability varies by provider. The coverage matrix lists which of the types above each provider delivers.
+Data availability varies by provider. The coverage matrix lists which of the types above each provider delivers. A few types are not in the matrix yet: `running_vertical_ratio`, `running_stance_time_balance`, `underwater_depth`, `garmin_skin_temperature` (legacy) and `nike_fuel`.
 
 <Card title="Full Provider Coverage Matrix" icon="table" href="/providers/coverage">
   See detailed breakdown of which data types each provider supports, including provider-specific quirks and normalization details.
