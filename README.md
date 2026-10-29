@@ -2,15 +2,13 @@
 
 **Open-source, self-hosted wearable data layer: one API and one schema for the devices your users already wear.**
 
-[![Website](https://img.shields.io/badge/Website-openwearables.io-blue)](https://openwearables.io/?utm_source=github&utm_medium=readme&utm_campaign=open-wearables)
-[![Docs](https://img.shields.io/badge/Docs-openwearables.io%2Fdocs-blue)](https://openwearables.io/docs)
 [![GitHub stars](https://img.shields.io/github/stars/the-momentum/open-wearables?style=flat)](https://github.com/the-momentum/open-wearables)
 [![Latest release](https://img.shields.io/github/v/release/the-momentum/open-wearables)](https://github.com/the-momentum/open-wearables/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/qrcfFnNE6H)
 [![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-blue?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/open-wearables?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-open-wearables-3)
 
-[Website](https://openwearables.io/?utm_source=github&utm_medium=readme&utm_campaign=open-wearables) · [Documentation](https://openwearables.io/docs) · [Quickstart](https://openwearables.io/docs/quickstart) · [Providers](#supported-providers) · [Roadmap](https://openwearables.io/docs/roadmap) · [Discord](https://discord.gg/qrcfFnNE6H)
+[Website](https://openwearables.io/?utm_source=github&utm_medium=readme&utm_campaign=open-wearables) · [Documentation](https://openwearables.io/docs) · [Quickstart](https://openwearables.io/docs/quickstart) · [Providers](#supported-providers) · [Roadmap](https://openwearables.io/docs/roadmap)
 
 ---
 
