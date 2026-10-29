@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import DEFAULT_ADMIN_PASSWORD, settings
 from app.database import SessionLocal
+from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.model_crud.user_management import DeveloperCreate, DeveloperUpdate
 from app.services import developer_service
 from app.utils.config_utils import EnvironmentType
@@ -48,6 +49,9 @@ def _rotate_default_password(db: Session, email: str, password: str, environment
         developer_service.update_developer_info(db, admin.id, DeveloperUpdate(password=password))
         print(f"✓ Replaced the default password of {email} with ADMIN_PASSWORD")
     elif environment == EnvironmentType.PRODUCTION:
+        # Sessions opened with the default before the login refused it would otherwise
+        # live on through refresh-token rotation.
+        refresh_token_repository.revoke_all_for_developer(db, admin.id)
         print(
             f"WARNING: {email} still uses the public default password, which production refuses at login. "
             "Set ADMIN_PASSWORD on the backend and restart it to replace the password."

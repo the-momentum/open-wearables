@@ -101,7 +101,7 @@ Get Open Wearables up and running in minutes.
 
 4. **Log in to the developer portal:**
 
-   An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while the developer table is empty: once any developer account exists it is skipped, so changing `ADMIN_PASSWORD` later does not update an existing account - **change the default password from the developer portal right after your first login**. With `ENVIRONMENT=production` the default password is refused at sign-in; setting `ADMIN_PASSWORD` and restarting the backend moves an admin still on the default to the new password. To add further accounts, invite them from the developer portal.
+   An admin account is created on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`), only while the developer table is empty. After that, changing `ADMIN_PASSWORD` does not update the account - **change the default password from the developer portal right after your first login**. With `ENVIRONMENT=production` the default password is refused: a fresh deployment does not start until `ADMIN_PASSWORD` is set, and an admin that still has the default cannot sign in until you set `ADMIN_PASSWORD` and restart the backend, which then changes that account's password to it. To add further accounts, invite them from the developer portal.
 
    Open http://localhost:3000 to access the developer portal and create API keys.
 

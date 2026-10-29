@@ -194,11 +194,12 @@ const server = Bun.serve({
 		if (pathname === '/api/v1/auth/login') {
 			const form = await request.formData();
 			const password = form.get('password');
-			if (form.get('username') !== CREDENTIALS.email) {
-				return json({ detail: 'Incorrect email or password' }, 401);
-			}
+			// Like the API: refused before the account lookup, so any email gets the same answer.
 			if (password === DEFAULT_PASSWORD && PASSWORD_CHANGE === 'refused') {
 				return json({ detail: DEFAULT_PASSWORD_REFUSED }, 403);
+			}
+			if (form.get('username') !== CREDENTIALS.email) {
+				return json({ detail: 'Incorrect email or password' }, 401);
 			}
 			if (password === DEFAULT_PASSWORD) {
 				return json({ ...issueTokens(), password_change: PASSWORD_CHANGE });
