@@ -28,6 +28,23 @@
   --ow-black: #000000;
 }
 
+/* Mintlify derives its text grays from the primary color, which tints them
+   blue and keeps the sidebar and nav lighter than the site, where they are
+   black. Point the text shades at the brand neutrals, one step darker. The
+   doubled :root outranks Mintlify's own :root block. */
+:root:root {
+  --gray-500: 84 84 84;
+  --gray-600: 65 65 65;
+  --gray-700: 44 44 44;
+  --gray-800: 26 26 26;
+  --gray-900: 0 0 0;
+  --gray-950: 0 0 0;
+}
+
+.prose :is(h1, h2, h3, h4) {
+  color: var(--ow-black);
+}
+
 /* Product Hunt only offers light, neutral and dark badges and serves them
    without CORS, so the live image is tinted instead: this turns the neutral
    badge's slate (#4b587c) into --ow-blue and leaves its white as is. */
