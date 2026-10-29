@@ -29,6 +29,9 @@ BACKFILL_MIGRATION = "aggregate_backfill"
 RECENT = timedelta(days=30)
 # Days rolled up per statement and commit: a month of 1 Hz data is a few million rows.
 ROLLUP_CHUNK_DAYS = 31
+# Our day and session rows from the history's samples: off until a release decides to run it; the summaries
+# count those days from the samples meanwhile, and a step added later runs where the others are long done.
+ROLL_UP_HISTORY = False
 
 _CURSOR_KEY = "aggregate_backfill:cursor:{step}"
 _SOURCES_PER_QUERY = 50
@@ -75,9 +78,9 @@ class AggregateBackfillService:
             BackfillStep("workout_details", self._workout_details),
             # The last month first: those are the days clients look at, so they come back before the rest.
             BackfillStep("history_recent", self._history(RECENT)),
-            BackfillStep("rollup_recent", self._rollup(RECENT)),
+            *([BackfillStep("rollup_recent", self._rollup(RECENT))] if ROLL_UP_HISTORY else []),
             BackfillStep("history_all", self._history(None)),
-            BackfillStep("rollup_all", self._rollup(None)),
+            *([BackfillStep("rollup_all", self._rollup(None))] if ROLL_UP_HISTORY else []),
             BackfillStep("garmin_epoch_windows", self._garmin_epoch_windows),
             BackfillStep("archive_days", self._archive_days),
         ]

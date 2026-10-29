@@ -12,7 +12,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, EventRecordAggregate, ProviderPriority
+from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository, ProviderPriorityRepository
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from app.services.summaries_service import SummariesService
 from tests.factories import (
@@ -37,6 +39,12 @@ def service() -> SummariesService:
 
 def _dt(iso: str) -> datetime:
     return datetime.fromisoformat(iso)
+
+
+def _rollup_reached_the_history(db: Session) -> None:
+    db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+    DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
+    db.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +646,15 @@ class TestGetActivitySummaries:
         provider_day(db, ds, SeriesType.steps, date(2026, 1, 1), sum=Decimal("9000"))
 
         assert [day.steps for day in self._day(db, service, user)] == [9000]
+
+    def test_once_the_rollup_reached_the_history_the_samples_are_not_read(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        user = UserFactory()
+        self._apple_steps(user, [1000, 250])
+        _rollup_reached_the_history(db)
+
+        assert self._day(db, service, user) == []
 
     def test_includes_days_with_only_a_workout(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()

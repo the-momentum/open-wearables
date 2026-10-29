@@ -56,6 +56,12 @@ def _archival_settings(db: Session) -> None:
     db.flush()
 
 
+@pytest.fixture
+def roll_up_history(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The history's rollup, off until a release turns it on."""
+    monkeypatch.setattr("app.services.aggregate_backfill_service.ROLL_UP_HISTORY", True)
+
+
 def _legacy_workout(db: Session, provider: ProviderName, **columns: object) -> WorkoutDetails:
     """A workout saved before the stack: its details have no aggregate rows."""
     workout = EventRecordFactory(category="workout", data_source=DataSourceFactory(provider=provider))
@@ -73,6 +79,20 @@ def _session_rows(db: Session, detail: WorkoutDetails) -> dict[int, EventRecordA
 
 
 class TestBackfillSteps:
+    def test_the_history_is_rolled_up_only_once_a_release_turns_it_on(
+        self, db: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        DataPointSeriesFactory(mapping=DataSourceFactory(), recorded_at=AT)
+        ours = db.query(SeriesAggregate).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)
+
+        assert aggregate_backfill_service.run(db, budget_seconds=60)
+        assert ours.count() == 0
+
+        monkeypatch.setattr("app.services.aggregate_backfill_service.ROLL_UP_HISTORY", True)
+        assert not aggregate_backfill_service.is_done(db)
+        assert aggregate_backfill_service.run(db, budget_seconds=60)
+        assert ours.count() == 1
+
     def test_legacy_suunto_speed_turns_into_metres_per_second_once(self, db: Session) -> None:
         legacy = _legacy_workout(db, ProviderName.SUUNTO, average_speed=Decimal("36"), max_speed=Decimal("72"))
 
@@ -479,6 +499,7 @@ class TestHistoryValues:
 
         assert not db.query(EventRecordAggregate).filter(EventRecordAggregate.computed_by == ComputedBy.PROVIDER).all()
 
+    @pytest.mark.usefixtures("roll_up_history")
     def test_sdk_workout_statistics_land_on_the_workout_they_closed(self, db: Session) -> None:
         source = DataSourceFactory(provider=ProviderName.APPLE)
         workout = EventRecordFactory(data_source=source, start_datetime=AT, duration_seconds=1800)
@@ -501,6 +522,7 @@ class TestHistoryValues:
         assert rows[ComputedBy.OPEN_WEARABLES].avg == Decimal("86")
 
 
+@pytest.mark.usefixtures("roll_up_history")
 class TestHistoryRollup:
     def _ours(self, db: Session) -> list[date]:
         rows = db.query(LOCAL_DAY).filter(SeriesAggregate.computed_by == ComputedBy.OPEN_WEARABLES)

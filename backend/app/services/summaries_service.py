@@ -9,6 +9,8 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
+from app.repositories.archival_repository import ArchivalSettingRepository
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
@@ -45,6 +47,7 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.aggregate_backfill_service import BACKFILL_MIGRATION
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
@@ -625,8 +628,10 @@ class SummariesService:
 
     @staticmethod
     def _days_from_samples(db_session: DbSession) -> bool:
-        """The days our rollup has not written come from the samples: it reaches only the days written since."""
-        return True
+        """Until our rollup is on and has reached the history, the days it has not written come from the samples."""
+        if not DataMigrationRepository().is_completed(db_session, f"{BACKFILL_MIGRATION}:rollup_all"):
+            return True
+        return not ArchivalSettingRepository().get(db_session).rollup_enabled
 
     def _activity_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
         """One row per day in [start, end) from the day aggregates, best source per date."""
