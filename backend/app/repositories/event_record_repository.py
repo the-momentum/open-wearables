@@ -77,6 +77,12 @@ _NIGHT_FROM_SAMPLES = text("""
          WHERE s.data_source_id = er.data_source_id AND s.series_type_definition_id = m.type_id
             AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
             AND s.is_daily_total IS NOT TRUE),
+        -- A day value the provider sent at an instant inside the sleep (Oura's SpO2 at 00:00 UTC): a sample before
+        -- the aggregate tables, it counted in this average.
+        (SELECT avg(coalesce(a.avg, a.last)) FROM series_aggregate a
+         WHERE a.data_source_id = er.data_source_id AND a.series_type_definition_id = m.type_id
+            AND a.period_kind = 'day' AND a.computed_by = 'provider'
+            AND a.period_start >= er.start_datetime AND a.period_start <= er.end_datetime),
         (SELECT avg(s.value) FROM data_source other
          JOIN series_sample s ON s.data_source_id = other.id AND s.series_type_definition_id = m.type_id
             AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime

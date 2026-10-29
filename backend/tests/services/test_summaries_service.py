@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import EventRecordAggregate, ProviderPriority
+from app.models import DataSource, EventRecordAggregate, ProviderPriority
 from app.repositories import AggregateRepository, ProviderPriorityRepository
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from app.services.summaries_service import SummariesService
@@ -174,6 +174,20 @@ class TestGetSleepSummaries:
         summary = result.data[0]
         assert summary.duration_minutes == 8 * 60
         assert summary.source.provider == "garmin"
+
+    def test_a_day_value_sent_inside_the_sleep_counts_as_before(self, db: Session, service: SummariesService) -> None:
+        """Oura sends the night's SpO2 as a day value at 00:00 UTC, inside the sleep."""
+        user = UserFactory()
+        record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(event_record=record)
+        source = db.get(DataSource, record.data_source_id)
+        provider_day(db, source, SeriesType.oxygen_saturation, date(2026, 1, 2), avg=Decimal("96.5"))
+
+        result = service.get_sleep_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-03T00:00:00+00:00"), cursor=None, limit=10
+        )
+
+        assert [night.avg_spo2_percent for night in result.data] == [96.5]
 
     def test_does_not_return_other_users_data(self, db: Session, service: SummariesService) -> None:
         user_a = UserFactory()
