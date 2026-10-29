@@ -54,7 +54,7 @@ Open Wearables runs on your own infrastructure. In practice that means:
 > [!NOTE]
 > Google is turning off the Fitbit Web API on October 30, 2026. For Fitbit devices, use the Google Health integration.
 
-Each provider also has a page on the [website](https://openwearables.io/integrations?utm_source=github&utm_medium=readme&utm_campaign=open-wearables). See [data coverage](https://openwearables.io/docs/providers/coverage) for what each provider delivers. Missing a provider? Check the [open provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) or read [how to add a new provider](https://openwearables.io/docs/dev-guides/how-to-add-new-provider).
+See [data coverage](https://openwearables.io/docs/providers/coverage) for what each provider delivers. Missing a provider? Check the [open provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) or read [how to add a new provider](https://openwearables.io/docs/providers/supported#adding-new-providers).
 
 ## Data you get
 
