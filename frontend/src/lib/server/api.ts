@@ -1,5 +1,6 @@
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
+import { getRequestEvent } from '$app/server';
 
 const DEFAULT_API_URL = 'http://localhost:8000';
 
@@ -62,6 +63,34 @@ async function raiseFor(response: Response): Promise<never> {
 	throw new ApiError(response.status, detail ?? response.statusText);
 }
 
+/**
+ * A refused token gets one more try once the session renews it; when it cannot,
+ * the session ends here and the request redirects to sign-in, so no page has to
+ * tell a lapsed session apart from a failed call.
+ */
+async function authorized(
+	path: string,
+	init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> },
+	accessToken: string | null | undefined
+): Promise<Response> {
+	const send = (token: string | null | undefined) =>
+		fetch(apiUrl(path), {
+			...init,
+			headers: { ...init.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+		});
+
+	const response = await send(accessToken);
+	if (response.status !== 401 || !accessToken) return response;
+
+	const auth = getRequestEvent().locals.auth;
+	const renewed = await auth.rejected(accessToken);
+	if (!renewed) return response;
+
+	const retried = await send(renewed);
+	if (retried.status === 401) await auth.rejected(renewed);
+	return retried;
+}
+
 /** OAuth2 password flow: form-encoded, and the field is `username`. */
 export async function login(email: string, password: string): Promise<TokenResponse> {
 	const response = await fetch(apiUrl(API.login), {
@@ -100,9 +129,7 @@ export async function revokeToken(refreshToken: string): Promise<void> {
 
 /** The token is optional: a few endpoints, and the pairing page, have no session. */
 export async function apiGet<T>(path: string, accessToken?: string): Promise<T> {
-	const response = await fetch(apiUrl(path), {
-		headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
-	});
+	const response = await authorized(path, {}, accessToken);
 
 	if (!response.ok) await raiseFor(response);
 	return response.json();
@@ -114,14 +141,15 @@ async function apiWrite<T>(
 	accessToken: string | null,
 	body?: unknown
 ): Promise<T> {
-	const response = await fetch(apiUrl(path), {
-		method,
-		headers: {
-			...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-			...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+	const response = await authorized(
+		path,
+		{
+			method,
+			headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+			body: body === undefined ? undefined : JSON.stringify(body)
 		},
-		body: body === undefined ? undefined : JSON.stringify(body)
-	});
+		accessToken
+	);
 
 	if (!response.ok) await raiseFor(response);
 	return response.status === 204 ? (undefined as T) : response.json();

@@ -111,8 +111,19 @@ export function rotate(refreshToken: string): Promise<TokenResponse> {
  * should treat the user as signed out.
  */
 export async function validAccessToken(cookies: Cookies, session: Session): Promise<string | null> {
-	if (!needsRefresh(session)) return session.accessToken;
-	if (!session.refreshToken) return null;
+	return needsRefresh(session) ? renewSession(cookies, session) : session.accessToken;
+}
+
+/**
+ * Refreshes whether or not it is due: the API can refuse a token that has not
+ * expired, after a secret rotates or on another stack's database. Null, with
+ * the session cleared, once it cannot be renewed.
+ */
+export async function renewSession(cookies: Cookies, session: Session): Promise<string | null> {
+	if (!session.refreshToken) {
+		clear(cookies);
+		return null;
+	}
 
 	try {
 		const renewed = sessionFromTokens(await rotate(session.refreshToken), session.developer);

@@ -144,6 +144,21 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
+		// The portal pointed at another stack, or its SECRET_KEY rotated: tokens it
+		// holds stop working. `access` keeps the refresh tokens, so renewing still works.
+		const forgetMatch = pathname.match(/^\/__forget-tokens\/(access|all)$/);
+		if (forgetMatch) {
+			validAccessTokens.clear();
+			if (forgetMatch[1] === 'all') validRefreshTokens.clear();
+			return new Response(null, { status: 204 });
+		}
+
+		// As the backend does: a bearer token it did not issue is refused everywhere.
+		const bearer = request.headers.get('authorization')?.replace('Bearer ', '');
+		if (bearer !== undefined && !validAccessTokens.has(bearer)) {
+			return json({ detail: 'Could not validate credentials' }, 401);
+		}
+
 		if (pathname === '/__empty-archive') {
 			EMPTY_ARCHIVE = true;
 			return new Response(null, { status: 204 });
