@@ -1,7 +1,9 @@
-import { fail } from '@sveltejs/kit';
+import { fail, isRedirect } from '@sveltejs/kit';
 import { ApiError } from './api';
 
+/** A lapsed session is not a form error: its redirect to sign-in is rethrown. */
 export function describe(error: unknown): string {
+	if (isRedirect(error)) throw error;
 	if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
 	if (error.status === 409) return 'A user with that email already exists.';
 	if (error.status === 404) return 'That user no longer exists.';
