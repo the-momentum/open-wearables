@@ -9,8 +9,8 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import DataSource, HealthScore, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
-from app.repositories.repositories import CrudRepository, source_priority_order
-from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
+from app.repositories.repositories import CrudRepository, SourceRanking
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
 from app.utils.dates import as_utc
 from app.utils.pagination import decode_cursor
@@ -35,8 +35,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         db_session: DbSession,
         user_id: UUID,
         params: HealthScoreQueryParams,
-        provider_order: dict[ProviderName, int],
-        device_type_order: dict[DeviceType, int],
+        ranking: SourceRanking,
     ) -> tuple[list[tuple[HealthScore, DataSource | None]], int]:
         """Scores newest first, with their data source; one OW score per category and day, picked before paging."""
         filters = [HealthScore.user_id == user_id]
@@ -69,7 +68,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                     partition_by=(HealthScore.category, cast(func.timezone("UTC", HealthScore.recorded_at), Date)),
                     order_by=(
                         DataSource.id.is_(None),  # a score without a source comes last
-                        *source_priority_order(provider_order, device_type_order),
+                        *ranking.order_terms(),
                         # Longest sleep first, so an unflagged nap (#938) doesn't beat the night
                         func.coalesce(SleepDetails.sleep_total_duration_minutes, 0).desc(),
                         HealthScore.recorded_at.desc(),
@@ -170,8 +169,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         end_date: datetime,
         cursor: str | None,
         limit: int,
-        provider_order: dict[ProviderName, int],
-        device_type_order: dict[DeviceType, int],
+        ranking: SourceRanking,
     ) -> list[dict[str, Any]]:
         """Get recovery health scores for a date range with cursor-based pagination.
 
@@ -192,7 +190,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                 .over(
                     partition_by=cast(HealthScore.recorded_at, Date),
                     order_by=(
-                        *source_priority_order(provider_order, device_type_order, HealthScore.provider),
+                        *ranking.order_terms(HealthScore.provider),
                         HealthScore.recorded_at,
                         HealthScore.id,
                     ),

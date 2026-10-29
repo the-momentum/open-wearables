@@ -116,6 +116,8 @@ class Settings(BaseSettings):
 
     # Share of a sleep or workout a better-ranked source's sessions must cover for per-session selection to drop it
     session_duplicate_overlap: float = Field(default=0.5, gt=0, le=1)
+    # Whether the rollup also merges a user's sources' summed series per day, for source_selection=reconcile
+    reconcile_enabled: bool = True
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
