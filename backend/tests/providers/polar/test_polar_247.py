@@ -89,6 +89,14 @@ class TestPolar247SleepNormalization:
         assert "sleep_time" in score.components
         assert "actual_sleep" in score.components
 
+    def test_sleep_score_is_recorded_at_the_wake_up(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        # The night started on the 14th and belongs to the 15th, the day the user wakes up
+        _, _, score, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert score is not None
+        assert score.recorded_at == datetime(2024, 1, 15, 5, 0, tzinfo=timezone.utc)  # 07:00 at +02:00
+        assert score.zone_offset == "+02:00"
+
     def test_no_score_when_missing(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         sample_sleep.pop("sleep_score")
         user_id = uuid4()

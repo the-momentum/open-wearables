@@ -205,7 +205,8 @@ class Whoop247Data(Base247DataTemplate):
         if normalized.get("score_state") != "SCORED":
             return None
         performance = normalized.get("sleep_performance_percentage")
-        timestamp = normalized.get("timestamp")
+        # The wake-up, so the score belongs to the day the user wakes up
+        timestamp = normalized.get("end_time")
         if performance is None or timestamp is None:
             return None
         if isinstance(timestamp, str):
@@ -229,6 +230,7 @@ class Whoop247Data(Base247DataTemplate):
             category=HealthScoreCategory.SLEEP,
             value=performance,
             recorded_at=timestamp,
+            zone_offset=normalized.get("zone_offset"),
             components=components or None,
         )
 
@@ -244,7 +246,7 @@ class Whoop247Data(Base247DataTemplate):
         end_time = raw_sleep.get("end")
         nap = raw_sleep.get("nap", False)
         cycle_id = raw_sleep.get("cycle_id")
-        zone_offset = raw_sleep.get("zone_offset")
+        zone_offset = raw_sleep.get("timezone_offset")
 
         # Extract score data (may be None if not scored yet)
         score = raw_sleep.get("score", {}) or {}
@@ -287,7 +289,6 @@ class Whoop247Data(Base247DataTemplate):
             "id": internal_id,
             "user_id": user_id,
             "provider": self.provider_name,
-            "timestamp": start_time or end_time,
             "start_time": start_time,
             "end_time": end_time,
             "zone_offset": zone_offset,

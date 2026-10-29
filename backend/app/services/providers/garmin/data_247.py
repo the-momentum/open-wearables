@@ -227,11 +227,12 @@ class Garmin247Data(Base247DataTemplate):
         if sleep_score is None and sleep_qualifier is None:
             return None
 
-        start_time_str = normalized_sleep.get("start_time")
-        if not start_time_str:
+        # The wake-up, so the score belongs to the day the user wakes up
+        end_time_str = normalized_sleep.get("end_time")
+        if not end_time_str:
             return None
         try:
-            recorded_at = datetime.fromisoformat(start_time_str.replace("Z", "+00:00"))
+            recorded_at = datetime.fromisoformat(end_time_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             return None
 
@@ -243,6 +244,7 @@ class Garmin247Data(Base247DataTemplate):
             value=sleep_score,
             qualifier=sleep_qualifier,
             recorded_at=recorded_at,
+            zone_offset=normalized_sleep.get("zone_offset"),
             components=sleep_score_components,
         )
 
