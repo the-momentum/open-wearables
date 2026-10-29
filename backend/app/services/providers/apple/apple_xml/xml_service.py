@@ -9,7 +9,12 @@ from xml.etree import ElementTree as ET
 from app.config import settings
 from app.constants.series_types.sdk import SleepPhase, get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
-from app.schemas.enums import EventCategory, SeriesType, daily_total_flag
+from app.schemas.enums import (
+    EventCategory,
+    SeriesType,
+    daily_total_flag,
+    get_series_type_unit,
+)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -186,6 +191,13 @@ class XMLService:
         if value is None:
             self.stats.records.skip(f"invalid_value:{metric_type}")
             return None
+
+        # Apple's export.xml writes every unit="%" record as a 0-1 fraction,
+        # while percent series are stored in whole-percent units (0-100).
+        # Scale the value here so the XML path behaves like the node SDK import,
+        # which already applies the same scaling (import_service).
+        if document.get("unit") == "%" and get_series_type_unit(series_type) == "percent":
+            value *= 100
 
         # Parse date fields
         try:
