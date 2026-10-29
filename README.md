@@ -18,7 +18,7 @@ Open Wearables is an open-source platform that connects wearable devices and hea
 
 Instead of building and maintaining a separate integration for Garmin, Oura, Whoop, Polar, Apple Health, Samsung Health, Google Health Connect and the rest, you deploy one service. It handles provider OAuth, background sync, webhooks and mobile SDK uploads, and your product reads sleep, activity, workouts and heart rate the same way whatever device the data came from. A built-in MCP server lets LLMs and AI agents query the same data.
 
-It is built for teams whose product runs on wearable data: digital health products and health data platforms, care programs, hospitals and telemedicine, remote patient monitoring, clinical research and more.
+It is built for teams whose product runs on wearable data: digital health products and health data platforms, care programs, hospitals and telemedicine, remote patient monitoring, clinical research and more. See [who runs Open Wearables in production](https://openwearables.io/case-studies?utm_source=github&utm_medium=readme&utm_campaign=open-wearables).
 
 <img src="docs/images/readme/overview.jpg" alt="Open Wearables wearable API diagram: Garmin, Oura and Whoop data mapped into one standard schema and read by your app with a single timeseries request" width="100%">
 
