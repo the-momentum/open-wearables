@@ -1000,7 +1000,7 @@ class TestSDKImportPercentageScale:
 
         import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
 
-        stored = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).one()
+        stored = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).one()
         assert stored.value == expected
 
 
