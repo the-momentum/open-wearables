@@ -84,11 +84,11 @@ docker compose up -d
 - **Sample data (optional):** `make seed` creates test users with activity data.
 
 > [!WARNING]
-> An admin account is created on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while no developer account exists, so changing `ADMIN_PASSWORD` later does not update it. **Change the default password in the developer portal right after your first login.** With `ENVIRONMENT=production` the default password is refused: a fresh deployment does not start until `ADMIN_PASSWORD` is set, and an admin that still has the default cannot sign in until you set `ADMIN_PASSWORD` (with `ADMIN_EMAIL` matching that account's email) and restart the backend, which then changes that account's password to it.
+> An admin account is created on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` variables (defaults: `admin@admin.com` / `your-secure-password`). The seed runs only while no developer account exists, so changing `ADMIN_PASSWORD` later does not update it. **Set your own `ADMIN_PASSWORD` before the first start, or change the default password in the developer portal right after your first login.** With `ENVIRONMENT=production` the default password is refused: a fresh deployment does not start until `ADMIN_PASSWORD` is set, and an admin that still has the default cannot sign in until you set `ADMIN_PASSWORD` (with `ADMIN_EMAIL` matching that account's email) and restart the backend, which then changes that account's password to it.
 
 **Running in production**
 
-`docker compose up` builds from local source and is meant for development. In production, run the official images pinned to a release tag, not `nightly` or a build of `main`:
+`docker compose up` builds from local source and is meant for development. On any server reachable from the internet set `ENVIRONMENT=production`, which refuses the default admin password. In production, run the official images pinned to a release tag, not `nightly` or a build of `main`:
 
 - [`themomentum/open-wearables-backend`](https://hub.docker.com/r/themomentum/open-wearables-backend)
 - [`themomentum/open-wearables-frontend`](https://hub.docker.com/r/themomentum/open-wearables-frontend)
