@@ -50,7 +50,7 @@ Open Wearables runs on your own infrastructure. In practice that means:
 **Apple Health export:** upload a full Apple Health XML export, [large files included](https://openwearables.io/docs/api-reference/guides/apple-xml-import).
 
 > [!NOTE]
-> Google is turning off the Fitbit Web API on October 30, 2026. For Fitbit devices, use the Google Health integration.
+> Google is turning off the Fitbit Web API on November 2, 2026. For Fitbit devices, use the Google Health integration.
 
 See [data coverage](https://openwearables.io/docs/providers/coverage) for what each provider delivers. Missing a provider? Check the [open provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) or read [how to add a new provider](https://openwearables.io/docs/providers/supported#adding-new-providers).
 
@@ -116,7 +116,7 @@ See the [local development setup](https://openwearables.io/docs/quickstart#local
 
 ### Webhooks
 
-Register HTTPS endpoints and get notified when new data arrives. Filter by event type or user, verify signatures, send test events and inspect every delivery attempt. See the [webhooks guide](https://openwearables.io/docs/api-reference/guides/webhooks).
+Register HTTPS endpoints and get notified when new data arrives. Filter by event type or user, verify signatures, send test events and inspect every delivery attempt. Outgoing webhooks are off by default, see [how to enable them](https://openwearables.io/docs/api-reference/guides/webhooks#overview) in the webhooks guide.
 
 ### Mobile SDKs and app
 
