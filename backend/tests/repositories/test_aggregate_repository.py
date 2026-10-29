@@ -52,8 +52,8 @@ class TestCalendarPeriod:
 
 
 class TestAggregateRepository:
-    def _row(self, source_id: object, computed_by: ComputedBy, **stats: Decimal) -> dict:
-        period = CalendarPeriod.of_date(DAY)
+    def _row(self, source_id: object, computed_by: ComputedBy, day: date = DAY, **stats: Decimal) -> dict:
+        period = CalendarPeriod.of_date(day)
         return {
             "data_source_id": source_id,
             "series_type_definition_id": get_series_type_id(SeriesType.steps),
@@ -125,6 +125,17 @@ class TestAggregateRepository:
         repo.upsert(db, [self._row(source.id, ComputedBy.PROVIDER, max=Decimal("162"))])
 
         assert [(row.min, row.max) for row in db.query(SeriesAggregate)] == [(Decimal("48"), Decimal("162"))]
+
+    def test_a_write_past_postgres_bind_parameter_limit_lands_whole(self, db: Session) -> None:
+        """5,000 rows of 14 columns would be 70,000 parameters in one statement; PostgreSQL takes 65,535."""
+        source = DataSourceFactory()
+        days = [DAY - timedelta(days=n) for n in range(5000)]
+
+        written = AggregateRepository(SeriesAggregate).upsert(
+            db, [self._row(source.id, ComputedBy.OPEN_WEARABLES, day, sum=Decimal(n)) for n, day in enumerate(days)]
+        )
+
+        assert written == db.query(SeriesAggregate).count() == 5000
 
 
 class TestDayValuesMirroredFromSamples:

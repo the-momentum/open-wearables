@@ -1,5 +1,4 @@
 from decimal import Decimal
-from itertools import batched
 from typing import Any, cast
 from uuid import uuid4
 
@@ -26,8 +25,7 @@ class AggregateRepository:
             for column in table.columns
             if column.name not in self.key_columns and not column.primary_key and column.server_default is None
         )
-        # Every column is a bind parameter; PostgreSQL allows 65535 per statement.
-        self.rows_per_statement = 65535 // len(table.columns)
+        self.written = ("id", *self.key_columns, *self.refreshed)
         # A session's extremes add up across writes: a night's lowest heart rate reported per sleep segment,
         # a workout's max cadence from an SDK statistic next to its mean from the details. A day row is
         # written whole by one provider call, so a later call may correct it either way.
@@ -50,17 +48,21 @@ class AggregateRepository:
                     if isinstance(stored, Decimal) and isinstance(written, Decimal):
                         merged[column] = pick(stored, written)
             unique[key] = merged
-        for chunk in batched(self._in_key_order(unique), self.rows_per_statement):
-            stmt = insert(self.model).values(list(chunk))
-            db_session.execute(
-                stmt.on_conflict_do_update(
-                    constraint=self.upsert_key,
-                    # A value absent from this write keeps the stored one, e.g. a workout's mean cadence from its
-                    # details and its max cadence from an SDK statistic, written by separate calls.
-                    set_={column: self._refreshed_value(stmt, column) for column in self.refreshed},
-                )
+        if unique:
+            stmt = insert(self.model)
+            stmt = stmt.on_conflict_do_update(
+                constraint=self.upsert_key,
+                # A value absent from this write keeps the stored one, e.g. a workout's mean cadence from its
+                # details and its max cadence from an SDK statistic, written by separate calls.
+                set_={column: self._refreshed_value(stmt, column) for column in self.refreshed},
             )
+            self._execute_many(db_session, stmt, unique)
         return len(unique)
+
+    def _execute_many(self, db_session: DbSession, stmt: Any, unique: dict[tuple, dict[str, Any]]) -> Any:
+        """One statement compiled once for every row, sent in pages: no statement is rebuilt per batch of rows."""
+        rows = [{column: row.get(column) for column in self.written} for row in self._in_key_order(unique)]
+        return db_session.connection().execute(stmt, rows)
 
     def _in_key_order(self, unique: dict[tuple, dict[str, Any]]) -> list[dict[str, Any]]:
         """Two writers upserting overlapping keys in different orders can deadlock; one order for everyone."""
