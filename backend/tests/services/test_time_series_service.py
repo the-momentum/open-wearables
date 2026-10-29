@@ -18,7 +18,9 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, SeriesAggregate
+from app.models.archival_setting import ArchivalSetting
 from app.repositories import AggregateRepository
+from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import ComputedBy, PeriodKind, Resolution, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     CalendarPeriod,
@@ -978,6 +980,19 @@ class TestTimeSeriesServicePeriods:
         )
 
         assert [(s.timestamp.date(), s.value) for s in result.data] == [(date(2024, 3, 4), 3000)]
+
+    def test_once_the_rollup_reached_the_history_the_samples_are_not_read(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._steps(source, datetime(2024, 3, 2, 9, tzinfo=timezone.utc), 1000)
+        db.merge(ArchivalSetting(id=1, rollup_enabled=True, delete_after_days=None))
+        DataMigrationRepository().mark_completed(db, "aggregate_backfill:rollup_all")
+        db.flush()
+
+        result = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.steps], self._params(Resolution.ONE_DAY, date(2024, 3, 1), date(2024, 3, 3))
+        )
+
+        assert result.data == []
 
     def test_a_week_adds_its_days_up_from_monday(self, db: Session) -> None:
         source = DataSourceFactory()

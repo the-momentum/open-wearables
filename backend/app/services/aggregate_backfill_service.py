@@ -360,4 +360,12 @@ def _workout_energy_series() -> dict[ProviderName, SeriesType]:
     }
 
 
+def days_from_samples(db: DbSession) -> bool:
+    """Until our rollup is on and has reached the history, readers count the days it has not written from the
+    samples, as they did before it."""
+    if not DataMigrationRepository().is_completed(db, f"{BACKFILL_MIGRATION}:rollup_all"):
+        return True
+    return not ArchivalSettingRepository().get(db).rollup_enabled
+
+
 aggregate_backfill_service = AggregateBackfillService()

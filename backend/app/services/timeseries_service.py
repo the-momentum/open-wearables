@@ -40,6 +40,7 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.aggregate_backfill_service import days_from_samples
 from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
@@ -393,8 +394,7 @@ class TimeSeriesService(
         # Start at the first (or last) day that holds data, then read only the days of limit + 1 periods,
         # so a sparse range is not paged through empty and a page never scans the whole range.
         repo = self.series_aggregate_repo
-        # Our rollup reaches only the days written since it runs: the others come from the samples.
-        from_samples = True
+        from_samples = days_from_samples(db_session)
 
         def edge_day(first: date, last: date, latest: bool, starts: Any = None) -> date | None:
             """The outermost day holding a row, or with ``from_samples`` a sample."""
