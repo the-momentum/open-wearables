@@ -279,6 +279,8 @@ class DataPointSeriesRepository(
         creation_data["data_source_id"] = data_source.id
         creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
         creation_data["value"] = round(creator.value, SERIES_VALUE_SCALE)
+        # Day values live in the aggregate tables: a sample is a reading, the column waits to be dropped.
+        creation_data["is_daily_total"] = None
 
         creation = self.model(**creation_data)
         if creator.period is not None or creator.session is not None:
@@ -453,7 +455,7 @@ class DataPointSeriesRepository(
                     window_seconds=creator.window_seconds,
                     value=round(creator.value, SERIES_VALUE_SCALE),
                     series_type_definition_id=get_series_type_id(creator.series_type),
-                    is_daily_total=creator.is_daily_total,
+                    is_daily_total=None,
                 )
             )
 
