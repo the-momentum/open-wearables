@@ -276,16 +276,22 @@ class TestHealthScoreRepositoryBulkCreateKeepingHighest:
     def test_a_value_replaces_a_stored_empty_one(self, db: Session, repo: HealthScoreRepository) -> None:
         user = UserFactory()
         day = datetime(2026, 10, 28, tzinfo=timezone.utc)
+        repo.bulk_create(db, [_body_battery(user.id, day, None)])
 
-        repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, None)])
-        empty_again = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, None)])
         written = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, day, "78")])
         db.commit()
 
         [score] = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
         assert score.value == Decimal("78")
-        assert (empty_again.inserted, empty_again.updated) == (0, 0)
         assert (written.inserted, written.updated) == (0, 1)
+
+    def test_a_score_without_a_value_is_skipped(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+
+        written = repo.bulk_create_keeping_highest(db, [_body_battery(user.id, datetime.now(timezone.utc), None)])
+
+        assert (written.inserted, written.updated) == (0, 0)
+        assert db.query(HealthScore).filter(HealthScore.user_id == user.id).count() == 0
 
     def test_empty(self, db: Session, repo: HealthScoreRepository) -> None:
         written = repo.bulk_create_keeping_highest(db, [])

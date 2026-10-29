@@ -67,33 +67,22 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         return WriteCounts(inserted, 0)
 
     def bulk_create_keeping_highest(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> WriteCounts:
-        """Bulk insert health scores, keeping the higher value on conflict with the unique constraint.
+        """Bulk upsert health scores, keeping the higher value when a score for the same time is sent again.
 
-        For a day's peak that the provider sends again, with more data, as the day goes on
-        (Garmin body battery): a later push never lowers it, whatever order the pushes arrive in.
-        Only for scores without an event record: the conflict target is the user, provider,
-        category and time key, so a conflict on another unique index raises.
+        For a peak the provider resends with more data as the day goes on, e.g. Garmin body battery.
+        Scores without a value are skipped.
         """
-        if not creators:
+        # The highest of each key: ON CONFLICT DO UPDATE can't touch a row twice in one statement
+        with_value = sorted((c for c in creators if c.value is not None), key=lambda c: c.value or 0)
+        highest = {(c.user_id, c.provider, c.category, c.recorded_at): c for c in with_value}
+        if not highest:
             return WriteCounts(0, 0)
-
-        # One row per key, the highest: ON CONFLICT DO UPDATE can't touch a row twice in one statement
-        highest: dict[tuple[UUID, ProviderName, HealthScoreCategory, datetime], HealthScoreCreate] = {}
-        for creator in creators:
-            key = (creator.user_id, creator.provider, creator.category, creator.recorded_at)
-            kept = highest.get(key)
-            if kept is None or (creator.value is not None and (kept.value is None or creator.value > kept.value)):
-                highest[key] = creator
 
         stmt = insert(HealthScore).values([c.model_dump() for c in highest.values()])
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_health_score_user_provider_category_time",
+            index_elements=["user_id", "provider", "category", "recorded_at"],
             set_={"value": stmt.excluded.value},
-            # An empty stored value gives way to any value; an empty new one never replaces anything
-            where=and_(
-                stmt.excluded.value.is_not(None),
-                or_(HealthScore.value.is_(None), stmt.excluded.value > HealthScore.value),
-            ),
+            where=or_(HealthScore.value.is_(None), stmt.excluded.value > HealthScore.value),
         ).returning(literal_column("xmax = 0"))
         was_insert = db_session.execute(stmt).scalars().all()
         inserted = sum(was_insert)
