@@ -111,7 +111,7 @@ def upgrade() -> None:
     )
     op.add_column(
         "archival_settings",
-        sa.Column("rollup_enabled", sa.Boolean(), server_default=sa.text("true"), nullable=False),
+        sa.Column("rollup_enabled", sa.Boolean(), server_default=sa.text("false"), nullable=False),
     )
     op.add_column("archival_settings", sa.Column("deleted_before", sa.Date(), nullable=True))
     op.drop_column("archival_settings", "archive_after_days")
