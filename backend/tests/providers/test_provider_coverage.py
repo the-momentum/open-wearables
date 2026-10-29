@@ -23,6 +23,7 @@ from app.constants.series_types.sdk.metric_types import (
     APPLE_METRIC_TYPE_TO_SERIES_TYPE,
     SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE,
 )
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_SERIES, WORKOUT_SAMPLE_TYPE_TO_SERIES_TYPE
 from app.constants.series_types.sdk.workout_statistics import (
     SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
     WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
@@ -156,13 +157,25 @@ _SDK_WORKOUT_STATISTIC_MAP = {
     "health_connect": WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE,
 }
 
+# workouts[].route goes to every SDK; only Samsung sends workouts[].samples.
+_SDK_WORKOUT_SERIES = {
+    "apple": WORKOUT_ROUTE_SERIES,
+    "samsung": WORKOUT_ROUTE_SERIES | frozenset(WORKOUT_SAMPLE_TYPE_TO_SERIES_TYPE.values()),
+    "health_connect": WORKOUT_ROUTE_SERIES,
+}
+
 
 @pytest.mark.parametrize("provider", sorted(SDK_PROVIDERS))
 def test_sdk_timeseries_match_maps(provider: str) -> None:
     cov = _load_coverage(provider)
-    expected = frozenset(_SDK_METRIC_MAP[provider].values()) | frozenset(_SDK_WORKOUT_STATISTIC_MAP[provider].values())
+    expected = (
+        frozenset(_SDK_METRIC_MAP[provider].values())
+        | frozenset(_SDK_WORKOUT_STATISTIC_MAP[provider].values())
+        | _SDK_WORKOUT_SERIES[provider]
+    )
     assert _timeseries(cov) == expected, (
-        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric + workout-statistic maps"
+        f"{provider}: TIMESERIES must equal the union of the provider-specific SDK metric, workout-statistic "
+        "and route/sample maps"
     )
 
 

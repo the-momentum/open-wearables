@@ -1,4 +1,5 @@
 from app.constants.series_types.sdk.metric_types import SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE
+from app.constants.series_types.sdk.workout_samples import WORKOUT_ROUTE_SERIES, WORKOUT_SAMPLE_TYPE_TO_SERIES_TYPE
 from app.constants.series_types.sdk.workout_statistics import SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE
 from app.schemas.enums import HealthScoreCategory, SeriesType
 from app.services.providers.apple.coverage import MEAL_FIELDS, SLEEP_FIELDS
@@ -10,6 +11,9 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
     {
         *SAMSUNG_METRIC_TYPE_TO_SERIES_TYPE.values(),
         *SAMSUNG_WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.values(),
+        # ExerciseSession route and log, gated by settings.ingest_workout_samples
+        *WORKOUT_ROUTE_SERIES,
+        *WORKOUT_SAMPLE_TYPE_TO_SERIES_TYPE.values(),
     }
 )
 

@@ -135,7 +135,8 @@ class Settings(BaseSettings):
     linked_sync_pull_lease_seconds: int = Field(120, ge=30, le=3600)
 
     # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
-    # data_point_series on workout webhook arrival. Significantly increases DB storage.
+    # data_point_series on workout webhook arrival, and the route/samples of mobile SDK workouts.
+    # Significantly increases DB storage.
     # Per-provider granularity will be added via ProviderSetting in a future release.
     ingest_workout_samples: bool = False
 

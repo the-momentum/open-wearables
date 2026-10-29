@@ -7824,6 +7824,154 @@
                               ],
                               "title": "Values"
                             },
+                            "route": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "description": "One GPS location of a workout route. Unknown keys (e.g. speed, course) are ignored.",
+                                    "properties": {
+                                      "timestamp": {
+                                        "anyOf": [
+                                          {
+                                            "format": "date-time",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Timestamp"
+                                      },
+                                      "latitude": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Latitude"
+                                      },
+                                      "longitude": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Longitude"
+                                      },
+                                      "altitudeM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Altitudem"
+                                      },
+                                      "horizontalAccuracyM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Horizontalaccuracym"
+                                      },
+                                      "verticalAccuracyM": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Verticalaccuracym"
+                                      }
+                                    },
+                                    "title": "WorkoutRoutePoint",
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Route"
+                            },
+                            "samples": {
+                              "anyOf": [
+                                {
+                                  "items": {
+                                    "description": "One per-sample measurement recorded during a workout (heart rate, speed, cadence, power).",
+                                    "properties": {
+                                      "timestamp": {
+                                        "anyOf": [
+                                          {
+                                            "format": "date-time",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Timestamp"
+                                      },
+                                      "type": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Type"
+                                      },
+                                      "value": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Value"
+                                      },
+                                      "unit": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ],
+                                        "title": "Unit"
+                                      }
+                                    },
+                                    "title": "WorkoutSample",
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "title": "Samples"
+                            },
                             "segments": {
                               "anyOf": [
                                 {
@@ -7853,36 +8001,6 @@
                                 }
                               ],
                               "title": "Laps"
-                            },
-                            "route": {
-                              "anyOf": [
-                                {
-                                  "items": {
-                                    "additionalProperties": true,
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ],
-                              "title": "Route"
-                            },
-                            "samples": {
-                              "anyOf": [
-                                {
-                                  "items": {
-                                    "additionalProperties": true,
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ],
-                              "title": "Samples"
                             },
                             "metadata": {
                               "anyOf": [

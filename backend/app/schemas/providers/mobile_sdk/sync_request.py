@@ -105,6 +105,28 @@ class WorkoutStatistic(BaseModel):
     value: float | int
 
 
+class WorkoutRoutePoint(BaseModel):
+    """One GPS location of a workout route. Unknown keys (e.g. speed, course) are ignored."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    timestamp: datetime | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    altitude_m: float | None = Field(default=None, alias="altitudeM")
+    horizontal_accuracy_m: float | None = Field(default=None, alias="horizontalAccuracyM")
+    vertical_accuracy_m: float | None = Field(default=None, alias="verticalAccuracyM")
+
+
+class WorkoutSample(BaseModel):
+    """One per-sample measurement recorded during a workout (heart rate, speed, cadence, power)."""
+
+    timestamp: datetime | None = None
+    type: str | None = None
+    value: float | None = None
+    unit: str | None = None
+
+
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
@@ -118,12 +140,12 @@ class Workout(BaseModel):
     title: str | None = None
     notes: str | None = None
     values: list[WorkoutStatistic] | None = None
+    route: list[WorkoutRoutePoint] | None = None
+    samples: list[WorkoutSample] | None = None
 
     # everything below is unused for now
     segments: list[dict[str, Any]] | None = None
     laps: list[dict[str, Any]] | None = None
-    route: list[dict[str, Any]] | None = None
-    samples: list[dict[str, Any]] | None = None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 
