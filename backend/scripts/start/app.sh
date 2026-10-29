@@ -106,6 +106,13 @@ echo 'Running SDK workout calories cleanup...'
 uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
     || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Raises each Garmin body battery score to the highest sample of its day; scores kept the peak of
+# the day's first stressDetails push. Runs once per instance (data_migration).
+echo 'Running Garmin body battery peak backfill...'
+uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py \
+    || echo "Warning: Garmin body battery peak backfill failed, will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
