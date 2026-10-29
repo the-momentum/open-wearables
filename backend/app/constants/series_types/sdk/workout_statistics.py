@@ -40,6 +40,16 @@ class WorkoutStatisticType(StrEnum):
     AVERAGE_GROUND_CONTACT_TIME = "averageGroundContactTime"
     VO2_MAX = "vo2Max"
 
+    # Cycling Metrics (Apple, iOS 17+)
+    AVERAGE_CYCLING_POWER = "averageCyclingPower"
+    AVERAGE_CYCLING_CADENCE = "averageCyclingCadence"
+    AVERAGE_CYCLING_SPEED = "averageCyclingSpeed"
+
+    # Power & Pedaling (Samsung)
+    MEAN_POWER = "meanPower"
+    MAX_POWER = "maxPower"
+    MEAN_RPM = "meanRpm"
+
     # Elevation
     ELEVATION_ASCENDED = "elevationAscended"
     ELEVATION_DESCENDED = "elevationDescended"
@@ -80,6 +90,14 @@ WORKOUT_STATISTIC_TYPE_TO_DETAIL_FIELD: dict[str, str] = {
     # Running Metrics
     "averageRunningPower": "average_watts",
     "averageRunningSpeed": "average_speed",
+    # Cycling Metrics (Apple, iOS 17+)
+    "averageCyclingPower": "average_watts",
+    "averageCyclingCadence": "average_cadence",
+    "averageCyclingSpeed": "average_speed",
+    # Power & Pedaling (Samsung)
+    "meanPower": "average_watts",
+    "maxPower": "max_watts",
+    "meanRpm": "average_cadence",
     # Elevation (Apple)
     "elevationAscended": "total_elevation_gain",
     # elevationDescended: not stored
@@ -92,6 +110,15 @@ WORKOUT_STATISTIC_TYPE_TO_DETAIL_FIELD: dict[str, str] = {
     "averageSpeed": "average_speed",
     "maxSpeed": "max_speed",
     "meanSpeed": "average_speed",
+}
+
+# Several stats can fill the same detail field (e.g. a workout carrying both running and
+# cycling power). Earlier keys win regardless of payload order; unlisted keys rank last.
+# Workout-level averages beat sensor averages, and sport-specific power beats
+# `averageRunningPower`, which Health Connect also sends for any workout type.
+WORKOUT_DETAIL_FIELD_PRECEDENCE: dict[str, tuple[str, ...]] = {
+    "average_watts": ("averageCyclingPower", "meanPower", "averageRunningPower"),
+    "average_speed": ("averageSpeed", "meanSpeed", "averageCyclingSpeed", "averageRunningSpeed"),
 }
 
 
@@ -149,6 +176,14 @@ def get_detail_field_from_workout_statistic_type(workout_statistic_type: str) ->
     Returns None when the metric type is not supported.
     """
     return WORKOUT_STATISTIC_TYPE_TO_DETAIL_FIELD.get(workout_statistic_type)
+
+
+def get_detail_field_precedence(detail_field: str, workout_statistic_type: str) -> int:
+    """
+    Rank of a statistic among the sources of a detail field; lower wins.
+    """
+    order = WORKOUT_DETAIL_FIELD_PRECEDENCE.get(detail_field, ())
+    return order.index(workout_statistic_type) if workout_statistic_type in order else len(order)
 
 
 def get_series_type_from_workout_statistic_type(workout_statistic_type: str) -> SeriesType | None:

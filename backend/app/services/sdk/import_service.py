@@ -16,6 +16,7 @@ from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
+    get_detail_field_precedence,
     get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
@@ -420,6 +421,7 @@ class ImportService:
             return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
+        detail_field_ranks: dict[str, int] = {}
         time_series_samples: list[TimeSeriesSampleCreate] = []
         duration: float | None = None
         energy_statistics: set[str] = set()
@@ -473,8 +475,12 @@ class ImportService:
                 case _:
                     detail_field = get_detail_field_from_workout_statistic_type(stat.type)
                     if detail_field:
+                        rank = get_detail_field_precedence(detail_field, stat.type)
+                        if rank > detail_field_ranks.get(detail_field, rank):
+                            continue
+                        detail_field_ranks[detail_field] = rank
                         # Apple SDK may send fractional Decimals for integer fields (e.g. stepCount)
-                        if detail_field in ("steps_count", "moving_time_seconds"):
+                        if detail_field == "steps_count":
                             value = int(value)
                         stats_dict[detail_field] = value
 

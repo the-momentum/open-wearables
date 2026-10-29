@@ -716,6 +716,175 @@ class TestAppleSDKImportEdgeCases:
         assert details.energy_burned is None
 
 
+class TestSDKWorkoutStatisticMapping:
+    """Cycling, power and pedaling stats map onto workout detail fields, with a fixed precedence."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _ios_cycling_payload(values: list[dict[str, Any]]) -> dict[str, Any]:
+        """iOS 17+ outdoor ride, statistics as built by the iOS SDK's workout mapper."""
+        return {
+            **SDK_ENVELOPE,
+            "data": {
+                "workouts": [
+                    {
+                        "id": "6F1C2B9E-3D4A-4E8B-9C1D-2A7B5E8F0C31",
+                        "type": "cycling",
+                        "startDate": "2025-04-08T16:02:11Z",
+                        "endDate": "2025-04-08T17:14:40Z",
+                        "source": {
+                            "name": "Test Apple Watch",
+                            "bundleIdentifier": "com.apple.health",
+                            "deviceManufacturer": "Apple Inc.",
+                            "deviceModel": "Watch",
+                            "productType": "Watch7,5",
+                            "deviceSoftwareVersion": "11.2",
+                        },
+                        "values": values,
+                    }
+                ]
+            },
+        }
+
+    @staticmethod
+    def _samsung_session_payload(values: list[dict[str, Any]]) -> dict[str, Any]:
+        """Samsung Health cycling session; the Android SDK forwards every numeric ExerciseSession getter."""
+        return {
+            "provider": "samsung",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2025-04-10T12:00:00Z",
+            "data": {
+                "workouts": [
+                    {
+                        "id": "wrk-ride-001-s0",
+                        "parentId": "wrk-ride-001",
+                        "type": "cycling",
+                        "startDate": "2025-04-09T06:00:00Z",
+                        "endDate": "2025-04-09T07:10:00Z",
+                        "zoneOffset": "+02:00",
+                        "source": {
+                            "appId": "com.sec.android.app.shealth",
+                            "deviceId": "R9ZW30ABC12",
+                            "deviceName": "Galaxy Watch7",
+                            "deviceManufacturer": "Samsung",
+                            "deviceModel": "SM-R960",
+                            "deviceType": "watch",
+                        },
+                        "values": values,
+                    }
+                ]
+            },
+        }
+
+    @staticmethod
+    def _details(db: Session) -> WorkoutDetails:
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        return db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+
+    def test_ios_cycling_workout_maps_power_cadence_and_speed(self, db: Session, import_service: ImportService) -> None:
+        payload = self._ios_cycling_payload(
+            [
+                {"type": "duration", "unit": "s", "value": 4349.0},
+                {"type": "activeEnergyBurned", "unit": "kcal", "value": 712.3},
+                {"type": "distance", "unit": "m", "value": 34120.5},
+                {"type": "averageHeartRate", "unit": "bpm", "value": 148.2},
+                {"type": "averageCyclingPower", "unit": "W", "value": 182.4},
+                {"type": "averageCyclingCadence", "unit": "count/min", "value": 87.6},
+                {"type": "averageCyclingSpeed", "unit": "m/s", "value": 7.85},
+                {"type": "elevationAscended", "unit": "m", "value": 212.0},
+                {"type": "indoorWorkout", "unit": "bool", "value": 0},
+            ]
+        )
+
+        result = import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert result["workouts_saved"] == 1
+        details = self._details(db)
+        assert details.average_watts == Decimal("182.4")
+        assert details.average_cadence == Decimal("87.6")
+        assert details.average_speed == Decimal("7.85")
+        assert details.max_watts is None
+        assert details.moving_time_seconds is None
+
+    def test_samsung_session_maps_power_and_rpm(self, db: Session, import_service: ImportService) -> None:
+        payload = self._samsung_session_payload(
+            [
+                {"type": "duration", "value": 4200000, "unit": "ms"},
+                {"type": "calories", "value": 655.0, "unit": "kcal"},
+                {"type": "distance", "value": 30215.0, "unit": "m"},
+                {"type": "meanHeartRate", "value": 139.0, "unit": "bpm"},
+                {"type": "meanSpeed", "value": 7.19, "unit": "m/s"},
+                {"type": "maxSpeed", "value": 14.2, "unit": "m/s"},
+                {"type": "meanPower", "value": 171.5, "unit": ""},
+                {"type": "maxPower", "value": 612.0, "unit": ""},
+                {"type": "meanRpm", "value": 84.0, "unit": ""},
+                # Forwarded by the SDK but deliberately not stored yet
+                {"type": "maxRpm", "value": 118.0, "unit": ""},
+                {"type": "count", "value": 0, "unit": ""},
+                {"type": "meanCalorieBurnRate", "value": 9.4, "unit": ""},
+                {"type": "maxCalorieBurnRate", "value": 17.1, "unit": ""},
+                {"type": "inclineDistance", "value": 9100.0, "unit": ""},
+                {"type": "declineDistance", "value": 8700.0, "unit": ""},
+            ]
+        )
+
+        result = import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert result["workouts_saved"] == 1
+        details = self._details(db)
+        assert details.average_watts == Decimal("171.5")
+        assert details.max_watts == Decimal("612")
+        assert details.average_cadence == Decimal("84")
+        assert details.average_speed == Decimal("7.19")
+        assert details.max_speed == Decimal("14.2")
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_cycling_power_beats_running_power_in_any_order(
+        self, db: Session, import_service: ImportService, reverse: bool
+    ) -> None:
+        values = [
+            {"type": "averageRunningPower", "unit": "W", "value": 240.0},
+            {"type": "averageCyclingPower", "unit": "W", "value": 182.4},
+        ]
+        payload = self._ios_cycling_payload(values[::-1] if reverse else values)
+
+        import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert self._details(db).average_watts == Decimal("182.4")
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_workout_average_speed_beats_sensor_speeds_in_any_order(
+        self, db: Session, import_service: ImportService, reverse: bool
+    ) -> None:
+        values = [
+            {"type": "averageRunningSpeed", "unit": "m/s", "value": 3.1},
+            {"type": "averageCyclingSpeed", "unit": "m/s", "value": 7.85},
+            {"type": "averageSpeed", "unit": "m/s", "value": 7.4},
+        ]
+        payload = self._ios_cycling_payload(values[::-1] if reverse else values)
+
+        import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert self._details(db).average_speed == Decimal("7.4")
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_cycling_speed_beats_running_speed_in_any_order(
+        self, db: Session, import_service: ImportService, reverse: bool
+    ) -> None:
+        values = [
+            {"type": "averageRunningSpeed", "unit": "m/s", "value": 3.1},
+            {"type": "averageCyclingSpeed", "unit": "m/s", "value": 7.85},
+        ]
+        payload = self._ios_cycling_payload(values[::-1] if reverse else values)
+
+        import_service.load_data(db, payload, str(UserFactory().id))
+
+        assert self._details(db).average_speed == Decimal("7.85")
+
+
 class TestSDKImportUnitConversion:
     """Unit conversions applied in `_build_statistic_bundles`.
 
