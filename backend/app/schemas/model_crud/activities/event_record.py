@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.devices_map import normalize_device_model
-from app.schemas.enums import DeviceType, EntrySource, EventCategory, WorkoutIntensity, WorkoutType
+from app.schemas.enums import DeviceType, EntrySource, EventCategory, SeriesType, WorkoutIntensity, WorkoutType
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -35,6 +35,7 @@ class EventRecordMetrics(TypedDict, total=False):
     heart_rate_avg: Decimal | None
     steps_count: int | None
     energy_burned: Decimal | None
+    energy_series: SeriesType | None
     distance: Decimal | None
     max_speed: Decimal | None
     max_watts: Decimal | None

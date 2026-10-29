@@ -94,8 +94,8 @@ const late = (name: string, ms: number) =>
 let LIFECYCLE_ENABLED = true;
 let EMAIL_ENABLED = true;
 let WEBHOOKS_ENABLED = true;
-/** Lets a test see what an untouched archive looks like on the dashboard. */
-let EMPTY_ARCHIVE = false;
+/** Lets a test see what an instance with nothing rolled up yet looks like on the dashboard. */
+let EMPTY_AGGREGATES = false;
 /** What the default password earns at sign-in: a token with `required`/`recommended`, or a refusal. */
 let PASSWORD_CHANGE: 'required' | 'recommended' | 'refused' = 'required';
 
@@ -132,7 +132,7 @@ const server = Bun.serve({
 			LIFECYCLE_ENABLED = true;
 			EMAIL_ENABLED = true;
 			WEBHOOKS_ENABLED = true;
-			EMPTY_ARCHIVE = false;
+			EMPTY_AGGREGATES = false;
 			PASSWORD_CHANGE = 'required';
 			resetWorkouts();
 			resetSleep();
@@ -147,8 +147,8 @@ const server = Bun.serve({
 			return new Response(null, { status: 204 });
 		}
 
-		if (pathname === '/__empty-archive') {
-			EMPTY_ARCHIVE = true;
+		if (pathname === '/__empty-aggregates') {
+			EMPTY_AGGREGATES = true;
 			return new Response(null, { status: 204 });
 		}
 
@@ -284,7 +284,7 @@ const server = Bun.serve({
 
 		if (pathname === '/api/v1/dashboard/stats') {
 			const info = makeSystemInfo();
-			if (EMPTY_ARCHIVE) info.data_points.archived = 0;
+			if (EMPTY_AGGREGATES) info.data_points.aggregated = 0;
 			return json(info);
 		}
 
@@ -352,7 +352,7 @@ const server = Bun.serve({
 				const out = (days: unknown, max: number) =>
 					days !== null &&
 					(!Number.isInteger(days) || (days as number) < 1 || (days as number) > max);
-				if (out(body.archive_after_days, 3650) || out(body.delete_after_days, 7300)) {
+				if (out(body.delete_after_days, 7300)) {
 					// FastAPI's shape: a list, no string `detail` to show.
 					return json({ detail: [{ loc: ['body'], msg: 'out of range' }] }, 422);
 				}

@@ -1,0 +1,60 @@
+/* Open Wearables design system, as on openwearables.io.
+   The site is light only, so the docs are too (docs.json sets
+   appearance.strict). Mintlify includes every .css file in the content
+   directory. docs.json loads Switzer for headings and body; this file adds
+   the mono face and the palette other stylesheets here read from. */
+
+@font-face {
+  font-family: "Fragment Mono";
+  src: url("/fonts/FragmentMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --ow-blue: #2353c4;
+  --ow-white: #ffffff;
+  --ow-neutral-50: #f7f8fa;
+  --ow-neutral-100: #ebeef2;
+  --ow-neutral-200: #e6e8ec;
+  --ow-neutral-300: #dfe2e6;
+  --ow-neutral-400: #c6c8cc;
+  --ow-neutral-500: #747678;
+  --ow-neutral-600: #545454;
+  --ow-neutral-700: #414141;
+  --ow-neutral-800: #2c2c2c;
+  --ow-neutral-900: #1a1a1a;
+  --ow-black: #000000;
+}
+
+/* Mintlify derives its text grays from the primary color, which tints them
+   blue and keeps the sidebar and nav lighter than the site, where they are
+   black. Point the text shades at the brand neutrals, one step darker. The
+   doubled :root outranks Mintlify's own :root block. */
+:root:root {
+  --gray-500: 84 84 84;
+  --gray-600: 65 65 65;
+  --gray-700: 44 44 44;
+  --gray-800: 26 26 26;
+  --gray-900: 0 0 0;
+  --gray-950: 0 0 0;
+}
+
+.prose :is(h1, h2, h3, h4) {
+  color: var(--ow-black);
+}
+
+/* Product Hunt only offers light, neutral and dark badges and serves them
+   without CORS, so the live image is tinted instead: this turns the neutral
+   badge's slate (#4b587c) into --ow-blue and leaves its white as is. */
+img[src*="api.producthunt.com/widgets"] {
+  filter: saturate(3.1) hue-rotate(-5deg);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: "Fragment Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}

@@ -9,7 +9,7 @@ from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_32
 from app.schemas.enums import ProviderName
 
 if TYPE_CHECKING:
-    from app.models.data_point_series import DataPointSeries
+    from app.models.series_sample import SeriesSample
     from app.models.event_record import EventRecord
 
 
@@ -75,4 +75,4 @@ class DataSource(BaseDbModel):
     device_manufacturer: Mapped[str_100 | None]
 
     event_records: Mapped[OneToMany["EventRecord"]]
-    data_points: Mapped[OneToMany["DataPointSeries"]]
+    data_points: Mapped[OneToMany["SeriesSample"]]

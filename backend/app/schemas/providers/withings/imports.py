@@ -97,6 +97,7 @@ class WithingsIntradayActivity(BaseModel):
     steps: int | None = Field(default=None, ge=0)
     distance: float | None = Field(default=None, ge=0)
     calories: float | None = Field(default=None, ge=0)  # active kcal
+    duration: int | None = Field(default=None, ge=0)  # slice width in seconds, as open mHealth shimmer reads it
 
 
 class WithingsSleepSummary(BaseModel):

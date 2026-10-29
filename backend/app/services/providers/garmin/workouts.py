@@ -15,6 +15,7 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.event_record_service import event_record_service
+from app.services.providers.garmin.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
@@ -193,6 +194,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "heart_rate_avg": heart_rate_avg,
             "steps_count": steps_count,
             "energy_burned": energy_burned,
+            "energy_series": WORKOUT_ENERGY_SERIES,
             "distance": distance,
             "average_cadence": average_cadence,
         }

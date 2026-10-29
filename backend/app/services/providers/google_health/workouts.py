@@ -18,6 +18,7 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import EventCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.services.event_record_service import event_record_service
+from app.services.providers.google_health.coverage import WORKOUT_ENERGY_SERIES
 from app.services.providers.google_health.helpers import (
     GOOGLE_HEALTH_API_SOURCE,
     extract_form_factor,
@@ -141,6 +142,7 @@ class GoogleHealthApiWorkouts(BaseWorkoutsTemplate):
             record_id=workout_id,
             moving_time_seconds=as_int(parse_duration_seconds(exercise.get("activeDuration"))),
             energy_burned=read_number(metrics, "caloriesKcal"),
+            energy_series=WORKOUT_ENERGY_SERIES,
             distance=read_number(metrics, "distanceMillimeters", scale=_MM_TO_M),
             steps_count=as_int(read_number(metrics, "steps")),
             average_speed=read_number(metrics, "averageSpeedMillimetersPerSecond", scale=_MM_TO_M),
