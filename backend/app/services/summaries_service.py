@@ -773,9 +773,11 @@ class SummariesService:
         if user and user.personal_record:
             birth_date = user.personal_record.birth_date
 
-        # --- SLOW-CHANGING: Get latest values for slow-changing metrics ---
-        slow_changing_values = self.data_point_repo.get_latest_values_for_types(
-            db_session, user_id, now, BODY_SLOW_CHANGING_SERIES
+        ranking = SourceRanking(*self._priority_orders(db_session))
+
+        # --- SLOW-CHANGING: the preferred source's reading on each metric's newest day ---
+        slow_changing_values = self.data_point_repo.get_ranked_latest_values(
+            db_session, user_id, now, BODY_SLOW_CHANGING_SERIES, ranking
         )
 
         weight_data = slow_changing_values.get(SeriesType.weight)
@@ -784,33 +786,32 @@ class SummariesService:
         muscle_mass_data = slow_changing_values.get(SeriesType.lean_body_mass)
         bmi_data = slow_changing_values.get(SeriesType.body_mass_index)
 
-        weight_kg = weight_data[0] if weight_data else None
-        height_cm = height_data[0] if height_data else None
-        body_fat_pct = body_fat_data[0] if body_fat_data else None
-        muscle_mass_kg = muscle_mass_data[0] if muscle_mass_data else None
+        weight_kg = weight_data.value if weight_data else None
+        height_cm = height_data.value if height_data else None
+        body_fat_pct = body_fat_data.value if body_fat_data else None
+        muscle_mass_kg = muscle_mass_data.value if muscle_mass_data else None
 
         # Use stored BMI if available, otherwise calculate from weight and height
-        bmi = bmi_data[0] if bmi_data else self._calculate_bmi(weight_kg, height_cm)
+        bmi = bmi_data.value if bmi_data else self._calculate_bmi(weight_kg, height_cm)
 
         # Calculate age
         age = self._calculate_age(birth_date, now.date()) if birth_date else None
 
-        # Determine source from the most recently recorded slow-changing measurement.
-        # Tuple layout: (value, recorded_at, provider, source, device_model, device_type)
-        latest_measurement = max(
+        # The source named is the best-ranked of those the slow-changing values came from, the newest among equals.
+        named = min(
             (data for data in (weight_data, height_data, body_fat_data, muscle_mass_data, bmi_data) if data),
-            key=lambda data: data[1],
+            key=lambda data: (*ranking.rank(data.provider, data.device_type), -data.recorded_at.timestamp()),
             default=None,
         )
         provider = "unknown"
         source_name = None
         device_id = None
         device_type = None
-        if latest_measurement:
-            provider = latest_measurement[2] or "unknown"
-            source_name = latest_measurement[3]
-            device_id = latest_measurement[4]
-            device_type = latest_measurement[5]
+        if named:
+            provider = named.provider or "unknown"
+            source_name = named.source
+            device_id = named.device_model
+            device_type = named.device_type
 
         body_slow_changing = BodySlowChanging(
             weight_kg=weight_kg,
@@ -832,7 +833,7 @@ class SummariesService:
             db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
         )
         averages = self.series_aggregate_repo.period_averages(
-            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights
+            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, ranking, nights
         )
 
         resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
@@ -854,30 +855,22 @@ class SummariesService:
         # --- LATEST: Get recent point-in-time readings ---
         latest_window_start = now - timedelta(hours=latest_window_hours)
 
-        body_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.body_temperature, latest_window_start, now
-        )
-        skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
-        )
-        # Whoop and Polar report skin temperature once a night, as a day value.
-        if skin_temp_reading is None and (
-            day_value := self.series_aggregate_repo.latest_day_value(
-                db_session, user_id, SeriesType.skin_temperature, latest_window_start.date()
+        def latest_reading(series_type: SeriesType) -> tuple[float, datetime] | None:
+            return self.data_point_repo.get_latest_reading_within_window(
+                db_session, user_id, series_type, latest_window_start, now, ranking
             )
-        ):
-            skin_temp_reading = (*day_value, "", None)
-        # Get blood pressure readings within the window
-        bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now
-        )
-        bp_diastolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_diastolic, latest_window_start, now
-        )
 
-        # ignore provider and device id
-        body_temp_celsius, body_temp_measured_at, _, _ = body_temp_reading or (None, None, None, None)
-        skin_temp_celsius, skin_temp_measured_at, _, _ = skin_temp_reading or (None, None, None, None)
+        body_temp_reading = latest_reading(SeriesType.body_temperature)
+        # Whoop and Polar report skin temperature once a night, as a day value.
+        skin_temp_reading = latest_reading(SeriesType.skin_temperature) or self.series_aggregate_repo.latest_day_value(
+            db_session, user_id, SeriesType.skin_temperature, latest_window_start.date(), ranking
+        )
+        # Get blood pressure readings within the window
+        bp_systolic_reading = latest_reading(SeriesType.blood_pressure_systolic)
+        bp_diastolic_reading = latest_reading(SeriesType.blood_pressure_diastolic)
+
+        body_temp_celsius, body_temp_measured_at = body_temp_reading or (None, None)
+        skin_temp_celsius, skin_temp_measured_at = skin_temp_reading or (None, None)
 
         # Blood pressure readings are only meaningful as a pair recorded at the same time.
         # Validate that both readings exist and their timestamps match within tolerance.
@@ -887,11 +880,12 @@ class SummariesService:
         bp_measured_at = None
 
         if bp_systolic_reading and bp_diastolic_reading:
-            time_diff = abs((bp_systolic_reading[1] - bp_diastolic_reading[1]).total_seconds())
-            if time_diff <= BP_TIMESTAMP_TOLERANCE_SECONDS:
+            systolic, systolic_at = bp_systolic_reading
+            diastolic, diastolic_at = bp_diastolic_reading
+            if abs((systolic_at - diastolic_at).total_seconds()) <= BP_TIMESTAMP_TOLERANCE_SECONDS:
                 blood_pressure = BloodPressure(
-                    avg_systolic_mmhg=int(round(bp_systolic_reading[0])),
-                    avg_diastolic_mmhg=int(round(bp_diastolic_reading[0])),
+                    avg_systolic_mmhg=int(round(systolic)),
+                    avg_diastolic_mmhg=int(round(diastolic)),
                     # For single point-in-time reading, no min/max/count needed
                     max_systolic_mmhg=None,
                     max_diastolic_mmhg=None,
@@ -899,7 +893,7 @@ class SummariesService:
                     min_diastolic_mmhg=None,
                     reading_count=1,
                 )
-                bp_measured_at = max(bp_systolic_reading[1], bp_diastolic_reading[1])
+                bp_measured_at = max(systolic_at, diastolic_at)
 
         # Check if we have any data at all
         has_slow_changing = any([weight_kg, height_cm, body_fat_pct, muscle_mass_kg])

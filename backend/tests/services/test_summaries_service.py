@@ -826,3 +826,66 @@ class TestBodySummaryAverages:
 
         assert body is not None
         assert body.averaged.resting_heart_rate_bpm == 56
+
+    def test_a_day_takes_the_preferred_sources_value_not_the_mean_of_all(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """Sources measure a vital differently; a day is the preferred one's, never a blend across ranks."""
+        user = UserFactory()
+        watch = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        ring = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.OURA, 1)
+        priorities.upsert(db, ProviderName.GARMIN, 2)
+        yesterday, before = date.today() - timedelta(days=1), date.today() - timedelta(days=2)
+        provider_day(db, watch, SeriesType.resting_heart_rate, yesterday, avg=Decimal("60"))
+        provider_day(db, ring, SeriesType.resting_heart_rate, yesterday, avg=Decimal("50"))
+        provider_day(db, watch, SeriesType.resting_heart_rate, before, avg=Decimal("62"))
+
+        body = service.get_body_summary(db, user.id, 7, 24)
+
+        assert body is not None
+        assert body.averaged.resting_heart_rate_bpm == 56  # the ring's 50, and the watch's 62 on its own day
+
+
+class TestBodySummarySlowChanging:
+    def _reading(self, source: object, series: object, at: datetime, value: str) -> None:
+        DataPointSeriesFactory(mapping=source, series_type=series, recorded_at=at, value=Decimal(value))
+
+    def test_the_preferred_source_wins_a_day_both_reported(self, db: Session, service: SummariesService) -> None:
+        """#851: Oura's height a second newer than Whoop's must not show under Whoop's name."""
+        user = UserFactory()
+        whoop = DataSourceFactory(user=user, provider=ProviderName.WHOOP, source="whoop")
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA, source="oura")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.WHOOP, 1)
+        priorities.upsert(db, ProviderName.OURA, 2)
+        height = SeriesTypeDefinitionFactory.get_or_create_height()
+        at = datetime.now(timezone.utc) - timedelta(hours=1)
+        self._reading(whoop, height, at, "177.8")
+        self._reading(oura, height, at + timedelta(seconds=1), "180")
+
+        body = service.get_body_summary(db, user.id, 7, 24)
+
+        assert body is not None
+        assert (body.slow_changing.height_cm, body.source.provider) == (177.8, "whoop")
+
+    def test_a_preferred_sources_old_value_does_not_beat_a_newer_day(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        """Priority decides on the newest day only: a weight typed in a year ago is not today's weight."""
+        user = UserFactory()
+        apple = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        withings = DataSourceFactory(user=user, provider=ProviderName.WITHINGS, source="withings")
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.APPLE, 1)
+        priorities.upsert(db, ProviderName.WITHINGS, 2)
+        weight = SeriesTypeDefinitionFactory.get_or_create_weight()
+        now = datetime.now(timezone.utc)
+        self._reading(apple, weight, now - timedelta(days=365), "90")
+        self._reading(withings, weight, now - timedelta(hours=1), "78.4")
+
+        body = service.get_body_summary(db, user.id, 7, 24)
+
+        assert body is not None
+        assert (body.slow_changing.weight_kg, body.source.provider) == (78.4, "withings")

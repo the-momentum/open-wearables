@@ -17,6 +17,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    and_,
     asc,
     case,
     cast,
@@ -237,6 +238,17 @@ class WorkoutWindow(NamedTuple):
     start_time: datetime
     end_time: datetime
     fallback_source_ids: tuple[UUID, ...] = ()
+
+
+class LatestValue(NamedTuple):
+    """A series' latest reading and the source it came from."""
+
+    value: float
+    recorded_at: datetime
+    provider: str | None
+    source: str | None
+    device_model: str | None
+    device_type: str | None
 
 
 class AggregatedSample(NamedTuple):
@@ -1364,7 +1376,7 @@ class DataPointSeriesRepository(
         user_id: UUID,
         before_date: datetime,
         series_types: list[SeriesType],
-    ) -> dict[SeriesType, tuple[float, datetime, str | None, str | None, str | None, str | None]]:
+    ) -> dict[SeriesType, LatestValue]:
         """Get the most recent value for each series type before a given date.
 
         Used for slow-changing measurements like weight, height, body fat %.
@@ -1373,8 +1385,7 @@ class DataPointSeriesRepository(
             before_date: Only consider measurements recorded before this datetime
 
         Returns:
-            Dict mapping SeriesType to tuple of
-            (value, recorded_at, provider, source, device_model, device_type)
+            Dict mapping SeriesType to its LatestValue
         """
         if not series_types:
             raise ValueError("series_types cannot be empty")
@@ -1435,14 +1446,91 @@ class DataPointSeriesRepository(
         )
 
         # Build result dict
-        latest_values: dict[SeriesType, tuple[float, datetime, str | None, str | None, str | None, str | None]] = {}
+        latest_values: dict[SeriesType, LatestValue] = {}
         for type_id, value, recorded_at, provider, source, device_model, device_type in results:
             try:
                 series_type = get_series_type_from_id(type_id)
-                latest_values[series_type] = (float(value), recorded_at, provider, source, device_model, device_type)
+                latest_values[series_type] = LatestValue(
+                    float(value), recorded_at, provider, source, device_model, device_type
+                )
             except KeyError:
                 pass
 
+        return latest_values
+
+    def get_ranked_latest_values(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        before_date: datetime,
+        series_types: list[SeriesType],
+        ranking: SourceRanking,
+    ) -> dict[SeriesType, LatestValue]:
+        """Per series, the best-ranked source's latest reading on the local day of the newest one before
+        ``before_date``.
+
+        Priority decides among the newest day's readings only, so a better source's height typed in years ago does
+        not beat today's from another, while two sources reporting the same day yield the preferred one's.
+        """
+        type_ids = [get_series_type_id(t) for t in series_types]
+        newest = (
+            db_session.query(
+                self.model.series_type_definition_id.label("type_id"),
+                func.max(self.model.recorded_at).label("at"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.recorded_at < before_date,
+                self.model.series_type_definition_id.in_(type_ids),
+            )
+            .group_by(self.model.series_type_definition_id)
+            .subquery()
+        )
+        # Two days back reaches every reading that can share the newest one's local day, whatever the offsets.
+        rows = (
+            db_session.query(
+                self.model.series_type_definition_id,
+                self.model.value,
+                self.model.recorded_at,
+                self.model.zone_offset,
+                DataSource.provider,
+                DataSource.source,
+                DataSource.device_model,
+                DataSource.device_type,
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .join(
+                newest,
+                and_(
+                    self.model.series_type_definition_id == newest.c.type_id,
+                    self.model.recorded_at <= newest.c.at,
+                    self.model.recorded_at > newest.c.at - timedelta(days=2),
+                ),
+            )
+            .filter(DataSource.user_id == user_id)
+            .all()
+        )
+
+        by_type: dict[int, list] = {}
+        for row in rows:
+            by_type.setdefault(row.series_type_definition_id, []).append(row)
+        latest_values: dict[SeriesType, LatestValue] = {}
+        for type_id, readings in by_type.items():
+            newest_reading = max(readings, key=lambda r: r.recorded_at)
+            day = local_date(newest_reading.recorded_at, newest_reading.zone_offset)
+            best = min(
+                (r for r in readings if local_date(r.recorded_at, r.zone_offset) == day),
+                key=lambda r: (*ranking.rank(r.provider, r.device_type), -r.recorded_at.timestamp()),
+            )
+            latest_values[get_series_type_from_id(type_id)] = LatestValue(
+                float(best.value),
+                best.recorded_at,
+                best.provider,
+                best.source,
+                best.device_model,
+                best.device_type,
+            )
         return latest_values
 
     def get_aggregates_for_period(
@@ -1508,8 +1596,9 @@ class DataPointSeriesRepository(
         series_type: SeriesType,
         window_start: datetime,
         window_end: datetime,
-    ) -> tuple[float, datetime, str | None, str | None] | None:
-        """Get the most recent reading for a series type within a time window.
+        ranking: SourceRanking,
+    ) -> tuple[float, datetime] | None:
+        """Get the best-ranked source's most recent reading for a series type within a time window.
 
         Used for point-in-time metrics like body temperature that are only
         relevant if recently measured. Returns None if no reading exists
@@ -1519,44 +1608,27 @@ class DataPointSeriesRepository(
             series_type: The type of measurement to retrieve
             window_start: Start of the valid time window
             window_end: End of the valid time window (typically now)
-
-        Returns:
-            Tuple of (value, recorded_at, provider_name, device_id) or None if no recent reading
         """
         type_id = get_series_type_id(series_type)
+        provider_rank, device_rank, _ = ranking.order_terms()
 
         result = (
-            db_session.query(
-                self.model.value,
-                self.model.recorded_at,
-                DataSource.source,
-                DataSource.device_model,
-            )
+            db_session.query(self.model.value, self.model.recorded_at)
             .join(DataSource, self.model.data_source_id == DataSource.id)
-            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
-            .outerjoin(
-                DeviceTypePriority,
-                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
-            )
             .filter(
                 DataSource.user_id == user_id,
                 self.model.series_type_definition_id == type_id,
                 self.model.recorded_at >= window_start,
                 self.model.recorded_at <= window_end,
             )
-            .order_by(
-                self.model.recorded_at.desc(),
-                ProviderPriority.priority.asc().nulls_last(),
-                DeviceTypePriority.priority.asc().nulls_last(),
-            )
+            # The window is a few hours, so the preferred source's reading is recent enough to beat a newer one.
+            .order_by(provider_rank, device_rank, self.model.recorded_at.desc())
             .first()
         )
 
         if result is None:
             return None
-
-        value, recorded_at, provider_name, device_id = result
-        return (float(value), recorded_at, provider_name, device_id)
+        return float(result.value), result.recorded_at
 
     def query_series(
         self,

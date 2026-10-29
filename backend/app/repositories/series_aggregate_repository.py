@@ -12,7 +12,12 @@ from app.database import DbSession
 from app.models import DataSource, SeriesAggregate
 from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.local_day import OFFSET_REACH, utc_midnight
-from app.repositories.repositories import source_filter_conditions, timeline_key_column, utc_bucket_start
+from app.repositories.repositories import (
+    SourceRanking,
+    source_filter_conditions,
+    timeline_key_column,
+    utc_bucket_start,
+)
 from app.schemas.enums import (
     ComputedBy,
     PeriodKind,
@@ -32,6 +37,7 @@ LOCAL_DAY = sql_cast(
 ).label("day")
 
 _ALL_TYPE_IDS = [get_series_type_id(series_type) for series_type in SeriesType]
+
 
 # Per (series, source) pair, the first (or last) day row in the range: one index probe per pair, ordered on the
 # index's period_start, where a MIN over a join filtered by the local day reads every row of the range.
@@ -154,10 +160,12 @@ class SeriesAggregateRepository:
         types: list[SeriesType],
         first_day: date,
         last_day: date,
+        ranking: SourceRanking,
         night_values: dict[tuple[UUID, int, date], float] | None = None,
     ) -> dict[SeriesType, float]:
-        """Each series' mean of its day values from ``first_day`` to ``last_day`` inclusive: one value per
-        data source and local day, the provider's before ours, read from the column the series is read by.
+        """Each series' mean of its day values from ``first_day`` to ``last_day`` inclusive: one value per local
+        day, the best-ranked source's (equally ranked ones averaged), the provider's row before ours, read from the
+        column the series is read by. Sources measuring a vital differently are never averaged across ranks.
 
         ``night_values`` fill the days a source holds no day row for: the providers that send a resting pulse
         or a night's HRV on the sleep, not on the day."""
@@ -168,18 +176,49 @@ class SeriesAggregateRepository:
                 found[series_type][(row.data_source_id, day)] = value
         for (source_id, type_id, day), value in (night_values or {}).items():
             found[get_series_type_from_id(type_id)].setdefault((source_id, day), value)
-        return {series_type: sum(values.values()) / len(values) for series_type, values in found.items() if values}
+
+        rank_of = self._ranks(db_session, {source_id for values in found.values() for source_id, _ in values}, ranking)
+        averages: dict[SeriesType, float] = {}
+        for series_type, values in found.items():
+            by_day: dict[date, list[tuple[tuple[int, int], float]]] = defaultdict(list)
+            for (source_id, day), value in values.items():
+                by_day[day].append((rank_of[source_id], value))
+            day_values = []
+            for ranked in by_day.values():
+                best = min(rank for rank, _ in ranked)
+                tied = [value for rank, value in ranked if rank == best]
+                day_values.append(sum(tied) / len(tied))
+            if day_values:
+                averages[series_type] = sum(day_values) / len(day_values)
+        return averages
 
     def latest_day_value(
-        self, db_session: DbSession, user_id: UUID, series_type: SeriesType, since: date
+        self, db_session: DbSession, user_id: UUID, series_type: SeriesType, since: date, ranking: SourceRanking
     ) -> tuple[float, datetime] | None:
-        """The newest day value of the series on or after ``since``, with the instant its day starts."""
+        """The newest day value of the series on or after ``since``, the best-ranked source's on that day, at
+        the instant its day starts."""
         last_day = date.today() + timedelta(days=1)
-        rows = self.get_day_rows(db_session, user_id, TimeSeriesQueryParams(), [series_type], since, last_day)
-        for row, _ in reversed(rows):
-            if (value := day_value(row, series_type)) is not None:
-                return value, row.period_start
-        return None
+        rows = [
+            (row, day)
+            for row, day in self.get_day_rows(
+                db_session, user_id, TimeSeriesQueryParams(), [series_type], since, last_day
+            )
+            if day_value(row, series_type) is not None
+        ]
+        if not rows:
+            return None
+        newest_day = max(day for _, day in rows)
+        newest = [row for row, day in rows if day == newest_day]
+        rank_of = self._ranks(db_session, {row.data_source_id for row in newest}, ranking)
+        best = min(newest, key=lambda row: (rank_of[row.data_source_id], str(row.data_source_id)))
+        return cast(float, day_value(best, series_type)), best.period_start
+
+    @staticmethod
+    def _ranks(db_session: DbSession, source_ids: set[UUID], ranking: SourceRanking) -> dict[UUID, tuple[int, int]]:
+        if not source_ids:
+            return {}
+        sources = db_session.query(DataSource).filter(DataSource.id.in_(source_ids))
+        return {source.id: ranking.rank(source.provider, source.device_type) for source in sources}
 
     @staticmethod
     def _days(
