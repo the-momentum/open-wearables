@@ -598,6 +598,33 @@ class TestGetActivitySummaries:
         assert len(result.data) == 1
         assert result.data[0].steps == 3000
 
+    def _apple_steps(self, user: Any, values: list[int]) -> Any:
+        ds = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
+        for i, value in enumerate(values):
+            DataPointSeriesFactory(
+                data_source=ds, series_type=steps_type, value=value, recorded_at=_dt(f"2026-01-01T10:0{i}:00+00:00")
+            )
+        return ds
+
+    def _day(self, db: Session, service: SummariesService, user: Any) -> list:
+        return service.get_activity_summaries(
+            db, user.id, _dt("2026-01-01T00:00:00+00:00"), _dt("2026-01-02T00:00:00+00:00"), cursor=None, limit=10
+        ).data
+
+    def test_a_day_without_a_day_row_is_counted_from_the_samples(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        self._apple_steps(user, [1000, 250])
+
+        assert [day.steps for day in self._day(db, service, user)] == [1250]
+
+    def test_a_day_row_wins_over_the_samples(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        ds = self._apple_steps(user, [1000, 250])
+        provider_day(db, ds, SeriesType.steps, date(2026, 1, 1), sum=Decimal("9000"))
+
+        assert [day.steps for day in self._day(db, service, user)] == [9000]
+
     def test_includes_days_with_only_a_workout(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
         ds = DataSourceFactory(user=user, provider=ProviderName.STRAVA, source="strava")
@@ -807,3 +834,22 @@ class TestBodySummaryAverages:
 
         assert body is not None
         assert body.averaged.resting_heart_rate_bpm == 56
+
+    def test_a_resting_pulse_without_a_day_row_is_counted_from_the_samples(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        user = UserFactory()
+        phone = DataSourceFactory(user=user, provider=ProviderName.APPLE, source="apple_health_sdk")
+        rhr = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+        noon = datetime.combine(date.today() - timedelta(days=1), datetime.min.time(), timezone.utc) + timedelta(
+            hours=12
+        )
+        for minutes, value in ((0, 50), (30, 54)):
+            DataPointSeriesFactory(
+                data_source=phone, series_type=rhr, value=value, recorded_at=noon + timedelta(minutes=minutes)
+            )
+
+        body = service.get_body_summary(db, user.id, 7, 24)
+
+        assert body is not None
+        assert body.averaged.resting_heart_rate_bpm == 52

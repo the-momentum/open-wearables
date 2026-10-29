@@ -623,9 +623,14 @@ class SummariesService:
             avg_steps=round(sum(steps) / len(steps)) if steps else None,
         )
 
+    @staticmethod
+    def _days_from_samples(db_session: DbSession) -> bool:
+        """The days our rollup has not written come from the samples: it reaches only the days written since."""
+        return True
+
     def _activity_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
         """One row per day in [start, end) from the day aggregates, best source per date."""
-        results = daily_activity(db_session, user_id, start, end)
+        results = daily_activity(db_session, user_id, start, end, self._days_from_samples(db_session))
         results = self._add_workout_only_days(db_session, user_id, start, end, results)
         return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
 
@@ -839,7 +844,7 @@ class SummariesService:
             db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
         )
         averages = self.series_aggregate_repo.period_averages(
-            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights
+            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights, self._days_from_samples(db_session)
         )
 
         resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
