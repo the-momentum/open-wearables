@@ -54,7 +54,7 @@ def _rotate_default_password(db: Session, email: str, password: str, environment
         refresh_token_repository.revoke_all_for_developer(db, admin.id)
         print(
             f"WARNING: {email} still uses the public default password, which production refuses at login. "
-            "Set ADMIN_PASSWORD on the backend and restart it to replace the password."
+            "Set the ADMIN_PASSWORD environment variable to a new password and restart the backend to replace it."
         )
 
 

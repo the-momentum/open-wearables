@@ -57,7 +57,9 @@ test('explains how to replace a default password the API refuses', async ({ page
 	await page.getByLabel('Password').fill(DEFAULT_PASSWORD);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 
-	await expect(page.getByRole('alert')).toContainText('Set ADMIN_PASSWORD');
+	await expect(page.getByRole('alert')).toContainText(
+		'ADMIN_EMAIL and ADMIN_PASSWORD environment variables'
+	);
 	await expect(page).toHaveURL('/login');
 });
 

@@ -45,8 +45,9 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "The default admin password is disabled in production. "
-                "Set ADMIN_PASSWORD on the backend and restart it to replace the password."
+                "Signing in with the default password is disabled in production. Set the ADMIN_EMAIL and "
+                "ADMIN_PASSWORD environment variables on the backend (backend/config/.env or your hosting "
+                "provider's settings) to this account's email and a new password, then restart the backend."
             ),
         )
 
