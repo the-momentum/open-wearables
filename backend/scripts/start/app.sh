@@ -106,6 +106,13 @@ echo 'Running SDK workout calories cleanup...'
 uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
     || echo "Warning: SDK workout calories cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves Garmin, Polar and Whoop sleep scores from the night's start to its wake-up, so each falls
+# on the day the user wakes up. Runs once per instance (data_migration).
+echo 'Running provider sleep score restamp...'
+uv run python scripts/data_migrations/restamp_provider_sleep_scores.py \
+    || echo "Warning: provider sleep score restamp failed, will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
