@@ -12,7 +12,7 @@
 
 ---
 
-Open Wearables is an open-source platform that connects wearable devices and health apps, standardizes their data into one schema, and serves it through a single REST API. It runs inside your own cloud account, so your users' health data never passes through a third party.
+Open Wearables is an open-source platform that connects wearable devices and health apps, standardizes their data into one schema, and serves it through a single REST API. It runs inside your own cloud account, so data goes from each provider straight to your deployment without passing through a third party.
 
 Instead of building and maintaining a separate integration for Garmin, Oura, Whoop, Polar, Apple Health, Samsung Health, Google Health Connect and the rest, you deploy one service. It handles provider OAuth, background sync, webhooks and mobile SDK uploads, and your product reads sleep, activity, workouts and heart rate the same way whatever device the data came from. A built-in MCP server lets LLMs and AI agents query the same data.
 
@@ -135,7 +135,7 @@ For production use, [Open Wearables Connect](https://openwearables.io/platform/c
 
 ### MCP server for AI agents
 
-A built-in [Model Context Protocol](https://modelcontextprotocol.io) server gives Claude Desktop, Cursor and other MCP clients access to your users' wearable data. Ask "How did John sleep last week?" and the model fetches the right records itself.
+A built-in [Model Context Protocol](https://modelcontextprotocol.io) server gives Claude Desktop, Cursor and other MCP clients access to your users' wearable data. Ask "How did John sleep last week?" and the model fetches the right records itself. Keep in mind that the records it fetches are sent to the model provider behind your MCP client.
 
 Tools: `get_users`, `get_activity_summary`, `get_sleep_summary`, `get_workout_events`, `get_timeseries`, `get_menstrual_cycles`. Setup: [MCP server docs](https://openwearables.io/docs/mcp-server).
 
@@ -178,7 +178,7 @@ Current priorities are performance at scale, compliance features for regulated p
 
 ## Telemetry
 
-Open Wearables sends a small anonymous usage ping once a day, plus one on startup, to help us see which providers and features are used. It contains only aggregate, bucketed counts and configuration flags, never health data, user data or credentials. The API logs a notice at startup while telemetry is on.
+Open Wearables sends a small anonymous usage ping once a day, plus one on startup, to help us see which providers and features are used. It contains a random instance identifier generated locally on first run, the Open Wearables, Python and OS versions, and aggregate, bucketed counts and configuration flags. It never contains health data, user data or credentials. The API logs a notice at startup while telemetry is on.
 
 To turn it off, set `TELEMETRY_ENABLED=false` (or `DO_NOT_TRACK=1`) on the backend containers. The [telemetry docs](https://openwearables.io/docs/dev-guides/telemetry) list every field we collect and why.
 
