@@ -35,7 +35,7 @@ Railway provides the fastest way to get a production Open Wearables instance run
 <Tip>
 The template asks for `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the **Backend** service, and the first startup creates the admin account from them (only while no developer account exists yet). Changing them later does not update that account, so change the password from the developer portal instead. Additional accounts are added by invitation from the developer portal.
 
-**Deployed before the template required these variables?** If your admin account still uses the public default password (`your-secure-password`), production refuses it at sign-in. Set `ADMIN_PASSWORD` on the Backend service and redeploy: on startup the account's password is changed to the new value.
+**Deployed before the template required these variables?** If your admin account still uses the public default password (`your-secure-password`), production refuses it at sign-in. On the Backend service set `ADMIN_EMAIL` to that account's email and `ADMIN_PASSWORD` to a new password, then redeploy: on startup the account's password is changed to the new value. Only the account whose email matches `ADMIN_EMAIL` is updated.
 </Tip>
 
 ## What gets deployed
