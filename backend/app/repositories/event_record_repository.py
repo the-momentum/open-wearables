@@ -39,13 +39,11 @@ from app.repositories.repositories import (
     CrudRepository,
     SourceRanking,
     source_filter_conditions,
-    source_priority_order,
     utc_bucket_start,
 )
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     ComputedBy,
-    DeviceType,
     EventCategory,
     ProviderName,
     SeriesType,
@@ -955,8 +953,7 @@ class EventRecordRepository(
         end_date: datetime,
         cursor: str | None,
         limit: int,
-        provider_order: dict[ProviderName, int],
-        device_type_order: dict[DeviceType, int],
+        ranking: SourceRanking,
     ) -> list[dict]:
         """Get daily sleep summaries: per date, the aggregate of its highest-priority source.
 
@@ -1019,7 +1016,7 @@ class EventRecordRepository(
                 .over(
                     partition_by=local_sleep_date,
                     order_by=(
-                        *source_priority_order(provider_order, device_type_order),
+                        *ranking.order_terms(),
                         func.min(cast(EventRecord.id, String)),
                     ),
                 )

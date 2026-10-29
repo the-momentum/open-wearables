@@ -13,8 +13,10 @@ from uuid import UUID
 
 from celery.exceptions import SoftTimeLimitExceeded
 
+from app.config import settings
 from app.database import DbSession
 from app.integrations import rollup_queue
+from app.models import DataSource
 from app.models.archival_setting import ArchivalSetting
 from app.repositories.archival_repository import (
     MAX_ROWS_PER_RUN,
@@ -25,6 +27,8 @@ from app.repositories.archival_repository import (
 )
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.local_day import OFFSET_REACH, utc_midnight
+from app.repositories.repositories import SourceRanking
+from app.repositories.series_reconcile_repository import SeriesReconcileRepository
 from app.repositories.series_rollup_repository import SeriesRollupRepository
 from app.schemas.utils import (
     ArchivalSettingRead,
@@ -58,6 +62,7 @@ class ArchivalService:
         self.settings_repo = ArchivalSettingRepository()
         self.archive_repo = DataPointSeriesArchiveRepository()
         self.rollup_repo = SeriesRollupRepository()
+        self.reconcile_repo = SeriesReconcileRepository()
 
     # ── Settings CRUD ─────────────────────────────────────────────
 
@@ -182,6 +187,7 @@ class ArchivalService:
         out_of_time: Callable[[], bool],
     ) -> int:
         """A source at a time, a month of its days per commit; the days the run has no time left for go back.
+        A user's sources are taken together, and once they are rolled up the days are merged across them.
 
         A source that fails is logged and its days dropped (the next write to them queues them again); when
         every source fails the cause is not the data, the batch goes back on the queue and the error propagates.
@@ -191,25 +197,33 @@ class ArchivalService:
             # Retention deletes these days whole; a late sample would roll up only part of one.
             if cutoff is None or day >= cutoff:
                 days_by_source[source_id].append(day)
+        sources_by_user = self._sources_by_user(db, days_by_source)
+        ranking = SourceRanking.load(db) if settings.reconcile_enabled else None
         rolled_up, failed, left = 0, [], []
         try:
-            for source_id, days in days_by_source.items():
-                done = 0
-                try:
-                    for chunk in batched(sorted(days), ROLLUP_DAYS_PER_COMMIT):
-                        if out_of_time():
-                            break
-                        self.rollup_repo.roll_up(db, source_id, list(chunk), frozen_before)
-                        db.commit()
-                        done += len(chunk)
-                except SoftTimeLimitExceeded:
-                    raise
-                except Exception as exc:
-                    db.rollback()
-                    failed.append((source_id, days, exc))
-                    continue
-                rolled_up += done
-                left.extend((source_id, day) for day in sorted(days)[done:])
+            for user_id, source_ids in sources_by_user.items():
+                done_days: set[date] = set()
+                for source_id in source_ids:
+                    days = days_by_source[source_id]
+                    done = 0
+                    try:
+                        for chunk in batched(sorted(days), ROLLUP_DAYS_PER_COMMIT):
+                            if out_of_time():
+                                break
+                            self.rollup_repo.roll_up(db, source_id, list(chunk), frozen_before)
+                            db.commit()
+                            done += len(chunk)
+                            done_days.update(chunk)
+                    except SoftTimeLimitExceeded:
+                        raise
+                    except Exception as exc:
+                        db.rollback()
+                        failed.append((source_id, days, exc))
+                        continue
+                    rolled_up += done
+                    left.extend((source_id, day) for day in sorted(days)[done:])
+                if ranking is not None and done_days:
+                    self._reconcile(db, user_id, done_days, frozen_before, ranking)
         except SoftTimeLimitExceeded:
             # Killed next; what is committed stays, the rest is rolled up again by the next run.
             db.rollback()
@@ -229,6 +243,39 @@ class ArchivalService:
         rollup_queue.finish_dirty_days(batch)
         return rolled_up
 
+    @staticmethod
+    def _sources_by_user(db: DbSession, days_by_source: dict[UUID, list[date]]) -> dict[UUID, list[UUID]]:
+        owners = db.query(DataSource.id, DataSource.user_id).filter(DataSource.id.in_(days_by_source)).all()
+        sources_by_user: dict[UUID, list[UUID]] = defaultdict(list)
+        for source_id, user_id in owners:
+            sources_by_user[user_id].append(source_id)
+        return sources_by_user
+
+    def _reconcile(
+        self, db: DbSession, user_id: UUID, days: set[date], frozen_before: date | None, ranking: SourceRanking
+    ) -> None:
+        """Merge the user's sources on the days just rolled up, a month per commit. Run whatever the time left: it is
+        a fraction of the rollup it follows, and a day rolled up but left unmerged would never be queued again.
+
+        A merge that fails is logged and skipped; the sources' own rows are rolled up all the same.
+        """
+        # Retention has emptied these days: they could not be merged again, so their rows stay as they are.
+        mergeable = sorted(day for day in days if frozen_before is None or day >= frozen_before)
+        for chunk in batched(mergeable, ROLLUP_DAYS_PER_COMMIT):
+            try:
+                self.reconcile_repo.reconcile(db, user_id, chunk, ranking)
+                db.commit()
+            except SoftTimeLimitExceeded:
+                raise
+            except Exception as exc:
+                db.rollback()
+                log_and_capture_error(
+                    exc,
+                    self.logger,
+                    "Rollup: skipped merging a user's sources",
+                    extra={"user_id": str(user_id), "days": [day.isoformat() for day in chunk]},
+                )
+
     def _delete_before(self, db: DbSession, cutoff: date, rollup: bool, frozen_before: date | None) -> BatchedRun:
         """Delete the samples of local days before ``cutoff``, rolled up first when ``rollup``; a source at a time,
         oldest days first, a few days per commit. Stops at the run's row or time budget; the next run goes on.
@@ -241,12 +288,13 @@ class ArchivalService:
         def out_of_budget() -> bool:
             return deleted >= MAX_ROWS_PER_RUN or time.monotonic() - started >= MAX_SECONDS_PER_RUN
 
+        ranking = SourceRanking.load(db) if rollup and settings.reconcile_enabled else None
         before, after = utc_midnight(cutoff) + OFFSET_REACH, _FIRST_ID
         while sources := self.archive_repo.sources_with_samples_before(db, before, after, RETENTION_SOURCES_PER_QUERY):
             for source_id in sources:
                 after = source_id
                 try:
-                    for rows in self._delete_source_before(db, source_id, cutoff, rollup, frozen_before):
+                    for rows in self._delete_source_before(db, source_id, cutoff, rollup, frozen_before, ranking):
                         deleted += rows
                         if out_of_budget():
                             return BatchedRun(deleted, complete=False)
@@ -264,10 +312,22 @@ class ArchivalService:
         return BatchedRun(deleted, complete=not failed)
 
     def _delete_source_before(
-        self, db: DbSession, source_id: UUID, cutoff: date, rollup: bool, frozen_before: date | None
+        self,
+        db: DbSession,
+        source_id: UUID,
+        cutoff: date,
+        rollup: bool,
+        frozen_before: date | None,
+        ranking: SourceRanking | None = None,
     ) -> Iterator[int]:
         """The source's local days before ``cutoff``, oldest first, ``DELETE_DAYS_PER_BATCH`` at a time: rolled up,
-        then deleted whole and committed. Yields the rows each batch deleted."""
+        then deleted whole and committed. Yields the rows each batch deleted.
+
+        With ``ranking``, the user's sources are merged on the days first, while every source still has them: the
+        first source's batch merges a day, later ones keep that row, as one of its sources is gone by then.
+        """
+        source = db.get(DataSource, source_id) if ranking is not None else None
+        user_id = source.user_id if source is not None else None
         next_day = date.min
         # Days an earlier run deleted before it stopped: a sample arriving late for one of them must not
         # recompute its rows from that sample alone.
@@ -282,6 +342,8 @@ class ArchivalService:
                 # Every older day of the source is gone by now: a session begun before these days keeps its rows.
                 frozen = max(day for day in (frozen_before, source_frozen, days[0]) if day is not None)
                 self.rollup_repo.roll_up(db, source_id, days, frozen)
+                if ranking is not None and user_id is not None:
+                    self.reconcile_repo.reconcile(db, user_id, days, ranking, keep_existing=True)
             rows = self.archive_repo.delete_days(db, source_id, days)
             db.commit()
             next_day = days[-1] + timedelta(days=1)

@@ -9,8 +9,8 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import DataSource, HealthScore
 from app.repositories.data_point_series_repository import WriteCounts
-from app.repositories.repositories import CrudRepository, source_priority_order
-from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
+from app.repositories.repositories import CrudRepository, SourceRanking
+from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
 from app.utils.pagination import decode_cursor
 
@@ -115,8 +115,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         end_date: datetime,
         cursor: str | None,
         limit: int,
-        provider_order: dict[ProviderName, int],
-        device_type_order: dict[DeviceType, int],
+        ranking: SourceRanking,
     ) -> list[dict[str, Any]]:
         """Get recovery health scores for a date range with cursor-based pagination.
 
@@ -137,7 +136,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                 .over(
                     partition_by=cast(HealthScore.recorded_at, Date),
                     order_by=(
-                        *source_priority_order(provider_order, device_type_order, HealthScore.provider),
+                        *ranking.order_terms(HealthScore.provider),
                         HealthScore.recorded_at,
                         HealthScore.id,
                     ),

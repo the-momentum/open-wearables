@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventRecordAggregate, ProviderPriority
 from app.repositories import AggregateRepository, ProviderPriorityRepository
+from app.repositories.repositories import SourceRanking
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from app.services.summaries_service import SummariesService
 from tests.factories import (
@@ -484,7 +485,7 @@ class TestGetRecoverySummaries:
             "spo2_percentage": 98.4,
         }
         monkeypatch.setattr(service.health_score_repo, "get_recovery_summaries", lambda *_: [row])
-        monkeypatch.setattr(service, "_priority_orders", lambda *_: ({}, {}))
+        monkeypatch.setattr(SourceRanking, "load", classmethod(lambda cls, _: cls({}, {})))
 
         result = service.get_recovery_summaries(
             db_session=None,

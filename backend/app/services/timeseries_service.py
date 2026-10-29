@@ -9,10 +9,9 @@ from uuid import UUID
 from sqlalchemy import event as sa_event
 
 from app.database import DbSession
-from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesSample
-from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
+from app.models import DataSource, SeriesAggregate, SeriesSample
+from app.repositories import DataPointSeriesRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
-from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.repositories import SourceRanking
 from app.repositories.series_aggregate_repository import SeriesAggregateRepository
 from app.schemas.enums import (
@@ -230,8 +229,6 @@ class TimeSeriesService(
 
     def __init__(self, log: Logger):
         super().__init__(crud_model=DataPointSeriesRepository, model=SeriesSample, log=log)
-        self.provider_priority_repo = ProviderPriorityRepository(ProviderPriority)
-        self.device_type_priority_repo = DeviceTypePriorityRepository()
         self.series_aggregate_repo = SeriesAggregateRepository()
 
     def bulk_create_samples(
@@ -343,13 +340,8 @@ class TimeSeriesService(
         params: TimeSeriesQueryParams,
     ) -> dict[int, UUID]:
         """Resolve one data source per series type, using the ranking sleep and summaries use."""
-        return self.crud.winning_source_by_series_type(db_session, params, types, user_id, self._ranking(db_session))
-
-    def _ranking(self, db_session: DbSession) -> SourceRanking:
-        return SourceRanking(
-            self.provider_priority_repo.get_priority_order(db_session),
-            self.device_type_priority_repo.get_priority_order(db_session),
-        )
+        ranking = SourceRanking.load(db_session)
+        return self.crud.winning_source_by_series_type(db_session, params, types, user_id, ranking)
 
     def _aggregated_timeseries(
         self,
@@ -526,7 +518,7 @@ class TimeSeriesService(
         source_by_type = None
         if source_selection is SourceSelection.PER_RANGE:
             source_by_type = self._winning_sources(db_session, user_id, types, params)
-        ranking = self._ranking(db_session) if source_selection is SourceSelection.PER_PERIOD else None
+        ranking = SourceRanking.load(db_session) if source_selection is SourceSelection.PER_PERIOD else None
         if params.resolution in PERIOD_RESOLUTIONS:
             return self._period_timeseries(db_session, user_id, types, params, source_by_type, ranking)
         if params.resolution is not Resolution.RAW:
