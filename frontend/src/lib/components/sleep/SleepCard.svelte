@@ -11,9 +11,10 @@
 
 	let {
 		session,
+		userId,
 		providerLabel,
 		ondelete
-	}: { session: SleepSession; providerLabel: string; ondelete: () => void } = $props();
+	}: { session: SleepSession; userId: string; providerLabel: string; ondelete: () => void } = $props();
 </script>
 
 <EventCard icon={sleepIcon(session)} source={session.source} {providerLabel}>
@@ -39,6 +40,6 @@
 	{/snippet}
 
 	{#snippet details()}
-		<SleepDetails {session} {ondelete} />
+		<SleepDetails {session} {userId} {ondelete} />
 	{/snippet}
 </EventCard>

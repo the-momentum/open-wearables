@@ -80,6 +80,15 @@ class TestOAuthAuthorizeEndpoint:
             assert "authorization_url" in data
             assert "state" in data
 
+    def test_authorize_polar_sleep_v4_separately(self, client: TestClient, db: Session) -> None:
+        response = client.get("/api/v1/oauth/polar-sleep/authorize", params={"user_id": str(uuid4())})
+
+        assert response.status_code == 200
+        authorization_url = response.json()["authorization_url"]
+        assert authorization_url.startswith("https://auth.polar.com/oauth/authorize?")
+        assert "scope=sleep%3Aread" in authorization_url
+        assert "accesslink.read_all" not in authorization_url
+
     def test_authorize_missing_user_id(self, client: TestClient, db: Session) -> None:
         """Test authorization without user_id parameter."""
         # Act

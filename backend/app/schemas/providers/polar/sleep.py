@@ -24,6 +24,7 @@ class SleepJSON(BaseModel):
     group_duration_score: float | None = None
     group_solidity_score: float | None = None
     group_regeneration_score: float | None = None
+    sleep_efficiency_percent: float | None = None
     hypnogram: dict[str, int] | None = None
     heart_rate_samples: dict[str, int] | None = None
 

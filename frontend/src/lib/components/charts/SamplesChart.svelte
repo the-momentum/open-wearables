@@ -8,6 +8,7 @@
 	let {
 		url,
 		order,
+		sampleRole,
 		zones = null,
 		from,
 		to,
@@ -19,6 +20,7 @@
 		url: () => string;
 		/** Which series to keep, in the order the chart stacks them. */
 		order: string[];
+		sampleRole?: Sample['sample_role'];
 		zones?: { type: string; label: string; zones: { max: number | null }[] } | null;
 		from: number;
 		to: number;
@@ -35,7 +37,7 @@
 		url()
 	);
 
-	const series = $derived(toSeries(fetched.current?.samples ?? [], order));
+	const series = $derived(toSeries(fetched.current?.samples ?? [], order, sampleRole));
 	const bucket = $derived(
 		fetched.current && fetched.current.resolution !== 'raw' ? fetched.current : null
 	);

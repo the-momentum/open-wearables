@@ -292,6 +292,10 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                     access_token=None,
                     refresh_token=None,
                     token_expires_at=None,
+                    polar_v4_access_token=None,
+                    polar_v4_refresh_token=None,
+                    polar_v4_token_expires_at=None,
+                    polar_v4_scope=None,
                     updated_at=datetime.now(timezone.utc),
                 ),
             ),
@@ -305,7 +309,15 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                     or_(UserConnection.access_token.is_not(None), UserConnection.refresh_token.is_not(None)),
                 ),
             )
-            .values(access_token=None, refresh_token=None, token_expires_at=None),
+            .values(
+                access_token=None,
+                refresh_token=None,
+                token_expires_at=None,
+                polar_v4_access_token=None,
+                polar_v4_refresh_token=None,
+                polar_v4_token_expires_at=None,
+                polar_v4_scope=None,
+            ),
         )
         db_session.commit()
         return result.rowcount

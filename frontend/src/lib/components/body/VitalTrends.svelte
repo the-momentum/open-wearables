@@ -13,7 +13,10 @@
 	// Averaged to one point a day: HRV alone arrives dozens of times a day, and a
 	// body trend is read by the day. A series from two devices stays two lines.
 	const trends = $derived(
-		toSeries(fetched.current?.samples ?? [], VITAL_TYPES)
+		toSeries(
+			(fetched.current?.samples ?? []).filter((sample) => sample.sample_role !== 'nightly_sample'),
+			VITAL_TYPES
+		)
 			.map(dailyMeans)
 			// One point draws no line, and a flat dot says less than the figure above.
 			.filter((series) => series.points.length > 1)

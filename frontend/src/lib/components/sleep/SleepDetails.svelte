@@ -3,6 +3,7 @@
 	import Layers from '@lucide/svelte/icons/layers';
 	import DistributionBar from '$lib/components/charts/DistributionBar.svelte';
 	import IntervalChart from '$lib/components/charts/IntervalChart.svelte';
+	import SamplesChart from '$lib/components/charts/SamplesChart.svelte';
 	import Caption from '$lib/components/ui/Caption.svelte';
 	import FieldGroups from '$lib/components/ui/FieldGroups.svelte';
 	import { NOTE } from '$lib/components/ui/typography';
@@ -10,8 +11,13 @@
 	import { stageLabel, stageLanes, stageRows } from '$lib/sleep/stages';
 	import type { SleepSession } from '$lib/sleep/types';
 	import { formatDuration, formatLocalTime } from '$lib/utils/format';
+	import { HEART_AND_BREATH_TYPES } from '$lib/timeseries/samples';
 
-	let { session, ondelete }: { session: SleepSession; ondelete: () => void } = $props();
+	let {
+		session,
+		userId,
+		ondelete
+	}: { session: SleepSession; userId: string; ondelete: () => void } = $props();
 
 	const clock = (iso: string) => formatLocalTime(iso, session.zone_offset);
 
@@ -24,6 +30,16 @@
 	);
 
 	const rows = $derived(stageRows(session));
+	const sampleParams = $derived(
+		new URLSearchParams({
+			from: session.start_time,
+			to: session.end_time,
+			seconds: String(
+				Math.round((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 1000)
+			),
+			provider: session.source.provider
+		})
+	);
 </script>
 
 <div class="flex flex-col gap-5 border-t border-border pt-4">
@@ -50,6 +66,22 @@
 	</div>
 
 	<DistributionBar title="Time in each stage" icon={Layers} {rows} />
+
+	{#if session.source.provider === 'polar'}
+		<div class="flex flex-col gap-1.5">
+			<Caption>Nightly HRV and breathing samples</Caption>
+			<SamplesChart
+				url={() => `/users/${userId}/sleep/samples?${sampleParams}`}
+				order={HEART_AND_BREATH_TYPES}
+				sampleRole="nightly_sample"
+				from={new Date(session.start_time).getTime()}
+				to={new Date(session.end_time).getTime()}
+				formatTime={(at) => clock(new Date(at).toISOString())}
+				label="Nightly HRV and breathing samples"
+				empty="No individual HRV or breathing samples were stored for this night."
+			/>
+		</div>
+	{/if}
 
 	<FieldGroups groups={detailGroups(session)} />
 

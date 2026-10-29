@@ -18250,6 +18250,10 @@
               }
             ],
             "title": "Is Daily Total"
+          },
+          "sample_role": {
+            "$ref": "#/components/schemas/TimeSeriesRole",
+            "default": "measurement"
           }
         },
         "type": "object",
@@ -18260,6 +18264,16 @@
           "unit"
         ],
         "title": "TimeSeriesSample"
+      },
+      "TimeSeriesRole": {
+        "type": "string",
+        "enum": [
+          "measurement",
+          "nightly_aggregate",
+          "nightly_sample"
+        ],
+        "title": "TimeSeriesRole",
+        "description": "Distinguishes provider-supplied aggregates from individual time-series readings."
       },
       "TimelineBucket": {
         "type": "string",

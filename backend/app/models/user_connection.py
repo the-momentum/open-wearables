@@ -43,6 +43,12 @@ class UserConnection(BaseDbModel):
     token_expires_at: Mapped[datetime | None]
     scope: Mapped[str | None]
 
+    # Separate Polar AccessLink v4 authorization; v3 uses the legacy scope/token.
+    polar_v4_access_token: Mapped[str | None]
+    polar_v4_refresh_token: Mapped[str | None]
+    polar_v4_token_expires_at: Mapped[datetime | None]
+    polar_v4_scope: Mapped[str | None]
+
     # Metadata
     status: Mapped[ConnectionStatus]
     last_synced_at: Mapped[datetime | None]

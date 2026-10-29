@@ -10,9 +10,9 @@ import httpx
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas.model_crud.credentials import OAuthTokenResponse
-from app.services.providers.polar.oauth import PolarOAuth
-from tests.factories import UserFactory
+from app.schemas.model_crud.credentials import OAuthState, OAuthTokenResponse
+from app.services.providers.polar.oauth import PolarOAuth, PolarSleepV4OAuth
+from tests.factories import UserConnectionFactory, UserFactory
 
 
 class TestPolarOAuthConfiguration:
@@ -66,6 +66,54 @@ class TestPolarOAuthConfiguration:
         assert credentials.redirect_uri is not None
         assert isinstance(credentials.client_id, str)
         assert isinstance(credentials.client_secret, str)
+
+
+class TestPolarSleepV4OAuth:
+    def test_v4_authorization_requests_only_sleep_scope(self, db: Session) -> None:
+        from app.models import User
+        from app.repositories.user_connection_repository import UserConnectionRepository
+        from app.repositories.user_repository import UserRepository
+
+        oauth = PolarSleepV4OAuth(
+            user_repo=UserRepository(User),
+            connection_repo=UserConnectionRepository(),
+            provider_name="polar_sleep_v4",
+            api_base_url="https://www.polaraccesslink.com",
+        )
+
+        auth_url, _ = oauth._build_auth_url("state")
+
+        assert auth_url.startswith("https://auth.polar.com/oauth/authorize?")
+        assert "scope=sleep%3Aread" in auth_url
+        assert "accesslink.read_all" not in auth_url
+
+    def test_v4_grant_does_not_replace_v3_tokens(self, db: Session) -> None:
+        user = UserFactory()
+        connection = UserConnectionFactory(user=user, provider="polar", access_token="legacy-v3")
+        from app.models import User
+        from app.repositories.user_connection_repository import UserConnectionRepository
+        from app.repositories.user_repository import UserRepository
+
+        oauth = PolarSleepV4OAuth(
+            user_repo=UserRepository(User),
+            connection_repo=UserConnectionRepository(),
+            provider_name="polar_sleep_v4",
+            api_base_url="https://www.polaraccesslink.com",
+        )
+        token = OAuthTokenResponse(
+            access_token="separate-v4",
+            token_type="bearer",
+            refresh_token="refresh-v4",
+            expires_in=3600,
+            scope="sleep:read",
+        )
+        oauth._save_connection(db, user.id, token, {}, OAuthState(user_id=user.id, provider="polar_sleep_v4"))
+
+        db.refresh(connection)
+        assert connection.access_token == "legacy-v3"
+        assert connection.polar_v4_access_token == "separate-v4"
+        assert connection.polar_v4_refresh_token == "refresh-v4"
+        assert connection.polar_v4_scope == "sleep:read"
 
     def test_polar_oauth_uses_basic_auth(self, db: Session) -> None:
         """Test Polar OAuth uses Basic Authentication method."""

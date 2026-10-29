@@ -20,6 +20,7 @@ from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import provider_settings_service
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.polar.oauth import PolarSleepV4OAuth
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -43,6 +44,98 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
             detail=f"Provider '{provider.value}' does not support OAuth",
         )
     return strategy
+
+
+def get_polar_sleep_v4_oauth() -> PolarSleepV4OAuth:
+    strategy = factory.get_provider(ProviderName.POLAR.value)
+    assert strategy.oauth
+    return PolarSleepV4OAuth(
+        user_repo=strategy.oauth.user_repo,
+        connection_repo=strategy.oauth.connection_repo,
+        provider_name="polar_sleep_v4",
+        api_base_url=strategy.api_base_url,
+    )
+
+
+@router.get("/polar-sleep/authorize", response_model=AuthorizationURLResponse, tags=["External: Providers"])
+def authorize_polar_sleep_v4(
+    db: DbSession,
+    user_id: Annotated[UUID, Query(description="User ID with an existing Polar v3 connection")],
+    redirect_uri: Annotated[str | None, Query(description="Optional URL to return after both Polar grants")] = None,
+):
+    """Start the separate Polar v4 sleep authorization flow."""
+    strategy = factory.get_provider(ProviderName.POLAR.value)
+    assert strategy.oauth
+    if not strategy.oauth.connection_repo.get_by_user_and_provider(db, user_id, ProviderName.POLAR.value):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Connect the legacy Polar integration before authorizing Polar sleep v4.",
+        )
+    oauth = get_polar_sleep_v4_oauth()
+    if not oauth.credentials.client_id or not oauth.credentials.client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Polar v4 OAuth credentials are not configured.",
+        )
+    auth_url, state = oauth.get_authorization_url(user_id, redirect_uri)
+    return AuthorizationURLResponse(authorization_url=auth_url, state=state)
+
+
+@router.get("/polar-sleep/callback", tags=["System: OAuth"])
+def polar_sleep_v4_callback(
+    db: DbSession,
+    code: Annotated[str | None, Query(description="Authorization code from Polar")] = None,
+    state: Annotated[str | None, Query(description="OAuth state")] = None,
+    error: Annotated[str | None, Query()] = None,
+    error_description: Annotated[str | None, Query()] = None,
+):
+    """Save the v4 sleep grant without replacing the legacy Polar v3 token."""
+    if error:
+        oauth = get_polar_sleep_v4_oauth()
+        if state:
+            try:
+                oauth_state, _ = oauth._validate_state(state)
+                if oauth_state.provider == "polar_sleep_v4":
+                    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, ProviderName.POLAR.value)
+                    _schedule_historical_sync(oauth_state.user_id, ProviderName.POLAR)
+            except HTTPException:
+                pass
+        return RedirectResponse(
+            url=f"/api/v1/oauth/error?message={error}:+{error_description or 'Unknown+error'}",
+            status_code=303,
+        )
+    if not code or not state:
+        return RedirectResponse(url="/api/v1/oauth/error?message=Missing+OAuth+parameters", status_code=303)
+
+    oauth_state = get_polar_sleep_v4_oauth().handle_callback(db, code, state)
+    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, ProviderName.POLAR.value)
+    _schedule_historical_sync(oauth_state.user_id, ProviderName.POLAR)
+    if oauth_state.redirect_uri:
+        return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)
+    return RedirectResponse(
+        url=f"/api/v1/oauth/success?provider=polar&user_id={oauth_state.user_id}",
+        status_code=303,
+    )
+
+
+def _schedule_historical_sync(user_id: UUID, provider: ProviderName) -> None:
+    """Start the provider's initial history sync after its OAuth flow is complete."""
+    if not settings.historical_sync_on_connect:
+        return
+    strategy = factory.get_provider(provider.value)
+    caps = strategy.capabilities
+    if caps.webhook_callback:
+        start_garmin_full_backfill.delay(str(user_id))
+    elif caps.rest_pull:
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=90)).isoformat()
+        sync_vendor_data.delay(
+            user_id=str(user_id),
+            start_date=start_date,
+            end_date=now.isoformat(),
+            providers=[provider.value],
+            is_historical=True,
+        )
 
 
 @router.get(
@@ -106,6 +199,24 @@ def oauth_callback(
     assert strategy.oauth
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
+    # Polar has two grants. Preserve the caller's final redirect through the v4
+    # consent step, then start the initial sync only after both tokens are saved.
+    if provider_name == ProviderName.POLAR:
+        polar_v4_oauth = get_polar_sleep_v4_oauth()
+        if not polar_v4_oauth.credentials.client_id or not polar_v4_oauth.credentials.client_secret:
+            user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
+            _schedule_historical_sync(oauth_state.user_id, provider_name)
+            if oauth_state.redirect_uri:
+                return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)
+            return RedirectResponse(
+                url=f"/api/v1/oauth/success?provider={provider_name.value}&user_id={oauth_state.user_id}",
+                status_code=303,
+            )
+        authorization_url, _ = polar_v4_oauth.get_authorization_url(
+            oauth_state.user_id, redirect_uri=oauth_state.redirect_uri
+        )
+        return RedirectResponse(url=authorization_url, status_code=303)
+
     # Stamp last_synced_at=now so the first periodic sync uses the connection
     # timestamp as its live-sync cursor and won't attempt to pull all history.
     user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider_name.value)
@@ -113,20 +224,7 @@ def oauth_callback(
     # Grace-period flag: automatically kick off a historical sync so integrators
     # who haven't yet adopted the explicit /sync/historical call still get backfill.
     # Controlled by HISTORICAL_SYNC_ON_CONNECT (default: true).
-    if settings.historical_sync_on_connect:
-        caps = strategy.capabilities
-        if caps.webhook_callback:
-            start_garmin_full_backfill.delay(str(oauth_state.user_id))
-        elif caps.rest_pull:
-            now = datetime.now(timezone.utc)
-            start_date = (now - timedelta(days=90)).isoformat()
-            sync_vendor_data.delay(
-                user_id=str(oauth_state.user_id),
-                start_date=start_date,
-                end_date=now.isoformat(),
-                providers=[provider_name.value],
-                is_historical=True,
-            )
+    _schedule_historical_sync(oauth_state.user_id, provider_name)
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

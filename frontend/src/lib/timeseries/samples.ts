@@ -13,6 +13,7 @@ export type Sample = {
 	unit: string;
 	source: { provider: string; device: string | null; device_name: string | null } | null;
 	is_daily_total: boolean | null;
+	sample_role?: 'measurement' | 'nightly_aggregate' | 'nightly_sample' | null;
 };
 
 /** A drawn line that came from a device, which is what may need naming. */
@@ -41,6 +42,9 @@ export const VITAL_TYPES = [
 	'body_fat_percentage'
 ];
 
+/** Polar Nightly Recharge readings that can be inspected across a sleep session. */
+export const HEART_AND_BREATH_TYPES = ['heart_rate_variability_rmssd', 'respiratory_rate'];
+
 const HOUR = 3_600_000;
 
 /**
@@ -66,10 +70,17 @@ export function resolutionFor(seconds: number): '1min' | '5min' | '15min' | '1ho
  * reading, so they go - the flag is tri-state and a legacy null means "not a
  * total".
  */
-export function toSeries(samples: Sample[], order: string[] = WORKOUT_TYPES): Series[] {
+export function toSeries(
+	samples: Sample[],
+	order: string[] = WORKOUT_TYPES,
+	sampleRole?: Sample['sample_role']
+): Series[] {
 	const deviceOf = (sample: Sample) => sample.source?.device_name ?? sample.source?.device ?? null;
 
-	const readings = samples.filter((sample) => sample.is_daily_total !== true);
+	const readings = samples.filter((sample) => {
+		const isRequestedRole = !sampleRole || sample.sample_role === sampleRole;
+		return sample.is_daily_total !== true && isRequestedRole;
+	});
 	const groups = collect(readings, (sample) => `${sample.type}::${deviceOf(sample) ?? ''}`);
 
 	const kept = [...groups.values()]
