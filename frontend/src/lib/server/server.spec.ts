@@ -1,16 +1,25 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { refreshTokens, type Developer, type TokenResponse } from './api';
+import { isRedirect, type Cookies } from '@sveltejs/kit';
+import { getRequestEvent } from '$app/server';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { apiGet, apiPost, refreshTokens, type Developer, type TokenResponse } from './api';
+import { createAuthContext, type AuthContext } from './auth';
 import { forgetAll, keep, recall } from './cache';
 import {
 	decodeSession,
 	encodeSession,
 	needsRefresh,
 	rotate,
+	SESSION_COOKIE,
 	sessionFromTokens,
 	type Session
 } from './session';
 
-vi.mock('./api', () => ({ refreshTokens: vi.fn(), revokeToken: vi.fn() }));
+vi.mock('$app/server', () => ({ getRequestEvent: vi.fn() }));
+vi.mock('./api', async (original) => ({
+	...(await original<typeof import('./api')>()),
+	refreshTokens: vi.fn(),
+	revokeToken: vi.fn()
+}));
 
 const DEVELOPER: Developer = {
 	id: 'dev-1',
@@ -115,6 +124,112 @@ describe('rotate', () => {
 
 		await expect(rotate('rt-flaky')).rejects.toThrow('offline');
 		expect((await rotate('rt-flaky')).refresh_token).toBe('rt-3');
+	});
+});
+
+/** Like SvelteKit's jar, a cookie set during a request is what the next get reads. */
+function jar(stored: Session): Cookies {
+	const values = new Map([[SESSION_COOKIE, encodeSession(stored)]]);
+	return {
+		get: (name: string) => values.get(name),
+		set: (name: string, value: string) => void values.set(name, value),
+		delete: (name: string) => void values.delete(name)
+	} as unknown as Cookies;
+}
+
+const redirectOf = (work: Promise<unknown>) =>
+	work.then(
+		() => null,
+		(thrown: unknown) => (isRedirect(thrown) ? thrown.location : thrown)
+	);
+
+describe('a token the API refuses', () => {
+	afterEach(() => vi.mocked(refreshTokens).mockReset());
+
+	// Refresh tokens differ per test: rotate() remembers a success for 30s.
+	it('is renewed once for all the parallel calls of a request', async () => {
+		vi.mocked(refreshTokens).mockResolvedValue(tokens({ access_token: 'renewed' }));
+		const cookies = jar(session({ refreshToken: 'rt-parallel' }));
+		const auth = createAuthContext(cookies);
+
+		const answers = await Promise.all([auth.rejected('access'), auth.rejected('access')]);
+
+		expect(answers).toEqual(['renewed', 'renewed']);
+		expect(refreshTokens).toHaveBeenCalledTimes(1);
+		expect(decodeSession(cookies.get(SESSION_COOKIE))?.accessToken).toBe('renewed');
+		await expect(auth.accessToken()).resolves.toBe('renewed');
+	});
+
+	it('is not renewed when the session never held it, as during sign-in', async () => {
+		const auth = createAuthContext(jar(session()));
+
+		await expect(auth.rejected('from-a-sign-in')).resolves.toBeNull();
+		expect(refreshTokens).not.toHaveBeenCalled();
+	});
+
+	it('ends the session when the refresh is refused too', async () => {
+		vi.mocked(refreshTokens).mockRejectedValue(new Error('401'));
+		const cookies = jar(session({ refreshToken: 'rt-refused' }));
+
+		await expect(redirectOf(createAuthContext(cookies).rejected('access'))).resolves.toBe('/login');
+		expect(cookies.get(SESSION_COOKIE)).toBeUndefined();
+	});
+
+	it('ends the session when the renewed token is refused as well', async () => {
+		vi.mocked(refreshTokens).mockResolvedValue(tokens({ access_token: 'renewed' }));
+		const auth = createAuthContext(jar(session({ refreshToken: 'rt-twice' })));
+		await auth.rejected('access');
+
+		await expect(redirectOf(auth.rejected('renewed'))).resolves.toBe('/login');
+		expect(refreshTokens).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('API calls with a refused token', () => {
+	const rejected = vi.fn<AuthContext['rejected']>();
+	const fetchMock = vi.fn<typeof fetch>();
+	const reply = (status: number) => new Response('{}', { status });
+	const sent = (call: number) => fetchMock.mock.calls[call][1];
+
+	beforeEach(() => {
+		vi.stubGlobal('fetch', fetchMock);
+		vi.mocked(getRequestEvent).mockReturnValue({
+			locals: { auth: { rejected } }
+		} as unknown as ReturnType<typeof getRequestEvent>);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		fetchMock.mockReset();
+		rejected.mockReset();
+	});
+
+	it('are sent again, body and all, with the renewed token', async () => {
+		fetchMock.mockResolvedValueOnce(reply(401)).mockResolvedValueOnce(reply(200));
+		rejected.mockResolvedValue('renewed');
+
+		await apiPost('/api/v1/users', 'access', { email: 'a@example.com' });
+
+		expect(sent(1)?.headers).toMatchObject({ Authorization: 'Bearer renewed' });
+		expect(sent(1)?.body).toBe(sent(0)?.body);
+	});
+
+	it('fail as before when the token was not the session’s', async () => {
+		fetchMock.mockResolvedValue(reply(401));
+		rejected.mockResolvedValue(null);
+
+		await expect(apiGet('/api/v1/auth/me', 'from-a-sign-in')).rejects.toMatchObject({
+			status: 401
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it('hand a refused retry back to the session, which ends it', async () => {
+		fetchMock.mockResolvedValue(reply(401));
+		rejected.mockResolvedValueOnce('renewed').mockRejectedValueOnce(new Error('signed out'));
+
+		await expect(apiGet('/api/v1/users', 'access')).rejects.toThrow('signed out');
+		expect(rejected).toHaveBeenLastCalledWith('renewed');
 	});
 });
 

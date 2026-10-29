@@ -52,7 +52,7 @@ test('sends an already signed-in visitor away from the sign-in page', async ({ p
 	await expect(page).toHaveURL('/dashboard');
 });
 
-// A session from another stack, or from before its SECRET_KEY rotated: it used to answer with a 500.
+// A session from another stack, or from before its SECRET_KEY rotated.
 test('sends a session the API no longer accepts back to sign in', async ({
 	page,
 	context,
