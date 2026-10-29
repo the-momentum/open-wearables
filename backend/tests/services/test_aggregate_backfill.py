@@ -595,6 +595,7 @@ class TestHistoryRollup:
         assert self._ours(db) == [date(2025, 1, 10)]
 
 
+@pytest.mark.usefixtures("roll_up_history")
 class TestHistoryValuesMovedToTheBackup:
     """The copied samples move to series_sample_backup; our rows count readings only, as on an instance that never
     stored day values as samples."""
