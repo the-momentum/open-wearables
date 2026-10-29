@@ -192,7 +192,7 @@ Talk to the maintainers and other teams building on Open Wearables, get help wit
 
 Contributions are welcome, from bug reports and fixes to new provider integrations. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, code style, tests and pull request process.
 
-We are building open infrastructure for wearable-powered health products, and every new integration widens what teams can build on it. If you work at a wearable or health data provider, or you need a source that is not supported yet, we would be glad to help you add it. Open an issue or ask on [Discord](https://discord.gg/qrcfFnNE6H) first so we can agree on scope, then follow the guide on [how to add a new provider](https://openwearables.io/docs/dev-guides/how-to-add-new-provider).
+We are building open infrastructure for wearable-powered health products, and every new integration widens what teams can build on it. If you work at a wearable or health data provider, or you need a source that is not supported yet, we would be glad to help you add it. Open an issue or ask on [Discord](https://discord.gg/qrcfFnNE6H) first so we can agree on scope, then follow the guide on [how to add a new provider](https://openwearables.io/docs/providers/supported#adding-new-providers).
 
 Security issues go through [SECURITY.md](SECURITY.md).
 
