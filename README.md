@@ -41,16 +41,13 @@ Open Wearables runs on your own infrastructure. In practice that means:
 
 **Cloud providers**, connected server to server through OAuth:
 
-[Garmin](https://openwearables.io/docs/providers/garmin-api-integration) · [Oura](https://openwearables.io/docs/providers/oura-api-integration) · [Whoop](https://openwearables.io/docs/providers/whoop-api-integration) · [Polar](https://openwearables.io/docs/providers/polar-api-integration) · [Suunto](https://openwearables.io/docs/providers/suunto-api-integration) · [Strava](https://openwearables.io/docs/providers/strava-api-integration) · [Withings](https://openwearables.io/docs/providers/withings-api-integration) · [Ultrahuman](https://openwearables.io/docs/providers/ultrahuman-api-integration) · [SensorBio](https://openwearables.io/docs/providers/sensorbio-api-integration) · [Google Health](https://openwearables.io/docs/providers/google-api-integration) · [Fitbit](https://openwearables.io/docs/providers/fitbit-api-integration) (legacy)
+[Garmin](https://openwearables.io/docs/providers/garmin-api-integration) · [Oura](https://openwearables.io/docs/providers/oura-api-integration) · [Whoop](https://openwearables.io/docs/providers/whoop-api-integration) · [Polar](https://openwearables.io/docs/providers/polar-api-integration) · [Suunto](https://openwearables.io/docs/providers/suunto-api-integration) · [Strava](https://openwearables.io/docs/providers/strava-api-integration) · [Withings](https://openwearables.io/docs/providers/withings-api-integration) · [Ultrahuman](https://openwearables.io/docs/providers/ultrahuman-api-integration) · [SensorBio](https://openwearables.io/docs/providers/sensorbio-api-integration) · [Google Health](https://openwearables.io/docs/providers/google-api-integration) · [Fitbit](https://openwearables.io/docs/providers/fitbit-api-integration) (deprecated)
 
 **On-device sources**, read on the phone through the mobile SDKs:
 
 [Apple Health](https://openwearables.io/docs/providers/apple-health) (HealthKit) · [Google Health Connect](https://openwearables.io/docs/sdk/android/integration) · [Samsung Health](https://openwearables.io/docs/sdk/android/integration)
 
 **Apple Health export:** upload a full Apple Health XML export, [large files included](https://openwearables.io/docs/api-reference/guides/apple-xml-import).
-
-> [!NOTE]
-> Google is turning off the Fitbit Web API on November 2, 2026. For Fitbit devices, use the Google Health integration.
 
 See [data coverage](https://openwearables.io/docs/providers/coverage) for what each provider delivers. Missing a provider? Check the [open provider requests](https://github.com/the-momentum/open-wearables/issues?q=is%3Aissue%20label%3Aprovider-request%20state%3Aopen) or read [how to add a new provider](https://openwearables.io/docs/providers/supported#adding-new-providers).
 
