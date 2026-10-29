@@ -8,10 +8,9 @@
 [![Latest release](https://img.shields.io/github/v/release/the-momentum/open-wearables)](https://github.com/the-momentum/open-wearables/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/qrcfFnNE6H)
+[![Product Hunt](https://img.shields.io/badge/Product%20Hunt-Featured-blue?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/open-wearables?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-open-wearables-3)
 
 [Website](https://openwearables.io/?utm_source=github&utm_medium=readme&utm_campaign=open-wearables) · [Documentation](https://openwearables.io/docs) · [Quickstart](https://openwearables.io/docs/quickstart) · [Providers](#supported-providers) · [Roadmap](https://openwearables.io/docs/roadmap) · [Discord](https://discord.gg/qrcfFnNE6H)
-
-<a href="https://www.producthunt.com/products/open-wearables?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-open-wearables-3" target="_blank" rel="noopener noreferrer"><img alt="Open Wearables - Open infrastructure for wearable-powered health products. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1132023&theme=light&t=1777448243573"></a>
 
 ---
 
