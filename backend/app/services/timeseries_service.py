@@ -13,7 +13,7 @@ from app.models import DataSource, ProviderPriority, SeriesAggregate, SeriesSamp
 from app.repositories import DataPointSeriesRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import AggregatedSample, WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
-from app.repositories.series_aggregate_repository import SeriesAggregateRepository
+from app.repositories.series_aggregate_repository import SampleDay, SeriesAggregateRepository
 from app.schemas.enums import (
     BUCKET_SIZES,
     PERIOD_RESOLUTIONS,
@@ -133,7 +133,7 @@ def _shift(period: date, kind: PeriodKind, periods: int) -> date:
     return period + timedelta(days=periods * (7 if kind is PeriodKind.WEEK else 1))
 
 
-def _combine(rows: list[SeriesAggregate]) -> SeriesStats:
+def _combine(rows: list[SeriesAggregate | SampleDay]) -> SeriesStats:
     """One period's statistics from its days: sums add up, extremes stay extreme, the average is
     the mean of the daily averages, and the last value is the latest day's."""
 
@@ -389,16 +389,27 @@ class TimeSeriesService(
         # Start at the first (or last) day that holds data, then read only the days of limit + 1 periods,
         # so a sparse range is not paged through empty and a page never scans the whole range.
         repo = self.series_aggregate_repo
+        # Our rollup reaches only the days written since it runs: the others come from the samples.
+        from_samples = True
+
+        def edge_day(first: date, last: date, latest: bool, starts: Any = None) -> date | None:
+            """The outermost day holding a row, or with ``from_samples`` a sample."""
+            days = [repo.edge_day(db_session, user_id, params, types, first, last, source_by_type, latest, starts)]
+            if from_samples:
+                days.append(
+                    repo.sample_edge_day(db_session, user_id, params, types, first, last, source_by_type, latest)
+                )
+            days = [day for day in days if day is not None]
+            return (max(days) if latest else min(days)) if days else None
+
         edges = repo.edge_rows(db_session, user_id, params, types, first_day, last_day, source_by_type, backward)
-        if not edges:
+        if not edges and not from_samples:
             return _page(data=[], params=params, has_more=False, next_cursor=None, previous_cursor=None)
         # A period is up to two rows (the provider's and ours) a day for every series of every source holding
         # data here; with all of them asked for, a page of `limit` periods could be hundreds of thousands of rows.
         days_per_period = {PeriodKind.DAY: 1, PeriodKind.WEEK: 7, PeriodKind.MONTH: 31}[kind]
-        limit = max(1, min(params.limit or 50, _PERIOD_ROWS_PER_PAGE // (2 * len(edges) * days_per_period)))
-        edge = repo.edge_day(
-            db_session, user_id, params, types, first_day, last_day, source_by_type, backward, edges.values()
-        )
+        limit = max(1, min(params.limit or 50, _PERIOD_ROWS_PER_PAGE // (2 * max(len(edges), 1) * days_per_period)))
+        edge = edge_day(first_day, last_day, backward, edges.values() if edges else None)
         if edge is None:
             return _page(data=[], params=params, has_more=False, next_cursor=None, previous_cursor=None)
         if backward:
@@ -410,18 +421,16 @@ class TimeSeriesService(
                 first_day,
                 min(last_day, _shift(_period_of(first_day, kind), kind, limit + 1) - timedelta(days=1)),
             )
-        rows = repo.get_day_rows(db_session, user_id, params, types, *window, source_by_type)
+        rows = repo.day_rows_or_samples(db_session, user_id, types, *window, from_samples, params, source_by_type)
 
-        groups: dict[tuple[date, UUID, int], list[SeriesAggregate]] = defaultdict(list)
+        groups: dict[tuple[date, UUID, int], list[SeriesAggregate | SampleDay]] = defaultdict(list)
         for row, day in rows:
             groups[(_period_of(day, kind), row.data_source_id, row.series_type_definition_id)].append(row)
         periods = sorted({period for period, _, _ in groups})
         overflow = len(periods) > limit
         periods = periods[-limit:] if backward else periods[:limit]
         rest = (first_day, window[0] - timedelta(days=1)) if backward else (window[1] + timedelta(days=1), last_day)
-        has_more = overflow or (
-            rest[0] <= rest[1] and repo.edge_day(db_session, user_id, params, types, *rest, source_by_type) is not None
-        )
+        has_more = overflow or (rest[0] <= rest[1] and edge_day(*rest, False) is not None)
 
         sources = self.crud._sources_by_id(db_session, {source_id for _, source_id, _ in groups})
         shown = set(periods)

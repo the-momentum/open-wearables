@@ -944,6 +944,41 @@ class TestTimeSeriesServicePeriods:
         assert sample.stats is not None
         assert (sample.stats.min, sample.stats.max, sample.stats.count) == (47, 165, 86400)
 
+    def _steps(self, source: DataSource, at: datetime, value: int) -> None:
+        DataPointSeriesFactory(
+            mapping=source, series_type=SeriesTypeDefinitionFactory.get_or_create_steps(), recorded_at=at, value=value
+        )
+
+    def test_days_without_a_row_are_counted_from_the_samples(self, db: Session) -> None:
+        source = DataSourceFactory()
+        self._day(db, source, SeriesType.steps, date(2024, 3, 1), ComputedBy.PROVIDER, sum=Decimal("8432"))
+        self._steps(source, datetime(2024, 3, 1, 9, tzinfo=timezone.utc), 120)
+        for hour, steps in ((9, 1000), (18, 250)):
+            self._steps(source, datetime(2024, 3, 2, hour, tzinfo=timezone.utc), steps)
+
+        result = timeseries_service.get_timeseries(
+            db, source.user_id, [SeriesType.steps], self._params(Resolution.ONE_DAY, date(2024, 3, 1), date(2024, 3, 3))
+        )
+
+        assert [(s.timestamp.date(), s.value, s.computed_by) for s in result.data] == [
+            (date(2024, 3, 1), 8432, ComputedBy.PROVIDER),
+            (date(2024, 3, 2), 1250, ComputedBy.OPEN_WEARABLES),
+        ]
+
+    def test_a_week_of_samples_only_adds_up_too(self, db: Session) -> None:
+        source = DataSourceFactory()
+        for day, steps in ((4, 1000), (10, 2000)):
+            self._steps(source, datetime(2024, 3, day, 12, tzinfo=timezone.utc), steps)
+
+        result = timeseries_service.get_timeseries(
+            db,
+            source.user_id,
+            [SeriesType.steps],
+            self._params(Resolution.ONE_WEEK, date(2024, 3, 4), date(2024, 3, 11)),
+        )
+
+        assert [(s.timestamp.date(), s.value) for s in result.data] == [(date(2024, 3, 4), 3000)]
+
     def test_a_week_adds_its_days_up_from_monday(self, db: Session) -> None:
         source = DataSourceFactory()
         # 2024-03-04 is a Monday.

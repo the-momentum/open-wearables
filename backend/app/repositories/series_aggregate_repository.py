@@ -26,7 +26,7 @@ from app.schemas.enums import (
     get_series_type_id,
 )
 from app.schemas.enums.aggregation_method import get_aggregation_method
-from app.schemas.model_crud.activities import TimeSeriesQueryParams
+from app.schemas.model_crud.activities import CalendarPeriod, TimeSeriesQueryParams
 from app.schemas.responses.activity import ActivityAggregateResult
 
 LOCAL_DAY = sql_cast(
@@ -53,17 +53,40 @@ _EDGE_ROWS = {
     for latest in (False, True)
 }
 
-# A user's days per data source and series, counted from the samples as the rollup would count them.
-_SAMPLE_DAYS = text(f"""
-    SELECT s.data_source_id, s.series_type_definition_id, {sample_day_sql("s")} AS day,
-        sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min, max(s.value) AS max, count(*) AS count
+_SAMPLES_OF_PAIR = f"""
     FROM series_sample s
-    JOIN data_source ds ON ds.id = s.data_source_id
-    WHERE ds.user_id = :user_id AND s.series_type_definition_id = ANY(:type_ids)
+    WHERE s.data_source_id = c.source_id AND s.series_type_definition_id = c.type_id
         AND s.recorded_at >= :lo AND s.recorded_at < :hi AND s.is_daily_total IS NOT TRUE
         AND {sample_day_sql("s")} BETWEEN :first_day AND :last_day
-    GROUP BY 1, 2, 3
+"""
+
+# Per (series, data source) pair, its days counted from the samples as the rollup would count them: one index
+# range per pair.
+_SAMPLE_DAYS = text(f"""
+    SELECT c.source_id AS data_source_id, c.type_id AS series_type_definition_id, d.*
+    FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+    CROSS JOIN LATERAL (
+        SELECT {sample_day_sql("s")} AS day, sum(s.value) AS sum, avg(s.value) AS avg, min(s.value) AS min,
+            max(s.value) AS max, count(*) AS count, (array_agg(s.value ORDER BY s.recorded_at DESC))[1] AS last,
+            min(s.zone_offset) AS zone_offset
+        {_SAMPLES_OF_PAIR}
+        GROUP BY 1
+    ) d
 """)
+
+# Per (series, data source) pair, the local day of its first (or last) sample in the range.
+_SAMPLE_EDGES = {
+    latest: text(f"""
+        SELECT edge.day
+        FROM unnest(CAST(:type_ids AS integer[]), CAST(:source_ids AS uuid[])) AS c(type_id, source_id)
+        CROSS JOIN LATERAL (
+            SELECT {sample_day_sql("s")} AS day
+            {_SAMPLES_OF_PAIR}
+            ORDER BY s.recorded_at {"DESC" if latest else "ASC"} LIMIT 1
+        ) edge
+    """)
+    for latest in (False, True)
+}
 
 
 @dataclass(frozen=True)
@@ -78,8 +101,20 @@ class SampleDay:
     min: Decimal | None
     max: Decimal | None
     count: int
-    last: Decimal | None = None
+    last: Decimal | None
+    zone_offset: str | None
     computed_by: ComputedBy = ComputedBy.OPEN_WEARABLES
+
+
+def _pair_params(pairs: list[tuple[int, UUID]], first_day: date, last_day: date) -> dict:
+    return {
+        "type_ids": [type_id for type_id, _ in pairs],
+        "source_ids": [source_id for _, source_id in pairs],
+        "lo": utc_midnight(first_day) - OFFSET_REACH,
+        "hi": utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
+        "first_day": first_day,
+        "last_day": last_day,
+    }
 
 
 class SeriesAggregateRepository:
@@ -121,38 +156,74 @@ class SeriesAggregateRepository:
         first_day: date,
         last_day: date,
         from_samples: bool,
+        params: TimeSeriesQueryParams | None = None,
+        source_by_type: dict[int, UUID] | None = None,
     ) -> list[tuple[SeriesAggregate | SampleDay, date]]:
         """The user's day rows; with ``from_samples`` also every (data source, series, day) no row holds, counted
-        from its samples, as the summaries were before the rollup."""
+        from its samples, as the readers were before the rollup."""
+        params = params or TimeSeriesQueryParams()
         rows: list[tuple[SeriesAggregate | SampleDay, date]] = list(
-            self.get_day_rows(db_session, user_id, TimeSeriesQueryParams(), types, first_day, last_day)
+            self.get_day_rows(db_session, user_id, params, types, first_day, last_day, source_by_type)
         )
         if not from_samples:
             return rows
         held = {(row.data_source_id, row.series_type_definition_id, day) for row, day in rows}
-        params = {
-            "user_id": user_id,
-            "type_ids": [get_series_type_id(series_type) for series_type in types],
-            "lo": utc_midnight(first_day) - OFFSET_REACH,
-            "hi": utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
-            "first_day": first_day,
-            "last_day": last_day,
-        }
-        for sample in db_session.execute(_SAMPLE_DAYS, params):
+        pairs = self._pairs(db_session, user_id, params, types, source_by_type)
+        for sample in db_session.execute(_SAMPLE_DAYS, _pair_params(pairs, first_day, last_day)) if pairs else ():
             if (sample.data_source_id, sample.series_type_definition_id, sample.day) in held:
                 continue
             day = SampleDay(
                 data_source_id=sample.data_source_id,
                 series_type_definition_id=sample.series_type_definition_id,
-                period_start=utc_midnight(sample.day),
+                period_start=CalendarPeriod.of_date(sample.day, sample.zone_offset).start,
                 sum=sample.sum,
                 avg=sample.avg,
                 min=sample.min,
                 max=sample.max,
                 count=sample.count,
+                last=sample.last,
+                zone_offset=sample.zone_offset,
             )
             rows.append((day, sample.day))
         return sorted(rows, key=lambda pair: pair[1])
+
+    def sample_edge_day(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        first_day: date,
+        last_day: date,
+        source_by_type: dict[int, UUID] | None = None,
+        latest: bool = False,
+    ) -> date | None:
+        """The earliest (or latest) local day in the range that holds a sample, None if none does."""
+        if not (pairs := self._pairs(db_session, user_id, params, types, source_by_type)):
+            return None
+        days = [row.day for row in db_session.execute(_SAMPLE_EDGES[latest], _pair_params(pairs, first_day, last_day))]
+        if not days:
+            return None
+        return max(days) if latest else min(days)
+
+    @staticmethod
+    def _pairs(
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+        types: list[SeriesType],
+        source_by_type: dict[int, UUID] | None,
+    ) -> list[tuple[int, UUID]]:
+        """Every (series, data source) pair a read covers: the ranked source per series, else every source."""
+        if source_by_type is not None:
+            return list(source_by_type.items())
+        sources = (
+            db_session.query(DataSource.id)
+            .filter(DataSource.user_id == user_id, *source_filter_conditions(params, DataSource.id))
+            .all()
+        )
+        type_ids = [get_series_type_id(t) for t in types] if types else _ALL_TYPE_IDS
+        return [(type_id, source_id) for type_id in type_ids for (source_id,) in sources]
 
     def edge_rows(
         self,
@@ -166,29 +237,9 @@ class SeriesAggregateRepository:
         latest: bool = False,
     ) -> dict[tuple[int, UUID], datetime]:
         """Every (series, data source) pair with a day row in the range, and its first (or last) row's start."""
-        if source_by_type is not None:
-            pairs = list(source_by_type.items())
-        else:
-            sources = (
-                db_session.query(DataSource.id)
-                .filter(DataSource.user_id == user_id, *source_filter_conditions(params, DataSource.id))
-                .all()
-            )
-            type_ids = [get_series_type_id(t) for t in types] if types else _ALL_TYPE_IDS
-            pairs = [(type_id, source_id) for type_id in type_ids for (source_id,) in sources]
-        if not pairs:
+        if not (pairs := self._pairs(db_session, user_id, params, types, source_by_type)):
             return {}
-        rows = db_session.execute(
-            _EDGE_ROWS[latest],
-            {
-                "type_ids": [type_id for type_id, _ in pairs],
-                "source_ids": [source_id for _, source_id in pairs],
-                "lo": utc_midnight(first_day) - OFFSET_REACH,
-                "hi": utc_midnight(last_day) + timedelta(days=1) + OFFSET_REACH,
-                "first_day": first_day,
-                "last_day": last_day,
-            },
-        )
+        rows = db_session.execute(_EDGE_ROWS[latest], _pair_params(pairs, first_day, last_day))
         return {(row.type_id, row.source_id): row.period_start for row in rows}
 
     def edge_day(
