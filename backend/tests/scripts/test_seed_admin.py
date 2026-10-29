@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Developer
+from app.utils import security
 from app.utils.config_utils import EnvironmentType
 from tests.factories import DeveloperFactory
 
@@ -27,10 +28,22 @@ def _load_module() -> ModuleType:
 
 seed_module = _load_module()
 
+ADMIN_EMAIL = "admin@example.org"
+
 
 def _seed(db: Session, password: str, environment: EnvironmentType) -> None:
-    with patch.object(seed_module, "SessionLocal", lambda: nullcontext(db)):
-        seed_module.seed_admin("admin@example.org", password, environment=environment)
+    # The script imports verify_password directly, so it misses the fast-hashing fixture's patch.
+    with (
+        patch.object(seed_module, "SessionLocal", lambda: nullcontext(db)),
+        patch.object(seed_module, "verify_password", security.verify_password),
+    ):
+        seed_module.seed_admin(ADMIN_EMAIL, password, environment=environment)
+
+
+def _admin_password_is(db: Session, password: str) -> bool:
+    admin = db.query(Developer).filter(Developer.email == ADMIN_EMAIL).one()
+    db.refresh(admin)
+    return security.verify_password(password, admin.hashed_password)
 
 
 class TestSeedAdmin:
@@ -66,3 +79,40 @@ class TestSeedAdmin:
 
         # Assert
         assert db.query(Developer).count() == 1
+
+
+class TestRotateDefaultPassword:
+    """An admin still on the public default moves to ADMIN_PASSWORD once that is set."""
+
+    @pytest.mark.parametrize("environment", [EnvironmentType.PRODUCTION, EnvironmentType.LOCAL])
+    def test_replaces_the_default_with_admin_password(self, db: Session, environment: EnvironmentType) -> None:
+        # Arrange
+        DeveloperFactory(email=ADMIN_EMAIL, password=seed_module.DEFAULT_ADMIN_PASSWORD)
+
+        # Act
+        _seed(db, "a-real-secret-8f2c", environment)
+
+        # Assert
+        assert _admin_password_is(db, "a-real-secret-8f2c")
+
+    def test_leaves_the_default_when_admin_password_is_unset(self, db: Session) -> None:
+        """Startup must not fail: the login refuses the default instead."""
+        # Arrange
+        DeveloperFactory(email=ADMIN_EMAIL, password=seed_module.DEFAULT_ADMIN_PASSWORD)
+
+        # Act: must not raise
+        _seed(db, seed_module.DEFAULT_ADMIN_PASSWORD, EnvironmentType.PRODUCTION)
+
+        # Assert
+        assert _admin_password_is(db, seed_module.DEFAULT_ADMIN_PASSWORD)
+
+    def test_keeps_a_password_the_admin_already_changed(self, db: Session) -> None:
+        """ADMIN_PASSWORD must not undo a change made in the portal."""
+        # Arrange
+        DeveloperFactory(email=ADMIN_EMAIL, password="changed-in-the-portal")
+
+        # Act
+        _seed(db, "a-real-secret-8f2c", EnvironmentType.PRODUCTION)
+
+        # Assert
+        assert _admin_password_is(db, "changed-in-the-portal")

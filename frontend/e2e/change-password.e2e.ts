@@ -50,6 +50,17 @@ test('lets a local stack skip the prompt', async ({ page, request }) => {
 	await expect(page).toHaveURL('/dashboard', { timeout: 20_000 });
 });
 
+test('explains how to replace a default password the API refuses', async ({ page, request }) => {
+	await request.post('http://localhost:8787/__refuse-default-password');
+	await page.goto('/login');
+	await page.getByLabel('Email').fill(CREDENTIALS.email);
+	await page.getByLabel('Password').fill(DEFAULT_PASSWORD);
+	await page.getByRole('button', { name: 'Sign in' }).click();
+
+	await expect(page.getByRole('alert')).toContainText('Set ADMIN_PASSWORD');
+	await expect(page).toHaveURL('/login');
+});
+
 test('does not prompt an account with its own password', async ({ page }) => {
 	await page.goto('/login');
 	await page.getByLabel('Email').fill(CREDENTIALS.email);
