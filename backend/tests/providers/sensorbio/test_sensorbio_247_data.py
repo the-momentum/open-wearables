@@ -9,7 +9,7 @@ as recommended in gap-analysis card t_38e552b2 finding #8.
 t_5912f22f adds: ACTIVITY + SLEEP HealthScore extraction from /v1/scores (parity with Oura).
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
@@ -18,6 +18,7 @@ import pytest
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 
 # ---------------------------------------------------------------------------
@@ -243,6 +244,9 @@ class TestSensorBio247SaveRecoveryData:
         assert counts == 4  # 3 metrics + 1 score
         assert counts.inserted == 4
         mock_ts.bulk_create_samples.assert_called_once()
+        assert {s.period for s in mock_ts.bulk_create_samples.call_args[0][1]} == {
+            CalendarPeriod.of_date(date(2024, 1, 15))
+        }
         mock_hs.bulk_create.assert_called_once()
         scores = mock_hs.bulk_create.call_args[0][1]
         from app.schemas.enums import HealthScoreCategory

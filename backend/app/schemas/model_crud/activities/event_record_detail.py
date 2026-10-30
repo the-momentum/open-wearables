@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.enums import EntrySource, WorkoutIntensity
+from app.schemas.enums import EntrySource, SeriesType, WorkoutIntensity
 
 from .sleep import SleepStage
 from .zones import HRZones, PowerZones
@@ -69,6 +69,8 @@ class EventRecordDetailCreate(EventRecordDetailBase):
     """Schema for creating an event record detail entry."""
 
     record_id: UUID
+    # The series energy_burned belongs to (active or total), as the provider documents it; None is not mirrored.
+    energy_series: SeriesType | None = Field(default=None, exclude=True)
 
 
 class EventRecordDetailUpdate(EventRecordDetailBase):

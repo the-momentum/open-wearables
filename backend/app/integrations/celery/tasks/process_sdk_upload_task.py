@@ -9,6 +9,7 @@ from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.constants.sdk_providers import SDK_PROVIDERS
 from app.database import SessionLocal
+from app.integrations import rollup_queue
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.sync_status import (
@@ -237,6 +238,9 @@ def process_sdk_upload(
         items_total = records_saved + workouts_saved + sleep_saved
 
         if isinstance(status_code, int) and 200 <= status_code < 300:
+            if items_total:
+                # The SDK sends no day values of its own: its days and summaries are ours, so roll them up now.
+                rollup_queue.roll_up_soon()
             # Same wording as webhook_push_task; records_saved counts samples submitted.
             message = f"{provider.capitalize()} batch saved: {records_inserted} new, {records_updated} updated"
             if dropped_count:
