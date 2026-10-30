@@ -16447,7 +16447,9 @@
           },
           "duration_seconds": {
             "type": "integer",
-            "title": "Duration Seconds"
+            "title": "Duration Seconds",
+            "description": "Time from start_time to end_time, awake time included; for a night merged from several sessions, the gaps between them too",
+            "example": 28800
           },
           "sleep_duration_seconds": {
             "anyOf": [
@@ -16458,7 +16460,9 @@
                 "type": "null"
               }
             ],
-            "title": "Sleep Duration Seconds"
+            "title": "Sleep Duration Seconds",
+            "description": "Time asleep, awake time excluded; whole minutes, so a multiple of 60",
+            "example": 25800
           },
           "time_in_bed_seconds": {
             "anyOf": [
@@ -16469,7 +16473,9 @@
                 "type": "null"
               }
             ],
-            "title": "Time In Bed Seconds"
+            "title": "Time In Bed Seconds",
+            "description": "Time in bed, awake time included; whole minutes, so a multiple of 60",
+            "example": 28200
           },
           "efficiency_percent": {
             "anyOf": [
@@ -16556,7 +16562,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Session duration",
+            "description": "Main sleep: time asleep, awake time excluded; a session that reports no time asleep counts with its start-to-end time. Nap: start-to-end time, awake time included",
             "example": 420
           },
           "is_nap": {
@@ -16781,7 +16787,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Total sleep duration excluding naps",
+            "description": "Time asleep in the day's main sleep, naps excluded; a session that reports no time asleep counts with its start-to-end time",
             "example": 450
           },
           "total_duration_minutes": {
@@ -16794,7 +16800,7 @@
               }
             ],
             "title": "Total Duration Minutes",
-            "description": "Total of all sleep + nap durations for the day",
+            "description": "duration_minutes plus nap_duration_minutes",
             "example": 480
           },
           "time_in_bed_minutes": {
@@ -16868,7 +16874,7 @@
               }
             ],
             "title": "Nap Duration Minutes",
-            "description": "Total nap duration",
+            "description": "Start-to-end time of the day's naps, awake time included",
             "example": 30
           },
           "sessions": {

@@ -373,7 +373,7 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 ```
 
 <Note>
-  `sleep_duration_seconds` is the time actually asleep (excludes awake periods within the session); `duration_seconds` is the total time-in-bed span. Both `source.source` (the third-party writer app, e.g. HealthKit/Health Connect) and `sleep_stage_intervals` are `null`/omitted when the provider or ingestion path did not report them. Unlike every other field in this example, `sleep_stage_intervals` above is **not** shown in full — see the note before the code block.
+  `sleep_duration_seconds` is the time actually asleep (excludes awake periods within the session); `duration_seconds` is the session's span from `start_time` to `end_time`, awake time included. Both `source.source` (the third-party writer app, e.g. HealthKit/Health Connect) and `sleep_stage_intervals` are `null`/omitted when the provider or ingestion path did not report them. Unlike every other field in this example, `sleep_stage_intervals` above is **not** shown in full — see the note before the code block.
 </Note>
 
 ### `meal.created`
