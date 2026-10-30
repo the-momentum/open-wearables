@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.whoop import get_unified_workout_type
 from app.database import DbSession
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -18,6 +18,7 @@ from app.schemas.providers.whoop import WhoopWorkoutCollectionJSON, WhoopWorkout
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.whoop.coverage import WORKOUT_ENERGY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.conversion import kilojoules_to_kcal
 from app.utils.dates import to_rfc3339
@@ -220,6 +221,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         # Energy: Convert kilojoule to kcal
         if score.kilojoule is not None:
             metrics["energy_burned"] = kilojoules_to_kcal(score.kilojoule)
+            metrics["energy_series"] = WORKOUT_ENERGY_SERIES
 
         # Distance: Keep in meters (or convert to km if schema expects km)
         # Based on schema, distance is Decimal, so we'll keep in meters
@@ -297,7 +299,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
         # Create EventRecordCreate
         workout_create = EventRecordCreate(
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name="Whoop",
             device_model=None,  # Whoop doesn't provide device info in workout

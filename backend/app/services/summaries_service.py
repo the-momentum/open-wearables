@@ -7,12 +7,8 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
+from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
-from app.repositories.archival_repository import (
-    ArchivalSettingRepository,
-    DataPointSeriesArchiveRepository,
-)
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
@@ -20,6 +16,7 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
+from app.repositories.series_aggregate_repository import SeriesAggregateRepository, daily_activity
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
     DeviceType,
@@ -48,6 +45,7 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.aggregate_backfill_service import days_from_samples
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
@@ -103,10 +101,9 @@ class SummariesService:
     def __init__(self, log: Logger):
         self.logger = log
         self.event_record_repo = EventRecordRepository(EventRecord)
-        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self.data_point_repo = DataPointSeriesRepository(SeriesSample)
+        self.series_aggregate_repo = SeriesAggregateRepository()
         self.user_repo = UserRepository(User)
-        self.archival_settings_repo = ArchivalSettingRepository()
-        self.archive_repo = DataPointSeriesArchiveRepository()
         self.health_score_repo = HealthScoreRepository(HealthScore)
 
     @staticmethod
@@ -203,61 +200,6 @@ class SummariesService:
             "moderate_max": int(max_hr * HR_ZONE_MODERATE[1]),
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
-
-    def _merge_archive_activity(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-        live_results: list,  # noqa: ANN401  — accepts ActivityAggregateResult | dict
-    ) -> list:
-        """Merge archived daily aggregates into live results.
-
-        If archival is enabled, some days may only have data in the archive table.
-        This method queries the archive and merges rows, preferring live data when
-        both exist for the same (date, source, device_model) key.
-        """
-        try:
-            self.archival_settings_repo.get(db_session)
-        except Exception:
-            return live_results
-
-        series_type_ids = [
-            get_series_type_id(t)
-            for t in [
-                SeriesType.steps,
-                SeriesType.active_energy,
-                SeriesType.basal_energy,
-                SeriesType.heart_rate,
-                SeriesType.distance_walking_running,
-                SeriesType.flights_climbed,
-                SeriesType.active_time,
-            ]
-        ]
-
-        archive_results = self.archive_repo.get_daily_activity_aggregates_from_archive(
-            db_session, user_id, start_date, end_date, series_type_ids
-        )
-
-        if not archive_results:
-            return live_results
-
-        # Build lookup from live data keyed on (date, source, device_model)
-        live_keys: set[tuple] = set()
-        for r in live_results:
-            live_keys.add((r["activity_date"], r["source"], r.get("device_model")))
-
-        # Add archive rows that are NOT already covered by live data
-        merged = list(live_results)
-        for ar in archive_results:
-            key = (ar["activity_date"], ar["source"], ar.get("device_model"))
-            if key not in live_keys:
-                merged.append(ar)
-
-        # Sort by date
-        merged.sort(key=lambda r: r["activity_date"])
-        return merged
 
     @handle_exceptions
     def get_sleep_summaries(
@@ -523,10 +465,10 @@ class SummariesService:
             db_session, user_id, page_start, page_end
         )
 
-        # Build lookup dict for workout data by (date, provider, device)
+        # Build lookup dict for workout data by (date, provider, source, device)
         workout_lookup: dict[tuple, dict] = {}
         for wa in workout_aggregates:
-            key = (wa["workout_date"], wa["source"], wa.get("device_model"))
+            key = (wa["workout_date"], wa["provider"], wa["source"], wa.get("device_model"))
             workout_lookup[key] = wa
 
         # Get active/sedentary minutes from step data
@@ -566,7 +508,9 @@ class SummariesService:
         for result in results:
             # Look up workout data for this day/provider/device
             result_key = (result["activity_date"], result["source"], result.get("device_model"))
-            workout_data = workout_lookup.get(result_key, {})
+            workout_data = workout_lookup.get(
+                (result["activity_date"], result.get("provider"), result["source"], result.get("device_model")), {}
+            )
             activity_data = activity_lookup.get(result_key, {})
             intensity_data = intensity_lookup.get(result_key, {})
 
@@ -602,9 +546,9 @@ class SummariesService:
             # not additive - providers report daily totals that include workout calories
             active_cal = result.get("active_energy_sum")
             basal_cal = result.get("basal_energy_sum")
-            total_cal = None
-            if active_cal is not None or basal_cal is not None:
-                total_cal = (active_cal or 0.0) + (basal_cal or 0.0)
+            total_cal = result.get("total_energy_sum")
+            if total_cal is None and active_cal is not None and basal_cal is not None:
+                total_cal = active_cal + basal_cal
 
             # Active minutes: prefer the provider-reported daily active time (Garmin
             # activeTimeInSeconds, Oura high+medium+low activity time, Polar active_duration).
@@ -627,7 +571,6 @@ class SummariesService:
                     vigorous=vigorous,
                 )
 
-            steps = result.get("steps_sum")
             summary = ActivitySummary(
                 date=result["activity_date"],
                 source=SourceMetadata(
@@ -636,7 +579,7 @@ class SummariesService:
                     device=result.get("device_model"),
                     device_type=result.get("device_type"),
                 ),
-                steps=steps if steps is not None else None,
+                steps=result.get("steps_sum"),
                 distance_meters=total_distance,
                 floors_climbed=floors_climbed,
                 elevation_meters=elevation_meters,
@@ -682,10 +625,40 @@ class SummariesService:
         )
 
     def _activity_days(self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime) -> list[dict]:
-        """One row per day in [start, end): live and archived, best source per date."""
-        results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start, end)
-        results = self._merge_archive_activity(db_session, user_id, start, end, results)
+        """One row per day in [start, end) from the day aggregates, best source per date."""
+        results = daily_activity(db_session, user_id, start, end, days_from_samples(db_session))
+        results = self._add_workout_only_days(db_session, user_id, start, end, results)
         return self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+
+    def _add_workout_only_days(
+        self, db_session: DbSession, user_id: UUID, start: datetime, end: datetime, results: list
+    ) -> list:
+        """Add an empty row per source for dates that have workouts but no time-series data."""
+        covered = {r["activity_date"] for r in results}
+        extra = [
+            {
+                "activity_date": wa["workout_date"],
+                "provider": wa["provider"],
+                "source": wa["source"],
+                "device_model": wa["device_model"],
+                "device_type": wa["device_type"],
+                "steps_sum": None,
+                "active_energy_sum": None,
+                "basal_energy_sum": None,
+                "total_energy_sum": None,
+                "hr_avg": None,
+                "hr_max": None,
+                "hr_min": None,
+                "distance_sum": None,
+                "flights_climbed_sum": None,
+                "active_time_minutes": None,
+            }
+            for wa in self.event_record_repo.get_daily_workout_aggregates(db_session, user_id, start, end)
+            if wa["workout_date"] not in covered
+        ]
+        if not extra:
+            return results
+        return sorted([*results, *extra], key=lambda r: r["activity_date"])
 
     def _activity_page_days(
         self,
@@ -856,23 +829,25 @@ class SummariesService:
             age=age,
         )
 
-        # --- AVERAGED: Get aggregates for vitals over the period ---
+        # --- AVERAGED: the vitals' day values over the period ---
+        # A resting pulse or a night's HRV is a day value for most providers, so the day rows hold every
+        # device's: the provider's where it sent one, ours rolled up from the samples where it did not.
         period_end = now
         period_start = now - timedelta(days=average_period_days)
 
-        vitals_aggregates = self.data_point_repo.get_aggregates_for_period(
-            db_session, user_id, period_start, period_end, BODY_AVERAGED_SERIES
+        first_day, last_day = period_start.date(), period_end.date()
+        nights = self.event_record_repo.night_values(
+            db_session, user_id, [get_series_type_id(t) for t in BODY_AVERAGED_SERIES], first_day, last_day
+        )
+        averages = self.series_aggregate_repo.period_averages(
+            db_session, user_id, BODY_AVERAGED_SERIES, first_day, last_day, nights, days_from_samples(db_session)
         )
 
-        resting_hr_data = vitals_aggregates.get(SeriesType.resting_heart_rate)
-        hrv_sdnn_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
-        hrv_rmssd_data = vitals_aggregates.get(SeriesType.heart_rate_variability_rmssd)
-
-        resting_hr_avg = resting_hr_data.get("avg") if resting_hr_data else None
+        resting_hr_avg = averages.get(SeriesType.resting_heart_rate)
         resting_hr = int(round(resting_hr_avg)) if resting_hr_avg else None
-        hrv_sdnn_raw = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
+        hrv_sdnn_raw = averages.get(SeriesType.heart_rate_variability_sdnn)
         hrv_sdnn_avg = round(hrv_sdnn_raw, 1) if hrv_sdnn_raw is not None else None
-        hrv_rmssd_raw = hrv_rmssd_data.get("avg") if hrv_rmssd_data else None
+        hrv_rmssd_raw = averages.get(SeriesType.heart_rate_variability_rmssd)
         hrv_rmssd_avg = round(hrv_rmssd_raw, 1) if hrv_rmssd_raw is not None else None
 
         body_averaged = BodyAveraged(
@@ -893,6 +868,13 @@ class SummariesService:
         skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
         )
+        # Whoop and Polar report skin temperature once a night, as a day value.
+        if skin_temp_reading is None and (
+            day_value := self.series_aggregate_repo.latest_day_value(
+                db_session, user_id, SeriesType.skin_temperature, latest_window_start.date()
+            )
+        ):
+            skin_temp_reading = (*day_value, "", None)
         # Get blood pressure readings within the window
         bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now

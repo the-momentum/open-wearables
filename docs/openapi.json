@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "paths": {
     "/": {
@@ -3666,7 +3666,7 @@
           "External: Health Scores"
         ],
         "summary": "List Health Scores",
-        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.",
+        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.\n\nScores computed by Open Wearables (`provider: internal`) are deprecated: no new ones are\ncomputed starting November 6, 2026. Previously computed scores are still returned.",
         "operationId": "list_health_scores_api_v1_users__user_id__health_scores_get",
         "security": [
           {
@@ -4515,21 +4515,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": true
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SyncResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SyncQueuedResponse"
+                    }
+                  ],
                   "title": "Response Sync User Data Api V1 Providers  Provider  Users  User Id  Sync Post"
                 }
               }
@@ -6511,6 +6504,7 @@
                                     "HKQuantityTypeIdentifierRestingHeartRate",
                                     "RESTING_HEART_RATE",
                                     "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                    "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD",
                                     "HEART_RATE_VARIABILITY",
                                     "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute",
                                     "HKQuantityTypeIdentifierWalkingHeartRateAverage",
@@ -6950,7 +6944,6 @@
                                   "type": "number"
                                 },
                                 {
-                                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                                   "type": "string"
                                 }
                               ],
@@ -9922,7 +9915,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Get data lifecycle settings",
-        "description": "Returns current archival/retention configuration and storage size estimates.",
+        "description": "Returns current rollup/retention configuration and storage size estimates.",
         "operationId": "get_archival_settings_api_v1_settings_archival_get",
         "responses": {
           "200": {
@@ -9947,7 +9940,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure archive_after_days (when live data is aggregated) and delete_after_days (when old data is permanently removed). Set to null to disable.",
+        "description": "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -9993,8 +9986,8 @@
         "tags": [
           "Internal: Data Lifecycle"
         ],
-        "summary": "Trigger archival job manually",
-        "description": "Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
+        "summary": "Trigger the data lifecycle job manually",
+        "description": "Dispatches the daily rollup + retention job via Celery. Returns immediately with the task ID.",
         "operationId": "trigger_archival_api_v1_settings_archival_run_post",
         "responses": {
           "202": {
@@ -11304,7 +11297,7 @@
               }
             ],
             "title": "Total Calories Kcal",
-            "description": "Active + basal energy",
+            "description": "Total energy burned: the provider's reported total when available, otherwise active + basal energy when both are reported; null otherwise",
             "example": 2150.0
           },
           "active_minutes": {
@@ -11605,17 +11598,11 @@
       },
       "ArchivalSettingRead": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live samples are aggregated into daily archive. NULL = archival disabled."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -11627,28 +11614,20 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before archived data is permanently removed. NULL = kept indefinitely."
+            "description": "Days before samples are deleted, rolled up first when rollup is on. NULL = kept indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingRead",
-        "description": "Response schema for archival settings."
+        "description": "Response schema for data lifecycle settings."
       },
       "ArchivalSettingUpdate": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live data is archived. NULL to disable archival."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll samples up into daily and per-session aggregates.",
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -11662,12 +11641,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before data is permanently deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating archival settings."
+        "description": "Request schema for updating data lifecycle settings."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -12198,6 +12177,15 @@
         ],
         "title": "CompletedPart"
       },
+      "ComputedBy": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "open_wearables"
+        ],
+        "title": "ComputedBy",
+        "description": "Who computed an aggregate: the provider, or Open Wearables from stored samples."
+      },
       "ConfigResponse": {
         "properties": {
           "outgoing_webhooks_enabled": {
@@ -12341,15 +12329,20 @@
           "archived": {
             "type": "integer",
             "title": "Archived"
+          },
+          "aggregated": {
+            "type": "integer",
+            "title": "Aggregated"
           }
         },
         "type": "object",
         "required": [
           "count",
-          "archived"
+          "archived",
+          "aggregated"
         ],
         "title": "DataPointsInfo",
-        "description": "Data points information.\n\n``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive\ntable. Both are approximate on a cold cache / from planner statistics."
+        "description": "Data points information.\n\n``count`` is the live (hot) ``series_sample`` table; ``aggregated`` the day and session rows the\nsamples are rolled up into; ``archived`` the legacy archive table until it is dropped. All are\napproximate on a cold cache / from planner statistics."
       },
       "DataSourceListResponse": {
         "properties": {
@@ -12453,6 +12446,17 @@
               }
             ],
             "title": "Original Source Name"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
           },
           "display_name": {
             "anyOf": [
@@ -15415,6 +15419,12 @@
             "title": "Is Enabled",
             "description": "Whether provider is enabled by admin"
           },
+          "credentials_configured": {
+            "type": "boolean",
+            "title": "Credentials Configured",
+            "description": "Whether the OAuth client ID and secret are set. Always true for SDK-only providers.",
+            "default": true
+          },
           "icon_url": {
             "type": "string",
             "title": "Icon Url",
@@ -15626,10 +15636,13 @@
           "1min",
           "5min",
           "15min",
-          "1hour"
+          "1hour",
+          "1day",
+          "1week",
+          "1month"
         ],
         "title": "Resolution",
-        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched."
+        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
       },
       "SDKLogRequest": {
         "properties": {
@@ -16032,6 +16045,75 @@
         "title": "SeedProfileConfig",
         "description": "Complete seed data generation configuration."
       },
+      "SeriesStats": {
+        "properties": {
+          "avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "SeriesStats",
+        "description": "Every statistic held for a period. The sample's value is the one its series is read by."
+      },
       "SeriesType": {
         "type": "string",
         "enum": [
@@ -16039,7 +16121,7 @@
           "resting_heart_rate",
           "heart_rate_variability_sdnn",
           "heart_rate_recovery_one_minute",
-          "walking_heart_rate_average",
+          "walking_heart_rate",
           "heart_rate_variability_rmssd",
           "oxygen_saturation",
           "blood_glucose",
@@ -16077,8 +16159,8 @@
           "exercise_time",
           "physical_effort",
           "flights_climbed",
-          "average_met",
           "active_time",
+          "total_energy",
           "distance_walking_running",
           "distance_cycling",
           "distance_swimming",
@@ -16103,6 +16185,8 @@
           "cadence",
           "power",
           "speed",
+          "distance",
+          "elevation_gain",
           "workout_effort_score",
           "estimated_workout_effort_score",
           "environmental_audio_exposure",
@@ -16997,22 +17081,22 @@
           "live_data_bytes": {
             "type": "integer",
             "title": "Live Data Bytes",
-            "description": "Data size of data_point_series table (bytes)"
+            "description": "Data size of series_sample table (bytes)"
           },
           "live_index_bytes": {
             "type": "integer",
             "title": "Live Index Bytes",
-            "description": "Index size of data_point_series table (bytes)"
+            "description": "Index size of series_sample table (bytes)"
           },
-          "archive_data_bytes": {
+          "aggregate_data_bytes": {
             "type": "integer",
-            "title": "Archive Data Bytes",
-            "description": "Data size of archive table (bytes)"
+            "title": "Aggregate Data Bytes",
+            "description": "Data size of the aggregate tables and the legacy archive (bytes)"
           },
-          "archive_index_bytes": {
+          "aggregate_index_bytes": {
             "type": "integer",
-            "title": "Archive Index Bytes",
-            "description": "Index size of archive table (bytes)"
+            "title": "Aggregate Index Bytes",
+            "description": "Index size of the aggregate tables and the legacy archive (bytes)"
           },
           "other_tables_bytes": {
             "type": "integer",
@@ -17029,20 +17113,20 @@
             "title": "Live Row Count",
             "description": "Number of rows in live table"
           },
-          "archive_row_count": {
+          "aggregate_row_count": {
             "type": "integer",
-            "title": "Archive Row Count",
-            "description": "Number of rows in archive table"
+            "title": "Aggregate Row Count",
+            "description": "Number of rows in the aggregate tables and the legacy archive"
           },
           "avg_bytes_per_live_row": {
             "type": "number",
             "title": "Avg Bytes Per Live Row",
             "description": "Average bytes per live row (data+index)"
           },
-          "avg_bytes_per_archive_row": {
+          "avg_bytes_per_aggregate_row": {
             "type": "number",
-            "title": "Avg Bytes Per Archive Row",
-            "description": "Average bytes per archive row (data+index)"
+            "title": "Avg Bytes Per Aggregate Row",
+            "description": "Average bytes per aggregate row (data+index)"
           },
           "live_data_span_days": {
             "type": "integer",
@@ -17064,20 +17148,20 @@
             "title": "Live Index Pretty",
             "description": "Human-readable live index size"
           },
-          "archive_total_pretty": {
+          "aggregate_total_pretty": {
             "type": "string",
-            "title": "Archive Total Pretty",
-            "description": "Human-readable archive total size (data+indexes)"
+            "title": "Aggregate Total Pretty",
+            "description": "Human-readable aggregate total size (data+indexes)"
           },
-          "archive_data_pretty": {
+          "aggregate_data_pretty": {
             "type": "string",
-            "title": "Archive Data Pretty",
-            "description": "Human-readable archive data size"
+            "title": "Aggregate Data Pretty",
+            "description": "Human-readable aggregate data size"
           },
-          "archive_index_pretty": {
+          "aggregate_index_pretty": {
             "type": "string",
-            "title": "Archive Index Pretty",
-            "description": "Human-readable archive index size"
+            "title": "Aggregate Index Pretty",
+            "description": "Human-readable aggregate index size"
           },
           "other_tables_pretty": {
             "type": "string",
@@ -17099,27 +17183,173 @@
         "required": [
           "live_data_bytes",
           "live_index_bytes",
-          "archive_data_bytes",
-          "archive_index_bytes",
+          "aggregate_data_bytes",
+          "aggregate_index_bytes",
           "other_tables_bytes",
           "total_bytes",
           "live_row_count",
-          "archive_row_count",
+          "aggregate_row_count",
           "avg_bytes_per_live_row",
-          "avg_bytes_per_archive_row",
+          "avg_bytes_per_aggregate_row",
           "live_data_span_days",
           "live_total_pretty",
           "live_data_pretty",
           "live_index_pretty",
-          "archive_total_pretty",
-          "archive_data_pretty",
-          "archive_index_pretty",
+          "aggregate_total_pretty",
+          "aggregate_data_pretty",
+          "aggregate_index_pretty",
           "other_tables_pretty",
           "total_pretty",
           "growth_class"
         ],
         "title": "StorageEstimate",
         "description": "Storage sizes across all database tables."
+      },
+      "Sync247Summary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Set when the whole sync failed before any task ran"
+          },
+          "tasks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Sync247TaskSummary"
+            },
+            "type": "object",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "tasks"
+        ],
+        "title": "Sync247Summary",
+        "description": "A 24/7 sync: totals over its provider fetch tasks, and each task."
+      },
+      "Sync247TaskSummary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted",
+            "description": "New rows, when the write path reports the split"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated",
+            "description": "Rows refreshed in place, when the write path reports the split"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported",
+            "description": "Rows written, when only a total is known"
+          },
+          "items_skipped": {
+            "type": "integer",
+            "title": "Items Skipped",
+            "description": "Records deliberately not stored, such as duplicates"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "The fetch stopped early, so the window is incomplete"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "HTTP status (http_401) or error type of the first failure"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "items_skipped",
+          "truncated",
+          "error_code"
+        ],
+        "title": "Sync247TaskSummary",
+        "description": "One provider fetch task of a 24/7 sync. Counters mean what they do in sync.data_type events."
       },
       "SyncDataType": {
         "type": "string",
@@ -17130,6 +17360,81 @@
         ],
         "title": "SyncDataType",
         "description": "Types of data to sync from provider."
+      },
+      "SyncDetails": {
+        "properties": {
+          "workouts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workouts",
+            "description": "Workouts saved, when workouts were synced"
+          },
+          "data_247": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sync247Summary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SyncDetails"
+      },
+      "SyncQueuedResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "async": {
+            "type": "boolean",
+            "title": "Async"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "async",
+          "task_id",
+          "message"
+        ],
+        "title": "SyncQueuedResponse",
+        "description": "A sync queued to run in the background."
+      },
+      "SyncResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "details": {
+            "$ref": "#/components/schemas/SyncDetails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "details"
+        ],
+        "title": "SyncResponse",
+        "description": "A synchronous sync's outcome."
       },
       "SyncRunDataTypeRecord": {
         "properties": {
@@ -18018,6 +18323,49 @@
               }
             ],
             "title": "Is Daily Total"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "computed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -19499,6 +19847,18 @@
               }
             ],
             "title": "Max Watts"
+          },
+          "average_met": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Met",
+            "description": "The workout's average metabolic equivalent (MET), from its physical_effort series."
           },
           "moving_time_seconds": {
             "anyOf": [

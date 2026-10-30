@@ -71,8 +71,7 @@ def create_endpoint(body: EndpointCreateRequest, app_id: SvixAppId) -> EndpointR
 
 @router.get("/endpoints")
 def list_endpoints(app_id: SvixAppId) -> list[EndpointResponse]:
-    result = svix_service.list_endpoints(app_id)
-    return [_ep_to_response(ep) for ep in result.data]
+    return [_ep_to_response(ep) for ep in svix_service.iter_endpoints(app_id)]
 
 
 @router.get("/endpoints/{endpoint_id}")

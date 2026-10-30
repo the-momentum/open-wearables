@@ -27,16 +27,19 @@ Keys (all TTL'd to ``HISTORY_TTL_SECONDS``):
 import logging
 import threading
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import suppress
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from app.config import settings
 from app.database import DbSession, SessionLocal
 from app.extensions import events as extension_events
+from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
+from app.models import SyncRun
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.repositories.sync_run_repository import sync_run_repository
 from app.schemas.sync_status import (
     DataTypeOutcome,
@@ -109,6 +112,13 @@ _PERSISTED_STAGES = frozenset(
     {SyncStage.STARTED, SyncStage.COMPLETED, SyncStage.FAILED, SyncStage.CANCELLED},
 )
 
+# A type we know went wrong, as opposed to one that simply ended with nothing to write.
+# STALE and UNFINISHED mean we lost track of it, which is a failure from the consumer's
+# side too: the history they were promised is not there.
+_FAILED_DATA_TYPE_STATUSES = frozenset(
+    {SyncStatus.FAILED, SyncStatus.STALE, SyncStatus.UNFINISHED, SyncStatus.CANCELLED},
+)
+
 # Metadata keys that are only the transport for a column, so they are not stored twice.
 _META_COLUMN_KEYS = frozenset({"inserted", "updated"})
 
@@ -124,7 +134,12 @@ def is_persisted_scope(scope: SyncScope | str) -> bool:
     return SyncScope(scope) == SyncScope.HISTORICAL or settings.persist_live_sync_runs
 
 
-def run_status_from(outcomes: list[DataTypeOutcome]) -> SyncStatus:
+class _HasStatus(Protocol):
+    @property
+    def status(self) -> SyncStatus: ...
+
+
+def run_status_from(outcomes: Iterable[_HasStatus]) -> SyncStatus:
     """Overall status of a run, from the outcomes of its data types."""
     match {outcome.status for outcome in outcomes}:
         case seen if seen == {SyncStatus.SKIPPED}:
@@ -194,6 +209,7 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
     if not outcomes or not is_persisted_scope(scope):
         return
 
+    outcomes = _one_per_data_type(outcomes)
     try:
         with SessionLocal() as db:
             run = sync_run_repository.get_by_run_key(db, run_key)
@@ -205,6 +221,7 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
                 outcomes=outcomes,
                 updated_at=datetime.now(timezone.utc),
             )
+            _dispatch_data_type_webhooks(db, run, outcomes)
     except Exception as exc:
         log_structured(
             logger,
@@ -214,6 +231,90 @@ def try_record_data_types(run_key: str, outcomes: list[DataTypeOutcome], *, scop
             run_id=run_key,
             error=str(exc),
         )
+
+
+def _one_per_data_type(outcomes: list[DataTypeOutcome]) -> list[DataTypeOutcome]:
+    """Merge outcomes reporting the same data type, as two fetch tasks writing one series type do.
+
+    Stored one after another, the later verdict would replace the earlier one: a task that
+    wrote nothing would turn a type another task filled into SKIPPED.
+    """
+    by_type: dict[str, list[DataTypeOutcome]] = {}
+    for outcome in outcomes:
+        by_type.setdefault(outcome.data_type, []).append(outcome)
+    return [group[0] if len(group) == 1 else _merged(group) for group in by_type.values()]
+
+
+def _merged(group: list[DataTypeOutcome]) -> DataTypeOutcome:
+    verdicts = [o for o in group if o.status != SyncStatus.IN_PROGRESS]
+    reported = [o.reported_records for o in group if o.reported_records is not None]
+    starts = [o.covered_start for o in group if o.covered_start is not None]
+    ends = [o.covered_end for o in group if o.covered_end is not None]
+    return group[0].model_copy(
+        update={
+            "status": run_status_from(verdicts) if verdicts else SyncStatus.IN_PROGRESS,
+            "reported_records": sum(reported) if reported else None,
+            "items_inserted": sum(o.items_inserted for o in group),
+            "items_updated": sum(o.items_updated for o in group),
+            "covered_start": min(starts, default=None),
+            "covered_end": max(ends, default=None),
+            "error_code": next((o.error_code for o in group if o.error_code), None),
+            "error": next((o.error for o in group if o.error), None),
+        }
+    )
+
+
+def _dispatch_data_type_webhooks(db: DbSession, run: SyncRun, outcomes: list[DataTypeOutcome]) -> None:
+    """Forward the data types that reached a verdict, as stored for the run.
+
+    IN_PROGRESS outcomes are skipped: an SDK export reports its types once per batch long
+    before they are done, and only the log's end event knows how each one turned out.
+    The stored row is sent rather than the outcome, so the counts and span cover every
+    batch the type reported, not only the last one.
+
+    Fires per type rather than per run, so a consumer learns a type's history is in
+    without waiting for the whole backfill. The idempotency key is the run and type, so a
+    type reporting the same verdict twice is delivered once.
+    """
+    finished = [o.data_type for o in outcomes if o.status != SyncStatus.IN_PROGRESS]
+    if not finished:
+        return
+
+    rows = sync_run_repository.get_data_types(db, run.id, finished)
+    coverage = {
+        (held.data_type, held.kind): held
+        for held in data_type_coverage_repository.list_for_user(
+            db, run.user_id, provider=run.provider, data_types=finished
+        )
+    }
+
+    for row in rows:
+        held = coverage.get((row.data_type, row.kind))
+        outgoing.on_sync_data_type_finished(
+            user_id=run.user_id,
+            provider=run.provider,
+            source=str(run.source),
+            scope=str(run.scope),
+            run_id=run.run_key,
+            data_type=row.data_type,
+            kind=row.kind,
+            status=str(row.status),
+            succeeded=row.status not in _FAILED_DATA_TYPE_STATUSES,
+            native_data_type=row.native_type,
+            reported_records=row.reported_records,
+            items_inserted=row.items_inserted,
+            items_updated=row.items_updated,
+            covered_start=_iso(row.covered_start),
+            covered_end=_iso(row.covered_end),
+            coverage_start=_iso(held.coverage_start) if held else None,
+            coverage_end=_iso(held.coverage_end) if held else None,
+            error_code=row.error_code,
+            error=row.error,
+        )
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def list_stored_runs(
@@ -724,6 +825,9 @@ def emit_sync_completed(
     Finished is not the same as succeeded: pass status=PARTIAL when some types failed,
     or SKIPPED when the run was a no-op. FAILED belongs on emit_sync_failed instead.
     """
+    if scope == SyncScope.HISTORICAL:
+        # History just landed: rolled up now, not at the next 15-minute run.
+        rollup_queue.roll_up_soon()
     return emit_event(
         user_id=user_id,
         provider=provider,

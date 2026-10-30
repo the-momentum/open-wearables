@@ -2,6 +2,7 @@ import contextlib
 from logging import Logger, getLogger
 from uuid import UUID
 
+from app.constants.devices_map import resolve_device_name
 from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories import DataSourceRepository, ProviderPriorityRepository
@@ -74,22 +75,24 @@ class PriorityService:
         user_id: UUID,
     ) -> DataSourceListResponse:
         sources = self.data_source_repo.get_user_data_sources(db_session, user_id)
-        items = [
-            DataSourceResponse(
-                id=ds.id,
-                user_id=ds.user_id,
-                provider=ds.provider,
-                user_connection_id=ds.user_connection_id,
-                device_model=ds.device_model,
-                software_version=ds.software_version,
-                source=ds.source,
-                device_type=ds.device_type,
-                original_source_name=ds.original_source_name,
-                display_name=self._build_display_name(ds),
-            )
-            for ds in sources
-        ]
+        items = [self._to_data_source_response(ds) for ds in sources]
         return DataSourceListResponse(items=items, total=len(items))
+
+    def _to_data_source_response(self, ds: DataSource) -> DataSourceResponse:
+        device_name = resolve_device_name(ds.device_model)
+        return DataSourceResponse(
+            id=ds.id,
+            user_id=ds.user_id,
+            provider=ds.provider,
+            user_connection_id=ds.user_connection_id,
+            device_model=ds.device_model,
+            software_version=ds.software_version,
+            source=ds.source,
+            device_type=ds.device_type,
+            original_source_name=ds.original_source_name,
+            device_name=device_name,
+            display_name=self._build_display_name(ds, device_name),
+        )
 
     @handle_exceptions
     def get_device_type_priorities(
@@ -121,14 +124,14 @@ class PriorityService:
         db_session.commit()
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in results])
 
-    def _build_display_name(self, ds: DataSource) -> str:
+    def _build_display_name(self, ds: DataSource, device_name: str | None) -> str:
         parts = []
         if ds.provider:
             # Rows loaded from the database carry provider as a plain str (the
             # column is a String, not a native enum), so there is no .value.
             parts.append(ds.provider.capitalize())
-        if ds.device_model:
-            parts.append(ds.device_model)
+        if device_name:
+            parts.append(device_name)
         elif ds.original_source_name:
             parts.append(ds.original_source_name)
         return " - ".join(parts) if parts else "Unknown Source"

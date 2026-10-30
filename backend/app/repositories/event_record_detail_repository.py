@@ -2,21 +2,26 @@ from typing import Any, cast
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Table, update
+from sqlalchemy import Table, func, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
 from app.models import (
     DETAIL_MODELS,
     DetailType,
+    EventRecordAggregate,
     EventRecordDetail,
     WorkoutDetails,
 )
+from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.repositories import CrudRepository
+from app.schemas.enums import ComputedBy, EventCategory, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     EventRecordDetailUpdate,
+    StatColumn,
 )
 from app.utils.exceptions import handle_exceptions
 
@@ -26,6 +31,34 @@ class EventRecordDetailRepository(
 ):
     def __init__(self, model: type[EventRecordDetail]):
         super().__init__(model)
+        self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
+
+    def _mirror_workout_stats(
+        self, db_session: DbSession, creators: list[EventRecordDetailCreate], detail_type: DetailType
+    ) -> None:
+        """Mirror a workout's statistic columns into event_record_aggregate, one row per series."""
+        if detail_type != EventCategory.WORKOUT:
+            return
+        rows = [
+            {
+                "record_id": creator.record_id,
+                "series_type_definition_id": get_series_type_id(series_type),
+                "computed_by": ComputedBy.PROVIDER,
+                stat: value,
+                "count": 1,
+            }
+            for creator in creators
+            for field, (series_type, stat) in self._workout_stats(creator).items()
+            if (value := getattr(creator, field, None)) is not None
+        ]
+        if rows:
+            self.event_aggregate_repo.upsert(db_session, rows)
+
+    @staticmethod
+    def _workout_stats(creator: EventRecordDetailCreate) -> dict[str, tuple[SeriesType, StatColumn]]:
+        if creator.energy_series is None:
+            return WORKOUT_DETAIL_STATS
+        return {**WORKOUT_DETAIL_STATS, "energy_burned": (creator.energy_series, "sum")}
 
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
         """Construct the concrete detail ORM object without touching the session."""
@@ -33,7 +66,7 @@ class EventRecordDetailRepository(
         if model is None:
             raise ValueError(f"Unknown detail type: {detail_type}")
         creation_data = creator.model_dump(exclude_none=True)
-        if detail_type == "sleep" and creator.sleep_stages:
+        if detail_type == EventCategory.SLEEP and creator.sleep_stages:
             # sleep_stages contains datetime fields that JSONB cannot serialize directly;
             # use Pydantic's JSON mode to convert datetimes to ISO strings.
             creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
@@ -44,7 +77,7 @@ class EventRecordDetailRepository(
         self,
         db_session: DbSession,
         creator: EventRecordDetailCreate,
-        detail_type: DetailType = "workout",
+        detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
         """Create a detail record using the appropriate polymorphic model.
 
@@ -55,21 +88,25 @@ class EventRecordDetailRepository(
             db_session.add(detail)
             db_session.commit()
             db_session.refresh(detail)
-            return detail
         except IntegrityError as exc:
             db_session.rollback()
             # record_id is the only unique index here; FK and other violations are real errors
-            if isinstance(exc.orig, UniqueViolation) and (
-                existing := self.get_by_record_id(db_session, creator.record_id, detail_type)
+            if not (
+                isinstance(exc.orig, UniqueViolation)
+                and (detail := self.get_by_record_id(db_session, creator.record_id, detail_type))
             ):
-                return existing
-            raise
+                raise
+        # After the commit, so a duplicate's rollback does not take the statistics with it: the stored
+        # detail keeps its row and the aggregate merges what this write carries.
+        self._mirror_workout_stats(db_session, [creator], detail_type)
+        db_session.commit()
+        return detail
 
     def create_and_flush(
         self,
         db_session: DbSession,
         creator: EventRecordDetailCreate,
-        detail_type: DetailType = "workout",
+        detail_type: DetailType = EventCategory.WORKOUT,
     ) -> EventRecordDetail:
         """Like create() but flushes instead of committing; caller is responsible for the commit.
 
@@ -81,6 +118,7 @@ class EventRecordDetailRepository(
         try:
             db_session.add(detail)
             db_session.flush()
+            self._mirror_workout_stats(db_session, [creator], detail_type)
             nested.commit()
             return detail
         except IntegrityError as exc:
@@ -96,7 +134,7 @@ class EventRecordDetailRepository(
         self,
         db_session: DbSession,
         creators: list[EventRecordDetailCreate],
-        detail_type: DetailType = "workout",
+        detail_type: DetailType = EventCategory.WORKOUT,
     ) -> None:
         """Bulk create detail records using batch insert."""
         if not creators:
@@ -112,7 +150,7 @@ class EventRecordDetailRepository(
         child_values = []
         for creator in creators:
             data = creator.model_dump()
-            if detail_type == "sleep" and data.get("sleep_stages"):
+            if detail_type == EventCategory.SLEEP and data.get("sleep_stages"):
                 data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)
@@ -122,13 +160,18 @@ class EventRecordDetailRepository(
 
         child_stmt = insert(child_table).values(child_values)
         # record_id is the conflict key; created_at is an immutable audit column and
-        # must not be reset to now() when an existing row is re-synced.
+        # must not be reset to now() when an existing row is re-synced. A value this write does not
+        # carry keeps the stored one, as the mirrored aggregate row does: Garmin sends a workout's
+        # steps from one endpoint and its speed from another.
         immutable_on_upsert = {"record_id", "created_at"}
         update_dict = {
-            col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name not in immutable_on_upsert
+            col_name: func.coalesce(child_stmt.excluded[col_name], child_table.c[col_name])
+            for col_name in valid_columns
+            if col_name not in immutable_on_upsert
         }
         child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
         db_session.execute(child_stmt)
+        self._mirror_workout_stats(db_session, creators, detail_type)
         # NOTE: Caller should commit - allows batching multiple operations
 
     def get_by_record_id(

@@ -9,6 +9,7 @@ from logging import getLogger
 
 from celery import Task, shared_task
 
+from app.constants.celery_tasks import CeleryTask
 from app.services.providers.oura.webhook_service import oura_webhook_service
 from app.utils.structured_logging import log_structured
 
@@ -16,6 +17,7 @@ logger = getLogger(__name__)
 
 
 @shared_task(
+    name=CeleryTask.RENEW_OURA_WEBHOOKS,
     bind=True,
     acks_late=True,
     reject_on_worker_lost=True,

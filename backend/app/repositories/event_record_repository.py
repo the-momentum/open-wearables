@@ -1,4 +1,6 @@
-from datetime import date, datetime, timedelta
+import contextlib
+from collections.abc import Iterable
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -13,34 +15,49 @@ from sqlalchemy import (
     asc,
     case,
     cast,
+    delete,
     desc,
     func,
-    lateral,
     literal_column,
     select,
     text,
-    true,
     tuple_,
 )
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
+from app.constants.series_types.workout_detail_stats import WORKOUT_DETAIL_STATS
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails, WorkoutDetails
+from app.integrations.rollup_queue import mark_dirty_days
+from app.models import DataSource, EventRecord, EventRecordAggregate, SleepDetails, WorkoutDetails
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
+from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.repositories.local_day import utc_midnight
 from app.repositories.repositories import (
     CrudRepository,
     source_filter_conditions,
     source_priority_order,
     utc_bucket_start,
 )
-from app.schemas.enums import DeviceType, ProviderName, SeriesType, TimelineBucket, get_series_type_id
+from app.schemas.data_type_coverage import CoverageSpan
+from app.schemas.enums import (
+    ComputedBy,
+    DeviceType,
+    EventCategory,
+    ProviderName,
+    SeriesType,
+    TimelineBucket,
+    get_series_type_id,
+)
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordQueryParams,
     EventRecordUpdate,
+    StatColumn,
 )
+from app.schemas.sync_status import DataTypeKind
+from app.utils.dates import local_date
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -51,6 +68,80 @@ def _nap_condition(is_nap: bool) -> ColumnElement[bool]:
     return flagged_nap if is_nap else ~flagged_nap
 
 
+# What the user's other devices recorded inside a sleep, for the series the sleep's own device has no value of:
+# a sleep logged by an app while a watch measured the night.
+# Only the (sleep, series) pairs the sleep lacks: the sleep's own device's readings inside it (rolled up within
+# 15 minutes, until then only samples), else the user's other devices'. Scalar subqueries, so the second is read
+# only where the first is empty, each one index range: joined plainly, the planner hashes the whole sample table.
+_NIGHT_FROM_SAMPLES = text("""
+    SELECT m.record_id, m.type_id, coalesce(
+        (SELECT avg(s.value) FROM series_sample s
+         WHERE s.data_source_id = er.data_source_id AND s.series_type_definition_id = m.type_id
+            AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
+            AND s.is_daily_total IS NOT TRUE),
+        -- A day value the provider sent at an instant inside the sleep (Oura's SpO2 at 00:00 UTC): a sample before
+        -- the aggregate tables, it counted in this average.
+        (SELECT avg(coalesce(a.avg, a.last)) FROM series_aggregate a
+         WHERE a.data_source_id = er.data_source_id AND a.series_type_definition_id = m.type_id
+            AND a.period_kind = 'day' AND a.computed_by = 'provider'
+            AND a.period_start >= er.start_datetime AND a.period_start <= er.end_datetime),
+        (SELECT avg(s.value) FROM data_source other
+         JOIN series_sample s ON s.data_source_id = other.id AND s.series_type_definition_id = m.type_id
+            AND s.recorded_at >= er.start_datetime AND s.recorded_at <= er.end_datetime
+            AND s.is_daily_total IS NOT TRUE
+         WHERE other.user_id = own.user_id AND other.id <> own.id)
+    ) AS avg
+    FROM unnest(CAST(:record_ids AS uuid[]), CAST(:type_ids AS integer[])) AS m(record_id, type_id)
+    JOIN event_record er ON er.id = m.record_id
+    JOIN data_source own ON own.id = er.data_source_id
+""")
+
+# A night's physiology in a sleep summary, by the key its row carries.
+_SLEEP_PHYSIOLOGY = {
+    "avg_hr": SeriesType.heart_rate,
+    "avg_hrv_sdnn": SeriesType.heart_rate_variability_sdnn,
+    "avg_hrv_rmssd": SeriesType.heart_rate_variability_rmssd,
+    "avg_resp": SeriesType.respiratory_rate,
+    "avg_spo2": SeriesType.oxygen_saturation,
+}
+
+
+def _session_stat(series_type: SeriesType, stat: StatColumn, computed_by: ComputedBy) -> ColumnElement:
+    """One statistic of the outer query's event record, from event_record_aggregate."""
+    return (
+        select(getattr(EventRecordAggregate, stat))
+        .where(
+            EventRecordAggregate.record_id == EventRecord.id,
+            EventRecordAggregate.series_type_definition_id == get_series_type_id(series_type),
+            EventRecordAggregate.computed_by == computed_by,
+        )
+        .scalar_subquery()
+    )
+
+
+def _session_sum(series_type: SeriesType) -> ColumnElement:
+    """A workout's total of a series: the provider's, else ours from the workout's samples."""
+    return func.coalesce(
+        _session_stat(series_type, "sum", ComputedBy.PROVIDER),
+        _session_stat(series_type, "sum", ComputedBy.OPEN_WEARABLES),
+    )
+
+
+def _first(*values: Decimal | None) -> Decimal | None:
+    return next((value for value in values if value is not None), None)
+
+
+def workout_energy() -> ColumnElement:
+    """A workout's calories: the provider's in its declared series, else the provider's figure whose series is
+    not established yet (workout_details.energy_burned), else ours from the workout's own energy samples."""
+    return func.coalesce(
+        _session_stat(SeriesType.total_energy, "sum", ComputedBy.PROVIDER),
+        _session_stat(SeriesType.active_energy, "sum", ComputedBy.PROVIDER),
+        WorkoutDetails.energy_burned,
+        _session_stat(SeriesType.active_energy, "sum", ComputedBy.OPEN_WEARABLES),
+    )
+
+
 class EventRecordRepository(
     CrudRepository[EventRecord, EventRecordCreate, EventRecordUpdate],
 ):
@@ -58,10 +149,20 @@ class EventRecordRepository(
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
 
-    def _build_creation(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[UUID, EventRecord]:
+    def _build_creation(
+        self, db_session: DbSession, creator: EventRecordCreate
+    ) -> tuple[UUID, ProviderName, EventRecord]:
         """Resolve the data source and build the ORM object without touching the session."""
+        provider = self.data_source_repo.provider_of(creator)
         if creator.data_source_id:
             data_source_id = creator.data_source_id
+            # The referenced source decides the provider, whatever the payload claims:
+            # it is what the record is filed under, so coverage must agree with it.
+            existing = db_session.get(DataSource, data_source_id)
+            if existing is not None:
+                # Loaded as a plain str: the column is String, not an enum type.
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(existing.provider)
         else:
             data_source = self.data_source_repo.ensure_for_creator(
                 db_session, creator, original_source_name=creator.source
@@ -70,18 +171,53 @@ class EventRecordRepository(
 
         creation_data = creator.model_dump(exclude=set(DATA_SOURCE_FIELDS))
         creation_data["data_source_id"] = data_source_id
-        return data_source_id, self.model(**creation_data)
+        return data_source_id, provider, self.model(**creation_data)
 
     def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
         return (
             db_session.query(self.model)
             .filter(
                 self.model.data_source_id == data_source_id,
-                self.model.category != "meal",
+                self.model.category != EventCategory.MEAL,
                 self.model.start_datetime == creation.start_datetime,
                 self.model.end_datetime == creation.end_datetime,
             )
             .one_or_none()
+        )
+
+    def get_by_external_ids(
+        self, db_session: DbSession, user_id: UUID, external_ids: Iterable[str], provider: str | None = None
+    ) -> dict[str, EventRecord]:
+        """The user's records carrying these provider ids, in one query, by external id."""
+        ids = list({external_id for external_id in external_ids if external_id})
+        if not ids:
+            return {}
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.external_id.in_(ids))
+        )
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        return {record.external_id: record for record in query if record.external_id}
+
+    def main_sleep_ended_before(
+        self, db_session: DbSession, user_id: UUID, at: datetime, within: timedelta, provider: str
+    ) -> EventRecord | None:
+        """The user's latest main sleep from this provider that ended at most ``within`` before ``at``."""
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                DataSource.provider == provider,
+                self.model.category == EventCategory.SLEEP,
+                _nap_condition(False),
+                self.model.end_datetime <= at,
+                self.model.end_datetime > at - within,
+            )
+            .order_by(self.model.end_datetime.desc())
+            .first()
         )
 
     def get_by_external_id(
@@ -122,22 +258,39 @@ class EventRecordRepository(
         if provider is not None:
             source_ids_query = source_ids_query.filter(DataSource.provider == provider)
 
-        deleted = (
-            db_session.query(self.model)
-            .filter(
+        deleted = db_session.execute(
+            delete(self.model)
+            .where(
                 self.model.external_id == external_id,
                 self.model.data_source_id.in_(source_ids_query.scalar_subquery()),
             )
-            .delete(synchronize_session=False)
-        )
+            .returning(self.model.data_source_id, self.model.category)
+        ).all()
+        if deleted:
+            providers = {
+                source_id: provider
+                for source_id, provider in db_session.execute(
+                    select(DataSource.id, DataSource.provider).where(
+                        DataSource.id.in_({row.data_source_id for row in deleted})
+                    )
+                )
+            }
+            data_type_coverage_repository.refresh_events(
+                db_session, [(user_id, providers[row.data_source_id], row.category) for row in deleted]
+            )
         db_session.commit()
-        return deleted
+        return len(deleted)
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        data_source_id, creation = self._build_creation(db_session, creator)
+        data_source_id, provider, creation = self._build_creation(db_session, creator)
         try:
             db_session.add(creation)
+            self._record_coverage(db_session, [(creator, provider)])
+            mark_dirty_days(
+                db_session,
+                local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset),
+            )
             db_session.commit()
             db_session.refresh(creation)
             return creation
@@ -153,18 +306,22 @@ class EventRecordRepository(
         Uses a savepoint for IntegrityError handling so a conflict rolls back only
         the INSERT and leaves the outer transaction intact.
         """
-        data_source_id, creation = self._build_creation(db_session, creator)
+        data_source_id, provider, creation = self._build_creation(db_session, creator)
         nested = db_session.begin_nested()
         try:
             db_session.add(creation)
             db_session.flush()
             nested.commit()
-            return creation
         except IntegrityError:
             nested.rollback()
             if existing := self._fetch_existing(db_session, data_source_id, creation):
                 return existing
             raise
+        self._record_coverage(db_session, [(creator, provider)])
+        mark_dirty_days(
+            db_session, local_days(data_source_id, creator.start_datetime, creator.end_datetime, creator.zone_offset)
+        )
+        return creation
 
     def _resolve_values(self, db_session: DbSession, creators: list[EventRecordCreate]) -> list[dict]:
         """Resolve data sources in batch and build event_record row values."""
@@ -218,14 +375,48 @@ class EventRecordRepository(
                 .values(chunk)
                 .on_conflict_do_nothing(
                     index_elements=["data_source_id", "start_datetime", "end_datetime"],
-                    index_where=text("category <> 'meal'"),
+                    index_where=text(f"category <> '{EventCategory.MEAL}'"),
                 )
             )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
+
+        self._record_coverage(
+            db_session, [(c, self.data_source_repo.provider_of(c)) for c in creators if c.id in inserted_ids]
+        )
+        mark_dirty_days(
+            db_session,
+            (
+                day
+                for values in values_list
+                if values["id"] in inserted_ids
+                for day in local_days(
+                    values["data_source_id"], values["start_datetime"], values["end_datetime"], values["zone_offset"]
+                )
+            ),
+        )
         # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
+
+    @staticmethod
+    def _record_coverage(db_session: DbSession, records: list[tuple[EventRecordCreate, ProviderName]]) -> None:
+        """Widen what we hold per event category, in the caller's transaction."""
+        data_type_coverage_repository.record(
+            db_session,
+            (
+                CoverageSpan(
+                    user_id=creator.user_id,
+                    provider=provider.value,
+                    data_type=creator.category,
+                    kind=DataTypeKind.EVENT,
+                    start=creator.start_datetime,
+                    end=creator.end_datetime,
+                )
+                for creator, provider in records
+                if creator.category
+            ),
+        )
 
     @handle_exceptions
     def bulk_upsert_meals(
@@ -250,7 +441,7 @@ class EventRecordRepository(
             stmt = insert(self.model).values([values for _, values in chunk])
             stmt = stmt.on_conflict_do_update(
                 index_elements=["data_source_id", "external_id"],
-                index_where=text("category = 'meal'"),
+                index_where=text(f"category = '{EventCategory.MEAL}'"),
                 set_={
                     column: stmt.excluded[column]
                     for column in (
@@ -275,13 +466,15 @@ class EventRecordRepository(
             for creator, values in chunk:
                 result[creator.id] = stored[(values["data_source_id"], values["external_id"])]
         db_session.flush()
+        upserted = [creators_by_id[creator_id] for creator_id in result]
+        self._record_coverage(db_session, [(c, self.data_source_repo.provider_of(c)) for c in upserted])
         return result
 
     def get_record_with_details(
         self,
         db_session: DbSession,
         record_id: UUID,
-        category: str,
+        category: EventCategory,
     ) -> EventRecord | None:
         return (
             db_session.query(EventRecord)
@@ -382,14 +575,16 @@ class EventRecordRepository(
                     query = query.filter(EventRecord.id < cursor_id if is_asc else EventRecord.id > cursor_id)
 
                 # Reverse sort order for backward pagination
-                sort_order = desc if is_asc else asc
-                query = query.order_by(sort_order(sort_column), sort_order(EventRecord.id))
+                if is_asc:
+                    query = query.order_by(sort_column.desc(), EventRecord.id.desc())
+                else:
+                    query = query.order_by(sort_column.asc(), EventRecord.id.asc())
 
                 # Limit + 1 to check for previous page
                 limit = query_params.limit or 20
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), total_count  # ty:ignore[invalid-return-type]
+                return list(reversed(results)), total_count
 
             # Forward pagination: get items AFTER cursor
             if sort_by == "start_datetime":
@@ -403,8 +598,10 @@ class EventRecordRepository(
                 query = query.filter(EventRecord.id > cursor_id if is_asc else EventRecord.id < cursor_id)
 
         # Apply ordering (ID as secondary sort for deterministic pagination)
-        sort_order = asc if is_asc else desc
-        query = query.order_by(sort_order(sort_column), sort_order(EventRecord.id))
+        if is_asc:
+            query = query.order_by(sort_column.asc(), EventRecord.id.asc())
+        else:
+            query = query.order_by(sort_column.desc(), EventRecord.id.desc())
 
         # Limit + 1 to check for next page (cursor pagination)
         limit = query_params.limit or 20
@@ -419,13 +616,13 @@ class EventRecordRepository(
         self, db_session: DbSession, query_params: EventRecordQueryParams, user_id: str
     ) -> tuple[int, int, Decimal | None, Decimal | None]:
         """Count, duration, energy and distance of the matching workouts, in one aggregate."""
-        filters = self._record_filters(query_params.model_copy(update={"category": "workout"}), user_id)
+        filters = self._record_filters(query_params.model_copy(update={"category": EventCategory.WORKOUT}), user_id)
         row = (
             db_session.query(
                 func.count(EventRecord.id),
                 func.coalesce(func.sum(EventRecord.duration_seconds), 0),
-                func.sum(WorkoutDetails.energy_burned),
-                func.sum(WorkoutDetails.distance),
+                func.sum(workout_energy()),
+                func.sum(_session_sum(SeriesType.distance)),
             )
             .select_from(EventRecord)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
@@ -433,7 +630,52 @@ class EventRecordRepository(
             .filter(and_(*filters))
             .one()
         )
-        return int(row[0]), int(row[1]), row[2], row[3]
+        return int(row[0]), int(row[1] or 0), row[2], row[3]
+
+    def get_workout_statistics(
+        self, db_session: DbSession, record_ids: list[UUID]
+    ) -> dict[UUID, dict[str, Decimal | None]]:
+        """Per workout, every workout_details statistic from event_record_aggregate (the provider's, else ours),
+        plus ``provider_energy`` in the provider's declared series, ``own_energy`` from the workout's samples and
+        ``average_met``, the workout's physical_effort average."""
+        if not record_ids:
+            return {}
+        # Only the series a statistic is read from: a workout's speed, power or elevation stream is not.
+        needed = {get_series_type_id(series_type) for series_type, _ in WORKOUT_DETAIL_STATS.values()} | {
+            get_series_type_id(SeriesType.total_energy),
+            get_series_type_id(SeriesType.active_energy),
+            get_series_type_id(SeriesType.physical_effort),
+        }
+        rows = db_session.query(EventRecordAggregate).filter(
+            EventRecordAggregate.record_id.in_(record_ids), EventRecordAggregate.series_type_definition_id.in_(needed)
+        )
+        values: dict[ComputedBy, dict[tuple[UUID, int, str], Decimal]] = {origin: {} for origin in ComputedBy}
+        for row in rows:
+            for stat in ("sum", "avg", "min", "max", "last"):
+                if (value := getattr(row, stat)) is not None:
+                    values[row.computed_by][(row.record_id, row.series_type_definition_id, stat)] = value
+        provider, own = values[ComputedBy.PROVIDER], values[ComputedBy.OPEN_WEARABLES]
+
+        def pick(source: dict, record_id: UUID, series_type: SeriesType, stat: str) -> Decimal | None:
+            return source.get((record_id, get_series_type_id(series_type), stat))
+
+        statistics: dict[UUID, dict[str, Decimal | None]] = {}
+        for record_id in record_ids:
+            workout = {
+                column: _first(pick(provider, record_id, series_type, stat), pick(own, record_id, series_type, stat))
+                for column, (series_type, stat) in WORKOUT_DETAIL_STATS.items()
+            }
+            workout["provider_energy"] = _first(
+                pick(provider, record_id, SeriesType.total_energy, "sum"),
+                pick(provider, record_id, SeriesType.active_energy, "sum"),
+            )
+            workout["own_energy"] = pick(own, record_id, SeriesType.active_energy, "sum")
+            workout["average_met"] = _first(
+                pick(provider, record_id, SeriesType.physical_effort, "avg"),
+                pick(own, record_id, SeriesType.physical_effort, "avg"),
+            )
+            statistics[record_id] = workout
+        return statistics
 
     def get_sleep_totals(
         self,
@@ -444,7 +686,7 @@ class EventRecordRepository(
     ) -> tuple[int, int, int, int, Decimal | None]:
         """Sessions, naps, asleep and in-bed seconds, and mean efficiency, in one aggregate."""
         filters = self._record_filters(
-            query_params.model_copy(update={"category": "sleep"}), user_id, restrict_to_record_ids
+            query_params.model_copy(update={"category": EventCategory.SLEEP}), user_id, restrict_to_record_ids
         )
         row = (
             db_session.query(
@@ -493,7 +735,7 @@ class EventRecordRepository(
         )
         filters = [
             DataSource.user_id == UUID(user_id),
-            EventRecord.category == "sleep",
+            EventRecord.category == EventCategory.SLEEP,
         ]
         if query_params.start_datetime:
             filters.append(EventRecord.start_datetime >= query_params.start_datetime)
@@ -576,7 +818,7 @@ class EventRecordRepository(
         query = (
             db_session.query(key_column, bucket_start, func.count(self.model.id).label("count"))
             .join(DataSource, self.model.data_source_id == DataSource.id)
-            .filter(DataSource.user_id == user_id, self.model.category == "workout")
+            .filter(DataSource.user_id == user_id, self.model.category == EventCategory.WORKOUT)
         )
         if provider is not None:
             query = query.filter(DataSource.provider == provider)
@@ -612,14 +854,14 @@ class EventRecordRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
-                self.model.category == "workout",
+                self.model.category == EventCategory.WORKOUT,
                 self.model.type.isnot(None),
             )
             .group_by(self.model.type)
             .order_by(self.model.type)
             .all()
         )
-        return [workout_type for (workout_type,) in results]
+        return [workout_type for (workout_type,) in results if workout_type is not None]
 
     def get_sleep_stage_stats_via_json(self, db_session: DbSession, record_id: UUID) -> list[dict]:
         """
@@ -669,10 +911,10 @@ class EventRecordRepository(
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
-                EventRecord.category == "sleep",
+                EventRecord.category == EventCategory.SLEEP,
                 SleepDetails.sleep_stages.contains([{"stage": stage_name}]),
             )
-            .order_by(desc(EventRecord.start_datetime))
+            .order_by(EventRecord.start_datetime.desc())
             .limit(10)
             .all()
         )
@@ -790,7 +1032,7 @@ class EventRecordRepository(
             .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
             .filter(
                 DataSource.user_id == user_id,
-                EventRecord.category == "sleep",
+                EventRecord.category == EventCategory.SLEEP,
                 EventRecord.end_datetime >= start_date - timedelta(days=1),
                 local_sleep_date >= cast(start_date, Date),
                 local_sleep_date < cast(end_date, Date),
@@ -803,41 +1045,6 @@ class EventRecordRepository(
                 DataSource.device_type,
             )
         ).subquery()
-
-        hr_id = get_series_type_id(SeriesType.heart_rate)
-        sdnn_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
-        rmssd_id = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
-        resp_id = get_series_type_id(SeriesType.respiratory_rate)
-        spo2_id = get_series_type_id(SeriesType.oxygen_saturation)
-
-        # Lateral subquery: for each sleep row, average physio data within
-        # [min_start_time, max_end_time) — exact window, no date-grouping mismatch.
-        physio_lateral = lateral(
-            select(
-                func.avg(case((DataPointSeries.series_type_definition_id == hr_id, DataPointSeries.value))).label(
-                    "avg_hr"
-                ),
-                func.avg(case((DataPointSeries.series_type_definition_id == sdnn_id, DataPointSeries.value))).label(
-                    "avg_hrv_sdnn"
-                ),
-                func.avg(case((DataPointSeries.series_type_definition_id == rmssd_id, DataPointSeries.value))).label(
-                    "avg_hrv_rmssd"
-                ),
-                func.avg(case((DataPointSeries.series_type_definition_id == resp_id, DataPointSeries.value))).label(
-                    "avg_resp"
-                ),
-                func.avg(case((DataPointSeries.series_type_definition_id == spo2_id, DataPointSeries.value))).label(
-                    "avg_spo2"
-                ),
-            )
-            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
-            .where(
-                DataSource.user_id == user_id,
-                DataPointSeries.series_type_definition_id.in_([hr_id, sdnn_id, rmssd_id, resp_id, spo2_id]),
-                DataPointSeries.recorded_at >= subquery.c.min_start_time,
-                DataPointSeries.recorded_at < subquery.c.max_end_time,
-            )
-        )
 
         # Build main query from subquery, casting record_id back to UUID
         record_id_col = cast(subquery.c.record_id_text, SQL_UUID).label("record_id")
@@ -860,12 +1067,7 @@ class EventRecordRepository(
             subquery.c.efficiency_duration_sum,
             subquery.c.nap_count,
             subquery.c.nap_duration,
-            physio_lateral.c.avg_hr,
-            physio_lateral.c.avg_hrv_sdnn,
-            physio_lateral.c.avg_hrv_rmssd,
-            physio_lateral.c.avg_resp,
-            physio_lateral.c.avg_spo2,
-        ).outerjoin(physio_lateral, true())
+        )
         query = query.filter(subquery.c.source_rank == 1)
 
         # Handle cursor pagination
@@ -918,18 +1120,17 @@ class EventRecordRepository(
                     # Nap tracking
                     "nap_count": int(row.nap_count) if row.nap_count is not None else None,
                     "nap_duration_minutes": int(row.nap_duration) // 60 if row.nap_duration is not None else None,
-                    # Physio averages from data_point_series
-                    "avg_hr": float(row.avg_hr) if row.avg_hr is not None else None,
-                    "avg_hrv_sdnn": float(row.avg_hrv_sdnn) if row.avg_hrv_sdnn is not None else None,
-                    "avg_hrv_rmssd": float(row.avg_hrv_rmssd) if row.avg_hrv_rmssd is not None else None,
-                    "avg_resp": float(row.avg_resp) if row.avg_resp is not None else None,
-                    "avg_spo2": float(row.avg_spo2) if row.avg_spo2 is not None else None,
                 }
             )
 
         # Attach per-session breakdown (individual sleep/nap records) for each summary,
         # keyed by the same (date, provider, source, device_model) grouping identity.
-        sessions_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
+        sessions_by_key, main_sleeps_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
+        # Only this page's nights are read from the aggregate table, not every night in the range.
+        page_keys = {(s["sleep_date"], s["provider"], s["source"], s["device_model"]) for s in summaries}
+        physiology = self._sleep_physiology(
+            db_session, {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        )
         for summary in summaries:
             key = (
                 summary["sleep_date"],
@@ -938,6 +1139,7 @@ class EventRecordRepository(
                 summary["device_model"],
             )
             summary["sessions"] = sessions_by_key.get(key, [])
+            summary.update(physiology.get(key, dict.fromkeys(_SLEEP_PHYSIOLOGY)))
 
         return summaries
 
@@ -947,8 +1149,9 @@ class EventRecordRepository(
         user_id: UUID,
         start_date: datetime,
         end_date: datetime,
-    ) -> dict[tuple, list[dict]]:
-        """Get individual sleep/nap sessions keyed by (sleep_date, provider, source, device_model).
+    ) -> tuple[dict[tuple, list[dict]], dict[tuple, list[tuple[UUID, int]]]]:
+        """Get individual sleep/nap sessions keyed by (sleep_date, provider, source, device_model),
+        and per key the main sleeps' record ids with their durations.
 
         Mirrors the date filter and grouping identity of ``get_sleep_summaries`` but returns one
         entry per underlying EventRecord instead of collapsing them. Per-session duration prefers
@@ -972,6 +1175,7 @@ class EventRecordRepository(
         rows = (
             db_session.query(
                 local_sleep_date.label("sleep_date"),
+                EventRecord.id.label("record_id"),
                 EventRecord.start_datetime.label("start_time"),
                 EventRecord.end_datetime.label("end_time"),
                 EventRecord.zone_offset.label("zone_offset"),
@@ -985,18 +1189,21 @@ class EventRecordRepository(
             .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
             .filter(
                 DataSource.user_id == user_id,
-                EventRecord.category == "sleep",
+                EventRecord.category == EventCategory.SLEEP,
                 EventRecord.end_datetime >= start_date - timedelta(days=1),
                 local_sleep_date >= cast(start_date, Date),
                 local_sleep_date < cast(end_date, Date),
             )
-            .order_by(asc(local_sleep_date), asc(EventRecord.start_datetime))
+            .order_by(local_sleep_date.asc(), EventRecord.start_datetime.asc())
             .all()
         )
 
         sessions_by_key: dict[tuple, list[dict]] = {}
+        main_sleeps_by_key: dict[tuple, list[tuple[UUID, int]]] = {}
         for row in rows:
             key = (row.sleep_date, row.provider, row.source, row.device_model)
+            if not row.is_nap:
+                main_sleeps_by_key.setdefault(key, []).append((row.record_id, int(row.duration_seconds or 0)))
             sessions_by_key.setdefault(key, []).append(
                 {
                     "start_time": row.start_time,
@@ -1006,7 +1213,112 @@ class EventRecordRepository(
                     "is_nap": bool(row.is_nap),
                 }
             )
-        return sessions_by_key
+        return sessions_by_key, main_sleeps_by_key
+
+    @staticmethod
+    def sleep_values_by_day(
+        db_session: DbSession, user_id: UUID, type_id: int, start_dt: datetime, end_dt: datetime
+    ) -> dict[date, float]:
+        """A series' value on each of the user's main sleeps that overlap [start_dt, end_dt), by the UTC date
+        the sleep ended: the provider's row where it sent one, else ours rolled up from the sleep's samples."""
+        rows = (
+            db_session.query(EventRecord.end_datetime, EventRecordAggregate.avg)
+            .join(EventRecordAggregate, EventRecordAggregate.record_id == EventRecord.id)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == EventCategory.SLEEP,
+                _nap_condition(False),
+                EventRecord.end_datetime >= start_dt,
+                EventRecord.start_datetime < end_dt,
+                EventRecordAggregate.series_type_definition_id == type_id,
+                EventRecordAggregate.avg.isnot(None),
+            )
+            # Ours first, so a provider's row for the same date overwrites it whichever sleep ended later.
+            .order_by(EventRecordAggregate.computed_by == ComputedBy.PROVIDER, EventRecord.end_datetime)
+        )
+        return {end.astimezone(timezone.utc).date(): float(avg) for end, avg in rows if avg is not None}
+
+    @staticmethod
+    def night_values(
+        db_session: DbSession, user_id: UUID, type_ids: list[int], first_day: date, last_day: date
+    ) -> dict[tuple[UUID, int, date], float]:
+        """Each main sleep's value of these series, keyed by its source, series and the local day it ended on
+        (the morning it scores): the provider's where it sent one, else ours."""
+        local_end = cast(
+            func.timezone("UTC", EventRecord.end_datetime)
+            + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+        rows = (
+            db_session.query(
+                EventRecord.data_source_id,
+                EventRecordAggregate.series_type_definition_id,
+                local_end,
+                EventRecordAggregate.avg,
+            )
+            .join(EventRecordAggregate, EventRecordAggregate.record_id == EventRecord.id)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == EventCategory.SLEEP,
+                _nap_condition(False),
+                # A day either side of the range in UTC, so an offset cannot push a night out; the local day decides.
+                EventRecord.end_datetime >= utc_midnight(first_day) - timedelta(days=1),
+                EventRecord.end_datetime < utc_midnight(last_day) + timedelta(days=2),
+                local_end >= first_day,
+                local_end <= last_day,
+                EventRecordAggregate.series_type_definition_id.in_(type_ids),
+                EventRecordAggregate.avg.isnot(None),
+            )
+            # Ours first, so the provider's row for the same night overwrites it.
+            .order_by(EventRecordAggregate.computed_by == ComputedBy.PROVIDER, EventRecord.end_datetime)
+        )
+        return {(source_id, type_id, day): float(avg) for source_id, type_id, day, avg in rows if avg is not None}
+
+    @staticmethod
+    def _sleep_physiology(
+        db_session: DbSession, main_sleeps_by_key: dict[tuple, list[tuple[UUID, int]]]
+    ) -> dict[tuple, dict[str, float | None]]:
+        """Each night's averages from its own main sleeps' aggregates, the provider's before ours, else the samples
+        recorded inside the sleep (its own device's, else the user's other devices'); weighted by sleep length."""
+        record_ids = [record_id for sleeps in main_sleeps_by_key.values() for record_id, _ in sleeps]
+        type_ids = {get_series_type_id(series_type): key for key, series_type in _SLEEP_PHYSIOLOGY.items()}
+        averages: dict[tuple[UUID, int], float] = {}
+        if record_ids:
+            rows = (
+                db_session.query(EventRecordAggregate)
+                .filter(
+                    EventRecordAggregate.record_id.in_(record_ids),
+                    EventRecordAggregate.series_type_definition_id.in_(type_ids),
+                )
+                # Ours first, so the provider's row for the same sleep overwrites it.
+                .order_by(EventRecordAggregate.computed_by == ComputedBy.PROVIDER)
+            )
+            for row in rows:
+                if row.avg is not None:
+                    averages[(row.record_id, row.series_type_definition_id)] = float(row.avg)
+        missing = {(record_id, type_id) for record_id in record_ids for type_id in type_ids} - set(averages)
+        if missing:
+            pairs = sorted(missing)
+            params = {"record_ids": [r for r, _ in pairs], "type_ids": [t for _, t in pairs]}
+            for row in db_session.execute(_NIGHT_FROM_SAMPLES, params):
+                if row.avg is not None:
+                    averages[(row.record_id, row.type_id)] = float(row.avg)
+
+        physiology: dict[tuple, dict[str, float | None]] = {}
+        for key, sleeps in main_sleeps_by_key.items():
+            night: dict[str, float | None] = {}
+            for type_id, field in type_ids.items():
+                weighted = [
+                    (averages[(record_id, type_id)], max(duration, 1))
+                    for record_id, duration in sleeps
+                    if (record_id, type_id) in averages
+                ]
+                total = sum(weight for _, weight in weighted)
+                night[field] = sum(value * weight for value, weight in weighted) / total if weighted else None
+            physiology[key] = night
+        return physiology
 
     def get_daily_workout_aggregates(
         self,
@@ -1020,7 +1332,7 @@ class EventRecordRepository(
         Aggregates WorkoutDetails data by date for activity summaries.
 
         Returns list of dicts with keys:
-        - workout_date, source, device_model
+        - workout_date, provider, source, device_model, device_type
         - elevation_meters, distance_meters, energy_burned_kcal
         """
         local_workout_date = cast(
@@ -1031,29 +1343,33 @@ class EventRecordRepository(
         results = (
             db_session.query(
                 local_workout_date.label("workout_date"),
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                DataSource.device_type,
                 # Sum elevation gain for all workouts on that day
-                func.sum(WorkoutDetails.total_elevation_gain).label("elevation_sum"),
+                func.sum(_session_sum(SeriesType.elevation_gain)).label("elevation_sum"),
                 # Sum distance for all workouts
-                func.sum(WorkoutDetails.distance).label("distance_sum"),
+                func.sum(_session_sum(SeriesType.distance)).label("distance_sum"),
                 # Sum energy burned
-                func.sum(WorkoutDetails.energy_burned).label("energy_sum"),
+                func.sum(workout_energy()).label("energy_sum"),
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
             # Use outerjoin since WorkoutDetails is optional - some workouts may not have details
             .outerjoin(WorkoutDetails, self.model.id == WorkoutDetails.record_id)
             .filter(
                 DataSource.user_id == user_id,
-                self.model.category == "workout",
+                self.model.category == EventCategory.WORKOUT,
                 self.model.end_datetime >= start_date - timedelta(days=1),
                 local_workout_date >= cast(start_date, Date),
                 local_workout_date < cast(end_date, Date),
             )
             .group_by(
                 local_workout_date,
+                DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
+                DataSource.device_type,
             )
             .order_by(asc(local_workout_date))
             .all()
@@ -1064,8 +1380,10 @@ class EventRecordRepository(
             aggregates.append(
                 {
                     "workout_date": row.workout_date,
+                    "provider": row.provider,
                     "source": row.source,
                     "device_model": row.device_model,
+                    "device_type": row.device_type,
                     "elevation_meters": float(row.elevation_sum) if row.elevation_sum is not None else None,
                     "distance_meters": float(row.distance_sum) if row.distance_sum is not None else None,
                     "energy_burned_kcal": float(row.energy_sum) if row.energy_sum is not None else None,
@@ -1099,7 +1417,7 @@ class EventRecordRepository(
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
             DataSource.user_id == user_id,
-            self.model.category == "sleep",
+            self.model.category == EventCategory.SLEEP,
             self.model.type == "sleep_session",
             self.model.start_datetime <= end_time + threshold,
             self.model.end_datetime >= start_time - threshold,
@@ -1135,10 +1453,18 @@ class EventRecordRepository(
             .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
             .filter(
                 DataSource.user_id == user_id,
-                EventRecord.category == "sleep",
+                EventRecord.category == EventCategory.SLEEP,
                 EventRecord.end_datetime >= start_dt,
                 EventRecord.start_datetime < end_dt,
             )
             .all()
         )
         return [(event_record, sleep_details) for event_record, sleep_details in rows]
+
+
+def local_days(source_id: UUID, start: datetime, end: datetime, zone_offset: str | None) -> list[tuple[UUID, date]]:
+    """The local days an event starts and ends on: rolling either up recomputes the event's own rows (a day's
+    rollup reaches every session overlapping it), and no day row depends on an event. Every day in between
+    would queue a 28-day cycle, or a span sent by mistake, a day at a time."""
+    first, last = local_date(start, zone_offset), local_date(end, zone_offset)
+    return [(source_id, day) for day in sorted({first, last})]
