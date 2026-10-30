@@ -6,6 +6,7 @@ from billiard.einfo import ExceptionInfo
 from celery import Task, shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.models import Invitation
 from app.schemas.model_crud.user_management import InvitationStatus
@@ -68,6 +69,7 @@ class EmailTaskBase(Task):
 
 
 @shared_task(
+    name=CeleryTask.SEND_INVITATION_EMAIL,
     bind=True,
     base=EmailTaskBase,
     autoretry_for=(ConnectionError, TimeoutError, EmailSendError),

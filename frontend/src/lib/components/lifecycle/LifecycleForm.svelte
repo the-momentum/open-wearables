@@ -1,16 +1,8 @@
 <script lang="ts">
-	import Archive from '@lucide/svelte/icons/archive';
+	import Layers from '@lucide/svelte/icons/layers';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import SaveBar from '$lib/components/settings/SaveBar.svelte';
-	import Alert from '$lib/components/ui/Alert.svelte';
-	import {
-		conflict,
-		invalid,
-		LIMITS,
-		policyOf,
-		samePolicy,
-		toFields
-	} from '$lib/lifecycle/projection';
+	import { invalid, LIMITS, policyOf, samePolicy, toFields } from '$lib/lifecycle/projection';
 	import type { Lifecycle, Policy } from '$lib/lifecycle/types';
 	import GrowthProjection from './GrowthProjection.svelte';
 	import PolicyCard from './PolicyCard.svelte';
@@ -25,20 +17,22 @@
 
 	const saved = $derived(lifecycle.settings);
 
-	// Re-derived when a save comes back. The days outlive their switch, so
-	// turning one off and on again keeps the number.
-	let archiveOn = $derived(saved.archive_after_days !== null);
-	let archiveDays = $derived<number | null>(saved.archive_after_days ?? 90);
+	// Re-derived when a save comes back.
+	let rollupOn = $derived(saved.rollup_enabled);
 	let retainOn = $derived(saved.delete_after_days !== null);
-	let retainDays = $derived<number | null>(saved.delete_after_days ?? 365);
+	// The days outlive their switch: a number typed while deletion is off is kept across saves,
+	// and only a saved window replaces it.
+	let retainDays = $state<number | null>(lifecycle.settings.delete_after_days ?? 365);
+	$effect(() => {
+		if (saved.delete_after_days !== null) retainDays = saved.delete_after_days;
+	});
 
 	const policy: Policy = $derived({
-		archive: archiveOn ? (archiveDays ?? NaN) : null,
+		rollup: rollupOn,
 		retain: retainOn ? (retainDays ?? NaN) : null
 	});
 
 	const problem = $derived(invalid(policy));
-	const warning = $derived(problem ? null : conflict(policy));
 	const unsaved = $derived(!samePolicy(policy, policyOf(saved)));
 
 	// Mid-edit, the chart keeps the saved curve rather than one built from a blank.
@@ -50,35 +44,29 @@
 
 	<GrowthProjection storage={lifecycle.storage} policy={drawn} />
 
-	<div class="grid gap-5 lg:grid-cols-2 lg:items-start">
+	<div class="grid gap-5 lg:grid-cols-2">
 		<PolicyCard
-			icon={Archive}
-			title="Archival"
-			description="Rolls per-sample series older than the window into one row a day. Totals and averages survive; the individual samples do not."
-			toggle="Archive old samples"
-			lead="Archive data older than"
-			off="Off - every sample is kept at full resolution."
-			max={LIMITS.archive}
-			bind:enabled={archiveOn}
-			bind:days={archiveDays}
+			icon={Layers}
+			title="Rollup"
+			description="Every 15 minutes, the days whose samples changed are summed up into one row a day per series, and one per sleep or workout. Summaries read these rows; the samples stay until deletion removes them."
+			toggle="Roll up samples"
+			on="On - changed days are rolled up every 15 minutes."
+			off="Off - the days that change are dropped, not kept for later: summaries and day reads for sources without provider day values stop at the last rolled-up day, and deletion removes samples for good."
+			bind:enabled={rollupOn}
 		/>
 
 		<PolicyCard
 			icon={Trash2}
 			title="Deletion"
-			description="Permanently removes data older than the window - archived rows when archival is on, live ones when it is not. There is no undo."
+			description="Permanently removes samples older than the window, whole local days at a time. With rollup on, their days and sessions stay as aggregates. There is no undo."
 			toggle="Delete old data"
-			lead="Delete data older than"
+			lead="Delete samples older than"
 			off="Off - nothing is ever deleted."
 			max={LIMITS.retain}
 			bind:enabled={retainOn}
 			bind:days={retainDays}
 		/>
 	</div>
-
-	{#if warning}
-		<Alert tone="warning">{warning}</Alert>
-	{/if}
 
 	<RunNow {saved} {unsaved} {message} {dispatched} />
 </div>

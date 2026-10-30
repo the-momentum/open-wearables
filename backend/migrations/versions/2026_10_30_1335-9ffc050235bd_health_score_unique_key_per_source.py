@@ -1,7 +1,7 @@
 """health score unique key per source
 
 Revision ID: 9ffc050235bd
-Revises: b679f6226f99
+Revises: 2785d37e79cc
 
 Adds data_source_id to the unique key, NULLS NOT DISTINCT so provider scores (no source) stay unique
 per provider. downgrade fails if two sources have a score at the same time by then.
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "9ffc050235bd"
-down_revision: Union[str, None] = "b679f6226f99"
+down_revision: Union[str, None] = "2785d37e79cc"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -64,18 +64,18 @@ DEFAULT_BATCH = 50_000
 _SOURCE_IDS = text("SELECT id FROM data_source WHERE provider = ANY(:providers) AND source = :source")
 
 # Live rows: legacy = untagged. The predicate matches the leading columns of
-# uq_data_point_series_source_type_time, so each batch is an index range scan.
+# uq_series_sample_source_type_time, so each batch is an index range scan.
 _LIVE_PREDICATE = """
     data_source_id = ANY(:sources)
     AND series_type_definition_id = :series
     AND external_id IS NULL
 """
-_LIVE_COUNT = text(f"SELECT COUNT(*) FROM data_point_series WHERE {_LIVE_PREDICATE}")
+_LIVE_COUNT = text(f"SELECT COUNT(*) FROM series_sample WHERE {_LIVE_PREDICATE}")
 _LIVE_DELETE = text(f"""
     WITH batch AS (
-        SELECT id FROM data_point_series WHERE {_LIVE_PREDICATE} LIMIT :batch
+        SELECT id FROM series_sample WHERE {_LIVE_PREDICATE} LIMIT :batch
     )
-    DELETE FROM data_point_series d USING batch WHERE d.id = batch.id
+    DELETE FROM series_sample d USING batch WHERE d.id = batch.id
 """)
 
 # Archive rows: no marker, every Health API energy bucket is legacy (see module docstring).

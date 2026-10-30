@@ -12,6 +12,7 @@ from app.schemas.webhooks.event_types import WebhookEventType
 _USER_ID = "00000000-0000-0000-0000-000000000002"
 _RECORD_ID = "00000000-0000-0000-0000-000000000001"
 _CONNECTION_ID = "00000000-0000-0000-0000-000000000003"
+_RUN_ID = "sdk_9f3c8ea41b2d5c07"
 
 _SOURCE_GARMIN = {"provider": "garmin", "device": "Garmin Fenix 7"}
 _SOURCE_OURA = {
@@ -45,6 +46,7 @@ def _ts_payload(event_type: str, series_type: str, provider: str, unit: str, sam
                     "unit": unit,
                     "source": source,
                     "is_daily_total": None,
+                    "window_seconds": None,
                 }
             ],
         },
@@ -72,6 +74,51 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "connection_id": _CONNECTION_ID,
             "reason": "refresh_failed",
             "revoked_at": "2024-01-01T08:00:00+00:00",
+        },
+    },
+    # ------------------------------------------------------------------
+    # Per-data-type sync outcomes
+    # ------------------------------------------------------------------
+    WebhookEventType.SYNC_DATA_TYPE_COMPLETED: {
+        "type": WebhookEventType.SYNC_DATA_TYPE_COMPLETED,
+        "data": {
+            "user_id": _USER_ID,
+            "provider": "apple",
+            "source": "sdk",
+            "scope": "historical",
+            "run_id": _RUN_ID,
+            "data_type": "heart_rate",
+            "native_data_type": "HKQuantityTypeIdentifierHeartRate",
+            "kind": "series",
+            "status": "success",
+            "items_reported": 41230,
+            "items_inserted": 41230,
+            "items_updated": 0,
+            "written": {"start": "2024-01-01T00:00:00+00:00", "end": "2024-03-31T23:59:00+00:00"},
+            "coverage": {"start": "2019-03-14T06:00:00+00:00", "end": "2024-03-31T23:59:00+00:00"},
+            "error_code": None,
+            "error": None,
+        },
+    },
+    WebhookEventType.SYNC_DATA_TYPE_FAILED: {
+        "type": WebhookEventType.SYNC_DATA_TYPE_FAILED,
+        "data": {
+            "user_id": _USER_ID,
+            "provider": "apple",
+            "source": "sdk",
+            "scope": "historical",
+            "run_id": _RUN_ID,
+            "data_type": "sleep",
+            "native_data_type": "HKCategoryTypeIdentifierSleepAnalysis",
+            "kind": "event",
+            "status": "failed",
+            "items_reported": None,
+            "items_inserted": 0,
+            "items_updated": 0,
+            "written": None,
+            "coverage": None,
+            "error_code": "authorization_denied",
+            "error": "User has not granted access to sleep data",
         },
     },
     # ------------------------------------------------------------------
@@ -200,13 +247,13 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         WebhookEventType.SERIES_HEART_RATE, "heart_rate", "garmin", "bpm", 72.0
     ),
     WebhookEventType.SERIES_RESTING_HEART_RATE: _ts_payload(
-        WebhookEventType.SERIES_RESTING_HEART_RATE, "resting_heart_rate", "garmin", "bpm", 52.0
+        WebhookEventType.SERIES_RESTING_HEART_RATE, "resting_heart_rate", "apple", "bpm", 52.0
     ),
     WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE: _ts_payload(
         WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE, "heart_rate_recovery_one_minute", "garmin", "bpm", 24.0
     ),
-    WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE: _ts_payload(
-        WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE, "walking_heart_rate_average", "apple", "bpm", 98.0
+    WebhookEventType.SERIES_WALKING_HEART_RATE: _ts_payload(
+        WebhookEventType.SERIES_WALKING_HEART_RATE, "walking_heart_rate", "apple", "bpm", 98.0
     ),
     WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN: _ts_payload(
         WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN, "atrial_fibrillation_burden", "apple", "%", 0.0
@@ -334,6 +381,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
     WebhookEventType.SERIES_BASAL_ENERGY: _ts_payload(
         WebhookEventType.SERIES_BASAL_ENERGY, "basal_energy", "apple", "kcal", 1850.0
     ),
+    WebhookEventType.SERIES_TOTAL_ENERGY: _ts_payload(
+        WebhookEventType.SERIES_TOTAL_ENERGY, "total_energy", "health_connect", "kcal", 2150.0
+    ),
     WebhookEventType.SERIES_ACTIVE_TIME: _ts_payload(
         WebhookEventType.SERIES_ACTIVE_TIME, "active_time", "garmin", "minutes", 312.0
     ),
@@ -345,13 +395,10 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         WebhookEventType.SERIES_EXERCISE_TIME, "exercise_time", "apple", "min", 32.0
     ),
     WebhookEventType.SERIES_PHYSICAL_EFFORT: _ts_payload(
-        WebhookEventType.SERIES_PHYSICAL_EFFORT, "physical_effort", "apple", "MET·min", 4.2
+        WebhookEventType.SERIES_PHYSICAL_EFFORT, "physical_effort", "apple", "met", 4.2
     ),
     WebhookEventType.SERIES_FLIGHTS_CLIMBED: _ts_payload(
         WebhookEventType.SERIES_FLIGHTS_CLIMBED, "flights_climbed", "apple", "count", 8.0
-    ),
-    WebhookEventType.SERIES_AVERAGE_MET: _ts_payload(
-        WebhookEventType.SERIES_AVERAGE_MET, "average_met", "apple", "MET", 1.4
     ),
     WebhookEventType.SERIES_PUSH_COUNT: _ts_payload(
         WebhookEventType.SERIES_PUSH_COUNT, "push_count", "apple", "count", 0.0

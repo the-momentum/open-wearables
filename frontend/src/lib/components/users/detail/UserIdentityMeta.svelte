@@ -1,10 +1,10 @@
 <script lang="ts">
 	import CopyableId from '$lib/components/ui/CopyableId.svelte';
-	import type { UserDetail } from '$lib/users/types';
+	import type { User } from '$lib/users/types';
 	import { formatDate, formatRelativeTime } from '$lib/utils/datetime';
 	import { humanise } from '$lib/utils/text';
 
-	let { user }: { user: UserDetail } = $props();
+	let { user }: { user: User } = $props();
 </script>
 
 <div

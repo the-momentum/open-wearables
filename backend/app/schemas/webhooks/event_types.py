@@ -35,6 +35,14 @@ class WebhookEventType(StrEnum):
     SYNC_FAILED = "sync.failed"
 
     # -------------------------------------------------------------------------
+    # Per-data-type sync outcomes (one per data type within a run)
+    # Subscribe to learn when a single type's history is fully in, rather than
+    # waiting for the whole run.
+    # -------------------------------------------------------------------------
+    SYNC_DATA_TYPE_COMPLETED = "sync.data_type.completed"
+    SYNC_DATA_TYPE_FAILED = "sync.data_type.failed"
+
+    # -------------------------------------------------------------------------
     # EventRecord-based (discrete sessions)
     # -------------------------------------------------------------------------
     WORKOUT_CREATED = "workout.created"
@@ -73,7 +81,7 @@ class WebhookEventType(StrEnum):
     SERIES_HEART_RATE = "series.heart_rate.created"
     SERIES_RESTING_HEART_RATE = "series.resting_heart_rate.created"
     SERIES_HEART_RATE_RECOVERY_ONE_MINUTE = "series.heart_rate_recovery_one_minute.created"
-    SERIES_WALKING_HEART_RATE_AVERAGE = "series.walking_heart_rate_average.created"
+    SERIES_WALKING_HEART_RATE = "series.walking_heart_rate.created"
     SERIES_ATRIAL_FIBRILLATION_BURDEN = "series.atrial_fibrillation_burden.created"
 
     # HRV
@@ -135,13 +143,13 @@ class WebhookEventType(StrEnum):
     SERIES_STEPS = "series.steps.created"
     SERIES_ACTIVE_ENERGY = "series.active_energy.created"
     SERIES_BASAL_ENERGY = "series.basal_energy.created"
+    SERIES_TOTAL_ENERGY = "series.total_energy.created"
 
     # Activity basic
     SERIES_STAND_TIME = "series.stand_time.created"
     SERIES_EXERCISE_TIME = "series.exercise_time.created"
     SERIES_PHYSICAL_EFFORT = "series.physical_effort.created"
     SERIES_FLIGHTS_CLIMBED = "series.flights_climbed.created"
-    SERIES_AVERAGE_MET = "series.average_met.created"
     SERIES_ACTIVE_TIME = "series.active_time.created"
     SERIES_PUSH_COUNT = "series.push_count.created"
     SERIES_NUMBER_OF_TIMES_FALLEN = "series.number_of_times_fallen.created"
@@ -203,6 +211,13 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SYNC_STARTED: "A sync run started for a user (live, historical, backfill, SDK or XML).",
     WebhookEventType.SYNC_COMPLETED: "A sync run completed successfully (terminal state).",
     WebhookEventType.SYNC_FAILED: "A sync run failed (terminal state, includes error message).",
+    WebhookEventType.SYNC_DATA_TYPE_COMPLETED: (
+        "One data type finished within a sync run. On a historical run this is the signal that "
+        "the type's backfill is in; the payload carries the range now held for it."
+    ),
+    WebhookEventType.SYNC_DATA_TYPE_FAILED: (
+        "One data type failed or was lost within a sync run, while others may have succeeded."
+    ),
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
     WebhookEventType.MEAL_CREATED: "A new meal or nutrition-log entry was saved.",
@@ -234,7 +249,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_HEART_RATE: "Continuous heart-rate samples were ingested.",
     WebhookEventType.SERIES_RESTING_HEART_RATE: "Resting heart-rate samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE: "1-minute heart-rate recovery samples were ingested.",
-    WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE: "Walking heart-rate average samples were ingested.",
+    WebhookEventType.SERIES_WALKING_HEART_RATE: "Walking heart-rate samples were ingested.",
     WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN: "Atrial fibrillation burden samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_VARIABILITY_SDNN: "HRV SDNN samples were ingested.",
     WebhookEventType.SERIES_HEART_RATE_VARIABILITY_RMSSD: "HRV RMSSD samples were ingested.",
@@ -278,11 +293,13 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
         "Active energy (calories) samples were ingested. Not total energy - basal is a separate series and event."
     ),
     WebhookEventType.SERIES_BASAL_ENERGY: "Basal energy samples were ingested.",
+    WebhookEventType.SERIES_TOTAL_ENERGY: (
+        "Total energy (active + basal) samples were ingested, from providers that don't split the two."
+    ),
     WebhookEventType.SERIES_STAND_TIME: "Stand time samples were ingested.",
     WebhookEventType.SERIES_EXERCISE_TIME: "Exercise time samples were ingested.",
     WebhookEventType.SERIES_PHYSICAL_EFFORT: "Physical effort samples were ingested.",
     WebhookEventType.SERIES_FLIGHTS_CLIMBED: "Flights climbed samples were ingested.",
-    WebhookEventType.SERIES_AVERAGE_MET: "Average MET samples were ingested.",
     WebhookEventType.SERIES_ACTIVE_TIME: "Active time samples were ingested.",
     WebhookEventType.SERIES_PUSH_COUNT: "Wheelchair push count samples were ingested.",
     WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN: "Fall count samples were ingested.",
@@ -333,7 +350,7 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
         WebhookEventType.SERIES_HEART_RATE,
         WebhookEventType.SERIES_RESTING_HEART_RATE,
         WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE,
-        WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE,
+        WebhookEventType.SERIES_WALKING_HEART_RATE,
         WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN,
     ],
     WebhookEventType.HEART_RATE_VARIABILITY_CREATED: [
@@ -397,13 +414,13 @@ EVENT_TYPE_GROUPS: dict[str, list[str]] = {
     WebhookEventType.CALORIES_CREATED: [
         WebhookEventType.SERIES_ACTIVE_ENERGY,
         WebhookEventType.SERIES_BASAL_ENERGY,
+        WebhookEventType.SERIES_TOTAL_ENERGY,
     ],
     WebhookEventType.ACTIVITY_CREATED_TIMESERIES: [
         WebhookEventType.SERIES_STAND_TIME,
         WebhookEventType.SERIES_EXERCISE_TIME,
         WebhookEventType.SERIES_PHYSICAL_EFFORT,
         WebhookEventType.SERIES_FLIGHTS_CLIMBED,
-        WebhookEventType.SERIES_AVERAGE_MET,
         WebhookEventType.SERIES_ACTIVE_TIME,
         WebhookEventType.SERIES_PUSH_COUNT,
         WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN,

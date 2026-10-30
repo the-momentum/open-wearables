@@ -15,8 +15,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.series_types.sdk import get_series_type_from_metric_type
-from app.models import DataPointSeries, DataSource, EventRecord, MealDetails, WorkoutDetails
-from app.schemas.enums import SeriesType
+from app.models import DataSource, EventRecord, EventRecordAggregate, MealDetails, SeriesSample, WorkoutDetails
+from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
@@ -173,6 +173,55 @@ class TestAppleSDKImport:
         assert details.distance == Decimal("2165.35")
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
+
+    def test_workout_statistics_are_mirrored_onto_their_workout(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+        assert {row.record_id for row in rows.values()} == {workout.id}
+        heart_rate = rows[get_series_type_id(SeriesType.heart_rate)]
+        assert (heart_rate.min, heart_rate.avg, heart_rate.max) == (Decimal("77"), Decimal("121.49"), Decimal("141"))
+        assert rows[get_series_type_id(SeriesType.weather_temperature)].avg == Decimal("11.19")
+        assert rows[get_series_type_id(SeriesType.physical_effort)].avg == Decimal("1.6")
+        # Active plus basal energy is the workout's total energy.
+        assert rows[get_series_type_id(SeriesType.total_energy)].sum == Decimal("180.00")
+
+    def test_a_resent_workout_keeps_its_statistics_on_the_stored_record(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+        before = db.query(EventRecordAggregate).count()
+
+        import_service.load_data(db, sample_sdk_payload, str(user.id))
+
+        assert db.query(EventRecord).filter(EventRecord.category == "workout").count() == 1
+        assert db.query(EventRecordAggregate).count() == before
+
+    def test_a_record_spanning_minutes_keeps_its_width(
+        self,
+        db: Session,
+        import_service: ImportService,
+        sample_sdk_payload: dict[str, Any],
+    ) -> None:
+        user = UserFactory()
+        payload = {**SDK_ENVELOPE, "data": {"records": sample_sdk_payload["data"]["records"][:1]}}
+
+        import_service.load_data(db, payload, str(user.id))
+
+        # 23:56:11 to 00:02:58
+        assert [sample.window_seconds for sample in db.query(SeriesSample)] == [407]
 
     def test_import_workout_without_heart_rate(
         self,
@@ -554,6 +603,41 @@ class TestAppleSDKImportEdgeCases:
         assert workout is not None
         assert workout.duration_seconds == 1800
 
+    def test_unsupported_record_types_are_counted(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """Types this backend can't map (e.g. from a newer SDK) are skipped and reported by type."""
+        user = UserFactory()
+
+        def record(record_id: str, metric_type: str, value: float, unit: str) -> dict[str, Any]:
+            return {
+                "id": record_id,
+                "type": metric_type,
+                "unit": unit,
+                "value": value,
+                "startDate": "2025-04-10T12:00:00Z",
+                "endDate": "2025-04-10T12:00:00Z",
+                "source": {"name": "Test Device", "bundleIdentifier": "test"},
+            }
+
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {
+                "records": [
+                    record("hr-1", "HKQuantityTypeIdentifierHeartRate", 70, "count/min"),
+                    record("future-1", "HKQuantityTypeIdentifierSomeFutureMetric", 42, "ms"),
+                    record("future-2", "HKQuantityTypeIdentifierSomeFutureMetric", 55, "ms"),
+                ],
+            },
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        assert result["records_saved"] == 1
+        assert result["unsupported_types"] == {"HKQuantityTypeIdentifierSomeFutureMetric": 2}
+
     def test_import_workout_null_statistics(
         self,
         db: Session,
@@ -596,6 +680,39 @@ class TestAppleSDKImportEdgeCases:
         assert details is not None
         assert details.heart_rate_avg is None
         assert details.distance is None
+        assert details.energy_burned is None
+
+    def test_import_workout_without_energy_statistic_leaves_calories_unset(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """A session with statistics but no calories, as third-party Health Connect apps send."""
+        user = UserFactory()
+        payload = {
+            **SDK_ENVELOPE,
+            "data": {
+                "workouts": [
+                    {
+                        "id": "CCCC1111-2222-3333-4444-555566667777",
+                        "type": "running",
+                        "startDate": "2025-01-29T16:00:00Z",
+                        "endDate": "2025-01-29T16:30:00Z",
+                        "source": {"name": "Strava", "bundleIdentifier": "com.strava.stravaride"},
+                        "values": [
+                            {"type": "duration", "unit": "s", "value": 1800},
+                            {"type": "distance", "unit": "m", "value": 5000},
+                        ],
+                    }
+                ],
+            },
+        }
+
+        import_service.load_data(db, payload, str(user.id))
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").one()
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).one()
+        assert details.distance == Decimal("5000")
         assert details.energy_burned is None
 
 
@@ -671,6 +788,27 @@ class TestSDKImportUnitConversion:
         assert values == {
             SeriesType.heart_rate_variability_sdnn: Decimal("48.200"),
             SeriesType.heart_rate_variability_rmssd: Decimal("36.700"),
+        }
+
+    def test_apple_wrist_temperature_maps_to_skin_temperature(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Apple Watch's overnight wrist reading is skin temperature - keep it out of the thermometer series."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [
+                self._record("HKQuantityTypeIdentifierBodyTemperature", 36.6, unit="degC"),
+                self._record("HKQuantityTypeIdentifierAppleSleepingWristTemperature", 34.8, unit="degC"),
+            ],
+        )
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, user_id)
+
+        values = {sample.series_type: sample.value for sample in samples}
+        assert values == {
+            SeriesType.body_temperature: Decimal("36.600"),
+            SeriesType.skin_temperature: Decimal("34.800"),
         }
 
     def test_health_connect_body_fat_percentage_not_scaled(
@@ -807,6 +945,114 @@ class TestSDKImportUnitConversion:
         assert samples[0].value == Decimal("105")
 
 
+class TestSDKImportPercentageScale:
+    """Percentage metrics: iOS SDK builds before `APPLE_SDK_PERCENT_SCALE_MIN_VERSION` send a
+    0-1 fraction labelled "%", newer builds send 0-100 like Health Connect does. Unknown versions
+    keep the legacy x100, so old app builds stay correct.
+    """
+
+    BODY_FAT = "HKQuantityTypeIdentifierBodyFatPercentage"
+    WALKING_TYPES = (
+        ("HKQuantityTypeIdentifierWalkingDoubleSupportPercentage", SeriesType.walking_double_support_percentage),
+        ("HKQuantityTypeIdentifierWalkingAsymmetryPercentage", SeriesType.walking_asymmetry_percentage),
+        ("HKQuantityTypeIdentifierAppleWalkingSteadiness", SeriesType.walking_steadiness),
+    )
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _record(metric_type: str, value: float) -> dict[str, Any]:
+        return {
+            "id": f"test-{metric_type}",
+            "type": metric_type,
+            "unit": "%",
+            "value": value,
+            "startDate": "2025-04-10T12:00:00Z",
+            "endDate": "2025-04-10T12:00:00Z",
+            "source": {"name": "Test Device", "bundleIdentifier": "test"},
+        }
+
+    def _samples(
+        self, import_service: ImportService, provider: str, sdk_version: str | None, records: list[dict[str, Any]]
+    ) -> dict[SeriesType, Decimal]:
+        request = SDKSyncRequest(
+            provider=provider,
+            sdkVersion=sdk_version or "",
+            syncTimestamp="2025-04-10T12:00:00Z",
+            data={"records": records},
+        )
+        samples = import_service._build_statistic_bundles(
+            request.data.records, request.provider, str(uuid4()), sdk_version
+        )
+        return {sample.series_type: sample.value for sample in samples}
+
+    @pytest.mark.parametrize(
+        "sdk_version",
+        [
+            "0.14.0",
+            "0.16.0",
+            "0.1.0",  # reported by iOS SDK 0.3.0 / 0.4.0
+            "0.13.0",  # reported by iOS SDK 0.14.0
+            None,
+            "",
+            "n/a",
+            "not-a-version",
+        ],
+    )
+    def test_old_or_unknown_apple_sdk_scales_fraction(
+        self, import_service: ImportService, sdk_version: str | None
+    ) -> None:
+        values = self._samples(
+            import_service,
+            "apple",
+            sdk_version,
+            [self._record(self.BODY_FAT, 0.304)] + [self._record(t, 0.12) for t, _ in self.WALKING_TYPES],
+        )
+
+        assert values[SeriesType.body_fat_percentage] == Decimal("30.400")
+        for _, series_type in self.WALKING_TYPES:
+            assert values[series_type] == Decimal("12.00")
+
+    @pytest.mark.parametrize("sdk_version", ["0.17.0", "0.17.0-beta.1", "0.18.2", "1.0.0"])
+    def test_new_apple_sdk_value_kept_as_is(self, import_service: ImportService, sdk_version: str) -> None:
+        values = self._samples(
+            import_service,
+            "apple",
+            sdk_version,
+            [self._record(self.BODY_FAT, 30.4)] + [self._record(t, 12) for t, _ in self.WALKING_TYPES],
+        )
+
+        assert values[SeriesType.body_fat_percentage] == Decimal("30.4")
+        for _, series_type in self.WALKING_TYPES:
+            assert values[series_type] == Decimal("12")
+
+    @pytest.mark.parametrize("provider", ["health_connect", "samsung"])
+    @pytest.mark.parametrize("sdk_version", ["0.1.0", "1.0.0", None])
+    def test_android_body_fat_never_scaled(
+        self, import_service: ImportService, provider: str, sdk_version: str | None
+    ) -> None:
+        values = self._samples(import_service, provider, sdk_version, [self._record("BODY_FAT", 30.4)])
+
+        assert values[SeriesType.body_fat_percentage] == Decimal("30.4")
+
+    @pytest.mark.parametrize(
+        ("sdk_version", "sent", "expected"),
+        [("0.16.0", 0.304, Decimal("30.400")), ("0.17.0", 30.4, Decimal("30.400"))],
+    )
+    def test_sdk_version_from_envelope_reaches_stored_value(
+        self, db: Session, import_service: ImportService, sdk_version: str, sent: float, expected: Decimal
+    ) -> None:
+        user = UserFactory()
+        payload = {**SDK_ENVELOPE, "sdkVersion": sdk_version, "data": {"records": [self._record(self.BODY_FAT, sent)]}}
+
+        import_service.import_data_from_request(db, json.dumps(payload), "application/json", str(user.id))
+
+        stored = db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).one()
+        assert stored.value == expected
+
+
 class TestSDKImportNutrition:
     """Dietary/nutrition metric types map to per-nutrient SeriesType samples."""
 
@@ -936,8 +1182,8 @@ class TestSDKImportMealCorrelation:
             "data": {"records": records},
         }
 
-    def _user_samples(self, db: Session, user_id: UUID) -> list[DataPointSeries]:
-        return db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user_id).all()
+    def _user_samples(self, db: Session, user_id: UUID) -> list[SeriesSample]:
+        return db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user_id).all()
 
     def test_food_correlation_creates_meal_with_its_nutrients(self, db: Session, import_service: ImportService) -> None:
         """The correlation's nutrient records are stored on the meal, not as samples; a record
@@ -1200,7 +1446,7 @@ class TestSDKImportAndroidFoodCorrelation:
             "dietary_protein": 32.0,
             "dietary_caffeine": 40.0,
         }
-        assert db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
+        assert db.query(SeriesSample).join(DataSource).filter(DataSource.user_id == user.id).count() == 0
 
         meals = event_record_service.get_meals(db, user.id, EventRecordQueryParams()).data
         assert meals[0].calories_kcal == 550.0

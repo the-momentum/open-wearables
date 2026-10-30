@@ -1,6 +1,6 @@
 """Tests for Garmin 247 data implementation."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -9,13 +9,17 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import SleepDetails
+from app.models import SeriesAggregate, SleepDetails
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums.series_types import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
+from app.schemas.sync_status import SyncScope, SyncSource
 from app.services.providers.garmin.data_247 import Garmin247Data
+from app.services.providers.garmin.handlers.wellness import process_wellness_items
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.utils.context import sync_run_var
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -445,9 +449,8 @@ class TestGarmin247Data:
 
         results = garmin_247.load_and_save_all(db, user.id)
 
-        assert results["sync_complete"] is True
-        assert results["total_saved"] == 0
-        assert "webhooks" in results["message"].lower()
+        assert results.rows_written == 0
+        assert not results.outcomes  # nothing attempted — data arrives by push
 
     def test_load_and_save_all_with_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with custom dates is still a no-op."""
@@ -458,8 +461,8 @@ class TestGarmin247Data:
 
         results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
 
-        assert results["sync_complete"] is True
-        assert results["total_saved"] == 0
+        assert results.rows_written == 0
+        assert not results.outcomes
 
     def test_load_and_save_all_string_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with ISO string dates is still a no-op."""
@@ -472,7 +475,8 @@ class TestGarmin247Data:
             end_time="2024-01-07T00:00:00Z",
         )
 
-        assert results["sync_complete"] is True
+        assert results.rows_written == 0
+        assert not results.all_failed
 
     # -------------------------------------------------------------------------
     # HRV Data Tests
@@ -501,8 +505,9 @@ class TestGarmin247Data:
 
         count = garmin_247.save_hrv_data(db, user.id, hrv_data)
 
-        # Should save 1 lastNightAvg + 3 hrvValues = 4 records
-        assert count == 4
+        # 3 hrvValues samples; lastNightAvg is the night's day value, kept in series_aggregate.
+        assert count == 3
+        assert [row.avg for row in db.query(SeriesAggregate)] == [Decimal("84")]
 
     def test_save_hrv_data_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with missing start time."""
@@ -535,8 +540,9 @@ class TestGarmin247Data:
 
         count = garmin_247.save_hrv_data(db, user.id, hrv_data)
 
-        # Should save just the lastNightAvg
-        assert count == 1
+        # lastNightAvg alone: no sample, one day row.
+        assert count == 0
+        assert db.query(SeriesAggregate).count() == 1
 
     # -------------------------------------------------------------------------
     # Build Method Tests (no DB interaction)
@@ -548,8 +554,8 @@ class TestGarmin247Data:
         normalized, _ = garmin_247.normalize_dailies(sample_daily, user_id)
         samples = garmin_247._build_dailies_samples(user_id, normalized)
 
-        # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
-        assert len(samples) == 8
+        # 6 metrics (steps, active/basal calories, resting_hr, floors, distance) + 3 HR samples
+        assert len(samples) == 9
         assert len({s.series_type for s in samples}) > 1
 
     def test_build_dailies_samples_exercise_time(self, garmin_247: Garmin247Data) -> None:
@@ -585,6 +591,58 @@ class TestGarmin247Data:
 
         # 1 heart_rate + 1 steps + 1 energy = 3
         assert len(samples) == 3
+
+    def test_build_epochs_samples_carry_the_window(
+        self, garmin_247: Garmin247Data, sample_epoch: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        normalized = garmin_247.normalize_epochs([sample_epoch], user_id)
+
+        samples = garmin_247._build_epochs_samples(user_id, normalized)
+
+        assert {s.window_seconds for s in samples} == {900}
+
+    def test_build_epochs_samples_keep_an_epoch_reporting_no_duration(
+        self, garmin_247: Garmin247Data, sample_epoch: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        normalized = garmin_247.normalize_epochs([{**sample_epoch, "durationInSeconds": 0}], user_id)
+
+        samples = garmin_247._build_epochs_samples(user_id, normalized)
+
+        assert len(samples) == 3
+        assert {s.window_seconds for s in samples} == {None}
+
+    def test_build_dailies_samples_carry_the_whole_garmin_local_day(
+        self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]
+    ) -> None:
+        user_id = uuid4()
+        mid_day_sync = {**sample_daily, "startTimeOffsetInSeconds": 3600, "durationInSeconds": 50400}
+        normalized, _ = garmin_247.normalize_dailies(mid_day_sync, user_id)
+
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        day = CalendarPeriod.local_day(datetime(2024, 1, 15, tzinfo=timezone.utc), 86400, "+01:00")
+        assert {s.period for s in samples if s.series_type != SeriesType.heart_rate} == {day}
+        assert {s.period for s in samples if s.series_type == SeriesType.heart_rate} == {None}
+
+    def test_build_dailies_samples_without_start_time_keep_the_date(self, garmin_247: Garmin247Data) -> None:
+        user_id = uuid4()
+        normalized, _ = garmin_247.normalize_dailies({"calendarDate": "2024-01-15", "steps": 100}, user_id)
+
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        assert [s.period for s in samples] == [CalendarPeriod.of_date(date(2024, 1, 15))]
+
+    def test_save_dailies_data_mirrors_the_day_values(
+        self, db: Session, garmin_247: Garmin247Data, sample_daily: dict[str, Any]
+    ) -> None:
+        user = UserFactory()
+
+        garmin_247.save_dailies_data(db, user.id, garmin_247.normalize_dailies(sample_daily, user.id))
+
+        # steps, active and basal energy, resting HR, floors, distance; intraday HR stays a sample only
+        assert db.query(SeriesAggregate).count() == 6
 
     def test_build_body_comp_samples(self, garmin_247: Garmin247Data, sample_body_comp: dict[str, Any]) -> None:
         """Test _build_body_comp_samples returns samples without DB call."""
@@ -936,3 +994,22 @@ class TestGarmin247Data:
 
         mock_bulk_create.assert_called_once()
         assert count == 1
+
+
+class TestWellnessPushRun:
+    def test_push_is_written_under_the_run_it_reports(self) -> None:
+        connection = MagicMock(user_id=uuid4())
+        connection_repo = MagicMock()
+        connection_repo.get_all_by_provider_user_id.return_value = [connection]
+        written_under = []
+        garmin_247 = MagicMock()
+        garmin_247.process_items_batch.side_effect = lambda *_args: written_under.append(sync_run_var.get()) or 1
+
+        with patch("app.services.providers.garmin.handlers.wellness.emit_sync_completed") as completed:
+            process_wellness_items(
+                MagicMock(), connection_repo, garmin_247, "dailies", [{"userId": "g1"}], [], set(), "trace"
+            )
+
+        assert written_under[0].run_id == completed.call_args.kwargs["run_id"]
+        assert (written_under[0].source, written_under[0].scope) == (SyncSource.WEBHOOK, SyncScope.LIVE)
+        assert sync_run_var.get() is None

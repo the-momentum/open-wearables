@@ -1,4 +1,5 @@
 import type { Line } from '$lib/charts/geometry';
+import { SERIES_TONES } from '$lib/charts/palette';
 import { collect } from '$lib/utils/collect';
 import { humanise } from '$lib/utils/text';
 import { dailyPoints } from './daily';
@@ -94,28 +95,28 @@ export function toSeries(samples: Sample[], order: string[] = WORKOUT_TYPES): Se
 	return kept.sort((a, b) => rank(a.type) - rank(b.type));
 }
 
-/** Theme tokens, so a chart line cannot drift from the rest of the palette. */
+/** Fixed per type, so one measure looks the same on every chart; types drawn together differ. */
+const [BLUE, INK, PALE_BLUE, GREY] = SERIES_TONES;
 const SERIES_COLOUR: Record<string, string> = {
-	heart_rate: 'var(--color-danger)',
-	resting_heart_rate: 'var(--color-danger)',
-	power: 'var(--color-warning)',
-	energy: 'var(--color-warning)',
-	weight: 'var(--color-warning)',
-	cadence: 'var(--color-primary)',
-	steps: 'var(--color-primary)',
-	heart_rate_variability_rmssd: 'var(--color-primary)',
-	speed: 'var(--color-success)',
-	oxygen_saturation: 'var(--color-success)',
-	respiratory_rate: 'var(--color-success)',
-	vo2_max: 'var(--color-primary)'
+	heart_rate: BLUE,
+	resting_heart_rate: BLUE,
+	power: INK,
+	energy: INK,
+	weight: INK,
+	cadence: PALE_BLUE,
+	steps: PALE_BLUE,
+	heart_rate_variability_rmssd: PALE_BLUE,
+	vo2_max: PALE_BLUE,
+	speed: GREY,
+	oxygen_saturation: GREY,
+	respiratory_rate: GREY
 };
 
-export const seriesColour = (type: string) => SERIES_COLOUR[type] ?? 'var(--color-primary)';
+export const seriesColour = (type: string) => SERIES_COLOUR[type] ?? GREY;
 
 /**
- * One point a day. The endpoint has no daily rollup to ask for, so a dense
- * series like HRV would otherwise arrive thousands of points deep, overrun a
- * page, and be silently cut.
+ * One point a day. The vitals arrive as day rows already; this folds whatever
+ * is denser (a scale weighed twice) and keeps the chart's own idea of a day.
  */
 export const dailyMeans = (series: Series): Series => ({
 	...series,

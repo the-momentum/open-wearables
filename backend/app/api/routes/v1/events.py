@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
-from app.schemas.enums import ProviderName, WorkoutType
+from app.schemas.enums import EventCategory, ProviderName, WorkoutType
 from app.schemas.model_crud.activities import EventRecordQueryParams, SleepInclude, WorkoutInclude
 from app.schemas.responses.activity import (
     Meal,
@@ -246,7 +246,7 @@ def delete_workout(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a workout session."""
-    if not event_record_service.delete_event_record(db, user_id, workout_id, "workout"):
+    if not event_record_service.delete_event_record(db, user_id, workout_id, EventCategory.WORKOUT):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout not found")
 
 
@@ -258,7 +258,7 @@ def delete_sleep_session(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a sleep session."""
-    if not event_record_service.delete_event_record(db, user_id, sleep_id, "sleep"):
+    if not event_record_service.delete_event_record(db, user_id, sleep_id, EventCategory.SLEEP):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sleep session not found")
 
 
@@ -270,7 +270,7 @@ def delete_menstrual_cycle(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a menstrual cycle record."""
-    if not event_record_service.delete_event_record(db, user_id, cycle_id, "menstrual_cycle"):
+    if not event_record_service.delete_event_record(db, user_id, cycle_id, EventCategory.MENSTRUAL_CYCLE):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menstrual cycle record not found")
 
 
@@ -282,5 +282,5 @@ def delete_meal(
     _api_key: ApiKeyDep,
 ) -> None:
     """Delete a meal together with its nutrients."""
-    if not event_record_service.delete_event_record(db, user_id, meal_id, "meal"):
+    if not event_record_service.delete_event_record(db, user_id, meal_id, EventCategory.MEAL):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { signIn } from './support';
 
 /** Has connections, backfills and women's health data. */
@@ -165,12 +165,12 @@ test('offers the empty states rather than blank panels when nothing is connected
 	await expect(page.getByText('Nothing in the last 24 hours')).toBeVisible();
 });
 
-test("gates Women's Health on the user actually having that data", async ({ page }) => {
-	await page.goto(`/users/${CONNECTED}`);
-	await expect(page.getByRole('link', { name: "Women's Health" })).toBeVisible();
-
+test("shows Women's Health to a user without that data, as an empty tab", async ({ page }) => {
 	await page.goto(`/users/${UNCONNECTED}`);
-	await expect(page.getByRole('link', { name: "Women's Health" })).toHaveCount(0);
+	await page.getByRole('link', { name: "Women's Health" }).click();
+
+	await expect(page).toHaveURL(`/users/${UNCONNECTED}/womens-health`);
+	await expect(page.getByText('No cycles recorded')).toBeVisible();
 });
 
 test('gives every tab a real URL, and 404s on one that is not a tab', async ({ page }) => {
@@ -213,10 +213,20 @@ test('fits the sources of a user on a phone', async ({ page }) => {
 	expect(width).toBeLessThanOrEqual(390);
 });
 
-test('scrolls the tabs sideways with a mouse wheel when they do not fit', async ({ page }) => {
+/**
+ * The tab strip of a user page too narrow for every tab, once it has mounted: the scroll
+ * arrow shows only after the strip measures itself, and a wheel event sent before that
+ * finds no handler.
+ */
+async function overflowingTabStrip(page: Page) {
 	await page.setViewportSize({ width: 1024, height: 800 });
 	await page.goto(`/users/${CONNECTED}`);
-	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+	await expect(page.getByRole('button', { name: 'Scroll right' })).toBeVisible();
+	return page.getByRole('navigation', { name: 'User sections' }).locator('..');
+}
+
+test('scrolls the tabs sideways with a mouse wheel when they do not fit', async ({ page }) => {
+	const strip = await overflowingTabStrip(page);
 
 	await strip.hover();
 	await page.mouse.wheel(0, 300);
@@ -225,9 +235,7 @@ test('scrolls the tabs sideways with a mouse wheel when they do not fit', async 
 });
 
 test('scrolls the tabs with a wheel that reports lines, as Firefox does', async ({ page }) => {
-	await page.setViewportSize({ width: 1024, height: 800 });
-	await page.goto(`/users/${CONNECTED}`);
-	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+	const strip = await overflowingTabStrip(page);
 
 	await strip.dispatchEvent('wheel', { deltaY: 3, deltaMode: 1 });
 
@@ -235,9 +243,7 @@ test('scrolls the tabs with a wheel that reports lines, as Firefox does', async 
 });
 
 test('scrolls the tabs with the edge arrows when they do not fit', async ({ page }) => {
-	await page.setViewportSize({ width: 1024, height: 800 });
-	await page.goto(`/users/${CONNECTED}`);
-	const strip = page.getByRole('navigation', { name: 'User sections' }).locator('..');
+	const strip = await overflowingTabStrip(page);
 	await expect(page.getByRole('button', { name: 'Scroll left' })).toHaveCount(0);
 
 	await page.getByRole('button', { name: 'Scroll right' }).click();

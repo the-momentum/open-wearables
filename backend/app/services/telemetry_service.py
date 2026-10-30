@@ -17,11 +17,12 @@ from app import __version__
 from app.config import settings
 from app.models import TelemetryState
 from app.repositories.telemetry_repository import TelemetryRepository
+from app.schemas.enums import EventCategory
 from app.services.endpoint_usage import endpoint_usage, usage_bucket
 
 logger = getLogger(__name__)
 
-TELEMETRY_SCHEMA_VERSION = 1
+TELEMETRY_SCHEMA_VERSION = 2
 SEND_TIMEOUT_SECONDS = 5.0
 
 
@@ -66,13 +67,14 @@ class TelemetryService:
             "environment": settings.environment.value,
             "instance_age_days": max((now - created_at).days, 0),
             "total_users": count_bucket(self.repo.count_users(db)),
+            "seed_users": count_bucket(self.repo.count_seed_users(db)),
             "users_with_active_connection": count_bucket(self.repo.count_users_with_active_connection(db)),
             "active_connections": count_bucket(sum(connections_by_provider.values())),
             "inactive_connections": count_bucket(self.repo.count_inactive_connections(db)),
             "connections_by_provider": _bucket_values(connections_by_provider),
             "data_points_by_provider": _bucket_values(self.repo.count_data_points_by_provider(db)),
-            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "workout")),
-            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, "sleep")),
+            "workouts_by_provider": _bucket_values(self.repo.count_events_by_provider(db, EventCategory.WORKOUT)),
+            "sleep_sessions_by_provider": _bucket_values(self.repo.count_events_by_provider(db, EventCategory.SLEEP)),
             "providers": [
                 {
                     "provider": provider_setting.provider,

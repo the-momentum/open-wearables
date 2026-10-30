@@ -4,6 +4,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import DataSource, HealthScore, ProviderPriority
 from app.repositories import HealthScoreRepository, ProviderPriorityRepository
+from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import (
@@ -34,8 +35,8 @@ class HealthScoreService(
         return self.crud.get_by_any_component(db_session, components)
 
     @handle_exceptions
-    def bulk_create(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> None:
-        self.crud.bulk_create(db_session, scores)
+    def bulk_create(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
+        return self.crud.bulk_create(db_session, scores)
 
     @handle_exceptions
     def get_latest_by_category(

@@ -1,6 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from './api';
 import type { UsersQuery } from '$lib/users/query';
-import type { PaginatedUsers, User, UserDetail } from '$lib/users/types';
+import type { PaginatedUsers, User } from '$lib/users/types';
 
 export async function fetchUsers(query: UsersQuery, accessToken: string): Promise<PaginatedUsers> {
 	const params = new URLSearchParams({
@@ -35,7 +35,7 @@ export const deleteUser = (id: string, accessToken: string) =>
 	apiDelete<User>(`/api/v1/users/${id}`, accessToken);
 
 export const fetchUserDetail = (id: string, accessToken: string) =>
-	apiGet<UserDetail>(`/api/v1/users/${id}`, accessToken);
+	apiGet<User>(`/api/v1/users/${id}`, accessToken);
 
 /** Empty strings become undefined, so a cleared field is omitted rather than sent as "". */
 export function readUserInput(form: FormData): UserInput {

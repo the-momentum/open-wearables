@@ -31,8 +31,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `heart_rate_variability_sdnn` | ms | HRV (SDNN method) |
 | `heart_rate_variability_rmssd` | ms | HRV (RMSSD method) |
 | `heart_rate_recovery_one_minute` | bpm | HR recovery after 1 minute |
-| `walking_heart_rate_average` | bpm | Average HR while walking |
-| `recovery_score` | score | Recovery score |
+| `walking_heart_rate` | bpm | Average HR while walking (`walking_heart_rate_average` is accepted as an alias) |
 
 ### Blood & Respiratory
 
@@ -44,6 +43,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `blood_pressure_diastolic` | mmHg | Diastolic blood pressure |
 | `respiratory_rate` | brpm | Breathing rate |
 | `sleeping_breathing_disturbances` | count | Sleep breathing disturbances |
+| `breathing_disturbance_index` | score | Breathing disturbance index during sleep |
 | `blood_alcohol_content` | mg/dL | Blood alcohol content |
 | `peripheral_perfusion_index` | score | Peripheral perfusion index |
 | `forced_vital_capacity` | liters | Forced vital capacity |
@@ -61,9 +61,13 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `lean_body_mass` | kg | Lean body mass |
 | `body_temperature` | °C | Body temperature |
 | `skin_temperature` | °C | Skin temperature |
+| `skin_temperature_deviation` | °C | Skin temperature deviation from the user's baseline |
+| `skin_temperature_trend_deviation` | °C | Weighted multi-day trend of the skin temperature deviation |
 | `waist_circumference` | cm | Waist circumference |
 | `body_fat_mass` | kg | Body fat mass |
 | `skeletal_muscle_mass` | kg | Skeletal muscle mass |
+| `bone_mass` | kg | Bone mass |
+| `body_water_mass` | kg | Body water mass |
 
 ### Fitness Metrics
 
@@ -71,6 +75,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 |------|------|-------------|
 | `vo2_max` | mL/kg/min | VO2 max |
 | `six_minute_walk_test_distance` | meters | 6-minute walk test |
+| `cardiovascular_age` | years | Cardiovascular age estimate |
 
 ### Activity - Basic
 
@@ -81,10 +86,10 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `basal_energy` | kcal | Basal/resting energy |
 | `stand_time` | minutes | Time spent standing |
 | `exercise_time` | minutes | Exercise duration |
-| `physical_effort` | score | Physical effort score |
+| `physical_effort` | met | Physical effort in METs; a workout's average is kept per workout (`average_met` is accepted as an alias) |
 | `flights_climbed` | count | Floors/flights climbed |
-| `average_met` | MET | Average metabolic equivalent |
 | `active_time` | minutes | Provider-reported daily active (non-sedentary) time |
+| `total_energy` | kcal | Total energy (active + basal) from providers that don't report the split, e.g. Whoop |
 
 ### Activity - Distance
 
@@ -117,6 +122,8 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `running_vertical_oscillation` | cm | Vertical oscillation |
 | `running_ground_contact_time` | ms | Ground contact time |
 | `running_stride_length` | cm | Stride length |
+| `running_vertical_ratio` | % | Vertical oscillation relative to stride length |
+| `running_stance_time_balance` | % | Left/right ground contact time balance |
 
 ### Activity - Swimming
 
@@ -145,19 +152,73 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `inhaler_usage` | count | Inhaler usage |
 | `weather_temperature` | °C | Weather temperature |
 | `weather_humidity` | % | Weather humidity |
+| `environmental_sound_reduction` | dB | Noise reduction by headphones |
+| `time_in_daylight` | minutes | Time spent in daylight |
+| `water_temperature` | °C | Water temperature |
+| `air_temperature` | °C | Air temperature recorded by the device |
+| `elevation` | meters | Elevation |
+| `latitude` | degrees | GPS latitude |
+| `longitude` | degrees | GPS longitude |
 
-<Note>
-  Additional environmental types (`environmental_sound_reduction`, `time_in_daylight`, `water_temperature`) are defined but not currently supported by any provider.
-</Note>
-
-### Garmin-Specific
+### Provider-Specific
 
 | Type | Unit | Description |
 |------|------|-------------|
-| `garmin_stress_level` | score | Stress score (1-100) |
-| `garmin_skin_temperature` | °C | Skin temperature deviation from baseline |
-| `garmin_fitness_age` | years | Fitness age estimate |
-| `garmin_body_battery` | % | Body battery (0-100) |
+| `garmin_stress_level` | score | Garmin stress score (1-100) |
+| `garmin_skin_temperature` | °C | Legacy Garmin skin temperature deviation. New Garmin data is stored as `skin_temperature_deviation`. |
+| `garmin_fitness_age` | years | Garmin fitness age estimate |
+| `garmin_body_battery` | % | Garmin body battery (0-100) |
+| `withings_pulse_wave_velocity` | m/s | Withings pulse wave velocity (arterial stiffness) |
+| `withings_metabolic_age` | years | Withings metabolic age |
+
+### Nutrition
+
+Nutrients logged as standalone samples are returned as timeseries. Nutrients logged as part of a meal are attached to that meal in `/events/meals` instead.
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `dietary_energy_consumed` | kcal | Energy consumed |
+| `dietary_energy_from_fat` | kcal | Energy from fat |
+| `dietary_carbohydrates` | g | Carbohydrates |
+| `dietary_fiber` | g | Fiber |
+| `dietary_sugar` | g | Sugar |
+| `dietary_protein` | g | Protein |
+| `dietary_fat_total` | g | Total fat |
+| `dietary_fat_saturated` | g | Saturated fat |
+| `dietary_fat_monounsaturated` | g | Monounsaturated fat |
+| `dietary_fat_polyunsaturated` | g | Polyunsaturated fat |
+| `dietary_fat_unsaturated` | g | Unsaturated fat |
+| `dietary_fat_trans` | g | Trans fat |
+| `dietary_cholesterol` | mg | Cholesterol |
+| `dietary_caffeine` | mg | Caffeine |
+| `dietary_sodium` | mg | Sodium |
+| `dietary_potassium` | mg | Potassium |
+| `dietary_calcium` | mg | Calcium |
+| `dietary_iron` | mg | Iron |
+| `dietary_magnesium` | mg | Magnesium |
+| `dietary_phosphorus` | mg | Phosphorus |
+| `dietary_zinc` | mg | Zinc |
+| `dietary_copper` | mg | Copper |
+| `dietary_manganese` | mg | Manganese |
+| `dietary_chloride` | mg | Chloride |
+| `dietary_selenium` | mcg | Selenium |
+| `dietary_chromium` | mcg | Chromium |
+| `dietary_molybdenum` | mcg | Molybdenum |
+| `dietary_iodine` | mcg | Iodine |
+| `dietary_vitamin_a` | mcg | Vitamin A |
+| `dietary_vitamin_b6` | mg | Vitamin B6 |
+| `dietary_vitamin_b12` | mcg | Vitamin B12 |
+| `dietary_vitamin_c` | mg | Vitamin C |
+| `dietary_vitamin_d` | mcg | Vitamin D |
+| `dietary_vitamin_e` | mg | Vitamin E |
+| `dietary_vitamin_k` | mcg | Vitamin K |
+| `dietary_thiamin` | mg | Thiamin (B1) |
+| `dietary_riboflavin` | mg | Riboflavin (B2) |
+| `dietary_niacin` | mg | Niacin (B3) |
+| `dietary_pantothenic_acid` | mg | Pantothenic acid (B5) |
+| `dietary_biotin` | mcg | Biotin (B7) |
+| `dietary_folate` | mcg | Folate |
+| `dietary_folic_acid` | mcg | Folic acid |
 
 ### Other
 
@@ -238,6 +299,23 @@ Sleep sessions follow the same rule: `sleep_stage_intervals` is omitted unless y
 
 ---
 
+## Events, Summaries and Health Scores
+
+Besides timeseries and workouts, the API returns these record types:
+
+| Endpoint | Returns |
+|----------|---------|
+| `/events/sleep` | Sleep sessions with stage totals and, with `?include=stages`, stage intervals |
+| `/events/meals` | Meals with calories, macros and per-nutrient values (the `dietary_*` types above) |
+| `/events/menstrual-cycles` | Menstrual cycle records (cycle day, phase, period and cycle length) |
+| `/summaries/activity`, `/summaries/sleep`, `/summaries/recovery` | Per-day rollups |
+| `/summaries/body` | Current snapshot: latest slow-changing values (weight, body fat, ...), vitals averaged over `average_period` days, and readings from the last `latest_window_hours` |
+| `/health-scores` | Provider and Open Wearables scores |
+
+Health scores use these categories: `sleep`, `recovery`, `readiness`, `activity`, `stress`, `resilience`, `body_battery`, `strain`. See [Health Scores](/scores/health-scores) for how each one is sourced.
+
+---
+
 ## Resolution Options
 
 The `resolution` parameter for timeseries aggregation:
@@ -249,11 +327,15 @@ The `resolution` parameter for timeseries aggregation:
 | `5min` | Aggregated to 5-minute intervals |
 | `15min` | Aggregated to 15-minute intervals |
 | `1hour` | Aggregated to 1-hour intervals |
+| `1day` | One value per local day and source: the provider's own day value where it sent one (Garmin's daily steps, Oura's nightly SpO2), else ours rolled up from the samples. Carries `stats` (`avg`, `min`, `max`, `sum`, `last`, `count`) and `computed_by` |
+| `1week`, `1month` | The days above combined: Monday-to-Sunday local weeks, calendar months |
 
-Buckets are grouped per data source, so two devices reporting the same minute stay two points.
-Rate metrics (heart rate, power) are averaged and counters (steps, energy) are summed. A
-provider's own daily total is skipped, since it is not a point in an intraday series — use
-`/summaries` for per-day figures.
+Buckets up to `1hour` are grouped per data source, so two devices reporting the same minute stay
+two points. Rate metrics (heart rate, power) are averaged and counters (steps, energy) are summed.
+A provider's day value is not a point in an intraday series: resting heart rate, nightly HRV, SpO2,
+VO2 max and a provider's daily totals exist only at `1day` and coarser, where `raw` and the minute
+and hour buckets return nothing for them. Values stored before this release reach `1day` through a
+backfill that runs after the upgrade, and stay in `raw` until it has.
 
 ---
 
@@ -272,22 +354,7 @@ curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=
 
 ## Provider Support
 
-Data availability varies by provider. Here's a quick summary:
-
-| Provider | Timeseries | Workouts | Sleep | Best For |
-|----------|:-----------:|:--------:|:-----:|----------|
-| Apple Health | ✅ | ✅ | 🔜 | Comprehensive health data |
-| Garmin | ◐ | ✅ | 🔜 | Fitness activities |
-| Polar | ◐ | ✅ | ❌ | Heart rate training |
-| Suunto | ✅ | ✅ | ✅ | Outdoor sports + 24/7 data |
-| Whoop | ❌ | ✅ | ✅ | Recovery, sleep & workouts |
-
-<Accordion title="Legend">
-  - ✅ **Full support** — Fully implemented
-  - ◐ **Partial** — Limited data (e.g., workouts only)
-  - 🔜 **Coming soon** — API supports, processing not yet implemented
-  - ❌ **Not available** — Not supported
-</Accordion>
+Data availability varies by provider. The coverage matrix lists which of the types above each provider delivers. A few types are not in the matrix yet: `running_vertical_ratio`, `running_stance_time_balance`, `underwater_depth`, `garmin_skin_temperature` (legacy) and `nike_fuel`.
 
 <Card title="Full Provider Coverage Matrix" icon="table" href="/providers/coverage">
   See detailed breakdown of which data types each provider supports, including provider-specific quirks and normalization details.

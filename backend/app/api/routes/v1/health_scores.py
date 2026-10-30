@@ -31,6 +31,9 @@ def list_health_scores(
     """Returns health scores (sleep, recovery, readiness, etc.) for a user.
 
     One OW score (provider `internal`) per category and day, from the highest-priority source.
+
+    Scores computed by Open Wearables (`provider: internal`) are deprecated: no new ones are
+    computed starting November 6, 2026. Previously computed scores are still returned.
     """
     params = HealthScoreQueryParams(
         start_datetime=parse_query_datetime(start_date) if start_date else None,

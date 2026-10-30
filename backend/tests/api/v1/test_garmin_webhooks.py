@@ -13,12 +13,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 
 PUSH_ENDPOINT = "/api/v1/providers/garmin/webhooks"
 LEGACY_PUSH_ENDPOINT = "/api/v1/garmin/webhooks/push"
 LEGACY_PING_ENDPOINT = "/api/v1/garmin/webhooks/ping"
 WEBHOOK_HANDLER = "app.services.providers.garmin.webhook_handler"
-PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 VALID_CLIENT_ID = "test-client-id"
 
@@ -110,7 +110,7 @@ class TestGarminWebhookTaskEnqueue:
         assert response.json() == {"status": "accepted"}
         mock_celery.send_task.assert_called_once()
         task_name, _ = mock_celery.send_task.call_args[0][0], mock_celery.send_task.call_args
-        assert task_name == PROCESS_PUSH_TASK
+        assert task_name == CeleryTask.PROCESS_WEBHOOK_PUSH
 
     def test_enqueues_task_with_correct_payload(
         self,
@@ -125,7 +125,7 @@ class TestGarminWebhookTaskEnqueue:
             mock_celery.send_task.return_value = MagicMock(id="task-xyz")
             client.post(PUSH_ENDPOINT, headers=headers, json=payload)
 
-        # send_task(_PROCESS_PUSH_TASK, args=["garmin", payload, trace_id])
+        # send_task(CeleryTask.PROCESS_WEBHOOK_PUSH, args=["garmin", payload, trace_id])
         sent_args = mock_celery.send_task.call_args[1]["args"]
         assert sent_args[0] == "garmin"
         assert sent_args[1] == payload

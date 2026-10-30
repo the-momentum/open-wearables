@@ -16,8 +16,9 @@ from uuid import uuid4
 import pytest
 
 import app.services.sync_status_service as sync_status_service
+from app.constants.celery_tasks import CeleryTask
 from app.integrations.redis_client import get_redis_client
-from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus, SyncStatusEvent
+from app.schemas.sync_status import SyncScope, SyncSource, SyncStage, SyncStatus, SyncStatusEvent
 
 
 @pytest.fixture
@@ -117,6 +118,21 @@ class TestTerminalSvixDispatch:
     ) -> None:
         sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.PULL, run_id="run_b")
         mock_outgoing["completed"].assert_called_once()
+
+    @pytest.mark.parametrize(("scope", "rolls_up"), [(SyncScope.HISTORICAL, True), (SyncScope.LIVE, False)])
+    def test_a_finished_history_sync_rolls_up_right_away(
+        self,
+        user_id: str,
+        mock_outgoing: dict[str, object],
+        scope: SyncScope,
+        rolls_up: bool,
+    ) -> None:
+        with patch("celery.current_app") as celery_app:
+            sync_status_service.emit_sync_completed(user_id, "garmin", SyncSource.PULL, run_id="run_h", scope=scope)
+
+        assert celery_app.send_task.called is rolls_up
+        if rolls_up:
+            celery_app.send_task.assert_called_once_with(CeleryTask.ROLL_UP_QUEUED_DAYS, retry=False)
 
     def test_failed_dispatches_outgoing_failed(
         self,

@@ -1,6 +1,6 @@
 """Tests for Polar247Data normalization."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -8,6 +8,7 @@ import pytest
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
 
@@ -167,6 +168,11 @@ class TestPolar247DailyActivityNormalization:
         energy_sample = next(s for s in samples if s.series_type == SeriesType.active_energy)
         assert energy_sample.value == 420
 
+    def test_basal_energy_is_total_minus_active(self, data_247: Polar247Data, sample_activity: dict) -> None:
+        samples = data_247.normalize_daily_activity([{**sample_activity, "calories": 2200}], uuid4())
+        basal_sample = next(s for s in samples if s.series_type == SeriesType.basal_energy)
+        assert basal_sample.value == 1780
+
     def test_distance_value(self, data_247: Polar247Data, sample_activity: dict) -> None:
         user_id = uuid4()
         samples = data_247.normalize_daily_activity([sample_activity], user_id)
@@ -202,6 +208,9 @@ class TestPolar247DailyActivityNormalization:
         step_samples = [s for s in samples if s.series_type == SeriesType.steps]
         # Flagging both the same way would let the aggregation add a day to its own parts.
         assert [s.value for s in step_samples if s.is_daily_total] == [9500]
+        assert [s.period for s in step_samples if s.is_daily_total] == [CalendarPeriod.of_date(date(2024, 1, 15))]
+        assert {s.period for s in step_samples if not s.is_daily_total} == {None}
+        assert {s.window_seconds for s in step_samples if not s.is_daily_total} == {600}
         assert [(s.recorded_at.isoformat(), int(s.value)) for s in step_samples if not s.is_daily_total] == [
             ("2024-01-15T07:10:00", 120),
             ("2024-01-15T07:20:00", 0),

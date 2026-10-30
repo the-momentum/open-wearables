@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryQueue, CeleryTask
 from app.database import DbSession, SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import AuthenticationMethod, LiveSyncMode
@@ -21,7 +22,6 @@ from app.schemas.model_crud.credentials import (
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.handlers.errors import WithingsTokenError
-from app.services.providers.withings.handlers.tasks import SYNC_USER_SUBSCRIPTIONS_TASK
 from app.services.providers.withings.webhook_service import WithingsWebhookService
 from app.utils.structured_logging import log_structured
 
@@ -178,9 +178,9 @@ class WithingsOAuth(BaseOAuthTemplate):
             return
         try:
             celery_app.send_task(
-                SYNC_USER_SUBSCRIPTIONS_TASK,
+                CeleryTask.WITHINGS_SYNC_USER_SUBSCRIPTIONS,
                 args=[str(user_id)],
-                queue="webhook_sync",
+                queue=CeleryQueue.WEBHOOK_SYNC,
             )
         except Exception as e:
             # The account is linked either way; a broker failure must not fail the callback.

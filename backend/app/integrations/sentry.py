@@ -44,6 +44,10 @@ _PYDANTIC_INPUT_VALUE = re.compile(r"input_value=.*, input_type=")
 # Emails are the one kind of PII we can reliably spot in free text (exception messages,
 # f-string log errors). Health values in prose are not detectable - keep them out of messages.
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# SQLAlchemy and Postgres errors spell out the failing row: bound parameters, key values,
+# "Failing row contains (...)". Those are health values, so everything after the label goes.
+_SQL_PARAMETERS = re.compile(r"\[parameters: .*$", re.MULTILINE)
+_PG_DETAIL = re.compile(r"DETAIL:.*$", re.MULTILINE)
 _QUERY_VALUE = re.compile(r"=[^&]*")
 
 _scrubber = EventScrubber(
@@ -61,6 +65,8 @@ _credentials_scrubber = EventScrubber(denylist=[*DEFAULT_DENYLIST, "headers"], r
 def _scrub_text(value: Any) -> Any:
     if isinstance(value, str):
         value = _PYDANTIC_INPUT_VALUE.sub(f"input_value={FILTERED}, input_type=", value)
+        value = _SQL_PARAMETERS.sub(f"[parameters: {FILTERED}]", value)
+        value = _PG_DETAIL.sub(f"DETAIL: {FILTERED}", value)
         return _EMAIL.sub(FILTERED, value)
     if isinstance(value, dict):
         return {k: _scrub_text(v) for k, v in value.items()}
