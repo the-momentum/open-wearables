@@ -16,7 +16,7 @@ The developer portal is the web UI for operating an Open Wearables deployment. I
 
 ## Developer accounts
 
-The first developer account is created automatically on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables. The seed runs only while no developer account exists, so change the default password from **Settings → Change Password** right after your first login.
+The first developer account is created automatically on first startup from the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables. The seed runs only while no developer account exists, so change the default password from **Settings → Change Password** right after your first login. With `ENVIRONMENT=production` the default password is refused at sign-in: set `ADMIN_EMAIL` to that account's email and `ADMIN_PASSWORD` to a new password, then restart the backend, which changes the password of the account whose email matches `ADMIN_EMAIL`. See [Default password prompt](/developer-portal/settings/change-password#default-password-prompt).
 
 Every further account is created by invitation from **Settings → Team**. There is no self-registration. All developer accounts have the same permissions, see [Team](/developer-portal/settings/team#access-model).
 

@@ -1,6 +1,6 @@
 """Ultrahuman Ring Air 24/7 data implementation for sleep, recovery, and activity samples."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -13,8 +13,8 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import daily_total_flag
-from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
+from app.schemas.enums import EventCategory, daily_total_flag
+from app.schemas.model_crud.activities.data_point_series import CalendarPeriod, TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -274,7 +274,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         # Create EventRecord for sleep
         record = EventRecordCreate(
             id=sleep_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Ultrahuman Ring Air",
             duration_seconds=normalized_sleep.get("duration_seconds"),
@@ -541,7 +541,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             # and EventRecord has no type that fits generic daily recovery metrics.
 
             with run.step("activity_samples", accumulate=True, commit=True) as step:
-                step.record(self._save_daily_activity(db, user_id, items_by_type))
+                step.record(self._save_daily_activity(db, user_id, items_by_type, current_date.date()))
 
             current_date += timedelta(days=1)
 
@@ -575,6 +575,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         items_by_type: dict[str, Any],
+        day: date | None = None,
     ) -> WriteCounts:
         """Persist one day's activity series plus its single-value daily metrics."""
         sample_inputs = [
@@ -593,15 +594,19 @@ class Ultrahuman247Data(Base247DataTemplate):
             value, day_start = scalar.get("value"), scalar.get("day_start_timestamp")
             if value is None or not day_start:
                 continue
+            # day_start is the local midnight as Ultrahuman reports it, stored as the UTC instant; the day row
+            # takes the same instant, so it and the sample read as one day everywhere.
+            recorded_at = datetime.fromtimestamp(day_start, tz=timezone.utc)
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     provider=self.provider_name,
-                    recorded_at=datetime.fromtimestamp(day_start, tz=timezone.utc),
+                    recorded_at=recorded_at,
                     value=Decimal(str(value)),
                     series_type=series_type,
                     is_daily_total=daily_total_flag(series_type, True),
+                    period=CalendarPeriod.local_day(recorded_at),
                 )
             )
 

@@ -17,9 +17,10 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord, HealthScore
-from app.repositories import data_point_series_repository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.integrations.rollup_queue import pop_dirty_days
+from app.models import DataSource, EventRecord, EventRecordAggregate, HealthScore
+from app.repositories import AggregateRepository, data_point_series_repository
+from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -825,6 +826,76 @@ class TestCreateOrMergeSleep:
 
         assert event_record_service.get(db, old_id) is None
 
+    def test_merge_keeps_the_first_segments_session_values(self, db: Session) -> None:
+        """Oura reports a lowest heart rate per sleep segment; the merged night keeps the lower one."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(20, 56),
+            end_datetime=self._dt(21, 26),
+        )
+        SleepDetailsFactory(event_record=existing)
+        heart_rate = get_series_type_id(SeriesType.heart_rate)
+        aggregates = AggregateRepository(EventRecordAggregate)
+        aggregates.upsert(
+            db,
+            [
+                {
+                    "record_id": existing.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "min": Decimal("48"),
+                    "count": 1,
+                }
+            ],
+        )
+        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+
+        merged = event_record_service.create_or_merge_sleep(
+            db, user.id, record, self._detail(record.id), self.THRESHOLD
+        )
+        # The second segment's own value arrives after the merge, on the record the save returned.
+        aggregates.upsert(
+            db,
+            [
+                {
+                    "record_id": merged.id,
+                    "series_type_definition_id": heart_rate,
+                    "computed_by": ComputedBy.PROVIDER,
+                    "min": Decimal("52"),
+                    "count": 1,
+                }
+            ],
+        )
+
+        row = db.query(EventRecordAggregate).filter(EventRecordAggregate.record_id == merged.id).one()
+        assert row.min == Decimal("48")
+
+    def test_a_reingested_sleep_queues_the_days_it_left_and_joined(self, db: Session) -> None:
+        """Its session rows are rolled up over the new window; the days on both sides change."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+        EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            external_id="night-1",
+            start_datetime=self._dt(22, 0),
+            end_datetime=self._dt(6, 0, day=22),
+        )
+        pop_dirty_days(100)
+        record = self._record(data_source, self._dt(23, 0), self._dt(7, 0, day=22)).model_copy(
+            update={"external_id": "night-1"}
+        )
+
+        event_record_service.create_or_merge_sleep(db, user.id, record, self._detail(record.id), self.THRESHOLD)
+        db.commit()
+
+        assert {day for _, day in pop_dirty_days(100)} == {self._dt(22, 0).date(), self._dt(6, 0, day=22).date()}
+
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""
         user = UserFactory()
@@ -1520,7 +1591,17 @@ class TestResolveAvgHr:
 
     def _avg_hr(self, db: Session, workout: EventRecord) -> int | None:
         db.flush()
-        return event_record_service._resolve_avg_hr(db, [workout])[workout.id]
+        statistics = event_record_service.crud.get_workout_statistics(db, [workout.id])
+        return event_record_service._resolve_avg_hr(db, [workout], statistics)[workout.id]
+
+    def test_our_average_rounds_half_up_like_the_sql_fallback(self, db: Session) -> None:
+        workout = self._workout(DataSourceFactory())
+
+        resolved = event_record_service._resolve_avg_hr(
+            db, [workout], {workout.id: {"heart_rate_avg": Decimal("72.5")}}
+        )
+
+        assert resolved[workout.id] == 73
 
     def test_own_source_wins_over_writer_siblings(self, db: Session) -> None:
         user = UserFactory()
@@ -1591,6 +1672,7 @@ class TestResolveAvgHr:
             DataPointSeriesFactory(data_source=dailies, recorded_at=start + timedelta(minutes=10), value=130 + day)
         db.flush()
 
-        result = event_record_service._resolve_avg_hr(db, workouts)
+        statistics = event_record_service.crud.get_workout_statistics(db, [w.id for w in workouts])
+        result = event_record_service._resolve_avg_hr(db, workouts, statistics)
 
         assert [result[w.id] for w in workouts] == [130, 131, 132]

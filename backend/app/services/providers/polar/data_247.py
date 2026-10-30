@@ -21,8 +21,9 @@ from app.constants.series_types.polar import (
 from app.database import DbSession
 from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
@@ -267,7 +268,7 @@ class Polar247Data(Base247DataTemplate):
 
             record = EventRecordCreate(
                 id=sleep_id,
-                category="sleep",
+                category=EventCategory.SLEEP,
                 type="sleep_session",
                 source_name="Polar",
                 source=ProviderName.POLAR,
@@ -376,6 +377,7 @@ class Polar247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=True),
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
             samples.extend(self._build_step_samples(parsed, user_id, recorded_at))
@@ -410,6 +412,7 @@ class Polar247Data(Base247DataTemplate):
                 provider=ProviderName.POLAR,
                 source=ProviderName.POLAR,
                 recorded_at=recorded_at,
+                window_seconds=steps.interval_ms // 1000 or None,
                 value=Decimal(count),
                 series_type=SeriesType.steps,
                 is_daily_total=daily_total_flag(SeriesType.steps, is_daily=False),
@@ -580,6 +583,7 @@ class Polar247Data(Base247DataTemplate):
                             recorded_at=recorded_at,
                             value=value,
                             series_type=series_type,
+                            period=CalendarPeriod.of_date(recorded_at.date()),
                         )
                     )
             # Polar withholds the status until it has three nights to compare against.
@@ -805,6 +809,7 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=parsed.sleep_time_skin_temperature_celsius,
                         series_type=SeriesType.skin_temperature,
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
             if parsed.deviation_from_baseline_celsius is not None:
@@ -817,6 +822,7 @@ class Polar247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=parsed.deviation_from_baseline_celsius,
                         series_type=SeriesType.skin_temperature_deviation,
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
         return samples
