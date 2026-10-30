@@ -1,4 +1,5 @@
 import logging
+import socket
 import ssl
 import sys
 from logging import Formatter, LogRecord, StreamHandler, getLogger
@@ -158,6 +159,23 @@ def init_raw_payload_storage(**kwargs) -> None:
     )
 
 
+def _tcp_keepalive_options() -> dict[int, int]:
+    """Broker keepalive timings, keyed by this platform's TCP socket-option numbers.
+
+    The numbers differ per OS: Linux has TCP_KEEPIDLE=4, TCP_KEEPINTVL=5, TCP_KEEPCNT=6,
+    while macOS calls the idle option TCP_KEEPALIVE and numbers them 0x10, 0x101, 0x102.
+    Hard-coding the Linux ints fails every broker connection on macOS with ENOPROTOOPT,
+    so the numbers come from the socket module and options it lacks are left out.
+    """
+    idle = getattr(socket, "TCP_KEEPIDLE", getattr(socket, "TCP_KEEPALIVE", None))
+    timings = (
+        (idle, 60),  # 60s idle before probing
+        (getattr(socket, "TCP_KEEPINTVL", None), 10),  # 10s between probes
+        (getattr(socket, "TCP_KEEPCNT", None), 3),  # 3 failed probes -> drop
+    )
+    return {option: value for option, value in timings if option is not None}
+
+
 def create_celery() -> Celery:
     celery_app = cast(Celery, current_celery_app)
     celery_app.conf.update(
@@ -170,9 +188,7 @@ def create_celery() -> Celery:
         # dead socket so the connection is recycled instead of blocking indefinitely.
         broker_transport_options={
             "socket_keepalive": True,
-            # Linux TCP socket-option ints: 4=TCP_KEEPIDLE (60s idle before probing),
-            # 5=TCP_KEEPINTVL (10s between probes), 6=TCP_KEEPCNT (3 failed probes -> drop).
-            "socket_keepalive_options": {4: 60, 5: 10, 6: 3},
+            "socket_keepalive_options": _tcp_keepalive_options(),
             # redis-py periodic health check: PING idle pooled connections so a dead one is
             # replaced rather than handed to the next publish/consume.
             "health_check_interval": 30,
