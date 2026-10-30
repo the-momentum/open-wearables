@@ -5,8 +5,9 @@ SDK sleep imports used to save 0 min for stages a night never reported. A night 
 deep, light and REM are all 0 and its hypnogram has no light/deep/rem segment (or there is none);
 a 0 awake time is cleared too unless the hypnogram has an awake segment. Covers the SDK providers
 and ``unknown``, where Apple XML sleep imports from writers without "apple" in their name land.
-Cloud providers are left alone: without the raw payload a zero they reported cannot be told apart
-from a missing value.
+Suunto is covered too: it sends 0 for every stage of a session it didn't score, and ingestion now
+stores those as NULL. Other cloud providers are left alone: without the raw payload a zero they
+reported cannot be told apart from a missing value.
 
 Runs once per instance (``data_migration``): one pass over the integer columns collects the
 candidates, then committed batches check the hypnograms of only those rows.
@@ -28,7 +29,7 @@ from app.services.data_migration_service import data_migration_service
 
 _BATCH_SIZE = 10_000
 
-_PROVIDERS = sorted(SDK_PROVIDERS | {ProviderName.UNKNOWN.value})
+_PROVIDERS = sorted(SDK_PROVIDERS | {ProviderName.UNKNOWN.value, ProviderName.SUUNTO.value})
 
 _ZERO_PHASES = "sd.sleep_deep_minutes = 0 AND sd.sleep_light_minutes = 0 AND sd.sleep_rem_minutes = 0"
 # Hypnograms may be a JSON scalar (legacy Garmin rows), so only arrays are searched

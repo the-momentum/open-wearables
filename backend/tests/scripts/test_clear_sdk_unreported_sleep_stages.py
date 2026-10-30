@@ -87,14 +87,17 @@ class TestClearSdkUnreportedSleepStages:
         with_awake = _night(
             ProviderName.HEALTH_CONNECT, user, stages=_segments("sleeping", "awake", "sleeping"), awake=30
         )
+        # A session Suunto didn't score
+        suunto_nap = _night(ProviderName.SUUNTO, user, stages=None)
 
         cleared = clear_sdk_unreported_sleep_stages(db, dry_run=False)
 
-        assert cleared == 4
+        assert cleared == 5
         assert _stages(db, sleeping_only) == (None, None, None, None)
         assert _stages(db, no_hypnogram) == (None, None, None, None)
         assert _stages(db, xml_import) == (None, None, None, None)
         assert _stages(db, with_awake) == (None, None, None, 30)
+        assert _stages(db, suunto_nap) == (None, None, None, None)
 
     def test_keeps_measured_zeros(self, db: Session) -> None:
         user = UserFactory()
