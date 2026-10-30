@@ -23,6 +23,8 @@ class XMLParseStats:
     records: ParseMetric = field(default_factory=ParseMetric)
     workouts: ParseMetric = field(default_factory=ParseMetric)
     sleep: ParseMetric = field(default_factory=ParseMetric)
+    # "<series or field>:<raw unit>" -> count of values kept as-is because the unit couldn't be converted
+    unconverted_units: Counter[str] = field(default_factory=Counter)
 
     def any_skipped(self) -> bool:
         return self.records.skipped > 0 or self.workouts.skipped > 0 or self.sleep.skipped > 0

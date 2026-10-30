@@ -53,13 +53,10 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.dates import window_seconds
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
+from app.utils.units import BloodGlucoseUnit, EnergyUnit, UnitConverter, VolumeUnit
 
 from .device_resolution import extract_device_ids, extract_device_info, extract_device_type
 from .sleep_service import handle_sleep_data
-
-# Health Connect's own mg/dL converter uses exactly 18.0, so values written to HC
-# in mg/dL round-trip with a ~0.1% offset under this factor.
-MMOL_L_TO_MG_DL = Decimal("18.0182")
 
 # Energy series stored in kcal.
 _KCAL_SERIES = frozenset({SeriesType.dietary_energy_consumed, SeriesType.dietary_energy_from_fat})
@@ -344,16 +341,16 @@ class ImportService:
 
             # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
             if series_type == SeriesType.blood_glucose and unit.startswith("mmol"):
-                value = value * MMOL_L_TO_MG_DL
+                value = UnitConverter.blood_glucose(value, BloodGlucoseUnit.mmol_l, BloodGlucoseUnit.mg_dl)
 
             # Convert hydration units to mL
             if series_type == SeriesType.hydration and unit in ("l", "liter", "liters", "litre", "litres"):
-                value *= 1000
+                value = UnitConverter.volume(value, VolumeUnit.liter, VolumeUnit.ml)
 
             # Energy is stored in kcal. Case matters: "cal" is a small calorie (1/1000 kcal),
             # "Cal" is the food Calorie (= kcal).
             if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
-                value = value / 1000
+                value = UnitConverter.energy(value, EnergyUnit.cal, EnergyUnit.kcal)
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
