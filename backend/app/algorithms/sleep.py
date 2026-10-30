@@ -144,11 +144,14 @@ def calculate_bedtime_consistency_score(
 def awakenings(stages: list[SleepStage]) -> list[float] | None:
     """Minutes of each awakening between falling asleep and the final wake-up; None without a sleep stage.
 
-    Back-to-back awake blocks count as one awakening. Where blocks overlap, the earlier one keeps the overlap.
+    Back-to-back awake blocks count as one awakening. Where blocks overlap, the earlier one keeps the overlap;
+    in_bed and unknown blocks take no part, as in the SDK's stage clean-up (an in_bed one can span the night).
     """
     # Clipped before the sleep period is found, so a block covered by an earlier one can't bound it
     clipped: list[SleepStage] = []
     for stage in sorted(stages, key=lambda stage: stage.start_time):
+        if stage.stage not in SLEEP_PERIOD_STAGES and stage.stage != SleepStageType.AWAKE:
+            continue
         start = max(stage.start_time, clipped[-1].end_time) if clipped else stage.start_time
         if start < stage.end_time:
             clipped.append(stage.model_copy(update={"start_time": start}))

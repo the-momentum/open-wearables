@@ -364,6 +364,12 @@ class TestAwakenings:
         _, second_awake, deep = self._stages(("light", 65), ("awake", 7), ("deep", 60))
         assert awakenings([light, first_awake, second_awake, deep]) == [12.0]
 
+    @pytest.mark.parametrize("stage", ["in_bed", "unknown"])
+    def test_in_bed_and_unknown_blocks_do_not_clip_the_stages_inside_them(self, stage: str) -> None:
+        night = self._stages(("light", 60), ("awake", 10), ("deep", 60))
+        (whole_night,) = self._stages((stage, 130))
+        assert awakenings([whole_night, *night]) == [10.0]
+
     def test_a_sleep_stage_inside_an_earlier_awake_block_does_not_extend_the_sleep_period(self) -> None:
         light, awake = self._stages(("light", 60), ("awake", 10))
         _, inside = self._stages(("light", 62), ("deep", 1))
