@@ -298,3 +298,27 @@ async def test_get_menstrual_cycles_handles_empty_data(httpx_mock: HTTPXMock) ->
     assert result["summary"]["avg_cycle_length_days"] is None
     assert result["summary"]["phase_types"] is None
     assert result["summary"]["latest"] is None
+
+
+async def test_get_timeseries_keeps_the_statistics_of_a_day(httpx_mock: HTTPXMock) -> None:
+    """A day, week or month record keeps its stats; a raw sample has none to keep."""
+    httpx_mock.add_response(method="GET", url=f"https://api.test.com/api/v1/users/{USER_ID}", json=USER_PAYLOAD)
+    day = {
+        "timestamp": "2026-04-04T22:00:00Z",
+        "type": "heart_rate",
+        "value": 70.5,
+        "unit": "bpm",
+        "source": {"provider": "garmin"},
+        "stats": {"avg": 70.5, "min": 47, "max": 165, "sum": None, "last": 60, "count": 86400},
+    }
+    httpx_mock.add_response(method="GET", json={"data": [day], "pagination": {"next_cursor": None}})
+
+    result = await get_timeseries(
+        user_id=USER_ID,
+        start_time="2026-04-05T00:00:00Z",
+        end_time="2026-04-06T00:00:00Z",
+        types=["heart_rate"],
+        resolution="1day",
+    )
+
+    assert result["records"][0]["stats"]["max"] == 165

@@ -9,6 +9,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
+from app.schemas.enums import EventCategory, HealthScoreCategory
 from app.services.health_score_service import health_score_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.utils.sentry_helpers import log_and_capture_error
@@ -24,7 +25,7 @@ logger = getLogger(__name__)
 # (local_end_datetime) so two sessions sharing the same wake date still produce
 # distinct recorded_at values. Limited to sessions within the configured
 # backfill window.
-_MISSING_SCORES_QUERY = text("""
+_MISSING_SCORES_QUERY = text(f"""
     SELECT DISTINCT
         ds.user_id,
         ds.id AS data_source_id,
@@ -36,9 +37,9 @@ _MISSING_SCORES_QUERY = text("""
     JOIN sleep_details sd ON sd.record_id = er.id
     LEFT JOIN health_score hs
            ON hs.event_record_id = er.id
-          AND hs.category     = 'sleep'
+          AND hs.category     = '{HealthScoreCategory.SLEEP}'
           AND hs.provider     = 'internal'
-    WHERE er.category = 'sleep'
+    WHERE er.category = '{EventCategory.SLEEP}'
       AND (sd.is_nap IS NULL OR sd.is_nap = false)
       AND sd.sleep_total_duration_minutes IS NOT NULL
       AND sd.sleep_total_duration_minutes > 0

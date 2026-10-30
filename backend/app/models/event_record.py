@@ -14,6 +14,7 @@ from app.mappings import (
     str_64,
     str_100,
 )
+from app.schemas.enums import EventCategory
 
 if TYPE_CHECKING:
     from app.models.sleep_details import SleepDetails
@@ -33,14 +34,14 @@ class EventRecord(BaseDbModel):
             "start_datetime",
             "end_datetime",
             unique=True,
-            postgresql_where=text("category <> 'meal'"),
+            postgresql_where=text(f"category <> '{EventCategory.MEAL}'"),
         ),
         Index(
             "ix_event_record_meal_source_external_id",
             "data_source_id",
             "external_id",
             unique=True,
-            postgresql_where=text("category = 'meal'"),
+            postgresql_where=text(f"category = '{EventCategory.MEAL}'"),
         ),
     )
 
@@ -84,13 +85,13 @@ class EventRecord(BaseDbModel):
     )
 
     @classmethod
-    def detail_relationship(cls, category: str | None) -> list[QueryableAttribute]:
+    def detail_relationship(cls, category: EventCategory | None) -> list[QueryableAttribute]:
         return {
-            "sleep": [cls.sleep_detail],
-            "workout": [cls.workout_detail],
-            "menstrual_cycle": [cls.menstrual_cycle_detail],
-            "meal": [cls.meal_detail],
+            EventCategory.SLEEP: [cls.sleep_detail],
+            EventCategory.WORKOUT: [cls.workout_detail],
+            EventCategory.MENSTRUAL_CYCLE: [cls.menstrual_cycle_detail],
+            EventCategory.MEAL: [cls.meal_detail],
         }.get(
-            category or "",
+            category,
             [cls.sleep_detail, cls.workout_detail, cls.menstrual_cycle_detail, cls.meal_detail],
         )

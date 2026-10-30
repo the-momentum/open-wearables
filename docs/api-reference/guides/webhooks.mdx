@@ -215,7 +215,7 @@ Fired per ingestion batch — one event per distinct `(user, provider, series_ty
 
 | Event | Series types included |
 |-------|-----------------------|
-| `heart_rate.created` | `heart_rate`, `resting_heart_rate`, `walking_heart_rate_average`, `atrial_fibrillation_burden` |
+| `heart_rate.created` | `heart_rate`, `resting_heart_rate`, `heart_rate_recovery_one_minute`, `walking_heart_rate`, `atrial_fibrillation_burden` |
 | `heart_rate_variability.created` | `heart_rate_variability_sdnn`, `heart_rate_variability_rmssd` |
 | `steps.created` | `steps` |
 | `calories.created` | `active_energy`, `basal_energy`, `total_energy` |
@@ -232,6 +232,19 @@ Fired per ingestion batch — one event per distinct `(user, provider, series_ty
 | `workout_metrics.created` | `cadence`, `power`, `speed`, running/walking/swimming metrics |
 | `environmental.created` | `environmental_audio_exposure`, `uv_exposure`, `weather_temperature`, … |
 | `timeseries.created` | Catch-all for series types not yet explicitly mapped. |
+
+Each series type also has its own event, `series.<series_type>.created`, carrying only that series' samples.
+
+<Note>
+Two series changed in this release, and their events with them:
+
+| Before | Now |
+|--------|-----|
+| `series.walking_heart_rate_average.created` | `series.walking_heart_rate.created` |
+| `series.average_met.created` | retired: a workout's average MET is its `physical_effort` average, returned as the workout's `average_met` |
+
+Self-hosting with endpoints that filter on the old names: run `scripts/data_migrations/rename_series_webhook_events.py --phase=add` from the new image before it takes traffic, so those endpoints also subscribe to the new names, and `--phase=remove` once the deploy is done. An endpoint whose filter names only old events is left as it is, as removing them would leave it with no filter and every event: the script lists it, and its filter needs the new names set by hand.
+</Note>
 
 ---
 
@@ -475,7 +488,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "value": 62,
         "unit": "bpm",
         "source": { "provider": "garmin", "device": "Forerunner 255" },
-        "is_daily_total": null
+        "is_daily_total": null,
+        "window_seconds": null
       },
       {
         "timestamp": "2025-12-19T07:35:00+01:00",
@@ -484,7 +498,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "value": 65,
         "unit": "bpm",
         "source": { "provider": "garmin", "device": "Forerunner 255" },
-        "is_daily_total": null
+        "is_daily_total": null,
+        "window_seconds": null
       },
       {
         "timestamp": "2025-12-19T07:40:00+01:00",
@@ -493,7 +508,8 @@ Each timeseries event carries the full sample array so your backend can act on t
         "value": 70,
         "unit": "bpm",
         "source": { "provider": "garmin", "device": "Forerunner 255" },
-        "is_daily_total": null
+        "is_daily_total": null,
+        "window_seconds": null
       }
     ]
   }
@@ -503,15 +519,11 @@ Each timeseries event carries the full sample array so your backend can act on t
 Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_id}/timeseries`, so consumers work with a single schema regardless of whether data comes from a webhook or the pull API.
 
 <Note>
-  **`is_daily_total`** distinguishes pre-aggregated daily totals from intraday samples for additive series (steps, energy, distance, flights):
+  Series events carry readings only. A provider's **day value** (Garmin's daily step total, Oura's nightly SpO2, a readiness temperature) is not a sample any more and is not sent as one: read it from `GET /api/v1/users/{user_id}/timeseries?resolution=1day`, where every source's days are, the provider's own value where it sent one. Day values stored before this release are copied there by a backfill that runs after the upgrade; until it has reached them, they are still in `raw`. `is_daily_total` is therefore `false` or `null` on every sample a webhook carries; sum the samples of an additive series (steps, energy, distance, flights) as they come.
+</Note>
 
-  | Value | Meaning |
-  |-------|---------|
-  | `true` | Pre-aggregated daily total reported by the device. Use this value directly — do **not** add intraday samples from the same day and source on top of it. |
-  | `false` | Intraday sample (e.g. a 15-minute epoch). Sum these when no daily total is present. |
-  | `null` | Legacy row ingested before this field was introduced, or a series type where daily vs. intraday does not apply (e.g. heart rate). Treat the same as `false`. |
-
-  For non-additive series (heart rate, SpO2, temperature, …) `is_daily_total` is always `null` and can be ignored.
+<Note>
+  **`window_seconds`** is the width of a sample reported over a window rather than at an instant: a Garmin 15-minute epoch is `900`, a HealthKit record from 08:00 to 08:05 is `300`. `null` means an instant reading.
 </Note>
 
 <Note>

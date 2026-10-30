@@ -3,7 +3,7 @@ from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
 
-from sqlalchemy import Date, and_, asc, cast, desc, func, select, tuple_
+from sqlalchemy import Date, and_, cast, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -46,7 +46,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         query = db_session.query(HealthScore).filter(and_(*filters))
 
         total_count = query.count()
-        results = query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all()
+        results = query.order_by(HealthScore.recorded_at.desc()).offset(params.offset).limit(params.limit).all()
         return results, total_count
 
     def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> WriteCounts:
@@ -76,7 +76,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         return (
             db_session.query(HealthScore)
             .filter(HealthScore.user_id == user_id, HealthScore.category == category)
-            .order_by(desc(HealthScore.recorded_at))
+            .order_by(HealthScore.recorded_at.desc())
             .first()
         )
 
@@ -164,14 +164,14 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             cursor_ts, cursor_id, direction = decode_cursor(cursor)
             if direction == "prev":
                 query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) < (cursor_ts, cursor_id)).order_by(
-                    desc(HealthScore.recorded_at), desc(HealthScore.id)
+                    HealthScore.recorded_at.desc(), HealthScore.id.desc()
                 )
             else:
                 query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) > (cursor_ts, cursor_id)).order_by(
-                    asc(HealthScore.recorded_at), asc(HealthScore.id)
+                    HealthScore.recorded_at.asc(), HealthScore.id.asc()
                 )
         else:
-            query = query.order_by(asc(HealthScore.recorded_at), asc(HealthScore.id))
+            query = query.order_by(HealthScore.recorded_at.asc(), HealthScore.id.asc())
 
         rows = query.limit(limit + 1).all()
 
@@ -207,6 +207,6 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             db_session.query(HealthScore)
             .filter(HealthScore.user_id == user_id)
             .distinct(HealthScore.category)
-            .order_by(HealthScore.category, desc(HealthScore.recorded_at))
+            .order_by(HealthScore.category, HealthScore.recorded_at.desc())
             .all()
         )

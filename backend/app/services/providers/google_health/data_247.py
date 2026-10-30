@@ -29,7 +29,7 @@ from app.repositories.provider_settings_repository import ProviderSettingsReposi
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import GRANULARITY_WINDOW_SECONDS, DataGranularity, DeviceType, SeriesType
 from app.schemas.enums.aggregation_method import daily_total_flag
-from app.schemas.model_crud.activities import TimeSeriesSampleCreate
+from app.schemas.model_crud.activities import CalendarPeriod, TimeSeriesSampleCreate
 from app.schemas.providers.google import (
     DailyRollupMetric,
     DailyRollupSpec,
@@ -46,6 +46,7 @@ from app.services.providers.google_health.helpers import (
     extract_form_factor,
     extract_source,
     parse_date,
+    parse_interval,
     parse_page,
     parse_rfc3339,
     physical_interval,
@@ -61,6 +62,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import window_seconds
 from app.utils.sentry_helpers import log_and_capture_error
 
 
@@ -76,7 +78,7 @@ class UnsupportedGranularityError(RuntimeError):
 
 
 class GoogleHealth247Data(Base247DataTemplate):
-    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as DataPointSeries."""
+    """Fetches Google 24/7 metrics (list/reconcile + dailyRollUp) and persists them as SeriesSample."""
 
     # rollUp enforces windowSize * pageSize <= the data type's max range; list default page.
     MAX_PAGE_SIZE = 10_000
@@ -231,7 +233,16 @@ class GoogleHealth247Data(Base247DataTemplate):
                     # #1586); for the counters a 0 adds nothing to a sum. Neither is worth a row.
                     if value is None or value == 0:
                         continue
-                    samples.append(self._sample(user_id, recorded_at, value, series_type, is_daily_total))
+                    samples.append(
+                        self._sample(
+                            user_id,
+                            recorded_at,
+                            value,
+                            series_type,
+                            is_daily_total,
+                            window=None if is_daily_total else window_seconds,
+                        )
+                    )
         return samples
 
     def _fetch_rollup_pages(
@@ -402,6 +413,7 @@ class GoogleHealth247Data(Base247DataTemplate):
             recorded_at, zone_offset = self._point_time(value_obj, spec.time)
             if recorded_at is None or not self._in_window(spec.time, recorded_at, start_time, end_time):
                 continue
+            width = window_seconds(*parse_interval(value_obj.get("interval")))
             # Only list points carry a dataSource; reconciled points are already merged.
             device_model = None if reconcile else extract_source(point.get("dataSource"))[1]
             device_type = None if reconcile else extract_form_factor(point.get("dataSource"))
@@ -419,6 +431,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                         zone_offset,
                         device_model,
                         device_type,
+                        width,
                     )
                 )
             # Unlike the readings above, a difference of zero is a measurement: the night sat on
@@ -438,6 +451,7 @@ class GoogleHealth247Data(Base247DataTemplate):
                         zone_offset,
                         device_model,
                         device_type,
+                        width,
                     )
                 )
         return samples
@@ -551,6 +565,7 @@ class GoogleHealth247Data(Base247DataTemplate):
         zone_offset: str | None = None,
         device_model: str | None = None,
         device_type: DeviceType | None = None,
+        window: int | None = None,
     ) -> TimeSeriesSampleCreate:
         return TimeSeriesSampleCreate(
             id=uuid4(),
@@ -561,11 +576,13 @@ class GoogleHealth247Data(Base247DataTemplate):
             device_type=device_type,
             recorded_at=recorded_at,
             zone_offset=zone_offset,
+            window_seconds=window,
             value=value,
             series_type=series_type,
             # Only SUM series carry the daily-vs-intraday distinction; for AVG/MAX it stays None,
             # or bucketed /timeseries reads would drop the daily rows as "totals" (see daily_total_flag).
             is_daily_total=daily_total_flag(series_type, is_daily_total),
+            period=CalendarPeriod.of_date(recorded_at.date(), zone_offset) if is_daily_total else None,
             external_id=(
                 f"{series_type.value}:{recorded_at.isoformat()}" if series_type is SeriesType.active_energy else None
             ),

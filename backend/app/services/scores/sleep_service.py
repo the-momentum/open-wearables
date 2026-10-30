@@ -19,7 +19,7 @@ from app.algorithms.sleep import SleepScoreResult, awakenings, calculate_overall
 from app.database import DbSession
 from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_repository import EventRecordRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import EventRecordQueryParams, HealthScoreCreate, ScoreComponent
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
@@ -130,7 +130,7 @@ class SleepScoreService:
         records, _ = self.event_record_repo.get_records_with_filters(
             db_session,
             EventRecordQueryParams(
-                category="sleep",
+                category=EventCategory.SLEEP,
                 start_datetime=day_start,
                 sort_by="start_datetime",
                 sort_order="asc",
@@ -158,7 +158,7 @@ class SleepScoreService:
         hist_records, _ = self.event_record_repo.get_records_with_filters(
             db_session,
             EventRecordQueryParams(
-                category="sleep",
+                category=EventCategory.SLEEP,
                 start_datetime=history_start,
                 end_datetime=day_start,
                 sort_by="start_datetime",
@@ -283,7 +283,7 @@ class SleepScoreService:
         all_records, _ = self.event_record_repo.get_records_with_filters(
             db_session,
             EventRecordQueryParams(
-                category="sleep",
+                category=EventCategory.SLEEP,
                 start_datetime=window_start,
                 end_datetime=window_end,
                 sort_by="start_datetime",
@@ -394,7 +394,7 @@ class SleepScoreService:
         all_records, _ = self.event_record_repo.get_records_with_filters(
             db_session,
             EventRecordQueryParams(
-                category="sleep",
+                category=EventCategory.SLEEP,
                 start_datetime=window_start,
                 end_datetime=window_end,
                 sort_by="start_datetime",
