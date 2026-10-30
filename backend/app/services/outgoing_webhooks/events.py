@@ -14,14 +14,13 @@ from uuid import UUID
 
 from celery import current_app as celery_app
 
+from app.constants.celery_tasks import CeleryTask
 from app.constants.devices_map import resolve_device_name
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 from app.services.outgoing_webhooks import svix as svix_service
 
 logger = logging.getLogger(__name__)
-
-_EMIT_TASK = "app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event"
 
 # Maximum number of samples included in a single Svix message.
 # At ~200 bytes per serialised sample, 2 500 samples ≈ 500 KB — well within
@@ -57,7 +56,7 @@ def _dispatch(
         return
     try:
         celery_app.send_task(
-            _EMIT_TASK,
+            CeleryTask.EMIT_WEBHOOK_EVENT,
             args=[event_type, payload],
             kwargs={"channels": channels, "idempotency_key": idempotency_key},
         )

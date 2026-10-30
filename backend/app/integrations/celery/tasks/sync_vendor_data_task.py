@@ -1,16 +1,17 @@
 from contextlib import ExitStack, suppress
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
 from celery import shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
+from app.schemas.responses.upload import ProviderSyncResult, Sync247Summary, SyncVendorDataResult
 from app.schemas.sync_status import (
     DataTypeKind,
     DataTypeOutcome,
@@ -22,6 +23,7 @@ from app.schemas.sync_status import (
 )
 from app.services.provider_settings_service import include_in_periodic_pull, live_sync_mode_of
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.sync_247_result import Sync247TaskOutcome, error_code_of
 from app.services.sync_coordination import (
     bind_primary_lease,
     clear_primary_lease,
@@ -46,10 +48,6 @@ from app.utils.sync_params import build_sync_params
 
 logger = getLogger(__name__)
 
-# Keys of load_and_save_all results that are not record counts, so they are not data
-# types either. Whoop reports a partial sleep fetch this way.
-_NON_COUNT_RESULT_KEYS = frozenset({"sleep_partial"})
-
 
 def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
     """Best-effort sync status emission — never aborts the sync flow."""
@@ -68,45 +66,46 @@ def _written_status(written: int) -> SyncStatus:
     return SyncStatus.SUCCESS if written else SyncStatus.SKIPPED
 
 
-def _task_outcomes(task: str, count: Any) -> list[DataTypeOutcome]:
+def _task_outcomes(task: str, outcome: Sync247TaskOutcome) -> list[DataTypeOutcome]:
     """Per-series-type outcomes for one provider fetch task.
 
-    A task writes several series types, so it reports per type where the write path told
-    us which ones -- the task name survives as native_type. Without that breakdown the
-    task itself is the only thing left to report.
+    A task writes several series types, so a task that went through reports per type where
+    the write path told us which ones -- the task name survives as native_type. A task that
+    failed, or wrote without that breakdown, reports as itself, with its error.
     """
-    by_type = getattr(count, "by_type", None)
-    if by_type:
+    counts = outcome.counts
+    if not outcome.error_codes and counts is not None and counts.by_type:
         return [
             DataTypeOutcome(
                 data_type=series_type,
                 kind=DataTypeKind.SERIES,
                 native_type=task,
-                status=_written_status(counts.inserted + counts.updated),
-                items_inserted=counts.inserted,
-                items_updated=counts.updated,
-                covered_start=counts.covered_start,
-                covered_end=counts.covered_end,
+                status=_written_status(type_counts.inserted + type_counts.updated),
+                items_inserted=type_counts.inserted,
+                items_updated=type_counts.updated,
+                covered_start=type_counts.covered_start,
+                covered_end=type_counts.covered_end,
             )
-            for series_type, counts in by_type.items()
+            for series_type, type_counts in counts.by_type.items()
         ]
     return [
         DataTypeOutcome(
             data_type=task,
             kind=DataTypeKind.TASK,
             native_type=task,
-            status=_written_status(int(count)),
-            items_inserted=getattr(count, "inserted", 0),
-            items_updated=getattr(count, "updated", 0),
-            # A plain int only says how many rows the provider saved, with no split.
-            reported_records=None if hasattr(count, "inserted") else int(count),
-            covered_start=getattr(count, "covered_start", None),
-            covered_end=getattr(count, "covered_end", None),
+            status=outcome.status,
+            items_inserted=counts.inserted if counts is not None else 0,
+            items_updated=counts.updated if counts is not None else 0,
+            # Without a split, only the provider's row count is known.
+            reported_records=None if counts is not None else outcome.rows_written,
+            covered_start=counts.covered_start if counts is not None else None,
+            covered_end=counts.covered_end if counts is not None else None,
+            error_code=outcome.error_code,
         )
     ]
 
 
-@shared_task
+@shared_task(name=CeleryTask.SYNC_VENDOR_DATA)
 def sync_vendor_data(
     user_id: str,
     start_date: str | None = None,
@@ -320,11 +319,12 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
-                    # New-vs-updated split for the sync-log (timeseries upserts report it
-                    # via WriteCounts). items_processed is derived from these so the headline
-                    # count always equals "X new, Y updated".
+                    # New-vs-updated split for the sync-log. Providers report it per data
+                    # type via Sync247Result; pull_written is the headline count, and covers
+                    # the write paths that cannot yet report a split.
                     pull_inserted = 0
                     pull_updated = 0
+                    pull_written = 0
                     data_type_outcomes: list[DataTypeOutcome] = []
                     applied_lookback: timedelta | None = None  # set when the lookback actually widened the window
 
@@ -388,7 +388,8 @@ def sync_vendor_data(
                             log_structured(
                                 logger,
                                 "warning",
-                                f"Workouts sync failed for {provider_name}: {e}",
+                                "Workouts sync failed",
+                                error_code=error_code_of(e),
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -396,7 +397,7 @@ def sync_vendor_data(
                             log_and_capture_error(
                                 e,
                                 logger,
-                                f"Workouts sync failed for {provider_name}: {e}",
+                                "Workouts sync failed",
                                 extra={
                                     "user_id": user_id,
                                     "provider": provider_name,
@@ -404,14 +405,14 @@ def sync_vendor_data(
                                     "trace_id": trace_id,
                                 },
                             )
-                            provider_result.params["workouts"] = {"success": False, "error": str(e)}
+                            provider_result.params["workouts"] = {"success": False, "error_code": error_code_of(e)}
                             data_type_outcomes.append(
                                 DataTypeOutcome(
                                     data_type="workouts",
                                     kind=DataTypeKind.TASK,
                                     native_type="workouts",
                                     status=SyncStatus.FAILED,
-                                    error=str(e),
+                                    error_code=error_code_of(e),
                                 )
                             )
 
@@ -431,46 +432,37 @@ def sync_vendor_data(
                         )
 
                         try:
-                            # Use load_and_save_all if available (saves data to DB)
-                            # Otherwise fallback to load_all_247_data (just returns data)
-                            provider_any = cast(Any, strategy.data_247)
-                            if hasattr(provider_any, "load_and_save_all"):
-                                results_247 = provider_any.load_and_save_all(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                    is_first_sync=is_first_sync,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
-                                for _task, _count in results_247.items():
-                                    # Some providers put flags in the same dict as counts.
-                                    if _task in _NON_COUNT_RESULT_KEYS:
-                                        continue
-                                    pull_inserted += getattr(_count, "inserted", 0)
-                                    pull_updated += getattr(_count, "updated", 0)
-                                    data_type_outcomes.extend(_task_outcomes(_task, _count))
-                            else:
-                                results_247 = strategy.data_247.load_all_247_data(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
+                            results_247 = strategy.data_247.load_and_save_all(
+                                db,
+                                user_uuid,
+                                start_time=start_dt,
+                                end_time=end_dt,
+                                is_first_sync=is_first_sync,
+                            )
+                            # An all-failed run is a failure, not an empty success: every data
+                            # type the provider attempted raised (expired token, unlinked account).
+                            summary_247 = results_247.summary().model_dump(mode="json")
+                            provider_result.params["data_247"] = summary_247
+                            pull_inserted += results_247.inserted
+                            pull_updated += results_247.updated
+                            pull_written += results_247.rows_written
+                            for _task, _outcome in results_247.outcomes.items():
+                                data_type_outcomes.extend(_task_outcomes(_task, _outcome))
                             log_structured(
                                 logger,
                                 "info",
-                                f"247 data synced for {provider_name}: {results_247}",
+                                f"247 data synced for {provider_name}",
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
+                                data_247=summary_247,
                             )
                         except Exception as e:
                             log_structured(
                                 logger,
                                 "warning",
-                                f"247 data sync failed for {provider_name}: {e}",
+                                "24/7 data sync failed",
+                                error_code=error_code_of(e),
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
@@ -478,7 +470,7 @@ def sync_vendor_data(
                             log_and_capture_error(
                                 e,
                                 logger,
-                                f"247 data sync failed for {provider_name}: {e}",
+                                "24/7 data sync failed",
                                 extra={
                                     "user_id": user_id,
                                     "provider": provider_name,
@@ -486,14 +478,21 @@ def sync_vendor_data(
                                     "trace_id": trace_id,
                                 },
                             )
-                            provider_result.params["data_247"] = {"success": False, "error": str(e)}
+                            provider_result.params["data_247"] = Sync247Summary(
+                                status=SyncStatus.FAILED,
+                                items_inserted=None,
+                                items_updated=None,
+                                items_reported=None,
+                                error_code=error_code_of(e),
+                                tasks={},
+                            ).model_dump(mode="json")
                             data_type_outcomes.append(
                                 DataTypeOutcome(
                                     data_type="data_247",
                                     kind=DataTypeKind.TASK,
                                     native_type="data_247",
                                     status=SyncStatus.FAILED,
-                                    error=str(e),
+                                    error_code=error_code_of(e),
                                 )
                             )
 
@@ -586,6 +585,9 @@ def sync_vendor_data(
                             completed_metadata["inserted"] = pull_inserted
                             completed_metadata["updated"] = pull_updated
                             completed_message += f" · {pull_inserted} new, {pull_updated} updated"
+                        elif pull_written:
+                            # Rows were written by paths that don't report the split yet.
+                            completed_message += f" · {pull_written} records"
                         if applied_lookback is not None:
                             lookback_label = format_duration(applied_lookback)
                             completed_metadata["lookback"] = lookback_label
@@ -599,7 +601,7 @@ def sync_vendor_data(
                             run_id=run_id,
                             status=final_status,
                             message=completed_message,
-                            items_processed=pull_inserted + pull_updated,
+                            items_processed=pull_written,
                             primary_user_id=primary_uuid,
                             metadata=completed_metadata,
                             window_start=start_dt,
@@ -619,14 +621,14 @@ def sync_vendor_data(
                         sync_source,
                         scope=sync_scope,
                         run_id=run_id,
-                        error=str(e),
+                        error=error_code_of(e),
                         message=f"Sync from {provider_name} failed",
                         metadata={"is_historical": is_historical},
                     )
                     log_and_capture_error(
                         e,
                         logger,
-                        f"Error syncing {provider_name} for user {user_id}: {str(e)}",
+                        "Provider sync failed",
                         extra={
                             "user_id": user_id,
                             "provider": provider_name,
@@ -634,7 +636,7 @@ def sync_vendor_data(
                             "trace_id": trace_id,
                         },
                     )
-                    result.errors[provider_name] = str(e)
+                    result.errors[provider_name] = error_code_of(e)
                     continue
                 finally:
                     run_context.close()
@@ -646,8 +648,8 @@ def sync_vendor_data(
             log_and_capture_error(
                 e,
                 logger,
-                f"Error processing user {user_id}: {str(e)}",
+                "User sync failed",
                 extra={"user_id": user_id, "task": "sync_vendor_data", "trace_id": trace_id},
             )
-            result.errors["general"] = str(e)
+            result.errors["general"] = error_code_of(e)
             return result.model_dump()

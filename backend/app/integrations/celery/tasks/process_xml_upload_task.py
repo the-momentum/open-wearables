@@ -8,6 +8,7 @@ from uuid import UUID
 from celery import shared_task
 from sqlalchemy.orm import Session
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.schemas.providers.apple.apple_xml import XMLParseStats
 from app.schemas.sync_status import (
@@ -68,7 +69,7 @@ def _xml_outcomes(stats: XMLParseStats) -> list[DataTypeOutcome]:
     return outcomes
 
 
-@shared_task
+@shared_task(name=CeleryTask.PROCESS_XML_UPLOAD)
 def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dict[str, Any]:
     """
     Process XML file and import to Postgres database.

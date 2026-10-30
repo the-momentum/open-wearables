@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from celery import current_app as celery_app
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.constants.series_types.sdk import (
     SleepPhase,
     get_apple_sleep_phase,
@@ -17,7 +18,7 @@ from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.models import EventRecord
-from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
+from app.schemas.enums import DeviceType, EventCategory, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -38,8 +39,6 @@ from app.services.sdk.device_resolution import extract_device_ids, extract_devic
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
-
-_FINALIZE_STALE_SLEEPS_TASK = "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps"
 
 _STAGE_TO_METRIC: dict[str, str] = {
     "awake": "awake_seconds",
@@ -378,7 +377,7 @@ def handle_sleep_data(
 
     # Dispatch the stale-sleep task so sessions that have gone quiet (including
     # other users' sessions) are finalised promptly without waiting for the next beat.
-    celery_app.send_task(_FINALIZE_STALE_SLEEPS_TASK)
+    celery_app.send_task(CeleryTask.FINALIZE_STALE_SLEEPS)
 
 
 def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[SleepStage]]:
@@ -558,7 +557,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         end_datetime=end_time,
         zone_offset=state.zone_offset,
         duration_seconds=int(total_duration),
-        category="sleep",
+        category=EventCategory.SLEEP,
         type="sleep_session",
         source_name=state.source_name or "unknown",
         source=source_for_lookup,
@@ -587,7 +586,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         created_or_existing_record = event_record_service.create(db_session, sleep_record)
         # Always use the returned record's ID (whether newly created or existing)
         detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-        event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
+        event_record_service.create_detail(db_session, detail_for_record, detail_type=EventCategory.SLEEP)
         _save_provider_sleep_score(db_session, user_id, state, created_or_existing_record, start_time)
         # Delete from Redis only after a successful DB write so a transient error
         # keeps the session available for the next periodic finalization attempt.

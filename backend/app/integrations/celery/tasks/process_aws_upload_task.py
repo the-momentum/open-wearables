@@ -10,6 +10,7 @@ from celery import Task, shared_task
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.schemas.providers.apple.apple_xml import CompletedPart
@@ -275,7 +276,7 @@ def _process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict
         }
 
 
-@shared_task(bind=True, acks_late=True, reject_on_worker_lost=True, max_retries=3)
+@shared_task(name=CeleryTask.PROCESS_AWS_UPLOAD, bind=True, acks_late=True, reject_on_worker_lost=True, max_retries=3)
 def process_aws_upload(task: Task, bucket_name: str, object_key: str, user_id: str) -> dict[str, str]:
     """Process an XML file uploaded to S3 and import it into Postgres."""
     return _run_import_task(task, bucket_name=bucket_name, object_key=object_key, user_id=user_id)
@@ -325,7 +326,13 @@ def _ensure_upload_completed(
         raise
 
 
-@shared_task(bind=True, acks_late=True, reject_on_worker_lost=True, max_retries=3)
+@shared_task(
+    name=CeleryTask.COMPLETE_AND_PROCESS_AWS_UPLOAD,
+    bind=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+    max_retries=3,
+)
 def complete_and_process_aws_upload(
     task: Task,
     *,

@@ -11,14 +11,15 @@ Tests cover:
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
-
-_RECONCILE_TASK = "app.integrations.celery.tasks.provider_webhooks_task.reconcile_provider_webhooks"
 
 
 class TestProviderSettingsServiceGetAllProviders:
@@ -109,6 +110,57 @@ class TestProviderSettingsServiceGetAllProviders:
         other_providers = [p for p in providers if p.provider != "apple"]
         for provider in other_providers:
             assert provider.is_enabled is True
+
+    def test_get_all_providers_credentials_configured_when_set(self, db: Session) -> None:
+        """Should report credentials as configured when client ID and secret are set."""
+        service = ProviderSettingsService()
+
+        with (
+            patch.object(settings, "oura_client_id", "client-id"),
+            patch.object(settings, "oura_client_secret", SecretStr("client-secret")),
+        ):
+            providers = service.get_all_providers(db)
+
+        oura = next(p for p in providers if p.provider == "oura")
+        assert oura.credentials_configured is True
+
+    @pytest.mark.parametrize(
+        ("client_id", "client_secret"),
+        [(None, None), ("client-id", None), (None, SecretStr("client-secret"))],
+    )
+    def test_get_all_providers_credentials_missing(
+        self, db: Session, client_id: str | None, client_secret: SecretStr | None
+    ) -> None:
+        """Should report credentials as missing when client ID or secret is unset."""
+        service = ProviderSettingsService()
+
+        with (
+            patch.object(settings, "oura_client_id", client_id),
+            patch.object(settings, "oura_client_secret", client_secret),
+        ):
+            providers = service.get_all_providers(db)
+
+        oura = next(p for p in providers if p.provider == "oura")
+        assert oura.credentials_configured is False
+
+    def test_get_all_providers_sdk_providers_need_no_credentials(self, db: Session) -> None:
+        """Should treat SDK-only providers as configured."""
+        service = ProviderSettingsService()
+
+        providers = service.get_all_providers(db)
+
+        for provider in providers:
+            if not provider.has_cloud_api:
+                assert provider.credentials_configured is True
+
+    def test_update_provider_setting_includes_credentials_configured(self, db: Session) -> None:
+        """Should return credentials_configured from the update endpoint too."""
+        service = ProviderSettingsService()
+
+        with patch.object(settings, "oura_client_id", None):
+            result = service.update_provider_setting(db, "oura", ProviderSettingUpdate(is_enabled=True))
+
+        assert result.credentials_configured is False
 
 
 class TestProviderSettingsServiceUpdateProviderStatus:
@@ -373,7 +425,9 @@ class TestProviderSettingsServiceWebhookDispatch:
         with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
             service.update_provider_setting(db, "oura", ProviderSettingUpdate(live_sync_mode=mode))
 
-        send_task.assert_called_once_with(_RECONCILE_TASK, args=["oura", mode], queue="webhook_sync")
+        send_task.assert_called_once_with(
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS, args=["oura", mode], queue="webhook_sync"
+        )
 
     def test_mode_change_reconciles_per_user_provider_the_same_way(self, db: Session) -> None:
         """Per-user providers take the same path; their fan-out handles the revoke."""
@@ -382,7 +436,9 @@ class TestProviderSettingsServiceWebhookDispatch:
         with patch("app.services.providers.base_strategy.celery_app.send_task") as send_task:
             service.update_provider_setting(db, "withings", ProviderSettingUpdate(live_sync_mode=LiveSyncMode.PULL))
 
-        send_task.assert_called_once_with(_RECONCILE_TASK, args=["withings", LiveSyncMode.PULL], queue="webhook_sync")
+        send_task.assert_called_once_with(
+            CeleryTask.RECONCILE_PROVIDER_WEBHOOKS, args=["withings", LiveSyncMode.PULL], queue="webhook_sync"
+        )
 
     def test_provider_without_registration_api_dispatches_nothing(self, db: Session) -> None:
         """Should stay quiet for providers whose subscriptions are not managed by API."""

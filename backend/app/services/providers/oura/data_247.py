@@ -15,12 +15,14 @@ from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import WriteCounts
-from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, HealthScoreCategory, ProviderName, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
     ScoreComponent,
+    SessionValue,
     SleepStage,
     TimeSeriesSampleCreate,
 )
@@ -41,12 +43,13 @@ from app.services.providers.oura.coverage import (
     SLEEP_INTERVAL_SERIES,
     SLEEP_SCALAR_SERIES,
 )
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.conversion import energy_difference, seconds_to_minutes
-from app.utils.dates import offset_to_iso, parse_iso_datetime, to_rfc3339
+from app.utils.dates import offset_of, offset_to_iso, parse_iso_datetime, to_rfc3339
 from app.utils.structured_logging import LogContext, log_structured
 
 
@@ -229,7 +232,14 @@ class Oura247Data(Base247DataTemplate):
             except OverflowError:
                 return []
 
-            samples.append({"recorded_at": recorded_at, "value": value, "zone_offset": zone_offset})
+            samples.append(
+                {
+                    "recorded_at": recorded_at,
+                    "value": value,
+                    "zone_offset": zone_offset,
+                    "window_seconds": int(met.interval),
+                }
+            )
 
         return samples
 
@@ -269,17 +279,32 @@ class Oura247Data(Base247DataTemplate):
 
             if activity.steps is not None:
                 result["steps"].append(
-                    {"recorded_at": recorded_at, "value": activity.steps, "zone_offset": activity_zone_offset}
+                    {
+                        "recorded_at": recorded_at,
+                        "value": activity.steps,
+                        "zone_offset": activity_zone_offset,
+                        "day": activity.day,
+                    }
                 )
             if activity.active_calories is not None:
                 result["energy"].append(
-                    {"recorded_at": recorded_at, "value": activity.active_calories, "zone_offset": activity_zone_offset}
+                    {
+                        "recorded_at": recorded_at,
+                        "value": activity.active_calories,
+                        "zone_offset": activity_zone_offset,
+                        "day": activity.day,
+                    }
                 )
             # total_calories includes BMR; active_calories doesn't
             basal = energy_difference(activity.total_calories, activity.active_calories)
             if basal is not None:
                 result["basal_energy"].append(
-                    {"recorded_at": recorded_at, "value": basal, "zone_offset": activity_zone_offset}
+                    {
+                        "recorded_at": recorded_at,
+                        "value": basal,
+                        "zone_offset": activity_zone_offset,
+                        "day": activity.day,
+                    }
                 )
             if activity.equivalent_walking_distance is not None:
                 result["distance"].append(
@@ -287,6 +312,7 @@ class Oura247Data(Base247DataTemplate):
                         "recorded_at": recorded_at,
                         "value": activity.equivalent_walking_distance,
                         "zone_offset": activity_zone_offset,
+                        "day": activity.day,
                     }
                 )
             minutes_by_series = {
@@ -298,7 +324,12 @@ class Oura247Data(Base247DataTemplate):
             for key, minutes in minutes_by_series.items():
                 if minutes is not None:
                     result[key].append(
-                        {"recorded_at": recorded_at, "value": minutes, "zone_offset": activity_zone_offset}
+                        {
+                            "recorded_at": recorded_at,
+                            "value": minutes,
+                            "zone_offset": activity_zone_offset,
+                            "day": activity.day,
+                        }
                     )
             result["met"].extend(self._expand_met_series(activity.met, activity.class_5_min))
 
@@ -310,8 +341,8 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized: tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]],
         log_ctx: LogContext | None = None,
-    ) -> int:
-        """Save daily activity data as DataPointSeries and health scores."""
+    ) -> WriteCounts:
+        """Save daily activity data as SeriesSample and health scores."""
         provider_user_id, trace_id = log_ctx or LogContext()
         activity_samples, health_scores = normalized
         samples: list[TimeSeriesSampleCreate] = []
@@ -325,9 +356,13 @@ class Oura247Data(Base247DataTemplate):
                             source=self.provider_name,
                             recorded_at=item["recorded_at"],
                             zone_offset=item.get("zone_offset"),
+                            window_seconds=item.get("window_seconds"),
                             value=Decimal(str(item["value"])),
                             series_type=series_type,
                             is_daily_total=daily_total_flag(series_type, is_daily=True),
+                            period=CalendarPeriod.of_date(item["day"], item.get("zone_offset"))
+                            if item.get("day")
+                            else None,
                         )
                     )
                 except Exception as e:
@@ -347,7 +382,7 @@ class Oura247Data(Base247DataTemplate):
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            counts += health_score_service.bulk_create(db, health_scores)
         if samples or health_scores:
             db.commit()
         return counts
@@ -399,8 +434,8 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized: list[tuple[datetime, float]],
         log_ctx: LogContext | None = None,
-    ) -> int:
-        """Save daily cardiovascular age data as DataPointSeries."""
+    ) -> WriteCounts:
+        """Save daily cardiovascular age data as SeriesSample."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
 
@@ -414,6 +449,7 @@ class Oura247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=SeriesType.cardiovascular_age,
+                        period=CalendarPeriod.of_date(recorded_at.date()),
                     )
                 )
             except Exception as e:
@@ -523,6 +559,8 @@ class Oura247Data(Base247DataTemplate):
                     "user_id": user_id,
                     "provider": self.provider_name,
                     "timestamp": timestamp,
+                    "day": readiness.day,
+                    "zone_offset": offset_of(timestamp),
                     "recovery_score": readiness.score,
                     "temperature_deviation": readiness.temperature_deviation,
                     "temperature_trend_deviation": readiness.temperature_trend_deviation,
@@ -537,8 +575,8 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized: tuple[list[dict[str, Any]], list[HealthScoreCreate]],
         log_ctx: LogContext | None = None,
-    ) -> int:
-        """Save normalized readiness data as DataPointSeries and health scores."""
+    ) -> WriteCounts:
+        """Save normalized readiness data as SeriesSample and health scores."""
         provider_user_id, trace_id = log_ctx or LogContext()
         recovery_metrics, health_scores = normalized
 
@@ -561,6 +599,9 @@ class Oura247Data(Base247DataTemplate):
                                 recorded_at=timestamp,
                                 value=Decimal(str(value)),
                                 series_type=series_type,
+                                period=CalendarPeriod.of_date(day, normalized_readiness.get("zone_offset"))
+                                if (day := normalized_readiness.get("day"))
+                                else None,
                             )
                         )
                     except Exception as e:
@@ -580,7 +621,7 @@ class Oura247Data(Base247DataTemplate):
         if samples:
             counts = timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
-            health_score_service.bulk_create(db, health_scores)
+            counts += health_score_service.bulk_create(db, health_scores)
         if samples or health_scores:
             db.commit()
         return counts
@@ -742,7 +783,7 @@ class Oura247Data(Base247DataTemplate):
 
             record = EventRecordCreate(
                 id=sleep_id,
-                category="sleep",
+                category=EventCategory.SLEEP,
                 type="sleep_session",
                 source_name="Oura",
                 device_model=None,
@@ -779,8 +820,12 @@ class Oura247Data(Base247DataTemplate):
                 sleep_stages=normalized_sleep.get("stage_timestamps", []),
             )
 
+            sleep_record_id = None
             try:
-                event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+                stored = event_record_service.create_or_merge_sleep(
+                    db, user_id, record, detail, settings.sleep_end_gap_minutes
+                )
+                sleep_record_id = stored.id
                 count += 1
             except Exception as e:
                 db.rollback()
@@ -857,6 +902,7 @@ class Oura247Data(Base247DataTemplate):
                                     zone_offset=zone_offset,
                                     value=Decimal(str(scalar_value)),
                                     series_type=series_type,
+                                    session=SessionValue(record_id=sleep_record_id) if sleep_record_id else None,
                                 )
                             ],
                         )
@@ -940,12 +986,13 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized: list[HealthScoreCreate],
-    ) -> int:
+    ) -> WriteCounts:
         """Save daily sleep scores via health_score_service."""
+        counts = WriteCounts(0, 0)
         if normalized:
-            health_score_service.bulk_create(db, normalized)
+            counts = health_score_service.bulk_create(db, normalized)
             db.commit()
-        return len(normalized)
+        return counts
 
     # -------------------------------------------------------------------------
     # Daily SpO2 Data
@@ -971,8 +1018,8 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         raw_data: list[dict[str, Any]],
         log_ctx: LogContext | None = None,
-    ) -> int:
-        """Save SpO2 data as DataPointSeries."""
+    ) -> WriteCounts:
+        """Save SpO2 data as SeriesSample."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
@@ -997,6 +1044,7 @@ class Oura247Data(Base247DataTemplate):
                             recorded_at=recorded_at,
                             value=Decimal(str(avg_spo2)),
                             series_type=SeriesType.oxygen_saturation,
+                            period=CalendarPeriod.of_date(day),
                         )
                     )
                 except Exception as e:
@@ -1022,6 +1070,7 @@ class Oura247Data(Base247DataTemplate):
                             recorded_at=recorded_at,
                             value=Decimal(str(bdi)),
                             series_type=SeriesType.breathing_disturbance_index,
+                            period=CalendarPeriod.of_date(day),
                         )
                     )
                 except Exception as e:
@@ -1076,8 +1125,8 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_data: list[dict[str, Any]],
-    ) -> int:
-        """Save heart rate samples as DataPointSeries."""
+    ) -> WriteCounts:
+        """Save heart rate samples as SeriesSample."""
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
             bpm = item.get("bpm")
@@ -1153,14 +1202,14 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_data: dict[str, Any],
-    ) -> int:
-        """Save personal info (weight, height) as DataPointSeries.
+    ) -> WriteCounts:
+        """Save personal info (weight, height) as SeriesSample.
 
         Only saves when the value has changed from the most recent stored entry.
         """
         normalized = self.normalize_personal_info(raw_data, user_id)
         if not normalized:
-            return 0
+            return WriteCounts(0, 0)
 
         now = datetime.now(timezone.utc)
         latest = timeseries_service.crud.get_latest_values_for_types(
@@ -1229,8 +1278,8 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         raw_data: list[dict[str, Any]],
         log_ctx: LogContext | None = None,
-    ) -> int:
-        """Save Vo2 data as DataPointSeries."""
+    ) -> WriteCounts:
+        """Save Vo2 data as SeriesSample."""
         provider_user_id, trace_id = log_ctx or LogContext()
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
@@ -1249,6 +1298,7 @@ class Oura247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         value=Decimal(str(vo2_max)),
                         series_type=SeriesType.vo2_max,
+                        period=CalendarPeriod.of_date(item["day"], offset_of(recorded_at)) if item.get("day") else None,
                     )
                 )
             except Exception as e:
@@ -1280,7 +1330,7 @@ class Oura247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
+    ) -> Sync247Result:
         """Load and save all 247 data types.
 
         Args:
@@ -1290,17 +1340,9 @@ class Oura247Data(Base247DataTemplate):
             end_time: End of date range (defaults to now)
             is_first_sync: Whether this is the first sync (unused, for API compatibility)
         """
-        if isinstance(start_time, str):
-            start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if isinstance(end_time, str):
-            end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        start_time, end_time = self.resolve_window(start_time, end_time)
 
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
-
-        tasks: dict[str, Callable[[], int]] = {
+        tasks: dict[str, Callable[[], WriteCounts | int]] = {
             "activity": lambda: self.save_activity_data(
                 db,
                 user_id,
@@ -1336,24 +1378,13 @@ class Oura247Data(Base247DataTemplate):
             "vo2_max": lambda: self.save_vo2_data(db, user_id, self.get_vo2_data(db, user_id, start_time, end_time)),
         }
 
-        results: dict[str, int] = {}
+        run = self.sync_run(db, user_id)
         for data_type, fn in tasks.items():
-            try:
-                results[data_type] = fn()
-            except Exception as e:
-                db.rollback()
-                results[data_type] = 0
-                log_structured(
-                    self.logger,
-                    "error",
-                    f"Failed to sync {data_type} data",
-                    action="oura_sync_error",
-                    data_type=data_type,
-                    user_id=str(user_id),
-                    error=str(e),
-                )
+            with run.step(data_type) as step:
+                step.record(fn())
 
-        return results
+        run.log_summary()
+        return run.result
 
     # -------------------------------------------------------------------------
     # Base class stubs — these abstract methods don't map to Oura's API.

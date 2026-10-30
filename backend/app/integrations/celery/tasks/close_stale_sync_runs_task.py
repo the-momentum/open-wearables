@@ -4,6 +4,7 @@ from logging import getLogger
 from celery import shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.sync_run_repository import sync_run_repository
 from app.services.sync_status_service import last_event_at
@@ -12,7 +13,7 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 
-@shared_task
+@shared_task(name=CeleryTask.CLOSE_STALE_SYNC_RUNS)
 def close_stale_sync_runs() -> dict:
     """Close sync runs that stopped reporting without an outcome.
 

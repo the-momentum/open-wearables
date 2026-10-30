@@ -10,6 +10,7 @@ from logging import getLogger
 from celery import shared_task
 from sqlalchemy.orm import Session
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import engine
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
 from app.schemas.sync_status import DataTypeKind
@@ -37,10 +38,7 @@ def run_backfill(*, dry_run: bool = False) -> dict[DataTypeKind, int] | None:
 
 
 # TODO: Remove this, with its beat entry, after ~2027-03-01 once all deployments have migrated.
-@shared_task(
-    name="app.integrations.celery.tasks.backfill_data_type_coverage_task.backfill_data_type_coverage",
-    ignore_result=True,
-)
+@shared_task(name=CeleryTask.BACKFILL_DATA_TYPE_COVERAGE, ignore_result=True)
 def backfill_data_type_coverage() -> None:
     if found := run_backfill():
         log_structured(

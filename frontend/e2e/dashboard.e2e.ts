@@ -21,23 +21,23 @@ test('compacts the aggregates and spells out the cheap counts', async ({ page })
 test('keeps every sub-metric on the tile, zero included', async ({ page }) => {
 	await page.goto('/dashboard');
 
-	// Each tile carries its own breakdown, and the archive figure is the one that
-	// went missing when an empty part was simply left out. Scoped to the tiles:
+	// Each tile carries its own breakdown, and the rolled-up figure is the one that
+	// would go missing were an empty part simply left out. Scoped to the tiles:
 	// the same counts appear again in the rankings below.
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
-	await expect(tiles.getByText('archived', { exact: true })).toBeVisible();
-	await expect(tiles.getByText('318K', { exact: true })).toBeVisible();
+	await expect(tiles.getByText('day and session rows', { exact: true })).toBeVisible();
+	await expect(tiles.getByText('266K', { exact: true })).toBeVisible();
 	await expect(tiles.getByText('cycles', { exact: true })).toBeVisible();
 	await expect(tiles.getByText('220', { exact: true })).toBeVisible();
 	await expect(tiles.getByText('users with two or more', { exact: true })).toBeVisible();
 });
 
-test('shows an empty archive as zero rather than hiding it', async ({ page, request }) => {
-	await request.post('http://localhost:8787/__empty-archive');
+test('shows nothing rolled up as zero rather than hiding it', async ({ page, request }) => {
+	await request.post('http://localhost:8787/__empty-aggregates');
 	await page.goto('/dashboard');
 
 	const tiles = page.getByRole('region', { name: 'Platform totals' });
-	await expect(tiles.getByText('archived', { exact: true })).toBeVisible();
+	await expect(tiles.getByText('day and session rows', { exact: true })).toBeVisible();
 	await expect(tiles.getByText('0', { exact: true })).toBeVisible();
 });
 

@@ -1,6 +1,6 @@
 """Tests for Polar247Data normalization."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -8,6 +8,7 @@ import pytest
 
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
 
@@ -207,6 +208,9 @@ class TestPolar247DailyActivityNormalization:
         step_samples = [s for s in samples if s.series_type == SeriesType.steps]
         # Flagging both the same way would let the aggregation add a day to its own parts.
         assert [s.value for s in step_samples if s.is_daily_total] == [9500]
+        assert [s.period for s in step_samples if s.is_daily_total] == [CalendarPeriod.of_date(date(2024, 1, 15))]
+        assert {s.period for s in step_samples if not s.is_daily_total} == {None}
+        assert {s.window_seconds for s in step_samples if not s.is_daily_total} == {600}
         assert [(s.recorded_at.isoformat(), int(s.value)) for s in step_samples if not s.is_daily_total] == [
             ("2024-01-15T07:10:00", 120),
             ("2024-01-15T07:20:00", 0),

@@ -244,7 +244,8 @@ class TestSyncVendorDataTask:
         assert str(result["user_id"]) == str(user.id)
         assert "garmin" in result["providers_synced"]
         assert result["providers_synced"]["garmin"]["params"]["workouts"]["success"] is False
-        assert "Provider API unavailable" in result["providers_synced"]["garmin"]["params"]["workouts"]["error"]
+        # The error's type only: its text could carry the rows a write failed on.
+        assert result["providers_synced"]["garmin"]["params"]["workouts"]["error_code"] == "Exception"
 
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.try_record_data_types")
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")

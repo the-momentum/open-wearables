@@ -12,6 +12,7 @@ from logging import getLogger
 from celery import Task, shared_task
 
 from app.config import settings
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.auth import LiveSyncMode
@@ -24,6 +25,7 @@ logger = getLogger(__name__)
 
 
 @shared_task(
+    name=CeleryTask.RECONCILE_PROVIDER_WEBHOOKS,
     bind=True,
     acks_late=True,
     reject_on_worker_lost=True,

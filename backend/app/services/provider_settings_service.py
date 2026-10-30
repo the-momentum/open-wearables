@@ -46,6 +46,9 @@ class ProviderSettingsService:
             )
         ]
 
+    def get_settings_map(self, db: DbSession) -> dict[str, ProviderSetting]:
+        return self.repo.get_all(db)
+
     def _to_read(self, provider_key: str, setting_map: dict) -> ProviderSettingRead:
         strategy = self.factory.get_provider(provider_key)
         setting = setting_map.get(provider_key)
@@ -54,6 +57,7 @@ class ProviderSettingsService:
             name=strategy.display_name,
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled if setting else True,
+            credentials_configured=strategy.credentials_configured,
             icon_url=strategy.icon_url,
             live_sync_mode=(
                 setting.live_sync_mode
@@ -106,6 +110,7 @@ class ProviderSettingsService:
             name=strategy.display_name,
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled,
+            credentials_configured=strategy.credentials_configured,
             icon_url=strategy.icon_url,
             live_sync_mode=(
                 setting.live_sync_mode if setting.live_sync_mode is not None else strategy.default_live_sync_mode
@@ -124,3 +129,6 @@ class ProviderSettingsService:
 
         self.repo.bulk_update(db, updates)
         return self.get_all_providers(db)
+
+
+provider_settings_service = ProviderSettingsService()

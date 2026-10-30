@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.transport import Transport
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.integrations import sentry as sentry_integration
@@ -117,6 +118,26 @@ def test_pydantic_input_value_is_filtered(captured: list[dict[str, Any]]) -> Non
     assert "input_value=[Filtered], input_type=str" in value
     assert "heart_rate" in value  # field location is kept for debugging
     assert FAKE_EMAIL not in _dump(captured[0])
+
+
+def test_database_error_keeps_its_statement_but_not_the_row(captured: list[dict[str, Any]]) -> None:
+    error = IntegrityError(
+        "INSERT INTO series_sample (value) VALUES (%(value)s)",
+        {"value": FAKE_HEART_RATE},
+        Exception(
+            'duplicate key value violates unique constraint "uq_series_sample_source_type_time"\n'
+            f"DETAIL:  Key (data_source_id, value)=(abc, {FAKE_HEART_RATE}) already exists."
+        ),
+    )
+    sentry_sdk.capture_exception(error)
+    sentry_sdk.flush()
+
+    value = captured[0]["exception"]["values"][0]["value"]
+    assert "uq_series_sample_source_type_time" in value
+    assert "INSERT INTO series_sample" in value
+    assert "[parameters: [Filtered]]" in value
+    assert "DETAIL: [Filtered]" in value
+    assert str(FAKE_HEART_RATE) not in _dump(captured[0])
 
 
 def test_log_and_capture_error_context_is_scrubbed(captured: list[dict[str, Any]]) -> None:

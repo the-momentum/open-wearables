@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.fitbit import get_unified_workout_type
 from app.database import DbSession
+from app.schemas.enums import EventCategory
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -83,7 +84,7 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             id=workout_id,
-            category="workout",
+            category=EventCategory.WORKOUT,
             type=workout_type.value,
             source_name=source_name,
             device_model=source_name,

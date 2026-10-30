@@ -406,12 +406,10 @@ class TestOutgoingWebhooksAPI:
 
         token = create_access_token(developer.id)
 
-        list_resp = MagicMock()
-        list_resp.data = [
+        mock_svix.iter_endpoints.return_value = [
             MagicMock(id="ep_1", url="https://a.com/wh", description="a", filter_types=None),
             MagicMock(id="ep_2", url="https://b.com/wh", description="b", filter_types=["workout.created"]),
         ]
-        mock_svix.list_endpoints.return_value = list_resp
 
         resp = client.get(
             "/api/v1/webhooks/endpoints",
@@ -877,3 +875,64 @@ class TestTimeseriesIdempotencyKey:
 
         expected = f"timeseries.{uid}.garmin.heart_rate.2019-03-14T06_00_00_00_00.2019-03-14T06_05_00_00_00"
         assert keys == [f"{expected}.heart_rate.created", f"{expected}.series.heart_rate.created"]
+
+
+class TestIterEndpoints:
+    """Svix lists endpoints a page at a time; the walk must reach every page and stop."""
+
+    @pytest.fixture
+    def svix_client(self) -> Generator[MagicMock, None, None]:
+        client = MagicMock()
+        with patch("app.services.outgoing_webhooks.svix._client", client):
+            yield client
+
+    @staticmethod
+    def _endpoint(n: int) -> MagicMock:
+        return MagicMock(id=f"ep_{n}")
+
+    def test_follows_the_iterator_across_pages(self, svix_client: MagicMock) -> None:
+        svix_client.endpoint.list.side_effect = [
+            MagicMock(data=[self._endpoint(1), self._endpoint(2)], done=False, iterator="it_1"),
+            MagicMock(data=[self._endpoint(3)], done=True, iterator=None),
+        ]
+
+        endpoints = list(svix_service.iter_endpoints("app_1"))
+
+        assert [ep.id for ep in endpoints] == ["ep_1", "ep_2", "ep_3"]
+        assert [c.args[1].iterator for c in svix_client.endpoint.list.call_args_list] == [None, "it_1"]
+
+    def test_raises_on_a_repeated_iterator_instead_of_looping(self, svix_client: MagicMock) -> None:
+        svix_client.endpoint.list.return_value = MagicMock(data=[], done=False, iterator="it_1")
+
+        with pytest.raises(RuntimeError, match="same iterator twice while listing endpoints of app app_1"):
+            list(svix_service.iter_endpoints("app_1"))
+
+
+# conftest replaces register_event_types for every test; this is the real one.
+_register_event_types = svix_service.register_event_types
+
+
+def _event_types(registered: list[WebhookEventType]) -> list[MagicMock]:
+    """Svix event types as already registered, with their current descriptions."""
+    types = []
+    for evt in registered:
+        event_type = MagicMock(description=EVENT_TYPE_DESCRIPTIONS.get(evt, ""))
+        event_type.name = evt.value  # `name` is a MagicMock constructor argument, so set it after
+        types.append(event_type)
+    return types
+
+
+def test_event_type_sync_reads_every_page_before_deciding_what_to_create() -> None:
+    registered = list(WebhookEventType)
+    client = MagicMock()
+    client.event_type.list.side_effect = [
+        MagicMock(data=_event_types(registered[:10]), done=False, iterator="it_1"),
+        MagicMock(data=_event_types(registered[10:]), done=True, iterator=None),
+    ]
+
+    with patch("app.services.outgoing_webhooks.svix._client", client):
+        assert _register_event_types() is True
+
+    assert [c.args[0].iterator for c in client.event_type.list.call_args_list] == [None, "it_1"]
+    client.event_type.create.assert_not_called()
+    client.event_type.patch.assert_not_called()

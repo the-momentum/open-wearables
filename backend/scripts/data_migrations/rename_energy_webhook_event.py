@@ -31,7 +31,6 @@ Usage (inside Docker):
 import argparse
 import sys
 import time
-from collections.abc import Iterator
 
 from app.database import SessionLocal
 from app.models import Developer
@@ -54,17 +53,6 @@ def _target_filters(current: list[str], phase: str) -> list[str] | None:
     return [f for f in current if f != OLD_EVENT] or None
 
 
-def _iter_endpoints(app_id: str) -> Iterator:
-    """Every endpoint of an application, following Svix's pagination."""
-    iterator = None
-    while True:
-        page = svix.list_endpoints(app_id, iterator=iterator)
-        yield from page.data
-        if page.done or not page.iterator:
-            return
-        iterator = page.iterator
-
-
 def main(phase: str, dry_run: bool, sleep: float) -> int:
     if not svix.is_enabled():
         print("Svix is disabled — nothing to migrate.")
@@ -77,7 +65,7 @@ def main(phase: str, dry_run: bool, sleep: float) -> int:
     scanned = patched = skipped_last_filter = failed = 0
     for app_id in developer_ids:
         try:
-            endpoints = list(_iter_endpoints(app_id))
+            endpoints = list(svix.iter_endpoints(app_id))
         except Exception as exc:  # noqa: BLE001 - a missing app must not abort the run
             print(f"  ! {app_id}: cannot list endpoints ({exc})")
             failed += 1

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { MICRO } from '$lib/components/ui/typography';
-	import { avatarTone, fullName, initials } from '$lib/users/avatar';
+	import { AVATAR_TONE, fullName, initials } from '$lib/users/avatar';
 
 	// The layout load already carries it, so this costs no request.
 	const developer = $derived(page.data.developer);
@@ -13,7 +13,7 @@
 		<span
 			aria-hidden="true"
 			class="grid size-8 shrink-0 place-items-center rounded-full text-xs font-medium
-				{avatarTone(developer.id)}"
+				{AVATAR_TONE}"
 		>
 			{initials(developer)}
 		</span>

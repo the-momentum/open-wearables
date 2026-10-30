@@ -3,7 +3,6 @@ import CalendarClock from '@lucide/svelte/icons/calendar-clock';
 import Database from '@lucide/svelte/icons/database';
 import Users from '@lucide/svelte/icons/users';
 import type { Part } from '$lib/components/charts/ShareBar.svelte';
-import type { Tone } from '$lib/components/ui/tone';
 import { formatCompact, formatNumber } from '$lib/utils/format';
 import type { SystemInfo } from './types';
 
@@ -38,7 +37,6 @@ export type Tile = {
 	label: string;
 	value: string;
 	note?: string;
-	tone: Tone;
 	parts: { label: string; value: string }[];
 };
 
@@ -56,14 +54,12 @@ export function statTiles(info: SystemInfo): Tile[] {
 			icon: Users,
 			label: 'Users',
 			value: formatNumber(info.total_users.count),
-			tone: 'primary',
 			parts: [{ label: 'connected', value: formatNumber(coverage.connected) }]
 		},
 		{
 			icon: Activity,
 			label: 'Active connections',
 			value: formatNumber(info.active_conn.count),
-			tone: 'success',
 			parts: [{ label: 'users with two or more', value: formatNumber(coverage.multi) }]
 		},
 		{
@@ -71,14 +67,12 @@ export function statTiles(info: SystemInfo): Tile[] {
 			label: 'Data points',
 			value: formatCompact(info.data_points.count),
 			note: 'estimated',
-			tone: 'warning',
-			parts: [{ label: 'archived', value: formatCompact(info.data_points.archived) }]
+			parts: [{ label: 'day and session rows', value: formatCompact(info.data_points.aggregated) }]
 		},
 		{
 			icon: CalendarClock,
 			label: 'Event records',
 			value: formatCompact(records.count),
-			tone: 'muted',
 			parts: [
 				{ label: 'workouts', value: formatCompact(records.workouts) },
 				{ label: 'sleep', value: formatCompact(records.sleep) },

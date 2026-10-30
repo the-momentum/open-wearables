@@ -1,6 +1,6 @@
 """Withings 24/7 data: body measures (``getmeas``), daily activity (``getactivity``),
 intraday activity (``getintradayactivity``) and sleep (``getsummary`` for the night's
-totals, ``get`` for its hypnogram). Continuous metrics become ``DataPointSeries``
+totals, ``get`` for its hypnogram). Continuous metrics become ``SeriesSample``
 samples; sleep becomes an ``EventRecord`` + ``EventRecordDetail``, mirroring Oura.
 """
 
@@ -19,10 +19,12 @@ from app.constants.withings_requests import ACTIVITY, INTRADAY_ACTIVITY, MEASURE
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas.enums import SeriesType, daily_total_flag
+from app.schemas.enums import EventCategory, SeriesType, daily_total_flag
 from app.schemas.model_crud.activities import (
+    CalendarPeriod,
     EventRecordCreate,
     EventRecordDetailCreate,
+    SessionValue,
     SleepStage,
     TimeSeriesSampleCreate,
 )
@@ -34,6 +36,7 @@ from app.schemas.providers.withings import (
 )
 from app.schemas.providers.withings.imports import WithingsSleepSeriesEntry
 from app.services.event_record_service import event_record_service
+from app.services.providers.sync_247_result import Sync247Result
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.withings.coverage import (
@@ -52,7 +55,6 @@ from app.services.providers.withings.handlers.rpc_client import (
 )
 from app.services.providers.withings.handlers.timezone import local_day_start, zone_offset_at
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import parse_datetime_or_default
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
@@ -270,6 +272,7 @@ class Withings247Data(Base247DataTemplate):
                 action="activity_timezone_invalid",
                 user_id=str(user_id),
             )
+            period = CalendarPeriod.of_date(activity.date, zone_offset)
             for field, series_type in ACTIVITY_FIELD_MAP.items():
                 value = getattr(activity, field)
                 if value is None:
@@ -287,6 +290,7 @@ class Withings247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=True),
+                        period=period,
                     )
                 )
             if activity.totalcalories is not None and activity.calories is not None:
@@ -305,6 +309,7 @@ class Withings247Data(Base247DataTemplate):
                             value=passive_calories,
                             series_type=SeriesType.basal_energy,
                             is_daily_total=daily_total_flag(SeriesType.basal_energy, is_daily=True),
+                            period=period,
                         )
                     )
         return samples
@@ -426,6 +431,7 @@ class Withings247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                         is_daily_total=daily_total_flag(series_type, is_daily=False),
+                        window_seconds=activity_slice.duration or None,
                     )
                 )
         return samples
@@ -745,7 +751,7 @@ class Withings247Data(Base247DataTemplate):
         sleep_stages = self._stages_within(window.stages, start_dt, end_dt)
         record = EventRecordCreate(
             id=record_id,
-            category="sleep",
+            category=EventCategory.SLEEP,
             type="sleep_session",
             source_name="Withings",
             duration_seconds=time_in_bed_seconds,
@@ -772,7 +778,9 @@ class Withings247Data(Base247DataTemplate):
             sleep_stages=sleep_stages,
         )
         try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
+            stored = event_record_service.create_or_merge_sleep(
+                db, user_id, record, detail, settings.sleep_end_gap_minutes
+            )
         except Exception as e:
             db.rollback()
             log_and_capture_error(
@@ -792,12 +800,12 @@ class Withings247Data(Base247DataTemplate):
             user_id=str(user_id),
             sleep_id=summary.id,
         )
-        readings: list[tuple[datetime, SeriesType, float]] = [
-            reading for reading in window.hrv if start_dt <= reading.at < end_dt
+        readings: list[tuple[datetime, SeriesType, float, SessionValue | None]] = [
+            (*reading, None) for reading in window.hrv if start_dt <= reading.at < end_dt
         ]
         # Withings publishes no resting heart rate; the night's lowest is what Oura and Suunto map too.
         if data.hr_min is not None:
-            readings.append((start_dt, SeriesType.resting_heart_rate, data.hr_min))
+            readings.append((start_dt, SeriesType.resting_heart_rate, data.hr_min, SessionValue(record_id=stored.id)))
         return [
             TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -818,8 +826,9 @@ class Withings247Data(Base247DataTemplate):
                 ),
                 value=value,
                 series_type=series_type,
+                session=session,
             )
-            for recorded_at, series_type, value in readings
+            for recorded_at, series_type, value, session in readings
         ]
 
     # ---------------------- Combined load ----------------------
@@ -831,17 +840,15 @@ class Withings247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
-    ) -> dict[str, int]:
+    ) -> Sync247Result:
         """Sync-task entry point.
 
         Each domain runs independently so one failure doesn't abort the others,
         and each failure is captured where it happens rather than aggregated into
         a raise — matching every other provider's 24/7 handler.
         """
-        # Callers pass the window as datetimes, ISO strings or nothing (Celery task,
-        # sync route, webhook replay); Suunto resolves it the same way.
-        end_time = parse_datetime_or_default(end_time, datetime.now(timezone.utc))
-        start_time = parse_datetime_or_default(start_time, end_time - _DEFAULT_SYNC_WINDOW)
+        start_time, end_time = self.resolve_window(start_time, end_time, default_days=_DEFAULT_SYNC_WINDOW.days)
+        run = self.sync_run(db, user_id)
 
         activity_rows: list[dict] | None = None
 
@@ -852,41 +859,22 @@ class Withings247Data(Base247DataTemplate):
                 activity_rows = self._fetch_activity_rows(db, user_id, start_time, end_time)
             return activity_rows
 
-        results: dict[str, int] = {}
-        for name, run in (
-            ("measures", lambda: self.save_measures(db, user_id, start_time, end_time)),
-            ("activity", lambda: self.save_activity(db, user_id, start_time, end_time, fetch_activity_rows())),
-            ("sleep", lambda: self.save_sleep(db, user_id, start_time, end_time)),
-            # Last: one request per active day, so a throttle it triggers cannot starve the others.
-            (
-                "intraday_activity",
-                lambda: self.save_intraday_activity(db, user_id, start_time, end_time, fetch_activity_rows()),
-            ),
-        ):
-            try:
-                results[name] = run()
-            except Exception as e:
-                # A failed domain reports zero rows rather than going missing, so a
-                # caller reading the counts sees the gap instead of a short dict.
-                results[name] = 0
-                # Reset the session for the next domain; a failing rollback must
-                # not itself abort the remaining domains.
-                try:
-                    db.rollback()
-                except Exception as rollback_error:
-                    log_and_capture_error(
-                        rollback_error,
-                        logger,
-                        f"Withings {name} rollback failed",
-                        extra={"provider": "withings", "data_type": name, "user_id": str(user_id)},
-                    )
-                log_and_capture_error(
-                    e,
-                    logger,
-                    f"Withings {name} sync failed: {e}",
-                    extra={"provider": "withings", "data_type": name, "user_id": str(user_id)},
-                )
-        return results
+        # Each save_* commits its own rows.
+        with run.step("measures", capture=True) as step:
+            step.record(self.save_measures(db, user_id, start_time, end_time))
+
+        with run.step("activity", capture=True) as step:
+            step.record(self.save_activity(db, user_id, start_time, end_time, fetch_activity_rows()))
+
+        with run.step("sleep", capture=True) as step:
+            step.record(self.save_sleep(db, user_id, start_time, end_time))
+
+        # Last: one request per active day, so a throttle it triggers cannot starve the others.
+        with run.step("intraday_activity", capture=True) as step:
+            step.record(self.save_intraday_activity(db, user_id, start_time, end_time, fetch_activity_rows()))
+
+        run.log_summary()
+        return run.result
 
     # Withings uses load_and_save_all(); inherited single-domain hooks must fail loudly.
 

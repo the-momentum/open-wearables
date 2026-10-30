@@ -1,7 +1,7 @@
 """Tests for Suunto247Data — focused on resting_heart_rate emission from sleep."""
 
 from collections.abc import Generator
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import CalendarPeriod, SessionValue
 from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.utils.dates import parse_iso_datetime
@@ -355,6 +356,8 @@ class TestSuuntoSleepSeriesPersistence:
         assert by_type[SeriesType.heart_rate_variability_rmssd].value == Decimal("49.0")
         assert by_type[SeriesType.oxygen_saturation].value == Decimal("98.0")
         assert all(s.is_daily_total is True for s in samples)
+        # Nightly values belong to the sleep, not to a calendar day: they wait for the session table.
+        assert {s.period for s in samples} == {None}
 
     def test_skips_nap_sessions(
         self,
@@ -476,5 +479,36 @@ class TestSuuntoSleepSyncStats:
         ):
             results = data_247.load_and_save_all(MagicMock(), uuid4())
 
-        assert results["sleep_sessions_synced"] == 2
-        assert results["sleep_sessions_skipped"] == 3
+        assert results.outcomes["sleep"].rows_written == 2
+        assert results.outcomes["sleep"].skipped == 3
+
+
+class TestSuuntoSleepSessionValues:
+    def test_nightly_values_point_at_the_stored_sleep(
+        self, data_247: Suunto247Data, base_sleep: dict, timeseries_service_mock: MagicMock
+    ) -> None:
+        record_id = uuid4()
+        night = {**base_sleep, "max_spo2_percent": 98.0}
+
+        data_247._persist_sleep_series(
+            MagicMock(), base_sleep["user_id"], night, datetime(2025, 1, 6, 7, tzinfo=timezone.utc), record_id
+        )
+
+        samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
+        assert {s.series_type: s.session for s in samples} == {
+            SeriesType.resting_heart_rate: SessionValue(record_id=record_id),
+            # Suunto reports the night's highest SpO2, not its average.
+            SeriesType.oxygen_saturation: SessionValue(record_id=record_id, stat="max"),
+        }
+
+
+class TestSuuntoDailyActivityStatistics:
+    def test_daily_values_carry_the_local_day(
+        self, data_247: Suunto247Data, timeseries_service_mock: MagicMock
+    ) -> None:
+        stats = [{"type": "stepcount", "daily_values": [{"date": "2025-01-06T00:00:00.000+02:00", "value": 8000}]}]
+
+        data_247.save_daily_activity_statistics(MagicMock(), uuid4(), stats)
+
+        samples = timeseries_service_mock.bulk_create_samples.call_args[0][1]
+        assert [s.period for s in samples] == [CalendarPeriod.of_date(date(2025, 1, 6), "+02:00")]
