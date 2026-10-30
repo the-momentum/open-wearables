@@ -6,8 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
-from app.algorithms.config_algorithms import sleep_config
-from app.algorithms.sleep import awakenings
+from app.algorithms.sleep import awakenings, significant_awakenings
 from app.database import DbSession
 from app.models import EventRecord, HealthScore, ProviderPriority, SeriesSample, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
@@ -111,7 +110,7 @@ def _interruptions_count(sessions: list[dict]) -> int | None:
         durations = awakenings([SleepStage(**stage) for stage in session["sleep_stages"] or []])
         if durations is None:
             return None
-        count += sum(1 for minutes in durations if minutes > sleep_config.significant_wake_threshold_mins)
+        count += significant_awakenings(durations)
     return count
 
 

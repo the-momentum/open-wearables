@@ -608,11 +608,39 @@ class TestSleepPagingPerDate:
         monkeypatch.setattr(EventRecordRepository, "_get_sleep_sessions", spy)
         page = service.get_sleep_summaries(db, user.id, self.START, self.END, cursor=None, limit=2)
 
-        # The page's nights plus the one read to tell whether there is more, not the whole range
-        assert loaded == [(self.NIGHTS[0], self.NIGHTS[2])]
+        # The page's nights only: not the one read to tell whether there is more, not the whole range
+        assert loaded == [(self.NIGHTS[0], self.NIGHTS[1])]
         assert [[s.end_time.date() for s in summary.sessions or []] for summary in page.data] == [
             [night] for night in self.NIGHTS[:2]
         ]
+
+    def test_reads_stage_timelines_for_the_page_main_sleeps_only(
+        self, db: Session, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = self._two_sources_per_night(db)
+        garmin = db.query(DataSource).filter_by(user_id=user.id, provider=ProviderName.GARMIN).one()
+        nap = EventRecordFactory(
+            data_source=garmin,
+            category="sleep",
+            type="sleep",
+            start_datetime=datetime(2026, 1, 2, 14, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 1, 2, 15, tzinfo=timezone.utc),
+            duration_seconds=3600,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=nap, is_nap=True)
+        read: list[UUID] = []
+        load = EventRecordRepository._sleep_stages
+
+        def spy(db_session: Session, record_ids: list[UUID]) -> Any:
+            read.extend(record_ids)
+            return load(db_session, record_ids)
+
+        monkeypatch.setattr(EventRecordRepository, "_sleep_stages", staticmethod(spy))
+        service.get_sleep_summaries(db, user.id, self.START, self.END, cursor=None, limit=2)
+
+        # Garmin's main sleeps on the page's two nights: not Oura's, not the nap
+        assert sorted(read) == [UUID(f"ffffffff-0000-0000-0000-{n:012d}") for n in range(2)]
 
 
 # ---------------------------------------------------------------------------

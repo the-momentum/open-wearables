@@ -170,6 +170,11 @@ def awakenings(stages: list[SleepStage]) -> list[float] | None:
     return minutes
 
 
+def significant_awakenings(awakening_durations: list[float]) -> int:
+    """How many awakenings last longer than the significant-wake threshold."""
+    return sum(1 for minutes in awakening_durations if minutes > sleep_config.significant_wake_threshold_mins)
+
+
 def calculate_interruptions_score(
     total_awake_minutes: float,
     awakening_durations: list[float],
@@ -188,7 +193,7 @@ def calculate_interruptions_score(
         duration_penalty = penalty_ratio * dur_full
         duration_score = max(INTERRUPTIONS_SCORE_BOUNDS.min, dur_full - duration_penalty)
 
-    n = sum(1 for d in awakening_durations if d > sleep_config.significant_wake_threshold_mins)
+    n = significant_awakenings(awakening_durations)
     freq_score = freq_full * sleep_config.freq_score_fractions[min(n, len(sleep_config.freq_score_fractions) - 1)]
 
     return max(INTERRUPTIONS_SCORE_BOUNDS.min, min(INTERRUPTIONS_SCORE_BOUNDS.max, int(duration_score + freq_score)))

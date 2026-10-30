@@ -1125,15 +1125,17 @@ class EventRecordRepository(
 
         # Attach per-session breakdown (individual sleep/nap records) for each summary,
         # keyed by the same (date, provider, source, device_model) grouping identity.
-        # Only the page's nights: each session carries its stage timeline.
-        nights = [row.sleep_date for row in results]
+        # Only the page's nights, not the one read to tell whether there is more.
+        nights = [row.sleep_date for row in results[:limit]]
         sessions_by_key, main_sleeps_by_key = (
             self._get_sleep_sessions(db_session, user_id, min(nights), max(nights)) if nights else ({}, {})
         )
-        # Only this page's nights are read from the aggregate table, not every night in the range.
+        # Aggregates and stage timelines only for the page's main sleeps: one source per night, no naps.
         page_keys = {(s["sleep_date"], s["provider"], s["source"], s["device_model"]) for s in summaries}
-        physiology = self._sleep_physiology(
-            db_session, {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        page_sleeps = {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        physiology = self._sleep_physiology(db_session, page_sleeps)
+        stages = self._sleep_stages(
+            db_session, [record_id for sleeps in page_sleeps.values() for record_id, _ in sleeps]
         )
         for summary in summaries:
             key = (
@@ -1142,7 +1144,10 @@ class EventRecordRepository(
                 summary["source"],
                 summary["device_model"],
             )
-            summary["sessions"] = sessions_by_key.get(key, [])
+            summary["sessions"] = [
+                {**session, "sleep_stages": stages.get(session["record_id"])}
+                for session in sessions_by_key.get(key, [])
+            ]
             summary.update(physiology.get(key, dict.fromkeys(_SLEEP_PHYSIOLOGY)))
 
         return summaries
@@ -1186,7 +1191,6 @@ class EventRecordRepository(
                 EventRecord.zone_offset.label("zone_offset"),
                 duration_seconds.label("duration_seconds"),
                 func.coalesce(SleepDetails.is_nap, False).label("is_nap"),
-                SleepDetails.sleep_stages,
                 DataSource.provider,
                 DataSource.source,
                 DataSource.device_model,
@@ -1211,15 +1215,25 @@ class EventRecordRepository(
                 main_sleeps_by_key.setdefault(key, []).append((row.record_id, int(row.duration_seconds or 0)))
             sessions_by_key.setdefault(key, []).append(
                 {
+                    "record_id": row.record_id,
                     "start_time": row.start_time,
                     "end_time": row.end_time,
                     "zone_offset": row.zone_offset,
                     "duration_minutes": int(row.duration_seconds) // 60 if row.duration_seconds is not None else None,
                     "is_nap": bool(row.is_nap),
-                    "sleep_stages": row.sleep_stages,
                 }
             )
         return sessions_by_key, main_sleeps_by_key
+
+    @staticmethod
+    def _sleep_stages(db_session: DbSession, record_ids: list[UUID]) -> dict[UUID, list[dict] | None]:
+        """The stage timelines of these sleep records, by record id."""
+        if not record_ids:
+            return {}
+        rows = db_session.query(SleepDetails.record_id, SleepDetails.sleep_stages).filter(
+            SleepDetails.record_id.in_(record_ids)
+        )
+        return {record_id: stages for record_id, stages in rows}
 
     @staticmethod
     def sleep_values_by_day(

@@ -22,6 +22,7 @@ from app.algorithms.sleep import (
     calculate_interruptions_score,
     calculate_overall_sleep_score,
     calculate_total_stages_score,
+    significant_awakenings,
 )
 from app.constants.sleep import SleepStageType
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -367,6 +368,11 @@ class TestAwakenings:
         light, awake = self._stages(("light", 60), ("awake", 10))
         _, inside = self._stages(("light", 62), ("deep", 1))
         assert awakenings([light, awake, inside]) == []
+
+
+class TestSignificantAwakenings:
+    def test_counts_awakenings_longer_than_the_threshold(self) -> None:
+        assert significant_awakenings([3.0, 5.0, 5.5, 29.0]) == 2
 
 
 class TestCalculateInterruptionsScore:
