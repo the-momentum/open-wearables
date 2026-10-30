@@ -21,7 +21,7 @@
 
 	let open = $state(false);
 
-	const idle = $derived(saved.archive_after_days === null && saved.delete_after_days === null);
+	const idle = $derived(!saved.rollup_enabled && saved.delete_after_days === null);
 
 	// No saving on the way, as the old dashboard did: with deletion on, that ran
 	// a rule nobody had confirmed.
@@ -29,7 +29,7 @@
 		unsaved
 			? 'Save your changes first - the job runs what is saved.'
 			: idle
-				? 'Nothing to run: archival and deletion are both off.'
+				? 'Nothing to run: rollup and deletion are both off.'
 				: null
 	);
 </script>
@@ -37,7 +37,7 @@
 <Card
 	icon={Play}
 	title="Run now"
-	description="Start the archival and deletion job instead of waiting for the daily schedule."
+	description="Roll up the queued days and run deletion now, instead of waiting for the next run (rollup every 15 minutes, deletion at 03:00 UTC)."
 >
 	<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 		<p class={MICRO}>
@@ -65,10 +65,11 @@
 	busyLabel="Starting…"
 	destructive={saved.delete_after_days !== null}
 >
-	{#if saved.archive_after_days !== null}
-		Samples older than {saved.archive_after_days} days are rolled up into daily archive rows.
+	{#if saved.rollup_enabled}
+		Days whose samples changed are rolled up into daily and per-session rows.
 	{/if}
 	{#if saved.delete_after_days !== null}
-		Data older than {saved.delete_after_days} days is <strong>deleted permanently</strong>.
+		Samples older than {saved.delete_after_days} days are
+		<strong>deleted permanently</strong>{#if saved.rollup_enabled}, after their days are rolled up{/if}.
 	{/if}
 </ConfirmDialog>

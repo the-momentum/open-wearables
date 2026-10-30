@@ -36,6 +36,7 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.database import DbSession, SessionLocal
 from app.extensions import events as extension_events
+from app.integrations import rollup_queue
 from app.integrations.redis_client import get_redis_client
 from app.models import SyncRun
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
@@ -824,6 +825,9 @@ def emit_sync_completed(
     Finished is not the same as succeeded: pass status=PARTIAL when some types failed,
     or SKIPPED when the run was a no-op. FAILED belongs on emit_sync_failed instead.
     """
+    if scope == SyncScope.HISTORICAL:
+        # History just landed: rolled up now, not at the next 15-minute run.
+        rollup_queue.roll_up_soon()
     return emit_event(
         user_id=user_id,
         provider=provider,

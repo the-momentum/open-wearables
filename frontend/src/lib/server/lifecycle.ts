@@ -7,7 +7,7 @@ const KEY = 'ow:lifecycle';
 const TTL_SECONDS = 60;
 
 /**
- * Both the GET and the PUT scan the whole of `data_point_series` for its date
+ * Both the GET and the PUT scan the whole of `series_sample` for its date
  * span - the one index carrying `recorded_at` has it third, so MIN/MAX cannot
  * use it. A minute's cache keeps that to one pass however often the tab opens.
  */

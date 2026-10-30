@@ -13,12 +13,47 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.models import ProviderPriority
+from app.repositories import ProviderPriorityRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from tests.factories import ApiKeyFactory, DataSourceFactory, HealthScoreFactory, UserFactory
 from tests.utils import api_key_headers
 
 
 class TestHealthScoresEndpoint:
+    def test_one_ow_score_per_day_with_its_source(self, client: TestClient, db: Session) -> None:
+        priorities = ProviderPriorityRepository(ProviderPriority)
+        priorities.upsert(db, ProviderName.GARMIN, 1)
+        priorities.upsert(db, ProviderName.OURA, 2)
+        user = UserFactory()
+        night = datetime(2026, 9, 24, 7, tzinfo=timezone.utc)
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        # Oura first, so the pick can't come from the order of writes
+        HealthScoreFactory(data_source=oura, provider=ProviderName.INTERNAL, recorded_at=night)
+        garmin_ow = HealthScoreFactory(data_source=garmin, provider=ProviderName.INTERNAL, recorded_at=night)
+        garmin_own = HealthScoreFactory(
+            data_source_id=None, user_id=user.id, provider=ProviderName.GARMIN, recorded_at=night
+        )
+        # The next day only Oura has a score, so it is the one returned
+        oura_next_day = HealthScoreFactory(
+            data_source=oura, provider=ProviderName.INTERNAL, recorded_at=night + timedelta(days=1)
+        )
+        headers = api_key_headers(ApiKeyFactory().plain_key)
+
+        picked = client.get(f"/api/v1/users/{user.id}/health-scores", headers=headers).json()["data"]
+
+        assert sorted(score["id"] for score in picked) == sorted(
+            [str(garmin_ow.id), str(garmin_own.id), str(oura_next_day.id)]
+        )
+        assert {
+            (score["provider"], score["recorded_at"][:10], (score["source"] or {}).get("provider")) for score in picked
+        } == {
+            ("internal", "2026-09-24", "garmin"),
+            ("garmin", "2026-09-24", None),
+            ("internal", "2026-09-25", "oura"),
+        }
+
     def test_list_health_scores_success(self, client: TestClient, db: Session) -> None:
         user = UserFactory()
         data_source = DataSourceFactory(user=user)

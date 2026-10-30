@@ -17,6 +17,7 @@ from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas.enums import SeriesType
 from app.services.providers.apple.apple_xml.xml_service import XMLService
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
@@ -122,6 +123,12 @@ class TestAppleXmlWorkoutCalories:
         )
 
         assert metrics["energy_burned"] == Decimal("180.00")
+        assert metrics["energy_series"] == SeriesType.total_energy
+
+    def test_active_energy_alone_stays_active(self) -> None:
+        metrics = self._metrics([{"type": "HKQuantityTypeIdentifierActiveEnergyBurned", "sum": "131.41"}])
+
+        assert metrics["energy_series"] == SeriesType.active_energy
 
     def test_leaves_calories_unset_without_an_energy_statistic(self) -> None:
         metrics = self._metrics([{"type": "HKQuantityTypeIdentifierHeartRate", "average": "120"}])

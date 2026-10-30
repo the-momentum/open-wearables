@@ -39,7 +39,7 @@ Those goals led us to employ a structure, consisting of three core components:
 - **Events** (*EventRecord + EventRecordDetails*) - is meant to store singular records or events, with multiple descriptors and aggregate values that can be defined for the whole period of the event. Those are defined by a prolonged in time structure (meaning start/stop timestamps and duration).
   - Each event is assigned a type, supporting one of the activities existing in the system (i.e. workout)
   - Supporting the core EventRecord structure is an EventRecordDetails tied to it - this record is dictated by the type of the event, and holds the type specific aggregates and values
-- **Series** (*DataPointSeries*) - is meant to store all the medium to high frequency time series in a shared space, demarcated by type and source device id assigned to each data point
+- **Series** (*SeriesSample*) - is meant to store all the medium to high frequency time series in a shared space, demarcated by type and source device id assigned to each data point
   - The observation values are stored as float values, offering no data loss between integer and float values possible for different observation types, as well as handling categorical data as numerical encoding
   - **Note: this is a current concession as we are fully aware of the adverse effect this has on storage space optimisation - this stopgap is planned to be easily migrated as described in the roadmap section**
 - **Descriptors** (*PersonalRecord*) - stores static user biometric information that changes slowly, if ever. Currently includes birth date (used for age calculation), biological sex (stored as a boolean, `true` = male and `false` = female; the API shows it as `male` / `female`), and self-reported gender. Clients set it with `PUT /api/v1/users/{user_id}/personal-record`. This structure is designed to be extended with additional static or slow-changing user attributes as needed.
@@ -58,13 +58,13 @@ erDiagram
     User ||--o{ ExternalDeviceMapping : "has"
     
     ExternalDeviceMapping ||--o{ EventRecord : "produces"
-    ExternalDeviceMapping ||--o{ DataPointSeries : "produces"
+    ExternalDeviceMapping ||--o{ SeriesSample : "produces"
     
     EventRecord ||--o| EventRecordDetail : "has"
     EventRecordDetail ||--o| SleepDetails : "polymorphic"
     EventRecordDetail ||--o| WorkoutDetails : "polymorphic"
     
-    DataPointSeries }o--|| SeriesTypeDefinition : "references"
+    SeriesSample }o--|| SeriesTypeDefinition : "references"
     
     Developer ||--o{ Application : "owns"
     Developer ||--o{ ApiKey : "creates"
@@ -150,7 +150,7 @@ erDiagram
         decimal total_elevation_gain
     }
     
-    DataPointSeries {
+    SeriesSample {
         uuid id PK
         uuid external_device_mapping_id FK
         int series_type_definition_id FK
