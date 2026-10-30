@@ -58,12 +58,14 @@ class SleepScoreService:
     def _parse_wearable_stages_for_interruptions(
         self,
         sleep_stages: list[SleepStage],
-    ) -> WasoData:
+    ) -> WasoData | None:
         """Strip sleep latency and morning lying-in-bed periods to calculate true WASO.
 
-        Returns total WASO minutes and individual awakening durations.
+        Returns total WASO minutes and individual awakening durations; None without a sleep stage.
         """
         awakening_durations = awakenings(sleep_stages)
+        if awakening_durations is None:
+            return None
         return WasoData(total_awake_minutes=sum(awakening_durations), awakening_durations=awakening_durations)
 
     def get_sleep_score(
@@ -78,7 +80,7 @@ class SleepScoreService:
     ) -> SleepScoreResult:
         """Calculate a sleep score from raw sleep parameters for a single night.
 
-        If sleep_stages is provided it is used to derive true WASO (strips sleep
+        If sleep_stages holds a sleep stage it is used to derive true WASO (strips sleep
         latency and morning lie-in). Otherwise awake_minutes is used as a fallback
         for interruption scoring.
 
@@ -92,8 +94,8 @@ class SleepScoreService:
                 f" > 0, got {total_sleep_duration_minutes}"
             )
 
-        if sleep_stages:
-            waso = self._parse_wearable_stages_for_interruptions(sleep_stages)
+        waso = self._parse_wearable_stages_for_interruptions(sleep_stages) if sleep_stages else None
+        if waso is not None:
             total_awake = waso.total_awake_minutes
             awakening_durations = waso.awakening_durations
         else:

@@ -141,23 +141,29 @@ def calculate_bedtime_consistency_score(
     return max(CONSISTENCY_SCORE_BOUNDS.min, int(CONSISTENCY_SCORE_BOUNDS.max - penalty))
 
 
-def awakenings(stages: list[SleepStage]) -> list[float]:
-    """Minutes of each awakening between falling asleep and the final wake-up.
+def awakenings(stages: list[SleepStage]) -> list[float] | None:
+    """Minutes of each awakening between falling asleep and the final wake-up; None without a sleep stage.
 
-    Back-to-back awake blocks count as one awakening.
+    Back-to-back awake blocks count as one awakening. Where blocks overlap, as two merged sessions can
+    leave them, the earlier one keeps the overlap, as the merge does when it totals the stages.
     """
     stages = sorted(stages, key=lambda stage: stage.start_time)
     asleep = [i for i, stage in enumerate(stages) if stage.stage in SLEEP_PERIOD_STAGES]
     if not asleep:
-        return []
+        return None
     minutes: list[float] = []
+    covered_until: datetime | None = None
     awake_until: datetime | None = None
     for stage in stages[asleep[0] : asleep[-1] + 1]:
+        start = stage.start_time if covered_until is None else max(stage.start_time, covered_until)
+        if start >= stage.end_time:
+            continue
+        covered_until = stage.end_time
         if stage.stage != SleepStageType.AWAKE:
             awake_until = None
             continue
-        duration = (stage.end_time - stage.start_time).total_seconds() / 60
-        if stage.start_time == awake_until:
+        duration = (stage.end_time - start).total_seconds() / 60
+        if start == awake_until:
             minutes[-1] += duration
         else:
             minutes.append(duration)

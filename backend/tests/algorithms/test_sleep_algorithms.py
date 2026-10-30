@@ -326,10 +326,10 @@ class TestAwakenings:
         return stages
 
     def test_no_stages(self) -> None:
-        assert awakenings([]) == []
+        assert awakenings([]) is None
 
-    def test_nothing_counts_without_a_sleep_stage(self) -> None:
-        assert awakenings(self._stages(("in_bed", 10), ("awake", 30))) == []
+    def test_none_without_a_sleep_stage(self) -> None:
+        assert awakenings(self._stages(("in_bed", 10), ("awake", 30), ("in_bed", 10))) is None
 
     def test_awake_before_falling_asleep_and_after_the_final_wake_up_is_not_an_awakening(self) -> None:
         stages = self._stages(("awake", 15), ("light", 60), ("awake", 10), ("deep", 60), ("awake", 20))
@@ -356,6 +356,12 @@ class TestAwakenings:
             ("awake", 15), ("light", 60), ("awake", 10), ("deep", 60), ("awake", 20)
         )
         assert awakenings([light, fell_asleep, woke_up, deep, awakening]) == [10.0]
+
+    def test_overlapping_awake_blocks_are_one_awakening_counted_once(self) -> None:
+        # Awake blocks that overlap, as two merged sessions can leave them: together they cover 00:00-00:12.
+        light, first_awake = self._stages(("light", 60), ("awake", 10))
+        second_awake, deep = self._stages(("light", 65), ("awake", 7), ("deep", 60))[1:]
+        assert awakenings([light, first_awake, second_awake, deep]) == [12.0]
 
 
 class TestCalculateInterruptionsScore:

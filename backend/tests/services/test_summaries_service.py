@@ -459,6 +459,18 @@ class TestGetSleepSummaries:
 
         assert self._sleep_summary(db, service, user).interruptions_count is None
 
+    def test_interruptions_count_is_none_without_a_sleep_stage_in_the_timeline(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        user = UserFactory()
+        record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_stages=self._timeline("2026-01-01T23:00:00+00:00", ("in_bed", 120), ("awake", 60), ("in_bed", 300)),
+        )
+
+        assert self._sleep_summary(db, service, user).interruptions_count is None
+
     def test_interruptions_count_ignores_naps(self, db: Session, service: SummariesService) -> None:
         user = UserFactory()
         ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")

@@ -101,17 +101,18 @@ def _activity_key(row: dict) -> tuple:
 def _interruptions_count(sessions: list[dict]) -> int | None:
     """Awakenings in the day's main sleep longer than the sleep score's threshold.
 
-    None without main sleep or when a main session has no timeline.
+    None without main sleep or when a main session's timeline has no sleep stage.
     """
     main_sessions = [s for s in sessions if not s["is_nap"]]
-    if not main_sessions or any(not s["sleep_stages"] for s in main_sessions):
+    if not main_sessions:
         return None
-    return sum(
-        1
-        for session in main_sessions
-        for minutes in awakenings([SleepStage(**stage) for stage in session["sleep_stages"]])
-        if minutes > sleep_config.significant_wake_threshold_mins
-    )
+    count = 0
+    for session in main_sessions:
+        minutes = awakenings([SleepStage(**stage) for stage in session["sleep_stages"] or []])
+        if minutes is None:
+            return None
+        count += sum(1 for awake in minutes if awake > sleep_config.significant_wake_threshold_mins)
+    return count
 
 
 class SummariesService:

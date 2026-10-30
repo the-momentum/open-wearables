@@ -96,7 +96,8 @@ class SleepSummary(BaseModel):
         None,
         description=(
             "Awakenings longer than 5 minutes within the main sleep (naps excluded), counted from the sleep stage"
-            " timeline. Null when the day has no main sleep or one of its main sleep sessions has no stage timeline"
+            " timeline. Null when the day has no main sleep or the timeline of one of its main sleep sessions has no"
+            " sleep stage (sleeping, light, deep or rem)"
         ),
         example=2,
     )
