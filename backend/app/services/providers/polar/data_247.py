@@ -941,7 +941,7 @@ class Polar247Data(Base247DataTemplate):
     def _claim_night_stored_without_id(db: DbSession, user_id: UUID, record: EventRecordCreate) -> None:
         """Give the record's id to the Polar night stored without one that it overlaps, so the save replaces it.
 
-        Polar keeps one sleep a date, so an overlapping night is this one, moved or not. Nights stored before
+        Polar keeps one sleep per date, so an overlapping night is this one, moved or not. Nights stored before
         Polar sleep carried an id, by an old pod during a deploy, or without stages by dedupe_polar_sleep have none.
         """
         stored = event_record_service.find_adjacent_sleep_record(
