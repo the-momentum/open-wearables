@@ -69,7 +69,12 @@ class SleepSessionSummary(BaseModel):
     end_time: datetime
     zone_offset: str | None = Field(None, description="UTC offset of the session, e.g. '+02:00'")
     duration_minutes: int | None = Field(
-        None, description="Time from start_time to end_time, awake time included", example=420
+        None,
+        description=(
+            "Main sleep: time asleep, awake time excluded; a session that reports no time asleep counts with "
+            "its start-to-end time. Nap: start-to-end time, awake time included"
+        ),
+        example=420,
     )
     is_nap: bool = Field(False, description="True if this session is a nap rather than main sleep")
 

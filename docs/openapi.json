@@ -16478,7 +16478,7 @@
               }
             ],
             "title": "Duration Minutes",
-            "description": "Time from start_time to end_time, awake time included",
+            "description": "Main sleep: time asleep, awake time excluded; a session that reports no time asleep counts with its start-to-end time. Nap: start-to-end time, awake time included",
             "example": 420
           },
           "is_nap": {
