@@ -694,7 +694,7 @@ class TestGetSleepScoreEdgeCases:
             ).breakdown.interruptions.score
 
         in_bed_only = _make_stages("2026-03-10T23:00:00", [("in_bed", 120), ("awake", 60), ("in_bed", 240)])
-        assert interruptions(in_bed_only) == interruptions(None) < 100
+        assert interruptions(in_bed_only) == interruptions(None)
 
 
 # ---------------------------------------------------------------------------

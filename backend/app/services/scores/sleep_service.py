@@ -94,7 +94,7 @@ class SleepScoreService:
                 f" > 0, got {total_sleep_duration_minutes}"
             )
 
-        waso = self._parse_wearable_stages_for_interruptions(sleep_stages) if sleep_stages else None
+        waso = self._parse_wearable_stages_for_interruptions(sleep_stages or [])
         if waso is not None:
             total_awake = waso.total_awake_minutes
             awakening_durations = waso.awakening_durations

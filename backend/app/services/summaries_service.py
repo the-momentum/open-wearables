@@ -108,10 +108,10 @@ def _interruptions_count(sessions: list[dict]) -> int | None:
         return None
     count = 0
     for session in main_sessions:
-        minutes = awakenings([SleepStage(**stage) for stage in session["sleep_stages"] or []])
-        if minutes is None:
+        durations = awakenings([SleepStage(**stage) for stage in session["sleep_stages"] or []])
+        if durations is None:
             return None
-        count += sum(1 for awake in minutes if awake > sleep_config.significant_wake_threshold_mins)
+        count += sum(1 for minutes in durations if minutes > sleep_config.significant_wake_threshold_mins)
     return count
 
 
