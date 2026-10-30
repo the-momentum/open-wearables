@@ -39,6 +39,10 @@ class HealthScoreService(
         return self.crud.bulk_create(db_session, scores)
 
     @handle_exceptions
+    def bulk_create_keeping_highest(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> WriteCounts:
+        return self.crud.bulk_create_keeping_highest(db_session, scores)
+
+    @handle_exceptions
     def get_latest_by_category(
         self,
         db_session: DbSession,

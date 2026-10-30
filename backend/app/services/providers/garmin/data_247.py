@@ -1904,6 +1904,7 @@ class Garmin247Data(Base247DataTemplate):
         all_sleep_details: list[EventRecordDetailCreate] = []
         all_mct_details: list[MenstrualCycleDetailCreate] = []
         all_health_scores: list[HealthScoreCreate] = []
+        body_battery_peaks: list[HealthScoreCreate] = []
 
         for item in items:
             try:
@@ -1923,7 +1924,7 @@ class Garmin247Data(Base247DataTemplate):
                     case "stressDetails":
                         all_samples.extend(self._build_stress_samples(user_id, item))
                         if score := self._normalize_body_battery_health_score(user_id, item):
-                            all_health_scores.append(score)
+                            body_battery_peaks.append(score)
                     case "allDayRespiration":
                         all_samples.extend(self._build_respiration_samples(user_id, item))
                     case "pulseox":
@@ -2124,6 +2125,10 @@ class Garmin247Data(Base247DataTemplate):
 
         if all_health_scores:
             count += health_score_service.bulk_create(db, all_health_scores)
+            db.commit()
+        if body_battery_peaks:
+            # A day may already hold a lower peak from an earlier push
+            count += health_score_service.bulk_create_keeping_highest(db, body_battery_peaks)
             db.commit()
 
         return count
