@@ -3,9 +3,20 @@ from typing import TypedDict
 
 from pydantic import BaseModel
 
-from app.schemas.enums import SeriesType
+from app.schemas.enums import ComputedBy, SeriesType
 from app.schemas.utils import SourceMetadata
 from app.utils.dates import ZoneOffset
+
+
+class SeriesStats(BaseModel):
+    """Every statistic held for a period. The sample's value is the one its series is read by."""
+
+    avg: float | None = None
+    min: float | None = None
+    max: float | None = None
+    sum: float | None = None
+    last: float | None = None
+    count: int
 
 
 class TimeSeriesSample(BaseModel):
@@ -18,6 +29,12 @@ class TimeSeriesSample(BaseModel):
     # True = daily total. False/None = not a daily total (summable sample); None is a
     # legacy row and is treated as False by the aggregation.
     is_daily_total: bool | None = None
+    # Width of a sample reported over a window (a 15-minute epoch is 900); None for an instant.
+    window_seconds: int | None = None
+    # Day, week and month resolutions: the period's end, who computed it, and all its statistics.
+    period_end: datetime | None = None
+    computed_by: ComputedBy | None = None
+    stats: SeriesStats | None = None
 
 
 class ActivityAggregateResult(TypedDict):

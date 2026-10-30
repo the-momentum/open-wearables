@@ -209,8 +209,12 @@ OURA_WEBHOOK_VERIFICATION_TOKEN=your-oura-webhook-verification-token
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 
-    # Fetch timeseries data (heart rate, SpO2, activity, VO2 max, cardiovascular age)
+    # Fetch intraday samples (heart rate, MET)
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch day values (SpO2, VO2 max, cardiovascular age, daily activity)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z&resolution=1day" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 

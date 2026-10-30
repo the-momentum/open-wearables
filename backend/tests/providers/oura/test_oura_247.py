@@ -1,12 +1,15 @@
 """Tests for Oura247Data normalization."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
-from app.schemas.enums import SeriesType
+from app.models import EventRecord, EventRecordAggregate, SeriesAggregate
+from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.providers.oura.imports import OuraMetJSON
 from app.services.providers.oura.coverage import ACTIVITY_SERIES
 from app.services.providers.oura.data_247 import Oura247Data
@@ -312,6 +315,7 @@ class TestOura247ActivityNormalization:
 
         assert len(samples["met"]) == 3
         assert [s["value"] for s in samples["met"]] == [1.0, 1.2, 1.5]
+        assert {s["window_seconds"] for s in samples["met"]} == {60}
 
     def test_normalize_activity_samples_met_absent(self, data_247: Oura247Data) -> None:
         user_id = uuid4()
@@ -456,8 +460,7 @@ class TestOura247MetSeriesExpansion:
         assert samples[0]["zone_offset"] == "+02:00"
 
     def test_met_maps_to_physical_effort(self) -> None:
-        # average_met means one scalar per workout everywhere else (Apple/Google/Samsung);
-        # Oura's series is continuous per-minute data, so it must not share that series type.
+        # Oura's per-minute MET is physical_effort; a workout's average MET is that series' session value.
         assert ACTIVITY_SERIES["met"] == SeriesType.physical_effort
 
     def test_expand_met_series_drops_unmeasured_tail_using_class_5_min_length(self, data_247: Oura247Data) -> None:
@@ -495,3 +498,60 @@ class TestOura247MetSeriesExpansion:
         met = OuraMetJSON(interval=60, items=[1.0, 1.1], timestamp="2024-01-15T00:00:00+00:00")
 
         assert data_247._expand_met_series(met, None) == []
+
+
+def test_save_activity_data_mirrors_day_totals_but_not_met(db: Session) -> None:
+    from tests.factories import UserFactory
+
+    data_247 = OuraStrategy().data_247
+    assert isinstance(data_247, Oura247Data)
+    user = UserFactory()
+    raw = [
+        {
+            "id": "activity-1",
+            "day": "2024-01-15",
+            "timestamp": "2024-01-15T04:00:00-08:00",
+            "steps": 9000,
+            "met": {"interval": 60, "items": [1.0, 1.2], "timestamp": "2024-01-15T04:00:00-08:00"},
+            "class_5_min": "2",
+        }
+    ]
+
+    data_247.save_activity_data(db, user.id, data_247.normalize_activity_samples(raw, user.id))
+
+    # Oura's day starts at 4 AM, but the day value belongs to the whole local date.
+    assert [(a.series_type_definition_id, a.period_start, a.zone_offset, a.sum) for a in db.query(SeriesAggregate)] == [
+        (get_series_type_id(SeriesType.steps), datetime(2024, 1, 15, 8, tzinfo=timezone.utc), "-08:00", Decimal("9000"))
+    ]
+
+
+def test_nightly_scalars_point_at_the_stored_sleep(db: Session) -> None:
+    from tests.factories import UserFactory
+
+    data_247 = OuraStrategy().data_247
+    assert isinstance(data_247, Oura247Data)
+    user = UserFactory()
+    raw = [
+        {
+            "id": "oura-sleep-1",
+            "day": "2024-01-15",
+            "type": "long_sleep",
+            "bedtime_start": "2024-01-14T23:10:00+01:00",
+            "bedtime_end": "2024-01-15T07:05:00+01:00",
+            "time_in_bed": 28500,
+            "deep_sleep_duration": 5400,
+            "light_sleep_duration": 14400,
+            "rem_sleep_duration": 6000,
+            "awake_time": 2700,
+            "average_breath": 14.5,
+            "lowest_heart_rate": 48,
+        }
+    ]
+
+    data_247.save_sleep_data(db, user.id, data_247.normalize_sleeps(raw, user.id))
+
+    sleep = db.query(EventRecord).filter(EventRecord.category == "sleep").one()
+    rows = {row.series_type_definition_id: row for row in db.query(EventRecordAggregate)}
+    assert {row.record_id for row in rows.values()} == {sleep.id}
+    assert rows[get_series_type_id(SeriesType.respiratory_rate)].avg == Decimal("14.5")
+    assert rows[get_series_type_id(SeriesType.resting_heart_rate)].avg == Decimal("48")

@@ -1,5 +1,6 @@
 """Tests for StravaWorkouts normalization."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -57,6 +58,14 @@ class TestStravaWorkoutsNormalization:
         _, detail = workouts._normalize_workout(self._activity(), uuid4())
 
         assert detail.entry_source is None
+
+    def test_ride_without_calories_takes_kilojoules_one_to_one(self, workouts: StravaWorkouts) -> None:
+        activity = self._activity().model_copy(update={"kilojoules": 750.0})
+
+        _, detail = workouts._normalize_workout(activity, uuid4())
+
+        # Pedal work at ~24% efficiency makes 1 kJ of work about 1 kcal burned.
+        assert detail.energy_burned == Decimal("750")
 
     def test_oversized_name_does_not_abort_the_batch(self, workouts: StravaWorkouts) -> None:
         """An overlong name is truncated so the surrounding activities still import."""

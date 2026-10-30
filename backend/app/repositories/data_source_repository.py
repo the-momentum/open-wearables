@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import NamedTuple, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, asc, delete, select, text
+from sqlalchemy import CursorResult, and_, delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.constants.devices_map import infer_device_type, is_host_model
@@ -453,7 +453,7 @@ class DataSourceRepository(
         return (
             db_session.query(self.model)
             .filter(self.model.user_id == user_id)
-            .order_by(asc(self.model.provider), asc(self.model.device_model))
+            .order_by(self.model.provider.asc(), self.model.device_model.asc())
             .all()
         )
 
@@ -488,7 +488,7 @@ class DataSourceRepository(
 
         Deletes the user's health_score rows for the provider (some are not linked to
         a data_source), then the data_source rows. ON DELETE CASCADE on the data_source
-        FK removes every dependent row - event_records, data_point_series (+ archive),
+        FK removes every dependent row - event_records, series_sample (+ archive),
         event/sleep/workout/menstrual details and health_scores linked via data_source
         or event_record. Returns the number of data_source rows deleted.
         """

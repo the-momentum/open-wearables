@@ -67,7 +67,7 @@ export function statTiles(info: SystemInfo): Tile[] {
 			label: 'Data points',
 			value: formatCompact(info.data_points.count),
 			note: 'estimated',
-			parts: [{ label: 'archived', value: formatCompact(info.data_points.archived) }]
+			parts: [{ label: 'day and session rows', value: formatCompact(info.data_points.aggregated) }]
 		},
 		{
 			icon: CalendarClock,

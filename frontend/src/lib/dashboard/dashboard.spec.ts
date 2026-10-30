@@ -6,7 +6,7 @@ import type { SystemInfo } from './types';
 const info = (over: Partial<SystemInfo> = {}): SystemInfo => ({
 	total_users: { count: 1200 },
 	active_conn: { count: 900 },
-	data_points: { count: 1_450_000, archived: 320_000 },
+	data_points: { count: 1_450_000, archived: 320_000, aggregated: 266_000 },
 	event_records: { count: 1000, workouts: 400, sleep: 560, menstrual_cycles: 40 },
 	connections_coverage: {
 		users_with_active: 900,
@@ -137,7 +137,9 @@ describe('statTiles', () => {
 	// The archive row is the one that disappeared when an empty part was left out
 	// of a proportion bar; every tile keeps its sub-metrics whatever they read.
 	it('keeps a zero sub-metric', () => {
-		const [, , points] = statTiles(info({ data_points: { count: 10, archived: 0 } }));
-		expect(points.parts).toEqual([{ label: 'archived', value: '0' }]);
+		const [, , points] = statTiles(
+			info({ data_points: { count: 10, archived: 0, aggregated: 0 } })
+		);
+		expect(points.parts).toEqual([{ label: 'day and session rows', value: '0' }]);
 	});
 });

@@ -115,9 +115,8 @@ const SERIES_COLOUR: Record<string, string> = {
 export const seriesColour = (type: string) => SERIES_COLOUR[type] ?? GREY;
 
 /**
- * One point a day. The endpoint has no daily rollup to ask for, so a dense
- * series like HRV would otherwise arrive thousands of points deep, overrun a
- * page, and be silently cut.
+ * One point a day. The vitals arrive as day rows already; this folds whatever
+ * is denser (a scale weighed twice) and keeps the chart's own idea of a day.
  */
 export const dailyMeans = (series: Series): Series => ({
 	...series,

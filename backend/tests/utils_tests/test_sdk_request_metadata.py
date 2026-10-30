@@ -11,6 +11,13 @@ class TestSDKRequestMetadata:
 
         assert sdk_request_metadata(headers) == {"sdk_version": "0.15.0", "request_id": "req-1"}
 
+    def test_sync_context_headers_are_read(self) -> None:
+        headers = Headers(
+            {"X-Open-Wearables-App-State": "background", "X-Open-Wearables-Sync-Trigger": "healthkit_observer"}
+        )
+
+        assert sdk_request_metadata(headers) == {"app_state": "background", "sync_trigger": "healthkit_observer"}
+
     def test_control_characters_are_stripped(self) -> None:
         fields = sdk_request_metadata({"user-agent": "Agent/1.0\n\tfake=line\r"})
 

@@ -140,9 +140,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             # Energy and distance
             "energy_burned": energy_burned,
             "distance": distance,
-            # Speed (convert from m/s to km/h for display)
-            "max_speed": Decimal(str(raw_workout.maxSpeed * 3.6)) if raw_workout.maxSpeed else None,
-            "average_speed": Decimal(str(raw_workout.avgSpeed * 3.6)) if raw_workout.avgSpeed else None,
+            "max_speed": Decimal(str(raw_workout.maxSpeed)) if raw_workout.maxSpeed else None,
+            "average_speed": Decimal(str(raw_workout.avgSpeed)) if raw_workout.avgSpeed else None,
             # Power
             "max_watts": Decimal(str(raw_workout.maxPower)) if raw_workout.maxPower else None,
             "average_watts": Decimal(str(raw_workout.avgPower)) if raw_workout.avgPower else None,

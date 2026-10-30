@@ -12,7 +12,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource
+from app.models import DataSource, SeriesSample
 from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
@@ -33,10 +33,10 @@ DAY_RESPONSE: dict[str, Any] = {
 }
 
 
-def _polar_samples(db: Session, user_id: Any) -> list[DataPointSeries]:
+def _polar_samples(db: Session, user_id: Any) -> list[SeriesSample]:
     return (
-        db.query(DataPointSeries)
-        .join(DataSource, DataSource.id == DataPointSeries.data_source_id)
+        db.query(SeriesSample)
+        .join(DataSource, DataSource.id == SeriesSample.data_source_id)
         .filter(DataSource.user_id == user_id, DataSource.provider == "polar")
         .all()
     )

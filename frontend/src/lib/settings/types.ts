@@ -25,6 +25,8 @@ export type ProviderSetting = {
 	name: string;
 	has_cloud_api: boolean;
 	is_enabled: boolean;
+	/** False when a cloud provider's OAuth client ID or secret is not set. */
+	credentials_configured: boolean;
 	icon_url: string;
 	live_sync_mode: 'pull' | 'webhook' | null;
 	live_sync_configurable: boolean;

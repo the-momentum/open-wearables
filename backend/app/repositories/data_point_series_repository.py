@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from logging import getLogger
 from typing import LiteralString, NamedTuple, overload
 from typing import cast as typing_cast
 from uuid import UUID
@@ -16,7 +17,6 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
-    and_,
     asc,
     case,
     cast,
@@ -37,20 +37,36 @@ from sqlalchemy.orm import Query
 from sqlalchemy.schema import CreateTable
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataPointSeriesArchive, DataSource, DeviceTypePriority, ProviderPriority
+from app.integrations.rollup_queue import mark_dirty_days
+from app.mappings import SERIES_VALUE_SCALE
+from app.models import (
+    DataPointSeriesArchive,
+    DataSource,
+    DeviceTypePriority,
+    EventRecord,
+    EventRecordAggregate,
+    ProviderPriority,
+    SeriesAggregate,
+    SeriesSample,
+)
 from app.models.series_type_definition import SeriesTypeDefinition
+from app.repositories.aggregate_repository import AggregateRepository
 from app.repositories.data_source_repository import DATA_SOURCE_FIELDS, DataSourceIdentity, DataSourceRepository
 from app.repositories.data_type_coverage_repository import data_type_coverage_repository
+from app.repositories.local_day import OFFSET_REACH
 from app.repositories.repositories import (
     CrudRepository,
     source_filter_conditions,
     timeline_key_column,
     utc_bucket_start,
 )
+from app.repositories.series_aggregate_repository import LOCAL_DAY
 from app.schemas.data_type_coverage import CoverageSpan
 from app.schemas.enums import (
     BUCKET_SIZES,
     AggregationMethod,
+    ComputedBy,
+    PeriodKind,
     ProviderName,
     Resolution,
     SeriesType,
@@ -60,6 +76,7 @@ from app.schemas.enums import (
     get_series_type_id,
 )
 from app.schemas.enums.aggregation_method import get_aggregation_method
+from app.schemas.enums.data_granularity import PERIOD_RESOLUTIONS
 from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
@@ -67,13 +84,15 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.responses.activity import (
     ActiveMinutesResult,
-    ActivityAggregateResult,
     IntensityMinutesResult,
 )
 from app.schemas.sync_status import DataTypeKind
-from app.utils.dates import as_utc
+from app.utils.dates import as_utc, local_date
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_bucket_cursor, decode_cursor
+from app.utils.structured_logging import log_structured
+
+logger = getLogger(__name__)
 
 
 class TypeCounts(NamedTuple):
@@ -233,16 +252,18 @@ class AggregatedSample(NamedTuple):
 
 
 class DataPointSeriesRepository(
-    CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
+    CrudRepository[SeriesSample, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
 ):
     """Repository for unified device data point series."""
 
-    def __init__(self, model: type[DataPointSeries]):
+    def __init__(self, model: type[SeriesSample]):
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
+        self.series_aggregate_repo = AggregateRepository(SeriesAggregate)
+        self.event_aggregate_repo = AggregateRepository(EventRecordAggregate)
 
     @handle_exceptions
-    def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataPointSeries:
+    def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> SeriesSample:
         """Create a data point sample, or return existing if duplicate.
 
         Handles duplicate records gracefully by catching IntegrityError and
@@ -250,14 +271,25 @@ class DataPointSeriesRepository(
         """
         data_source = self.data_source_repo.ensure_for_creator(db_session, creator)
 
-        creation_data = creator.model_dump(exclude={*DATA_SOURCE_FIELDS, "series_type", "data_source_id"})
+        creation_data = creator.model_dump(
+            exclude={*DATA_SOURCE_FIELDS, "series_type", "data_source_id", "period", "session"}
+        )
 
         # Set the proper values
         creation_data["data_source_id"] = data_source.id
         creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
+        creation_data["value"] = round(creator.value, SERIES_VALUE_SCALE)
+        # Day values live in the aggregate tables: a sample is a reading, the column waits to be dropped.
+        creation_data["is_daily_total"] = None
 
         creation = self.model(**creation_data)
+        if creator.period is not None or creator.session is not None:
+            # A day or session value lives in the aggregate tables only.
+            self._mirror_aggregates(db_session, [creator], {DataSourceIdentity.of(creator): data_source.id})
+            db_session.commit()
+            return creation
         db_session.add(creation)
+        mark_dirty_days(db_session, [(data_source.id, local_date(creator.recorded_at, creator.zone_offset))])
         return self.try_commit(db_session, creation)
 
     @handle_exceptions
@@ -282,7 +314,22 @@ class DataPointSeriesRepository(
         if not rows:
             return WriteCounts(0, 0)
         spans = _spans_by_source_and_type(rows)
-        counts = self._insert_data_points(db_session, rows, spans)
+        # A session value whose record is gone comes back without its session, to be kept as a sample.
+        creators = self._with_live_sessions(db_session, creators)
+        # A day or session value lives in the aggregate tables only; samples are instants and windows.
+        sample_rows, _ = self._staging_rows(
+            [c for c in creators if c.period is None and c.session is None], identity_to_source_id
+        )
+        counts = (
+            self._insert_data_points(db_session, sample_rows, _spans_by_source_and_type(sample_rows))
+            if sample_rows
+            else WriteCounts(0, 0)
+        )
+        self._mirror_aggregates(db_session, creators, identity_to_source_id)
+        mark_dirty_days(
+            db_session,
+            {(row.data_source_id, local_date(row.recorded_at, row.zone_offset)) for row in sample_rows},
+        )
 
         # 3. Widen what we hold per type, under the same provider the sources resolved to
         data_type_coverage_repository.record(
@@ -301,14 +348,82 @@ class DataPointSeriesRepository(
         )
         return counts
 
+    @staticmethod
+    def _with_live_sessions(
+        db_session: DbSession, creators: list[TimeSeriesSampleCreate]
+    ) -> list[TimeSeriesSampleCreate]:
+        """Session values pointing at a record that no longer exists (a sleep merged away meanwhile) are kept as
+        samples only: a foreign-key error on one of them would lose the whole batch."""
+        record_ids = {c.session.record_id for c in creators if c.session is not None}
+        if not record_ids:
+            return creators
+        # One array bind: a long history import can carry more record ids than a statement takes parameters.
+        ids = cast(list(record_ids), postgresql.ARRAY(PGUUID(as_uuid=True)))
+        live = {record_id for (record_id,) in db_session.query(EventRecord.id).filter(EventRecord.id == func.any(ids))}
+        if gone := record_ids - live:
+            log_structured(
+                logger,
+                "warning",
+                "Session values point at deleted records; kept as samples only",
+                samples=sum(1 for c in creators if c.session is not None and c.session.record_id in gone),
+            )
+            return [
+                c.model_copy(update={"session": None}) if c.session is not None and c.session.record_id in gone else c
+                for c in creators
+            ]
+        return creators
+
+    def _mirror_aggregates(
+        self,
+        db_session: DbSession,
+        creators: list[TimeSeriesSampleCreate],
+        source_map: dict[DataSourceIdentity, UUID],
+    ) -> None:
+        """Mirror provider values that name their calendar period or event into the aggregate tables."""
+        period_rows, session_rows = [], []
+        for creator in creators:
+            if creator.period is None and creator.session is None:
+                continue
+            type_id = get_series_type_id(creator.series_type)
+            canonical = get_aggregation_method(creator.series_type).value
+            if creator.period is not None and (source_id := source_map.get(DataSourceIdentity.of(creator))):
+                period_rows.append(
+                    {
+                        "data_source_id": source_id,
+                        "series_type_definition_id": type_id,
+                        "period_kind": creator.period.kind,
+                        "period_start": creator.period.start,
+                        "period_end": creator.period.end,
+                        "zone_offset": creator.period.zone_offset,
+                        "computed_by": ComputedBy.PROVIDER,
+                        canonical: creator.value,
+                        "count": 1,
+                    }
+                )
+            if creator.session is not None:
+                session_rows.append(
+                    {
+                        "record_id": creator.session.record_id,
+                        "series_type_definition_id": type_id,
+                        "computed_by": ComputedBy.PROVIDER,
+                        creator.session.stat or canonical: creator.value,
+                        "count": 1,
+                    }
+                )
+        if period_rows:
+            self.series_aggregate_repo.upsert(db_session, period_rows)
+        if session_rows:
+            self.event_aggregate_repo.upsert(db_session, session_rows)
+
     class _StagingRow(NamedTuple):
-        """One row as loaded into data_point_series_staging via COPY, in column order."""
+        """One row as loaded into series_sample_staging via COPY, in column order."""
 
         id: UUID
         external_id: str | None
         data_source_id: UUID
         recorded_at: datetime
         zone_offset: str | None
+        window_seconds: int | None
         value: Decimal | float | int
         series_type_definition_id: int
         is_daily_total: bool | None
@@ -337,9 +452,10 @@ class DataPointSeriesRepository(
                     data_source_id=source_id,
                     recorded_at=creator.recorded_at,
                     zone_offset=creator.zone_offset,
-                    value=creator.value,
+                    window_seconds=creator.window_seconds,
+                    value=round(creator.value, SERIES_VALUE_SCALE),
                     series_type_definition_id=get_series_type_id(creator.series_type),
-                    is_daily_total=creator.is_daily_total,
+                    is_daily_total=None,
                 )
             )
 
@@ -366,9 +482,9 @@ class DataPointSeriesRepository(
         assert raw_conn is not None, "no DBAPI connection on an active Session"
         with raw_conn.cursor() as cursor:
             # Create the temporary staging table for bulk-importing data points.
-            model_columns = DataPointSeries.__table__.c
+            model_columns = SeriesSample.__table__.c
             staging_table = Table(
-                "data_point_series_staging",
+                "series_sample_staging",
                 MetaData(),
                 *(Column(name, model_columns[name].type) for name in self._StagingRow._fields),
                 prefixes=["TEMPORARY"],
@@ -376,30 +492,32 @@ class DataPointSeriesRepository(
             )
             staging_ddl = str(CreateTable(staging_table, if_not_exists=True).compile(dialect=postgresql.dialect()))
             cursor.execute(typing_cast(LiteralString, staging_ddl))
-            cursor.execute("TRUNCATE data_point_series_staging")
+            cursor.execute("TRUNCATE series_sample_staging")
             # Raw psycopg connection sharing this Session's transaction - COPY has no
             # SQLAlchemy Core equivalent, and using a separate connection would commit
             # outside this transaction.
-            with cursor.copy(f"COPY data_point_series_staging ({self._COPY_COLUMNS_SQL}) FROM STDIN") as copy:
+            with cursor.copy(f"COPY series_sample_staging ({self._COPY_COLUMNS_SQL}) FROM STDIN") as copy:
                 for row in rows:
                     copy.write_row(row)
 
             cursor.execute(
                 f"""
                     WITH merged AS (
-                        INSERT INTO data_point_series ({self._COPY_COLUMNS_SQL})
-                        SELECT {self._COPY_COLUMNS_SQL} FROM data_point_series_staging
+                        INSERT INTO series_sample ({self._COPY_COLUMNS_SQL})
+                        SELECT {self._COPY_COLUMNS_SQL} FROM series_sample_staging
                         ORDER BY data_source_id, series_type_definition_id, recorded_at
                         ON CONFLICT (data_source_id, series_type_definition_id, recorded_at)
                         DO UPDATE SET
                             external_id = excluded.external_id,
                             value = excluded.value,
                             zone_offset = excluded.zone_offset,
+                            window_seconds = excluded.window_seconds,
                             is_daily_total = excluded.is_daily_total
-                        WHERE data_point_series.value IS DISTINCT FROM excluded.value
-                           OR data_point_series.external_id IS DISTINCT FROM excluded.external_id
-                           OR data_point_series.zone_offset IS DISTINCT FROM excluded.zone_offset
-                           OR data_point_series.is_daily_total IS DISTINCT FROM excluded.is_daily_total
+                        WHERE series_sample.value IS DISTINCT FROM excluded.value
+                           OR series_sample.external_id IS DISTINCT FROM excluded.external_id
+                           OR series_sample.zone_offset IS DISTINCT FROM excluded.zone_offset
+                           OR series_sample.window_seconds IS DISTINCT FROM excluded.window_seconds
+                           OR series_sample.is_daily_total IS DISTINCT FROM excluded.is_daily_total
                         RETURNING (xmax = 0) AS was_insert, series_type_definition_id
                     )
                     SELECT series_type_definition_id, count(*) FILTER (WHERE was_insert) AS inserted
@@ -427,7 +545,7 @@ class DataPointSeriesRepository(
         inserted = sum(inserted_by_type_id.values())
         return WriteCounts(inserted, len(rows) - inserted, by_type)
 
-    def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
+    def try_commit(self, db_session: DbSession, creation: SeriesSample) -> SeriesSample:
         try:
             db_session.commit()
             db_session.refresh(creation)
@@ -459,7 +577,7 @@ class DataPointSeriesRepository(
         types: list[SeriesType],
         user_id: UUID,
         source_by_type: dict[int, UUID] | None = None,
-    ) -> tuple[list[tuple[DataPointSeries, DataSource]], int | None]:
+    ) -> tuple[list[tuple[SeriesSample, DataSource]], int | None]:
         """Get data points with filtering and keyset pagination.
 
         Returns (samples, total_count). The count is a full aggregate over the largest table in
@@ -503,7 +621,7 @@ class DataPointSeriesRepository(
             )
 
         # Normal ascending order for forward pagination
-        query = query.order_by(asc(self.model.recorded_at), asc(self.model.id))
+        query = query.order_by(self.model.recorded_at.asc(), self.model.id.asc())
 
         # Limit + 1 to check for next page
         limit = params.limit or 50
@@ -656,23 +774,37 @@ class DataPointSeriesRepository(
             column("source_id", PGUUID(as_uuid=True)),
             name="candidates",
         ).data([(type_id, source.id) for type_id in type_ids for source in ranked])
-        available = [self.model.recorded_at >= start] if start is not None else []
-        if end is not None:
-            available.append(self.model.recorded_at < end)
-        if params.resolution is not Resolution.RAW:
-            # Bucketed reads drop daily totals, so a source holding only those has nothing to
-            # offer here and must not outrank one with real intraday samples.
-            available.append(self.model.is_daily_total.isnot(True))
+        if params.resolution in PERIOD_RESOLUTIONS:
+            # Day, week and month reads come from the day rows, so that is where a source must hold
+            # something: retention may have deleted its samples while its day rows stay, and a source
+            # with only a provider day value (a Whoop cycle's steps) has exactly what these return.
+            source, series, at = (
+                SeriesAggregate.data_source_id,
+                SeriesAggregate.series_type_definition_id,
+                SeriesAggregate.period_start,
+            )
+            # The same local days the read then returns: the UTC reach alone would crown a source on a row
+            # just past the range, and the read would come back empty.
+            available = [SeriesAggregate.period_kind == PeriodKind.DAY]
+            if start is not None:
+                available.extend([at >= start - OFFSET_REACH, start.date() <= LOCAL_DAY])
+            if end is not None:
+                available.extend([at < end + OFFSET_REACH, (end - timedelta(microseconds=1)).date() >= LOCAL_DAY])
+        else:
+            source, series, at = self.model.data_source_id, self.model.series_type_definition_id, self.model.recorded_at
+            available = [at >= start] if start is not None else []
+            if end is not None:
+                available.append(at < end)
+            if params.resolution is not Resolution.RAW:
+                # Bucketed reads drop daily totals, so a source holding only those has nothing to
+                # offer here and must not outrank one with real intraday samples.
+                available.append(self.model.is_daily_total.isnot(True))
         probe = (
             select(literal_column("1"))
-            .where(
-                self.model.data_source_id == candidates.c.source_id,
-                self.model.series_type_definition_id == candidates.c.type_id,
-                *available,
-            )
+            .where(source == candidates.c.source_id, series == candidates.c.type_id, *available)
             # Ordering on the index's trailing column lets the planner stop at the first match
             # instead of costing this as a full scan once a non-indexed filter is present.
-            .order_by(self.model.recorded_at)
+            .order_by(at)
             .limit(1)
             .lateral("probe")
         )
@@ -792,6 +924,13 @@ class DataPointSeriesRepository(
     def get_approximate_archived_count(self, db_session: DbSession) -> int:
         """Approximate row count of the archive table (archived data points)."""
         return self._approximate_row_count(db_session, DataPointSeriesArchive.__tablename__)
+
+    def get_approximate_aggregate_count(self, db_session: DbSession) -> int:
+        """Approximate number of day and session rows: what the samples are rolled up into."""
+        return sum(
+            self._approximate_row_count(db_session, table.__tablename__)
+            for table in (SeriesAggregate, EventRecordAggregate)
+        )
 
     def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
@@ -920,7 +1059,7 @@ class DataPointSeriesRepository(
     ) -> dict[UUID, int]:
         """Batch-compute average HR from series data for multiple workout windows.
 
-        One query per chunk of workouts, a VALUES CTE joined against data_point_series with one
+        One query per chunk of workouts, a VALUES CTE joined against series_sample with one
         index range scan per (workout, source). HR from the workout's own source wins; the fallback
         sources are used only when it has none in the window.
 
@@ -969,7 +1108,7 @@ class DataPointSeriesRepository(
             )
             SELECT ww.record_id, ww.is_own, ROUND(AVG(dps.value))::int
             FROM workout_windows ww
-            JOIN data_point_series dps
+            JOIN series_sample dps
                 ON dps.data_source_id = ww.data_source_id
                 AND dps.series_type_definition_id = :hr_type_id
                 AND dps.recorded_at >= ww.start_time
@@ -998,153 +1137,6 @@ class DataPointSeriesRepository(
             local_date >= cast(start_date, Date),
             local_date < cast(end_date, Date),
         ]
-
-    def get_daily_activity_aggregates(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[ActivityAggregateResult]:
-        """Get daily activity aggregates from time-series data.
-
-        Aggregates steps, energy, heart rate stats by date for a user.
-
-        Returns list of dicts with keys:
-        - activity_date, provider, source, device_model, device_type
-        - steps_sum, active_energy_sum, basal_energy_sum, total_energy_sum
-        - hr_avg, hr_max, hr_min
-        - distance_sum, flights_climbed_sum
-        """
-        # Series type IDs we need
-        steps_id = get_series_type_id(SeriesType.steps)
-        energy_id = get_series_type_id(SeriesType.active_energy)
-        basal_energy_id = get_series_type_id(SeriesType.basal_energy)
-        total_energy_id = get_series_type_id(SeriesType.total_energy)
-        hr_id = get_series_type_id(SeriesType.heart_rate)
-        distance_id = get_series_type_id(SeriesType.distance_walking_running)
-        flights_id = get_series_type_id(SeriesType.flights_climbed)
-        active_time_id = get_series_type_id(SeriesType.active_time)
-
-        local_date = cast(
-            self.model.recorded_at + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval),
-            Date,
-        )
-
-        def prefer_daily_sum(series_id: int) -> ColumnElement:
-            """Per (day, source): use the daily-total rows if any exist, else sum samples.
-
-            Removes the Garmin/Suunto double-count (a daily total + its own intraday
-            epochs). NULL is_daily_total counts as "not daily" (legacy rows are summed).
-            COALESCE falls through to the sample sum only when no daily total exists.
-            """
-            daily = func.sum(
-                case(
-                    (
-                        and_(self.model.series_type_definition_id == series_id, self.model.is_daily_total.is_(True)),
-                        self.model.value,
-                    )
-                )
-            )
-            samples = func.sum(
-                case(
-                    (
-                        and_(self.model.series_type_definition_id == series_id, self.model.is_daily_total.isnot(True)),
-                        self.model.value,
-                    )
-                )
-            )
-            return func.coalesce(daily, samples)
-
-        # Build aggregation query
-        results = (
-            db_session.query(
-                local_date.label("activity_date"),
-                DataSource.provider.label("provider"),
-                DataSource.source.label("source"),
-                DataSource.device_model.label("device_model"),
-                # device_type is functionally dependent on the three columns above
-                # (uq_data_source_identity is unique per user on provider/device_model/source),
-                # so adding it to the GROUP BY cannot change the number of groups.
-                DataSource.device_type.label("device_type"),
-                # Steps - prefer daily total, else sum samples
-                prefer_daily_sum(steps_id).label("steps_sum"),
-                # Active energy - prefer daily total, else sum samples
-                prefer_daily_sum(energy_id).label("active_energy_sum"),
-                # Basal energy - prefer daily total, else sum samples
-                prefer_daily_sum(basal_energy_id).label("basal_energy_sum"),
-                # Total energy - providers that report active + basal without a split
-                prefer_daily_sum(total_energy_id).label("total_energy_sum"),
-                # Heart rate stats
-                func.avg(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
-                    "hr_avg"
-                ),
-                func.max(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
-                    "hr_max"
-                ),
-                func.min(case((self.model.series_type_definition_id == hr_id, self.model.value), else_=None)).label(
-                    "hr_min"
-                ),
-                # Distance - prefer daily total, else sum samples (NULL when no data)
-                prefer_daily_sum(distance_id).label("distance_sum"),
-                # Flights climbed - prefer daily total, else sum samples (NULL when no data)
-                prefer_daily_sum(flights_id).label("flights_climbed_sum"),
-                # Provider-reported active time (minutes) - daily total (NULL when no data)
-                prefer_daily_sum(active_time_id).label("active_time_sum"),
-            )
-            .join(DataSource, self.model.data_source_id == DataSource.id)
-            .filter(
-                DataSource.user_id == user_id,
-                *self._local_day_window(local_date, start_date, end_date),
-                self.model.series_type_definition_id.in_(
-                    [
-                        steps_id,
-                        energy_id,
-                        basal_energy_id,
-                        total_energy_id,
-                        hr_id,
-                        distance_id,
-                        flights_id,
-                        active_time_id,
-                    ]
-                ),
-            )
-            .group_by(
-                local_date,
-                DataSource.provider,
-                DataSource.source,
-                DataSource.device_model,
-                DataSource.device_type,
-            )
-            .order_by(asc(local_date))
-            .all()
-        )
-
-        # Transform to list of dicts
-        aggregates: list[ActivityAggregateResult] = []
-        for row in results:
-            aggregates.append(
-                {
-                    "activity_date": row.activity_date,
-                    "provider": row.provider,
-                    "source": row.source,
-                    "device_model": row.device_model,
-                    "device_type": row.device_type,
-                    "steps_sum": int(row.steps_sum) if row.steps_sum is not None else None,
-                    "active_energy_sum": float(row.active_energy_sum) if row.active_energy_sum is not None else None,
-                    "basal_energy_sum": float(row.basal_energy_sum) if row.basal_energy_sum is not None else None,
-                    "total_energy_sum": float(row.total_energy_sum) if row.total_energy_sum is not None else None,
-                    "hr_avg": int(round(float(row.hr_avg))) if row.hr_avg is not None else None,
-                    "hr_max": int(row.hr_max) if row.hr_max is not None else None,
-                    "hr_min": int(row.hr_min) if row.hr_min is not None else None,
-                    "distance_sum": float(row.distance_sum) if row.distance_sum is not None else None,
-                    "flights_climbed_sum": int(row.flights_climbed_sum)
-                    if row.flights_climbed_sum is not None
-                    else None,
-                    "active_time_minutes": int(row.active_time_sum) if row.active_time_sum is not None else None,
-                }
-            )
-        return aggregates
 
     def get_daily_active_minutes(
         self,
@@ -1516,7 +1508,7 @@ class DataPointSeriesRepository(
         series_type: SeriesType,
         window_start: datetime,
         window_end: datetime,
-    ) -> tuple[float, datetime, str, str | None] | None:
+    ) -> tuple[float, datetime, str | None, str | None] | None:
         """Get the most recent reading for a series type within a time window.
 
         Used for point-in-time metrics like body temperature that are only

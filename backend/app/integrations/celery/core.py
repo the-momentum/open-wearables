@@ -235,6 +235,13 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        # Safety net: picks the one-off aggregate backfill up again if a run was lost; a no-op once it is done.
+        "run-aggregate-backfill": {
+            "task": CeleryTask.RUN_AGGREGATE_BACKFILL,
+            "schedule": crontab(minute="*/15"),
+            "args": (),
+            "kwargs": {},
+        },
         "renew-oura-webhooks-monthly": {
             "task": CeleryTask.RENEW_OURA_WEBHOOKS,
             "schedule": crontab(day_of_month=1, hour=0, minute=0),  # 1st of each month at 00:00 UTC
@@ -243,6 +250,14 @@ def create_celery() -> Celery:
         },
     }
 
+    # Summaries, day reads and our sleep and workout statistics are served from the rollup's rows,
+    # so it runs on every instance; the lifecycle flag only governs retention and its tab.
+    celery_app.conf.beat_schedule["roll-up-queued-days"] = {
+        "task": CeleryTask.ROLL_UP_QUEUED_DAYS,
+        "schedule": crontab(minute="*/15"),
+        "args": (),
+        "kwargs": {},
+    }
     if settings.data_lifecycle_enabled:
         celery_app.conf.beat_schedule["run-daily-archival"] = {
             "task": CeleryTask.RUN_DAILY_ARCHIVAL,
