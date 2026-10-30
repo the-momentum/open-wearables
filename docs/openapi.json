@@ -6543,6 +6543,8 @@
                                     "BASAL_METABOLIC_RATE",
                                     "HKQuantityTypeIdentifierAppleStandTime",
                                     "HKQuantityTypeIdentifierAppleExerciseTime",
+                                    "ACTIVITY_INTENSITY_MODERATE",
+                                    "ACTIVITY_INTENSITY_VIGOROUS",
                                     "HKQuantityTypeIdentifierFlightsClimbed",
                                     "FLOORS_CLIMBED",
                                     "DISTANCE",

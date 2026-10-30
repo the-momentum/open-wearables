@@ -7,9 +7,14 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.constants.series_types.sdk import SDKMetricType, SleepPhase, WorkoutStatisticType
+from app.constants.series_types.sdk import (
+    INTERVAL_MINUTE_METRIC_TYPES,
+    SDKMetricType,
+    SleepPhase,
+    WorkoutStatisticType,
+)
 from app.constants.workout_types import SDKWorkoutType
 from app.schemas.sync_status import SyncScope
 
@@ -81,6 +86,13 @@ class MetricRecord(BaseModel):
     value: Decimal
     unit: str | None
     metadata: list[dict[str, Any]] | dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _interval_holds_minutes(self) -> MetricRecord:
+        # A record whose minutes are its length holds none if it doesn't end after it starts
+        if self.type in INTERVAL_MINUTE_METRIC_TYPES and self.endDate <= self.startDate:
+            raise ValueError("endDate must be after startDate for a record whose minutes are its length")
+        return self
 
 
 class SleepRecord(BaseModel):

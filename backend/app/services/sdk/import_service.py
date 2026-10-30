@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from app.constants.entry_source import get_unified_sdk_entry_source
 from app.constants.series_types.sdk import (
+    INTERVAL_MINUTE_METRIC_TYPES,
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
     get_series_type_from_metric_type,
@@ -354,6 +355,10 @@ class ImportService:
             # "Cal" is the food Calorie (= kcal).
             if series_type in _KCAL_SERIES and (rjson.unit or "").strip() == "cal":
                 value = value / 1000
+
+            # Its minutes are its length; MetricRecord drops one that doesn't end after it starts
+            if record_type in INTERVAL_MINUTE_METRIC_TYPES:
+                value = Decimal(str((rjson.endDate - rjson.startDate).total_seconds() / 60))
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)

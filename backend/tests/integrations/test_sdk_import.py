@@ -20,7 +20,7 @@ from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.event_record_service import event_record_service
-from app.services.sdk.import_service import ImportService
+from app.services.sdk.import_service import ImportService, _parse_sync_request
 from tests.factories import UserFactory
 
 SDK_ENVELOPE: dict[str, str] = {
@@ -874,6 +874,43 @@ class TestSDKImportUnitConversion:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
+
+    @pytest.mark.parametrize("metric_type", ["ACTIVITY_INTENSITY_MODERATE", "ACTIVITY_INTENSITY_VIGOROUS"])
+    def test_health_connect_activity_intensity_minutes_are_exercise_time(
+        self,
+        import_service: ImportService,
+        metric_type: str,
+    ) -> None:
+        """Moderate and vigorous minutes are both exercise_time, taken from the record's length, not its value."""
+        record = self._record(metric_type, 999, unit="s") | {
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": "2025-04-10T10:25:00Z",
+        }
+        request = self._build_request("health_connect", [record])
+        samples = import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.exercise_time
+        assert samples[0].value == Decimal("25")
+
+    @pytest.mark.parametrize("end", ["2025-04-10T09:35:00Z", "2025-04-10T10:00:00Z"])
+    def test_health_connect_activity_intensity_without_minutes_is_dropped(self, end: str) -> None:
+        """A reversed or empty interval holds no minutes; the import reports it as dropped."""
+        intensity = self._record("ACTIVITY_INTENSITY_MODERATE", 999, unit="s") | {
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": end,
+        }
+        raw = {
+            "provider": "health_connect",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2025-04-10T12:00:00Z",
+            "data": {"records": [intensity, self._record("STEPS", 100)]},
+        }
+
+        request, dropped = _parse_sync_request(raw)
+
+        assert [record.type for record in request.data.records] == ["STEPS"]
+        assert [(record["collection"], record["index"]) for record in dropped] == [("records", 0)]
 
     @pytest.mark.parametrize(
         ("unit", "expected"),
