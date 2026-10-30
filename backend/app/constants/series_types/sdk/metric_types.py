@@ -260,6 +260,11 @@ class SDKMetricType(StrEnum):
     ANDROID_DIETARY_FOLIC_ACID = "DIETARY_FOLIC_ACID"
 
 
+# Health Connect's ActivityIntensityRecord has no value of its own: its minutes are the record's length.
+INTERVAL_MINUTE_METRIC_TYPES: frozenset[SDKMetricType] = frozenset(
+    {SDKMetricType.ANDROID_ACTIVITY_INTENSITY_MODERATE, SDKMetricType.ANDROID_ACTIVITY_INTENSITY_VIGOROUS}
+)
+
 METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Heart & Cardiovascular
     SDKMetricType.APPLE_HEART_RATE: SeriesType.heart_rate,
