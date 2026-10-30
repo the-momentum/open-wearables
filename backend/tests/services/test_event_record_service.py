@@ -794,26 +794,6 @@ class TestCreateOrMergeSleep:
 
         assert {day for _, day in pop_dirty_days(100)} == {self._dt(22, 0).date(), self._dt(6, 0, day=22).date()}
 
-    def test_a_sleep_stored_without_an_id_is_replaced_over_the_same_window_and_takes_the_id(self, db: Session) -> None:
-        """Stored before its provider sent ids (e.g. by an old pod during a deploy), it is the same session."""
-        user = UserFactory()
-        data_source = DataSourceFactory(user=user)
-        start, end = self._dt(23, 0), self._dt(7, 0, day=22)
-        existing = EventRecordFactory(
-            mapping=data_source, category="sleep", type_="sleep_session", start_datetime=start, end_datetime=end
-        )
-        SleepDetailsFactory(event_record=existing, sleep_time_in_bed_minutes=480)
-        record = self._record(data_source, start, end).model_copy(update={"external_id": "night-1"})
-
-        event_record_service.create_or_merge_sleep(
-            db, user.id, record, self._detail(record.id, in_bed=480), self.THRESHOLD
-        )
-
-        db.expire_all()
-        stored = db.get(EventRecord, existing.id)
-        assert stored.external_id == "night-1"
-        assert stored.sleep_detail.sleep_time_in_bed_minutes == 480
-
     def test_adjacent_outside_threshold_not_merged(self, db: Session) -> None:
         """Sessions further apart than threshold create two separate records."""
         user = UserFactory()

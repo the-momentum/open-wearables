@@ -195,6 +195,25 @@ class TestPolar247SleepSave:
         assert record.external_id == "sleep-2024-01-15"
         assert len(record.sleep_detail.sleep_stages) == 5
 
+    def test_a_moved_night_stored_without_an_id_takes_it_and_is_replaced(
+        self, db: Session, data_247: Polar247Data
+    ) -> None:
+        user = UserFactory()
+        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+            assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
+        # As dedupe_polar_sleep leaves a night without stages, or an old pod writes one
+        self._sleep_records(db, user.id)[0].external_id = None
+        db.commit()
+        with patch.object(data_247, "get_sleep_data", return_value=[self.MOVED]):
+            for _ in range(2):
+                assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
+
+        (record,) = self._sleep_records(db, user.id)
+        assert record.external_id == "sleep-2024-01-15"
+        assert record.start_datetime == datetime(2024, 1, 14, 21, 10, tzinfo=timezone.utc)
+        assert len(record.sleep_detail.sleep_stages) == 5
+        assert record.sleep_detail.sleep_time_in_bed_minutes == 7 * 60 + 50
+
     def test_a_moved_resync_links_its_score_to_the_stored_night(self, db: Session, data_247: Polar247Data) -> None:
         user = UserFactory()
         for night in (self.NIGHT, self.MOVED):

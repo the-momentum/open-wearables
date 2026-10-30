@@ -937,6 +937,19 @@ class Polar247Data(Base247DataTemplate):
     # Persistence helpers
     # -------------------------------------------------------------------------
 
+    @staticmethod
+    def _claim_night_stored_without_id(db: DbSession, user_id: UUID, record: EventRecordCreate) -> None:
+        """Give the record's id to the Polar night stored without one that it overlaps, so the save replaces it.
+
+        Polar keeps one sleep a date, so an overlapping night is this one, moved or not. Nights stored before
+        Polar sleep carried an id, by an old pod during a deploy, or without stages by dedupe_polar_sleep have none.
+        """
+        stored = event_record_service.find_adjacent_sleep_record(
+            db, user_id, record.start_datetime, record.end_datetime, 0, source=record.source, provider=record.provider
+        )
+        if stored is not None and stored.external_id is None:
+            stored.external_id = record.external_id
+
     def _save_timeseries(self, db: DbSession, samples: list[TimeSeriesSampleCreate]) -> WriteCounts:
         counts = WriteCounts(0, 0)
         if samples:
@@ -965,6 +978,7 @@ class Polar247Data(Base247DataTemplate):
             case PolarWebhookEventType.SLEEP:
                 count = 0
                 for record, detail, score, hr_samples in self.normalize_sleep([raw], user_id):
+                    self._claim_night_stored_without_id(db, user_id, record)
                     stored = event_record_service.create_or_merge_sleep(
                         db, user_id, record, detail, settings.sleep_end_gap_minutes
                     )
@@ -1030,6 +1044,7 @@ class Polar247Data(Base247DataTemplate):
 
         for record, detail, score, hr in normalized:
             try:
+                self._claim_night_stored_without_id(db, user_id, record)
                 stored = event_record_service.create_or_merge_sleep(
                     db, user_id, record, detail, settings.sleep_end_gap_minutes
                 )

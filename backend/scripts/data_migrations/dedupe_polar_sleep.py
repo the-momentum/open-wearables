@@ -16,8 +16,8 @@ before that:
 - sets external_id to "sleep-<local wake-up date>", the date Polar keys the night by, so a
   later re-sync replaces the night instead of merging into it. zone_offset isn't stored for
   Polar sleep, so the local date uses the offset of the stage timestamps. A night without
-  stages has no offset to read, so it keeps no id: a re-sync over the same window replaces
-  it and gives it Polar's id.
+  stages has no offset to read, so it keeps no id: a re-sync of the night replaces it and
+  gives it Polar's id, moved or not.
 
 Not changed: internal sleep scores of the repaired nights, and stage timelines whose copies
 differ (Polar moved the night between syncs), which are not exact duplicates.
@@ -31,7 +31,7 @@ Idempotent: a repaired night no longer matches or needs no change, so re-runs ar
 Loading every Polar night to find there's nothing left is not free, so it runs once per
 instance through data_migration_service. A copy an old pod appends during a rolling deploy, or
 a night it writes without an id, needs no second run: the next re-sync of that night replaces
-it, by its id or by its window.
+it.
 
 Usage (inside Docker), with --dry-run to preview without changes:
     docker compose exec app uv run python scripts/data_migrations/dedupe_polar_sleep.py
