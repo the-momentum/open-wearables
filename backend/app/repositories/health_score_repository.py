@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from typing import cast as typing_cast
 from uuid import UUID
@@ -12,7 +12,13 @@ from app.repositories.data_point_series_repository import WriteCounts
 from app.repositories.repositories import CrudRepository, source_priority_order
 from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
+from app.utils.dates import as_utc
 from app.utils.pagination import decode_cursor
+
+
+def _utc_midnight(moment: datetime) -> datetime:
+    """Start of the UTC day ``moment`` falls on; a naive moment is read as UTC."""
+    return datetime.combine(typing_cast(datetime, as_utc(moment)).date(), time.min, tzinfo=timezone.utc)
 
 
 class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, HealthScoreUpdate]):
@@ -41,10 +47,17 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             filters.append(HealthScore.provider == params.provider)
         if params.data_source_id:
             filters.append(HealthScore.data_source_id == params.data_source_id)
+        # The pick sees whole days, so a bound inside a day can't hand the day to a lower-priority source
+        rank_filters = list(filters)
         if params.start_datetime:
             filters.append(HealthScore.recorded_at >= params.start_datetime)
+            rank_filters.append(HealthScore.recorded_at >= _utc_midnight(params.start_datetime))
         if params.end_datetime:
             filters.append(HealthScore.recorded_at < params.end_datetime)
+            rank_filters.append(
+                HealthScore.recorded_at
+                < _utc_midnight(params.end_datetime - timedelta(microseconds=1)) + timedelta(days=1)
+            )
 
         # Ranked by source: an OW score's own provider is always internal
         ranked = (
@@ -67,7 +80,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             )
             .outerjoin(DataSource, HealthScore.data_source_id == DataSource.id)
             .outerjoin(SleepDetails, SleepDetails.record_id == HealthScore.event_record_id)
-            .where(*filters, HealthScore.provider == ProviderName.INTERNAL)
+            .where(*rank_filters, HealthScore.provider == ProviderName.INTERNAL)
             .subquery()
         )
         filters.append(

@@ -404,6 +404,47 @@ class TestHealthScoreRepositorySourcePriority:
 
         assert [score.id for score, _ in results] == [garmin.id]
 
+    @pytest.mark.parametrize(
+        ("garmin_at", "oura_at", "params"),
+        [
+            (NIGHT, NIGHT + timedelta(hours=6), HealthScoreQueryParams(start_datetime=NIGHT + timedelta(hours=5))),
+            (NIGHT + timedelta(hours=6), NIGHT, HealthScoreQueryParams(end_datetime=NIGHT + timedelta(hours=1))),
+        ],
+    )
+    def test_a_bound_inside_a_day_does_not_change_its_pick(
+        self,
+        db: Session,
+        repo: HealthScoreRepository,
+        garmin_at: datetime,
+        oura_at: datetime,
+        params: HealthScoreQueryParams,
+    ) -> None:
+        """The day's score is Garmin's; cutting it off returns nothing for the day, not Oura's."""
+        _prioritise(db, ProviderName.GARMIN, ProviderName.OURA)
+        user = UserFactory()
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN), garmin_at)
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), oura_at)
+
+        results, total = repo.get_with_filters(db, user.id, params, *_orders(db))
+
+        assert (results, total) == ([], 0)
+
+    def test_a_bound_at_midnight_keeps_the_day_whole(self, db: Session, repo: HealthScoreRepository) -> None:
+        _prioritise(db, ProviderName.GARMIN, ProviderName.OURA)
+        user = UserFactory()
+        garmin = self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN))
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), NIGHT + timedelta(hours=1))
+        day = NIGHT.replace(hour=0)
+
+        results, _ = repo.get_with_filters(
+            db,
+            user.id,
+            HealthScoreQueryParams(start_datetime=day, end_datetime=day + timedelta(days=1)),
+            *_orders(db),
+        )
+
+        assert [score.id for score, _ in results] == [garmin.id]
+
     def test_provider_scores_are_returned_as_they_are(self, db: Session, repo: HealthScoreRepository) -> None:
         user = UserFactory()
         garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
