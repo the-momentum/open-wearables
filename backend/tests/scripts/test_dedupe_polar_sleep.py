@@ -113,13 +113,14 @@ def test_divides_the_added_up_minutes_of_a_night_without_stages(db: Session) -> 
     assert {name: getattr(detail, name) for name in MINUTES} == MINUTES
 
 
-def test_night_without_stages_is_keyed_by_the_utc_date_of_its_end(db: Session) -> None:
-    """Without stages there is no offset to read; in UTC+10 the 06:30 wake-up is still 23 September in UTC."""
-    record = _sleep(with_stages=False)
+def test_night_without_stages_keeps_no_id(db: Session) -> None:
+    """Without stages there is no offset to read its local date with; a re-sync gives it Polar's id."""
+    record = _sleep(copies=3, with_stages=False)
 
-    dedupe_polar_sleep(db, dry_run=False)
+    result = dedupe_polar_sleep(db, dry_run=False)
 
-    assert _stored(db, record)[0].external_id == "sleep-2026-09-23"
+    assert result["external_ids_set"] == 0
+    assert _stored(db, record)[0].external_id is None
 
 
 def test_keys_the_night_by_its_local_wake_up_date(db: Session) -> None:

@@ -16,22 +16,22 @@ before that:
 - sets external_id to "sleep-<local wake-up date>", the date Polar keys the night by, so a
   later re-sync replaces the night instead of merging into it. zone_offset isn't stored for
   Polar sleep, so the local date uses the offset of the stage timestamps. A night without
-  stages has no offset to read and gets the UTC date of its end: Polar's date, except where
-  the wake-up still falls on the previous UTC day (well east of UTC). There the ids differ, a
-  re-sync merges into the night as it did before, and nothing else reads the id.
+  stages has no offset to read, so it keeps no id: a re-sync over the same window replaces
+  it and gives it Polar's id.
 
 Not changed: internal sleep scores of the repaired nights, and stage timelines whose copies
 differ (Polar moved the night between syncs), which are not exact duplicates.
 
 Nights are read in batches and each batch is committed. A night whose data can't be read is
 skipped and reported, so one bad row doesn't stop the rest. A run that skipped a night isn't
-recorded, so the next startup tries again; repaired nights no longer match, so a retry reads
-only the skipped ones.
+recorded, so the next startup tries again; a retry reads the skipped nights and the repaired
+nights without stages, which need no change.
 
-Idempotent: repaired nights no longer match, so re-runs are no-ops. Loading every Polar night
-to find there's nothing left is not free, so it runs once per instance through
-data_migration_service. A copy an old pod appends during a rolling deploy needs no second run:
-the next re-sync of that night replaces it by external_id.
+Idempotent: a repaired night no longer matches or needs no change, so re-runs are no-ops.
+Loading every Polar night to find there's nothing left is not free, so it runs once per
+instance through data_migration_service. A copy an old pod appends during a rolling deploy, or
+a night it writes without an id, needs no second run: the next re-sync of that night replaces
+it, by its id or by its window.
 
 Usage (inside Docker), with --dry-run to preview without changes:
     docker compose exec app uv run python scripts/data_migrations/dedupe_polar_sleep.py
@@ -62,8 +62,8 @@ MINUTE_FIELDS = (
 )
 
 
-def _repaired_values(record: EventRecord, detail: SleepDetails) -> tuple[dict[str, Any], str]:
-    """The detail fields to overwrite (empty when the night wasn't appended to) and the external_id to set."""
+def _repaired_values(record: EventRecord, detail: SleepDetails) -> tuple[dict[str, Any], str | None]:
+    """The detail fields to overwrite (empty when the night wasn't appended to) and the external_id to set, if any."""
     # A night without stages can hold a JSON null rather than a list.
     stages = detail.sleep_stages if isinstance(detail.sleep_stages, list) else []
     session_minutes = int((record.end_datetime - record.start_datetime).total_seconds()) // 60
@@ -83,8 +83,10 @@ def _repaired_values(record: EventRecord, detail: SleepDetails) -> tuple[dict[st
                 if (value := getattr(detail, name)) is not None:
                     fields[name] = round(value / copies)
 
-    # Without stages there is no local offset to read, so the end's UTC date stands in
-    offset = datetime.fromisoformat(stages[0]["start_time"]).tzinfo if stages else None
+    # Without stages there is no local offset to read the wake-up date with; a re-sync gives the id
+    if not stages:
+        return fields, None
+    offset = datetime.fromisoformat(stages[0]["start_time"]).tzinfo
     wake_up = record.end_datetime.astimezone(offset or timezone.utc)
     return fields, f"sleep-{wake_up.date().isoformat()}"
 
@@ -123,11 +125,12 @@ def dedupe_polar_sleep(db: Session, *, dry_run: bool, batch_size: int = BATCH_SI
                 )
                 continue
             counts["sessions_repaired"] += bool(fields)
-            counts["external_ids_set"] += 1
+            counts["external_ids_set"] += external_id is not None
             if not dry_run:
                 for name, value in fields.items():
                     setattr(detail, name, value)
-                record.external_id = external_id
+                if external_id is not None:
+                    record.external_id = external_id
 
         last_id = batch[-1][0].id
         if not dry_run:

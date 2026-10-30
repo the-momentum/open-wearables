@@ -2,15 +2,16 @@
 
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataSource, EventRecord
+from app.models import DataSource, EventRecord, HealthScore
 from app.repositories.data_point_series_repository import WriteCounts
 from app.schemas.enums import HealthScoreCategory, SeriesType
 from app.schemas.model_crud.activities import CalendarPeriod
+from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
 from tests.factories import UserFactory
@@ -154,22 +155,65 @@ class TestPolar247SleepSave:
         "hypnogram": {"23:00": 0, "23:30": 2, "00:30": 4, "02:30": 1, "04:00": 2},
     }
 
-    def test_resync_keeps_one_copy_of_the_night(self, db: Session, data_247: Polar247Data) -> None:
-        user = UserFactory()
-        window = (datetime(2024, 1, 14, tzinfo=timezone.utc), datetime(2024, 1, 16, tzinfo=timezone.utc))
-        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
-            for _ in range(3):
-                assert data_247._save_sleep(db, user.id, *window) == 1
+    WINDOW = (datetime(2024, 1, 14, tzinfo=timezone.utc), datetime(2024, 1, 16, tzinfo=timezone.utc))
+    # Polar moved the night's start between syncs
+    MOVED = {**NIGHT, "sleep_start_time": "2024-01-14T23:10:00+02:00"}
 
-        records = (
+    @staticmethod
+    def _sleep_records(db: Session, user_id: UUID) -> list[EventRecord]:
+        return (
             db.query(EventRecord)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
-            .filter(DataSource.user_id == user.id, EventRecord.category == "sleep")
+            .filter(DataSource.user_id == user_id, EventRecord.category == "sleep")
             .all()
         )
+
+    def test_resync_keeps_one_copy_of_the_night(self, db: Session, data_247: Polar247Data) -> None:
+        user = UserFactory()
+        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+            for _ in range(3):
+                assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
+
+        records = self._sleep_records(db, user.id)
         assert len(records) == 1
         assert len(records[0].sleep_detail.sleep_stages) == 5
         assert records[0].sleep_detail.sleep_time_in_bed_minutes == 8 * 60
+
+    def test_a_night_stored_without_an_id_takes_it_on_the_next_resync(
+        self, db: Session, data_247: Polar247Data
+    ) -> None:
+        user = UserFactory()
+        with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
+            assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
+            # As an old pod writes it during a deploy, before Polar sleep carried an id
+            self._sleep_records(db, user.id)[0].external_id = None
+            db.commit()
+            for _ in range(2):
+                assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
+
+        (record,) = self._sleep_records(db, user.id)
+        assert record.external_id == "sleep-2024-01-15"
+        assert len(record.sleep_detail.sleep_stages) == 5
+
+    def test_a_moved_resync_links_its_score_to_the_stored_night(self, db: Session, data_247: Polar247Data) -> None:
+        user = UserFactory()
+        for night in (self.NIGHT, self.MOVED):
+            with patch.object(data_247, "get_sleep_data", return_value=[{**night, "sleep_score": 80}]):
+                assert data_247._save_sleep(db, user.id, *self.WINDOW) == 1
+
+        (record,) = self._sleep_records(db, user.id)
+        assert {score.event_record_id for score in db.query(HealthScore).filter_by(user_id=user.id)} == {record.id}
+
+    def test_a_moved_webhook_resync_links_its_score_to_the_stored_night(
+        self, db: Session, data_247: Polar247Data
+    ) -> None:
+        user = UserFactory()
+        for night in (self.NIGHT, self.MOVED):
+            with patch.object(data_247, "_make_api_request", return_value={**night, "sleep_score": 80}):
+                data_247.fetch_and_save_from_webhook(db, user.id, PolarWebhookEventType.SLEEP, "/sleep/2024-01-15")
+
+        (record,) = self._sleep_records(db, user.id)
+        assert {score.event_record_id for score in db.query(HealthScore).filter_by(user_id=user.id)} == {record.id}
 
 
 # ---------------------------------------------------------------------------

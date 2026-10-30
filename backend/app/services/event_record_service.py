@@ -413,8 +413,18 @@ class EventRecordService(
         if adjacent is not None:
             # Same external_id → re-ingestion of the same session (e.g. webhook
             # retry, score update).  Replace the detail with fresh values instead
-            # of accumulating them on top of the existing ones.
-            if record.external_id is not None and adjacent.external_id == record.external_id:
+            # of accumulating them on top of the existing ones.  A session stored
+            # without an id over the same window (before its provider sent one, or
+            # by an old pod during a deploy) is the same session and takes the id.
+            if record.external_id is not None and (
+                adjacent.external_id == record.external_id
+                or (
+                    adjacent.external_id is None
+                    and adjacent.start_datetime == record.start_datetime
+                    and adjacent.end_datetime == record.end_datetime
+                )
+            ):
+                adjacent.external_id = record.external_id
                 old_start, old_end, old_zone = adjacent.start_datetime, adjacent.end_datetime, adjacent.zone_offset
                 for field in ("start_datetime", "end_datetime", "zone_offset"):
                     new_val = getattr(record, field, None)
