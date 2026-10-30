@@ -105,11 +105,11 @@ class TestSuuntoSleepAwakeTime:
 
         assert result["stages"]["awake_seconds"] == 1200
 
-    def test_nap_payload_reports_no_awake_time(self, data_247: Suunto247Data) -> None:
-        """Suunto scores neither stages nor quality for a session it calls a nap.
+    def test_unscored_nap_reports_no_stages(self, data_247: Suunto247Data) -> None:
+        """Suunto scores neither stages nor quality for most naps and sends 0 for every stage.
 
         It can later revise the same SleepId into a full night, so the nap normalizes
-        to the zero awake time it reports rather than to its whole Duration.
+        to unreported stages rather than to an awake time of its whole Duration.
         """
         raw = {
             "timestamp": "2025-01-05T23:00:00.000+01:00",
@@ -129,10 +129,41 @@ class TestSuuntoSleepAwakeTime:
 
         result = data_247.normalize_sleep(raw, uuid4())
 
-        assert result["stages"]["awake_seconds"] == 0
+        assert result["stages"] == {
+            "deep_seconds": None,
+            "light_seconds": None,
+            "rem_seconds": None,
+            "awake_seconds": None,
+        }
         assert result["duration_seconds"] == 3600
         assert result["is_nap"] is True
         assert result["efficiency_percent"] is None
+
+    def test_scored_nap_keeps_its_zero_stages(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "timestamp": "2025-01-06T12:00:00.000+01:00",
+            "entryData": {
+                "BedtimeStart": "2025-01-06T12:00:00.000+01:00",
+                "BedtimeEnd": "2025-01-06T12:32:00.000+01:00",
+                "Duration": 1920.0,
+                "DeepSleepDuration": 0.0,
+                "LightSleepDuration": 1920.0,
+                "REMSleepDuration": 0.0,
+                "WakeAfterSleepOnsetDuration": 0.0,
+                "WakeBeforeOffBedDuration": 0.0,
+                "IsNap": True,
+                "SleepId": 7,
+            },
+        }
+
+        result = data_247.normalize_sleep(raw, uuid4())
+
+        assert result["stages"] == {
+            "deep_seconds": 0,
+            "light_seconds": 1920,
+            "rem_seconds": 0,
+            "awake_seconds": 0,
+        }
 
     def test_awake_is_zero_when_stages_fill_the_whole_duration(self, data_247: Suunto247Data) -> None:
         raw = {

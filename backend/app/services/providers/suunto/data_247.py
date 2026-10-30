@@ -200,6 +200,9 @@ class Suunto247Data(Base247DataTemplate):
         awake_duration = sum_optional(
             as_int(entry_data.get("WakeAfterSleepOnsetDuration")), as_int(entry_data.get("WakeBeforeOffBedDuration"))
         )
+        # Sessions Suunto didn't score (most naps) report 0 for every stage
+        if deep_sleep == light_sleep == rem_sleep == 0:
+            deep_sleep = light_sleep = rem_sleep = awake_duration = None
         # SpO2 — Suunto returns 0-1 range, convert to percent
         max_spo2 = entry_data.get("MaxSpo2")
         if max_spo2 is not None:
