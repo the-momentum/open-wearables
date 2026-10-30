@@ -81,6 +81,28 @@ class TestPolar247SleepNormalization:
         assert detail.sleep_awake_minutes == 30
         assert detail.sleep_time_in_bed_minutes == 8 * 60
 
+    def test_unreported_sleep_stages_stay_none(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        for field in ("light_sleep", "deep_sleep", "rem_sleep", "total_interruption_duration"):
+            sample_sleep.pop(field)
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_total_duration_minutes is None
+
+    def test_reported_zero_sleep_stages_stay_zero(self, data_247: Polar247Data, sample_sleep: dict) -> None:
+        sample_sleep.update(rem_sleep=0, deep_sleep=0, total_interruption_duration=0)
+
+        _, detail, _, _ = data_247.normalize_sleep([sample_sleep], uuid4())[0]
+
+        assert detail.sleep_deep_minutes == 0
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_awake_minutes == 0
+        assert detail.sleep_light_minutes == 240
+
     def test_sleep_total_duration_excludes_awake(self, data_247: Polar247Data, sample_sleep: dict) -> None:
         user_id = uuid4()
         _, detail, _, _ = data_247.normalize_sleep([sample_sleep], user_id)[0]

@@ -31,7 +31,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.whoop.coverage import RECOVERY_SERIES
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
-from app.utils.conversion import kilojoules_to_kcal
+from app.utils.conversion import kilojoules_to_kcal, seconds_to_minutes
 from app.utils.dates import parse_iso_datetime, to_rfc3339
 from app.utils.structured_logging import log_structured
 
@@ -256,18 +256,19 @@ class Whoop247Data(Base247DataTemplate):
 
         # Time conversions: Whoop provides durations in milliseconds
         # Convert to seconds for our schema
+        # stage_summary is only present once score_state=SCORED
         total_in_bed_ms = stage_summary.get("total_in_bed_time_milli", 0)
-        total_awake_ms = stage_summary.get("total_awake_time_milli", 0)
-        total_light_ms = stage_summary.get("total_light_sleep_time_milli", 0)
-        total_slow_wave_ms = stage_summary.get("total_slow_wave_sleep_time_milli", 0)
-        total_rem_ms = stage_summary.get("total_rem_sleep_time_milli", 0)
+        total_awake_ms = stage_summary.get("total_awake_time_milli")
+        total_light_ms = stage_summary.get("total_light_sleep_time_milli")
+        total_slow_wave_ms = stage_summary.get("total_slow_wave_sleep_time_milli")
+        total_rem_ms = stage_summary.get("total_rem_sleep_time_milli")
 
         # Convert milliseconds to seconds
         duration_seconds = int(total_in_bed_ms / 1000) if total_in_bed_ms else 0
-        deep_seconds = int(total_slow_wave_ms / 1000) if total_slow_wave_ms else 0
-        light_seconds = int(total_light_ms / 1000) if total_light_ms else 0
-        rem_seconds = int(total_rem_ms / 1000) if total_rem_ms else 0
-        awake_seconds = int(total_awake_ms / 1000) if total_awake_ms else 0
+        deep_seconds = int(total_slow_wave_ms / 1000) if total_slow_wave_ms is not None else None
+        light_seconds = int(total_light_ms / 1000) if total_light_ms is not None else None
+        rem_seconds = int(total_rem_ms / 1000) if total_rem_ms is not None else None
+        awake_seconds = int(total_awake_ms / 1000) if total_awake_ms is not None else None
 
         # If duration is 0 but we have start/end times, calculate from timestamps
         if duration_seconds == 0 and start_time and end_time:
@@ -370,26 +371,24 @@ class Whoop247Data(Base247DataTemplate):
 
         # Create detail with sleep-specific fields
         stages = normalized_sleep.get("stages", {})
-        # Calculate total sleep time (deep + light + REM)
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
-        total_sleep_minutes = total_sleep_seconds // 60
+        deep_seconds = stages.get("deep_seconds")
+        light_seconds = stages.get("light_seconds")
+        rem_seconds = stages.get("rem_seconds")
 
         # Time in bed (total duration)
         time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
 
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_minutes,
+            sleep_total_duration_minutes=seconds_to_minutes(deep_seconds, light_seconds, rem_seconds),
             sleep_time_in_bed_minutes=time_in_bed_minutes,
             sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
             if normalized_sleep.get("efficiency_percent") is not None
             else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            sleep_deep_minutes=seconds_to_minutes(deep_seconds),
+            sleep_light_minutes=seconds_to_minutes(light_seconds),
+            sleep_rem_minutes=seconds_to_minutes(rem_seconds),
+            sleep_awake_minutes=seconds_to_minutes(stages.get("awake_seconds")),
             is_nap=normalized_sleep.get("is_nap", False),
         )
 

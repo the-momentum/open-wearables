@@ -4,6 +4,8 @@ Tests for Ultrahuman 24/7 data implementation.
 Tests the Ultrahuman247Data class for sleep, recovery, and activity data handling.
 """
 
+from unittest.mock import MagicMock, patch
+
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -135,6 +137,88 @@ class TestUltrahumanSleepData:
         assert normalized["ultrahuman_date"] == "2025-01-14"
         assert normalized["duration_seconds"] == 0
         assert normalized["efficiency_percent"] is None
+
+    @staticmethod
+    def _data_247() -> Ultrahuman247Data:
+        return Ultrahuman247Data(
+            provider_name="ultrahuman", api_base_url="https://partner.ultrahuman.com", oauth=MagicMock()
+        )
+
+    _NIGHT = {
+        "ultrahuman_date": "2025-01-14",
+        "bedtime_start": 1736816400,
+        "bedtime_end": 1736841600,
+        "quick_metrics": [{"type": "time_in_bed", "value": 25200}],
+    }
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_keeps_unreported_stages_none(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+        raw_sleep = {**self._NIGHT, "sleep_stages": [{"type": "awake", "stage_time": 1800}]}
+
+        normalized = data_247.normalize_sleep(raw_sleep, UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes == 30
+        # Total sleep falls back to time in bed minus awake time
+        assert detail.sleep_total_duration_minutes == 390
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_keeps_reported_zero_stages(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+        raw_sleep = {
+            **self._NIGHT,
+            "sleep_stages": [
+                {"type": "deep_sleep", "stage_time": 3600},
+                {"type": "rem_sleep", "stage_time": 0},
+                {"type": "light_sleep", "stage_time": 16200},
+                {"type": "awake", "stage_time": 0},
+            ],
+        }
+
+        normalized = data_247.normalize_sleep(raw_sleep, UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_awake_minutes == 0
+        assert detail.sleep_total_duration_minutes == 330
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_infers_total_when_phases_are_zero(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+        raw_sleep = {
+            **self._NIGHT,
+            "sleep_stages": [
+                {"type": "deep_sleep", "stage_time": 0},
+                {"type": "rem_sleep", "stage_time": 0},
+                {"type": "light_sleep", "stage_time": 0},
+                {"type": "awake", "stage_time": 1800},
+            ],
+        }
+
+        normalized = data_247.normalize_sleep(raw_sleep, UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes == 0
+        assert detail.sleep_total_duration_minutes == 390
+
+    @patch("app.services.providers.ultrahuman.data_247.event_record_service")
+    def test_save_sleep_without_stages_takes_time_in_bed_as_total(self, mock_event: MagicMock, db: Session) -> None:
+        data_247 = self._data_247()
+
+        normalized = data_247.normalize_sleep(dict(self._NIGHT), UserFactory().id)
+        data_247.save_sleep_data(db, normalized["user_id"], normalized)
+
+        detail = mock_event.create_or_merge_sleep.call_args[0][3]
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_awake_minutes is None
+        assert detail.sleep_total_duration_minutes == 420
 
     def test_normalize_sleep_parses_sleep_graph_stages(self, db: Session) -> None:
         """sleep_graph.data intervals are parsed into canonical SleepStage objects."""

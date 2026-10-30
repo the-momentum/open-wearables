@@ -452,10 +452,11 @@ class TestFinishSleep:
 
         # Total duration should include sleeping time
         assert detail.sleep_total_duration_minutes > 0
-        # Deep/rem/light should all be 0 (no breakdown available)
-        assert detail.sleep_deep_minutes == 0
-        assert detail.sleep_rem_minutes == 0
-        assert detail.sleep_light_minutes == 0
+        # No breakdown available, so the stages are unreported
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_awake_minutes is None
         # Stages should be present
         assert detail.sleep_stages is not None
         assert len(detail.sleep_stages) == 3
@@ -527,6 +528,73 @@ class TestFinishSleep:
         assert detail.sleep_rem_minutes == 45
         assert detail.sleep_awake_minutes == 10
         assert detail.sleep_total_duration_minutes == 245  # light+deep+rem (no sleeping)
+
+
+def _stage(stage: SleepStageType, start: str, end: str) -> SleepStateStage:
+    return SleepStateStage(stage=stage, start_time=_dt(start), end_time=_dt(end))
+
+
+class TestFinishSleepUnreportedStages:
+    """Phases a source did not measure are saved as None; measured zeros stay 0."""
+
+    @staticmethod
+    def _finish(db: Session, stages: list[SleepStateStage]) -> EventRecordDetailCreate:
+        with (
+            patch("app.services.sdk.sleep_service.event_record_service") as mock_event_service,
+            patch("app.services.sdk.sleep_service.delete_sleep_state"),
+        ):
+            mock_event_service.create.return_value = MagicMock(id=uuid4())
+            mock_event_service.find_adjacent_sleep_record.return_value = None
+            state = SleepState(
+                uuid=str(uuid4()),
+                source_name="iPhone",
+                provider="apple",
+                start_time=stages[0].start_time,
+                end_time=stages[-1].end_time,
+                last_start_timestamp=stages[-1].start_time,
+                last_end_timestamp=stages[-1].end_time,
+                stages=stages,
+            )
+            finish_sleep(db, str(uuid4()), state)
+            return mock_event_service.create_detail.call_args[0][1]
+
+    def test_only_in_bed_leaves_all_stages_none(self, db: Session) -> None:
+        detail = self._finish(db, [_stage(SleepStageType.IN_BED, "2026-03-15T23:00:00Z", "2026-03-16T07:00:00Z")])
+
+        assert detail.sleep_total_duration_minutes == 480
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+        assert detail.sleep_awake_minutes is None
+
+    def test_sleeping_and_awake_keep_awake_minutes(self, db: Session) -> None:
+        detail = self._finish(
+            db,
+            [
+                _stage(SleepStageType.SLEEPING, "2026-03-15T23:00:00Z", "2026-03-16T02:00:00Z"),
+                _stage(SleepStageType.AWAKE, "2026-03-16T02:00:00Z", "2026-03-16T02:20:00Z"),
+                _stage(SleepStageType.SLEEPING, "2026-03-16T02:20:00Z", "2026-03-16T06:00:00Z"),
+            ],
+        )
+
+        assert detail.sleep_awake_minutes == 20
+        assert detail.sleep_deep_minutes is None
+        assert detail.sleep_light_minutes is None
+        assert detail.sleep_rem_minutes is None
+
+    def test_detailed_stages_without_rem_or_awake_report_zero(self, db: Session) -> None:
+        detail = self._finish(
+            db,
+            [
+                _stage(SleepStageType.LIGHT, "2026-03-15T23:00:00Z", "2026-03-16T01:00:00Z"),
+                _stage(SleepStageType.DEEP, "2026-03-16T01:00:00Z", "2026-03-16T02:00:00Z"),
+            ],
+        )
+
+        assert detail.sleep_light_minutes == 120
+        assert detail.sleep_deep_minutes == 60
+        assert detail.sleep_rem_minutes == 0
+        assert detail.sleep_awake_minutes == 0
 
 
 class TestHandleSleepDataIntegration:
