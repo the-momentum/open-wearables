@@ -489,10 +489,8 @@ class TestParseWearableStagesForInterruptions:
             current = end
         return result
 
-    def test_empty_blocks_returns_zero(self) -> None:
-        result = service._parse_wearable_stages_for_interruptions([])
-        assert result.total_awake_minutes == 0.0
-        assert result.awakening_durations == []
+    def test_empty_blocks_return_none(self) -> None:
+        assert service._parse_wearable_stages_for_interruptions([]) is None
 
     def test_no_awake_blocks_returns_zero_waso(self) -> None:
         stages = self._stages(("light", 30), ("deep", 90), ("rem", 60))
@@ -543,6 +541,19 @@ class TestParseWearableStagesForInterruptions:
         result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == pytest.approx(12.0)
         assert result.awakening_durations == [12.0]
+
+    def test_touching_awake_blocks_are_one_awakening(self) -> None:
+        """The same awakenings the sleep summary counts as interruptions."""
+        stages = self._stages(("light", 30), ("awake", 4), ("awake", 4), ("rem", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
+        assert result.total_awake_minutes == pytest.approx(8.0)
+        assert result.awakening_durations == [8.0]
+
+    def test_in_bed_before_falling_asleep_does_not_open_the_sleep_period(self) -> None:
+        stages = self._stages(("in_bed", 10), ("awake", 20), ("light", 30), ("awake", 10), ("deep", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
+        assert result.total_awake_minutes == pytest.approx(10.0)
+        assert result.awakening_durations == [10.0]
 
     def test_waso_data_model_fields(self) -> None:
         """Result must expose total_awake_minutes and awakening_durations."""
@@ -669,6 +680,21 @@ class TestGetSleepScoreEdgeCases:
             sleep_stages=None,
         )
         assert result_high_awake.breakdown.interruptions.score < result_low_awake.breakdown.interruptions.score
+
+    def test_timeline_without_a_sleep_stage_falls_back_to_awake_minutes(self) -> None:
+        def interruptions(sleep_stages: list[SleepStage] | None) -> int:
+            return service.get_sleep_score(
+                total_sleep_duration_minutes=420.0,
+                deep_minutes=60.0,
+                rem_minutes=90.0,
+                awake_minutes=60.0,
+                session_start=_utc("2026-03-10T23:00:00"),
+                historical_bedtimes=[],
+                sleep_stages=sleep_stages,
+            ).breakdown.interruptions.score
+
+        in_bed_only = _make_stages("2026-03-10T23:00:00", [("in_bed", 120), ("awake", 60), ("in_bed", 240)])
+        assert interruptions(in_bed_only) == interruptions(None)
 
 
 # ---------------------------------------------------------------------------

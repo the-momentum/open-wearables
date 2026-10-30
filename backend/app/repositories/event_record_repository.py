@@ -1125,11 +1125,17 @@ class EventRecordRepository(
 
         # Attach per-session breakdown (individual sleep/nap records) for each summary,
         # keyed by the same (date, provider, source, device_model) grouping identity.
-        sessions_by_key, main_sleeps_by_key = self._get_sleep_sessions(db_session, user_id, start_date, end_date)
-        # Only this page's nights are read from the aggregate table, not every night in the range.
+        # Only the page's nights, not the one read to tell whether there is more.
+        nights = [row.sleep_date for row in results[:limit]]
+        sessions_by_key, main_sleeps_by_key = (
+            self._get_sleep_sessions(db_session, user_id, min(nights), max(nights)) if nights else ({}, {})
+        )
+        # Aggregates and stage timelines only for the page's main sleeps: one source per night, no naps.
         page_keys = {(s["sleep_date"], s["provider"], s["source"], s["device_model"]) for s in summaries}
-        physiology = self._sleep_physiology(
-            db_session, {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        page_sleeps = {key: sleeps for key, sleeps in main_sleeps_by_key.items() if key in page_keys}
+        physiology = self._sleep_physiology(db_session, page_sleeps)
+        stages = self._sleep_stages(
+            db_session, [record_id for sleeps in page_sleeps.values() for record_id, _ in sleeps]
         )
         for summary in summaries:
             key = (
@@ -1138,7 +1144,10 @@ class EventRecordRepository(
                 summary["source"],
                 summary["device_model"],
             )
-            summary["sessions"] = sessions_by_key.get(key, [])
+            summary["sessions"] = [
+                {**session, "sleep_stages": stages.get(session["record_id"])}
+                for session in sessions_by_key.get(key, [])
+            ]
             summary.update(physiology.get(key, dict.fromkeys(_SLEEP_PHYSIOLOGY)))
 
         return summaries
@@ -1147,16 +1156,17 @@ class EventRecordRepository(
         self,
         db_session: DbSession,
         user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
+        first_night: date,
+        last_night: date,
     ) -> tuple[dict[tuple, list[dict]], dict[tuple, list[tuple[UUID, int]]]]:
         """Get individual sleep/nap sessions keyed by (sleep_date, provider, source, device_model),
         and per key the main sleeps' record ids with their durations.
 
-        Mirrors the date filter and grouping identity of ``get_sleep_summaries`` but returns one
-        entry per underlying EventRecord instead of collapsing them. Per-session duration prefers
-        net sleep time (SleepDetails.sleep_total_duration_minutes) and falls back to wall-clock
-        duration, matching the aggregate duration logic. Sessions are sorted by start time.
+        Covers the nights first_night to last_night, inclusive. Mirrors the grouping identity of
+        ``get_sleep_summaries`` but returns one entry per underlying EventRecord instead of collapsing
+        them. Per-session duration prefers net sleep time (SleepDetails.sleep_total_duration_minutes)
+        and falls back to wall-clock duration, matching the aggregate duration logic. Sessions are
+        sorted by start time.
         """
         local_sleep_date = cast(
             EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
@@ -1190,9 +1200,8 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == EventCategory.SLEEP,
-                EventRecord.end_datetime >= start_date - timedelta(days=1),
-                local_sleep_date >= cast(start_date, Date),
-                local_sleep_date < cast(end_date, Date),
+                EventRecord.end_datetime >= utc_midnight(first_night) - timedelta(days=1),
+                local_sleep_date.between(first_night, last_night),
             )
             .order_by(local_sleep_date.asc(), EventRecord.start_datetime.asc())
             .all()
@@ -1206,6 +1215,7 @@ class EventRecordRepository(
                 main_sleeps_by_key.setdefault(key, []).append((row.record_id, int(row.duration_seconds or 0)))
             sessions_by_key.setdefault(key, []).append(
                 {
+                    "record_id": row.record_id,
                     "start_time": row.start_time,
                     "end_time": row.end_time,
                     "zone_offset": row.zone_offset,
@@ -1214,6 +1224,16 @@ class EventRecordRepository(
                 }
             )
         return sessions_by_key, main_sleeps_by_key
+
+    @staticmethod
+    def _sleep_stages(db_session: DbSession, record_ids: list[UUID]) -> dict[UUID, list[dict] | None]:
+        """The stage timelines of these sleep records, by record id."""
+        if not record_ids:
+            return {}
+        rows = db_session.query(SleepDetails.record_id, SleepDetails.sleep_stages).filter(
+            SleepDetails.record_id.in_(record_ids)
+        )
+        return {record_id: stages for record_id, stages in rows}
 
     @staticmethod
     def sleep_values_by_day(

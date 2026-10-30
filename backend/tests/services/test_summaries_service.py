@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import DataSource, EventRecordAggregate, ProviderPriority
 from app.models.archival_setting import ArchivalSetting
-from app.repositories import AggregateRepository, ProviderPriorityRepository
+from app.repositories import AggregateRepository, EventRecordRepository, ProviderPriorityRepository
 from app.repositories.data_migration_repository import DataMigrationRepository
 from app.schemas.enums import ComputedBy, HealthScoreCategory, ProviderName, SeriesType
 from app.services.summaries_service import SummariesService
@@ -121,8 +121,12 @@ class TestGetUserMaxHr:
 class TestGetSleepSummaries:
     def _make_sleep_record(self, user: Any, start: str, end: str) -> Any:
         ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        return self._make_session(ds, start, end)
+
+    @staticmethod
+    def _make_session(data_source: Any, start: str, end: str) -> Any:
         return EventRecordFactory(
-            data_source=ds,
+            data_source=data_source,
             category="sleep",
             type="sleep",
             start_datetime=_dt(start),
@@ -390,6 +394,133 @@ class TestGetSleepSummaries:
         assert result.pagination.has_more is True
         assert result.pagination.next_cursor is not None
 
+    @staticmethod
+    def _timeline(start: str, *blocks: tuple[str, int]) -> list[dict[str, str]]:
+        """Back-to-back stage dicts from (stage, minutes) pairs."""
+        stages = []
+        current = _dt(start)
+        for stage, minutes in blocks:
+            end = current + timedelta(minutes=minutes)
+            stages.append({"stage": stage, "start_time": current.isoformat(), "end_time": end.isoformat()})
+            current = end
+        return stages
+
+    def _sleep_summary(self, db: Session, service: SummariesService, user: Any) -> Any:
+        result = service.get_sleep_summaries(
+            db,
+            user.id,
+            _dt("2026-01-01T00:00:00+00:00"),
+            _dt("2026-01-03T00:00:00+00:00"),
+            cursor=None,
+            limit=10,
+        )
+        assert len(result.data) == 1
+        return result.data[0]
+
+    def test_interruptions_count_from_stage_timeline(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_stages=self._timeline(
+                "2026-01-01T23:00:00+00:00",
+                ("awake", 15),
+                ("light", 60),
+                ("awake", 3),
+                ("light", 20),
+                ("awake", 5),
+                ("deep", 60),
+                ("awake", 10),
+                ("rem", 45),
+                ("awake", 6),
+                ("light", 30),
+                ("awake", 20),
+            ),
+        )
+
+        assert self._sleep_summary(db, service, user).interruptions_count == 2
+
+    def test_interruptions_count_is_none_without_main_sleep(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        nap = self._make_session(ds, "2026-01-02T14:00:00+00:00", "2026-01-02T15:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=nap,
+            is_nap=True,
+            sleep_stages=self._timeline("2026-01-02T14:00:00+00:00", ("light", 20), ("awake", 10), ("light", 30)),
+        )
+
+        assert self._sleep_summary(db, service, user).interruptions_count is None
+
+    def test_interruptions_count_is_none_without_stage_timeline(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(event_record=record)
+
+        assert self._sleep_summary(db, service, user).interruptions_count is None
+
+    def test_interruptions_count_is_none_without_a_sleep_stage_in_the_timeline(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        user = UserFactory()
+        record = self._make_sleep_record(user, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_stages=self._timeline("2026-01-01T23:00:00+00:00", ("in_bed", 120), ("awake", 60), ("in_bed", 300)),
+        )
+
+        assert self._sleep_summary(db, service, user).interruptions_count is None
+
+    def test_interruptions_count_ignores_naps(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        night = self._make_session(ds, "2026-01-01T23:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=night,
+            sleep_stages=self._timeline("2026-01-01T23:00:00+00:00", ("light", 60), ("awake", 10), ("deep", 60)),
+        )
+        nap = self._make_session(ds, "2026-01-02T14:00:00+00:00", "2026-01-02T15:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=nap,
+            is_nap=True,
+            sleep_stages=self._timeline("2026-01-02T14:00:00+00:00", ("light", 20), ("awake", 10), ("light", 30)),
+        )
+
+        assert self._sleep_summary(db, service, user).interruptions_count == 1
+
+    def test_interruptions_count_sums_main_sessions(self, db: Session, service: SummariesService) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        first = self._make_session(ds, "2026-01-01T22:00:00+00:00", "2026-01-02T02:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=first,
+            sleep_stages=self._timeline("2026-01-01T22:00:00+00:00", ("light", 60), ("awake", 10), ("deep", 60)),
+        )
+        second = self._make_session(ds, "2026-01-02T03:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=second,
+            sleep_stages=self._timeline(
+                "2026-01-02T03:00:00+00:00", ("light", 30), ("awake", 8), ("rem", 30), ("awake", 12), ("light", 30)
+            ),
+        )
+
+        assert self._sleep_summary(db, service, user).interruptions_count == 3
+
+    def test_interruptions_count_is_none_when_a_main_session_has_no_timeline(
+        self, db: Session, service: SummariesService
+    ) -> None:
+        user = UserFactory()
+        ds = DataSourceFactory(user=user, provider=ProviderName.GARMIN, source="garmin")
+        first = self._make_session(ds, "2026-01-01T22:00:00+00:00", "2026-01-02T02:00:00+00:00")
+        SleepDetailsFactory(
+            event_record=first,
+            sleep_stages=self._timeline("2026-01-01T22:00:00+00:00", ("light", 60), ("awake", 10), ("deep", 60)),
+        )
+        second = self._make_session(ds, "2026-01-02T03:00:00+00:00", "2026-01-02T07:00:00+00:00")
+        SleepDetailsFactory(event_record=second)
+
+        assert self._sleep_summary(db, service, user).interruptions_count is None
+
 
 class TestSleepPagingPerDate:
     """A page holds `limit` nights, however many sources recorded each one."""
@@ -462,6 +593,54 @@ class TestSleepPagingPerDate:
             (night, "garmin") for night in self.NIGHTS[2:4]
         ]
         assert back.pagination.has_more is True
+
+    def test_loads_sessions_for_the_page_nights_only(
+        self, db: Session, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = self._two_sources_per_night(db)
+        loaded: list[tuple[date, date]] = []
+        load = EventRecordRepository._get_sleep_sessions
+
+        def spy(repo: EventRecordRepository, db_session: Session, user_id: UUID, first: date, last: date) -> Any:
+            loaded.append((first, last))
+            return load(repo, db_session, user_id, first, last)
+
+        monkeypatch.setattr(EventRecordRepository, "_get_sleep_sessions", spy)
+        page = service.get_sleep_summaries(db, user.id, self.START, self.END, cursor=None, limit=2)
+
+        # The page's nights only: not the one read to tell whether there is more, not the whole range
+        assert loaded == [(self.NIGHTS[0], self.NIGHTS[1])]
+        assert [[s.end_time.date() for s in summary.sessions or []] for summary in page.data] == [
+            [night] for night in self.NIGHTS[:2]
+        ]
+
+    def test_reads_stage_timelines_for_the_page_main_sleeps_only(
+        self, db: Session, service: SummariesService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = self._two_sources_per_night(db)
+        garmin = db.query(DataSource).filter_by(user_id=user.id, provider=ProviderName.GARMIN).one()
+        nap = EventRecordFactory(
+            data_source=garmin,
+            category="sleep",
+            type="sleep",
+            start_datetime=datetime(2026, 1, 2, 14, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 1, 2, 15, tzinfo=timezone.utc),
+            duration_seconds=3600,
+            zone_offset="+00:00",
+        )
+        SleepDetailsFactory(event_record=nap, is_nap=True)
+        read: list[UUID] = []
+        load = EventRecordRepository._sleep_stages
+
+        def spy(db_session: Session, record_ids: list[UUID]) -> Any:
+            read.extend(record_ids)
+            return load(db_session, record_ids)
+
+        monkeypatch.setattr(EventRecordRepository, "_sleep_stages", staticmethod(spy))
+        service.get_sleep_summaries(db, user.id, self.START, self.END, cursor=None, limit=2)
+
+        # Garmin's main sleeps on the page's two nights: not Oura's, not the nap
+        assert sorted(read) == [UUID(f"ffffffff-0000-0000-0000-{n:012d}") for n in range(2)]
 
 
 # ---------------------------------------------------------------------------
