@@ -31,6 +31,7 @@ from app.schemas.model_crud.activities import (
     EventRecordMetrics,
     HeartRateSampleCreate,
     MealDetailCreate,
+    MenstrualCycleDetailCreate,
     SessionValue,
     StepSampleCreate,
     TimeSeriesSampleCreate,
@@ -85,6 +86,32 @@ _FRACTION_PERCENT_SERIES = frozenset(
 )
 
 _SDK_ITEM_MODELS = (("records", MetricRecord), ("sleep", SleepRecord), ("workouts", Workout))
+_MENSTRUAL_FLOW = {
+    Decimal("1"): "unspecified",
+    Decimal("2"): "light",
+    Decimal("3"): "medium",
+    Decimal("4"): "heavy",
+    Decimal("5"): "none",
+}
+
+
+def _menstrual_cycle_start(metadata: dict | list | None) -> bool | None:
+    """Read HealthKit's cycle-start marker, including the SDK's stringified booleans."""
+    key = "HKMetadataKeyMenstrualCycleStart"
+    if isinstance(metadata, dict):
+        raw = metadata.get(key)
+    elif isinstance(metadata, list):
+        raw = next(
+            (entry.get("value") for entry in metadata if isinstance(entry, dict) and entry.get("key") == key),
+            None,
+        )
+    else:
+        raw = None
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str) and raw.lower() in ("true", "false"):
+        return raw.lower() == "true"
+    return None
 
 
 def _sends_fraction_percentages(provider: str | None, sdk_version: str | None) -> bool:
@@ -389,6 +416,49 @@ class ImportService:
 
         return time_series_samples
 
+    def _build_menstrual_flow_bundles(
+        self, request: SDKSyncRequest, user_id: str
+    ) -> list[tuple[EventRecordCreate, MenstrualCycleDetailCreate]]:
+        """Preserve each HealthKit flow interval, its intensity and cycle-start marker."""
+        bundles: list[tuple[EventRecordCreate, MenstrualCycleDetailCreate]] = []
+        for item in request.data.records:
+            if request.provider != "apple" or item.type not in (
+                "HKCategoryTypeIdentifierMenstrualFlow",
+                "menstrualFlow",
+            ):
+                continue
+            flow_intensity = _MENSTRUAL_FLOW.get(item.value)
+            if flow_intensity is None or item.endDate < item.startDate:
+                continue
+            device_model, software_version, source_name = extract_device_info(item.source)
+            record_id = uuid4()
+            bundles.append(
+                (
+                    EventRecordCreate(
+                        id=record_id,
+                        external_id=item.id,
+                        user_id=UUID(user_id),
+                        provider="apple",
+                        category=EventCategory.MENSTRUAL_CYCLE,
+                        type="period_flow",
+                        source_name=source_name or "Apple Health",
+                        source=source_name,
+                        device_model=device_model,
+                        software_version=software_version,
+                        start_datetime=item.startDate,
+                        end_datetime=item.endDate,
+                        zone_offset=item.zoneOffset,
+                        duration_seconds=max(0, int((item.endDate - item.startDate).total_seconds())),
+                    ),
+                    MenstrualCycleDetailCreate(
+                        record_id=record_id,
+                        flow_intensity=flow_intensity,
+                        is_cycle_start=_menstrual_cycle_start(item.metadata),
+                    ),
+                )
+            )
+        return bundles
+
     def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
         if not values:
             return None, None, None
@@ -581,6 +651,38 @@ class ImportService:
             records_inserted += counts.inserted
             records_updated += counts.updated
             types.update(sample.series_type.value for sample in samples)
+
+        menstrual_bundles = self._build_menstrual_flow_bundles(request, user_id)
+        if menstrual_bundles:
+            inserted_ids = self.event_record_service.bulk_create(
+                db_session, [record for record, _ in menstrual_bundles]
+            )
+            db_session.flush()
+            details_by_id = {detail.record_id: detail for _, detail in menstrual_bundles}
+            details_to_insert = [details_by_id[record_id] for record_id in inserted_ids]
+            # A previous sync may have stored the interval before details were supported.
+            # Attach the new fields to that record without creating a duplicate event.
+            for record, detail in menstrual_bundles:
+                if record.id in inserted_ids or not record.external_id:
+                    continue
+                existing = self.event_record_service.crud.get_by_external_id(
+                    db_session, UUID(user_id), record.external_id, provider="apple"
+                )
+                if (
+                    existing is not None
+                    and existing.category == "menstrual_cycle"
+                    and existing.type == "period_flow"
+                    and existing.start_datetime == record.start_datetime
+                    and existing.end_datetime == record.end_datetime
+                ):
+                    details_to_insert.append(detail.model_copy(update={"record_id": existing.id}))
+            if details_to_insert:
+                self.event_record_service.bulk_create_details(
+                    db_session, details_to_insert, detail_type=EventCategory.MENSTRUAL_CYCLE
+                )
+            records_saved += len(inserted_ids)
+            if inserted_ids:
+                types.add("menstrual_flow")
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()

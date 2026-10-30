@@ -87,8 +87,15 @@ Apple Health provides the widest range of health data types:
 - **Workouts**: All workout types with detailed metrics
 - **Body**: Weight, height, body fat percentage
 - **Nutrition**: Dietary intake tracking
+- **Menstrual flow**: Flow intensity and the HealthKit cycle-start marker
 
 See the [Flutter SDK documentation](/sdk/flutter#supported-health-data-types) for the complete list of supported types.
+
+### Menstrual flow records
+
+With `menstrualFlow` read permission, the mobile SDK sends HealthKit category samples to Open Wearables. Each sample appears in `GET /api/v1/users/{user_id}/events/menstrual-cycles` with its `start_time`, `end_time`, `flow_intensity` (`unspecified`, `light`, `medium`, `heavy`, or `none`) and `is_cycle_start` (`true`, `false`, or `null` when the marker was absent). The endpoint also returns menstrual-cycle aggregates from other providers; their flow-specific fields are `null`.
+
+The SDK transmits the sample metadata as part of its existing sync payload. An app must authorize reading menstrual flow and sync its HealthKit history to populate these records; previously skipped samples need to be synced again.
 
 ## Apple Health as a Data Bridge
 

@@ -5,6 +5,8 @@ from .event_record_detail import EventRecordDetailCreate
 
 
 class MenstrualCycleDetailCreate(EventRecordDetailCreate):
+    flow_intensity: str | None = None
+    is_cycle_start: bool | None = None
     day_in_cycle: int | None = None
     current_phase: int | None = None
     current_phase_type: str | None = None

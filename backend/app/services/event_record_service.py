@@ -1171,6 +1171,8 @@ class EventRecordService(
                     end_time=record.end_datetime,
                     zone_offset=record.zone_offset,
                     source=self._map_source(data_source),
+                    flow_intensity=details.flow_intensity if details else None,
+                    is_cycle_start=details.is_cycle_start if details else None,
                     current_phase=details.current_phase if details else None,
                     current_phase_type=details.current_phase_type if details else None,
                     day_in_cycle=details.day_in_cycle if details else None,

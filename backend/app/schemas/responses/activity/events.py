@@ -139,6 +139,8 @@ class MenstrualCycleRecord(BaseModel):
     end_time: datetime
     zone_offset: str | None = None
     source: SourceMetadata
+    flow_intensity: Literal["unspecified", "light", "medium", "heavy", "none"] | None = None
+    is_cycle_start: bool | None = None
     current_phase: int | None = None
     current_phase_type: str | None = None
     day_in_cycle: int | None = None
