@@ -12,21 +12,43 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models import HealthScore
+from app.models import HealthScore, ProviderPriority
+from app.repositories import ProviderPriorityRepository
 from app.repositories.health_score_repository import HealthScoreRepository
-from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.enums import DeviceType, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams
-from tests.factories import DataSourceFactory, HealthScoreFactory, UserFactory
+from tests.factories import (
+    DataSourceFactory,
+    EventRecordFactory,
+    HealthScoreFactory,
+    SleepDetailsFactory,
+    UserFactory,
+)
 
 
 @pytest.fixture
 def repo() -> HealthScoreRepository:
     return HealthScoreRepository(HealthScore)
+
+
+NIGHT = datetime(2026, 9, 24, 7, tzinfo=timezone.utc)
+
+
+def _orders(db: Session) -> tuple[dict[ProviderName, int], dict[DeviceType, int]]:
+    return ProviderPriorityRepository(ProviderPriority).get_priority_order(db), {}
+
+
+def _prioritise(db: Session, *providers: ProviderName) -> None:
+    priorities = ProviderPriorityRepository(ProviderPriority)
+    for rank, provider in enumerate(providers, start=1):
+        priorities.upsert(db, provider, rank)
 
 
 class TestHealthScoreRepositoryCreate:
@@ -78,6 +100,27 @@ class TestHealthScoreRepositoryCreate:
         assert result.id == score.id
         assert result.value == Decimal("82.00")
 
+    def test_create_duplicate_without_a_source_returns_existing(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        recorded_at = datetime(2026, 9, 24, 7, tzinfo=timezone.utc)
+        scores = [
+            HealthScoreCreate(
+                id=uuid4(),
+                user_id=user.id,
+                provider=ProviderName.WHOOP,
+                category=HealthScoreCategory.RECOVERY,
+                value=Decimal(value),
+                recorded_at=recorded_at,
+            )
+            for value in ("70.00", "75.00")
+        ]
+
+        first = repo.create(db, scores[0])
+        result = repo.create(db, scores[1])
+
+        assert result.id == first.id
+        assert result.value == Decimal("70.00")
+
 
 class TestHealthScoreRepositoryGetWithFilters:
     def test_filter_by_category(self, db: Session, repo: HealthScoreRepository) -> None:
@@ -87,10 +130,12 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP)
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.RECOVERY)
 
-        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(category=HealthScoreCategory.SLEEP))
+        results, total = repo.get_with_filters(
+            db, user.id, HealthScoreQueryParams(category=HealthScoreCategory.SLEEP), {}, {}
+        )
 
         assert total == 2
-        assert all(s.category == HealthScoreCategory.SLEEP for s in results)
+        assert all(s.category == HealthScoreCategory.SLEEP for s, _ in results)
 
     def test_filter_by_provider(self, db: Session, repo: HealthScoreRepository) -> None:
         user = UserFactory()
@@ -98,10 +143,12 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=data_source, provider=ProviderName.GARMIN)
         HealthScoreFactory(data_source=data_source, provider=ProviderName.OURA)
 
-        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(provider=ProviderName.GARMIN))
+        results, total = repo.get_with_filters(
+            db, user.id, HealthScoreQueryParams(provider=ProviderName.GARMIN), {}, {}
+        )
 
         assert total == 1
-        assert results[0].provider == ProviderName.GARMIN
+        assert results[0][0].provider == ProviderName.GARMIN
 
     def test_filter_by_date_range(self, db: Session, repo: HealthScoreRepository) -> None:
         user = UserFactory()
@@ -118,6 +165,8 @@ class TestHealthScoreRepositoryGetWithFilters:
                 start_datetime=now - timedelta(days=6),
                 end_datetime=now,
             ),
+            {},
+            {},
         )
 
         assert total == 2
@@ -128,7 +177,7 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=DataSourceFactory(user=user_a))
         HealthScoreFactory(data_source=DataSourceFactory(user=user_b))
 
-        results, total = repo.get_with_filters(db, user_a.id, HealthScoreQueryParams())
+        results, total = repo.get_with_filters(db, user_a.id, HealthScoreQueryParams(), {}, {})
 
         assert total == 1
 
@@ -231,6 +280,239 @@ class TestHealthScoreRepositoryBulkCreate:
         results = db.query(HealthScore).filter(HealthScore.data_source_id == data_source.id).all()
         assert len(results) == 1
         assert results[0].value == Decimal("80.00")
+
+    def test_bulk_create_keeps_scores_of_two_sources_at_the_same_time(
+        self, db: Session, repo: HealthScoreRepository
+    ) -> None:
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        recorded_at = datetime(2026, 9, 24, 7, tzinfo=timezone.utc)
+
+        repo.bulk_create(
+            db,
+            [
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user.id,
+                    data_source_id=source.id,
+                    provider=ProviderName.INTERNAL,
+                    category=HealthScoreCategory.SLEEP,
+                    value=Decimal("80.00"),
+                    recorded_at=recorded_at,
+                )
+                for source in (garmin, oura)
+            ],
+        )
+        db.commit()
+
+        assert db.query(HealthScore).filter(HealthScore.user_id == user.id).count() == 2
+
+    def test_bulk_create_ignores_duplicate_scores_without_a_source(
+        self, db: Session, repo: HealthScoreRepository
+    ) -> None:
+        user = UserFactory()
+        recorded_at = datetime(2026, 9, 24, 7, tzinfo=timezone.utc)
+        for value in ("80.00", "99.00"):
+            repo.bulk_create(
+                db,
+                [
+                    HealthScoreCreate(
+                        id=uuid4(),
+                        user_id=user.id,
+                        provider=ProviderName.OURA,
+                        category=HealthScoreCategory.SLEEP,
+                        value=Decimal(value),
+                        recorded_at=recorded_at,
+                    )
+                ],
+            )
+            db.commit()
+
+        scores = db.query(HealthScore).filter(HealthScore.user_id == user.id).all()
+        assert [score.value for score in scores] == [Decimal("80.00")]
+
+
+class TestHealthScoreRepositorySourcePriority:
+    def _ow(self, data_source: Any, recorded_at: datetime = NIGHT, **kwargs: Any) -> HealthScore:
+        return HealthScoreFactory(
+            data_source=data_source, provider=ProviderName.INTERNAL, recorded_at=recorded_at, **kwargs
+        )
+
+    def test_keeps_the_ow_score_of_the_highest_priority_source(self, db: Session, repo: HealthScoreRepository) -> None:
+        _prioritise(db, ProviderName.GARMIN, ProviderName.OURA)
+        user = UserFactory()
+        garmin = self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN))
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), NIGHT + timedelta(hours=1))
+
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert total == 1
+        assert [score.id for score, _ in results] == [garmin.id]
+
+    def test_priority_decides_not_the_order_of_writes(self, db: Session, repo: HealthScoreRepository) -> None:
+        _prioritise(db, ProviderName.OURA, ProviderName.GARMIN)
+        user = UserFactory()
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN))
+        oura = self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA))
+
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert [score.id for score, _ in results] == [oura.id]
+
+    def test_one_ow_score_per_category(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        self._ow(source, category=HealthScoreCategory.SLEEP)
+        self._ow(source, category=HealthScoreCategory.RESILIENCE)
+
+        _, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert total == 2
+
+    def test_the_night_wins_over_an_unflagged_nap_of_the_same_source(
+        self, db: Session, repo: HealthScoreRepository
+    ) -> None:
+        """SDK naps can come without the nap flag (#938) and get a sleep score of their own."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.APPLE)
+        scores = []
+        for wake_up, hours in ((NIGHT, 8), (NIGHT + timedelta(hours=8), 1)):
+            session = EventRecordFactory(
+                data_source=source,
+                category="sleep",
+                type="sleep",
+                start_datetime=wake_up - timedelta(hours=hours),
+                end_datetime=wake_up,
+                duration_seconds=hours * 3600,
+            )
+            SleepDetailsFactory(event_record=session, is_nap=False, sleep_total_duration_minutes=hours * 60 - 20)
+            scores.append(self._ow(source, wake_up, event_record_id=session.id))
+
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert [score.id for score, _ in results] == [scores[0].id]
+
+    def test_days_are_utc_dates_whatever_the_database_time_zone(self, db: Session, repo: HealthScoreRepository) -> None:
+        """01:00 UTC is still the previous evening in New York; it must not split the day."""
+        db.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+        _prioritise(db, ProviderName.GARMIN, ProviderName.OURA)
+        user = UserFactory()
+        garmin = self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN), NIGHT - timedelta(hours=6))
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), NIGHT)
+
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert [score.id for score, _ in results] == [garmin.id]
+
+    @pytest.mark.parametrize(
+        ("garmin_at", "oura_at", "params"),
+        [
+            (NIGHT, NIGHT + timedelta(hours=6), HealthScoreQueryParams(start_datetime=NIGHT + timedelta(hours=5))),
+            (NIGHT + timedelta(hours=6), NIGHT, HealthScoreQueryParams(end_datetime=NIGHT + timedelta(hours=1))),
+        ],
+    )
+    def test_a_bound_inside_a_day_does_not_change_its_pick(
+        self,
+        db: Session,
+        repo: HealthScoreRepository,
+        garmin_at: datetime,
+        oura_at: datetime,
+        params: HealthScoreQueryParams,
+    ) -> None:
+        """The day's score is Garmin's; cutting it off returns nothing for the day, not Oura's."""
+        _prioritise(db, ProviderName.GARMIN, ProviderName.OURA)
+        user = UserFactory()
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN), garmin_at)
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), oura_at)
+
+        results, total = repo.get_with_filters(db, user.id, params, *_orders(db))
+
+        assert (results, total) == ([], 0)
+
+    def test_a_bound_at_midnight_keeps_the_day_whole(self, db: Session, repo: HealthScoreRepository) -> None:
+        _prioritise(db, ProviderName.GARMIN, ProviderName.OURA)
+        user = UserFactory()
+        garmin = self._ow(DataSourceFactory(user=user, provider=ProviderName.GARMIN))
+        self._ow(DataSourceFactory(user=user, provider=ProviderName.OURA), NIGHT + timedelta(hours=1))
+        day = NIGHT.replace(hour=0)
+
+        results, _ = repo.get_with_filters(
+            db,
+            user.id,
+            HealthScoreQueryParams(start_datetime=day, end_datetime=day + timedelta(days=1)),
+            *_orders(db),
+        )
+
+        assert [score.id for score, _ in results] == [garmin.id]
+
+    def test_provider_scores_are_returned_as_they_are(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        HealthScoreFactory(data_source=garmin, provider=ProviderName.GARMIN, recorded_at=NIGHT)
+        HealthScoreFactory(data_source=oura, provider=ProviderName.OURA, recorded_at=NIGHT)
+        self._ow(garmin)
+        self._ow(oura)
+
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert total == 3
+        assert sorted(score.provider for score, _ in results) == ["garmin", "internal", "oura"]
+
+    def test_an_ow_score_with_a_source_beats_one_without(self, db: Session, repo: HealthScoreRepository) -> None:
+        """Even when the source's provider is missing from the priorities."""
+        user = UserFactory()
+        sourced = self._ow(
+            DataSourceFactory(user=user, provider=ProviderName.GARMIN), category=HealthScoreCategory.RESILIENCE
+        )
+        HealthScoreFactory(
+            data_source_id=None,
+            user_id=user.id,
+            provider=ProviderName.INTERNAL,
+            category=HealthScoreCategory.RESILIENCE,
+            recorded_at=NIGHT,
+        )
+
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), {}, {})
+
+        assert [score.id for score, _ in results] == [sourced.id]
+
+    def test_paging_counts_the_picked_scores(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        garmin = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        oura = DataSourceFactory(user=user, provider=ProviderName.OURA)
+        for day in range(3):
+            self._ow(garmin, NIGHT + timedelta(days=day))
+            self._ow(oura, NIGHT + timedelta(days=day))
+
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(offset=1, limit=1), *_orders(db))
+
+        assert total == 3
+        assert [score.recorded_at.date() for score, _ in results] == [(NIGHT + timedelta(days=1)).date()]
+
+    def test_ow_score_without_a_source_is_kept(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        resilience = HealthScoreFactory(
+            data_source_id=None,
+            user_id=user.id,
+            provider=ProviderName.INTERNAL,
+            category=HealthScoreCategory.RESILIENCE,
+            recorded_at=NIGHT,
+        )
+
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert results == [(resilience, None)]
+
+    def test_returns_each_score_with_its_source(self, db: Session, repo: HealthScoreRepository) -> None:
+        user = UserFactory()
+        source = DataSourceFactory(user=user, provider=ProviderName.GARMIN)
+        score = self._ow(source)
+
+        results, _ = repo.get_with_filters(db, user.id, HealthScoreQueryParams(), *_orders(db))
+
+        assert results == [(score, source)]
 
 
 def _body_battery(user_id: UUID, recorded_at: datetime, value: str | None) -> HealthScoreCreate:

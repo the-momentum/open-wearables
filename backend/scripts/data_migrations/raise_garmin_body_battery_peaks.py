@@ -11,8 +11,7 @@ A score's day runs from its ``recorded_at``, the summary's start, to the start o
 body battery score when that comes within 25 hours, so a 23- or 25-hour day (a daylight-saving
 change, or travel) ends where the next one starts; otherwise it lasts 24 hours. Its samples are the
 user's Garmin ``garmin_body_battery`` samples in that window, which hold every push. A score is
-only ever raised. Days whose samples were archived keep their score: the archive holds a daily
-average, not the peak.
+only ever raised. Days whose samples retention deleted keep their score.
 
 Runs once per instance (``data_migration``): one pass collects the scores to raise, then
 committed batches raise them.
@@ -43,14 +42,14 @@ _LOW_PEAKS = """
     SELECT days.id, peak.value AS peak
     FROM days
     CROSS JOIN LATERAL (
-        SELECT max(dps.value) AS value
-        FROM data_point_series dps
-        JOIN data_source ds ON ds.id = dps.data_source_id
+        SELECT max(s.value) AS value
+        FROM series_sample s
+        JOIN data_source ds ON ds.id = s.data_source_id
         WHERE ds.user_id = days.user_id
           AND ds.provider = :provider
-          AND dps.series_type_definition_id = :series_type_id
-          AND dps.recorded_at >= days.day_start
-          AND dps.recorded_at < CASE
+          AND s.series_type_definition_id = :series_type_id
+          AND s.recorded_at >= days.day_start
+          AND s.recorded_at < CASE
               WHEN days.next_start <= days.day_start + interval '25 hours' THEN days.next_start
               ELSE days.day_start + interval '24 hours'
           END

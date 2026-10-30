@@ -84,6 +84,13 @@ echo 'Running Whoop active_energy->total_energy relabel...'
 uv run python scripts/data_migrations/relabel_whoop_active_energy_to_total_energy.py \
     || echo "Warning: Whoop energy relabel failed — will retry on next startup."
 
+# TODO: Remove this after ~2027-03-01 once all deployments have migrated.
+# Moves average_met rows onto physical_effort, the series it merged into: both carry METs.
+# Runs at every start until one finds no average_met rows left (data_migration).
+echo 'Running average_met->physical_effort merge...'
+uv run python scripts/data_migrations/merge_average_met_into_physical_effort.py \
+    || echo "Warning: average_met merge failed — will retry on next startup."
+
 # TODO: Remove this after ~2026-12-01 once all deployments have migrated.
 # Re-resolves data_source.device_type with the new mappings: cloud-provider rows are
 # recomputed, SDK-provider rows only upgrade NULL/'other'. Idempotent; live sync applies
@@ -99,6 +106,12 @@ echo 'Running data source merge...'
 uv run python scripts/data_migrations/merge_duplicate_data_sources.py \
     || echo "Warning: data source merge failed — will retry on next startup."
 
+# Queues the one-off copy of the history into the aggregate tables; it runs in Celery, not here.
+# A run waits for the data source merge's data_migration row, since beat queues it too.
+echo 'Queueing aggregate backfill...'
+uv run python scripts/data_migrations/enqueue_aggregate_backfill.py \
+    || echo "Warning: aggregate backfill not queued — beat queues it within 15 minutes."
+
 # TODO: Remove this after ~2027-03-01 once all deployments have migrated.
 # Clears the 0 kcal the SDK and Apple XML importers stored for workouts that reported no
 # calories. Runs once per instance (data_migration).
@@ -111,7 +124,7 @@ uv run python scripts/data_migrations/clear_sdk_zero_workout_calories.py \
 # the day's first stressDetails push. Runs once per instance (data_migration).
 echo 'Running Garmin body battery peak backfill...'
 uv run python scripts/data_migrations/raise_garmin_body_battery_peaks.py \
-    || echo "Warning: Garmin body battery peak backfill failed, will retry on next startup."
+    || echo "Warning: Garmin body battery peak backfill failed — will retry on next startup."
 
 # Initialize archival settings
 echo 'Initializing archival settings...'
