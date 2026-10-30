@@ -159,7 +159,7 @@ class TestPolar247SleepSave:
         window = (datetime(2024, 1, 14, tzinfo=timezone.utc), datetime(2024, 1, 16, tzinfo=timezone.utc))
         with patch.object(data_247, "get_sleep_data", return_value=[self.NIGHT]):
             for _ in range(3):
-                data_247._save_sleep(db, user.id, *window)
+                assert data_247._save_sleep(db, user.id, *window) == 1
 
         records = (
             db.query(EventRecord)
