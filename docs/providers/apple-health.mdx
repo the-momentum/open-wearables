@@ -90,6 +90,21 @@ Apple Health provides the widest range of health data types:
 
 See the [Flutter SDK documentation](/sdk/flutter#supported-health-data-types) for the complete list of supported types.
 
+## When a Night's Sleep Becomes Available
+
+HealthKit has no sleep session object, only stage samples, so Open Wearables builds sessions from them:
+
+1. The app with the SDK uploads new sleep samples when iOS wakes it (HealthKit background delivery or a background refresh). Samples an Apple Watch records usually reach the phone after waking, sometimes hours later: iOS decides when the watch syncs with the phone.
+2. Open Wearables collects a session's samples and closes it once it is complete:
+   - a night with Apple Watch sleep and none from other apps 15 minutes after the last upload with its sleep (`SLEEP_UPLOAD_QUIET_MINUTES`), since the watch writes the whole night after waking;
+   - any other session 2 hours after its last sample ended (`SLEEP_END_GAP_MINUTES`), since apps writing to HealthKit can send a night over several syncs;
+   - a night uploaded later than that as soon as it arrives.
+
+   Due sessions are closed every 5 minutes (`SLEEP_SYNC_INTERVAL_SECONDS`). A piece from the same source that arrives after its night was closed is merged into it; one from another source is stored as its own session.
+3. With OW scores on (`OW_SCORES_ENABLED`, the default), the OW sleep score follows within about 10 minutes.
+
+An Apple Watch night is usually available 15 to 20 minutes after it reaches Open Wearables, which can be hours after waking up.
+
 ## Apple Health as a Data Bridge
 
 Even if a provider is **not yet directly supported** by Open Wearables, its data can still be collected by syncing it into Apple Health first.
