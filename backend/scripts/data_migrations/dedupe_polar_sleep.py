@@ -22,10 +22,11 @@ before that:
 Not changed: internal sleep scores of the repaired nights, and stage timelines whose copies
 differ (Polar moved the night between syncs), which are not exact duplicates.
 
-Nights are read in batches and each batch is committed. A night whose data can't be read is
-skipped and reported, so one bad row doesn't stop the rest. A run that skipped a night isn't
-recorded, so the next startup tries again; a retry reads the skipped nights and the repaired
-nights without stages, which need no change.
+The ids of the Polar nights are collected first, through the data source index, so the run
+reads only Polar rows and not the whole event_record table. The nights are then read in batches
+and each batch is committed. A night whose data can't be read is skipped and reported to Sentry,
+so one bad row doesn't stop the rest. The run is still recorded: a row that can't be read now
+won't be readable on the next startup either, and retrying would repeat the whole run each time.
 
 Idempotent: a repaired night no longer matches or needs no change, so re-runs are no-ops.
 Loading every Polar night to find there's nothing left is not free, so it runs once per
@@ -42,6 +43,7 @@ from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import engine
@@ -94,25 +96,25 @@ def _repaired_values(record: EventRecord, detail: SleepDetails) -> tuple[dict[st
 def dedupe_polar_sleep(db: Session, *, dry_run: bool, batch_size: int = BATCH_SIZE) -> dict[str, int]:
     """Repair the Polar nights a re-sync appended to, committing after each batch unless dry_run."""
     counts = {"sessions_repaired": 0, "external_ids_set": 0, "sessions_skipped": 0}
-    last_id = None
-    while True:
-        query = (
-            db.query(EventRecord, SleepDetails)
-            .join(DataSource, DataSource.id == EventRecord.data_source_id)
-            .join(SleepDetails, SleepDetails.record_id == EventRecord.id)
-            # Nights written since the fix carry an external_id and are replaced on re-sync
-            .filter(
-                DataSource.provider == ProviderName.POLAR,
-                EventRecord.category == "sleep",
-                EventRecord.external_id.is_(None),
-            )
-            .order_by(EventRecord.id)
+    polar_nights = (
+        select(EventRecord.id)
+        .join(DataSource, DataSource.id == EventRecord.data_source_id)
+        # Nights written since the fix carry an external_id and are replaced on re-sync
+        .where(
+            DataSource.provider == ProviderName.POLAR,
+            EventRecord.category == "sleep",
+            EventRecord.external_id.is_(None),
         )
-        if last_id is not None:
-            query = query.filter(EventRecord.id > last_id)
-        batch = query.limit(batch_size).all()
-        if not batch:
-            break
+        .order_by(EventRecord.id)
+    )
+    ids = list(db.scalars(polar_nights))
+    for start in range(0, len(ids), batch_size):
+        batch = (
+            db.query(EventRecord, SleepDetails)
+            .join(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(EventRecord.id.in_(ids[start : start + batch_size]))
+            .all()
+        )
 
         for record, detail in batch:
             try:
@@ -132,7 +134,6 @@ def dedupe_polar_sleep(db: Session, *, dry_run: bool, batch_size: int = BATCH_SI
                 if external_id is not None:
                     record.external_id = external_id
 
-        last_id = batch[-1][0].id
         if not dry_run:
             db.commit()
         # Keeps memory flat: a night can hold thousands of stage copies
@@ -151,12 +152,11 @@ def dedupe_polar_sleep(db: Session, *, dry_run: bool, batch_size: int = BATCH_SI
 
 
 def _migrate(db: Session, dry_run: bool) -> bool:
-    result = dedupe_polar_sleep(db, dry_run=dry_run)
+    dedupe_polar_sleep(db, dry_run=dry_run)
     if dry_run:
         return False
-    if not result["sessions_skipped"]:
-        print("Done.")
-    return not result["sessions_skipped"]
+    print("Done.")
+    return True
 
 
 def main(dry_run: bool) -> None:

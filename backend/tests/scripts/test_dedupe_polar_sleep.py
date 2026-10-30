@@ -155,10 +155,11 @@ def test_skips_a_night_it_cannot_read_and_repairs_the_rest(db: Session) -> None:
     assert _stored(db, readable)[1].sleep_time_in_bed_minutes == SESSION_MINUTES
 
 
-def test_run_with_a_skipped_night_is_not_recorded_as_done(db: Session) -> None:
+def test_run_with_a_skipped_night_is_still_recorded_as_done(db: Session) -> None:
+    """A night that can't be read won't be readable on a retry either; retrying would repeat the run every startup."""
     _sleep(copies=2, stages=[{"stage": "light", "start_time": START.isoformat()}])
 
-    assert migrate(db, dry_run=False) is False
+    assert migrate(db, dry_run=False) is True
 
 
 def test_clean_run_is_recorded_as_done(db: Session) -> None:
