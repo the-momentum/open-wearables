@@ -362,6 +362,9 @@ class ImportService:
                 value = value / 1000
 
             if record_type in _INTERVAL_MINUTE_TYPES:
+                # A reversed or empty interval holds no minutes
+                if rjson.endDate <= rjson.startDate:
+                    continue
                 value = Decimal(str((rjson.endDate - rjson.startDate).total_seconds() / 60))
 
             # Extract device info

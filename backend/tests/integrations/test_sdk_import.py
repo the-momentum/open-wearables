@@ -893,6 +893,21 @@ class TestSDKImportUnitConversion:
         assert samples[0].series_type == SeriesType.exercise_time
         assert samples[0].value == Decimal("25")
 
+    @pytest.mark.parametrize("end", ["2025-04-10T09:35:00Z", "2025-04-10T10:00:00Z"])
+    def test_health_connect_activity_intensity_without_minutes_is_skipped(
+        self,
+        import_service: ImportService,
+        end: str,
+    ) -> None:
+        """A reversed or empty interval holds no minutes, so it must not become a negative or zero sample."""
+        record = self._record("ACTIVITY_INTENSITY_MODERATE", 999, unit="s") | {
+            "startDate": "2025-04-10T10:00:00Z",
+            "endDate": end,
+        }
+        request = self._build_request("health_connect", [record])
+
+        assert import_service._build_statistic_bundles(request.data.records, request.provider, str(uuid4())) == []
+
     @pytest.mark.parametrize(
         ("unit", "expected"),
         [
