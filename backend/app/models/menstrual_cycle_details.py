@@ -30,6 +30,10 @@ class MenstrualCycleDetails(EventRecordDetail):
     has_specified_cycle_length: Mapped[bool | None]
     has_specified_period_length: Mapped[bool | None]
 
+    # HealthKit menstrualFlow samples (Garmin cycle aggregates leave these null).
+    flow_intensity: Mapped[str_32 | None]
+    is_cycle_start: Mapped[bool | None]
+
     # Non-pregnant phase only
     period_length: Mapped[int | None]
     fertile_window_start: Mapped[int | None]
