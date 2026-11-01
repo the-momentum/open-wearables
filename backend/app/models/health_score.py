@@ -28,10 +28,6 @@ class HealthScore(BaseDbModel):
         # use Index(..., unique=True) to express this partial unique constraint.
         # One score per (event record, provider, category) — a sleep session carries
         # both the provider's score and the internal OW one.
-        # Not for querying: the child side of an ON DELETE CASCADE foreign key, which
-        # Postgres does not index for you. Without it, deleting a data_source (as part
-        # of deleting a user) sequentially scans this table.
-        Index("ix_health_score_data_source_id", "data_source_id"),
         Index(
             "uq_health_score_event_record",
             "event_record_id",
