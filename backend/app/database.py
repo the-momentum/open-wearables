@@ -6,7 +6,6 @@ from uuid import UUID
 from fastapi import Depends
 from sqlalchemy import UUID as SQL_UUID
 from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, func, inspect
-from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -15,7 +14,6 @@ from sqlalchemy.orm import (
     mapped_column,
     sessionmaker,
 )
-from sqlalchemy.pool import NullPool
 
 from app.config import settings
 from app.schemas.auth import ConnectionStatus, LiveSyncMode, SDKTokenOrigin, TokenType
@@ -36,10 +34,6 @@ from app.utils.mappings_meta import AutoRelMeta
 # rest of the pool queues behind it.
 _CONNECT_ARGS = {"options": f"-c statement_timeout={settings.db_statement_timeout_ms}"}
 
-# Two independent pools over the same database, so their bounds are budgeted
-# together (see the notes on the settings). Both are explicit: leaving the async
-# engine unconfigured silently adds SQLAlchemy's default 5 + 10 on top of whatever
-# the sync engine is allowed.
 engine = create_engine(
     settings.db_uri,
     pool_pre_ping=True,
@@ -48,26 +42,6 @@ engine = create_engine(
     pool_timeout=settings.db_pool_timeout,
     pool_recycle=settings.db_pool_recycle,
     connect_args=_CONNECT_ARGS,
-)
-
-# A pool_size of 0 is not "unbounded" to QueuePool — it means a pool that can never
-# hand out a pooled connection — so an unused async engine has to be NullPool
-# instead, which connects on demand and reserves nothing between uses.
-_async_pool_kwargs: dict = (
-    {"poolclass": NullPool}
-    if settings.db_async_pool_size == 0
-    else {
-        "pool_size": settings.db_async_pool_size,
-        "max_overflow": settings.db_async_max_overflow,
-        "pool_timeout": settings.db_pool_timeout,
-        "pool_recycle": settings.db_pool_recycle,
-    }
-)
-async_engine = create_async_engine(
-    settings.db_uri,
-    pool_pre_ping=True,
-    connect_args=_CONNECT_ARGS,
-    **_async_pool_kwargs,
 )
 
 

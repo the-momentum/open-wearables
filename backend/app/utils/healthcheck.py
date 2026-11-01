@@ -1,8 +1,7 @@
 from fastapi import APIRouter
 from sqlalchemy import text
-from sqlalchemy.pool import NullPool
 
-from app.database import DbSession, async_engine, engine
+from app.database import DbSession, engine
 
 healthcheck_router = APIRouter()
 
@@ -10,27 +9,6 @@ healthcheck_router = APIRouter()
 def get_pool_status() -> dict[str, str]:
     """Get sync connection pool status for monitoring."""
     pool = engine.pool
-    return {
-        "max_pool_size": str(pool.size()),  # ty:ignore[unresolved-attribute]
-        "connections_ready_for_reuse": str(pool.checkedin()),  # ty:ignore[unresolved-attribute]
-        "active_connections": str(pool.checkedout()),  # ty:ignore[unresolved-attribute]
-        "overflow": str(pool.overflow()),  # ty:ignore[unresolved-attribute]
-    }
-
-
-def get_async_pool_status() -> dict[str, str]:
-    """Get async connection pool status for monitoring.
-
-    Reported separately because it is a second, independent pool over the same
-    database: its connections count against the server's max_connections just as
-    the sync pool's do, and omitting it here hides up to half of what this process
-    is actually holding.
-    """
-    pool = async_engine.sync_engine.pool
-    # NullPool (the default while no endpoint uses AsyncDbSession) holds nothing
-    # between uses and so implements none of the QueuePool counters.
-    if isinstance(pool, NullPool):
-        return {"pool_class": "NullPool", "max_pool_size": "0", "active_connections": "0"}
     return {
         "max_pool_size": str(pool.size()),  # ty:ignore[unresolved-attribute]
         "connections_ready_for_reuse": str(pool.checkedin()),  # ty:ignore[unresolved-attribute]
@@ -49,7 +27,6 @@ async def database_health(db: DbSession) -> dict[str, str | dict[str, str]]:
         return {
             "status": "healthy",
             "pool": get_pool_status(),
-            "async_pool": get_async_pool_status(),
         }
     except Exception as e:
         return {
