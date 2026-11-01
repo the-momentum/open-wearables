@@ -1,13 +1,13 @@
-/**
- * Appends non-null, non-empty values to URLSearchParams
- */
-export function appendSearchParams(
-  searchParams: URLSearchParams,
-  params: Record<string, string | number | undefined | null>
-): void {
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== null && value !== undefined && value !== '') {
-      searchParams.set(key, String(value));
-    }
-  }
+/** Merge query changes into the current URL; a null value drops the key. */
+export function withParams(url: URL, changes: Record<string, string | null>): string {
+	const next = new URL(url);
+	for (const [key, value] of Object.entries(changes)) {
+		if (value === null) next.searchParams.delete(key);
+		else next.searchParams.set(key, value);
+	}
+	return `${next.pathname}${next.search}`;
 }
+
+/** The path itself or anything under it, so `/users/abc` is within `/users`. */
+export const isWithin = (pathname: string, base: string) =>
+	pathname === base || pathname.startsWith(`${base}/`);

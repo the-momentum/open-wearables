@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from contextlib import suppress
 from datetime import datetime
 from typing import Any
 

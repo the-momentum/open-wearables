@@ -100,7 +100,7 @@ All keys use the `linked_sync:` namespace and expire after 4 hours.
 
 Secondary profiles receive `SyncSource.LINKED_ACCOUNT` events in their sync log. These events include `primary_user_id` pointing at the profile that performed the actual sync.
 
-The frontend displays these events with the source label **"Linked Account"** in the Recent Syncs section. The status badge follows the normal colour scheme (green for success, amber for partial, etc.) — the source label is the visual distinguisher.
+The frontend displays these events with the source label **"Linked account"** in the sync lists. The status badge follows the normal colour scheme (green for success, amber for partial, etc.) — the source label is the visual distinguisher.
 
 ```
 provider:  garmin
@@ -124,4 +124,4 @@ primary_user_id: <uuid of the profile that ran the sync>
 | `app/integrations/celery/tasks/garmin/backfill_task.py` | Primary election and secondary detection in `start_full_backfill`; lock release in `trigger_next_pending_type` |
 | `app/integrations/celery/tasks/sync_vendor_data_task.py` | Shared pull lock per connection with `provider_user_id` |
 | `app/api/routes/v1/connections.py` | Linked user IDs enrichment in `GET /users/{id}/connections` |
-| `frontend/src/components/user/connection-card.tsx` | "N linked" chip in the Connections UI |
+| `frontend/src/lib/components/users/connections/ConnectionCard.svelte` | "Shares this provider account with N other profiles" note in the Connections UI |

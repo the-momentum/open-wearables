@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.database import BaseDbModel
+from app.extensions.migrations import is_core_object
 
 config = context.config
 # db_uri percent-encodes the password; escape % so ConfigParser interpolation
@@ -33,6 +34,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_name=is_core_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -58,6 +60,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            include_name=is_core_object,
         )
 
         with context.begin_transaction():

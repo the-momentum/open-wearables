@@ -86,7 +86,11 @@ def test_oauth_callback_dispatches_historical_sync(
     ("provider", "workouts_path", "data247_path"),
     [
         # Patch where the strategy module binds the class name (it does `from x import Y`).
-        ("oura", "app.services.providers.oura.strategy.OuraWorkouts", "app.services.providers.oura.strategy.Oura247Data"),
+        (
+            "oura",
+            "app.services.providers.oura.strategy.OuraWorkouts",
+            "app.services.providers.oura.strategy.Oura247Data",
+        ),
         (
             "google_health",
             "app.services.providers.google_health.strategy.GoogleHealthApiWorkouts",

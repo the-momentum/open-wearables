@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.enums import HealthScoreCategory, ProviderName
+from app.schemas.utils.metadata import SourceMetadata
 from app.utils.dates import ZoneOffset
 from app.utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
@@ -67,4 +68,8 @@ class HealthScoreResponse(HealthScoreBase):
     provider: ProviderName | None
     event_record_id: UUID | None = Field(
         None, description="The sleep session or workout this score describes. Null for whole-day scores."
+    )
+    source: SourceMetadata | None = Field(
+        None,
+        description="The data source the score was computed from or reported by. Null for scores without one.",
     )

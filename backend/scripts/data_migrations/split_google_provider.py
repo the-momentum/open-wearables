@@ -34,8 +34,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import TextClause
 
-from app.database import SessionLocal
+from app.database import engine
 from app.schemas.sync_status import SyncSource
+from app.services.data_migration_service import data_migration_service
 
 LEGACY = "google"
 API = "google_health"
@@ -156,16 +157,21 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
     return result
 
 
+def _migrate(db: Session, dry_run: bool) -> bool:
+    result = split_google_provider(db, dry_run=dry_run)
+    if dry_run:
+        return False
+    if not any(result.values()):
+        print(f"Nothing to do — no '{LEGACY}' rows found.")
+        return True
+    db.commit()
+    print("Done.")
+    return True
+
+
 def main(dry_run: bool) -> None:
-    with SessionLocal() as db:
-        result = split_google_provider(db, dry_run=dry_run)
-        if dry_run:
-            return
-        if not any(result.values()):
-            print(f"Nothing to do — no '{LEGACY}' rows found.")
-            return
-        db.commit()
-        print("Done.")
+    with engine.connect() as connection, Session(bind=connection) as db:
+        data_migration_service.run(db, "split_google_provider", lambda: _migrate(db, dry_run), dry_run=dry_run)
 
 
 if __name__ == "__main__":

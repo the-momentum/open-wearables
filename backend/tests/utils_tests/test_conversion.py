@@ -6,10 +6,11 @@ Tests SQLAlchemy model to dictionary conversion.
 
 from datetime import datetime, timezone
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
-from app.utils.conversion import base_to_dict
+from app.utils.conversion import base_to_dict, seconds_to_minutes, sum_optional
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -262,11 +263,11 @@ class TestBaseToDictDataSource:
         assert result["device_model"] == mapping.device_model
 
 
-class TestBaseToDictDataPointSeries:
-    """Test suite for base_to_dict with DataPointSeries model."""
+class TestBaseToDictSeriesSample:
+    """Test suite for base_to_dict with SeriesSample model."""
 
     def test_base_to_dict_data_point_series(self, db: Session) -> None:
-        """Test converting DataPointSeries model to dictionary."""
+        """Test converting SeriesSample model to dictionary."""
         # Arrange
         mapping = DataSourceFactory()
         timestamp = datetime(2025, 1, 15, 12, 30, 0, tzinfo=timezone.utc)
@@ -283,11 +284,11 @@ class TestBaseToDictDataPointSeries:
         assert isinstance(result, dict)
         assert result["id"] == data_point.id
         assert result["data_source_id"] == mapping.id
-        # DataPointSeries doesn't have category field, it has series_type_definition_id
+        # SeriesSample doesn't have category field, it has series_type_definition_id
         assert "series_type_definition_id" in result
 
     def test_base_to_dict_data_point_series_timestamp(self, db: Session) -> None:
-        """Test DataPointSeries timestamp serialization."""
+        """Test SeriesSample timestamp serialization."""
         # Arrange
         mapping = DataSourceFactory()
         data_point = DataPointSeriesFactory(mapping=mapping)
@@ -296,7 +297,7 @@ class TestBaseToDictDataPointSeries:
         result = base_to_dict(data_point)
 
         # Assert
-        # DataPointSeries uses recorded_at, not timestamp
+        # SeriesSample uses recorded_at, not timestamp
         assert "recorded_at" in result
         assert isinstance(result["recorded_at"], str)
         # Verify can be parsed back
@@ -435,3 +436,31 @@ class TestBaseToDictIntegration:
         # Assert
         assert dict1["user_id"] == dict2["user_id"]
         assert dict1["device_model"] != dict2["device_model"]
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        ((), None),
+        ((None, None), None),
+        ((0,), 0),
+        ((119,), 1),
+        ((1800, None, 1830), 60),
+    ],
+)
+def test_seconds_to_minutes(seconds: tuple[int | None, ...], expected: int | None) -> None:
+    assert seconds_to_minutes(*seconds) == expected
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ((), None),
+        ((None, None), None),
+        ((0,), 0),
+        ((None, 0), 0),
+        ((30, None, 15), 45),
+    ],
+)
+def test_sum_optional(values: tuple[int | None, ...], expected: int | None) -> None:
+    assert sum_optional(*values) == expected

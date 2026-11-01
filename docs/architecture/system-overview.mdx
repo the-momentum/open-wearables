@@ -27,12 +27,11 @@ open-wearables/
 │   │   └── integrations/ # Third-party integrations (Celery, Sentry)
 │   ├── migrations/  # Alembic database migrations
 │   └── scripts/     # Utility and initialization scripts
-├── frontend/        # React + TanStack Router frontend
-│   └── src/
-│       ├── components/ # React components
-│       ├── routes/     # Route definitions
-│       ├── hooks/      # Custom React hooks
-│       └── lib/        # Utilities and API clients
+├── frontend/        # SvelteKit developer portal
+│   ├── src/
+│   │   ├── routes/     # Pages, loaders and form actions
+│   │   └── lib/        # Components, domain logic, server-only API client
+│   └── e2e/            # Playwright tests against a mock API
 ├── mcp/            # MCP server (Beta) - AI assistant integration
 │   └── app/
 │       ├── tools/     # MCP tool definitions
@@ -71,23 +70,21 @@ open-wearables/
 ### Frontend
 
 **Core Framework:**
-- **React 19** - UI library
-- **TanStack Router** - Type-safe routing
-- **TanStack Query** - Server state management
+- **SvelteKit 2 / Svelte 5** - Server-rendered routing, loaders and form actions
+- **Bun** - Runtime and package manager
 - **Vite** - Build tool and dev server
 
-**UI Components:**
-- **Radix UI** - Accessible component primitives
-- **Tailwind CSS 4** - Utility-first styling
-- **Lucide React** - Icon library
-- **Motion** - Animation library
+**UI:**
+- **Tailwind CSS 4** - Utility-first styling with design tokens
+- **Lucide** - Icon library
+- Charts are hand-drawn SVG; dialogs are native `<dialog>` elements
 
-**Form Handling:**
-- **React Hook Form** - Form state management
-- **Zod** - Schema validation
+**Sessions:**
+- API tokens live in an `HttpOnly` cookie that page scripts cannot read; only the frontend server calls the API
 
-**Data Visualization:**
-- **Recharts** - Chart library for metrics visualization
+**Testing:**
+- **Vitest** - Unit tests, and component tests in a real browser
+- **Playwright** - End-to-end tests against a production build
 
 ### MCP Server (Beta)
 
@@ -155,7 +152,7 @@ The platform is designed for **self-hosting** with Docker. For production, use t
 - `celery-worker` - Background task processor
 - `celery-beat` - Scheduled task scheduler
 - `flower` - Celery monitoring dashboard
-- `frontend` - React frontend (TanStack Start, served by Nitro)
+- `frontend` - SvelteKit developer portal, served by Bun
 
 **Key Design Decisions:**
 - Single-tenant architecture (one deployment = one organization)
@@ -172,5 +169,5 @@ The platform is designed for **self-hosting** with Docker. For production, use t
 
 **Frontend:**
 - Vite HMR (Hot Module Replacement) for instant updates
-- TypeScript for type safety
-- Oxlint for fast linting
+- TypeScript strict mode, checked by svelte-check
+- ESLint and Prettier

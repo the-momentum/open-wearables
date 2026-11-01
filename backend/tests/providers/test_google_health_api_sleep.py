@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.services.providers.google.health_api.sleep import GoogleHealthApiSleep
+from app.services.providers.google_health.sleep import GoogleHealthApiSleep
 
 
 def test_invalid_sleep_efficiency_is_not_stored() -> None:

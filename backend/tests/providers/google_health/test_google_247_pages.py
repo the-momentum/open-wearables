@@ -13,7 +13,7 @@ from app.schemas.providers.google import DataPointsPage
 from app.services.providers.google_health.data_247 import GoogleHealth247Data
 from app.services.providers.google_health.helpers import parse_page
 
-USER_ID = uuid4()
+USER_ID = str(uuid4())
 
 
 @pytest.fixture
@@ -84,12 +84,13 @@ class TestFailureIsolation:
                 side_effect=fake_request,
             ),
             patch.object(data_247.sleep, "load_and_save", return_value=0),
+            patch.object(data_247.nutrition, "load_and_save", return_value=0),
             patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
             patch("app.services.providers.google_health.data_247.store_raw_payload"),
         ):
             results = data_247.load_and_save_all(db, USER_ID, MagicMock(), MagicMock())
 
-        assert results == {}  # nothing had samples, but the run completed
+        assert results.rows_written == 0  # nothing had samples, but the run completed
         assert any("heart-rate/" in c for c in calls)
         # The chain kept going past the malformed metric.
         assert len({c for c in calls}) > 1
@@ -111,6 +112,7 @@ class TestPerMetricTransactions:
                 side_effect=fake_request,
             ),
             patch.object(data_247.sleep, "load_and_save", return_value=0),
+            patch.object(data_247.nutrition, "load_and_save", return_value=0),
             patch.object(data_247.settings_repo, "get_data_granularity", return_value=None),
             patch("app.services.providers.google_health.data_247.store_raw_payload"),
         ):

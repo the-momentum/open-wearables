@@ -2,6 +2,7 @@ from logging import getLogger
 
 from celery import shared_task
 
+from app.constants.celery_tasks import CeleryTask
 from app.database import SessionLocal
 from app.services import dashboard_stats_cache
 from app.services.timeseries_service import timeseries_service
@@ -10,7 +11,7 @@ from app.utils.sentry_helpers import log_and_capture_error
 logger = getLogger(__name__)
 
 
-@shared_task
+@shared_task(name=CeleryTask.REFRESH_DASHBOARD_TOTAL_DATA_POINTS)
 def refresh_dashboard_total_data_points(token: str | None = None) -> None:
     """Recount data points exactly and cache the result.
 

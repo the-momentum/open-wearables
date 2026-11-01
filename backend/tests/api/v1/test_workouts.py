@@ -374,7 +374,7 @@ class TestWorkoutsEndpoints:
 
         api_key = ApiKeyFactory()
         headers = api_key_headers(api_key.plain_key)
-        nonexistent_user_id = uuid4()
+        nonexistent_user_id = str(uuid4())
 
         # Act
         now = datetime.now(timezone.utc)

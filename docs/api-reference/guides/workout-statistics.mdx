@@ -1,0 +1,46 @@
+---
+title: "Workout Statistics"
+description: "Where the statistics of a workout come from: the provider's own figures first, then values Open Wearables computes from the samples recorded during the workout."
+keywords: ["workout statistics", "workout calories", "workout heart rate", "workout distance", "workout totals"]
+"og:title": "Workout Statistics | Open Wearables"
+"og:description": "Where workout statistics come from: the provider's figures first, then values computed from the workout's own samples."
+"og:url": "https://docs.openwearables.io/api-reference/guides/workout-statistics"
+"og:type": "article"
+"twitter:title": "Workout Statistics | Open Wearables"
+"twitter:description": "Where workout statistics come from: the provider's figures first, then values computed from the workout's own samples."
+"twitter:card": "summary_large_image"
+---
+
+A workout returned by `GET /api/v1/users/{user_id}/events/workouts` carries statistics such as heart rate, distance, calories and elevation gain. Each one is read in this order:
+
+1. **The provider's figure**, when the provider sent one for that workout.
+2. **Ours**, computed by Open Wearables from the samples the same device recorded between the workout's start and end, when the provider sent none. These are computed by the rollup, at most 15 minutes after the samples arrive.
+3. `null`, when neither exists.
+
+A statistic the provider sent as `0` stays `0`: it is the provider's figure, not a missing one.
+
+| Field | Series it is read from | Statistic |
+|---|---|---|
+| `avg_heart_rate_bpm` | `heart_rate` | average; without the provider's or ours, the samples of the same app's other sources during the workout |
+| `max_heart_rate_bpm`, `heart_rate_min` | `heart_rate` | maximum, minimum |
+| `steps_count` | `steps` | sum |
+| `distance_meters`, `avg_pace_sec_per_km` | `distance` | sum |
+| `average_speed`, `max_speed` | `speed` | average, maximum |
+| `average_watts`, `max_watts` | `power` | average, maximum |
+| `average_met` | `physical_effort` | average |
+| `average_cadence` | `cadence` | average |
+| `elev_low`, `elev_high` | `elevation` | minimum, maximum |
+| `elevation_gain_meters` | `elevation_gain` | sum |
+| `calories_kcal` | `total_energy` or `active_energy` | sum; see below |
+
+## Calories
+
+`calories_kcal` is the provider's figure in the energy series the provider is known to report for workouts (total or active energy), else the provider's figure whose series is not established yet, else the sum of the workout's own active energy samples.
+
+## Totals and daily summaries
+
+`GET /api/v1/users/{user_id}/events/workouts/totals` and the workout part of `/summaries/activity` (distance, energy, elevation) add up the same per-workout values: the provider's for a workout where it sent one, ours where it did not.
+
+<Note>
+Before this release the fields held only what the provider sent, and `null` otherwise. A client that read `null` as "the provider sent no value" now receives the computed value in the same field.
+</Note>

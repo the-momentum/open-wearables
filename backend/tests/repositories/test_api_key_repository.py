@@ -94,7 +94,7 @@ class TestApiKeyRepository:
     def test_get_nonexistent(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test retrieving a nonexistent API key returns None."""
         # Act
-        result = api_key_repo.get(db, uuid4())
+        result = api_key_repo.get(db, str(uuid4()))
 
         # Assert
         assert result is None

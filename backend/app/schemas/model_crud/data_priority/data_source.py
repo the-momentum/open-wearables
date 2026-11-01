@@ -40,6 +40,8 @@ class DataSourceResponse(BaseModel):
     source: str | None = None
     device_type: str | None = None
     original_source_name: str | None = None
+    # Marketing name for a raw model code (Watch6,2 -> Apple Watch Series 6), else the model itself
+    device_name: str | None = None
     display_name: str | None = None
 
     model_config = {"from_attributes": True}

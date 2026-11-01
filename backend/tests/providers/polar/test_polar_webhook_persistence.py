@@ -12,7 +12,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource
+from app.models import DataSource, SeriesSample
 from app.schemas.providers.polar import PolarWebhookEventType
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.strategy import PolarStrategy
@@ -33,10 +33,10 @@ DAY_RESPONSE: dict[str, Any] = {
 }
 
 
-def _polar_samples(db: Session, user_id: Any) -> list[DataPointSeries]:
+def _polar_samples(db: Session, user_id: Any) -> list[SeriesSample]:
     return (
-        db.query(DataPointSeries)
-        .join(DataSource, DataSource.id == DataPointSeries.data_source_id)
+        db.query(SeriesSample)
+        .join(DataSource, DataSource.id == SeriesSample.data_source_id)
         .filter(DataSource.user_id == user_id, DataSource.provider == "polar")
         .all()
     )
@@ -112,3 +112,16 @@ def test_process_payload_rolls_back_on_error(db: Session) -> None:
 
     assert result["status"] == "error"
     assert rolled_back == ["rollback"]
+
+
+def test_activity_summary_webhook_requests_activity_zones(db: Session) -> None:
+    user = UserFactory()
+    data_247 = PolarStrategy().data_247
+    assert isinstance(data_247, Polar247Data)
+
+    with patch.object(Polar247Data, "_make_api_request", return_value={}) as request:
+        data_247.fetch_and_save_from_webhook(
+            db, UUID(str(user.id)), PolarWebhookEventType.ACTIVITY_SUMMARY, "/v3/users/activities/2026-09-10"
+        )
+
+    assert request.call_args.kwargs["params"] == {"activity_zones": "true"}

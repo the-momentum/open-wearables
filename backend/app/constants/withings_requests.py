@@ -33,6 +33,20 @@ ACTIVITY = WithingsDataRequest(
         "distance",
         "calories",
         "totalcalories",
+        "active",
+    ),
+)
+
+# The slices the daily rows above are built from; ``series`` is keyed by start epoch, so it needs paginate_mapping.
+INTRADAY_ACTIVITY = WithingsDataRequest(
+    service_path="/v2/measure",
+    action="getintradayactivity",
+    list_key="series",
+    data_fields=(
+        "steps",
+        "distance",
+        "calories",
+        "duration",
     ),
 )
 
@@ -71,4 +85,8 @@ SLEEP_SERIES = WithingsDataRequest(
     service_path="/v2/sleep",
     action="get",
     list_key="series",
+    data_fields=(
+        "rmssd",
+        "sdnn_1",
+    ),
 )

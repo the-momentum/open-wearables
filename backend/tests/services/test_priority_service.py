@@ -181,7 +181,18 @@ class TestPriorityServiceGetUserDataSources:
         result = priority_service.get_user_data_sources(db, user.id)
 
         assert result.total == 1
-        assert result.items[0].display_name == "Apple - Watch7,1"
+        assert result.items[0].device_name == "Apple Watch Series 9 41mm (GPS)"
+        assert result.items[0].display_name == "Apple - Apple Watch Series 9 41mm (GPS)"
+
+    def test_unmapped_model_is_its_own_device_name(self, db: Session, priority_service: PriorityService) -> None:
+        user = UserFactory()
+        DataSourceFactory(user=user, provider=ProviderName.OURA, device_model=None, source="oura")
+        DataSourceFactory(user=user, provider=ProviderName.SUUNTO, device_model="Suunto Vertical")
+
+        items = {item.provider: item for item in priority_service.get_user_data_sources(db, user.id).items}
+
+        assert items[ProviderName.OURA].device_name is None
+        assert items[ProviderName.SUUNTO].device_name == "Suunto Vertical"
 
 
 class TestPriorityServiceGetDeviceTypePriorities:

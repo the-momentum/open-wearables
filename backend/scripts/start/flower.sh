@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e -x
 
+scripts/start/install_extensions.sh
+
 worker_ready() {
     uv run celery -A app.main:celery_app inspect ping
 }
@@ -12,4 +14,4 @@ done
 echo 'Celery workers are available, proceeding...'
 
 # Flower will use the broker URL from Celery app configuration (settings.redis_url)
-uv run celery --app=app.main:celery_app flower
+exec uv run celery --app=app.main:celery_app flower

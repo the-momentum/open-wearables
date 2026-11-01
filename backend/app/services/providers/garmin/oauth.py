@@ -48,6 +48,15 @@ class GarminOAuth(BaseOAuthTemplate):
         )
         response.raise_for_status()
 
+    def get_user_id(self, access_token: str) -> str | None:
+        response = httpx.get(
+            f"{self.api_base_url}/partner-gateway/rest/user/id",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        return response.json().get("userId")
+
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Fetches Garmin user ID and API permissions."""
         # Fetch user ID (critical - fail returns all None)

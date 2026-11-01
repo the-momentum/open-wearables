@@ -53,7 +53,7 @@ def test_refresh_classifies_provider_statuses(
     oauth = _oauth()
 
     with patch.object(oauth, "_revoke_connection") as mock_revoke, pytest.raises(WithingsTokenError) as exc_info:
-        oauth.refresh_access_token(MagicMock(), uuid4(), "old-rt")
+        oauth.refresh_access_token(MagicMock(), str(uuid4()), "old-rt")
 
     assert exc_info.value.status_code == http_status
     assert exc_info.value.invalid_grant is invalid_grant
@@ -68,7 +68,7 @@ def test_refresh_keeps_the_old_refresh_token_when_withings_omits_one(mock_post: 
     connection = MagicMock()
     oauth.connection_repo.get_by_user_and_provider.return_value = connection
 
-    oauth.refresh_access_token(MagicMock(), uuid4(), "old-rt")
+    oauth.refresh_access_token(MagicMock(), str(uuid4()), "old-rt")
 
     args = oauth.connection_repo.update_tokens.call_args.args
     assert args[2] == "new-at"
@@ -119,7 +119,7 @@ def test_save_connection_survives_a_broker_failure(
     mock_repo.return_value.get_live_sync_mode.return_value = LiveSyncMode.WEBHOOK
     token = OAuthTokenResponse.model_validate({"access_token": "at", "token_type": "Bearer", "expires_in": 1})
 
-    _oauth()._save_connection(MagicMock(), uuid4(), token, {}, MagicMock())
+    _oauth()._save_connection(MagicMock(), str(uuid4()), token, {}, MagicMock())
 
     mock_send.assert_called_once()
     mock_super.assert_called_once()

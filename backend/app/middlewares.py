@@ -15,6 +15,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from app.config import settings
 from app.services.endpoint_usage import caller_type, endpoint_usage, route_key
 from app.utils.config_utils import AccessLogLevel
+from app.utils.sdk_request_metadata import sdk_request_metadata
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger("app.access")
@@ -105,6 +106,7 @@ def add_access_log_middleware(app: FastAPI) -> None:
                 attributes["request_bytes"] = int(content_length)
             except ValueError:
                 attributes["request_bytes"] = content_length
+        attributes |= sdk_request_metadata(request.headers)
         if response_body is not None:
             attributes["response_body"] = response_body
         if status >= 400:

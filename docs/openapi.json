@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Open Wearables API",
-    "version": "0.9.0"
+    "version": "0.10.0"
   },
   "paths": {
     "/": {
@@ -42,6 +42,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CoverageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/meta/extensions": {
+      "get": {
+        "tags": [
+          "External: Meta",
+          "External: Meta"
+        ],
+        "summary": "Installed extensions",
+        "description": "Every installed extension and whether it loaded; ``error`` says why one did not.",
+        "operationId": "list_extensions_api_v1_meta_extensions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -626,6 +682,144 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/personal-record": {
+      "get": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Get Personal Record",
+        "description": "Returns the user's birth date, gender and sex. A field that was never set is null.",
+        "operationId": "get_personal_record_api_v1_users__user_id__personal_record_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "External: Users"
+        ],
+        "summary": "Put Personal Record",
+        "description": "Sets the user's birth date, gender and sex.\n\nReplaces the whole record: a field left out of the body is set to null. Open Wearables uses\nthe birth date for the user's age, for example in the body summary and for the maximum heart\nrate behind the intensity minutes of the activity summary.",
+        "operationId": "put_personal_record_api_v1_users__user_id__personal_record_put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonalRecordUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalRecordResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/connections": {
       "get": {
         "tags": [
@@ -946,6 +1140,103 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedResponse_ActivitySummary_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/summaries/activity/totals": {
+      "get": {
+        "tags": [
+          "External: Summaries"
+        ],
+        "summary": "Get Activity Totals",
+        "description": "Returns the period's daily activity added up: days, steps, distance and active energy.\n\nThe same days the daily summaries return, one per date after source priority,\nso a total matches what paging through them would add up to.",
+        "operationId": "get_activity_totals_api_v1_users__user_id__summaries_activity_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityTotals"
                 }
               }
             }
@@ -2097,6 +2388,202 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/workouts/totals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Get Workout Totals",
+        "description": "Returns the count, duration, energy and distance of the workouts the same filters would list.\n\nAdded up in the database, so it covers every matching workout however many\nthere are, without paging through them.",
+        "operationId": "get_workout_totals_api_v1_users__user_id__events_workouts_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "record_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Record Type"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkoutType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact normalized workout type. Unlike `record_type`, does not substring-match.",
+              "title": "Type"
+            },
+            "description": "Exact normalized workout type. Unlike `record_type`, does not substring-match."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkoutTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/sleep": {
       "get": {
         "tags": [
@@ -2329,6 +2816,198 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/sleep/totals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Get Sleep Totals",
+        "description": "Returns the count, naps, time asleep, time in bed and mean efficiency of the sessions.\n\nThe same filters as the sleep list, so it adds up exactly what that would page through.\n\nAdded up in the database, so it covers every matching session however many\nthere are, without paging through them.",
+        "operationId": "get_sleep_totals_api_v1_users__user_id__events_sleep_totals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "is_nap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "When true, return only naps; when false, only main sleep. Omit to return both.",
+              "title": "Is Nap"
+            },
+            "description": "When true, return only naps; when false, only main sleep. Omit to return both."
+          },
+          {
+            "name": "filter_by_priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility.",
+              "default": false,
+              "title": "Filter By Priority"
+            },
+            "description": "When true, keep only the highest-priority source's sessions per sleep date (provider/device priority, same ranking as summaries). Defaults to false for backwards compatibility."
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SleepTotals"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/events/menstrual-cycles": {
       "get": {
         "tags": [
@@ -2502,6 +3181,196 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedResponse_MenstrualCycleRecord_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/events/meals": {
+      "get": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "List Meals",
+        "description": "Returns meals (nutrition entries).",
+        "operationId": "list_meals_api_v1_users__user_id__events_meals_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "Start Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days.",
+              "examples": [
+                "2023-11-07T05:31:56Z",
+                "2023-11-07"
+              ],
+              "format": "date-time",
+              "title": "End Date"
+            },
+            "description": "ISO 8601 datetime (e.g. `2023-11-07T05:31:56Z`) or Unix timestamp in seconds. Date-only strings (e.g. `2023-11-07`) are also accepted and cover the whole day, so a date-only range includes both boundary days."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProviderName"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "device_model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Device Model"
+            }
+          },
+          {
+            "name": "data_source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Source Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_Meal_"
                 }
               }
             }
@@ -2723,13 +3592,81 @@
         }
       }
     },
+    "/api/v1/users/{user_id}/events/meals/{meal_id}": {
+      "delete": {
+        "tags": [
+          "External: Events"
+        ],
+        "summary": "Delete Meal",
+        "description": "Delete a meal together with its nutrients.",
+        "operationId": "delete_meal_api_v1_users__user_id__events_meals__meal_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "meal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Meal Id"
+            }
+          },
+          {
+            "name": "X-Open-Wearables-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Open-Wearables-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{user_id}/health-scores": {
       "get": {
         "tags": [
           "External: Health Scores"
         ],
         "summary": "List Health Scores",
-        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.",
+        "description": "Returns health scores (sleep, recovery, readiness, etc.) for a user.\n\nOne OW score (provider `internal`) per category and day, from the highest-priority source.\n\nScores computed by Open Wearables (`provider: internal`) are deprecated: no new ones are\ncomputed starting November 6, 2026. Previously computed scores are still returned.",
         "operationId": "list_health_scores_api_v1_users__user_id__health_scores_get",
         "security": [
           {
@@ -3578,21 +4515,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "boolean"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": true
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SyncResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SyncQueuedResponse"
+                    }
+                  ],
                   "title": "Response Sync User Data Api V1 Providers  Provider  Users  User Id  Sync Post"
                 }
               }
@@ -5574,6 +6504,7 @@
                                     "HKQuantityTypeIdentifierRestingHeartRate",
                                     "RESTING_HEART_RATE",
                                     "HKQuantityTypeIdentifierHeartRateVariabilitySDNN",
+                                    "HKQuantityTypeIdentifierHeartRateVariabilityRMSSD",
                                     "HEART_RATE_VARIABILITY",
                                     "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute",
                                     "HKQuantityTypeIdentifierWalkingHeartRateAverage",
@@ -5676,7 +6607,88 @@
                                     "HKQuantityTypeIdentifierCrossCountrySkiingSpeed",
                                     "HKQuantityTypeIdentifierPaddleSportsSpeed",
                                     "HKQuantityTypeIdentifierRowingSpeed",
-                                    "HKQuantityTypeIdentifierNikeFuel"
+                                    "HKQuantityTypeIdentifierNikeFuel",
+                                    "HKQuantityTypeIdentifierDietaryEnergyConsumed",
+                                    "DIETARY_ENERGY",
+                                    "HKQuantityTypeIdentifierDietaryCarbohydrates",
+                                    "DIETARY_CARBOHYDRATE",
+                                    "HKQuantityTypeIdentifierDietaryFiber",
+                                    "DIETARY_FIBER",
+                                    "HKQuantityTypeIdentifierDietarySugar",
+                                    "DIETARY_SUGAR",
+                                    "HKQuantityTypeIdentifierDietaryFatTotal",
+                                    "DIETARY_TOTAL_FAT",
+                                    "HKQuantityTypeIdentifierDietaryFatSaturated",
+                                    "DIETARY_SATURATED_FAT",
+                                    "HKQuantityTypeIdentifierDietaryFatMonounsaturated",
+                                    "DIETARY_MONOUNSATURATED_FAT",
+                                    "HKQuantityTypeIdentifierDietaryFatPolyunsaturated",
+                                    "DIETARY_POLYUNSATURATED_FAT",
+                                    "HKQuantityTypeIdentifierDietaryCholesterol",
+                                    "DIETARY_CHOLESTEROL",
+                                    "HKQuantityTypeIdentifierDietaryProtein",
+                                    "DIETARY_PROTEIN",
+                                    "HKQuantityTypeIdentifierDietarySodium",
+                                    "DIETARY_SODIUM",
+                                    "HKQuantityTypeIdentifierDietaryPotassium",
+                                    "DIETARY_POTASSIUM",
+                                    "HKQuantityTypeIdentifierDietaryCalcium",
+                                    "DIETARY_CALCIUM",
+                                    "HKQuantityTypeIdentifierDietaryIron",
+                                    "DIETARY_IRON",
+                                    "HKQuantityTypeIdentifierDietaryMagnesium",
+                                    "DIETARY_MAGNESIUM",
+                                    "HKQuantityTypeIdentifierDietaryPhosphorus",
+                                    "DIETARY_PHOSPHORUS",
+                                    "HKQuantityTypeIdentifierDietaryZinc",
+                                    "DIETARY_ZINC",
+                                    "HKQuantityTypeIdentifierDietaryCopper",
+                                    "DIETARY_COPPER",
+                                    "HKQuantityTypeIdentifierDietaryManganese",
+                                    "DIETARY_MANGANESE",
+                                    "HKQuantityTypeIdentifierDietarySelenium",
+                                    "DIETARY_SELENIUM",
+                                    "HKQuantityTypeIdentifierDietaryChromium",
+                                    "DIETARY_CHROMIUM",
+                                    "HKQuantityTypeIdentifierDietaryMolybdenum",
+                                    "DIETARY_MOLYBDENUM",
+                                    "HKQuantityTypeIdentifierDietaryIodine",
+                                    "DIETARY_IODINE",
+                                    "HKQuantityTypeIdentifierDietaryChloride",
+                                    "DIETARY_CHLORIDE",
+                                    "HKQuantityTypeIdentifierDietaryVitaminA",
+                                    "DIETARY_VITAMIN_A",
+                                    "HKQuantityTypeIdentifierDietaryVitaminB6",
+                                    "DIETARY_VITAMIN_B6",
+                                    "HKQuantityTypeIdentifierDietaryVitaminB12",
+                                    "DIETARY_VITAMIN_B12",
+                                    "HKQuantityTypeIdentifierDietaryVitaminC",
+                                    "DIETARY_VITAMIN_C",
+                                    "HKQuantityTypeIdentifierDietaryVitaminD",
+                                    "DIETARY_VITAMIN_D",
+                                    "HKQuantityTypeIdentifierDietaryVitaminE",
+                                    "DIETARY_VITAMIN_E",
+                                    "HKQuantityTypeIdentifierDietaryVitaminK",
+                                    "DIETARY_VITAMIN_K",
+                                    "HKQuantityTypeIdentifierDietaryThiamin",
+                                    "DIETARY_THIAMIN",
+                                    "HKQuantityTypeIdentifierDietaryRiboflavin",
+                                    "DIETARY_RIBOFLAVIN",
+                                    "HKQuantityTypeIdentifierDietaryNiacin",
+                                    "DIETARY_NIACIN",
+                                    "HKQuantityTypeIdentifierDietaryFolate",
+                                    "DIETARY_FOLATE",
+                                    "HKQuantityTypeIdentifierDietaryPantothenicAcid",
+                                    "DIETARY_PANTOTHENIC_ACID",
+                                    "HKQuantityTypeIdentifierDietaryBiotin",
+                                    "DIETARY_BIOTIN",
+                                    "HKQuantityTypeIdentifierDietaryCaffeine",
+                                    "DIETARY_CAFFEINE",
+                                    "HKQuantityTypeIdentifierDietaryWater",
+                                    "DIETARY_TRANS_FAT",
+                                    "DIETARY_ENERGY_FROM_FAT",
+                                    "DIETARY_UNSATURATED_FAT",
+                                    "DIETARY_FOLIC_ACID"
                                   ],
                                   "title": "SDKMetricType",
                                   "type": "string"
@@ -5932,7 +6944,6 @@
                                   "type": "number"
                                 },
                                 {
-                                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                                   "type": "string"
                                 }
                               ],
@@ -8904,7 +9915,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Get data lifecycle settings",
-        "description": "Returns current archival/retention configuration and storage size estimates.",
+        "description": "Returns current rollup/retention configuration and storage size estimates.",
         "operationId": "get_archival_settings_api_v1_settings_archival_get",
         "responses": {
           "200": {
@@ -8929,7 +9940,7 @@
           "Internal: Data Lifecycle"
         ],
         "summary": "Update data lifecycle settings",
-        "description": "Configure archive_after_days (when live data is aggregated) and delete_after_days (when old data is permanently removed). Set to null to disable.",
+        "description": "Configure rollup_enabled (nightly rollup of changed days into daily and per-session aggregates) and delete_after_days (when old samples are permanently removed, rolled up first). Set delete_after_days to null to keep samples indefinitely.",
         "operationId": "update_archival_settings_api_v1_settings_archival_put",
         "requestBody": {
           "content": {
@@ -8975,8 +9986,8 @@
         "tags": [
           "Internal: Data Lifecycle"
         ],
-        "summary": "Trigger archival job manually",
-        "description": "Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
+        "summary": "Trigger the data lifecycle job manually",
+        "description": "Dispatches the daily rollup + retention job via Celery. Returns immediately with the task ID.",
         "operationId": "trigger_archival_api_v1_settings_archival_run_post",
         "responses": {
           "202": {
@@ -10286,7 +11297,7 @@
               }
             ],
             "title": "Total Calories Kcal",
-            "description": "Active + basal energy",
+            "description": "Total energy burned: the provider's reported total when available, otherwise active + basal energy when both are reported; null otherwise",
             "example": 2150.0
           },
           "active_minutes": {
@@ -10342,6 +11353,56 @@
           "source"
         ],
         "title": "ActivitySummary"
+      },
+      "ActivityTotals": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "description": "Days with activity data, one per date after source priority",
+            "example": 365
+          },
+          "steps": {
+            "type": "integer",
+            "title": "Steps",
+            "description": "Sum of daily steps",
+            "example": 2841230
+          },
+          "distance_meters": {
+            "type": "number",
+            "title": "Distance Meters",
+            "description": "Sum of daily distance",
+            "example": 2104380.5
+          },
+          "active_calories_kcal": {
+            "type": "number",
+            "title": "Active Calories Kcal",
+            "description": "Sum of daily active energy",
+            "example": 152340.0
+          },
+          "avg_steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Steps",
+            "description": "Mean steps over the days that report steps; null when none do",
+            "example": 7784
+          }
+        },
+        "type": "object",
+        "required": [
+          "days",
+          "steps",
+          "distance_meters",
+          "active_calories_kcal"
+        ],
+        "title": "ActivityTotals",
+        "description": "The period's daily activity added up: the same days the daily summaries return."
       },
       "ApiKeyRead": {
         "properties": {
@@ -10537,17 +11598,11 @@
       },
       "ArchivalSettingRead": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live samples are aggregated into daily archive. NULL = archival disabled."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll changed days of samples up into daily and per-session aggregates every 15 minutes. Off, the days that change are dropped: activity and body summaries count them from the samples, day reads of sources without provider day values get no new days.",
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -10559,28 +11614,20 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before archived data is permanently removed. NULL = kept indefinitely."
+            "description": "Days before samples are deleted, rolled up first when rollup is on. NULL = kept indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingRead",
-        "description": "Response schema for archival settings."
+        "description": "Response schema for data lifecycle settings."
       },
       "ArchivalSettingUpdate": {
         "properties": {
-          "archive_after_days": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Archive After Days",
-            "description": "Days before live data is archived. NULL to disable archival."
+          "rollup_enabled": {
+            "type": "boolean",
+            "title": "Rollup Enabled",
+            "description": "Roll samples up into daily and per-session aggregates.",
+            "default": false
           },
           "delete_after_days": {
             "anyOf": [
@@ -10594,12 +11641,12 @@
               }
             ],
             "title": "Delete After Days",
-            "description": "Days before data is permanently deleted. NULL to keep indefinitely."
+            "description": "Days before samples are deleted. NULL to keep indefinitely."
           }
         },
         "type": "object",
         "title": "ArchivalSettingUpdate",
-        "description": "Request schema for updating archival settings."
+        "description": "Request schema for updating data lifecycle settings."
       },
       "ArchivalSettingWithEstimate": {
         "properties": {
@@ -11130,11 +12177,24 @@
         ],
         "title": "CompletedPart"
       },
+      "ComputedBy": {
+        "type": "string",
+        "enum": [
+          "provider",
+          "open_wearables"
+        ],
+        "title": "ComputedBy",
+        "description": "Who computed an aggregate: the provider, or Open Wearables from stored samples."
+      },
       "ConfigResponse": {
         "properties": {
           "outgoing_webhooks_enabled": {
             "type": "boolean",
             "title": "Outgoing Webhooks Enabled"
+          },
+          "data_lifecycle_enabled": {
+            "type": "boolean",
+            "title": "Data Lifecycle Enabled"
           },
           "email_enabled": {
             "type": "boolean",
@@ -11144,6 +12204,7 @@
         "type": "object",
         "required": [
           "outgoing_webhooks_enabled",
+          "data_lifecycle_enabled",
           "email_enabled"
         ],
         "title": "ConfigResponse",
@@ -11222,6 +12283,13 @@
             "type": "array",
             "title": "Menstrual Cycle Fields"
           },
+          "meal_fields": {
+            "items": {
+              "$ref": "#/components/schemas/MealField"
+            },
+            "type": "array",
+            "title": "Meal Fields"
+          },
           "health_scores": {
             "items": {
               "$ref": "#/components/schemas/HealthScore"
@@ -11237,6 +12305,7 @@
           "workout_fields",
           "sleep_fields",
           "menstrual_cycle_fields",
+          "meal_fields",
           "health_scores"
         ],
         "title": "CoverageResponse"
@@ -11260,15 +12329,20 @@
           "archived": {
             "type": "integer",
             "title": "Archived"
+          },
+          "aggregated": {
+            "type": "integer",
+            "title": "Aggregated"
           }
         },
         "type": "object",
         "required": [
           "count",
-          "archived"
+          "archived",
+          "aggregated"
         ],
         "title": "DataPointsInfo",
-        "description": "Data points information.\n\n``count`` is the live (hot) ``data_point_series`` table; ``archived`` is the separate archive\ntable. Both are approximate on a cold cache / from planner statistics."
+        "description": "Data points information.\n\n``count`` is the live (hot) ``series_sample`` table; ``aggregated`` the day and session rows the\nsamples are rolled up into; ``archived`` the legacy archive table until it is dropped. All are\napproximate on a cold cache / from planner statistics."
       },
       "DataSourceListResponse": {
         "properties": {
@@ -11372,6 +12446,17 @@
               }
             ],
             "title": "Original Source Name"
+          },
+          "device_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Name"
           },
           "display_name": {
             "anyOf": [
@@ -11640,6 +12725,19 @@
           "phone",
           "scale",
           "ring",
+          "tablet",
+          "chest_strap",
+          "hr_sensor",
+          "headphones",
+          "head_mounted",
+          "glasses",
+          "smart_display",
+          "bp_monitor",
+          "glucose_meter",
+          "thermometer",
+          "sleep_monitor",
+          "bike_computer",
+          "fitness_machine",
           "other",
           "unknown"
         ],
@@ -11998,6 +13096,73 @@
         ],
         "title": "EventTypeResponse"
       },
+      "ExtensionInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "default": ""
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "requires_core": {
+            "type": "string",
+            "title": "Requires Core",
+            "description": "PEP 440 specifier of the core versions it supports.",
+            "default": ""
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why an installed extension is not active."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "active"
+        ],
+        "title": "ExtensionInfo"
+      },
+      "ExtensionsResponse": {
+        "properties": {
+          "core_version": {
+            "type": "string",
+            "title": "Core Version"
+          },
+          "extensions": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionInfo"
+            },
+            "type": "array",
+            "title": "Extensions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "core_version",
+          "extensions"
+        ],
+        "title": "ExtensionsResponse"
+      },
       "HRZone": {
         "properties": {
           "zone": {
@@ -12227,6 +13392,17 @@
             ],
             "title": "Event Record Id",
             "description": "The sleep session or workout this score describes. Null for whole-day scores."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The data source the score was computed from or reported by. Null for scores without one."
           }
         },
         "type": "object",
@@ -12508,6 +13684,16 @@
             ],
             "title": "Expires In"
           },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "user_id": {
             "type": "string",
             "format": "uuid",
@@ -12609,6 +13795,235 @@
           "webhook"
         ],
         "title": "LiveSyncMode"
+      },
+      "Macros": {
+        "properties": {
+          "protein_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protein G"
+          },
+          "carbohydrates_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbohydrates G"
+          },
+          "fat_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fat G"
+          },
+          "fiber_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiber G"
+          }
+        },
+        "type": "object",
+        "title": "Macros"
+      },
+      "Meal": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "meal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meal Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceMetadata"
+          },
+          "calories_kcal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Kcal"
+          },
+          "macros": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Macros"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "water_ml": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Water Ml"
+          },
+          "nutrients": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NutrientValue"
+            },
+            "type": "object",
+            "title": "Nutrients",
+            "description": "All nutrient values recorded for the meal, keyed by series type (e.g. dietary_sugar)",
+            "example": {
+              "dietary_sugar": {
+                "unit": "g",
+                "value": 12.5
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "timestamp",
+          "source"
+        ],
+        "title": "Meal"
+      },
+      "MealConfig": {
+        "properties": {
+          "meal_count": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Meal Count",
+            "description": "Total number of meals to generate.",
+            "default": 50
+          },
+          "calories_range": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Calories Range",
+            "default": [
+              150,
+              900
+            ]
+          },
+          "date_range_months": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Date Range Months",
+            "default": 6
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From",
+            "description": "Explicit start date. Overrides date_range_months."
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To",
+            "description": "Explicit end date. Overrides date_range_months."
+          }
+        },
+        "type": "object",
+        "title": "MealConfig",
+        "description": "Parameters controlling meal generation."
+      },
+      "MealField": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "providers"
+        ],
+        "title": "MealField"
       },
       "MenstrualCycleField": {
         "properties": {
@@ -13079,6 +14494,24 @@
         ],
         "title": "MultipartSignResponse"
       },
+      "NutrientValue": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "unit"
+        ],
+        "title": "NutrientValue"
+      },
       "OldPaginatedResponse_UserRead_": {
         "properties": {
           "items": {
@@ -13184,6 +14617,30 @@
           "metadata"
         ],
         "title": "PaginatedResponse[HealthScoreResponse]"
+      },
+      "PaginatedResponse_Meal_": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Meal"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/TimeseriesMetadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "pagination",
+          "metadata"
+        ],
+        "title": "PaginatedResponse[Meal]"
       },
       "PaginatedResponse_MenstrualCycleRecord_": {
         "properties": {
@@ -13495,6 +14952,130 @@
           "confirm_password"
         ],
         "title": "PasswordChange"
+      },
+      "PasswordChangePrompt": {
+        "type": "string",
+        "enum": [
+          "required",
+          "recommended"
+        ],
+        "title": "PasswordChangePrompt",
+        "description": "How the portal should ask a developer who signed in with the default password to change it."
+      },
+      "PersonalRecordResponse": {
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date",
+            "description": "Birth date of the user"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male",
+                  "nonbinary",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "description": "Optional self-reported gender"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex",
+            "description": "Biological sex, for norms that differ between women and men"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "PersonalRecordResponse"
+      },
+      "PersonalRecordUpdate": {
+        "properties": {
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date",
+            "description": "Birth date of the user"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male",
+                  "nonbinary",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "description": "Optional self-reported gender"
+          },
+          "sex": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "female",
+                  "male"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sex",
+            "description": "Biological sex, for norms that differ between women and men"
+          }
+        },
+        "type": "object",
+        "title": "PersonalRecordUpdate",
+        "description": "The whole record: a field left out is stored as null."
       },
       "PowerZone": {
         "properties": {
@@ -13849,6 +15430,12 @@
             "title": "Is Enabled",
             "description": "Whether provider is enabled by admin"
           },
+          "credentials_configured": {
+            "type": "boolean",
+            "title": "Credentials Configured",
+            "description": "Whether the OAuth client ID and secret are set. Always true for SDK-only providers.",
+            "default": true
+          },
           "icon_url": {
             "type": "string",
             "title": "Icon Url",
@@ -14060,10 +15647,13 @@
           "1min",
           "5min",
           "15min",
-          "1hour"
+          "1hour",
+          "1day",
+          "1week",
+          "1month"
         ],
         "title": "Resolution",
-        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched."
+        "description": "Bucket width requested when reading time series. RAW returns stored samples untouched; day, week\nand month read the day aggregates instead of the samples."
       },
       "SDKLogRequest": {
         "properties": {
@@ -14208,6 +15798,7 @@
               "generate_workouts": true,
               "generate_sleep": true,
               "generate_time_series": true,
+              "generate_meals": false,
               "num_connections": 2,
               "workout_config": {
                 "count": 80,
@@ -14253,6 +15844,14 @@
                 "date_range_months": 6,
                 "enabled_types": [],
                 "include_blood_pressure": false
+              },
+              "meal_config": {
+                "calories_range": [
+                  150,
+                  900
+                ],
+                "date_range_months": 6,
+                "meal_count": 50
               }
             }
           },
@@ -14359,6 +15958,12 @@
             "title": "Generate Time Series",
             "default": true
           },
+          "generate_meals": {
+            "type": "boolean",
+            "title": "Generate Meals",
+            "description": "Opt-in: existing presets and defaults stay meal-free unless explicitly enabled.",
+            "default": false
+          },
           "providers": {
             "anyOf": [
               {
@@ -14434,11 +16039,91 @@
               "include_blood_pressure": false,
               "date_range_months": 6
             }
+          },
+          "meal_config": {
+            "$ref": "#/components/schemas/MealConfig",
+            "default": {
+              "meal_count": 50,
+              "calories_range": [
+                150,
+                900
+              ],
+              "date_range_months": 6
+            }
           }
         },
         "type": "object",
         "title": "SeedProfileConfig",
         "description": "Complete seed data generation configuration."
+      },
+      "SeriesStats": {
+        "properties": {
+          "avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "sum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sum"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "title": "SeriesStats",
+        "description": "Every statistic held for a period. The sample's value is the one its series is read by."
       },
       "SeriesType": {
         "type": "string",
@@ -14447,7 +16132,7 @@
           "resting_heart_rate",
           "heart_rate_variability_sdnn",
           "heart_rate_recovery_one_minute",
-          "walking_heart_rate_average",
+          "walking_heart_rate",
           "heart_rate_variability_rmssd",
           "oxygen_saturation",
           "blood_glucose",
@@ -14485,8 +16170,8 @@
           "exercise_time",
           "physical_effort",
           "flights_climbed",
-          "average_met",
           "active_time",
+          "total_energy",
           "distance_walking_running",
           "distance_cycling",
           "distance_swimming",
@@ -14511,6 +16196,8 @@
           "cadence",
           "power",
           "speed",
+          "distance",
+          "elevation_gain",
           "workout_effort_score",
           "estimated_workout_effort_score",
           "environmental_audio_exposure",
@@ -14532,6 +16219,48 @@
           "garmin_body_battery",
           "withings_pulse_wave_velocity",
           "withings_metabolic_age",
+          "dietary_energy_consumed",
+          "dietary_carbohydrates",
+          "dietary_fiber",
+          "dietary_sugar",
+          "dietary_fat_total",
+          "dietary_fat_saturated",
+          "dietary_fat_monounsaturated",
+          "dietary_fat_polyunsaturated",
+          "dietary_cholesterol",
+          "dietary_protein",
+          "dietary_sodium",
+          "dietary_potassium",
+          "dietary_calcium",
+          "dietary_iron",
+          "dietary_magnesium",
+          "dietary_phosphorus",
+          "dietary_zinc",
+          "dietary_copper",
+          "dietary_manganese",
+          "dietary_selenium",
+          "dietary_chromium",
+          "dietary_molybdenum",
+          "dietary_iodine",
+          "dietary_chloride",
+          "dietary_vitamin_a",
+          "dietary_vitamin_b6",
+          "dietary_vitamin_b12",
+          "dietary_vitamin_c",
+          "dietary_vitamin_d",
+          "dietary_vitamin_e",
+          "dietary_vitamin_k",
+          "dietary_thiamin",
+          "dietary_riboflavin",
+          "dietary_niacin",
+          "dietary_folate",
+          "dietary_pantothenic_acid",
+          "dietary_biotin",
+          "dietary_caffeine",
+          "dietary_fat_trans",
+          "dietary_energy_from_fat",
+          "dietary_fat_unsaturated",
+          "dietary_folic_acid",
           "electrodermal_activity",
           "push_count",
           "atrial_fibrillation_burden",
@@ -15233,6 +16962,56 @@
         ],
         "title": "SleepSummary"
       },
+      "SleepTotals": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Sessions that match the filters, naps included",
+            "example": 30
+          },
+          "naps": {
+            "type": "integer",
+            "title": "Naps",
+            "description": "Of those, how many are naps",
+            "example": 4
+          },
+          "sleep_duration_seconds": {
+            "type": "integer",
+            "title": "Sleep Duration Seconds",
+            "description": "Sum of time asleep",
+            "example": 799200
+          },
+          "time_in_bed_seconds": {
+            "type": "integer",
+            "title": "Time In Bed Seconds",
+            "description": "Sum of time in bed, or of the session's span where none was reported",
+            "example": 871200
+          },
+          "avg_efficiency_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Efficiency Percent",
+            "description": "Mean efficiency over the sessions that report one",
+            "example": 91.4
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "naps",
+          "sleep_duration_seconds",
+          "time_in_bed_seconds"
+        ],
+        "title": "SleepTotals",
+        "description": "Sleep sessions matching a filter, added up in the database rather than paged."
+      },
       "SourceMetadata": {
         "properties": {
           "provider": {
@@ -15275,6 +17054,18 @@
             ],
             "example": "phone"
           },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "example": "R9ZW30ABC12"
+          },
           "device_name": {
             "anyOf": [
               {
@@ -15301,22 +17092,22 @@
           "live_data_bytes": {
             "type": "integer",
             "title": "Live Data Bytes",
-            "description": "Data size of data_point_series table (bytes)"
+            "description": "Data size of series_sample table (bytes)"
           },
           "live_index_bytes": {
             "type": "integer",
             "title": "Live Index Bytes",
-            "description": "Index size of data_point_series table (bytes)"
+            "description": "Index size of series_sample table (bytes)"
           },
-          "archive_data_bytes": {
+          "aggregate_data_bytes": {
             "type": "integer",
-            "title": "Archive Data Bytes",
-            "description": "Data size of archive table (bytes)"
+            "title": "Aggregate Data Bytes",
+            "description": "Data size of the aggregate tables and the legacy archive (bytes)"
           },
-          "archive_index_bytes": {
+          "aggregate_index_bytes": {
             "type": "integer",
-            "title": "Archive Index Bytes",
-            "description": "Index size of archive table (bytes)"
+            "title": "Aggregate Index Bytes",
+            "description": "Index size of the aggregate tables and the legacy archive (bytes)"
           },
           "other_tables_bytes": {
             "type": "integer",
@@ -15333,20 +17124,20 @@
             "title": "Live Row Count",
             "description": "Number of rows in live table"
           },
-          "archive_row_count": {
+          "aggregate_row_count": {
             "type": "integer",
-            "title": "Archive Row Count",
-            "description": "Number of rows in archive table"
+            "title": "Aggregate Row Count",
+            "description": "Number of rows in the aggregate tables and the legacy archive"
           },
           "avg_bytes_per_live_row": {
             "type": "number",
             "title": "Avg Bytes Per Live Row",
             "description": "Average bytes per live row (data+index)"
           },
-          "avg_bytes_per_archive_row": {
+          "avg_bytes_per_aggregate_row": {
             "type": "number",
-            "title": "Avg Bytes Per Archive Row",
-            "description": "Average bytes per archive row (data+index)"
+            "title": "Avg Bytes Per Aggregate Row",
+            "description": "Average bytes per aggregate row (data+index)"
           },
           "live_data_span_days": {
             "type": "integer",
@@ -15368,20 +17159,20 @@
             "title": "Live Index Pretty",
             "description": "Human-readable live index size"
           },
-          "archive_total_pretty": {
+          "aggregate_total_pretty": {
             "type": "string",
-            "title": "Archive Total Pretty",
-            "description": "Human-readable archive total size (data+indexes)"
+            "title": "Aggregate Total Pretty",
+            "description": "Human-readable aggregate total size (data+indexes)"
           },
-          "archive_data_pretty": {
+          "aggregate_data_pretty": {
             "type": "string",
-            "title": "Archive Data Pretty",
-            "description": "Human-readable archive data size"
+            "title": "Aggregate Data Pretty",
+            "description": "Human-readable aggregate data size"
           },
-          "archive_index_pretty": {
+          "aggregate_index_pretty": {
             "type": "string",
-            "title": "Archive Index Pretty",
-            "description": "Human-readable archive index size"
+            "title": "Aggregate Index Pretty",
+            "description": "Human-readable aggregate index size"
           },
           "other_tables_pretty": {
             "type": "string",
@@ -15403,27 +17194,173 @@
         "required": [
           "live_data_bytes",
           "live_index_bytes",
-          "archive_data_bytes",
-          "archive_index_bytes",
+          "aggregate_data_bytes",
+          "aggregate_index_bytes",
           "other_tables_bytes",
           "total_bytes",
           "live_row_count",
-          "archive_row_count",
+          "aggregate_row_count",
           "avg_bytes_per_live_row",
-          "avg_bytes_per_archive_row",
+          "avg_bytes_per_aggregate_row",
           "live_data_span_days",
           "live_total_pretty",
           "live_data_pretty",
           "live_index_pretty",
-          "archive_total_pretty",
-          "archive_data_pretty",
-          "archive_index_pretty",
+          "aggregate_total_pretty",
+          "aggregate_data_pretty",
+          "aggregate_index_pretty",
           "other_tables_pretty",
           "total_pretty",
           "growth_class"
         ],
         "title": "StorageEstimate",
         "description": "Storage sizes across all database tables."
+      },
+      "Sync247Summary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Set when the whole sync failed before any task ran"
+          },
+          "tasks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Sync247TaskSummary"
+            },
+            "type": "object",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "tasks"
+        ],
+        "title": "Sync247Summary",
+        "description": "A 24/7 sync: totals over its provider fetch tasks, and each task."
+      },
+      "Sync247TaskSummary": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          },
+          "items_inserted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Inserted",
+            "description": "New rows, when the write path reports the split"
+          },
+          "items_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Updated",
+            "description": "Rows refreshed in place, when the write path reports the split"
+          },
+          "items_reported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Reported",
+            "description": "Rows written, when only a total is known"
+          },
+          "items_skipped": {
+            "type": "integer",
+            "title": "Items Skipped",
+            "description": "Records deliberately not stored, such as duplicates"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "The fetch stopped early, so the window is incomplete"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "HTTP status (http_401) or error type of the first failure"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "items_inserted",
+          "items_updated",
+          "items_reported",
+          "items_skipped",
+          "truncated",
+          "error_code"
+        ],
+        "title": "Sync247TaskSummary",
+        "description": "One provider fetch task of a 24/7 sync. Counters mean what they do in sync.data_type events."
       },
       "SyncDataType": {
         "type": "string",
@@ -15434,6 +17371,81 @@
         ],
         "title": "SyncDataType",
         "description": "Types of data to sync from provider."
+      },
+      "SyncDetails": {
+        "properties": {
+          "workouts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workouts",
+            "description": "Workouts saved, when workouts were synced"
+          },
+          "data_247": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sync247Summary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SyncDetails"
+      },
+      "SyncQueuedResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "async": {
+            "type": "boolean",
+            "title": "Async"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "async",
+          "task_id",
+          "message"
+        ],
+        "title": "SyncQueuedResponse",
+        "description": "A sync queued to run in the background."
+      },
+      "SyncResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "details": {
+            "$ref": "#/components/schemas/SyncDetails"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "details"
+        ],
+        "title": "SyncResponse",
+        "description": "A synchronous sync's outcome."
       },
       "SyncRunDataTypeRecord": {
         "properties": {
@@ -16322,6 +18334,49 @@
               }
             ],
             "title": "Is Daily Total"
+          },
+          "window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Seconds"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "computed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComputedBy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeriesStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -16534,6 +18589,16 @@
               }
             ],
             "title": "Expires In"
+          },
+          "password_change": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PasswordChangePrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -16603,6 +18668,12 @@
             "type": "integer",
             "title": "Workouts Saved",
             "description": "Workouts saved",
+            "default": 0
+          },
+          "meals_saved": {
+            "type": "integer",
+            "title": "Meals Saved",
+            "description": "Meal correlations saved",
             "default": 0
           },
           "sleep_saved": {
@@ -17788,6 +19859,18 @@
             ],
             "title": "Max Watts"
           },
+          "average_met": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Met",
+            "description": "The workout's average metabolic equivalent (MET), from its physical_effort series."
+          },
           "moving_time_seconds": {
             "anyOf": [
               {
@@ -18037,6 +20120,55 @@
         ],
         "title": "WorkoutIntensity",
         "description": "Unified subjective intensity of a workout, independent of the reporting provider."
+      },
+      "WorkoutTotals": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Workouts that match the filters",
+            "example": 42
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds",
+            "description": "Sum of their durations",
+            "example": 95400
+          },
+          "calories_kcal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calories Kcal",
+            "description": "Sum of reported energy burned; null when none reported any",
+            "example": 18250.5
+          },
+          "distance_meters": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Meters",
+            "description": "Sum of reported distance; null when none reported any",
+            "example": 212400.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "duration_seconds"
+        ],
+        "title": "WorkoutTotals",
+        "description": "Workouts matching a filter, added up in the database rather than paged."
       },
       "WorkoutType": {
         "type": "string",

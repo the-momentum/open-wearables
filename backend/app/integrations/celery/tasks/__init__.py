@@ -8,9 +8,13 @@ from app.services.providers.garmin.backfill_state import (
     get_pending_types as get_garmin_pending_types,
 )
 
-from .archival_task import run_daily_archival
+from .aggregate_backfill_task import run_aggregate_backfill
+from .archival_task import roll_up_queued_days, run_daily_archival
+from .backfill_data_type_coverage_task import backfill_data_type_coverage
 from .close_stale_sync_runs_task import close_stale_sync_runs
+from .delete_user_webhook_payloads_task import delete_user_webhook_payloads
 from .emit_webhook_event_task import emit_webhook_event
+from .extension_events_task import dispatch_extension_events
 from .fill_missing_resilience_scores_task import fill_missing_resilience_scores
 from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
 from .finalize_stale_sleep_task import finalize_stale_sleeps
@@ -50,7 +54,11 @@ __all__ = [
     "trigger_garmin_backfill_for_type",
     "trigger_garmin_next_pending_type",
     # Archival
+    "roll_up_queued_days",
+    "run_aggregate_backfill",
     "run_daily_archival",
+    # One-off data migrations
+    "backfill_data_type_coverage",
     # Apple XML multipart uploads
     "complete_and_process_aws_upload",
     # Sleep score calculation
@@ -58,6 +66,7 @@ __all__ = [
     # Resilience score calculation
     "fill_missing_resilience_scores",
     # Other tasks
+    "dispatch_extension_events",
     "close_stale_sync_runs",
     "finalize_stale_sleeps",
     "process_sdk_upload",
@@ -75,4 +84,5 @@ __all__ = [
     "send_telemetry_ping",
     # Outgoing webhooks
     "emit_webhook_event",
+    "delete_user_webhook_payloads",
 ]

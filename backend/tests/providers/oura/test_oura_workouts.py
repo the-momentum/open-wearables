@@ -91,7 +91,7 @@ class TestOuraWorkoutsNormalization:
     def test_normalize_workout_provenance(self, workouts: OuraWorkouts, sample_oura_workout: OuraWorkoutJSON) -> None:
         """Oura's per-workout `source` must not be confused with EventRecordCreate.source,
         which stays the provider identifier."""
-        user_id = str(uuid4())
+        user_id = fake_firebase_uid()
         record, detail = workouts._normalize_workout(sample_oura_workout, user_id)
 
         assert record.source == "oura"
@@ -116,7 +116,7 @@ class TestOuraWorkoutsNormalization:
     ) -> None:
         """Every value of Oura's PublicWorkoutSource enum (as of spec 1.40) maps to a known EntrySource."""
         workout = sample_oura_workout.model_copy(update={"source": source})
-        _, detail = workouts._normalize_workout(workout, uuid4())
+        _, detail = workouts._normalize_workout(workout, fake_firebase_uid())
 
         assert detail.entry_source == expected
 
