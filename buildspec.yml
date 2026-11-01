@@ -56,8 +56,10 @@ version: 0.2
 #          --parameters "host=open-wearables-backend.ren.internal,portNumber=8000,localPortNumber=8000"
 #      (the jumphost resolves the Cloud Map names via VPC DNS — no task IP
 #      lookup needed).
-#      The dashboard calls the API browser-side, so VITE_API_URL is
-#      localhost:8000 and the admin needs both tunnels.
+#      The dashboard (SvelteKit SSR) calls the API server-side over Cloud Map
+#      (API_URL), so the frontend tunnel is enough to sign in. VITE_API_URL
+#      stays localhost:8000: it is the address the dashboard shows for
+#      browsers and devices, reachable through the backend tunnel.
 #
 # Egress: the ren-private-* subnets already route 0.0.0.0/0 through NAT
 # nat-0b840a6e62d2e2ad6, covering wearable-provider OAuth/API calls plus ECR,
@@ -140,8 +142,9 @@ env:
     BEAT_LOG_GROUP: /ecs/open-wearables/beat
 
     # Dashboard. Private: reachable only through the SSM jumphost tunnel
-    # described in the header. VITE_API_URL is localhost:8000 because the
-    # dashboard calls the API from the browser through the same tunnel.
+    # described in the header. ORIGIN is the tunnel address (FRONTEND_URL):
+    # SvelteKit rejects form POSTs whose Origin differs from it, and
+    # adapter-node assumes https when ORIGIN is unset, so login would 403.
     FRONTEND_SERVICE: open-wearables-frontend
     FRONTEND_TASK_FAMILY: open-wearables-frontend
     FRONTEND_TASK_ROLE_ARN: "arn:aws:iam::948806324983:role/open-wearables-task"
@@ -687,6 +690,9 @@ phases:
         done
         grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$ALB_SECURITY_GROUP_ID" "$BACKEND_CONTAINER_PORT"
         grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$ADMIN_SECURITY_GROUP_ID" "$BACKEND_CONTAINER_PORT"
+        # The dashboard's SSR server calls the backend itself (API_URL). Both
+        # wear ren-app-sg, so this is a self-rule on 8000.
+        grant_ingress "$BACKEND_SECURITY_GROUP_ID" "$FRONTEND_SECURITY_GROUP_ID" "$BACKEND_CONTAINER_PORT"
         # Frontend ingress on 3000: SSM jumphost only (admin tunnel to the
         # dashboard — nothing else is allowed to reach it).
         grant_ingress "$FRONTEND_SECURITY_GROUP_ID" "$ADMIN_SECURITY_GROUP_ID" "$FRONTEND_CONTAINER_PORT"
@@ -891,17 +897,20 @@ phases:
           "$BACKEND_SECURITY_GROUP_ID" "" \
           'deploymentCircuitBreaker={enable=true,rollback=true},maximumPercent=100,minimumHealthyPercent=0'
 
-        # Frontend: Nitro SSR on port 3000, reachable only through the SSM
-        # jumphost tunnel (see header). VITE_API_URL is resolved at runtime
-        # (window.__APP_CONFIG__ injected into the SSR HTML), so the image needs
-        # no rebuild per environment. It is localhost:8000 on purpose: the
-        # dashboard calls the API from the admin's browser through the tunnel.
+        # Frontend: SvelteKit (adapter-node) SSR on port 3000, reachable only
+        # through the SSM jumphost tunnel (see header). Env is read at runtime,
+        # so the image needs no rebuild per environment. The server calls the
+        # API itself (login, session refresh) via API_URL, the backend's Cloud
+        # Map name; VITE_API_URL is only the address shown to browsers/devices.
         # node:22-alpine has no python — the health check uses node's global
         # fetch instead of wget/curl.
         FRONTEND_ENVIRONMENT="$(jq -cn \
           --arg environment "$ENVIRONMENT" \
+          --arg origin "$FRONTEND_URL" \
           '[
             {"name":"ENVIRONMENT","value":$environment},
+            {"name":"ORIGIN","value":$origin},
+            {"name":"API_URL","value":"http://open-wearables-backend.ren.internal:8000"},
             {"name":"VITE_API_URL","value":"http://localhost:8000"}
           ]')"
         FRONTEND_HEALTH_COMMAND="node -e \"fetch('http://127.0.0.1:$FRONTEND_CONTAINER_PORT/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""
