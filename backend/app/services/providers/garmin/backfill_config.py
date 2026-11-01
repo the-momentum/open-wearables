@@ -52,14 +52,6 @@ SUMMARY_DAYS = 0  # No summary coverage gap (REST endpoints removed)
 REQUEST_DELAY_SECONDS = 0.5  # Small delay between requests (prod limit: 10,000 days/min)
 
 
-def get_max_days_for_type(data_type: str) -> int:
-    """Get maximum backfill days allowed for a data type.
-
-    All data types are currently limited to 30 days per request.
-    """
-    return BACKFILL_CHUNK_DAYS
-
-
 # ---------------------------------------------------------------------------
 # Data types
 # ---------------------------------------------------------------------------

@@ -426,35 +426,6 @@ class TestGarmin247Data:
     # Body Composition Tests
     # -------------------------------------------------------------------------
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
-    def test_save_body_composition(
-        self,
-        mock_bulk_create: MagicMock,
-        garmin_247: Garmin247Data,
-        db: Session,
-        sample_body_comp: dict[str, Any],
-    ) -> None:
-        """Test saving body composition data."""
-        user = UserFactory()
-        mock_bulk_create.side_effect = lambda db_session, samples: WriteCounts(len(samples), 0)
-
-        count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
-
-        # Should create 4 data points: weight, body_fat, BMI, skeletal muscle mass
-        mock_bulk_create.assert_called_once()
-        assert len(mock_bulk_create.call_args[0][1]) == 4
-        assert count == 4
-
-    def test_save_body_composition_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test saving body composition with missing timestamp."""
-        user_id = uuid4()
-        body_comp = {"summaryId": "bc_123", "weightInGrams": 75000}
-
-        count = garmin_247.save_body_composition(db, user_id, body_comp)
-
-        # Should return 0 if no timestamp
-        assert count == 0
-
     # -------------------------------------------------------------------------
     # Abstract Method Implementation Tests
     # -------------------------------------------------------------------------
@@ -517,7 +488,7 @@ class TestGarmin247Data:
     # HRV Data Tests
     # -------------------------------------------------------------------------
 
-    def test_save_hrv_data(self, garmin_247: Garmin247Data, db: Session) -> None:
+    def test_process_items_batch_hrv(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -538,13 +509,13 @@ class TestGarmin247Data:
             },
         }
 
-        count = garmin_247.save_hrv_data(db, user.id, hrv_data)
+        count = garmin_247.process_items_batch(db, user.id, "hrv", [hrv_data])
 
         # 3 hrvValues samples; lastNightAvg is the night's day value, kept in series_aggregate.
         assert count == 3
         assert [row.avg for row in db.query(SeriesAggregate)] == [Decimal("84")]
 
-    def test_save_hrv_data_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
+    def test_process_items_batch_hrv_missing_start_time(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with missing start time."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -555,11 +526,11 @@ class TestGarmin247Data:
             # Missing startTimeInSeconds
         }
 
-        count = garmin_247.save_hrv_data(db, user.id, hrv_data)
+        count = garmin_247.process_items_batch(db, user.id, "hrv", [hrv_data])
 
         assert count == 0
 
-    def test_save_hrv_data_only_avg(self, garmin_247: Garmin247Data, db: Session) -> None:
+    def test_process_items_batch_hrv_only_avg(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test saving HRV data with only lastNightAvg."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -573,7 +544,7 @@ class TestGarmin247Data:
             # No hrvValues
         }
 
-        count = garmin_247.save_hrv_data(db, user.id, hrv_data)
+        count = garmin_247.process_items_batch(db, user.id, "hrv", [hrv_data])
 
         # lastNightAvg alone: no sample, one day row.
         assert count == 0
@@ -669,12 +640,12 @@ class TestGarmin247Data:
 
         assert [s.period for s in samples] == [CalendarPeriod.of_date(date(2024, 1, 15))]
 
-    def test_save_dailies_data_mirrors_the_day_values(
+    def test_process_items_batch_dailies_mirrors_the_day_values(
         self, db: Session, garmin_247: Garmin247Data, sample_daily: dict[str, Any]
     ) -> None:
         user = UserFactory()
 
-        garmin_247.save_dailies_data(db, user.id, garmin_247.normalize_dailies(sample_daily, user.id))
+        garmin_247.process_items_batch(db, user.id, "dailies", [sample_daily])
 
         # steps, active and basal energy, resting HR, floors, distance; intraday HR stays a sample only
         assert db.query(SeriesAggregate).count() == 6
